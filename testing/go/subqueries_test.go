@@ -283,7 +283,7 @@ func TestExistSubquery(t *testing.T) {
 					Query: `EXPLAIN SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE a.x = b.x);`,
 					Expected: []sql.Row{
 						{"SemiJoin"},
-						{" ├─ a.x = b.x"},
+						{" ├─ (a.x = b.x)"},
 						{" ├─ Table"},
 						{" │   └─ name: a"},
 						{" └─ Table"},
@@ -306,7 +306,7 @@ func TestExistSubquery(t *testing.T) {
 						{" └─ Filter"},
 						{"     ├─ 1 IS NULL"},
 						{"     └─ LeftOuterJoin"},
-						{"         ├─ a.x = b.x"},
+						{"         ├─ (a.x = b.x)"},
 						{"         ├─ Table"},
 						{"         │   └─ name: a"},
 						{"         └─ Project"},

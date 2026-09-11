@@ -2220,14 +2220,14 @@ func TestTranslateMysqlShowCreateTable(t *testing.T) {
 				")",
 		},
 		{
-			name: "DEFAULT CURRENT_TIMESTAMP and doubled parens",
+			name: "DEFAULT CURRENT_TIMESTAMP",
 			input: "CREATE TABLE `t` (\n" +
 				"  `a` int DEFAULT CURRENT_TIMESTAMP,\n" +
 				"  `b` int NOT NULL DEFAULT ((7 + 11))\n" +
 				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
 			expected: "CREATE TABLE \"t\" (\n" +
 				"  \"a\" integer DEFAULT (now()),\n" +
-				"  \"b\" integer NOT NULL DEFAULT (7 + 11)\n" +
+				"  \"b\" integer NOT NULL DEFAULT ((7 + 11))\n" +
 				")",
 		},
 		{

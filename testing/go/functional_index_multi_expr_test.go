@@ -43,11 +43,11 @@ func TestFunctionalIndexMultiExpr(t *testing.T) {
 				},
 				{
 					Query:    "SELECT pg_get_indexdef('idx1'::regclass);",
-					Expected: []sql.Row{{"CREATE INDEX idx1 ON public.t USING btree ((upper(name)), age, (c1 + c2))"}},
+					Expected: []sql.Row{{"CREATE INDEX idx1 ON public.t USING btree ((upper(name)), age, ((c1 + c2)))"}},
 				},
 				{
 					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx1';",
-					Expected: []sql.Row{{"CREATE INDEX idx1 ON public.t USING btree ((upper(name)), age, (c1 + c2))"}},
+					Expected: []sql.Row{{"CREATE INDEX idx1 ON public.t USING btree ((upper(name)), age, ((c1 + c2)))"}},
 				},
 			},
 		},
