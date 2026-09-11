@@ -359,7 +359,7 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 			return nil, err
 		}
 		if values[i] != nil {
-			if formatCode == 0 {
+			if formatCode == pgtype.TextFormatCode {
 				v, err := dgType.IoInput(ctx, string(values[i]))
 				if err != nil {
 					return nil, err
@@ -650,7 +650,11 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 		return nil, err
 	}
 
-	outputRow, err := rowToBytes(ctx, schema, row, formatCodes)
+	encoder, err := newWireRowEncoder(ctx, schema, formatCodes)
+	if err != nil {
+		return nil, err
+	}
+	outputRow, err := encoder.encode(ctx, row)
 	if err != nil {
 		return nil, err
 	}
@@ -664,6 +668,10 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 // and writes results into the callback function.
 func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription, formatCodes []int16) (*Result, bool, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
+	encoder, err := newWireRowEncoder(ctx, schema, formatCodes)
+	if err != nil {
+		return nil, false, err
+	}
 
 	// TODO: use errguard.Go instead?
 	pan2err := func(err *error) {
@@ -764,7 +772,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 				}
 
 				outputRow := res.nextRowValues(len(schema))
-				rErr := rowToBytesInto(ctx, schema, row, formatCodes, outputRow)
+				rErr := encoder.encodeInto(ctx, row, outputRow)
 				if rErr != nil {
 					return rErr
 				}
@@ -816,7 +824,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 		return iter.Close(ctx)
 	})
 
-	err := eg.Wait()
+	err = eg.Wait()
 	if err != nil {
 		if printErrorStackTraces {
 			fmt.Printf("error running query: %+v\n", err)
@@ -865,31 +873,36 @@ func rowToBytesInto(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []i
 	for i, v := range row {
 		if v == nil {
 			o[i] = nil
-		} else if formatCodes[i] == 1 {
-			switch d := s[i].Type.(type) {
-			case *pgtypes.DoltgresType:
-				o[i], err = d.CallSend(ctx, v)
-				if err != nil {
-					return err
-				}
-			default:
-				cast := pgexprs.NewGMSCast(expression.NewLiteral(v, d))
-				v, err = cast.Eval(ctx, nil)
-				if err != nil {
-					return err
-				}
-				o[i], err = cast.DoltgresType(ctx).CallSend(ctx, v)
-				if err != nil {
-					return err
-				}
-			}
 		} else {
-			val, err := s[i].Type.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty
+			o[i], err = valueToBytes(ctx, s[i].Type, formatCodes[i], v)
 			if err != nil {
 				return err
 			}
-			o[i] = val.ToBytes()
 		}
 	}
 	return nil
+}
+
+// valueToBytes applies the generic text or binary conversion for one result value.
+func valueToBytes(ctx *sql.Context, typ sql.Type, formatCode int16, v any) ([]byte, error) {
+	var err error
+	if formatCode == pgtype.BinaryFormatCode {
+		switch d := typ.(type) {
+		case *pgtypes.DoltgresType:
+			return d.CallSend(ctx, v)
+		default:
+			cast := pgexprs.NewGMSCast(expression.NewLiteral(v, d))
+			v, err = cast.Eval(ctx, nil)
+			if err != nil {
+				return nil, err
+			}
+			return cast.DoltgresType(ctx).CallSend(ctx, v)
+		}
+	} else {
+		val, err := typ.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty
+		if err != nil {
+			return nil, err
+		}
+		return val.ToBytes(), nil
+	}
 }
