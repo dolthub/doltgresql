@@ -704,6 +704,23 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3325: trailing spaces of a bpchar value are ignored",
+			SetUpScript: []string{
+				"CREATE TABLE t3325 (id INT PRIMARY KEY, c CHAR(2) CHECK (c::text IN ('L', 'R')));",
+				"INSERT INTO t3325 VALUES (1, 'L'), (2, 'R ');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT '[' || 'L'::CHAR(2) || ']', length('L'::CHAR(2)), 'L'::CHAR(2) = 'L', 'L '::CHAR(2) = 'L'::CHAR(2), 'L'::CHAR(2)::TEXT = 'L', 'L'::CHAR(2)::VARCHAR = 'L', bpcharcmp('L'::CHAR(2), 'L ');",
+					Expected: []sql.Row{{"[L]", 1, "t", "t", "t", "t", 0}},
+				},
+				{
+					Query:    "SELECT id, '[' || c || ']', c = 'L' FROM t3325 ORDER BY id;",
+					Expected: []sql.Row{{1, "[L]", "t"}, {2, "[R]", "f"}},
+				},
+			},
+		},
 	})
 }
 

@@ -183,7 +183,7 @@ var bpcharcmp = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		return int32(bytes.Compare([]byte(val1Str), []byte(val2Str))), nil
+		return int32(bytes.Compare([]byte(strings.TrimRight(val1Str, " ")), []byte(strings.TrimRight(val2Str, " ")))), nil
 	},
 }
 
