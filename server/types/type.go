@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -384,6 +385,10 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		}
 	case string:
 		bb := v2.(string)
+		if t.ID == BpChar.ID {
+			ab = strings.TrimRight(ab, " ")
+			bb = strings.TrimRight(bb, " ")
+		}
 		if ab == bb {
 			return 0, nil
 		} else if ab < bb {
