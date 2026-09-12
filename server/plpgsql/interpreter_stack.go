@@ -240,6 +240,13 @@ func (is *InterpreterStack) GetVariableWithError(name string) (InterpreterVariab
 				Value: &iv.Value,
 			}, nil
 		} else if len(iv.Record) > 0 {
+			if fieldName == "*" {
+				var record any = recordValues(iv.Record, iv.Value.(sql.Row))
+				return InterpreterVariableReference{
+					Type:  pgtypes.Record,
+					Value: &record,
+				}, nil
+			}
 			fieldIdx := recordFieldIndex(iv.Record, fieldName)
 			if fieldIdx == -1 {
 				return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
@@ -273,6 +280,18 @@ func (is *InterpreterStack) GetVariableWithError(name string) (InterpreterVariab
 		}
 	}
 	return InterpreterVariableReference{}, ErrVariableNotFound.New(fullName)
+}
+
+// recordValues pairs each field of a record variable with its type, which is the value of a `name.*` reference.
+func recordValues(sch sql.Schema, row sql.Row) []pgtypes.RecordValue {
+	values := make([]pgtypes.RecordValue, len(row))
+	for i := range row {
+		values[i] = pgtypes.RecordValue{
+			Value: row[i],
+			Type:  sch[i].Type,
+		}
+	}
+	return values
 }
 
 // findVariable returns the variable named |name|, searching from the top of the stack down so that an inner
