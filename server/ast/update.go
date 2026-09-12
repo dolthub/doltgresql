@@ -15,6 +15,7 @@
 package ast
 
 import (
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -70,6 +71,15 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 	if err != nil {
 		return nil, err
 	}
+	if len(node.From) > 0 {
+		targetQualifier, err := updateTargetQualifier(table)
+		if err != nil {
+			return nil, err
+		}
+		for _, expr := range exprs {
+			expr.Name.Qualifier = targetQualifier
+		}
+	}
 	where, err := nodeWhere(ctx, node.Where)
 	if err != nil {
 		return nil, err
@@ -91,6 +101,25 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 		Limit:      limit,
 		Returning:  returningExprs,
 	}, nil
+}
+
+// updateTargetQualifier identifies the update target by its alias, when one is
+// present, or by its relation name. PostgreSQL's SET targets are syntactically
+// unqualified, but the internal joined UPDATE plan needs this qualifier to
+// distinguish them from same-named columns in FROM relations.
+func updateTargetQualifier(table vitess.TableExpr) (vitess.TableName, error) {
+	aliased, ok := table.(*vitess.AliasedTableExpr)
+	if !ok {
+		return vitess.TableName{}, errors.Errorf("unexpected UPDATE target expression: %T", table)
+	}
+	if !aliased.As.IsEmpty() {
+		return vitess.TableName{Name: aliased.As}, nil
+	}
+	tableName, ok := aliased.Expr.(vitess.TableName)
+	if !ok {
+		return vitess.TableName{}, errors.Errorf("unexpected UPDATE target: %T", aliased.Expr)
+	}
+	return vitess.TableName{Name: tableName.Name}, nil
 }
 
 // buildJoinTableExpressionTree returns an expression tree of JoinTableExprs with |tableExprs| as the
