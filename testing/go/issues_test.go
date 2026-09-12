@@ -721,6 +721,39 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3326: convert_from and decode",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT convert_from('\x68656c6c6f'::BYTEA, 'UTF8'), convert_from(decode('68656c6c6f', 'hex'), 'UTF8'), convert_from('\xc3a9'::BYTEA, 'UTF8'), convert_from('\xe9'::BYTEA, 'LATIN1');`,
+					Expected: []sql.Row{{"hello", "hello", "é", "é"}},
+				},
+				{
+					Query:    `SELECT decode('aGVsbG8=', 'base64'), decode('abc\000', 'escape'), decode('a\\b', 'escape'), decode('68 65', 'hex');`,
+					Expected: []sql.Row{{[]byte("hello"), []byte{0x61, 0x62, 0x63, 0x00}, []byte(`a\b`), []byte("he")}},
+				},
+				{
+					Query:       `SELECT convert_from('\xff'::BYTEA, 'UTF8');`,
+					ExpectedErr: `invalid byte sequence for encoding "UTF8": 0xff`,
+				},
+				{
+					Query:       `SELECT convert_from('\x68'::BYTEA, 'NOPE');`,
+					ExpectedErr: `invalid source encoding name "NOPE"`,
+				},
+				{
+					Query:       "SELECT decode('6', 'hex');",
+					ExpectedErr: "invalid hexadecimal data: odd number of digits",
+				},
+				{
+					Query:       "SELECT decode('6g', 'hex');",
+					ExpectedErr: `invalid hexadecimal digit: "g"`,
+				},
+				{
+					Query:       "SELECT decode('abc', 'nope');",
+					ExpectedErr: `unrecognized encoding: "nope"`,
+				},
+			},
+		},
 	})
 }
 
