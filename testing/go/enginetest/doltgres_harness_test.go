@@ -482,8 +482,6 @@ var showCreateTableQueryRegex = regexp.MustCompile(`(?i)^\s*show\s+create\s+tabl
 //   - The trailing `) ENGINE=InnoDB DEFAULT CHARSET=… COLLATE=…` clause
 //     becomes a bare `)`.
 //   - The MySQL `DEFAULT CURRENT_TIMESTAMP` form becomes `DEFAULT (now())`.
-//   - Doubled parentheses around a DEFAULT expression `((expr))` become
-//     `(expr)` (MySQL's `((7 + 11))` vs postgres' `(7 + 11)`).
 //   - A trailing comma left dangling after we drop a KEY clause is removed.
 func convertShowCreateTableExpected(t *testing.T, q string, expected []sql.Row) bool {
 	if !showCreateTableQueryRegex.MatchString(q) {
@@ -511,10 +509,6 @@ var reUniqueKey = regexp.MustCompile("(?m)^(\\s*)UNIQUE KEY `([^`]+)` \\(([^)]+)
 
 // reKeyLine matches a non-unique `KEY \`name\` (cols)` line.
 var reKeyLine = regexp.MustCompile("(?m)^\\s*KEY `[^`]+` \\([^)]+\\),?\n")
-
-// reDoubleParenDefault matches a DEFAULT clause wrapped in two layers of
-// parentheses, like `DEFAULT ((7 + 11))`.
-var reDoubleParenDefault = regexp.MustCompile(`DEFAULT \(\(([^()]+)\)\)`)
 
 // reBacktickIdent matches a backtick-quoted MySQL identifier — we replace
 // these with double-quoted postgres identifiers.
@@ -573,7 +567,6 @@ func translateMysqlShowCreateTable(s string) string {
 
 	// 5. DEFAULT CURRENT_TIMESTAMP → DEFAULT (now()) and unwrap doubled parens.
 	s = strings.ReplaceAll(s, "DEFAULT CURRENT_TIMESTAMP", "DEFAULT (now())")
-	s = reDoubleParenDefault.ReplaceAllString(s, "DEFAULT ($1)")
 
 	// 6. Backticks → double quotes.
 	s = reBacktickIdent.ReplaceAllString(s, `"$1"`)

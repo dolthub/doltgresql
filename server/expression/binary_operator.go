@@ -96,10 +96,10 @@ func (b *BinaryOperator) String() string {
 	// We know that we'll always have two parameters here
 	switch f := b.compiledFunc.(type) {
 	case *framework.CompiledFunction:
-		return fmt.Sprintf("%s %s %s",
+		return fmt.Sprintf("(%s %s %s)",
 			f.Arguments[0].String(), b.operator.String(), f.Arguments[1].String())
 	case *framework.QuickFunction2:
-		return fmt.Sprintf("%s %s %s",
+		return fmt.Sprintf("(%s %s %s)",
 			f.Arguments[0].String(), b.operator.String(), f.Arguments[1].String())
 	default:
 		return fmt.Sprintf("unexpected binary operator function type: %T", b.compiledFunc)

@@ -681,6 +681,29 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3324: parentheses are kept in stored default, generated, and check expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t3324 (a INT PRIMARY KEY, b INT DEFAULT (1 + 1) * 2, c INT DEFAULT 2 * (3 + 1) + 1, d INT DEFAULT -(1 + 1), e INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, CONSTRAINT chk3324 CHECK (((a + 1) * 2) > 3));",
+				"INSERT INTO t3324 (a) VALUES (1);",
+				"ALTER TABLE t3324 ADD COLUMN f INT DEFAULT (1 + 1) * 2;",
+				"INSERT INTO t3324 (a) VALUES (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t3324 ORDER BY a;",
+					Expected: []sql.Row{{1, 4, 9, -2, 4, 4}, {2, 4, 9, -2, 6, 4}},
+				},
+				{
+					Query:    "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 't3324' AND column_default IS NOT NULL ORDER BY ordinal_position;",
+					Expected: []sql.Row{{"b", "((1 + 1) * 2)"}, {"c", "((2 * (3 + 1)) + 1)"}, {"d", "(-(1 + 1))"}, {"f", "((1 + 1) * 2)"}},
+				},
+				{
+					Query:    "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_name = 'chk3324';",
+					Expected: []sql.Row{{`((("a" + 1) * 2) > 3)`}},
+				},
+			},
+		},
 	})
 }
 
