@@ -783,6 +783,25 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3328: information_schema.columns.generation_expression",
+			SetUpScript: []string{
+				"CREATE TABLE t3328 (a INT PRIMARY KEY, s TEXT, b INT GENERATED ALWAYS AS (a + 1) STORED, c TEXT GENERATED ALWAYS AS (upper(s)) STORED, d INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, e INT GENERATED ALWAYS AS (a) STORED);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT column_name, is_generated, generation_expression FROM information_schema.columns WHERE table_name = 't3328' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"a", "NEVER", nil},
+						{"s", "NEVER", nil},
+						{"b", "ALWAYS", `"a" + 1`},
+						{"c", "ALWAYS", `upper("s")`},
+						{"d", "ALWAYS", `("a" + 1) * 2`},
+						{"e", "ALWAYS", `"a"`},
+					},
+				},
+			},
+		},
 	})
 }
 
