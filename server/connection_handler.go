@@ -70,6 +70,8 @@ type ConnectionHandler struct {
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
 	// COPY DATA messages from the client to import data into tables.
 	copyFromStdinState *copyFromStdinState
+	// activeSimpleQuery is the current multi-statement simple query execution.
+	activeSimpleQuery *simpleQueryExecution
 
 	// transactionState is the current transaction state of the connection, which is one of:
 	// Idle (no transaction block is in progress)
@@ -83,6 +85,12 @@ type ConnectionHandler struct {
 // transactionState is the transaction block state of a connection. See the field of the same name on
 // ConnectionHandler for a description of the states.
 type transactionState byte
+
+// simpleQueryExecution tracks the statements being executed in a multi-statement simple query.
+type simpleQueryExecution struct {
+	statements    []ConvertedQuery
+	nextStatement int
+}
 
 const (
 	idleTransactionState     transactionState = 0
@@ -462,6 +470,9 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMess
 		// We don't buffer output, so Flush is a no-op
 		return false, false, nil
 	case *pgproto3.Query:
+		if h.activeSimpleQuery != nil {
+			return false, true, errors.New("query received while a COPY FROM STDIN operation is in progress")
+		}
 		endOfMessages, err = h.handleQuery(message)
 		return false, endOfMessages, err
 	case *pgproto3.Parse:
@@ -482,7 +493,12 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMess
 	case *pgproto3.CopyData:
 		return h.handleCopyData(message)
 	case *pgproto3.CopyDone:
-		return h.handleCopyDone(message)
+		stop, endOfMessages, err := h.handleCopyDone(message)
+		if stop || err != nil || !endOfMessages || h.activeSimpleQuery == nil {
+			return stop, endOfMessages, err
+		}
+		endOfMessages, err = h.resumeSimpleQuery()
+		return false, endOfMessages, err
 	case *pgproto3.CopyFail:
 		return h.handleCopyFail(message)
 	default:
@@ -533,21 +549,50 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		return true, h.query(queries[0])
 	}
 
+	h.activeSimpleQuery = &simpleQueryExecution{statements: queries}
+	return h.resumeSimpleQuery()
+}
+
+// resumeSimpleQuery executes statements until they finish or a COPY FROM STDIN statement needs client data.
+func (h *ConnectionHandler) resumeSimpleQuery() (endOfMessages bool, err error) {
+	execution := h.activeSimpleQuery
+	if execution == nil {
+		return true, errors.New("no active simple query to resume")
+	}
+	defer func() {
+		if endOfMessages || err != nil {
+			h.activeSimpleQuery = nil
+		}
+	}()
+
 	// Multiple statements in a single Query message run in an implicit transaction block, which is committed
 	// after the last statement and rolled back if any statement errors (in which case the remaining statements
 	// are never executed). Transaction control statements within the message alter this behavior: see
 	// handleQueryOutsideEngine for how BEGIN, COMMIT, and ROLLBACK interact with implicit transaction blocks.
-	implicitTransactionControl := len(queries) > 1
-	for i, query := range queries {
+	implicitTransactionControl := len(execution.statements) > 1
+	for execution.nextStatement < len(execution.statements) {
+		i := execution.nextStatement
+		query := execution.statements[i]
+		execution.nextStatement++
 		if err = h.rejectStatementIfTransactionFailed(query); err != nil {
 			return true, err
 		}
+		if implicitTransactionControl {
+			if err = h.startImplicitTransaction(query); err != nil {
+				return true, err
+			}
+		}
 
-		handled, _, err = h.handleQueryOutsideEngine(query)
+		var handled bool
+		var statementComplete bool
+		handled, statementComplete, err = h.handleQueryOutsideEngine(query)
 		if err != nil {
 			return true, err
 		}
 		if handled {
+			if !statementComplete {
+				return false, nil
+			}
 			continue
 		}
 
@@ -557,10 +602,7 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		// automatically commits only the final statement. This is cheaper than running BEGIN and COMMIT statements
 		// separately through the engine, and has the same effect.
 		if implicitTransactionControl {
-			if err = h.startImplicitTransaction(query); err != nil {
-				return true, err
-			}
-			if i == len(queries)-1 && !h.transactionState.inExplicitTransactionBlock() {
+			if i == len(execution.statements)-1 && !h.transactionState.inExplicitTransactionBlock() {
 				ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 				if err != nil {
 					return false, err
@@ -1112,8 +1154,11 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 	if err != nil {
 		return false, false, err
 	}
-	if sqlCtx.GetTransaction() == nil {
+	if sqlCtx.GetTransaction() == nil && h.transactionState == idleTransactionState {
 		copyState.startedTransaction = true
+	}
+	if h.transactionState != idleTransactionState {
+		sqlCtx.SetIgnoreAutoCommit(true)
 	}
 	if err = startTransactionIfNecessary(sqlCtx); err != nil {
 		return false, false, err
@@ -1222,8 +1267,9 @@ func getInsertableTable(node sql.Node) sql.InsertableTable {
 	return tbl
 }
 
-// handleCopyDone handles a COPY DONE message by finalizing the in-progress COPY DATA operation and committing the
-// loaded table data. The |stop| response parameter is true if the connection handler should shut down the connection,
+// handleCopyDone handles a COPY DONE message by finalizing the in-progress COPY DATA operation. A transaction started
+// solely for this COPY is committed here; an enclosing transaction remains open. The |stop| response parameter is
+// true if the connection handler should shut down the connection,
 // |endOfMessages| is true if no more COPY DATA messages are expected, and the server should tell the client that it is
 // ready for the next query, and |err| contains any error that occurred while processing the COPY DATA message.
 func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, endOfMessages bool, err error) {
@@ -1267,18 +1313,16 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 		return false, false, err
 	}
 
-	// TODO: rather than always committing the transaction here, we should respect whether a transaction was
-	//  expliclitly started and not commit if not. In order to do that, we need to not always set
-	//  ctx.GetIgnoreAutoCommit(), and instead conditionally *not* insert a transaction closing iterator during chunk
-	//  processing. We need a new query flag to effectively do the latter though.
-	txSession, ok := sqlCtx.Session.(sql.TransactionSession)
-	if !ok {
-		return false, false, errors.Errorf("session does not implement sql.TransactionSession")
+	if startedTransaction {
+		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
+		if !ok {
+			return false, false, errors.Errorf("session does not implement sql.TransactionSession")
+		}
+		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
+			return false, false, err
+		}
+		sqlCtx.SetIgnoreAutoCommit(false)
 	}
-	if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
-		return false, false, err
-	}
-	sqlCtx.SetIgnoreAutoCommit(false)
 
 	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
@@ -1291,7 +1335,7 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 // parameter is true if the connection handler should shut down the connection, |endOfMessages| is true if no more
 // COPY DATA messages are expected, and the server should tell the client that it is ready for the next query, and
 // |err| contains any error that occurred while processing the COPY DATA message.
-func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, endOfMessages bool, err error) {
+func (h *ConnectionHandler) handleCopyFail(message *pgproto3.CopyFail) (stop bool, endOfMessages bool, err error) {
 	if h.copyFromStdinState == nil {
 		return false, true,
 			errors.Errorf("COPY FAIL message received without a COPY FROM STDIN operation in progress")
@@ -1307,9 +1351,7 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 	h.copyFromStdinState = nil
 	// The client aborted the operation, so any rows loaded by chunks that were already processed must not persist
 	h.rollbackCopyTransaction(startedTransaction)
-	// We send back endOfMessage=true, since the COPY FAIL message ends the COPY DATA flow and the server is ready
-	// to accept the next query now.
-	return false, true, nil
+	return false, true, pgerror.New(pgcode.QueryCanceled, message.Message)
 }
 
 // startImplicitTransaction starts an implicit transaction block for the given statement, unless a transaction
@@ -1587,6 +1629,7 @@ func (h *ConnectionHandler) sendDescribeResponse(fields []pgproto3.FieldDescript
 // query. A nil error should be provided if this is being called naturally.
 func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
+		h.activeSimpleQuery = nil
 		switch h.transactionState {
 		case implicitTransactionState:
 			h.rollbackImplicitTransaction()
