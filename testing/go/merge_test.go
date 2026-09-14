@@ -68,6 +68,42 @@ func TestMerge(t *testing.T) {
 			},
 		},
 		{
+			Name: "merge independent JSON document changes",
+			SetUpScript: []string{
+				"CREATE TABLE documents_json (id INT PRIMARY KEY, doc JSON)",
+				"CREATE TABLE documents_jsonb (id INT PRIMARY KEY, doc JSONB)",
+				"INSERT INTO documents_json VALUES (1, '{\"a\": 1, \"b\": 2}')",
+				"INSERT INTO documents_jsonb VALUES (1, '{\"a\": 1, \"b\": 2}')",
+				"SELECT DOLT_COMMIT('-Am', 'base')",
+				"SELECT DOLT_BRANCH('left')",
+				"SELECT DOLT_BRANCH('right')",
+				"SELECT DOLT_CHECKOUT('left')",
+				"UPDATE documents_json SET doc = '{\"a\": 100, \"b\": 2}' WHERE id = 1",
+				"UPDATE documents_jsonb SET doc = doc || '{\"a\": 100}' WHERE id = 1",
+				"SELECT DOLT_COMMIT('-am', 'left')",
+				"SELECT DOLT_CHECKOUT('right')",
+				"UPDATE documents_json SET doc = '{\"a\": 1, \"b\": 200}' WHERE id = 1",
+				"UPDATE documents_jsonb SET doc = doc || '{\"b\": 200}' WHERE id = 1",
+				"SELECT DOLT_COMMIT('-am', 'right')",
+				"SELECT DOLT_CHECKOUT('left')",
+				"SELECT DOLT_MERGE('right')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT doc::TEXT FROM documents_json",
+					Expected: []sql.Row{{"{\"a\":100,\"b\":200}"}},
+				},
+				{
+					Query:    "SELECT doc::TEXT FROM documents_jsonb",
+					Expected: []sql.Row{{"{\"a\": 100, \"b\": 200}"}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM dolt_conflicts",
+					Expected: []sql.Row{{int64(0)}},
+				},
+			},
+		},
+		{
 			Name: "merge with check expressions and column defaults",
 			SetUpScript: []string{
 				"SET timezone TO 'UTC';",
