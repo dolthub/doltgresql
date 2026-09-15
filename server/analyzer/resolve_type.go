@@ -182,6 +182,10 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 					same = transform.NewTree
 					col.Type = dt
 				}
+				// Column-level ON UPDATE is unsupported:
+				// https://www.postgresql.org/docs/current/ddl-constraints.html
+				// `col_qualification_elem` in `sql.y` rejects it, so
+				// [sql.Column.OnUpdate] is never populated.
 				resolvedDefault, err := resolveDefaultColumnType(ctx, db, col.Default)
 				if err != nil {
 					return nil, transform.NewTree, err
@@ -190,11 +194,7 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
-				resolvedOnUpdate, err := resolveDefaultColumnType(ctx, db, col.OnUpdate)
-				if err != nil {
-					return nil, transform.NewTree, err
-				}
-				if resolvedDefault || resolvedGenerated || resolvedOnUpdate {
+				if resolvedDefault || resolvedGenerated {
 					same = transform.NewTree
 				}
 			}

@@ -107,7 +107,7 @@ func (p PostgresFormatter) GenerateCreateTableStatement(tblName string, colStmts
 	)
 }
 
-func (p PostgresFormatter) GenerateCreateTableColumnDefinition(col *sql.Column, colDefault, onUpdate string, tableCollation sql.CollationID) string {
+func (p PostgresFormatter) GenerateCreateTableColumnDefinition(col *sql.Column, colDefault string, tableCollation sql.CollationID) string {
 	var colTypeString = col.Type.String()
 	if collationType, ok := col.Type.(sql.TypeWithCollation); ok {
 		colTypeString = collationType.StringWithTableCollation(tableCollation)
