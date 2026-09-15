@@ -80,6 +80,7 @@ func (db *Database) deserialize(data []byte) error {
 	if err != nil {
 		return err
 	}
+	db.removeInvalidRoleReferences()
 	// Advance the role ID counter past every persisted role. Without this, IDs minted after loading serialized
 	// state collide with existing roles, which SetRole then silently replaces.
 	var maxID uint64
@@ -95,6 +96,66 @@ func (db *Database) deserialize(data []byte) error {
 		}
 	}
 	return nil
+}
+
+// removeInvalidRoleReferences removes authorization records that refer to roles absent from the database.
+func (db *Database) removeInvalidRoleReferences() {
+	for key, value := range db.databasePrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.databasePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.schemaPrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.schemaPrivileges.Data, key)
+		}
+	}
+	for key, value := range db.tablePrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.tablePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.sequencePrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.sequencePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.routinePrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.routinePrivileges.Data, key)
+		}
+	}
+	for member, groups := range db.roleMembership.Data {
+		if _, ok := db.rolesByID[member]; !ok {
+			delete(db.roleMembership.Data, member)
+			continue
+		}
+		for group, membership := range groups {
+			_, groupExists := db.rolesByID[group]
+			_, grantorExists := db.rolesByID[membership.GrantedBy]
+			if !groupExists || !grantorExists {
+				delete(groups, group)
+			}
+		}
+		if len(groups) == 0 {
+			delete(db.roleMembership.Data, member)
+		}
+	}
+}
+
+// removeInvalidPrivilegeGrants removes grants made by nonexistent roles and reports whether the map is empty.
+func removeInvalidPrivilegeGrants(roles map[RoleID]Role, privileges map[Privilege]map[GrantedPrivilege]bool) bool {
+	for privilege, grants := range privileges {
+		for grant := range grants {
+			if _, ok := roles[grant.GrantedBy]; !ok {
+				delete(grants, grant)
+			}
+		}
+		if len(grants) == 0 {
+			delete(privileges, privilege)
+		}
+	}
+	return len(privileges) == 0
 }
 
 // deserializeV0 creates a Database from a byte slice. Expects a reader that has already read the version.

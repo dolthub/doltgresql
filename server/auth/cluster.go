@@ -71,7 +71,7 @@ func OverwriteDatabase(data []byte) error {
 			return
 		}
 		globalDatabase = fresh
-		err = WriteSerializedDatabase(data)
+		err = WriteSerializedDatabase(fresh.serialize())
 	})
 	return err
 }

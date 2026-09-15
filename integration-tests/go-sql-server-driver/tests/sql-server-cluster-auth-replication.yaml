@@ -319,7 +319,7 @@ tests:
       result:
         columns: ["one"]
         rows: [["1"]]
-- name: dropped role is removed on standby
+- name: dropping a role removes inherited privileges on standby
   multi_repos:
   - name: server1
     with_files:
@@ -356,25 +356,59 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: "create user doomed password 'doomedpass'"
-  # The role appears on the standby...
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: "create database repo1"
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (1)"
+    - exec: "create function routine_vals() returns integer as $$ begin return 1; end; $$ language plpgsql"
+    - exec: "create role doomed"
+    - exec: "create user member password 'memberpass'"
+    - exec: "grant select on vals to doomed"
+    - exec: "grant execute on function routine_vals() to doomed"
+    - exec: "grant doomed to member"
+  # The membership and inherited grant work on the standby before the drop.
   - on: server2
+    user: member
+    password: memberpass
+    database: repo1
+    retry_attempts: 100
     queries:
-    - query: "select count(*) as count from pg_roles where rolname = 'doomed'"
+    - query: "select i from vals"
       result:
-        columns: ["count"]
+        columns: ["i"]
         rows: [["1"]]
-      retry_attempts: 100
+    - query: "select routine_vals() as routine_value"
+      result:
+        columns: ["routine_value"]
+        rows: [["1"]]
+  # Drop the group after the standby has applied its authorization payload.
   - on: server1
     queries:
-    - exec: "drop user doomed"
-  # ...and disappears from the standby after the drop.
+    - exec: "drop role doomed"
+  # The dropped group disappears on the standby, while the member remains.
   - on: server2
     queries:
     - query: "select count(*) as count from pg_roles where rolname = 'doomed'"
       result:
         columns: ["count"]
         rows: [["0"]]
+      retry_attempts: 100
+    - query: "select count(*) as count from pg_roles where rolname = 'member'"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+  # The standby no longer authorizes the surviving member through the dropped role.
+  - on: server2
+    user: member
+    password: memberpass
+    database: repo1
+    queries:
+    - query: "select i from vals"
+      error_match: "permission denied for table vals"
+      retry_attempts: 100
+    - query: "select routine_vals()"
+      error_match: "permission denied"
       retry_attempts: 100
 - name: roles and privileges usable after failover
   multi_repos:
