@@ -15,58 +15,22 @@
 package server
 
 import (
-	"strconv"
-	"strings"
-
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/expression"
-	"github.com/dolthub/go-mysql-server/sql/plan"
-	"github.com/dolthub/go-mysql-server/sql/transform"
-	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/jackc/pgx/v5/pgproto3"
-	"github.com/lib/pq/oid"
-
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/transform"
+	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/lib/pq/oid"
+	"strconv"
+	"strings"
 )
-
-// ErrorResponseSeverity represents the severity of an ErrorResponse message.
-type ErrorResponseSeverity string
-
-const (
-	ErrorResponseSeverity_Error   ErrorResponseSeverity = "ERROR"
-	ErrorResponseSeverity_Fatal   ErrorResponseSeverity = "FATAL"
-	ErrorResponseSeverity_Panic   ErrorResponseSeverity = "PANIC"
-	ErrorResponseSeverity_Warning ErrorResponseSeverity = "WARNING"
-	ErrorResponseSeverity_Notice  ErrorResponseSeverity = "NOTICE"
-	ErrorResponseSeverity_Debug   ErrorResponseSeverity = "DEBUG"
-	ErrorResponseSeverity_Info    ErrorResponseSeverity = "INFO"
-	ErrorResponseSeverity_Log     ErrorResponseSeverity = "LOG"
-)
-
-// ReadyForQueryTransactionIndicator indicates the state of the transaction related to the query.
-type ReadyForQueryTransactionIndicator byte
-
-const (
-	ReadyForQueryTransactionIndicator_Idle                   ReadyForQueryTransactionIndicator = 'I'
-	ReadyForQueryTransactionIndicator_TransactionBlock       ReadyForQueryTransactionIndicator = 'T'
-	ReadyForQueryTransactionIndicator_FailedTransactionBlock ReadyForQueryTransactionIndicator = 'E'
-)
-
-// ConvertedQuery represents a query that has been converted from the Postgres representation to the Vitess
-// representation. String may contain the string version of the converted query. AST will contain the tree
-// version of the converted query, and is the recommended form to use. If AST is nil, then use the String version,
-// otherwise always prefer to AST.
-type ConvertedQuery struct {
-	String       string
-	AST          vitess.Statement
-	StatementTag string
-}
 
 // copyFromStdinState tracks the metadata for an import of data into a table using a COPY FROM STDIN statement. When
 // this statement is processed, the server accepts COPY DATA messages from the client with chunks of data to load
