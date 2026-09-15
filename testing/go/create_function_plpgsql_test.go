@@ -785,6 +785,16 @@ $$ LANGUAGE plpgsql;`},
 					RETURN var1;
 				END;
 				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_raise_errcode() RETURNS TEXT AS $$
+				BEGIN
+					RAISE EXCEPTION 'coded' USING ERRCODE = '22012';
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_raise_condition_name() RETURNS TEXT AS $$
+				BEGIN
+					RAISE EXCEPTION 'named' USING ERRCODE = 'division_by_zero';
+				END;
+				$$ LANGUAGE plpgsql;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -806,8 +816,22 @@ $$ LANGUAGE plpgsql;`},
 					},
 				},
 				{
-					Query:       "SELECT interpreted_raise2('123');",
-					ExpectedErr: "foo % bar 2",
+					// A RAISE that names no SQLSTATE reports the code PostgreSQL gives a bare RAISE.
+					Query:           "SELECT interpreted_raise2('123');",
+					ExpectedErr:     "foo % bar 2",
+					ExpectedErrCode: "P0001",
+				},
+				{
+					Query:           "SELECT interpreted_raise_errcode();",
+					ExpectedErr:     "coded",
+					ExpectedErrCode: "22012",
+				},
+				{
+					// TODO: PostgreSQL also accepts a condition name here, and would report 22012. Until
+					//  names resolve, the RAISE keeps its default code rather than reporting the name.
+					Query:           "SELECT interpreted_raise_condition_name();",
+					ExpectedErr:     "named",
+					ExpectedErrCode: "P0001",
 				},
 			},
 		},

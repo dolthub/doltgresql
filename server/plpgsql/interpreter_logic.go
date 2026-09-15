@@ -400,7 +400,12 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			}
 
 			if operation.PrimaryData == "EXCEPTION" {
-				return nil, pgerror.New(pgcode.RaiseException, message)
+				// A RAISE that does not name a SQLSTATE reports the code PostgreSQL gives a bare RAISE.
+				code := pgcode.RaiseException
+				if sqlState, ok := sqlStateFromErrCode(operation.Options[errCodeOptionKey]); ok {
+					code = pgcode.MakeCode(sqlState)
+				}
+				return nil, pgerror.New(code, message)
 			} else {
 				noticeResponse := &pgproto3.NoticeResponse{
 					Severity: operation.PrimaryData,
@@ -668,7 +673,11 @@ func applyNoticeOptions(ctx *sql.Context, noticeResponse *pgproto3.NoticeRespons
 
 		switch NoticeOptionType(i) {
 		case NoticeOptionTypeErrCode:
-			noticeResponse.Code = value
+			// A value that does not name a SQLSTATE leaves the notice reporting the default code, rather
+			// than reporting the unresolved value as though it were one.
+			if sqlState, ok := sqlStateFromErrCode(value); ok {
+				noticeResponse.Code = sqlState
+			}
 		case NoticeOptionTypeMessage:
 			noticeResponse.Message = value
 		case NoticeOptionTypeDetail:

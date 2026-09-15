@@ -457,6 +457,11 @@ type Raise struct {
 	Message string
 	Params  []string
 	Options map[string]string
+	// SqlState gives the SQLSTATE that an EXCEPTION-level RAISE reports, and is empty for a RAISE that does
+	// not name one. A RAISE written in a function body carries its code in Options, put there by the USING
+	// clause's ERRCODE option; this is for the RAISE statements the compiler generates itself, which have no
+	// source text to carry one.
+	SqlState string
 }
 
 var _ Statement = Raise{}
@@ -468,11 +473,20 @@ func (r Raise) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack) error {
+	options := r.Options
+	if len(r.SqlState) > 0 {
+		// The statement's own options are left alone, since a Statement may be appended more than once.
+		options = make(map[string]string, len(r.Options)+1)
+		for key, value := range r.Options {
+			options[key] = value
+		}
+		options[errCodeOptionKey] = r.SqlState
+	}
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:        OpCode_Raise,
 		PrimaryData:   r.Level,
 		SecondaryData: append([]string{r.Message}, r.Params...),
-		Options:       r.Options,
+		Options:       options,
 	})
 	return nil
 }
