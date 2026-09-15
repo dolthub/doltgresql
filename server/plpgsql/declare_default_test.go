@@ -72,7 +72,8 @@ func TestDeclareDefaultLegacy(t *testing.T) {
 			query:  `SELECT '{A,B,C}' ;`,
 		},
 		{
-			// A bare parameter name was the only reference such a version resolved.
+			// A bare parameter name was the only reference such a version recognized, and the
+			// releases we test against declared the variable NULL instead of copying the value.
 			name:     "parameter reference",
 			source:   `p`,
 			query:    `SELECT $1 ;`,

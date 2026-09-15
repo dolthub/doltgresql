@@ -148,14 +148,12 @@ CREATE TRIGGER log_update_trigger BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTI
 SQL
   sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: create plpgsql functions');"
 
-  # The older release evaluates only a literal and a bare parameter reference.
+  # Confirm the old release wrote a working function, so that a failure below is HEAD's. A literal is
+  # the one default every release in the legacy list evaluates; what the rest of them do with the
+  # other defaults is the old release's business, and is asserted against HEAD instead.
   run sql_csv -c "SELECT literal_default();"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "{A,B,C}" ]] || false
-
-  run sql_csv -c "SELECT param_default('hi');"
-  [ "$status" -eq 0 ]
-  [[ "$output" =~ "hi" ]] || false
 
   stop_doltgres
 
@@ -166,11 +164,12 @@ SQL
   [ "$status" -eq 0 ]
   [[ "$output" =~ "{A,B,C}" ]] || false
 
+  # A parameter reference and an arbitrary expression are both compiled from the stored source text,
+  # so HEAD evaluates defaults that the release which wrote these functions left unevaluated.
   run sql_csv -c "SELECT param_default('hi');"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "hi" ]] || false
 
-  # The older release could not evaluate this default at all; HEAD compiles the stored source text.
   run sql_csv -c "SELECT expression_default();"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "{x,y}" ]] || false
