@@ -368,7 +368,8 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err != nil {
 				return nil, err
 			}
-			conditionMet := retVal.(bool)
+			// PostgreSQL treats a condition that evaluates to NULL as false.
+			conditionMet, _ := retVal.(bool)
 			if isLoopCondition(operation) {
 				// An integer FOR loop has no cursor to carry the fact that its body ran, so its condition
 				// is what records it, for the FOUND the loop reports once it is left.
