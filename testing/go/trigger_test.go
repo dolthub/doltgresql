@@ -671,6 +671,33 @@ END; $$ LANGUAGE plpgsql;`,
 			},
 		},
 		{
+			Name: "DECLARE default referencing the trigger records",
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT4 PRIMARY KEY, val TEXT);`,
+				`CREATE TABLE log (msg TEXT);`,
+				`INSERT INTO test VALUES (7, 'a');`,
+				`CREATE FUNCTION trigger_func() RETURNS trigger AS $$
+DECLARE
+	old_id INT4 := OLD.id;
+	changed BOOLEAN := OLD.val <> NEW.val;
+BEGIN
+	INSERT INTO log VALUES ('id=' || old_id || ' changed=' || changed);
+	RETURN NEW;
+END; $$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `UPDATE test SET val = 'b' WHERE id = 7;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT msg FROM log;`,
+					Expected: []sql.Row{{"id=7 changed=true"}},
+				},
+			},
+		},
+		{
 			Name: "trigger to call procedure that updates another table using dynamic execute",
 			SetUpScript: []string{
 				`create table public."Collections"(

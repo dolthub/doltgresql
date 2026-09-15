@@ -64,15 +64,6 @@ func (iFunc InterpretedFunction) GetName() string {
 	return iFunc.ID.FunctionName()
 }
 
-// GetAllNames implements the interface InterpretedFunction.
-func (iFunc InterpretedFunction) GetAllNames() []string {
-	var names []string
-	for _, param := range iFunc.AllParams {
-		names = append(names, param.Name)
-	}
-	return names
-}
-
 // GetInputParameterNamesAndTypes implements the interface InterpretedFunction.
 func (iFunc InterpretedFunction) GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType) {
 	var names []string

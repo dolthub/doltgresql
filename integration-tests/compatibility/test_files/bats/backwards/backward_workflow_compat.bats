@@ -122,6 +122,70 @@ SQL
   stop_doltgres
 }
 
+@test "backward_workflow: plpgsql declarations from an old repo still evaluate" {
+  [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
+  [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
+
+  # A plpgsql function is stored as the operations it compiled to, so HEAD reads a function written by
+  # an older release in whatever form that release wrote it.
+
+  # --- Old: create functions and a trigger whose declarations carry defaults ---
+  old_server_start
+  sql <<'SQL'
+CREATE TABLE t (id INT NOT NULL PRIMARY KEY, val TEXT);
+INSERT INTO t VALUES (1, 'a');
+CREATE TABLE log (msg TEXT);
+CREATE FUNCTION literal_default() RETURNS TEXT[] AS $$
+  DECLARE chars TEXT[] := '{A,B,C}'; BEGIN RETURN chars; END; $$ LANGUAGE plpgsql;
+CREATE FUNCTION param_default(p TEXT) RETURNS TEXT AS $$
+  DECLARE v TEXT := p; BEGIN RETURN v; END; $$ LANGUAGE plpgsql;
+CREATE FUNCTION expression_default() RETURNS TEXT[] AS $$
+  DECLARE v TEXT[] := ARRAY['x', 'y']; BEGIN RETURN v; END; $$ LANGUAGE plpgsql;
+CREATE FUNCTION log_update() RETURNS TRIGGER AS $$
+  DECLARE prefix TEXT := 'row: ';
+  BEGIN INSERT INTO log VALUES (prefix || NEW.val); RETURN NEW; END; $$ LANGUAGE plpgsql;
+CREATE TRIGGER log_update_trigger BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION log_update();
+SQL
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: create plpgsql functions');"
+
+  # The older release evaluates only a literal and a bare parameter reference.
+  run sql_csv -c "SELECT literal_default();"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "{A,B,C}" ]] || false
+
+  run sql_csv -c "SELECT param_default('hi');"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "hi" ]] || false
+
+  stop_doltgres
+
+  # --- New: the same stored functions, evaluated by HEAD ---
+  new_server_start
+
+  run sql_csv -c "SELECT literal_default();"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "{A,B,C}" ]] || false
+
+  run sql_csv -c "SELECT param_default('hi');"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "hi" ]] || false
+
+  # The older release could not evaluate this default at all; HEAD compiles the stored source text.
+  run sql_csv -c "SELECT expression_default();"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "{x,y}" ]] || false
+
+  # The stored trigger fires, defaults and all.
+  run sql -c "UPDATE t SET val = 'b' WHERE id = 1;"
+  [ "$status" -eq 0 ]
+
+  run sql_csv -c "SELECT msg FROM log;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "row: b" ]] || false
+
+  stop_doltgres
+}
+
 @test "backward_workflow: dangling child violation surfaces on merge" {
   [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
   [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"

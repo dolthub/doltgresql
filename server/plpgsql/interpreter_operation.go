@@ -48,6 +48,19 @@ const (
 	// Function OpCodes are persisted to disk, so these values MUST be stable across Doltgres versions.
 )
 
+// DeclareDefaultSourceIndex and DeclareDefaultQueryIndex are the positions of a declaration's default
+// within an OpCode_Declare operation's SecondaryData: the source text, the query compiled from it, then
+// that query's bindings. A declaration with no default carries none of them.
+//
+// Operations are persisted and read by other Doltgres versions, so both forms of the default are kept.
+// Versions that evaluate a default by running it through the declared type's input function read the
+// source text and need it first; they also store it alone, which is why an absent query marks an
+// operation written by one of them.
+const (
+	DeclareDefaultSourceIndex = 0
+	DeclareDefaultQueryIndex  = 1
+)
+
 // OptionSetsFound is an Options key marking an operation that updates the built-in FOUND variable. Static
 // and dynamic execution share an opcode, and PostgreSQL defines a static statement as setting FOUND while a
 // dynamic EXECUTE deliberately leaves it alone, so the two are told apart by this option rather than by

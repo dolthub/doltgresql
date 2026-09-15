@@ -118,22 +118,8 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 		PrimaryData: stmt.Label,
 		Target:      loop,
 	})
-	for _, variable := range stmt.Variables {
-		op := InterpreterOperation{
-			OpCode:      OpCode_Declare,
-			PrimaryData: variable.Type,
-			Target:      variable.Name,
-		}
-		var val any
-		if variable.Default != "" {
-			op.SecondaryData = []string{variable.Default}
-			val = variable.Default
-		}
-		if !variable.IsParameter {
-			*ops = append(*ops, op)
-		}
-		stack.NewVariableWithValue(variable.Name, nil, val)
-	}
+	// Records are registered ahead of the variables so that a default expression may name one, as a
+	// trigger's `OLD.id` or `to_jsonb(OLD)` does.
 	for _, record := range stmt.Records {
 		// The schema here only exists so that field references such as `r.id` are recognized as variable
 		// references while the body is compiled. The real schema is not known until the record is assigned.
@@ -148,6 +134,29 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 				Target: record.Name,
 			})
 		}
+	}
+	for _, variable := range stmt.Variables {
+		op := InterpreterOperation{
+			OpCode:      OpCode_Declare,
+			PrimaryData: variable.Type,
+			Target:      variable.Name,
+		}
+		if variable.Default != "" {
+			// A default is an arbitrary expression, so it compiles like the right-hand side of an
+			// assignment. Registering each variable as we go leaves only those declared ahead of
+			// this one in scope, matching PostgreSQL's evaluation of defaults in declaration order.
+			query, referencedVariables, err := compileDeclareDefault(variable.Default, stack)
+			if err != nil {
+				return err
+			}
+			op.SecondaryData = append([]string{variable.Default, query}, referencedVariables...)
+		}
+		if !variable.IsParameter {
+			*ops = append(*ops, op)
+		}
+		// This stack only resolves names; the variable's type and value are not known until the
+		// declaration runs.
+		stack.NewVariableWithValue(variable.Name, nil, nil)
 	}
 	if stmt.IsLoop {
 		// Declarations are already appended, so the body starts at the next operation. reconcileLabels
@@ -563,6 +572,17 @@ func OperationSizeForStatements(stmts []Statement) int32 {
 		total += stmt.OperationSize()
 	}
 	return total
+}
+
+// compileDeclareDefault compiles the source text of a declaration's default into the query that
+// evaluates it, along with the names of the variables that query binds. Whatever the |stack| holds is
+// in scope for the default.
+func compileDeclareDefault(defaultText string, stack *InterpreterStack) (query string, bindings []string, err error) {
+	expression, bindings, err := substituteVariableReferences(defaultText, stack)
+	if err != nil {
+		return "", nil, err
+	}
+	return "SELECT " + expression + ";", bindings, nil
 }
 
 // substituteVariableReferences parses the specified |expression| and replaces

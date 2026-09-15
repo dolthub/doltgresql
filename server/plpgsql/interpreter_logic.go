@@ -37,7 +37,6 @@ import (
 // framework package.
 type InterpretedFunction interface {
 	ApplyBindings(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string, enforceType bool) (newStmt string, varFound bool, err error)
-	GetAllNames() []string
 	GetOutputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetReturn() *pgtypes.DoltgresType
@@ -178,29 +177,15 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
 			if len(operation.SecondaryData) != 0 {
-				defVal := operation.SecondaryData[0]
-				// Default value can be a literal value or a reference to parameter
-				isParam := false
-				for _, param := range iFunc.GetAllNames() {
-					if param == defVal {
-						isParam = true
-						break
-					}
+				query, bindings, err := declareDefault(operation, &stack)
+				if err != nil {
+					return nil, err
 				}
-				if isParam {
-					ivr := stack.GetVariable(defVal)
-					if ivr.Value != nil {
-						stack.NewVariableWithValue(operation.Target, resolvedType, *ivr.Value)
-					} else {
-						stack.NewVariable(operation.Target, resolvedType)
-					}
-				} else {
-					val, err := resolvedType.IoInput(ctx, strings.Trim(operation.SecondaryData[0], "'"))
-					if err != nil {
-						return nil, err
-					}
-					stack.NewVariableWithValue(operation.Target, resolvedType, val)
+				val, err := iFunc.QuerySingleReturn(ctx, stack, query, resolvedType, bindings)
+				if err != nil {
+					return nil, err
 				}
+				stack.NewVariableWithValue(operation.Target, resolvedType, val)
 			} else {
 				stack.NewVariable(operation.Target, resolvedType)
 			}
@@ -606,6 +591,19 @@ func exitScope(ctx *sql.Context, stack InterpreterStack) error {
 // and a dynamic EXECUTE as leaving it alone.
 func setsFound(operation InterpreterOperation) bool {
 	return operation.Options[OptionSetsFound] == "true"
+}
+
+// declareDefault returns the query that evaluates the default of the given declaration operation, along
+// with the names of the variables that query binds.
+//
+// An operation carrying only the source text was stored by a version that did not compile defaults, so
+// its query is compiled here instead. The |stack| holds the variables declared ahead of this one, the
+// same scope compilation at CREATE time would have seen.
+func declareDefault(operation InterpreterOperation, stack *InterpreterStack) (query string, bindings []string, err error) {
+	if len(operation.SecondaryData) > DeclareDefaultQueryIndex {
+		return operation.SecondaryData[DeclareDefaultQueryIndex], operation.SecondaryData[DeclareDefaultQueryIndex+1:], nil
+	}
+	return compileDeclareDefault(operation.SecondaryData[DeclareDefaultSourceIndex], stack)
 }
 
 // isLoopCondition reports whether the operation is the conditional jump that advances an integer FOR loop.
