@@ -16,46 +16,93 @@ package server
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
+
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgproto3"
 )
 
-// endOfMessages should be called from HandleConnection or a function within HandleConnection. This represents the end
-// of the message slice, which may occur naturally (all relevant response messages have been sent) or on error. Once
-// endOfMessages has been called, no further messages should be sent, and the connection loop should wait for the next
-// query. A nil error should be provided if this is being called naturally.
+// ErrorResponseSeverity represents the severity of an ErrorResponse message.
+type ErrorResponseSeverity string
+
+const (
+	ErrorResponseSeverity_Error   ErrorResponseSeverity = "ERROR"
+	ErrorResponseSeverity_Fatal   ErrorResponseSeverity = "FATAL"
+	ErrorResponseSeverity_Panic   ErrorResponseSeverity = "PANIC"
+	ErrorResponseSeverity_Warning ErrorResponseSeverity = "WARNING"
+	ErrorResponseSeverity_Notice  ErrorResponseSeverity = "NOTICE"
+	ErrorResponseSeverity_Debug   ErrorResponseSeverity = "DEBUG"
+	ErrorResponseSeverity_Info    ErrorResponseSeverity = "INFO"
+	ErrorResponseSeverity_Log     ErrorResponseSeverity = "LOG"
+)
+
+// endOfMessages completes an operation with an optional error and sends ReadyForQuery.
 func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
-		h.activeSimpleQuery = nil
-		switch h.transactionState {
-		case implicitTransactionState:
-			h.rollbackImplicitTransaction()
-		case explicitTransactionState:
-			h.transactionState = failedTransactionState
-		}
-		h.sendError(err)
+		h.handleOperationError(err)
 	}
-	ti := ReadyForQueryTransactionIndicator_Idle
-	switch h.transactionState {
-	case failedTransactionState:
-		ti = ReadyForQueryTransactionIndicator_FailedTransactionBlock
-	case explicitTransactionState, implicitTransactionState:
-		ti = ReadyForQueryTransactionIndicator_TransactionBlock
-	}
-	if sendErr := h.send(&pgproto3.ReadyForQuery{
-		TxStatus: byte(ti),
-	}); sendErr != nil {
-		// We panic here for the same reason as above.
+	if sendErr := h.send(&pgproto3.ReadyForQuery{TxStatus: h.state.transaction.readyStatus()}); sendErr != nil {
 		panic(sendErr)
 	}
 }
 
-// sendError sends the given error to the client. This should generally never be called directly.
+// handleMessageError applies transaction failure semantics and selects protocol recovery.
+func (h *ConnectionHandler) handleMessageError(err error) {
+	mode := h.state.protocol
+	if !mode.valid() {
+		h.state.closeProtocol()
+		h.handleOperationError(errors.Wrap(err, "invalid connection protocol mode"))
+		return
+	}
+	switch mode.kind {
+	case copyInConnectionMode:
+		protocol := mode.copy
+		continuation := protocol.continuation
+		h.rollbackCopyTransaction(protocol.transaction)
+		if !h.state.finishCopy(protocol) {
+			h.state.closeProtocol()
+			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN state changed during error recovery"))
+			return
+		}
+		if !continuation.valid() {
+			h.state.closeProtocol()
+			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN has an invalid protocol continuation"))
+			return
+		}
+		switch continuation.kind {
+		case extendedQueryCopyContinuation:
+			h.state.discardUntilSync()
+			h.handleOperationError(err)
+		case simpleQueryCopyContinuation:
+			h.endOfMessages(err)
+		default:
+			h.state.closeProtocol()
+			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN has an invalid protocol continuation"))
+		}
+	case extendedConnectionMode:
+		h.state.discardUntilSync()
+		h.handleOperationError(err)
+	case discardUntilSyncConnectionMode, closingConnectionMode:
+		h.handleOperationError(err)
+	case readyConnectionMode:
+		h.endOfMessages(err)
+	default:
+		h.state.closeProtocol()
+		h.handleOperationError(errors.Wrap(err, "invalid connection protocol mode"))
+	}
+}
+
+// handleOperationError updates transaction state and sends ErrorResponse without selecting recovery.
+func (h *ConnectionHandler) handleOperationError(err error) {
+	h.failActiveTransaction()
+	h.sendError(err)
+}
+
+// sendError sends one PostgreSQL ErrorResponse to the client.
 func (h *ConnectionHandler) sendError(err error) {
 	pgErr := castSQLError(err)
 	if sendErr := h.send(&pgproto3.ErrorResponse{
@@ -63,8 +110,6 @@ func (h *ConnectionHandler) sendError(err error) {
 		Code:     pgErr.Code,
 		Message:  pgErr.Message,
 	}); sendErr != nil {
-		// If we're unable to send anything to the connection, then there's something wrong with the connection and
-		// we should terminate it. This will be caught in HandleConnection's defer block.
 		panic(sendErr)
 	}
 }
@@ -202,17 +247,3 @@ func castSQLError(err error) *pgconn.PgError {
 		Message:  err.Error(),
 	}
 }
-
-// ErrorResponseSeverity represents the severity of an ErrorResponse message.
-type ErrorResponseSeverity string
-
-const (
-	ErrorResponseSeverity_Error   ErrorResponseSeverity = "ERROR"
-	ErrorResponseSeverity_Fatal   ErrorResponseSeverity = "FATAL"
-	ErrorResponseSeverity_Panic   ErrorResponseSeverity = "PANIC"
-	ErrorResponseSeverity_Warning ErrorResponseSeverity = "WARNING"
-	ErrorResponseSeverity_Notice  ErrorResponseSeverity = "NOTICE"
-	ErrorResponseSeverity_Debug   ErrorResponseSeverity = "DEBUG"
-	ErrorResponseSeverity_Info    ErrorResponseSeverity = "INFO"
-	ErrorResponseSeverity_Log     ErrorResponseSeverity = "LOG"
-)

@@ -16,84 +16,107 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
+
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/core/dataloader"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/sirupsen/logrus"
-	"io"
-	"net"
-	"os"
+
+	"github.com/dolthub/doltgresql/core/dataloader"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/node"
 )
 
-// rollbackCopyTransaction rolls back the transaction started on behalf of a failed or aborted COPY FROM STDIN
-// operation, so that rows loaded by any chunks that were processed successfully don't linger in an open
-// transaction that a later statement would commit. If the COPY did not start the transaction itself (e.g. it was
-// run inside a transaction block), this does nothing: the normal statement-failure handling takes care of it,
-// matching Postgres.
-func (h *ConnectionHandler) rollbackCopyTransaction(startedTransaction bool) {
-	if !startedTransaction || h.transactionState != idleTransactionState {
-		return
-	}
-	if h.restoredAutoCommitWithoutTransaction() {
-		return
-	}
-	if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
-		logrus.Warnf("error rolling back COPY FROM STDIN transaction: %s", err)
-	}
-	h.restoredAutoCommitWithoutTransaction()
+// copyContinuationKind identifies which frontend protocol operation resumes after COPY finishes.
+type copyContinuationKind byte
+
+const (
+	invalidCopyContinuation copyContinuationKind = iota
+	simpleQueryCopyContinuation
+	extendedQueryCopyContinuation
+)
+
+// copyContinuation records the frontend protocol operation that resumes after COPY finishes.
+type copyContinuation struct {
+	kind      copyContinuationKind
+	execution *simpleQueryExecution
 }
 
-// copyFromFileQuery handles a COPY FROM message that is reading from a file, returning any error that occurs
-func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
-	copyState := &copyFromStdinState{
-		copyFromStdinNode: stmt,
+// newSimpleQueryCopyContinuation returns a continuation for the remaining statements in a simple Query message.
+func newSimpleQueryCopyContinuation(execution *simpleQueryExecution) copyContinuation {
+	if execution == nil {
+		return copyContinuation{}
 	}
+	return copyContinuation{kind: simpleQueryCopyContinuation, execution: execution}
+}
 
-	// TODO: security check for file path
-	// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
-	f, err := os.Open(stmt.File)
-	if err != nil {
-		return err
+// newExtendedQueryCopyContinuation returns a continuation for the extended-query batch that initiated COPY.
+func newExtendedQueryCopyContinuation() copyContinuation {
+	return copyContinuation{kind: extendedQueryCopyContinuation}
+}
+
+// valid reports whether the continuation has a recognized kind and the data required by that kind.
+func (c copyContinuation) valid() bool {
+	switch c.kind {
+	case simpleQueryCopyContinuation:
+		return c.execution != nil
+	case extendedQueryCopyContinuation:
+		return c.execution == nil
+	default:
+		return false
 	}
-	defer f.Close()
+}
 
-	_, _, err = h.handleCopyDataHelper(copyState, f)
-	if err != nil {
-		return err
-	}
+// transactionOwnership records whether COPY created the engine transaction it is using.
+type transactionOwnership byte
 
-	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
-	if err != nil {
-		return err
-	}
+const (
+	borrowedTransaction transactionOwnership = iota
+	copyOwnedTransaction
+)
 
-	loadDataResults, err := copyState.dataLoader.Finish(sqlCtx)
-	if err != nil {
-		return err
-	}
+// copyInState owns all transfer and continuation data for one COPY FROM STDIN operation.
+type copyInState struct {
+	copyFromStdinNode *node.CopyFrom
+	insertNode        sql.Node
+	dataLoader        dataloader.DataLoader
+	transaction       transactionOwnership
+	continuation      copyContinuation
+}
 
-	if sqlCtx.GetTransaction() != nil && sqlCtx.GetIgnoreAutoCommit() {
-		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
-		if !ok {
-			return errors.Errorf("session does not implement sql.TransactionSession")
+// newCopyInState returns the initial runtime state for a COPY FROM STDIN operation.
+func newCopyInState(copyFrom *node.CopyFrom, continuation copyContinuation) *copyInState {
+	return &copyInState{copyFromStdinNode: copyFrom, continuation: continuation}
+}
+
+// handleCopyMessage enforces the restricted frontend message set accepted during COPY FROM STDIN.
+func (h *ConnectionHandler) handleCopyMessage(copyState *copyInState, message pgproto3.Message) messageResult {
+	switch message := message.(type) {
+	case *pgproto3.CopyData:
+		if err := h.handleCopyDataHelper(copyState, bytes.NewReader(message.Data)); err != nil {
+			return h.finishCopy(copyState, err)
 		}
-		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
-			return err
-		}
-		sqlCtx.SetIgnoreAutoCommit(false)
+		return continueResult()
+	case *pgproto3.CopyDone:
+		return h.handleCopyDone(copyState)
+	case *pgproto3.CopyFail:
+		return h.finishCopy(copyState, pgerror.Newf(pgcode.QueryCanceled, "COPY from stdin failed: %s", message.Message))
+	case *pgproto3.Flush, *pgproto3.Sync:
+		// PostgreSQL ignores Flush and Sync while COPY owns the connection.
+		return continueResult()
+	default:
+		return h.closeForCopyProtocolViolation(copyState, message)
 	}
-
-	return h.send(&pgproto3.CommandComplete{
-		CommandTag: []byte(fmt.Sprintf("COPY %d", loadDataResults.RowsLoaded)),
-	})
 }
 
 // handleCopyTo handles a COPY ... TO STDOUT statement, streaming the results of the underlying SELECT statement
@@ -223,37 +246,85 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 	return h.send(makeCommandComplete("COPY", int32(numRows)))
 }
 
-// handleCopyDataHelper is a helper function that should only be invoked by handleCopyData. handleCopyData wraps this
-// function so that it can capture any returned error message and store it in the saved state.
-func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, copyFromData io.Reader) (stop bool, endOfMessages bool, err error) {
+// handleCopyFromStdinQuery handles the COPY FROM STDIN query at the Doltgres layer, without passing it to the engine.
+// COPY FROM STDIN can't be handled directly by the GMS engine, since COPY FROM STDIN relies on multiple messages sent
+// over the wire.
+func (h *ConnectionHandler) handleCopyFromStdinQuery(copyFrom *node.CopyFrom, continuation copyContinuation) error {
+	if !h.state.beginCopy(newCopyInState(copyFrom, continuation)) {
+		return errors.New("cannot begin COPY FROM STDIN with invalid state")
+	}
+	return h.send(&pgproto3.CopyInResponse{
+		OverallFormat: 0,
+	})
+}
+
+// handleCopyDone finalizes an in-progress COPY, including a transfer containing no CopyData messages.
+func (h *ConnectionHandler) handleCopyDone(copyState *copyInState) messageResult {
+	if copyState.dataLoader == nil {
+		if err := h.handleCopyDataHelper(copyState, bytes.NewReader(nil)); err != nil {
+			return h.finishCopy(copyState, err)
+		}
+	}
+
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return h.finishCopy(copyState, err)
+	}
+
+	loadDataResults, err := copyState.dataLoader.Finish(sqlCtx)
+	if err != nil {
+		return h.finishCopy(copyState, err)
+	}
+
+	if copyState.transaction == copyOwnedTransaction {
+		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
+		if !ok {
+			return h.finishCopy(copyState, errors.Errorf("session does not implement sql.TransactionSession"))
+		}
+		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
+			return h.finishCopy(copyState, err)
+		}
+		sqlCtx.SetIgnoreAutoCommit(false)
+	}
+
+	if err = h.send(&pgproto3.CommandComplete{
+		CommandTag: []byte(fmt.Sprintf("COPY %d", loadDataResults.RowsLoaded)),
+	}); err != nil {
+		return h.finishCopy(copyState, err)
+	}
+	return h.finishCopy(copyState, nil)
+}
+
+// handleCopyDataHelper initializes a COPY transfer as needed and loads one input chunk.
+func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyInState, copyFromData io.Reader) (err error) {
 	if copyState == nil {
-		return false, true, errors.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
+		return errors.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
 	}
 
 	// Grab a sql.Context and ensure the session has a transaction started, otherwise the copied data
 	// won't get committed correctly.
 	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "COPY FROM STDIN")
 	if err != nil {
-		return false, false, err
+		return err
 	}
-	if sqlCtx.GetTransaction() == nil && h.transactionState == idleTransactionState {
-		copyState.startedTransaction = true
+	if sqlCtx.GetTransaction() == nil && h.state.transaction == idleTransactionState {
+		copyState.transaction = copyOwnedTransaction
 	}
-	if h.transactionState != idleTransactionState {
+	if h.state.transaction != idleTransactionState {
 		sqlCtx.SetIgnoreAutoCommit(true)
 	}
 	if err = startTransactionIfNecessary(sqlCtx); err != nil {
-		return false, false, err
+		return err
 	}
 
 	if copyState.copyFromStdinNode.TableName.Schema != "" {
 		originalSchema, err := sqlCtx.GetSessionVariable(sqlCtx, "search_path")
 		if err != nil {
-			return false, false, err
+			return err
 		}
 		err = sqlCtx.SetSessionVariable(sqlCtx, "search_path", copyState.copyFromStdinNode.TableName.Schema)
 		if err != nil {
-			return false, false, err
+			return err
 		}
 		defer func() {
 			_ = sqlCtx.SetSessionVariable(sqlCtx, "search_path", originalSchema)
@@ -264,26 +335,26 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 	if dataLoader == nil {
 		copyFromStdinNode := copyState.copyFromStdinNode
 		if copyFromStdinNode == nil {
-			return false, false, errors.Errorf("no COPY FROM STDIN node found")
+			return errors.Errorf("no COPY FROM STDIN node found")
 		}
 
 		// we build an insert node to use for the full insert plan, for which the copy from node will be the row source
 		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil)
 		node, flags, err := builder.BindOnly(copyFromStdinNode.InsertStub, "", nil)
 		if err != nil {
-			return false, false, err
+			return err
 		}
 
 		insertNode, ok := node.(*plan.InsertInto)
 		if !ok {
-			return false, false, errors.Errorf("expected plan.InsertInto, got %T", node)
+			return errors.Errorf("expected plan.InsertInto, got %T", node)
 		}
 
 		// now that we have our insert node, we can build the data loader
 		tbl := getInsertableTable(insertNode.Destination)
 		if tbl == nil {
 			// this should be impossible, enforced by analyzer above
-			return false, false, errors.Errorf("no insertable table found in %v", insertNode.Destination)
+			return errors.Errorf("no insertable table found in %v", insertNode.Destination)
 		}
 
 		switch copyFromStdinNode.CopyOptions.CopyFormat {
@@ -299,7 +370,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		}
 
 		if err != nil {
-			return false, false, err
+			return err
 		}
 
 		// we have to set the data loader on the copyFrom node before we analyze it, because we need the loader's
@@ -310,7 +381,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		node = insertNode.WithSource(copyFromStdinNode)
 		analyzedNode, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, node, nil, flags)
 		if err != nil {
-			return false, false, err
+			return err
 		}
 
 		copyState.insertNode = analyzedNode
@@ -319,21 +390,151 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 
 	reader := bufio.NewReader(copyFromData)
 	if err = dataLoader.SetNextDataChunk(sqlCtx, reader); err != nil {
-		return false, false, err
+		return err
 	}
 
 	callback := func(_ *sql.Context, _ *Result) error { return nil }
 	err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY FROM", copyState.insertNode, nil, callback)
 	if err != nil {
-		return false, false, err
+		return err
 	}
-
-	// We expect to see more CopyData messages until we see either a CopyDone or CopyFail message, so
-	// return false for endOfMessages
-	return false, false, nil
+	return nil
 }
 
-// Returns the first sql.InsertableTable node found in the tree provided, or nil if none is found.
+// finishCopy releases COPY state, rolls back failed work, and resumes the initiating protocol operation.
+func (h *ConnectionHandler) finishCopy(copyState *copyInState, copyErr error) messageResult {
+	if copyState == nil || !h.state.finishCopy(copyState) {
+		h.state.closeProtocol()
+		return messageResult{
+			action: closeConnection,
+			err:    errors.New("cannot finish inactive COPY FROM STDIN operation"),
+		}
+	}
+	continuation := copyState.continuation
+	if copyErr != nil {
+		h.rollbackCopyTransaction(copyState.transaction)
+	}
+	if !continuation.valid() {
+		h.state.closeProtocol()
+		return messageResult{
+			action: closeConnection,
+			err:    errors.New("COPY FROM STDIN has an invalid protocol continuation"),
+		}
+	}
+	switch continuation.kind {
+	case simpleQueryCopyContinuation:
+		if copyErr != nil {
+			return readyResult(copyErr)
+		}
+		complete, err := h.resumeSimpleQuery(continuation.execution)
+		return messageResultForCompletion(complete, err)
+	case extendedQueryCopyContinuation:
+		if copyErr != nil {
+			h.state.discardUntilSync()
+			return messageResult{err: copyErr}
+		}
+		h.state.beginExtended()
+		return continueResult()
+	default:
+		h.state.closeProtocol()
+		return messageResult{
+			action: closeConnection,
+			err:    errors.New("COPY FROM STDIN has an invalid protocol continuation"),
+		}
+	}
+}
+
+// closeForCopyProtocolViolation reports COPY protocol desynchronization and terminates the connection.
+func (h *ConnectionHandler) closeForCopyProtocolViolation(copyState *copyInState, message pgproto3.Message) messageResult {
+	messageType, err := frontendMessageType(message)
+	if err != nil {
+		messageType = 0
+	}
+	h.rollbackCopyTransaction(copyState.transaction)
+	h.failActiveTransaction()
+	h.state.closeProtocol()
+	responses := []*pgproto3.ErrorResponse{
+		{
+			Severity: string(ErrorResponseSeverity_Error),
+			Code:     pgcode.ProtocolViolation.String(),
+			Message:  fmt.Sprintf("unexpected message type 0x%02x during COPY from stdin", messageType),
+		},
+		{
+			Severity: string(ErrorResponseSeverity_Fatal),
+			Code:     pgcode.ProtocolViolation.String(),
+			Message:  "terminating connection because protocol synchronization was lost",
+		},
+	}
+	for _, response := range responses {
+		if sendErr := h.send(response); sendErr != nil {
+			return closeResult()
+		}
+	}
+	return closeResult()
+}
+
+// copyFromFileQuery handles a COPY FROM message that is reading from a file, returning any error that occurs
+func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
+	copyState := &copyInState{
+		copyFromStdinNode: stmt,
+	}
+
+	// TODO: security check for file path
+	// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
+	f, err := os.Open(stmt.File)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	err = h.handleCopyDataHelper(copyState, f)
+	if err != nil {
+		return err
+	}
+
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return err
+	}
+
+	loadDataResults, err := copyState.dataLoader.Finish(sqlCtx)
+	if err != nil {
+		return err
+	}
+
+	if sqlCtx.GetTransaction() != nil && sqlCtx.GetIgnoreAutoCommit() {
+		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
+		if !ok {
+			return errors.Errorf("session does not implement sql.TransactionSession")
+		}
+		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
+			return err
+		}
+		sqlCtx.SetIgnoreAutoCommit(false)
+	}
+
+	return h.send(&pgproto3.CommandComplete{
+		CommandTag: []byte(fmt.Sprintf("COPY %d", loadDataResults.RowsLoaded)),
+	})
+}
+
+// frontendMessageType returns the one-byte PostgreSQL wire identifier for a frontend message.
+func frontendMessageType(message pgproto3.Message) (byte, error) {
+	frontend, ok := message.(pgproto3.FrontendMessage)
+	if !ok {
+		return 0, errors.Errorf("message %T is not a frontend message", message)
+	}
+	encoded, err := frontend.Encode(nil)
+	if err != nil {
+		return 0, err
+	}
+	if len(encoded) == 0 {
+		return 0, errors.Errorf("message %T encoded without a type byte", message)
+	}
+	return encoded[0], nil
+}
+
+// getInsertableTable returns the first sql.InsertableTable in the tree, or nil if none is found.
 func getInsertableTable(node sql.Node) sql.InsertableTable {
 	var tbl sql.InsertableTable
 	transform.Inspect(node, func(node sql.Node) bool {
@@ -349,79 +550,20 @@ func getInsertableTable(node sql.Node) sql.InsertableTable {
 	return tbl
 }
 
-// handleCopyDone handles a COPY DONE message by finalizing the in-progress COPY DATA operation. A transaction started
-// solely for this COPY is committed here; an enclosing transaction remains open. The |stop| response parameter is
-// true if the connection handler should shut down the connection,
-// |endOfMessages| is true if no more COPY DATA messages are expected, and the server should tell the client that it is
-// ready for the next query, and |err| contains any error that occurred while processing the COPY DATA message.
-func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, endOfMessages bool, err error) {
-	if h.copyFromStdinState == nil {
-		return false, true,
-			errors.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
+// rollbackCopyTransaction rolls back the transaction started on behalf of a failed or aborted COPY FROM STDIN
+// operation, so that rows loaded by any chunks that were processed successfully don't linger in an open
+// transaction that a later statement would commit. If the COPY did not start the transaction itself (e.g. it was
+// run inside a transaction block), this does nothing: the normal statement-failure handling takes care of it,
+// matching Postgres.
+func (h *ConnectionHandler) rollbackCopyTransaction(ownership transactionOwnership) {
+	if ownership != copyOwnedTransaction || h.state.transaction != idleTransactionState {
+		return
 	}
-
-	// The COPY DONE message ends the COPY operation whether it succeeds or fails below, so always clear the COPY
-	// state, leaving the connection ready for its next query. If finalizing the operation fails, its work must
-	// also be rolled back.
-	startedTransaction := h.copyFromStdinState.startedTransaction
-	defer func() {
-		h.copyFromStdinState = nil
-		if err != nil {
-			h.rollbackCopyTransaction(startedTransaction)
-		}
-	}()
-
-	// If there was a previous error returned from processing a CopyData message, then don't return an error here
-	// and don't send endOfMessage=true, since the CopyData error already sent endOfMessage=true. If we do send
-	// endOfMessage=true here, then the client gets confused about the unexpected/extra Idle message since the
-	// server has already reported it was idle in the last message after the returned error.
-	if h.copyFromStdinState.copyErr != nil {
-		return false, false, nil
+	if h.restoredAutoCommitWithoutTransaction() {
+		return
 	}
-
-	dataLoader := h.copyFromStdinState.dataLoader
-	if dataLoader == nil {
-		return false, true,
-			errors.Errorf("no data loader found for COPY FROM STDIN operation")
+	if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
+		logrus.Warnf("error rolling back COPY FROM STDIN transaction: %s", err)
 	}
-
-	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
-	if err != nil {
-		return false, false, err
-	}
-
-	loadDataResults, err := dataLoader.Finish(sqlCtx)
-	if err != nil {
-		return false, false, err
-	}
-
-	if startedTransaction {
-		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
-		if !ok {
-			return false, false, errors.Errorf("session does not implement sql.TransactionSession")
-		}
-		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
-			return false, false, err
-		}
-		sqlCtx.SetIgnoreAutoCommit(false)
-	}
-
-	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
-	// to accept the next query now.
-	return false, true, h.send(&pgproto3.CommandComplete{
-		CommandTag: []byte(fmt.Sprintf("COPY %d", loadDataResults.RowsLoaded)),
-	})
-}
-
-// handleCopyFromStdinQuery handles the COPY FROM STDIN query at the Doltgres layer, without passing it to the engine.
-// COPY FROM STDIN can't be handled directly by the GMS engine, since COPY FROM STDIN relies on multiple messages sent
-// over the wire.
-func (h *ConnectionHandler) handleCopyFromStdinQuery(copyFrom *node.CopyFrom, conn net.Conn) error {
-	h.copyFromStdinState = &copyFromStdinState{
-		copyFromStdinNode: copyFrom,
-	}
-
-	return h.send(&pgproto3.CopyInResponse{
-		OverallFormat: 0,
-	})
+	h.restoredAutoCommitWithoutTransaction()
 }

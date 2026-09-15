@@ -17,23 +17,23 @@ package server
 import (
 	"context"
 	"fmt"
+
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
+
+	"github.com/dolthub/doltgresql/server/node"
 )
 
-// simpleQueryExecution tracks the statements being executed in a multi-statement simple query.
+// simpleQueryExecution tracks the statements remaining in one simple-protocol Query message.
 type simpleQueryExecution struct {
 	statements    []ConvertedQuery
 	nextStatement int
 }
 
-// handleQuery handles a query message, and returns a boolean flag, |endOfMessages| indicating if no other messages are
-// expected as part of this query, in which case the server will send a READY FOR QUERY message back to the client so
-// that it can send its next query.
+// handleQuery starts execution of one simple-protocol Query message.
 func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages bool, err error) {
-	queries, err := h.convertQuery(message.String)
+	queries, err := convertQuery(message.String)
 	if err != nil {
 		if printErrorStackTraces {
 			fmt.Printf("Error parsing query: %+v\n", err)
@@ -41,57 +41,21 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		return true, err
 	}
 
-	// A query message destroys the unnamed statement and the unnamed portal
-	delete(h.preparedStatements, "")
-	delete(h.portals, "")
-
-	var handled bool
-	if len(queries) == 1 {
-		// empty query special case
-		if queries[0].AST == nil {
-			return true, h.send(&pgproto3.EmptyQueryResponse{})
-		}
-		if err = h.rejectStatementIfTransactionFailed(queries[0]); err != nil {
-			return true, err
-		}
-		handled, endOfMessages, err = h.handleQueryOutsideEngine(queries[0])
-		if handled {
-			return endOfMessages, err
-		}
-		injected, isInjected := queries[0].AST.(sqlparser.InjectedStatement)
-		_, isDo := injected.Statement.(*node.Do)
-		if isInjected && isDo {
-			if err = h.startImplicitTransaction(queries[0]); err != nil {
-				return true, err
-			}
-			if err = h.query(queries[0]); err != nil {
-				return true, err
-			}
-			return true, h.commitImplicitTransaction()
-		}
-		return true, h.query(queries[0])
+	h.extended.clearUnnamed()
+	if len(queries) == 1 && queries[0].AST == nil {
+		return true, h.send(&pgproto3.EmptyQueryResponse{})
 	}
-
-	h.activeSimpleQuery = &simpleQueryExecution{statements: queries}
-	return h.resumeSimpleQuery()
+	return h.resumeSimpleQuery(&simpleQueryExecution{statements: queries})
 }
 
-// resumeSimpleQuery executes statements until they finish or a COPY FROM STDIN statement needs client data.
-func (h *ConnectionHandler) resumeSimpleQuery() (endOfMessages bool, err error) {
-	execution := h.activeSimpleQuery
+// resumeSimpleQuery executes statements until they finish or COPY FROM STDIN needs client data.
+func (h *ConnectionHandler) resumeSimpleQuery(execution *simpleQueryExecution) (endOfMessages bool, err error) {
 	if execution == nil {
 		return true, errors.New("no active simple query to resume")
 	}
-	defer func() {
-		if endOfMessages || err != nil {
-			h.activeSimpleQuery = nil
-		}
-	}()
 
-	// Multiple statements in a single Query message run in an implicit transaction block, which is committed
-	// after the last statement and rolled back if any statement errors (in which case the remaining statements
-	// are never executed). Transaction control statements within the message alter this behavior: see
-	// handleQueryOutsideEngine for how BEGIN, COMMIT, and ROLLBACK interact with implicit transaction blocks.
+	// Multiple statements in one Query message run in an implicit transaction block. Transaction-control statements
+	// may promote or end that block through handleTransactionStatement.
 	implicitTransactionControl := len(execution.statements) > 1
 	for execution.nextStatement < len(execution.statements) {
 		i := execution.nextStatement
@@ -106,9 +70,7 @@ func (h *ConnectionHandler) resumeSimpleQuery() (endOfMessages bool, err error) 
 			}
 		}
 
-		var handled bool
-		var statementComplete bool
-		handled, statementComplete, err = h.handleQueryOutsideEngine(query)
+		handled, statementComplete, err := h.handleQueryOutsideEngine(query, newSimpleQueryCopyContinuation(execution))
 		if err != nil {
 			return true, err
 		}
@@ -119,34 +81,36 @@ func (h *ConnectionHandler) resumeSimpleQuery() (endOfMessages bool, err error) 
 			continue
 		}
 
-		// Single statements will always be auto-committed, unless they are inside an explicit transaction block.
-		// For multi-statement queries, we start an implicit transaction block before the first statement and commit
-		// it on the last statement. This involves manipulating the session's auto-commit behavior so that the engine
-		// automatically commits only the final statement. This is cheaper than running BEGIN and COMMIT statements
-		// separately through the engine, and has the same effect.
-		if implicitTransactionControl {
-			if i == len(execution.statements)-1 && !h.transactionState.inExplicitTransactionBlock() {
-				ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
-				if err != nil {
-					return false, err
-				}
-				ctx.SetIgnoreAutoCommit(false)
+		if implicitTransactionControl && i == len(execution.statements)-1 && !h.state.transaction.inExplicitTransactionBlock() {
+			ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+			if err != nil {
+				return false, err
+			}
+			ctx.SetIgnoreAutoCommit(false)
+		}
+
+		injected, isInjected := query.AST.(sqlparser.InjectedStatement)
+		_, isDo := injected.Statement.(*node.Do)
+		if !implicitTransactionControl && isInjected && isDo {
+			if err = h.startImplicitTransaction(query); err != nil {
+				return true, err
 			}
 		}
 
-		err = h.query(query)
-		if err != nil {
+		if err = h.query(query); err != nil {
 			return true, err
+		}
+		if !implicitTransactionControl && isInjected && isDo {
+			if err = h.commitImplicitTransaction(); err != nil {
+				return true, err
+			}
 		}
 	}
 
-	// For some statement sequences, a final implicit COMMIT may be necessary
 	if implicitTransactionControl {
-		err = h.commitImplicitTransaction()
-		if err != nil {
+		if err = h.commitImplicitTransaction(); err != nil {
 			return false, err
 		}
 	}
-
 	return true, nil
 }

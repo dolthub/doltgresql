@@ -1065,6 +1065,8 @@ type StatementResult struct {
 // CopyInput describes one COPY FROM STDIN exchange. Chunks are sent as CopyData messages; FailMessage sends CopyFail
 // instead of CopyDone after those chunks.
 type CopyInput struct {
+	// BeforeData contains frontend messages sent after CopyInResponse but before the transfer data.
+	BeforeData  []pgproto3.FrontendMessage
 	Chunks      [][]byte
 	FailMessage string
 }
@@ -1079,8 +1081,12 @@ type SimpleQuery struct {
 	Expected []StatementResult
 	// ExpectedErr, when non-empty, asserts that an ErrorResponse whose message contains this string is received.
 	ExpectedErr string
+	// ExpectedErrExact, when non-empty, asserts the complete ErrorResponse message.
+	ExpectedErrExact string
 	// ExpectedErrCode, when non-empty, asserts the SQLSTATE of the received ErrorResponse.
 	ExpectedErrCode string
+	// ExpectedErrSeverity, when non-empty, asserts the severity of the received ErrorResponse.
+	ExpectedErrSeverity string
 	// ExpectedReadyStatus is the transaction status expected in the trailing ReadyForQuery message: 'I' (idle),
 	// 'T' (in transaction block), or 'E' (in failed transaction block). The zero value defaults to 'I'.
 	ExpectedReadyStatus byte
@@ -1374,6 +1380,7 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 	var current *StatementResult
 	errMsg := ""
 	errCode := ""
+	errSeverity := ""
 	nextCopyInput := 0
 	for {
 		msg := r.receiveNext()
@@ -1400,6 +1407,9 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 			require.Less(t, nextCopyInput, len(s.CopyInputs),
 				"step %d: server requested more COPY inputs than the test supplied", r.stepIdx)
 			copyInput := s.CopyInputs[nextCopyInput]
+			for _, message := range copyInput.BeforeData {
+				r.send(message)
+			}
 			for _, data := range copyInput.Chunks {
 				r.send(&pgproto3.CopyData{Data: data})
 			}
@@ -1416,6 +1426,7 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 				r.stepIdx, errMsg, m.Message)
 			errMsg = m.Message
 			errCode = m.Code
+			errSeverity = m.Severity
 		case *pgproto3.ReadyForQuery:
 			assert.Equal(t, len(s.CopyInputs), nextCopyInput,
 				"step %d: server requested fewer COPY inputs than the test supplied", r.stepIdx)
@@ -1427,8 +1438,14 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 			} else {
 				assert.Empty(t, errMsg, "step %d: unexpected ErrorResponse: %s", r.stepIdx, errMsg)
 			}
+			if s.ExpectedErrExact != "" {
+				assert.Equal(t, s.ExpectedErrExact, errMsg, "step %d: wrong complete error message", r.stepIdx)
+			}
 			if s.ExpectedErrCode != "" {
 				assert.Equal(t, s.ExpectedErrCode, errCode, "step %d: wrong error SQLSTATE", r.stepIdx)
+			}
+			if s.ExpectedErrSeverity != "" {
+				assert.Equal(t, s.ExpectedErrSeverity, errSeverity, "step %d: wrong error severity", r.stepIdx)
 			}
 			assertStatementResults(t, r.stepIdx, s.Expected, results)
 			assertReadyStatus(t, r.stepIdx, s.ExpectedReadyStatus, m.TxStatus)

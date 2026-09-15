@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2023 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,52 +15,63 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
+	"os"
+	"runtime/debug"
+	"strings"
+	"sync/atomic"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
-	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
-	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
-	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mitchellh/go-ps"
 	"github.com/sirupsen/logrus"
-	"net"
-	"os"
-	"runtime/debug"
-	"strings"
-	"sync/atomic"
 )
 
 // ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
 // executing queries, sending the correct messages in return, and terminating the connection when appropriate.
 type ConnectionHandler struct {
-	mysqlConn          *mysql.Conn
-	preparedStatements map[string]PreparedStatementData
-	portals            map[string]PortalData
-	doltgresHandler    *DoltgresHandler
-	backend            *pgproto3.Backend
-	convertOptions     ast.ConvertOptions
+	mysqlConn       *mysql.Conn
+	doltgresHandler *DoltgresHandler
+	backend         *pgproto3.Backend
+	state           connectionState
+	extended        extendedQueryState
+	convertOptions  ast.ConvertOptions
+}
 
-	waitForSync bool
-	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
-	// COPY DATA messages from the client to import data into tables.
-	copyFromStdinState *copyFromStdinState
-	// activeSimpleQuery is the current multi-statement simple query execution.
-	activeSimpleQuery *simpleQueryExecution
+// messageAction describes the connection-loop action after handling one frontend message.
+type messageAction byte
 
-	// transactionState is the current transaction state of the connection, which is one of:
-	// Idle (no transaction block is in progress)
-	// Explicit (an explicit transaction block is in progress, opened by a BEGIN statement)
-	// Implicit (an implicit transaction block is in progress, opened by a multi-statement Query message or an extended query protocol)
-	// Failed (an error occurred inside an explicit transaction block, and all statements are rejected until the client ends the transaction block)
-	// See https://www.postgresql.org/docs/current/protocol-flow.html for the full ruleset.
-	transactionState transactionState
+const (
+	continueMessages messageAction = iota
+	sendReadyForQuery
+	closeConnection
+)
+
+// messageResult is the unambiguous outcome of handling one frontend message.
+type messageResult struct {
+	action messageAction
+	err    error
+}
+
+// continueResult returns a successful result that keeps reading frontend messages.
+func continueResult() messageResult {
+	return messageResult{action: continueMessages}
+}
+
+// readyResult returns a result that completes the current frontend operation.
+func readyResult(err error) messageResult {
+	return messageResult{action: sendReadyForQuery, err: err}
+}
+
+// closeResult returns a result that closes the connection.
+func closeResult() messageResult {
+	return messageResult{action: closeConnection}
 }
 
 // Set this env var to disable panic handling in the connection, which is useful when debugging a panic
@@ -97,13 +108,6 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 	}
 	mysqlConn.ConnectionID = atomic.AddUint32(&connectionIDCounter, 1)
 
-	// Postgres has a two-stage procedure for prepared queries. First the query is parsed via a |Parse| message, and
-	// the result is stored in the |preparedStatements| map by the name provided. Then one or more |Bind| messages
-	// provide parameters for the query, and the result is stored in |portals|. Finally, a call to |Execute| executes
-	// the named portal.
-	preparedStatements := make(map[string]PreparedStatementData)
-	portals := make(map[string]PortalData)
-
 	// TODO: possibly should define engine and session manager ourselves
 	//  instead of depending on the GetRunningServer method.
 	server := sqlserver.GetRunningServer()
@@ -123,13 +127,12 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 	}
 
 	return &ConnectionHandler{
-		mysqlConn:          mysqlConn,
-		preparedStatements: preparedStatements,
-		portals:            portals,
-		doltgresHandler:    doltgresHandler,
-		backend:            pgproto3.NewBackend(conn, conn),
-		transactionState:   idleTransactionState,
-		convertOptions:     convertOptions,
+		mysqlConn:       mysqlConn,
+		doltgresHandler: doltgresHandler,
+		backend:         pgproto3.NewBackend(conn, conn),
+		state:           newConnectionState(),
+		extended:        newExtendedQueryState(),
+		convertOptions:  convertOptions,
 	}
 }
 
@@ -200,17 +203,11 @@ func (h *ConnectionHandler) Conn() net.Conn {
 	return h.mysqlConn.Conn
 }
 
-// setConn sets a new underlying net.Conn for this connection.
-func (h *ConnectionHandler) setConn(conn net.Conn) {
-	h.mysqlConn.Conn = conn
-	h.backend = pgproto3.NewBackend(conn, conn)
-}
-
 // receiveMessage reads a single message off the connection and processes it, returning an error if no message could be
 // received from the connection. Otherwise, (a message is received successfully), the message is processed and any
 // error is handled appropriately. The return value indicates whether the connection should be closed.
-func (h *ConnectionHandler) receiveMessage() (bool, error) {
-	var endOfMessages bool
+func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
+	result := continueResult()
 	// For the time being, we handle panics in this function and treat them the same as errors so that they don't
 	// forcibly close the connection. Contrast this with the panic handling logic in HandleConnection, where we treat any
 	// panic as unrecoverable to the connection. As we fill out the implementation, we can revisit this decision and
@@ -221,13 +218,9 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 				stackTrace := string(debug.Stack())
 				logrus.Errorf("Listener recovered panic: %v: %s", r, stackTrace)
 
-				eomErr := errors.Errorf("receiveMessage recovered panic: %v: %s", r, stackTrace)
-				if !endOfMessages && h.waitForSync {
-					if syncErr := h.discardToSync(); syncErr != nil {
-						fmt.Println(syncErr.Error())
-					}
-				}
-				h.endOfMessages(eomErr)
+				h.handleMessageError(errors.Errorf("receiveMessage recovered panic: %v: %s",
+					r, stackTrace))
+				stop = h.state.protocol.kind == closingConnectionMode
 			}
 		}()
 	}
@@ -247,116 +240,86 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 		logrus.Debugf("Received message: %t", msg)
 	}
 
-	var stop bool
-	stop, endOfMessages, err = h.handleMessage(msg)
-	if err != nil {
-		if !endOfMessages && h.waitForSync {
-			if syncErr := h.discardToSync(); syncErr != nil {
-				fmt.Println(syncErr.Error())
-			}
-		}
-		h.endOfMessages(err)
-	} else if endOfMessages {
+	result = h.handleMessage(msg)
+	if result.err != nil {
+		h.handleMessageError(result.err)
+	} else if result.action == sendReadyForQuery {
 		h.endOfMessages(nil)
 	}
 
-	return stop, nil
+	return result.action == closeConnection, nil
 }
 
-// handleMessages processes the message provided and returns status flags indicating what the connection should do next.
-// If the |stop| response parameter is true, it indicates that the connection should be closed by the caller. If the
-// |endOfMessages| response parameter is true, it indicates that no more messages are expected for the current operation
-// and a READY FOR QUERY message should be sent back to the client, so it can send the next query.
-func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMessages bool, err error) {
+// handleMessage routes a frontend message according to the exclusive protocol mode that owns the connection.
+func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) messageResult {
+	if _, ok := msg.(*pgproto3.Terminate); ok {
+		return closeResult()
+	}
+
+	mode := h.state.protocol
+	if !mode.valid() {
+		h.state.closeProtocol()
+		return messageResult{action: closeConnection, err: errors.New("invalid connection protocol mode")}
+	}
+	switch mode.kind {
+	case copyInConnectionMode:
+		return h.handleCopyMessage(mode.copy, msg)
+	case closingConnectionMode:
+		return closeResult()
+	case discardUntilSyncConnectionMode:
+		if _, ok := msg.(*pgproto3.Sync); ok {
+			h.state.finishExtended()
+			return readyResult(h.commitImplicitTransaction())
+		}
+		return continueResult()
+	case readyConnectionMode, extendedConnectionMode:
+		return h.handleNormalMessage(msg)
+	default:
+		h.state.closeProtocol()
+		return messageResult{action: closeConnection, err: errors.New("invalid connection protocol mode")}
+	}
+}
+
+// handleNormalMessage handles messages outside COPY and extended-protocol error recovery.
+func (h *ConnectionHandler) handleNormalMessage(msg pgproto3.Message) messageResult {
 	switch message := msg.(type) {
-	case *pgproto3.Terminate:
-		return true, false, nil
 	case *pgproto3.Sync:
-		h.waitForSync = false
 		// Sync closes an implicit transaction block, committing it. An explicit transaction block (opened with
 		// BEGIN) is not affected by Sync, and remains open.
-		return false, true, h.commitImplicitTransaction()
+		h.state.finishExtended()
+		return readyResult(h.commitImplicitTransaction())
 	case *pgproto3.Flush:
 		// We don't buffer output, so Flush is a no-op
-		return false, false, nil
+		return continueResult()
 	case *pgproto3.Query:
-		if h.activeSimpleQuery != nil {
-			return false, true, errors.New("query received while a COPY FROM STDIN operation is in progress")
-		}
-		endOfMessages, err = h.handleQuery(message)
-		return false, endOfMessages, err
+		endOfMessages, err := h.handleQuery(message)
+		return messageResultForCompletion(endOfMessages, err)
 	case *pgproto3.Parse:
-		return false, false, h.handleParse(message)
+		h.state.beginExtended()
+		return messageResult{err: h.handleParse(message)}
 	case *pgproto3.Describe:
-		return false, false, h.handleDescribe(message)
+		h.state.beginExtended()
+		return messageResult{err: h.handleDescribe(message)}
 	case *pgproto3.Bind:
-		return false, false, h.handleBind(message)
+		h.state.beginExtended()
+		return messageResult{err: h.handleBind(message)}
 	case *pgproto3.Execute:
-		return false, false, h.handleExecute(message)
+		h.state.beginExtended()
+		return messageResult{err: h.handleExecute(message)}
 	case *pgproto3.Close:
-		if message.ObjectType == 'S' {
-			delete(h.preparedStatements, message.Name)
-		} else {
-			delete(h.portals, message.Name)
-		}
-		return false, false, h.send(&pgproto3.CloseComplete{})
+		h.state.beginExtended()
+		h.extended.close(message.ObjectType, message.Name)
+		return messageResult{err: h.send(&pgproto3.CloseComplete{})}
 	case *pgproto3.CopyData:
-		return h.handleCopyData(message)
+		// PostgreSQL drops COPY messages that arrive after COPY has already failed and left copy-in mode.
+		return continueResult()
 	case *pgproto3.CopyDone:
-		stop, endOfMessages, err := h.handleCopyDone(message)
-		if stop || err != nil || !endOfMessages || h.activeSimpleQuery == nil {
-			return stop, endOfMessages, err
-		}
-		endOfMessages, err = h.resumeSimpleQuery()
-		return false, endOfMessages, err
+		return continueResult()
 	case *pgproto3.CopyFail:
-		return h.handleCopyFail(message)
+		return continueResult()
 	default:
-		return false, true, errors.Errorf(`unhandled message "%t"`, message)
+		return readyResult(errors.Errorf(`unhandled message "%t"`, message))
 	}
-}
-
-// handleCopyData handles the COPY DATA message, by loading the data sent from the client. The |stop| response parameter
-// is true if the connection handler should shut down the connection, |endOfMessages| is true if no more COPY DATA
-// messages are expected, and the server should tell the client that it is ready for the next query, and |err| contains
-// any error that occurred while processing the COPY DATA message.
-func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
-	if h.copyFromStdinState != nil && h.copyFromStdinState.copyErr != nil {
-		// A previous chunk of this COPY operation failed and its work was rolled back, so discard the remaining
-		// data until the client ends the operation with a COPY DONE or COPY FAIL message. Processing further
-		// chunks would insert rows for an operation that has already been rejected.
-		return false, false, nil
-	}
-	copyFromData := bytes.NewReader(message.Data)
-	stop, endOfMessages, err = h.handleCopyDataHelper(h.copyFromStdinState, copyFromData)
-	if err != nil && h.copyFromStdinState != nil {
-		h.copyFromStdinState.copyErr = err
-		h.rollbackCopyTransaction(h.copyFromStdinState.startedTransaction)
-	}
-	return stop, endOfMessages, err
-}
-
-// handleCopyFail handles a COPY FAIL message by aborting the in-progress COPY DATA operation.  The |stop| response
-// parameter is true if the connection handler should shut down the connection, |endOfMessages| is true if no more
-// COPY DATA messages are expected, and the server should tell the client that it is ready for the next query, and
-// |err| contains any error that occurred while processing the COPY DATA message.
-func (h *ConnectionHandler) handleCopyFail(message *pgproto3.CopyFail) (stop bool, endOfMessages bool, err error) {
-	if h.copyFromStdinState == nil {
-		return false, true,
-			errors.Errorf("COPY FAIL message received without a COPY FROM STDIN operation in progress")
-	}
-
-	dataLoader := h.copyFromStdinState.dataLoader
-	if dataLoader == nil {
-		return false, true,
-			errors.Errorf("no data loader found for COPY FROM STDIN operation")
-	}
-
-	startedTransaction := h.copyFromStdinState.startedTransaction
-	h.copyFromStdinState = nil
-	// The client aborted the operation, so any rows loaded by chunks that were already processed must not persist
-	h.rollbackCopyTransaction(startedTransaction)
-	return false, true, pgerror.New(pgcode.QueryCanceled, message.Message)
 }
 
 // convertQuery takes the given Postgres query, and converts it as an ast.ConvertedQuery that will work with the handler.
@@ -392,23 +355,22 @@ func (h *ConnectionHandler) convertQuery(query string) ([]ConvertedQuery, error)
 	return converted, nil
 }
 
-// DiscardToSync discards all messages in the buffer until a Sync has been reached. If a Sync was never sent, then this
-// may cause the connection to lock until the client send a Sync, as their request structure was malformed.
-func (h *ConnectionHandler) discardToSync() error {
-	for {
-		message, err := h.backend.Receive()
-		if err != nil {
-			return err
-		}
-
-		if _, ok := message.(*pgproto3.Sync); ok {
-			return nil
-		}
+// messageResultForCompletion converts legacy statement completion into a connection-loop action.
+func messageResultForCompletion(complete bool, err error) messageResult {
+	if complete {
+		return readyResult(err)
 	}
+	return messageResult{err: err}
 }
 
 // Send sends the given message over the connection.
 func (h *ConnectionHandler) send(message pgproto3.BackendMessage) error {
 	h.backend.Send(message)
 	return h.backend.Flush()
+}
+
+// setConn replaces the underlying connection and rebuilds the protocol backend around it.
+func (h *ConnectionHandler) setConn(conn net.Conn) {
+	h.mysqlConn.Conn = conn
+	h.backend = pgproto3.NewBackend(conn, conn)
 }
