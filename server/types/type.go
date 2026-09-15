@@ -759,6 +759,12 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 
 // IoOutput converts given type value to output string.
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
+	// A pseudo-type carries a placeholder rather than a real output function, since its values never reach
+	// the wire, and handing that placeholder to the registry would panic. PostgreSQL's own placeholder output
+	// handler reports this error.
+	if t.OutputFunc == placeholderIoFuncID {
+		return "", errors.Errorf("cannot display a value of type %s", t.ID.TypeName())
+	}
 	outFunc := t.getOrResolveOutFunc(ctx)
 
 	o, err := outFunc.CallVariadic(ctx, val)

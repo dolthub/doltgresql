@@ -175,6 +175,10 @@ func (*functionRegistry) toFuncSignature(ctx *sql.Context, functionID id.Functio
 	return functionID.FunctionName(), params, true
 }
 
+// placeholderIoFuncID stands in for the I/O functions of a type that has none, such as a pseudo-type. It
+// resolves to no function, so it must never be handed to the registry's lookup.
+var placeholderIoFuncID = toFuncID("_")
+
 // toFuncID creates a valid function string for the given name and parameters, then registers the name with the
 // global functionRegistry. The ID from the registry is returned.
 func toFuncID(functionName string, params ...id.Type) uint32 {
