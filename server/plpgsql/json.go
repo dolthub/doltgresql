@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 )
 
 // action exists to match the expected JSON format.
@@ -177,6 +179,16 @@ type plpgSQL_stmt_exit struct {
 	LineNumber int32  `json:"lineno"`
 }
 
+// plpgSQL_stmt_foreach_a exists to match the expected JSON format.
+type plpgSQL_stmt_foreach_a struct {
+	Label      string      `json:"label"`
+	VarNo      int32       `json:"varno"`
+	Slice      int32       `json:"slice"`
+	Expression expr        `json:"expr"`
+	Body       []statement `json:"body"`
+	LineNumber int32       `json:"lineno"`
+}
+
 // plpgSQL_stmt_fori exists to match the expected JSON format.
 type plpgSQL_stmt_fori struct {
 	Label      string      `json:"label"`
@@ -281,23 +293,24 @@ type sqlstmt struct {
 // statement exists to match the expected JSON format. Unlike other structs, this is used like a union rather than
 // having a singular expected implementation.
 type statement struct {
-	Assignment  *plpgSQL_stmt_assign       `json:"PLpgSQL_stmt_assign"`
-	Block       *plpgSQL_stmt_block        `json:"PLpgSQL_stmt_block"`
-	Call        *plpgSQL_stmt_call         `json:"PLpgSQL_stmt_call"`
-	Case        *plpgSQL_stmt_case         `json:"PLpgSQL_stmt_case"`
-	DynExec     *plpgSQL_stmt_dynexecute   `json:"PLpgSQL_stmt_dynexecute"`
-	ExecSQL     *plpgSQL_stmt_execsql      `json:"PLpgSQL_stmt_execsql"`
-	Exit        *plpgSQL_stmt_exit         `json:"PLpgSQL_stmt_exit"`
-	ForILoop    *plpgSQL_stmt_fori         `json:"PLpgSQL_stmt_fori"`
-	ForSLoop    *plpgSQL_stmt_fors         `json:"PLpgSQL_stmt_fors"`
-	If          *plpgSQL_stmt_if           `json:"PLpgSQL_stmt_if"`
-	Loop        *plpgSQL_stmt_loop         `json:"PLpgSQL_stmt_loop"`
-	Perform     *plpgSQL_stmt_perform      `json:"PLpgSQL_stmt_perform"`
-	Raise       *plpgSQL_stmt_raise        `json:"PLpgSQL_stmt_raise"`
-	Return      *plpgSQL_stmt_return       `json:"PLpgSQL_stmt_return"`
-	ReturnQuery *plpgSQL_stmt_return_query `json:"PLpgSQL_stmt_return_query"`
-	When        *plpgSQL_case_when         `json:"PLpgSQL_case_when"`
-	While       *plpgSQL_stmt_while        `json:"PLpgSQL_stmt_while"`
+	Assignment   *plpgSQL_stmt_assign       `json:"PLpgSQL_stmt_assign"`
+	Block        *plpgSQL_stmt_block        `json:"PLpgSQL_stmt_block"`
+	Call         *plpgSQL_stmt_call         `json:"PLpgSQL_stmt_call"`
+	Case         *plpgSQL_stmt_case         `json:"PLpgSQL_stmt_case"`
+	DynExec      *plpgSQL_stmt_dynexecute   `json:"PLpgSQL_stmt_dynexecute"`
+	ExecSQL      *plpgSQL_stmt_execsql      `json:"PLpgSQL_stmt_execsql"`
+	Exit         *plpgSQL_stmt_exit         `json:"PLpgSQL_stmt_exit"`
+	ForEachArray *plpgSQL_stmt_foreach_a    `json:"PLpgSQL_stmt_foreach_a"`
+	ForILoop     *plpgSQL_stmt_fori         `json:"PLpgSQL_stmt_fori"`
+	ForSLoop     *plpgSQL_stmt_fors         `json:"PLpgSQL_stmt_fors"`
+	If           *plpgSQL_stmt_if           `json:"PLpgSQL_stmt_if"`
+	Loop         *plpgSQL_stmt_loop         `json:"PLpgSQL_stmt_loop"`
+	Perform      *plpgSQL_stmt_perform      `json:"PLpgSQL_stmt_perform"`
+	Raise        *plpgSQL_stmt_raise        `json:"PLpgSQL_stmt_raise"`
+	Return       *plpgSQL_stmt_return       `json:"PLpgSQL_stmt_return"`
+	ReturnQuery  *plpgSQL_stmt_return_query `json:"PLpgSQL_stmt_return_query"`
+	When         *plpgSQL_case_when         `json:"PLpgSQL_case_when"`
+	While        *plpgSQL_stmt_while        `json:"PLpgSQL_stmt_while"`
 }
 
 // Convert converts the JSON statement into its output form.
@@ -340,7 +353,7 @@ func (stmt *plpgSQL_stmt_call) Convert() (ExecuteSQL, error) {
 }
 
 // Convert converts the JSON statement into its output form.
-func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
+func (stmt *plpgSQL_stmt_case) Convert(datums datumNames) (block Block, err error) {
 	// If the CASE statement has a main expression, start by assigning it to a variable so
 	// we can evaluate it once and only once.
 	if stmt.Expression.Expression.Query != "" {
@@ -371,7 +384,7 @@ func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 		// the reference is folded, so the quotes are left in place.
 		expressionString := when.Expression.Expression.Query
 
-		convertedWhenBodyStatements, err := jsonConvertStatements(when.Body)
+		convertedWhenBodyStatements, err := jsonConvertStatements(when.Body, datums)
 		if err != nil {
 			return Block{}, err
 		}
@@ -396,7 +409,7 @@ func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 	}
 
 	if stmt.HasElse {
-		convertElseBodyStatements, err := jsonConvertStatements(stmt.Else)
+		convertElseBodyStatements, err := jsonConvertStatements(stmt.Else, datums)
 		if err != nil {
 			return Block{}, err
 		}
@@ -533,8 +546,110 @@ func (stmt *plpgSQL_stmt_exit) Convert() Statement {
 	}
 }
 
+// Fields of the two records a FOREACH loop works through: one holds the loop's expression and the name of
+// its type, the other each element in turn. Each name doubles as the column alias its query produces.
+const (
+	foreachArrayField   = "__foreach_array__"
+	foreachTypeField    = "__foreach_type__"
+	foreachElementField = "__foreach_element__"
+)
+
 // Convert converts the JSON statement into its output form.
-func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
+func (stmt *plpgSQL_stmt_foreach_a) Convert(datums datumNames) (block Block, err error) {
+	block.Label = stmt.Label
+	block.IsLoop = true
+
+	if stmt.Slice > 0 {
+		// TODO: SLICE iterates over sub-arrays, which needs multidimensional array support.
+		return Block{}, errors.New("FOREACH with SLICE is not yet supported")
+	}
+	varName, err := datums.Name(stmt.VarNo)
+	if err != nil {
+		return Block{}, err
+	}
+
+	// The expression is evaluated once into a record before the loop is entered: PostgreSQL guarantees
+	// that, and it lets the checks below read the value without evaluating it again. The name of its type
+	// rides along, since a check reports it and it is not known until the expression runs.
+	//
+	// These names reach generated SQL, so they are built from the line number rather than the loop variable,
+	// which a quoted declaration could spell anything at all. Nested loops on one line then share the names,
+	// which is safe: the inner declarations shadow the outer for as long as they run.
+	srcName := fmt.Sprintf("__foreach_src_%d__", stmt.LineNumber)
+	rowName := fmt.Sprintf("__foreach_row_%d__", stmt.LineNumber)
+	arrayRef := srcName + "." + foreachArrayField
+	typeRef := srcName + "." + foreachTypeField
+	evaluateQuery := fmt.Sprintf(
+		"SELECT __foreach_value__ AS %s, CAST(pg_typeof(__foreach_value__) AS TEXT) AS %s "+
+			"FROM (SELECT (%s) AS __foreach_value__) AS __foreach_input__",
+		foreachArrayField, foreachTypeField, stmt.Expression.Expression.Query)
+
+	// unnest visits the elements in the order the array holds them. Going through a record is what lets the
+	// cursor machinery fetch them, and assigning out of it is what casts each to the variable's declared type.
+	iterateQuery := fmt.Sprintf("SELECT __foreach_source__ AS %s FROM unnest(%s) AS __foreach_source__",
+		foreachElementField, arrayRef)
+
+	convertedBody, err := jsonConvertStatements(stmt.Body, datums)
+	if err != nil {
+		return Block{}, err
+	}
+	bodySize := OperationSizeForStatements(convertedBody)
+
+	// Layout inside the block (ScopeBegin, the records' declarations, and ScopeEnd are added by
+	// Block.AppendOperations):
+	//   [0] ExecuteSQL    – evaluate the expression into the record, alongside the name of its type
+	//   [1] If            – the expression yielded an array, so skip the raise below
+	//   [2] Raise         – the expression did not yield an array
+	//   [3] If            – the array is not null, so skip the raise below
+	//   [4] Raise         – the array is null
+	//   [5] ForQueryInit  – execute the unnest query, store its rows in the cursor
+	//   [6] ForQueryNext  – fetch the next element into the record, or jump forward by (bodySize+3) to ScopeEnd
+	//   [7] Assignment    – copy the element out of the record and into the loop variable
+	//   [8..8+bodySize-1] body statements
+	//   [8+bodySize]      Goto back to ForQueryNext: offset = -(2 + bodySize)
+	//
+	// A CONTINUE targets [6] so that it fetches the next element and assigns the loop variable, rather than
+	// re-evaluating the expression and re-running the query.
+	block.ContinueTargetOffset = 6
+	block.Records = []Record{
+		{Name: srcName, Fields: []string{foreachArrayField, foreachTypeField}},
+		{Name: rowName, Fields: []string{foreachElementField}},
+	}
+	block.Body = []Statement{
+		ExecuteSQL{Statement: evaluateQuery, Target: srcName, TargetIsRecord: true},
+		// PostgreSQL decides this on the element type of the value's type; the rendered type name stands
+		// in for that here. The two diverge for a domain over an array, which PostgreSQL rejects as not
+		// an array: pg_typeof erases the domain to its base type, so this accepts it. They diverge again
+		// for an array of a user-defined element type, which regtype output spells `_elem` rather than
+		// `elem[]`, so this rejects it.
+		//
+		// TODO: reject a domain over an array once pg_typeof reports the domain rather than its base type.
+		// TODO: accept an array of a user-defined element type. Matching the `_elem` spelling is not
+		//  enough on its own, since nothing in the interpreter can carry a value of such a type yet.
+		If{Condition: fmt.Sprintf("%s LIKE '%%[]'", typeRef), GotoOffset: 2},
+		Raise{
+			Level:    NoticeLevelException.String(),
+			Message:  "FOREACH expression must yield an array, not type %",
+			Params:   []string{typeRef},
+			SqlState: pgcode.DatatypeMismatch.String(),
+		},
+		If{Condition: arrayRef + " IS NOT NULL", GotoOffset: 2},
+		Raise{
+			Level:    NoticeLevelException.String(),
+			Message:  "FOREACH expression must not be null",
+			SqlState: pgcode.NullValueNotAllowed.String(),
+		},
+		ForQueryInit{Query: iterateQuery},
+		ForQueryNext{RecordVar: rowName, GotoOffset: bodySize + 3},
+		Assignment{VariableName: varName, Expression: rowName + "." + foreachElementField},
+	}
+	block.Body = append(block.Body, convertedBody...)
+	block.Body = append(block.Body, Goto{Offset: -(2 + bodySize)})
+	return block, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_fori) Convert(datums datumNames) (block Block, err error) {
 	block.Label = stmt.Label
 	block.IsLoop = true
 
@@ -573,7 +688,7 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 	}
 
 	// Convert the loop body.
-	convertedBody, err := jsonConvertStatements(stmt.Body)
+	convertedBody, err := jsonConvertStatements(stmt.Body, datums)
 	if err != nil {
 		return Block{}, err
 	}
@@ -626,7 +741,7 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 }
 
 // Convert converts the JSON statement into its output form.
-func (stmt *plpgSQL_stmt_fors) Convert() (block Block, err error) {
+func (stmt *plpgSQL_stmt_fors) Convert(datums datumNames) (block Block, err error) {
 	block.Label = stmt.Label
 	block.IsLoop = true
 
@@ -646,12 +761,9 @@ func (stmt *plpgSQL_stmt_fors) Convert() (block Block, err error) {
 		return Block{}, errors.New("FOR..IN..SELECT loop variable must be a record, row, or variable")
 	}
 
-	// Use the line number to keep cursor names unique across multiple ForS loops
-	// that might use the same variable name.
-	cursorName := fmt.Sprintf("__cursor_%s_%d__", varName, stmt.LineNumber)
 	query := stmt.Query.Expression.Query
 
-	convertedBody, err := jsonConvertStatements(stmt.Body)
+	convertedBody, err := jsonConvertStatements(stmt.Body, datums)
 	if err != nil {
 		return Block{}, err
 	}
@@ -667,8 +779,8 @@ func (stmt *plpgSQL_stmt_fors) Convert() (block Block, err error) {
 	// rather than the ForQueryInit at [0].
 	block.ContinueTargetOffset = 1
 	block.Body = []Statement{
-		ForQueryInit{CursorName: cursorName, Query: query},
-		ForQueryNext{CursorName: cursorName, RecordVar: varName, GotoOffset: bodySize + 2},
+		ForQueryInit{Query: query},
+		ForQueryNext{RecordVar: varName, GotoOffset: bodySize + 2},
 	}
 	block.Body = append(block.Body, convertedBody...)
 	block.Body = append(block.Body, Goto{Offset: -(1 + bodySize)})
@@ -676,7 +788,7 @@ func (stmt *plpgSQL_stmt_fors) Convert() (block Block, err error) {
 }
 
 // Convert converts the JSON statement into its output form.
-func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
+func (stmt *plpgSQL_stmt_if) Convert(datums datumNames) (Block, error) {
 	// We store all GOTOs that will need to go to the end of the block. Since we can't know that ahead of time, we store
 	// their indexes and set them at the end of the function.
 	type gotoEndIndex struct {
@@ -693,7 +805,7 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 		},
 	}
 	// We'll parse our THEN statements, but we won't add them to the block just yet as we need their operation sizes
-	thenStmts, err := jsonConvertStatements(stmt.Then)
+	thenStmts, err := jsonConvertStatements(stmt.Then, datums)
 	if err != nil {
 		return Block{}, err
 	}
@@ -714,7 +826,7 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 			Condition:  elseIf.ElseIf.Condition.Expression.Query,
 			GotoOffset: 2, // Same rules as skipping our THEN statement above
 		})
-		elseIfStmts, err := jsonConvertStatements(elseIf.ElseIf.Then)
+		elseIfStmts, err := jsonConvertStatements(elseIf.ElseIf.Then, datums)
 		if err != nil {
 			return Block{}, err
 		}
@@ -728,7 +840,7 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 	}
 	// Finally we handle our ELSE statements. We don't have a condition to check, so we don't have to append any
 	// additional GOTOs.
-	elseStmts, err := jsonConvertStatements(stmt.Else)
+	elseStmts, err := jsonConvertStatements(stmt.Else, datums)
 	if err != nil {
 		return Block{}, err
 	}
@@ -742,12 +854,12 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 }
 
 // Convert converts the JSON statement into its output form.
-func (stmt *plpgSQL_stmt_loop) Convert() (block Block, err error) {
+func (stmt *plpgSQL_stmt_loop) Convert(datums datumNames) (block Block, err error) {
 	// Set the block's label if one was provided
 	block.Label = stmt.Label
 	block.IsLoop = true
 	// Convert the body of the loop first so we can determine the GOTO offset
-	block.Body, err = jsonConvertStatements(stmt.Body)
+	block.Body, err = jsonConvertStatements(stmt.Body, datums)
 	if err != nil {
 		return Block{}, err
 	}
@@ -804,9 +916,9 @@ func (stmt *plpgSQL_stmt_return_query) Convert() ReturnQuery {
 }
 
 // Convert converts the JSON statement into its output form.
-func (stmt *plpgSQL_stmt_while) Convert() (block Block, err error) {
+func (stmt *plpgSQL_stmt_while) Convert(datums datumNames) (block Block, err error) {
 	// Convert the body of the loop first so we can determine the GOTO offsets
-	convertedLoopBodyStmts, err := jsonConvertStatements(stmt.Body)
+	convertedLoopBodyStmts, err := jsonConvertStatements(stmt.Body, datums)
 	if err != nil {
 		return Block{}, err
 	}

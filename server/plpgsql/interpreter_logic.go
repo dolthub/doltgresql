@@ -492,11 +492,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err != nil {
 				return nil, err
 			}
-			stack.InitCursor(operation.Target, schema, rows)
+			stack.InitCursor(schema, rows)
 			// The loop reports FOUND when it is left even if the query matched nothing.
 			stack.MarkScopeLoop(false)
 		case OpCode_ForQueryNext:
-			schema, row, ok := stack.AdvanceCursor(operation.PrimaryData)
+			schema, row, ok := stack.AdvanceCursor()
 			if !ok {
 				// Jump forward past the loop body and back-goto, same mechanism as OpCode_If. The loop's
 				// ScopeEnd is what closes the cursor and reports FOUND, since every way out of the loop
@@ -609,14 +609,10 @@ func evaluateDynamicUsing(ctx *sql.Context, iFunc InterpretedFunction, operation
 // of a Goto leave scopes, so they share this rather than each handling scope depth on its own, which would
 // leave whichever of them grew a new responsibility last out of step with the other.
 //
-// A FOR..IN..SELECT loop's scope owns the cursor the loop iterates, so leaving the scope is what closes it.
-// Leaving it is also what reports a FOR loop's FOUND: Postgres sets FOUND when such a loop exits, by
-// whichever path, to whether the body ran at all, and leaves it alone while the loop is running. A WHILE or
-// plain LOOP does not set FOUND, so only a scope its loop marked reports one.
+// Leaving the scope is what reports a FOR loop's FOUND: PostgreSQL sets FOUND when such a loop exits, by
+// whichever path, to whether the body ran at all, and leaves it alone while the loop runs. A WHILE or plain
+// LOOP never sets FOUND, so only a loop that marked its scope reports one.
 func exitScope(ctx *sql.Context, stack InterpreterStack) error {
-	if cursorName := stack.ScopeCursor(); len(cursorName) > 0 {
-		stack.CloseCursor(cursorName)
-	}
 	if reportsFound, iterated := stack.ScopeLoop(); reportsFound {
 		if err := stack.SetFound(ctx, iterated); err != nil {
 			return err

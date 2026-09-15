@@ -826,6 +826,54 @@ $$ LANGUAGE plpgsql;`,
 			},
 		},
 		{
+			Name: "FOREACH over an array of column names",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, retired_at TEXT, note TEXT);",
+				"INSERT INTO test VALUES (1, NULL, 'n');",
+				// An append-only guard: an UPDATE may only fill in a named column that is still NULL,
+				// and has to change at least one of them.
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+			DECLARE
+				permitted TEXT[] := '{retired_at}';
+				col TEXT;
+				changed INT := 0;
+			BEGIN
+				FOREACH col IN ARRAY permitted LOOP
+					IF col = 'retired_at' AND NEW.retired_at IS DISTINCT FROM OLD.retired_at THEN
+						changed := changed + 1;
+						IF OLD.retired_at IS NOT NULL THEN
+							RAISE EXCEPTION 'test %: % is already set', OLD.pk, col;
+						END IF;
+					END IF;
+				END LOOP;
+				IF changed = 0 THEN
+					RAISE EXCEPTION 'test % is append-only', OLD.pk;
+				END IF;
+				RETURN NEW;
+			END;
+			$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "UPDATE test SET note = 'other' WHERE pk = 1;",
+					ExpectedErr: "test 1 is append-only",
+				},
+				{
+					Query:    "UPDATE test SET retired_at = 'now' WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE test SET retired_at = 'later' WHERE pk = 1;",
+					ExpectedErr: "test 1: retired_at is already set",
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1, "now", "n"}},
+				},
+			},
+		},
+		{
 			Name: "DROP TRIGGER",
 			SetUpScript: []string{
 				`CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);`,
