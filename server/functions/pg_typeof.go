@@ -32,7 +32,8 @@ var pg_typeof = framework.Function1{
 	Return:             pgtypes.Regtype,
 	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Any},
 	IsNonDeterministic: true,
-	Strict:             true,
+	// The type of a NULL value is still its type, so this reports it rather than returning NULL, which is
+	// what a strict function would do.
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return t[0].ID.AsId(), nil
 	},

@@ -1361,6 +1361,25 @@ func TestFunctionsOID(t *testing.T) {
 func TestSystemInformationFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "pg_typeof",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_typeof(42), pg_typeof('abc'::text), pg_typeof(ARRAY['a']);`,
+					Expected: []sql.Row{{"integer", "text", "text[]"}},
+				},
+				{
+					// A null value still has a type, so its type is what gets reported.
+					Query:    `SELECT pg_typeof(NULL::int), pg_typeof(NULL::text[]);`,
+					Expected: []sql.Row{{"integer", "text[]"}},
+				},
+				{
+					// An untyped NULL has resolved to no type at all yet. PostgreSQL reports text here.
+					Query:    `SELECT pg_typeof(NULL);`,
+					Expected: []sql.Row{{"unknown"}},
+				},
+			},
+		},
+		{
 			Name:     "current_database",
 			Database: "test",
 			Assertions: []ScriptTestAssertion{
