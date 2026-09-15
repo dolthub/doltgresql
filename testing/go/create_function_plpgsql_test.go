@@ -132,6 +132,105 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "CASE over a non-integer expression",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_case_text(x TEXT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 'Hello', 'Hi' THEN
+			msg := 'greeting';
+		WHEN 'Bye' THEN
+			msg := 'farewell';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_bool(x BOOLEAN) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN true THEN
+			msg := 'yes';
+		ELSE
+			msg := 'no';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_numeric(x NUMERIC) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 1.5 THEN
+			msg := 'one point five';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_loop() RETURNS TEXT AS $$
+DECLARE
+	i INT := 0;
+	msg TEXT;
+	result TEXT := '';
+BEGIN
+	WHILE i < 3 LOOP
+		i := i + 1;
+		CASE i::TEXT
+			WHEN '2' THEN
+				msg := 'two';
+			ELSE
+				msg := 'n';
+		END CASE;
+		result := result || msg;
+	END LOOP;
+	RETURN result;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case_text('Hello');",
+					Expected: []sql.Row{{"greeting"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_text('Bye');",
+					Expected: []sql.Row{{"farewell"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_text('zzz');",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_bool(true);",
+					Expected: []sql.Row{{"yes"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_bool(false);",
+					Expected: []sql.Row{{"no"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_numeric(1.5);",
+					Expected: []sql.Row{{"one point five"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_numeric(2.5);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_loop();",
+					Expected: []sql.Row{{"ntwon"}},
+				},
+			},
+		},
+		{
 			// TODO: When no CASE statements match, and there is no ELSE block,
 			//       Postgres raises an exception. Unskip this test after we
 			//       add support for raising exceptions from functions.

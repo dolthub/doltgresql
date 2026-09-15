@@ -131,6 +131,29 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if iv.Type == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
 			}
+			if operation.Options[OptionRetypeTarget] == "true" {
+				schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				if err != nil {
+					return nil, err
+				}
+				if len(schema) != 1 {
+					return nil, errors.New("expression does not result in a single value")
+				}
+				valType, ok := schema[0].Type.(*pgtypes.DoltgresType)
+				if !ok {
+					if valType, err = pgtypes.FromGmsTypeToDoltgresType(schema[0].Type); err != nil {
+						return nil, err
+					}
+				}
+				var val any
+				if len(rows) > 0 {
+					val = rows[0][0]
+				}
+				if err = stack.SetVariableWithType(operation.Target, valType, val); err != nil {
+					return nil, err
+				}
+				break
+			}
 			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
 			if err != nil {
 				return nil, err
