@@ -17,11 +17,22 @@ package server
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/lib/pq/oid"
 	"github.com/sirupsen/logrus"
+
+	"github.com/dolthub/doltgresql/core/id"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // portalData records one bound portal belonging to a connection.
@@ -272,4 +283,144 @@ func (h *ConnectionHandler) sendDescribeResponse(fields []pgproto3.FieldDescript
 		return h.send(&pgproto3.RowDescription{Fields: fields})
 	}
 	return h.send(&pgproto3.NoData{})
+}
+
+// extractBindVarTypes infers parameter OIDs from an analyzed extended-query plan.
+func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error) {
+	types := make(map[string]uint32)
+	var err error
+	var extractBindVars func(ctx *sql.Context, n sql.Node, expr sql.Expression) bool
+	extractBindVars = func(ctx *sql.Context, n sql.Node, expr sql.Expression) bool {
+		if err != nil {
+			return false
+		}
+
+		switch e := expr.(type) {
+		// Subquery doesn't walk its Node child via Expressions, so we must walk it separately here.
+		case *plan.Subquery:
+			transform.InspectExpressionsWithNode(ctx, e.Query, extractBindVars)
+		case *expression.BindVar:
+			var typOID uint32
+			if doltgresType, ok := e.Type(ctx).(*pgtypes.DoltgresType); ok {
+				typOID = id.Cache().ToOID(doltgresType.ID.AsId())
+			} else if _, ok := e.Type(ctx).(sql.DeferredType); ok {
+				// Deferred LIMIT and OFFSET parameters have the PostgreSQL integer type expected by those clauses.
+				switch n.(type) {
+				case *plan.Limit, *plan.Offset:
+					typOID = uint32(oid.T_int4)
+				default:
+					typOID, err = VitessTypeToObjectID(e.Type(ctx))
+				}
+			} else {
+				// TODO: Remove uses of non-Doltgres types.
+				typOID, err = VitessTypeToObjectID(e.Type(ctx))
+			}
+			if err != nil {
+				err = errors.Wrapf(err, "could not determine OID for placeholder %s", e.Name)
+				return false
+			}
+			err = recordBindVarType(ctx, types, e.Name, typOID)
+		case *pgexprs.ExplicitCast:
+			if bindVar, ok := e.Child().(*expression.BindVar); ok {
+				var typOID uint32
+				if doltgresType, ok := e.Type(ctx).(*pgtypes.DoltgresType); ok {
+					typOID = id.Cache().ToOID(doltgresType.ID.AsId())
+				} else {
+					typOID, err = VitessTypeToObjectID(e.Type(ctx))
+				}
+				if err != nil {
+					err = errors.Wrapf(err, "could not determine OID for placeholder %s", bindVar.Name)
+					return false
+				}
+				err = recordBindVarType(ctx, types, bindVar.Name, typOID)
+				return false
+			}
+		// $1::text and similar get converted to a Convert expression wrapping the bind variable.
+		case *expression.Convert:
+			if bindVar, ok := e.Child.(*expression.BindVar); ok {
+				typOID, typeErr := VitessTypeToObjectID(e.Type(ctx))
+				if typeErr != nil {
+					err = errors.Wrapf(typeErr, "could not determine OID for placeholder %s", bindVar.Name)
+					return false
+				}
+				err = recordBindVarType(ctx, types, bindVar.Name, typOID)
+				return false
+			}
+		}
+		return true
+	}
+
+	transform.InspectExpressionsWithNode(ctx, queryPlan, extractBindVars)
+
+	// Insert nodes are special, as their source expressions are not returned by Expressions().
+	if insert, ok := queryPlan.(*plan.InsertInto); ok {
+		transform.InspectExpressionsWithNode(ctx, insert.Source, extractBindVars)
+		bindInsertSelect(ctx, insert, types)
+	}
+
+	typesArr := make([]uint32, len(types))
+	for name, typOID := range types {
+		idx, parseErr := strconv.ParseInt(strings.TrimPrefix(name, "v"), 10, 32)
+		if parseErr != nil {
+			return nil, errors.Wrapf(parseErr, "could not determine the index of placeholder %s", name)
+		}
+		if int(idx-1) >= len(types) {
+			return nil, errors.Errorf("could not determine the index of placeholder %s in slice of %d elements", name, len(types))
+		}
+		typesArr[idx-1] = typOID
+	}
+	return typesArr, err
+}
+
+// bindInsertSelect infers direct SELECT bind variables from their corresponding INSERT destination columns.
+func bindInsertSelect(ctx *sql.Context, insert *plan.InsertInto, types map[string]uint32) {
+	project, ok := insert.Source.(*plan.Project)
+	if !ok {
+		return
+	}
+	destinationTypes := make(map[string]sql.Type)
+	for _, col := range insert.Destination.Schema(ctx) {
+		destinationTypes[strings.ToLower(col.Name)] = col.Type
+	}
+	unknownOID := id.Cache().ToOID(pgtypes.Unknown.ID.AsId())
+	for i, projection := range project.Projections {
+		bindVar := pgexprs.UnwrapBindVar(projection)
+		if bindVar == nil || i >= len(insert.ColumnNames) || types[bindVar.Name] != unknownOID {
+			continue
+		}
+		destinationType, ok := destinationTypes[strings.ToLower(insert.ColumnNames[i])]
+		if !ok {
+			continue
+		}
+		if doltgresType, ok := destinationType.(*pgtypes.DoltgresType); ok {
+			types[bindVar.Name] = id.Cache().ToOID(doltgresType.ID.AsId())
+		} else if typOID, typeErr := VitessTypeToObjectID(destinationType); typeErr == nil {
+			types[bindVar.Name] = typOID
+		}
+	}
+}
+
+// recordBindVarType records one inferred parameter type after checking repeated uses for compatibility.
+func recordBindVarType(ctx *sql.Context, types map[string]uint32, name string, typOID uint32) error {
+	if existingOID, ok := types[name]; ok {
+		if err := checkCompatibleTypes(ctx, existingOID, typOID, name); err != nil {
+			return err
+		}
+	}
+	types[name] = typOID
+	return nil
+}
+
+// checkCompatibleTypes checks whether the types inferred for repeated uses of a parameter are compatible.
+func checkCompatibleTypes(ctx *sql.Context, existingOID, newOID uint32, name string) error {
+	existing := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(existingOID)))
+	newType := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(newOID)))
+	if existing == nil || newType == nil {
+		// TODO: User-defined types are not in the built-in map, so their compatibility is not checked.
+		return nil
+	}
+	if _, _, err := framework.FindCommonType(ctx, []*pgtypes.DoltgresType{existing, newType}); err != nil {
+		return errors.Errorf("parameter %s is used for incompatible types: %s and %s", name, existing.String(), newType.String())
+	}
+	return nil
 }

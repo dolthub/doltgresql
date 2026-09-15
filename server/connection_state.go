@@ -14,30 +14,30 @@
 
 package server
 
-// connectionModeKind identifies the mutually exclusive frontend protocol mode owning the connection.
-type connectionModeKind byte
+// protocolStateKind identifies the mutually exclusive frontend protocol state owning the connection.
+type protocolStateKind byte
 
 const (
-	invalidConnectionMode connectionModeKind = iota
-	readyConnectionMode
-	extendedConnectionMode
-	discardUntilSyncConnectionMode
-	copyInConnectionMode
-	closingConnectionMode
+	invalidProtocolState protocolStateKind = iota
+	readyProtocolState
+	extendedQueryProtocolState
+	discardUntilSyncProtocolState
+	copyInProtocolState
+	closingProtocolState
 )
 
-// connectionMode records the active protocol mode and its state-specific COPY payload.
-type connectionMode struct {
-	kind connectionModeKind
+// protocolState records the active protocol state and its state-specific COPY payload.
+type protocolState struct {
+	kind protocolStateKind
 	copy *copyInState
 }
 
 // valid reports whether the state kind and optional COPY payload agree.
-func (s connectionMode) valid() bool {
+func (s protocolState) valid() bool {
 	switch s.kind {
-	case copyInConnectionMode:
+	case copyInProtocolState:
 		return s.copy != nil
-	case readyConnectionMode, extendedConnectionMode, discardUntilSyncConnectionMode, closingConnectionMode:
+	case readyProtocolState, extendedQueryProtocolState, discardUntilSyncProtocolState, closingProtocolState:
 		return s.copy == nil
 	default:
 		return false
@@ -47,37 +47,37 @@ func (s connectionMode) valid() bool {
 // connectionState owns every transaction and protocol phase transition for a connection.
 type connectionState struct {
 	transaction transactionState
-	protocol    connectionMode
+	protocol    protocolState
 }
 
 // newConnectionState returns the initial state for a newly authenticated connection.
 func newConnectionState() connectionState {
 	return connectionState{
 		transaction: idleTransactionState,
-		protocol:    connectionMode{kind: readyConnectionMode},
+		protocol:    protocolState{kind: readyProtocolState},
 	}
 }
 
 // beginExtended enters an extended-query batch unless another exclusive operation owns the connection.
 func (s *connectionState) beginExtended() {
-	if s.protocol.kind == readyConnectionMode {
-		s.protocol = connectionMode{kind: extendedConnectionMode}
+	if s.protocol.kind == readyProtocolState {
+		s.protocol = protocolState{kind: extendedQueryProtocolState}
 	}
 }
 
 // finishExtended returns the connection to normal command dispatch.
 func (s *connectionState) finishExtended() {
-	s.protocol = connectionMode{kind: readyConnectionMode}
+	s.protocol = protocolState{kind: readyProtocolState}
 }
 
 // discardUntilSync rejects the remainder of an extended-query batch.
 func (s *connectionState) discardUntilSync() {
-	s.protocol = connectionMode{kind: discardUntilSyncConnectionMode}
+	s.protocol = protocolState{kind: discardUntilSyncProtocolState}
 }
 
-// closeProtocol transitions the connection into its terminal protocol mode.
+// closeProtocol transitions the connection into its terminal protocol state.
 func (s *connectionState) closeProtocol() {
-	s.protocol = connectionMode{kind: closingConnectionMode}
+	s.protocol = protocolState{kind: closingProtocolState}
 }
 
 // beginCopy transfers exclusive protocol ownership to a valid COPY FROM STDIN operation.
@@ -86,8 +86,8 @@ func (s *connectionState) beginCopy(copyState *copyInState) bool {
 		return false
 	}
 	switch s.protocol.kind {
-	case readyConnectionMode, extendedConnectionMode:
-		s.protocol = connectionMode{kind: copyInConnectionMode, copy: copyState}
+	case readyProtocolState, extendedQueryProtocolState:
+		s.protocol = protocolState{kind: copyInProtocolState, copy: copyState}
 		return true
 	default:
 		return false
@@ -96,9 +96,9 @@ func (s *connectionState) beginCopy(copyState *copyInState) bool {
 
 // finishCopy releases COPY ownership only when copyState is the active operation.
 func (s *connectionState) finishCopy(copyState *copyInState) bool {
-	if s.protocol.kind != copyInConnectionMode || s.protocol.copy != copyState {
+	if s.protocol.kind != copyInProtocolState || s.protocol.copy != copyState {
 		return false
 	}
-	s.protocol = connectionMode{kind: readyConnectionMode}
+	s.protocol = protocolState{kind: readyProtocolState}
 	return true
 }

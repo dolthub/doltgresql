@@ -59,7 +59,7 @@ func (h *ConnectionHandler) handleMessageError(err error) {
 		return
 	}
 	switch mode.kind {
-	case copyInConnectionMode:
+	case copyInProtocolState:
 		protocol := mode.copy
 		continuation := protocol.continuation
 		h.rollbackCopyTransaction(protocol.transaction)
@@ -83,12 +83,12 @@ func (h *ConnectionHandler) handleMessageError(err error) {
 			h.state.closeProtocol()
 			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN has an invalid protocol continuation"))
 		}
-	case extendedConnectionMode:
+	case extendedQueryProtocolState:
 		h.state.discardUntilSync()
 		h.handleOperationError(err)
-	case discardUntilSyncConnectionMode, closingConnectionMode:
+	case discardUntilSyncProtocolState, closingProtocolState:
 		h.handleOperationError(err)
-	case readyConnectionMode:
+	case readyProtocolState:
 		h.endOfMessages(err)
 	default:
 		h.state.closeProtocol()

@@ -220,7 +220,7 @@ func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
 
 				h.handleMessageError(errors.Errorf("receiveMessage recovered panic: %v: %s",
 					r, stackTrace))
-				stop = h.state.protocol.kind == closingConnectionMode
+				stop = h.state.protocol.kind == closingProtocolState
 			}
 		}()
 	}
@@ -262,17 +262,17 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) messageResult {
 		return messageResult{action: closeConnection, err: errors.New("invalid connection protocol mode")}
 	}
 	switch mode.kind {
-	case copyInConnectionMode:
+	case copyInProtocolState:
 		return h.handleCopyMessage(mode.copy, msg)
-	case closingConnectionMode:
+	case closingProtocolState:
 		return closeResult()
-	case discardUntilSyncConnectionMode:
+	case discardUntilSyncProtocolState:
 		if _, ok := msg.(*pgproto3.Sync); ok {
 			h.state.finishExtended()
 			return readyResult(h.commitImplicitTransaction())
 		}
 		return continueResult()
-	case readyConnectionMode, extendedConnectionMode:
+	case readyProtocolState, extendedQueryProtocolState:
 		return h.handleNormalMessage(msg)
 	default:
 		h.state.closeProtocol()

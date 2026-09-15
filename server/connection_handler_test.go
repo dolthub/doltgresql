@@ -36,45 +36,45 @@ func TestCastSQLErrorIntegerOutOfRange(t *testing.T) {
 // TestConnectionStateProtocolTransitions verifies that exclusive protocol phases retain only their own data.
 func TestConnectionStateProtocolTransitions(t *testing.T) {
 	state := newConnectionState()
-	require.Equal(t, readyConnectionMode, state.protocol.kind)
+	require.Equal(t, readyProtocolState, state.protocol.kind)
 
 	state.beginExtended()
-	require.Equal(t, extendedConnectionMode, state.protocol.kind)
+	require.Equal(t, extendedQueryProtocolState, state.protocol.kind)
 	state.discardUntilSync()
-	require.Equal(t, discardUntilSyncConnectionMode, state.protocol.kind)
+	require.Equal(t, discardUntilSyncProtocolState, state.protocol.kind)
 	state.finishExtended()
-	require.Equal(t, readyConnectionMode, state.protocol.kind)
+	require.Equal(t, readyProtocolState, state.protocol.kind)
 
 	execution := &simpleQueryExecution{nextStatement: 1}
 	copyState := newCopyInState(nil, newSimpleQueryCopyContinuation(execution))
 	require.True(t, state.beginCopy(copyState))
-	require.Equal(t, copyInConnectionMode, state.protocol.kind)
+	require.Equal(t, copyInProtocolState, state.protocol.kind)
 	require.Same(t, copyState, state.protocol.copy)
 	continuation := copyState.continuation
 	require.True(t, state.finishCopy(copyState))
 	require.Equal(t, newSimpleQueryCopyContinuation(execution), continuation)
-	require.Equal(t, readyConnectionMode, state.protocol.kind)
+	require.Equal(t, readyProtocolState, state.protocol.kind)
 	state.closeProtocol()
-	require.Equal(t, closingConnectionMode, state.protocol.kind)
+	require.Equal(t, closingProtocolState, state.protocol.kind)
 }
 
-// TestConnectionModeValidation verifies mode tags accept only their corresponding payload shape.
-func TestConnectionModeValidation(t *testing.T) {
+// TestProtocolStateValidation verifies protocol-state tags accept only their corresponding payload shape.
+func TestProtocolStateValidation(t *testing.T) {
 	copyState := newCopyInState(nil, newExtendedQueryCopyContinuation())
 	tests := []struct {
 		name  string
-		state connectionMode
+		state protocolState
 		valid bool
 	}{
 		{name: "zero value"},
-		{name: "unknown kind", state: connectionMode{kind: connectionModeKind(255)}},
-		{name: "ready", state: connectionMode{kind: readyConnectionMode}, valid: true},
-		{name: "ready with copy", state: connectionMode{kind: readyConnectionMode, copy: copyState}},
-		{name: "extended", state: connectionMode{kind: extendedConnectionMode}, valid: true},
-		{name: "discard", state: connectionMode{kind: discardUntilSyncConnectionMode}, valid: true},
-		{name: "closing", state: connectionMode{kind: closingConnectionMode}, valid: true},
-		{name: "copy without state", state: connectionMode{kind: copyInConnectionMode}},
-		{name: "copy", state: connectionMode{kind: copyInConnectionMode, copy: copyState}, valid: true},
+		{name: "unknown kind", state: protocolState{kind: protocolStateKind(255)}},
+		{name: "ready", state: protocolState{kind: readyProtocolState}, valid: true},
+		{name: "ready with copy", state: protocolState{kind: readyProtocolState, copy: copyState}},
+		{name: "extended", state: protocolState{kind: extendedQueryProtocolState}, valid: true},
+		{name: "discard", state: protocolState{kind: discardUntilSyncProtocolState}, valid: true},
+		{name: "closing", state: protocolState{kind: closingProtocolState}, valid: true},
+		{name: "copy without state", state: protocolState{kind: copyInProtocolState}},
+		{name: "copy", state: protocolState{kind: copyInProtocolState, copy: copyState}, valid: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -87,7 +87,7 @@ func TestConnectionModeValidation(t *testing.T) {
 func TestConnectionStateCopyIdentity(t *testing.T) {
 	state := newConnectionState()
 	require.False(t, state.beginCopy(nil))
-	require.Equal(t, readyConnectionMode, state.protocol.kind)
+	require.Equal(t, readyProtocolState, state.protocol.kind)
 
 	active := newCopyInState(nil, newExtendedQueryCopyContinuation())
 	stale := newCopyInState(nil, newExtendedQueryCopyContinuation())
@@ -97,17 +97,17 @@ func TestConnectionStateCopyIdentity(t *testing.T) {
 	require.False(t, state.finishCopy(stale))
 	require.Same(t, active, state.protocol.copy)
 	require.True(t, state.finishCopy(active))
-	require.Equal(t, readyConnectionMode, state.protocol.kind)
+	require.Equal(t, readyProtocolState, state.protocol.kind)
 	state.beginExtended()
 	require.True(t, state.beginCopy(active))
 	require.True(t, state.finishCopy(active))
 
 	state.discardUntilSync()
 	require.False(t, state.beginCopy(active))
-	require.Equal(t, discardUntilSyncConnectionMode, state.protocol.kind)
+	require.Equal(t, discardUntilSyncProtocolState, state.protocol.kind)
 	state.closeProtocol()
 	require.False(t, state.beginCopy(active))
-	require.Equal(t, closingConnectionMode, state.protocol.kind)
+	require.Equal(t, closingProtocolState, state.protocol.kind)
 }
 
 // TestCopyContinuationValidation verifies that only constructed, internally consistent continuations are valid.
@@ -152,7 +152,7 @@ func TestFinishCopyRejectsInvalidContinuations(t *testing.T) {
 			result := handler.finishCopy(copyState, nil)
 			require.ErrorContains(t, result.err, "invalid protocol continuation")
 			require.Equal(t, closeConnection, result.action)
-			require.Equal(t, closingConnectionMode, handler.state.protocol.kind)
+			require.Equal(t, closingProtocolState, handler.state.protocol.kind)
 			require.Equal(t, closeConnection, handler.handleMessage(nil).action)
 		})
 	}
@@ -170,7 +170,7 @@ func TestReceiveMessagePanicPreservesTerminalClose(t *testing.T) {
 	stop, err := handler.receiveMessage()
 	require.NoError(t, err)
 	require.True(t, stop)
-	require.Equal(t, closingConnectionMode, handler.state.protocol.kind)
+	require.Equal(t, closingProtocolState, handler.state.protocol.kind)
 	require.Equal(t, closeConnection, handler.handleMessage(&pgproto3.Query{String: "SELECT 1"}).action)
 }
 
