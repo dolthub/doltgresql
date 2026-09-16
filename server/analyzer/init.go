@@ -57,6 +57,7 @@ const (
 	ruleId_ResolveTableForDDL                                            // resolveTableForDDL
 	ruleId_AddLikePrefixRanges                                           // addLikePrefixRanges
 	ruleId_ParenthesizeColumnDefaults                                    // parenthesizeColumnDefaults
+	ruleId_HoistInsertTriggers                                           // hoistInsertTriggers
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -120,6 +121,9 @@ func Init() {
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.QuoteDefaultColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_ParenthesizeColumnDefaults, Apply: ParenthesizeColumnDefaults},
+		// HoistInsertTriggers must run after GMS's 'resolveInsertRows' rule, which is what adds the
+		// projection it moves the triggers above.
+		analyzer.Rule{Id: ruleId_HoistInsertTriggers, Apply: HoistInsertTriggers},
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
 		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},

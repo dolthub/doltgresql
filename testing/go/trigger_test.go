@@ -23,6 +23,44 @@ import (
 func TestCreateTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "BEFORE INSERT, with columns omitted from or reordered by the INSERT",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, selector TEXT DEFAULT 'DEFAULTED', result TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					NEW.result := 'saw_' || NEW.selector || '_' || NEW.pk::text;
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// `result` is not named by the INSERT, so the trigger is the only thing that sets it.
+					Query:    "INSERT INTO test (pk, selector) VALUES (1, 'TRIGGER_B');",
+					Expected: []sql.Row{},
+				},
+				{
+					// NEW's fields are the table's columns, whatever order the INSERT names them in.
+					Query:    "INSERT INTO test (selector, pk) VALUES ('DIRECT_A', 2);",
+					Expected: []sql.Row{},
+				},
+				{
+					// An omitted column reaches the trigger holding its default.
+					Query:    "INSERT INTO test (pk) VALUES (3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "TRIGGER_B", "saw_TRIGGER_B_1"},
+						{2, "DIRECT_A", "saw_DIRECT_A_2"},
+						{3, "DEFAULTED", "saw_DEFAULTED_3"},
+					},
+				},
+			},
+		},
+		{
 			Name: "BEFORE INSERT",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
