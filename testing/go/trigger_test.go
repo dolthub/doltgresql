@@ -770,5 +770,219 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "OLD.* IS DISTINCT FROM NEW.* in a trigger",
+			SetUpScript: []string{
+				"CREATE TABLE t3336_issue (a INT);",
+				"INSERT INTO t3336_issue VALUES (1);",
+				"CREATE FUNCTION f3336_issue() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'the trigger ran'; RETURN NEW; END $$;",
+				"CREATE TRIGGER tr BEFORE UPDATE ON t3336_issue FOR EACH ROW WHEN (old.* IS DISTINCT FROM new.*) EXECUTE FUNCTION f3336_issue();",
+				"CREATE TABLE t3336 (a INT PRIMARY KEY, b TEXT);",
+				"CREATE TABLE t3336_log (a INT, src TEXT);",
+				"CREATE FUNCTION f3336_when() RETURNS trigger AS $$ BEGIN INSERT INTO t3336_log VALUES (NEW.a, 'when'); RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE FUNCTION f3336_body() RETURNS trigger AS $$ BEGIN IF OLD.* IS DISTINCT FROM NEW.* THEN INSERT INTO t3336_log VALUES (NEW.a, 'body'); END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER tr3336_when AFTER UPDATE ON t3336 FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*) EXECUTE FUNCTION f3336_when();",
+				"CREATE TRIGGER tr3336_body AFTER UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_body();",
+				"INSERT INTO t3336 VALUES (1, 'x'), (2, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE t3336_issue SET a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3336_issue;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT ROW(2, NULL::TEXT) IS DISTINCT FROM ROW(2, 'y'::TEXT), ROW(2, NULL::TEXT) IS DISTINCT FROM ROW(2, NULL::TEXT), ROW(2, NULL::TEXT) IS NOT DISTINCT FROM ROW(2, NULL::TEXT), ROW(1, 2) IS DISTINCT FROM ROW(1, 3), ROW(1, 2) IS NOT DISTINCT FROM ROW(1, 2);",
+					Expected: []sql.Row{{"t", "f", "t", "t", "t"}},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'x' WHERE a = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM t3336_log;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'y' WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = NULL WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = NULL WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'z' WHERE a = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3336_log ORDER BY a, src;",
+					Expected: []sql.Row{{1, "body"}, {1, "when"}, {2, "body"}, {2, "body"}, {2, "when"}, {2, "when"}},
+				},
+			},
+		},
+		{
+			Name: "Whole-row references outside of a record comparison are rejected",
+			SetUpScript: []string{
+				"CREATE TABLE t3336 (a INT PRIMARY KEY, b TEXT);",
+				"CREATE TABLE t3336_one (a INT);",
+				"CREATE TABLE t3336_bool (b BOOLEAN);",
+				"CREATE TABLE t3336_log2 (v TEXT);",
+				"INSERT INTO t3336 VALUES (1, 'x');",
+				"INSERT INTO t3336_one VALUES (1);",
+				"INSERT INTO t3336_bool VALUES (true);",
+				"CREATE FUNCTION f3336() RETURNS TRIGGER AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE FUNCTION f3336_assign() RETURNS TRIGGER AS $$ DECLARE v INT; BEGIN v := NEW.*; INSERT INTO t3336_log2 VALUES ('assign ' || v); RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE FUNCTION f3336_if() RETURNS TRIGGER AS $$ BEGIN IF NEW.* THEN INSERT INTO t3336_log2 VALUES ('if'); END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE FUNCTION f3336_eq() RETURNS TRIGGER AS $$ BEGIN IF NEW.* = 1 THEN RETURN NEW; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE FUNCTION f3336_raise() RETURNS TRIGGER AS $$ BEGIN RAISE EXCEPTION 'val %', NEW.*; END; $$ LANGUAGE plpgsql;",
+				"CREATE FUNCTION f3336_ret() RETURNS TRIGGER AS $$ BEGIN RETURN NEW.*; END; $$ LANGUAGE plpgsql;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TRIGGER tr3336_bad BEFORE UPDATE ON t3336 FOR EACH ROW WHEN (OLD.*) EXECUTE FUNCTION f3336();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
+					ExpectedErr: "argument of WHEN must be type boolean",
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_bad ON t3336;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_bad2 BEFORE UPDATE ON t3336 FOR EACH ROW WHEN (OLD.* = 1) EXECUTE FUNCTION f3336();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
+					ExpectedErr: "operator does not exist",
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_bad2 ON t3336;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_assign BEFORE UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_assign();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
+					ExpectedErr: "assignment source returned 2 columns",
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_assign ON t3336;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_if BEFORE UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_if();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
+					ExpectedErr: "query returned 2 columns",
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_if ON t3336;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_eq BEFORE UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_eq();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
+					ExpectedErr: "operator does not exist",
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_eq ON t3336;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_raise BEFORE UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_raise();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
+					ExpectedErr: "query returned 2 columns",
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_raise ON t3336;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_ret BEFORE UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_ret();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
+					ExpectedErr: "query returned 2 columns",
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_ret ON t3336;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3336;",
+					Expected: []sql.Row{{1, "x"}},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_assign1 BEFORE UPDATE ON t3336_one FOR EACH ROW EXECUTE FUNCTION f3336_assign();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336_one SET a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_assign1 ON t3336_one;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_raise1 BEFORE UPDATE ON t3336_one FOR EACH ROW EXECUTE FUNCTION f3336_raise();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t3336_one SET a = 3;",
+					ExpectedErr: "val 3",
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_raise1 ON t3336_one;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER tr3336_if1 BEFORE UPDATE ON t3336_bool FOR EACH ROW EXECUTE FUNCTION f3336_if();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336_bool SET b = true;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336_bool SET b = false;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP TRIGGER tr3336_if1 ON t3336_bool;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3336_log2 ORDER BY v;",
+					Expected: []sql.Row{{"assign 2"}, {"if"}},
+				},
+				{
+					Query:    "SELECT * FROM t3336_one;",
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
 	})
 }

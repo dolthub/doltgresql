@@ -130,7 +130,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if iv.Type == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
 			}
-			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "assignment source")
+			if err != nil {
+				return nil, err
+			}
+			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, bindings)
 			if err != nil {
 				return nil, err
 			}
@@ -349,7 +353,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				}
 			}
 		case OpCode_If:
-			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, operation.SecondaryData)
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "query")
+			if err != nil {
+				return nil, err
+			}
+			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, bindings)
 			if err != nil {
 				return nil, err
 			}
@@ -442,7 +450,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 					}
 				}
 			}
-			val, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "query")
+			if err != nil {
+				return nil, err
+			}
+			val, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), bindings)
 			if err != nil {
 				return nil, err
 			}
@@ -722,7 +734,11 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 				if normalized, isRef := NormalizeIdentifierPath(currentParam); isRef {
 					lookupName = normalized
 				}
-				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", []string{lookupName}, false)
+				bindings, err := stack.ExpandWholeRowReference("$1", []string{lookupName}, "query")
+				if err != nil {
+					return "", err
+				}
+				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", bindings, false)
 				if varFound {
 					if err != nil {
 						return "", err

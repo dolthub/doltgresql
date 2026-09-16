@@ -92,7 +92,7 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Stateme
 		}
 		whenOps, err = plpgsql.Parse(fmt.Sprintf(`CREATE FUNCTION when_wrapper() RETURNS TRIGGER AS $$
 BEGIN
-	RETURN %s;
+	RETURN (%s);
 END;
 $$ LANGUAGE plpgsql;`, matches[1]))
 		if err != nil {
