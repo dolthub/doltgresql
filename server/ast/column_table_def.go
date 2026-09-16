@@ -164,7 +164,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		}
 		var checkConstraints = make([]*vitess.ConstraintDefinition, len(node.CheckExprs))
 		for i, checkExpr := range node.CheckExprs {
-			expr, err := nodeExpr(ctx, checkExpr.Expr)
+			expr, err := nodeCheckExpr(ctx, checkExpr.Expr)
 			if err != nil {
 				return nil, err
 			}

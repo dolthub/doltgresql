@@ -474,6 +474,124 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "nested parentheses are kept in default and check expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t3324 (a INT PRIMARY KEY, b INT DEFAULT (1 + 1) * 2, c INT DEFAULT 2 * (3 + 1) + 1, d INT DEFAULT -(1 + 1), e INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, f INT DEFAULT (((1 + 2)) * ((3))), g INT DEFAULT 10 - (4 - 1), h INT DEFAULT (2 + 3) % 4, i BOOLEAN DEFAULT (NOT (1 = 1 AND 2 = 2)), j INT DEFAULT abs(1 - 3) * 2, k TEXT DEFAULT ('a' || 'b') || 'c', l INT DEFAULT (1 + 2)::INT * 2, m INT DEFAULT -(-1), n BOOLEAN DEFAULT ((1 IS NULL) IS NULL), CONSTRAINT chk3324 CHECK (((a + 1) * 2) > 3), CONSTRAINT chk3324b CHECK (NOT (a = 0 OR a + 1 = 0) AND a - (a - 1) = 1));",
+				"INSERT INTO t3324 (a) VALUES (1);",
+				"ALTER TABLE t3324 ADD COLUMN o INT DEFAULT (1 + 1) * 2;",
+				"ALTER TABLE t3324 ALTER COLUMN o SET DEFAULT 2 * (1 + 1) + 1;",
+				"ALTER TABLE t3324 ADD CONSTRAINT chk3324c CHECK ((a * 2) - 1 > 0);",
+				"INSERT INTO t3324 (a) VALUES (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t3324 ORDER BY a;",
+					Expected: []sql.Row{{1, 4, 9, -2, 4, 9, 7, 1, "f", 4, "abc", 6, 1, "f", 4}, {2, 4, 9, -2, 6, 9, 7, 1, "f", 4, "abc", 6, 1, "f", 5}},
+				},
+				{
+					Query:       "INSERT INTO t3324 (a) VALUES (0);",
+					ExpectedErr: "violated",
+				},
+			},
+		},
+		{
+			Name: "nested parentheses in generated and check expressions survive ALTER TABLE",
+			SetUpScript: []string{
+				"CREATE TABLE t3324b (a INT NOT NULL, b INT DEFAULT (1 + 1) * 2, c INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, d INT GENERATED ALWAYS AS (2 * (a + 1) - (a - 1)) STORED, CHECK ((a + 1) * 2 > 3));",
+				"INSERT INTO t3324b (a) VALUES (1);",
+				"ALTER TABLE t3324b ADD PRIMARY KEY (a);",
+				"INSERT INTO t3324b (a) VALUES (2);",
+				"ALTER TABLE t3324b ADD COLUMN e INT DEFAULT (3 + 4) * 5;",
+				"INSERT INTO t3324b (a) VALUES (3);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO t3324b (a) VALUES (0);",
+					ExpectedErr: "violated",
+				},
+				{
+					Query:    "SELECT * FROM t3324b ORDER BY a;",
+					Expected: []sql.Row{{1, 4, 4, 4, 35}, {2, 4, 6, 5, 35}, {3, 4, 8, 6, 35}},
+				},
+			},
+		},
+		{
+			Name: "nested parentheses are kept on the right side and under unary minus in generated expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t3324c (a INT, b INT GENERATED ALWAYS AS (-(a + 1)) STORED, c INT GENERATED ALWAYS AS (2 * (a + 1)) STORED, d INT GENERATED ALWAYS AS (a - (1 - 2)) STORED, e INT DEFAULT ((1 + 2) * 3));",
+				"INSERT INTO t3324c (a) VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t3324c;",
+					Expected: []sql.Row{{1, -2, 4, 2, 9}},
+				},
+			},
+		},
+		{
+			Name: "nested parentheses are kept around LIKE, IN, subscripts, and double negation",
+			SetUpScript: []string{
+				"CREATE TABLE t3324d (a TEXT, b BOOLEAN DEFAULT (('abc' LIKE 'a%') IS NOT NULL), c BOOLEAN DEFAULT ((1 + 1) IN (2, 3)), d INT DEFAULT ((ARRAY[1] || ARRAY[2])[1]), e INT DEFAULT -(-1), f INT DEFAULT (- (- 2)), CHECK ((a || 'x') LIKE 'a%'));",
+				"INSERT INTO t3324d (a) VALUES ('a');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO t3324d (a) VALUES ('b');",
+					ExpectedErr: "violated",
+				},
+				{
+					Query:    "SELECT * FROM t3324d;",
+					Expected: []sql.Row{{"a", "t", "t", 1, 1, 2}},
+				},
+			},
+		},
+		{
+			Name: "nested parentheses are kept in check constraints using NOT, AND, OR, BETWEEN, CAST, and LIKE",
+			SetUpScript: []string{
+				"CREATE TABLE tc3324 (a INT, b INT, CONSTRAINT c1 CHECK (NOT (a = 0 OR a + 1 = 0) AND a - (a - 1) = 1), CONSTRAINT c2 CHECK ((a BETWEEN 1 AND 10) OR (b IS NULL)), CONSTRAINT c3 CHECK (((a + 1) * 2) > 3), CONSTRAINT c4 CHECK (NOT ((a + b) > 100)), CONSTRAINT c5 CHECK (CAST(a + 1 AS INT) > 0), CONSTRAINT c6 CHECK ((a || '') NOT LIKE 'x%'));",
+				"INSERT INTO tc3324 VALUES (1, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO tc3324 VALUES (0, 1);",
+					ExpectedErr: "c1",
+				},
+				{
+					Query:       "INSERT INTO tc3324 VALUES (50, 60);",
+					ExpectedErr: "c2",
+				},
+				{
+					Query:       "INSERT INTO tc3324 VALUES (-1, 5);",
+					ExpectedErr: "c1",
+				},
+				{
+					Query:       "INSERT INTO tc3324 VALUES (5, 96);",
+					ExpectedErr: "c4",
+				},
+				{
+					Query:    "INSERT INTO tc3324 VALUES (2, 3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM tc3324 ORDER BY a;",
+					Expected: []sql.Row{{1, nil}, {2, 3}},
+				},
+			},
+		},
+		{
+			Name: "generated column and default with nested parentheses match the equivalent SELECT expressions",
+			SetUpScript: []string{
+				"CREATE TABLE tx3324 (a INT, b INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, c INT DEFAULT ((1 + 2) * 3));",
+				"INSERT INTO tx3324 (a) VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT a, b, (a + 1) * 2 AS expected_b, c, (1 + 2) * 3 AS expected_c FROM tx3324;",
+					Expected: []sql.Row{{1, 4, 4, 9, 9}},
+				},
+			},
+		},
 	})
 }
 
