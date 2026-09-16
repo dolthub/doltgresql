@@ -133,6 +133,12 @@ type interpreterVariable struct {
 type InterpreterVariableReference struct {
 	Type  *pgtypes.DoltgresType
 	Value *any
+	// Record is the shape of a reference to a record as a whole. It is nil for any other reference, and also
+	// for a record that has not been assigned yet, which IsRecord distinguishes.
+	Record sql.Schema
+	// IsRecord reports whether the reference is to a record as a whole. Such a reference has no usable type,
+	// since its value is a row rather than a single value, so callers format the fields in Record instead.
+	IsRecord bool
 }
 
 // InterpreterScopeDetails contains all of the details that are relevant to a particular scope.
@@ -238,8 +244,10 @@ func (is *InterpreterStack) GetVariableWithError(name string) (InterpreterVariab
 	if iv := is.findVariable(name); iv != nil {
 		if len(fieldName) == 0 {
 			return InterpreterVariableReference{
-				Type:  iv.Type,
-				Value: &iv.Value,
+				Type:     iv.Type,
+				Value:    &iv.Value,
+				Record:   iv.Record,
+				IsRecord: iv.IsRecord,
 			}, nil
 		} else if len(iv.Record) > 0 {
 			if fieldName == "*" {

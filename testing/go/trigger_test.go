@@ -986,3 +986,232 @@ $$ LANGUAGE plpgsql;`,
 		},
 	})
 }
+
+// TestTriggerWholeRecordReference covers a trigger body that references NEW or OLD as a whole rather than a
+// field of it, which is what passing the row to a function such as to_jsonb() does.
+func TestTriggerWholeRecordReference(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "whole record passed to a function",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				"CREATE TABLE log (id SERIAL PRIMARY KEY, which TEXT, j JSONB);",
+				"INSERT INTO test VALUES (1, 'hi');",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				DECLARE
+					old_v jsonb;
+					new_v jsonb;
+				BEGIN
+					old_v := to_jsonb(OLD);
+					new_v := to_jsonb(NEW);
+					INSERT INTO log (which, j) VALUES ('old', old_v), ('new', new_v);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE test SET v1 = 'bye' WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT which, j::text FROM log ORDER BY id;",
+					Expected: []sql.Row{
+						{"old", `{"pk": 1, "v1": "hi"}`},
+						{"new", `{"pk": 1, "v1": "bye"}`},
+					},
+				},
+			},
+		},
+		{
+			Name: "whole record as text",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT, b BOOL);",
+				"CREATE TABLE log (id SERIAL PRIMARY KEY, t TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log (t) VALUES (NEW::text);
+					RAISE NOTICE 'row: %', NEW;
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `INSERT INTO test VALUES (1, 'a,b"c', true);`,
+					Expected:        []sql.Row{},
+					ExpectedNotices: []ExpectedNotice{{Severity: "NOTICE", Message: `row: (1,"a,b\"c",t)`}},
+				},
+				{
+					Query:    "SELECT t FROM log ORDER BY id;",
+					Expected: []sql.Row{{`(1,"a,b\"c",t)`}},
+				},
+			},
+		},
+		{
+			Name: "whole record with a NULL field",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				"CREATE TABLE log (id SERIAL PRIMARY KEY, j TEXT, t TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log (j, t) VALUES (to_jsonb(NEW)::text, NEW::text);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO test VALUES (1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT j, t FROM log ORDER BY id;",
+					Expected: []sql.Row{{`{"pk": 1, "v1": null}`, "(1,)"}},
+				},
+			},
+		},
+		{
+			Name: "whole record whose field is named like the record",
+			SetUpScript: []string{
+				// A field named `record` collides with the alias the row is rendered under.
+				"CREATE TABLE test (pk INT PRIMARY KEY, record TEXT);",
+				"CREATE TABLE log (id SERIAL PRIMARY KEY, j TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log (j) VALUES (to_jsonb(NEW)::text);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO test VALUES (1, 'hi');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT j FROM log ORDER BY id;",
+					Expected: []sql.Row{{`{"pk": 1, "record": "hi"}`}},
+				},
+			},
+		},
+		{
+			Name: "records compared as a whole",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				"INSERT INTO test VALUES (1, 'hi'), (2, 'there');",
+				"CREATE TABLE log (id SERIAL PRIMARY KEY, msg TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					IF NEW IS DISTINCT FROM OLD THEN
+						INSERT INTO log (msg) VALUES ('changed ' || NEW.pk::text);
+					ELSE
+						INSERT INTO log (msg) VALUES ('same ' || NEW.pk::text);
+					END IF;
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE test SET v1 = 'hi' WHERE pk IN (1, 2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT msg FROM log ORDER BY id;",
+					Expected: []sql.Row{{"same 1"}, {"changed 2"}},
+				},
+			},
+		},
+		{
+			Name: "records compared as a whole when a field leaves NULL",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT, v2 TEXT);",
+				"INSERT INTO test VALUES (1, 'hi', NULL);",
+				"CREATE TABLE log (id SERIAL PRIMARY KEY, msg TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					IF OLD IS DISTINCT FROM NEW THEN
+						INSERT INTO log (msg) VALUES ('changed ' || NEW.pk::text);
+					ELSE
+						INSERT INTO log (msg) VALUES ('same ' || NEW.pk::text);
+					END IF;
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE test SET v1 = 'bye' WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					// A field going from NULL to a value is still a difference between the two records.
+					Query:    "UPDATE test SET v2 = 'now set' WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					// And going back to NULL.
+					Query:    "UPDATE test SET v2 = NULL WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					// Both records having NULL in the same field is not a difference.
+					Query:    "UPDATE test SET v2 = NULL WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT msg FROM log ORDER BY id;",
+					Expected: []sql.Row{{"changed 1"}, {"changed 1"}, {"changed 1"}, {"same 1"}},
+				},
+			},
+		},
+		{
+			Name: "the record an operation does not supply",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				"CREATE TABLE log (id SERIAL PRIMARY KEY, o TEXT, n TEXT);",
+				`CREATE FUNCTION insert_func() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log (o, n) VALUES (to_jsonb(OLD)::text, to_jsonb(NEW)::text);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION delete_func() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log (o, n) VALUES (to_jsonb(OLD)::text, to_jsonb(NEW)::text);
+					RETURN OLD;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER t1 BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION insert_func();`,
+				`CREATE TRIGGER t2 BEFORE DELETE ON test FOR EACH ROW EXECUTE FUNCTION delete_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO test VALUES (1, 'hi');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DELETE FROM test WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: PostgreSQL leaves OLD unassigned for an INSERT and NEW for a DELETE, so
+					//  neither yields an object of NULL fields there. Triggers here give both records
+					//  the table's shape whatever the operation; see TriggerCall.
+					Query: "SELECT o, n FROM log ORDER BY id;",
+					Expected: []sql.Row{
+						{`{"pk": null, "v1": null}`, `{"pk": 1, "v1": "hi"}`},
+						{`{"pk": 1, "v1": "hi"}`, `{"pk": null, "v1": null}`},
+					},
+				},
+			},
+		},
+	})
+}

@@ -326,3 +326,70 @@ END; $$;`,
 		},
 	})
 }
+
+// TestPlpgsqlWholeRecordReference covers referencing a RECORD variable as a whole rather than a field of it,
+// which is what passing it to a function such as to_jsonb() does.
+func TestPlpgsqlWholeRecordReference(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "a RECORD variable referenced as a whole",
+			SetUpScript: []string{
+				`CREATE TABLE k (id int, name text);`,
+				`INSERT INTO k VALUES (1, 'a');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_jsonb() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD;
+BEGIN
+	SELECT * INTO r FROM k WHERE id = 1;
+	RETURN to_jsonb(r)::text;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_jsonb();`,
+					Expected: []sql.Row{{`{"id": 1, "name": "a"}`}},
+				},
+				{
+					Query: `CREATE FUNCTION f_text() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD;
+BEGIN
+	SELECT id, name AS renamed INTO r FROM k WHERE id = 1;
+	RETURN r::text;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_text();`,
+					Expected: []sql.Row{{`(1,a)`}},
+				},
+				{
+					Query: `CREATE FUNCTION f_renamed() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD;
+BEGIN
+	SELECT id, name AS renamed INTO r FROM k WHERE id = 1;
+	RETURN to_jsonb(r)::text;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_renamed();`,
+					Expected: []sql.Row{{`{"id": 1, "renamed": "a"}`}},
+				},
+				{
+					Query: `CREATE FUNCTION f_unassigned_whole() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD;
+BEGIN
+	RETURN to_jsonb(r)::text;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT f_unassigned_whole();`,
+					ExpectedErr: `record "r" is not assigned yet`,
+				},
+			},
+		},
+	})
+}

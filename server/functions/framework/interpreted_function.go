@@ -304,10 +304,20 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 			// bad field on a variable that does exist is a real error that has to surface.
 			return newStmt, !plpgsql.ErrVariableNotFound.Is(err), err
 		}
+		// A record holds a row rather than a single value, and the type it carries is only a placeholder,
+		// so it is rendered from its fields before the type is considered.
+		if variable.IsRecord {
+			formattedRecord, err := formatRecordBinding(ctx, bindingName, variable, enforceType)
+			if err != nil {
+				return newStmt, true, err
+			}
+			newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), formattedRecord)
+			continue
+		}
 		if variable.Type == nil {
 			return newStmt, false, plpgsql.ErrVariableNotFound.New(bindingName)
 		}
-		formattedVar, err := formatBinding(ctx, variable.Type, *variable.Value, enforceType)
+		formattedVar, err := formatValueBinding(ctx, variable.Type, *variable.Value, enforceType)
 		if err != nil {
 			return newStmt, true, err
 		}
@@ -316,15 +326,25 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 	return newStmt, true, nil
 }
 
-// formatBinding returns the SQL text for a binding's value, casting it when `enforceType` is set. A record becomes a
-// ROW constructor over its formatted fields.
-func formatBinding(ctx *sql.Context, typ *pgtypes.DoltgresType, value any, enforceType bool) (string, error) {
+// formatValueBinding renders |val|, of type |typ|, for interpolation into a statement in place of a binding.
+// `enforceType` adds casting and quotes to ensure that the value is correctly represented in the string.
+func formatValueBinding(ctx *sql.Context, typ *pgtypes.DoltgresType, val any, enforceType bool) (string, error) {
+	// A value that is itself a record, such as a record-typed field of an enclosing record, has no single
+	// text form to cast. It becomes a ROW constructor over its formatted fields instead. Field names are lost
+	// here, which is why a whole record named in its own right goes through formatRecordBinding.
 	if typ.ID == pgtypes.Record.ID {
-		fields := value.([]pgtypes.RecordValue)
+		fields, ok := val.([]pgtypes.RecordValue)
+		if !ok {
+			return "", errors.Errorf("expected a record value, got %T", val)
+		}
 		formattedFields := make([]string, len(fields))
 		for i, field := range fields {
+			fieldType, ok := field.Type.(*pgtypes.DoltgresType)
+			if !ok {
+				return "", errors.Errorf("field %d of record does not have a Postgres type", i)
+			}
 			var err error
-			formattedFields[i], err = formatBinding(ctx, field.Type.(*pgtypes.DoltgresType), field.Value, enforceType)
+			formattedFields[i], err = formatValueBinding(ctx, fieldType, field.Value, enforceType)
 			if err != nil {
 				return "", err
 			}
@@ -332,9 +352,9 @@ func formatBinding(ctx *sql.Context, typ *pgtypes.DoltgresType, value any, enfor
 		return fmt.Sprintf("ROW(%s)", strings.Join(formattedFields, ", ")), nil
 	}
 	formattedVar := "NULL"
-	if value != nil {
+	if val != nil {
 		var err error
-		formattedVar, err = typ.FormatValueWithContext(ctx, value)
+		formattedVar, err = typ.FormatValueWithContext(ctx, val)
 		if err != nil {
 			return "", err
 		}
@@ -352,6 +372,81 @@ func formatBinding(ctx *sql.Context, typ *pgtypes.DoltgresType, value any, enfor
 		return fmt.Sprintf(`(%s::%s)`, formattedVar, typ.String()), nil
 	}
 	return fmt.Sprintf(`((%s)::%s)`, formattedVar, typ.String()), nil
+}
+
+// formatRecordBinding renders the record |variable|, named |bindingName|, as a whole. With `enforceType` it
+// becomes an expression carrying the field names alongside the values, so that a function receiving it, such
+// as to_jsonb(), sees the fields PostgreSQL would; without it, its text representation, which is what RAISE
+// interpolates into a message.
+func formatRecordBinding(ctx *sql.Context, bindingName string, variable plpgsql.InterpreterVariableReference, enforceType bool) (string, error) {
+	if len(variable.Record) == 0 {
+		// A RECORD variable has no shape until something is assigned to it, so it has no fields to render.
+		return "", plpgsql.ErrRecordNotAssigned.New(bindingName)
+	}
+	row, _ := (*variable.Value).(sql.Row)
+	if !enforceType {
+		fields := make([]pgtypes.RecordValue, len(variable.Record))
+		for i, col := range variable.Record {
+			fields[i] = pgtypes.RecordValue{Type: col.Type}
+			if i < len(row) {
+				fields[i].Value = row[i]
+			}
+		}
+		str, err := pgtypes.RecordToString(ctx, fields)
+		if err != nil {
+			return "", err
+		}
+		formatted, ok := str.(string)
+		if !ok {
+			return "", errors.Errorf("expected a string from record output, got %T", str)
+		}
+		return formatted, nil
+	}
+	// A row constructor would lose the field names, so the record is rendered as a single-row derived table
+	// selected by its whole-row reference. The table's alias must differ from every field name, since a bare
+	// name in the select list resolves to a field before it resolves to the table.
+	alias := "record"
+	for recordHasField(variable.Record, alias) {
+		alias += "_"
+	}
+	sb := strings.Builder{}
+	sb.WriteString("(SELECT ")
+	sb.WriteString(plpgsql.QuoteIdentifier(alias))
+	sb.WriteString(" FROM (SELECT ")
+	for i, col := range variable.Record {
+		colType, ok := col.Type.(*pgtypes.DoltgresType)
+		if !ok {
+			return "", errors.Errorf("field `%s` of record `%s` does not have a Postgres type", col.Name, bindingName)
+		}
+		var val any
+		if i < len(row) {
+			val = row[i]
+		}
+		formattedField, err := formatValueBinding(ctx, colType, val, true)
+		if err != nil {
+			return "", err
+		}
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(formattedField)
+		sb.WriteString(" AS ")
+		sb.WriteString(plpgsql.QuoteIdentifier(col.Name))
+	}
+	sb.WriteString(") ")
+	sb.WriteString(plpgsql.QuoteIdentifier(alias))
+	sb.WriteString(")")
+	return sb.String(), nil
+}
+
+// recordHasField reports whether |sch| has a field named |name|.
+func recordHasField(sch sql.Schema, name string) bool {
+	for _, col := range sch {
+		if strings.EqualFold(col.Name, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // enforceInterfaceInheritance implements the interface FunctionInterface.
