@@ -152,15 +152,14 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				if err = stack.SetVariableWithType(operation.Target, valType, val); err != nil {
 					return nil, err
 				}
-				break
-			}
-			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
-			if err != nil {
-				return nil, err
-			}
-			err = stack.SetVariable(ctx, operation.Target, retVal)
-			if err != nil {
-				return nil, err
+			} else {
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
+				if err != nil {
+					return nil, err
+				}
+				if err = stack.SetVariable(ctx, operation.Target, retVal); err != nil {
+					return nil, err
+				}
 			}
 		case OpCode_Declare:
 			typeCollection, err := GetTypesCollectionFromContext(ctx, "")
