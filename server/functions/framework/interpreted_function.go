@@ -316,32 +316,51 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 		if variable.Type == nil {
 			return newStmt, false, plpgsql.ErrVariableNotFound.New(bindingName)
 		}
-		var formattedVar string
-		if *variable.Value != nil {
-			formattedVar, err = variable.Type.FormatValueWithContext(ctx, *variable.Value)
-			if err != nil {
-				return newStmt, true, err
-			}
-			if enforceType {
-				switch variable.Type.TypCategory {
-				case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_CompositeTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes, pgtypes.TypeCategory_UserDefinedTypes:
-					formattedVar = pq.QuoteLiteral(formattedVar)
-				}
-			}
-		} else {
-			formattedVar = "NULL"
+		formattedVar, err := formatBinding(ctx, variable.Type, *variable.Value, enforceType)
+		if err != nil {
+			return newStmt, true, err
 		}
-		if enforceType {
-			if variable.Type.TypCategory == pgtypes.TypeCategory_CompositeTypes {
-				newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`(%s::%s)`, formattedVar, variable.Type.String()))
-			} else {
-				newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`((%s)::%s)`, formattedVar, variable.Type.String()))
-			}
-		} else {
-			newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), formattedVar)
-		}
+		newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), formattedVar)
 	}
 	return newStmt, true, nil
+}
+
+// formatBinding returns the SQL text for a binding's value, casting it when `enforceType` is set. A record becomes a
+// ROW constructor over its formatted fields.
+func formatBinding(ctx *sql.Context, typ *pgtypes.DoltgresType, value any, enforceType bool) (string, error) {
+	if typ.ID == pgtypes.Record.ID {
+		fields := value.([]pgtypes.RecordValue)
+		formattedFields := make([]string, len(fields))
+		for i, field := range fields {
+			var err error
+			formattedFields[i], err = formatBinding(ctx, field.Type.(*pgtypes.DoltgresType), field.Value, enforceType)
+			if err != nil {
+				return "", err
+			}
+		}
+		return fmt.Sprintf("ROW(%s)", strings.Join(formattedFields, ", ")), nil
+	}
+	formattedVar := "NULL"
+	if value != nil {
+		var err error
+		formattedVar, err = typ.FormatValueWithContext(ctx, value)
+		if err != nil {
+			return "", err
+		}
+		if enforceType {
+			switch typ.TypCategory {
+			case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_CompositeTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes, pgtypes.TypeCategory_UserDefinedTypes:
+				formattedVar = pq.QuoteLiteral(formattedVar)
+			}
+		}
+	}
+	if !enforceType {
+		return formattedVar, nil
+	}
+	if typ.TypCategory == pgtypes.TypeCategory_CompositeTypes {
+		return fmt.Sprintf(`(%s::%s)`, formattedVar, typ.String()), nil
+	}
+	return fmt.Sprintf(`((%s)::%s)`, formattedVar, typ.String()), nil
 }
 
 // enforceInterfaceInheritance implements the interface FunctionInterface.
