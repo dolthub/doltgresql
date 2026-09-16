@@ -37,6 +37,9 @@ type Assignment struct {
 	VariableName  string
 	Expression    string
 	VariableIndex int32 // TODO: figure out what this is used for, probably to get around shadowed variables?
+	// RetypeTarget sets the target's type from the value assigned. A CASE statement's variable is declared
+	// int4 whatever its expression yields, so its type is only known once the expression has run.
+	RetypeTarget bool
 }
 
 var _ Statement = Assignment{}
@@ -53,12 +56,16 @@ func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 		return err
 	}
 
-	*ops = append(*ops, InterpreterOperation{
+	op := InterpreterOperation{
 		OpCode:        OpCode_Assign,
 		PrimaryData:   "SELECT " + expression + ";",
 		SecondaryData: referencedVariables,
 		Target:        stmt.VariableName,
-	})
+	}
+	if stmt.RetypeTarget {
+		op.Options = map[string]string{OptionRetypeTarget: "true"}
+	}
+	*ops = append(*ops, op)
 	return nil
 }
 

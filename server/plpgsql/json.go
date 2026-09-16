@@ -352,6 +352,7 @@ func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 		block.Body = append(block.Body, Assignment{
 			VariableName: fmt.Sprintf("__Case__Variable_%d__", stmt.VarNo),
 			Expression:   stmt.Expression.Expression.Query,
+			RetypeTarget: true,
 		})
 	}
 

@@ -88,6 +88,10 @@ const OptionDynamicUsingBindingCountPrefix = "dynamic_using_binding_count_"
 // OptionDynamicUsingBindingPrefix prefixes bindings by USING-expression index and binding index.
 const OptionDynamicUsingBindingPrefix = "dynamic_using_binding_"
 
+// OptionRetypeTarget is an Options key marking an assignment that takes its target's type from the value
+// assigned, rather than casting the value to the type the target was declared with.
+const OptionRetypeTarget = "retype_target"
+
 // OptionLoopCondition is an Options key marking the conditional jump that advances an integer FOR loop.
 // Every kind of loop compiles to the same conditional jump, and PostgreSQL defines a FOR loop as setting
 // FOUND on exit while a WHILE or a plain LOOP leaves it alone, so the two are told apart by this option.

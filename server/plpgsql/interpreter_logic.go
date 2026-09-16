@@ -134,13 +134,35 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err != nil {
 				return nil, err
 			}
-			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, bindings)
-			if err != nil {
-				return nil, err
-			}
-			err = stack.SetVariable(ctx, operation.Target, retVal)
-			if err != nil {
-				return nil, err
+			if operation.Options[OptionRetypeTarget] == "true" {
+				schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, bindings)
+				if err != nil {
+					return nil, err
+				}
+				if len(schema) != 1 {
+					return nil, errors.New("expression does not result in a single value")
+				}
+				valType, ok := schema[0].Type.(*pgtypes.DoltgresType)
+				if !ok {
+					if valType, err = pgtypes.FromGmsTypeToDoltgresType(schema[0].Type); err != nil {
+						return nil, err
+					}
+				}
+				var val any
+				if len(rows) > 0 {
+					val = rows[0][0]
+				}
+				if err = stack.SetVariableWithType(operation.Target, valType, val); err != nil {
+					return nil, err
+				}
+			} else {
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, bindings)
+				if err != nil {
+					return nil, err
+				}
+				if err = stack.SetVariable(ctx, operation.Target, retVal); err != nil {
+					return nil, err
+				}
 			}
 		case OpCode_Declare:
 			typeCollection, err := GetTypesCollectionFromContext(ctx, "")

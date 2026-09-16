@@ -467,6 +467,17 @@ func (is *InterpreterStack) SetVariable(ctx *sql.Context, name string, val any) 
 	return nil
 }
 
+// SetVariableWithType sets the value of the variable with the given name, along with its type.
+func (is *InterpreterStack) SetVariableWithType(name string, typ *pgtypes.DoltgresType, val any) error {
+	iv := is.findVariable(name)
+	if iv == nil {
+		return fmt.Errorf("variable `%s` could not be found", name)
+	}
+	iv.Type = typ
+	iv.Value = val
+	return nil
+}
+
 // SetLabel sets the label for the current scope.
 func (is *InterpreterStack) SetLabel(label string) {
 	is.stack.Peek().label = label

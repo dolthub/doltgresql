@@ -239,6 +239,193 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "CASE over a non-integer expression",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_case_text(x TEXT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 'Hello', 'Hi' THEN
+			msg := 'greeting';
+		WHEN 'Bye' THEN
+			msg := 'farewell';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_bool(x BOOLEAN) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN true THEN
+			msg := 'yes';
+		ELSE
+			msg := 'no';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_numeric(x NUMERIC) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 1.5 THEN
+			msg := 'one point five';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_loop() RETURNS TEXT AS $$
+DECLARE
+	i INT := 0;
+	msg TEXT;
+	result TEXT := '';
+BEGIN
+	WHILE i < 3 LOOP
+		i := i + 1;
+		CASE i::TEXT
+			WHEN '2' THEN
+				msg := 'two';
+			ELSE
+				msg := 'n';
+		END CASE;
+		result := result || msg;
+	END LOOP;
+	RETURN result;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case_text('Hello');",
+					Expected: []sql.Row{{"greeting"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_text('Bye');",
+					Expected: []sql.Row{{"farewell"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_text('zzz');",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_bool(true);",
+					Expected: []sql.Row{{"yes"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_bool(false);",
+					Expected: []sql.Row{{"no"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_numeric(1.5);",
+					Expected: []sql.Row{{"one point five"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_numeric(2.5);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_loop();",
+					Expected: []sql.Row{{"ntwon"}},
+				},
+			},
+		},
+		{
+			Name: "NULL conditions are not met",
+			SetUpScript: []string{
+				`CREATE TABLE case_selector (v TEXT);`,
+				`INSERT INTO case_selector VALUES ('match');`,
+				`CREATE FUNCTION interpreted_case_null(x TEXT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 'match' THEN
+			msg := 'matched';
+		ELSE
+			msg := 'fell through';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_empty_selector() RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE (SELECT v FROM case_selector LIMIT 1)
+		WHEN 'match' THEN
+			msg := 'matched';
+		ELSE
+			msg := 'fell through';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_if_null(x BOOLEAN) RETURNS TEXT AS $$
+BEGIN
+	IF x THEN
+		RETURN 'true';
+	ELSE
+		RETURN 'not true';
+	END IF;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_while_null(x BOOLEAN) RETURNS TEXT AS $$
+BEGIN
+	WHILE x LOOP
+		RETURN 'looped';
+	END LOOP;
+	RETURN 'never looped';
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case_null('match');",
+					Expected: []sql.Row{{"matched"}},
+				},
+				{
+					// A NULL selector matches no WHEN branch, so the CASE falls to its ELSE.
+					Query:    "SELECT interpreted_case_null(NULL);",
+					Expected: []sql.Row{{"fell through"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_empty_selector();",
+					Expected: []sql.Row{{"matched"}},
+				},
+				{
+					// A selector subquery with no rows is NULL, which reaches the ELSE.
+					Query:    "DELETE FROM case_selector;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT interpreted_case_empty_selector();",
+					Expected: []sql.Row{{"fell through"}},
+				},
+				{
+					Query:    "SELECT interpreted_if_null(true);",
+					Expected: []sql.Row{{"true"}},
+				},
+				{
+					// A NULL IF condition is not met, so the ELSE runs.
+					Query:    "SELECT interpreted_if_null(NULL);",
+					Expected: []sql.Row{{"not true"}},
+				},
+				{
+					// A NULL WHILE condition ends the loop.
+					Query:    "SELECT interpreted_while_null(NULL);",
+					Expected: []sql.Row{{"never looped"}},
+				},
+			},
+		},
+		{
 			// TODO: When no CASE statements match, and there is no ELSE block,
 			//       Postgres raises an exception. Unskip this test after we
 			//       add support for raising exceptions from functions.
