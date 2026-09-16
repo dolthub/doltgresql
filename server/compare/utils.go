@@ -115,6 +115,54 @@ func CompareRecords(ctx *sql.Context, op framework.Operator, v1 interface{}, v2 
 	}
 }
 
+// RecordsAreDistinct reports whether the records |v1| and |v2| are distinct, under the rules `IS DISTINCT FROM`
+// applies to records: a NULL field is distinct from a non-NULL one, and two NULL fields are not distinct from each
+// other. Unlike CompareRecords, which follows the SQL spec's row-wise `<>` and goes indeterminate as soon as a NULL
+// is involved, the answer here is always a plain boolean.
+func RecordsAreDistinct(ctx *sql.Context, v1 interface{}, v2 interface{}) (bool, error) {
+	leftRecord, rightRecord, err := checkRecordArgs(v1, v2)
+	if err != nil {
+		return false, err
+	}
+	var leftLiteral, rightLiteral expression.Literal
+	for i := 0; i < len(leftRecord); i++ {
+		leftValue, rightValue := leftRecord[i].Value, rightRecord[i].Value
+		if leftValue == nil || rightValue == nil {
+			// Only one of the two being NULL makes them distinct; both being NULL does not.
+			if leftValue != nil || rightValue != nil {
+				return true, nil
+			}
+			continue
+		}
+		// A field that is itself a record needs the same NULL-aware treatment, which the field-wise `<>`
+		// below would not give it.
+		if _, ok := leftValue.([]pgtypes.RecordValue); ok {
+			if _, ok = rightValue.([]pgtypes.RecordValue); ok {
+				distinct, err := RecordsAreDistinct(ctx, leftValue, rightValue)
+				if err != nil {
+					return false, err
+				}
+				if distinct {
+					return true, nil
+				}
+				continue
+			}
+		}
+		leftLiteral.Val = leftValue
+		leftLiteral.Typ = leftRecord[i].Type
+		rightLiteral.Val = rightValue
+		rightLiteral.Typ = rightRecord[i].Type
+		res, err := callComparisonFunction(ctx, framework.Operator_BinaryNotEqual, &leftLiteral, &rightLiteral)
+		if err != nil {
+			return false, err
+		}
+		if res == true {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // checkRecordArgs asserts that |v1| and |v2| are both []pgtypes.RecordValue, and that they have the same number of
 // elements, then returns them. If any problems were detected, an error is returned instead.
 func checkRecordArgs(v1, v2 interface{}) (leftRecord, rightRecord []pgtypes.RecordValue, err error) {

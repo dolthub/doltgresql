@@ -371,6 +371,24 @@ func TestBinaryLogic(t *testing.T) {
 					Query:       `SELECT 2 IS DISTINCT FROM 'a';`,
 					ExpectedErr: `invalid input syntax for type int4: "a"`,
 				},
+				{
+					// Unlike `<>`, a NULL field never makes the answer indeterminate: it is simply
+					// distinct from a value, and not distinct from another NULL.
+					Query:    `SELECT ROW(1, NULL) IS DISTINCT FROM ROW(1, 2);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT ROW(1, 2) IS DISTINCT FROM ROW(1, NULL);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT ROW(1, NULL) IS DISTINCT FROM ROW(1, NULL);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT ROW(1, NULL) IS DISTINCT FROM ROW(2, NULL);`,
+					Expected: []sql.Row{{"t"}},
+				},
 			},
 		},
 		{
@@ -407,6 +425,18 @@ func TestBinaryLogic(t *testing.T) {
 				{
 					Query:       `SELECT 2 IS NOT DISTINCT FROM 'a';`,
 					ExpectedErr: `invalid input syntax for type int4: "a"`,
+				},
+				{
+					Query:    `SELECT ROW(1, NULL) IS NOT DISTINCT FROM ROW(1, 2);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT ROW(1, NULL) IS NOT DISTINCT FROM ROW(1, NULL);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT ROW(1, NULL) IS NOT DISTINCT FROM ROW(2, NULL);`,
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},

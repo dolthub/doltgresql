@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/server/compare"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -67,6 +68,19 @@ func (n *IsNotDistinctFrom) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return true, nil
 	} else if left == nil || right == nil {
 		return false, nil
+	}
+
+	// A record's fields are compared one by one, and a NULL field is where `<>` and `=` become indeterminate.
+	// `IS NOT DISTINCT FROM` never is, so records get the comparison that treats a NULL field as a value of its
+	// own rather than as an unknown.
+	if _, ok := left.([]pgtypes.RecordValue); ok {
+		if _, ok = right.([]pgtypes.RecordValue); ok {
+			distinct, err := compare.RecordsAreDistinct(ctx, left, right)
+			if err != nil {
+				return nil, err
+			}
+			return !distinct, nil
+		}
 	}
 
 	n.staticLeftLiteral.Val = left
