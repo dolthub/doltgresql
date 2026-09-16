@@ -27,6 +27,9 @@ jobs:
     needs: [format-version]
     name: Create release
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       release_id: ${{ steps.create_release.outputs.id }}
     steps:
@@ -54,6 +57,7 @@ jobs:
         env:
           FILE: ${{ format('{0}/servercfg/cfgdetails/testdata/minver_validation.txt', github.workspace) }}
       - uses: EndBug/add-and-commit@v9.1.1
+        id: version-commit
         with:
           message: ${{ format('Update DoltgreSQL version to {0}', needs.format-version.outputs.version) }}
           add: ${{ format('["{0}/server/server.go", "{0}/servercfg/config.go", "{0}/servercfg/cfgdetails/testdata/minver_validation.txt"]', github.workspace) }}
@@ -61,9 +65,59 @@ jobs:
           new_branch: cd-release
           push: 'origin cd-release --set-upstream --force'
       - name: Create Pull Request
-        run: gh pr create --base main --head "cd-release" --title "[no-release-notes] Release v${{ needs.format-version.outputs.version }}" --body "Created by the Release workflow to update DoltgreSQL's version"
+        id: create-pr
+        run: echo "pr_url=$(gh pr create --base main --head "cd-release" --title "[no-release-notes] Release v${{ needs.format-version.outputs.version }}" --body "Created by the Release workflow to update DoltgreSQL's version")" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_ACCESS_TOKEN || secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Validate and approve pull request
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ steps.version-commit.outputs.commit_long_sha }}
+          PR_URL: ${{ steps.create-pr.outputs.pr_url }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { EXPECTED_SHA, PR_URL } = process.env;
+            const match = PR_URL.match(/\/pull\/(\d+)$/);
+            if (!match) throw new Error(`Unable to determine pull request number from ${PR_URL}`);
+
+            const pull_number = Number(match[1]);
+            const { owner, repo } = context.repo;
+            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number });
+
+            if (pull.state !== "open") throw new Error("Pull request is not open");
+            if (pull.base.ref !== "main") throw new Error(`Unexpected base branch: ${pull.base.ref}`);
+            if (pull.head.repo?.full_name !== `${owner}/${repo}`) throw new Error("Pull request head is from a fork");
+            if (pull.head.ref !== "cd-release") throw new Error(`Unexpected head branch: ${pull.head.ref}`);
+            if (pull.head.sha !== EXPECTED_SHA) throw new Error(`Unexpected head SHA: ${pull.head.sha}`);
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number,
+              per_page: 100,
+            });
+            const allowed = new Set([
+              "server/server.go",
+              "servercfg/config.go",
+              "servercfg/cfgdetails/testdata/minver_validation.txt",
+            ]);
+            const unexpected = files.filter(({ filename }) => !allowed.has(filename));
+            if (!files.some(({ filename }) => filename === "server/server.go")) {
+              throw new Error("Release did not change server/server.go");
+            }
+            if (unexpected.length > 0) {
+              throw new Error(`Unexpected changed files: ${unexpected.map(({ filename }) => filename).join(", ")}`);
+            }
+
+            await github.rest.pulls.createReview({
+              owner,
+              repo,
+              pull_number,
+              commit_id: EXPECTED_SHA,
+              event: "APPROVE",
+              body: "Automated approval: validated version-only update.",
+            });
       - name: Enable Pull Request Auto-Merge
         run: gh pr merge --merge --auto "cd-release"
         env:
