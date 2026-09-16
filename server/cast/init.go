@@ -38,6 +38,7 @@ func Init(builtInCasts map[id.Cast]casts.Cast) {
 	initNumeric(builtInCasts)
 	initOid(builtInCasts)
 	initRegclass(builtInCasts)
+	initRegnamespace(builtInCasts)
 	initRegproc(builtInCasts)
 	initRegtype(builtInCasts)
 	initText(builtInCasts)

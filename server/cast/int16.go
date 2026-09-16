@@ -89,6 +89,16 @@ func int16Implicit(builtInCasts map[id.Cast]casts.Cast) {
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int16,
+		ToType:   pgtypes.Regnamespace,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			if internalID := id.Cache().ToInternal(uint32(val.(int16))); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewOID(uint32(val.(int16))).AsId(), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Regproc,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			if internalID := id.Cache().ToInternal(uint32(val.(int16))); internalID.IsValid() {

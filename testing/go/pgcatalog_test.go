@@ -571,7 +571,7 @@ func TestPgCast(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT COUNT(*) FROM "pg_catalog"."pg_cast";`,
-					Expected: []sql.Row{{118}},
+					Expected: []sql.Row{{125}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_cast";`,
@@ -583,7 +583,7 @@ func TestPgCast(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT COUNT(*) FROM PG_catalog.pg_CAST ORDER BY oid;",
-					Expected: []sql.Row{{118}},
+					Expected: []sql.Row{{125}},
 				},
 			},
 		},
@@ -2154,6 +2154,48 @@ func TestPgNamespace(t *testing.T) {
 					Expected: []sql.Row{
 						{2200},
 					},
+				},
+			},
+		},
+		{
+			Name: "regnamespace",
+			SetUpScript: []string{
+				"CREATE SCHEMA s3334;",
+				"CREATE TABLE t3334 (id INT PRIMARY KEY, ns REGNAMESPACE);",
+				"INSERT INTO t3334 VALUES (1, 'public'), (2, 's3334');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT 'public'::regnamespace;",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT oid::regnamespace FROM pg_namespace WHERE nspname = 'public';",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT 'public'::REGNAMESPACE, 'public'::REGNAMESPACE::OID = (SELECT oid FROM pg_namespace WHERE nspname = 'public'), 's3334'::REGNAMESPACE::TEXT, to_regnamespace('s3334') IS NOT NULL, to_regnamespace('nope'), (SELECT nspname FROM pg_namespace WHERE oid = 's3334'::REGNAMESPACE);",
+					Expected: []sql.Row{{"public", "t", "s3334", "t", nil, "s3334"}},
+				},
+				{
+					Query:    "SELECT relnamespace::REGNAMESPACE FROM pg_class WHERE relname = 't3334';",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT typname FROM pg_type WHERE typname = 'regnamespace';",
+					Expected: []sql.Row{{"regnamespace"}},
+				},
+				{
+					Query:    "SELECT id, ns, ns::TEXT FROM t3334 ORDER BY id;",
+					Expected: []sql.Row{{1, "public", "public"}, {2, "s3334", "s3334"}},
+				},
+				{
+					Query:       "SELECT 'nope'::REGNAMESPACE;",
+					ExpectedErr: `schema "nope" does not exist`,
+				},
+				{
+					Query:       "SELECT 'a.b'::REGNAMESPACE;",
+					ExpectedErr: "invalid name syntax",
 				},
 			},
 		},
