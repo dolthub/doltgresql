@@ -246,8 +246,8 @@ github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 h1:I
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12/go.mod h1:rN7X8BHwkjPcfMQQ2QTAq/xM3leUSGLfb+1Js7Y6TVo=
 github.com/dolthub/dolt-mcp v0.3.4 h1:AyG5cw+fNWXDHXujtQnqUPZrpWtPg6FN6yYtjv1pP44=
 github.com/dolthub/dolt-mcp v0.3.4/go.mod h1:bCZ7KHvDYs+M0e+ySgmGiNvLhcwsN7bbf5YCyillLrk=
-github.com/dolthub/dolt/go v0.40.5-0.20260916181926-fa989ce0bff7 h1:445wqtPdaqZADWsYS/rA+Ieo0YQM88W9XZq6ioZYCf8=
-github.com/dolthub/dolt/go v0.40.5-0.20260916181926-fa989ce0bff7/go.mod h1:uqGq4Wvh/q8E1l81Ez/y2q4Xeo/zbFSZR2Kp5NA0Jbk=
+github.com/dolthub/dolt/go v0.40.5-0.20260916193301-a0d7a923201f h1:/LjbjDrsqE3qzVKYZnTBcUibLgYeNh1mcaAm62LTMik=
+github.com/dolthub/dolt/go v0.40.5-0.20260916193301-a0d7a923201f/go.mod h1:41X5FmzUZmvLsdxMEEWP9PTTPSERDPN8lgh9dUdiAY8=
 github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4 h1:0mg9QEFdkkBwJMxvz1tCjHYmfG2iIC6aShj1InDq9/M=
 github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4/go.mod h1:SSLraQS/jGLYFgff3vuZ+JbVUct6vyEeMzjLBqWqoyM=
 github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 h1:u3PMzfF8RkKd3lB9pZ2bfn0qEG+1Gms9599cr0REMww=
@@ -268,8 +268,8 @@ github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1 h1:GY17cGA4
 github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1/go.mod h1:qnrZP3/1slFl2Bq5yw38HLOsArZareGwdpEceriblLc=
 github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166 h1:fdexJBpLDyAGnFbviZYfZ0jhLMnbTWTh39CyQ1EhA28=
 github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166/go.mod h1:e/FIZVvT2IR53HBCAo41NjqgtEnjMJGKca3Y/dAmZaA=
-github.com/dolthub/vitess v0.0.0-20260914165732-909aa98f55b7 h1:5zc5kWz6GpuS5ksANCPiuvDyKoRGA58vNuLlUkl6rc4=
-github.com/dolthub/vitess v0.0.0-20260914165732-909aa98f55b7/go.mod h1:5SVEJgAhw5nnQUFnGgKI1Svqes1Mw+zKUsalyxmOuG0=
+github.com/dolthub/vitess v0.0.0-20260915003731-4ab56bf07719 h1:QlZvCHnDwAdu6D3KPWc52ZxgEVbw3009kGhGFjmfPTs=
+github.com/dolthub/vitess v0.0.0-20260915003731-4ab56bf07719/go.mod h1:5SVEJgAhw5nnQUFnGgKI1Svqes1Mw+zKUsalyxmOuG0=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
