@@ -522,10 +522,9 @@ func TestAlterTable(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					// Note: pg_typeof returns NULL (rather than the column type) for NULL values in Doltgres, so the
-					// NULL row is checked without pg_typeof here.
-					Query:    "SELECT id, c, pg_typeof(c) FROM t1 WHERE c IS NOT NULL ORDER BY id;",
-					Expected: []sql.Row{{1, 100, "integer"}, {2, -42, "integer"}},
+					// A null value still has a type, so the null row reports the column's type as the rest do.
+					Query:    "SELECT id, c, pg_typeof(c) FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, 100, "integer"}, {2, -42, "integer"}, {3, nil, "integer"}},
 				},
 				{
 					Query:    "SELECT id, c FROM t1 ORDER BY id;",
