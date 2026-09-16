@@ -149,6 +149,14 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 	datetimePrecision := getDatetimePrecision(col.Type)
 
 	columnDefault := information_schema.GetColumnDefault(ctx, col.Default)
+	var generationExpression any
+	if col.Generated != nil {
+		if unresolved, isUnresolved := col.Generated.Expr.(*sql.UnresolvedColumnDefault); isUnresolved {
+			generationExpression = unresolved.String()
+		} else {
+			generationExpression = col.Generated.String()
+		}
+	}
 
 	return sql.Row{
 		catName,               // table_catalog
@@ -193,7 +201,7 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 		nil,                   // identity_minimum TODO
 		"NO",                  // identity_cycle TODO
 		isGenerated,           // is_generated
-		nil,                   // generation_expression TODO
+		generationExpression,  // generation_expression
 		"YES",                 // is_updatable
 	}
 }

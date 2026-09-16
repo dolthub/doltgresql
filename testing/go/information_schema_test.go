@@ -267,6 +267,35 @@ func TestInfoSchemaColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "generation_expression",
+			SetUpScript: []string{
+				"CREATE TABLE t3328_issue (a INT, b INT GENERATED ALWAYS AS (a + 1) STORED);",
+				"INSERT INTO t3328_issue (a) VALUES (1);",
+				"CREATE TABLE t3328 (a INT PRIMARY KEY, s TEXT, b INT GENERATED ALWAYS AS (a + 1) STORED, c TEXT GENERATED ALWAYS AS (upper(s)) STORED, e INT GENERATED ALWAYS AS (a) STORED, f TEXT GENERATED ALWAYS AS (s || ')') STORED);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT a, b FROM t3328_issue;",
+					Expected: []sql.Row{{1, 2}},
+				},
+				{
+					Query:    "SELECT is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328_issue' AND column_name = 'b';",
+					Expected: []sql.Row{{"ALWAYS", `("a" + 1)`, nil}},
+				},
+				{
+					Query: "SELECT column_name, is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"a", "NEVER", nil, nil},
+						{"s", "NEVER", nil, nil},
+						{"b", "ALWAYS", `("a" + 1)`, nil},
+						{"c", "ALWAYS", `(upper("s"))`, nil},
+						{"e", "ALWAYS", `("a")`, nil},
+						{"f", "ALWAYS", `("s" || ')')`, nil},
+					},
+				},
+			},
+		},
 	})
 }
 
