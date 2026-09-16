@@ -99,6 +99,113 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "conditions that evaluate to NULL",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_null_if(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	IF input = 'Hello' THEN
+		RETURN 'Greeting';
+	ELSIF input = 'Bye' THEN
+		RETURN 'Farewell';
+	ELSE
+		RETURN 'Else';
+	END IF;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_while(input TEXT) RETURNS INT AS $$
+DECLARE
+	count1 INT := 0;
+BEGIN
+	WHILE input = 'Hello' LOOP
+		count1 := count1 + 1;
+		EXIT WHEN count1 > 2;
+	END LOOP;
+	RETURN count1;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_exit(input TEXT) RETURNS INT AS $$
+DECLARE
+	count1 INT := 0;
+BEGIN
+	LOOP
+		count1 := count1 + 1;
+		EXIT WHEN input = 'Hello';
+		EXIT WHEN count1 > 2;
+	END LOOP;
+	RETURN count1;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 1 THEN
+			msg := 'one';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_searched_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE
+		WHEN x = 1 THEN
+			msg := 'one';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_null_if(NULL);",
+					Expected: []sql.Row{{"Else"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_if('Bye');",
+					Expected: []sql.Row{{"Farewell"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_while(NULL);",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT interpreted_null_while('Hello');",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT interpreted_null_exit(NULL);",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT interpreted_null_exit('Hello');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT interpreted_null_case(NULL);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_case(1);",
+					Expected: []sql.Row{{"one"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_searched_case(NULL);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_searched_case(1);",
+					Expected: []sql.Row{{"one"}},
+				},
+			},
+		},
+		{
 			Name: "CASE, with ELSE",
 			SetUpScript: []string{`
 CREATE FUNCTION interpreted_case(x INT) RETURNS TEXT AS $$
