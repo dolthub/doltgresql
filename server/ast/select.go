@@ -237,9 +237,13 @@ func nodeExprToSelectExpr(ctx *Context, node tree.Expr) (vitess.SelectExpr, erro
 	if node == nil {
 		return nil, nil
 	}
-	return nodeSelectExpr(ctx, tree.SelectExpr{
+	selectExpr, err := nodeSelectExpr(ctx, tree.SelectExpr{
 		Expr: node,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return clearArgumentAlias(selectExpr), nil
 }
 
 // nodeExprsToSelectExprs handles tree.Exprs nodes and returns the results as vitess.SelectExprs.
@@ -256,6 +260,17 @@ func nodeExprsToSelectExprs(ctx *Context, node tree.Exprs) (vitess.SelectExprs, 
 		if err != nil {
 			return nil, err
 		}
+		selectExprs[i] = clearArgumentAlias(selectExprs[i])
 	}
 	return selectExprs, nil
+}
+
+// clearArgumentAlias removes the alias that `nodeSelectExpr` gives a function argument, which would otherwise be
+// written back to text as "x as x".
+func clearArgumentAlias(node vitess.SelectExpr) vitess.SelectExpr {
+	if aliasedExpr, ok := node.(*vitess.AliasedExpr); ok {
+		aliasedExpr.As = vitess.ColIdent{}
+		aliasedExpr.InputExpression = ""
+	}
+	return node
 }

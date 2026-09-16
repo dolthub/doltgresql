@@ -125,22 +125,8 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 		PrimaryData: stmt.Label,
 		Target:      loop,
 	})
-	for _, variable := range stmt.Variables {
-		op := InterpreterOperation{
-			OpCode:      OpCode_Declare,
-			PrimaryData: variable.Type,
-			Target:      variable.Name,
-		}
-		var val any
-		if variable.Default != "" {
-			op.SecondaryData = []string{variable.Default}
-			val = variable.Default
-		}
-		if !variable.IsParameter {
-			*ops = append(*ops, op)
-		}
-		stack.NewVariableWithValue(variable.Name, nil, val)
-	}
+	// Records are registered ahead of the variables so that a default expression may name one, as a
+	// trigger's `OLD.id` or `to_jsonb(OLD)` does.
 	for _, record := range stmt.Records {
 		// The schema here only exists so that field references such as `r.id` are recognized as variable
 		// references while the body is compiled. The real schema is not known until the record is assigned.
@@ -155,6 +141,29 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 				Target: record.Name,
 			})
 		}
+	}
+	for _, variable := range stmt.Variables {
+		op := InterpreterOperation{
+			OpCode:      OpCode_Declare,
+			PrimaryData: variable.Type,
+			Target:      variable.Name,
+		}
+		if variable.Default != "" {
+			// A default is an arbitrary expression, so it compiles like the right-hand side of an
+			// assignment. Registering each variable as we go leaves only those declared ahead of
+			// this one in scope, matching PostgreSQL's evaluation of defaults in declaration order.
+			query, referencedVariables, err := compileDeclareDefault(variable.Default, stack)
+			if err != nil {
+				return err
+			}
+			op.SecondaryData = append([]string{variable.Default, query}, referencedVariables...)
+		}
+		if !variable.IsParameter {
+			*ops = append(*ops, op)
+		}
+		// This stack only resolves names; the variable's type and value are not known until the
+		// declaration runs.
+		stack.NewVariableWithValue(variable.Name, nil, nil)
 	}
 	if stmt.IsLoop {
 		// Declarations are already appended, so the body starts at the next operation. reconcileLabels
@@ -464,6 +473,11 @@ type Raise struct {
 	Message string
 	Params  []string
 	Options map[string]string
+	// SqlState gives the SQLSTATE that an EXCEPTION-level RAISE reports, and is empty for a RAISE that does
+	// not name one. A RAISE written in a function body carries its code in Options, put there by the USING
+	// clause's ERRCODE option; this is for the RAISE statements the compiler generates itself, which have no
+	// source text to carry one.
+	SqlState string
 }
 
 var _ Statement = Raise{}
@@ -475,11 +489,20 @@ func (r Raise) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack) error {
+	options := r.Options
+	if len(r.SqlState) > 0 {
+		// The statement's own options are left alone, since a Statement may be appended more than once.
+		options = make(map[string]string, len(r.Options)+1)
+		for key, value := range r.Options {
+			options[key] = value
+		}
+		options[errCodeOptionKey] = r.SqlState
+	}
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:        OpCode_Raise,
 		PrimaryData:   r.Level,
 		SecondaryData: append([]string{r.Message}, r.Params...),
-		Options:       r.Options,
+		Options:       options,
 	})
 	return nil
 }
@@ -570,6 +593,17 @@ func OperationSizeForStatements(stmts []Statement) int32 {
 		total += stmt.OperationSize()
 	}
 	return total
+}
+
+// compileDeclareDefault compiles the source text of a declaration's default into the query that
+// evaluates it, along with the names of the variables that query binds. Whatever the |stack| holds is
+// in scope for the default.
+func compileDeclareDefault(defaultText string, stack *InterpreterStack) (query string, bindings []string, err error) {
+	expression, bindings, err := substituteVariableReferences(defaultText, stack)
+	if err != nil {
+		return "", nil, err
+	}
+	return "SELECT " + expression + ";", bindings, nil
 }
 
 // substituteVariableReferences parses the specified |expression| and replaces

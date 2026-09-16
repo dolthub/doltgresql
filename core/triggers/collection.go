@@ -17,6 +17,7 @@ package triggers
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -90,6 +91,10 @@ type Trigger struct {
 
 var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = Trigger{}
+
+// CreateTriggerWhenCapture is a regex that should only capture the contents of the WHEN expression. Although a bit
+// complex, this is done to ensure that the capture group contains only the WHEN expression and nothing else.
+var CreateTriggerWhenCapture = regexp.MustCompile(`(?is)create\s+(?:or\s+replace\s+)?(?:constraint\s+)?trigger\s+.*\s+for\s+(?:each\s+)?(?:row|statement)\s+when\s+\((.*)\)\s+execute\s+(?:function|procedure).*`)
 
 // NewCollection returns a new Collection.
 func NewCollection(ctx context.Context, rom objinterface.RootObjectMap) (*Collection, error) {

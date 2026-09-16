@@ -37,7 +37,6 @@ import (
 // framework package.
 type InterpretedFunction interface {
 	ApplyBindings(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string, enforceType bool) (newStmt string, varFound bool, err error)
-	GetAllNames() []string
 	GetOutputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetReturn() *pgtypes.DoltgresType
@@ -131,8 +130,12 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if iv.Type == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
 			}
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "assignment source")
+			if err != nil {
+				return nil, err
+			}
 			if operation.Options[OptionRetypeTarget] == "true" {
-				schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, bindings)
 				if err != nil {
 					return nil, err
 				}
@@ -153,7 +156,7 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 					return nil, err
 				}
 			} else {
-				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, bindings)
 				if err != nil {
 					return nil, err
 				}
@@ -200,29 +203,15 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
 			if len(operation.SecondaryData) != 0 {
-				defVal := operation.SecondaryData[0]
-				// Default value can be a literal value or a reference to parameter
-				isParam := false
-				for _, param := range iFunc.GetAllNames() {
-					if param == defVal {
-						isParam = true
-						break
-					}
+				query, bindings, err := declareDefault(operation, &stack)
+				if err != nil {
+					return nil, err
 				}
-				if isParam {
-					ivr := stack.GetVariable(defVal)
-					if ivr.Value != nil {
-						stack.NewVariableWithValue(operation.Target, resolvedType, *ivr.Value)
-					} else {
-						stack.NewVariable(operation.Target, resolvedType)
-					}
-				} else {
-					val, err := resolvedType.IoInput(ctx, strings.Trim(operation.SecondaryData[0], "'"))
-					if err != nil {
-						return nil, err
-					}
-					stack.NewVariableWithValue(operation.Target, resolvedType, val)
+				val, err := iFunc.QuerySingleReturn(ctx, stack, query, resolvedType, bindings)
+				if err != nil {
+					return nil, err
 				}
+				stack.NewVariableWithValue(operation.Target, resolvedType, val)
 			} else {
 				stack.NewVariable(operation.Target, resolvedType)
 			}
@@ -386,16 +375,16 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				}
 			}
 		case OpCode_If:
-			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, operation.SecondaryData)
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "query")
 			if err != nil {
 				return nil, err
 			}
-			// A NULL condition is not met: an IF or a WHILE takes its false path, and a CASE whose
-			// selector is NULL compares unequal to every WHEN and so reaches its ELSE.
-			conditionMet, ok := retVal.(bool)
-			if !ok && retVal != nil {
-				return nil, fmt.Errorf("condition did not evaluate to a boolean, got `%T`", retVal)
+			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, bindings)
+			if err != nil {
+				return nil, err
 			}
+			// PostgreSQL treats a condition that evaluates to NULL as false.
+			conditionMet, _ := retVal.(bool)
 			if isLoopCondition(operation) {
 				// An integer FOR loop has no cursor to carry the fact that its body ran, so its condition
 				// is what records it, for the FOUND the loop reports once it is left.
@@ -427,7 +416,12 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			}
 
 			if operation.PrimaryData == "EXCEPTION" {
-				return nil, pgerror.New(pgcode.RaiseException, message)
+				// A RAISE that does not name a SQLSTATE reports the code PostgreSQL gives a bare RAISE.
+				code := pgcode.RaiseException
+				if sqlState, ok := sqlStateFromErrCode(operation.Options[errCodeOptionKey]); ok {
+					code = pgcode.MakeCode(sqlState)
+				}
+				return nil, pgerror.New(code, message)
 			} else {
 				noticeResponse := &pgproto3.NoticeResponse{
 					Severity: operation.PrimaryData,
@@ -478,7 +472,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 					}
 				}
 			}
-			val, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "query")
+			if err != nil {
+				return nil, err
+			}
+			val, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), bindings)
 			if err != nil {
 				return nil, err
 			}
@@ -635,6 +633,19 @@ func setsFound(operation InterpreterOperation) bool {
 	return operation.Options[OptionSetsFound] == "true"
 }
 
+// declareDefault returns the query that evaluates the default of the given declaration operation, along
+// with the names of the variables that query binds.
+//
+// An operation carrying only the source text was stored by a version that did not compile defaults, so
+// its query is compiled here instead. The |stack| holds the variables declared ahead of this one, the
+// same scope compilation at CREATE time would have seen.
+func declareDefault(operation InterpreterOperation, stack *InterpreterStack) (query string, bindings []string, err error) {
+	if len(operation.SecondaryData) > DeclareDefaultQueryIndex {
+		return operation.SecondaryData[DeclareDefaultQueryIndex], operation.SecondaryData[DeclareDefaultQueryIndex+1:], nil
+	}
+	return compileDeclareDefault(operation.SecondaryData[DeclareDefaultSourceIndex], stack)
+}
+
 // isLoopCondition reports whether the operation is the conditional jump that advances an integer FOR loop.
 func isLoopCondition(operation InterpreterOperation) bool {
 	return operation.Options[OptionLoopCondition] == "true"
@@ -695,7 +706,11 @@ func applyNoticeOptions(ctx *sql.Context, noticeResponse *pgproto3.NoticeRespons
 
 		switch NoticeOptionType(i) {
 		case NoticeOptionTypeErrCode:
-			noticeResponse.Code = value
+			// A value that does not name a SQLSTATE leaves the notice reporting the default code, rather
+			// than reporting the unresolved value as though it were one.
+			if sqlState, ok := sqlStateFromErrCode(value); ok {
+				noticeResponse.Code = sqlState
+			}
 		case NoticeOptionTypeMessage:
 			noticeResponse.Message = value
 		case NoticeOptionTypeDetail:
@@ -741,7 +756,11 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 				if normalized, isRef := NormalizeIdentifierPath(currentParam); isRef {
 					lookupName = normalized
 				}
-				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", []string{lookupName}, false)
+				bindings, err := stack.ExpandWholeRowReference("$1", []string{lookupName}, "query")
+				if err != nil {
+					return "", err
+				}
+				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", bindings, false)
 				if varFound {
 					if err != nil {
 						return "", err

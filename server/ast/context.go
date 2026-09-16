@@ -23,8 +23,9 @@ import (
 // determine which larger statement an expression exists in, which may influence how the expression should handle
 // authorization.
 type Context struct {
-	authContext   *auth.AuthContext
-	originalQuery string
+	authContext    *auth.AuthContext
+	originalQuery  string
+	preserveParens bool
 }
 
 // NewContext returns a new *Context.

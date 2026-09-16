@@ -108,6 +108,19 @@ func int64Implicit(builtInCasts map[id.Cast]casts.Cast) {
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int64,
+		ToType:   pgtypes.Regnamespace,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			if val.(int64) > int64(math.MaxUint32) || val.(int64) < 0 {
+				return nil, errOutOfRange.New(targetType.String())
+			}
+			if internalID := id.Cache().ToInternal(uint32(val.(int64))); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewOID(uint32(val.(int64))).AsId(), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Regproc,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > int64(math.MaxUint32) || val.(int64) < 0 {

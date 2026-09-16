@@ -34,7 +34,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		expr, err := nodeExpr(ctx, node.Expr)
+		expr, err := nodeCheckExpr(ctx, node.Expr)
 		if err != nil {
 			return err
 		}
@@ -61,7 +61,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 				return err
 			}
 			target.TableSpec.Indexes = append(target.TableSpec.Indexes, &vitess.IndexDefinition{
-				Info:   &vitess.IndexInfo{Unique: true},
+				Info:   &vitess.IndexInfo{Name: vitess.NewColIdent(string(node.UniqueConstraintName)), Unique: true},
 				Fields: indexFields,
 			})
 		}

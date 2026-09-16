@@ -267,6 +267,35 @@ func TestInfoSchemaColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "generation_expression",
+			SetUpScript: []string{
+				"CREATE TABLE t3328_issue (a INT, b INT GENERATED ALWAYS AS (a + 1) STORED);",
+				"INSERT INTO t3328_issue (a) VALUES (1);",
+				"CREATE TABLE t3328 (a INT PRIMARY KEY, s TEXT, b INT GENERATED ALWAYS AS (a + 1) STORED, c TEXT GENERATED ALWAYS AS (upper(s)) STORED, e INT GENERATED ALWAYS AS (a) STORED, f TEXT GENERATED ALWAYS AS (s || ')') STORED);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT a, b FROM t3328_issue;",
+					Expected: []sql.Row{{1, 2}},
+				},
+				{
+					Query:    "SELECT is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328_issue' AND column_name = 'b';",
+					Expected: []sql.Row{{"ALWAYS", `("a" + 1)`, nil}},
+				},
+				{
+					Query: "SELECT column_name, is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"a", "NEVER", nil, nil},
+						{"s", "NEVER", nil, nil},
+						{"b", "ALWAYS", `("a" + 1)`, nil},
+						{"c", "ALWAYS", `(upper("s"))`, nil},
+						{"e", "ALWAYS", `("a")`, nil},
+						{"f", "ALWAYS", `("s" || ')')`, nil},
+					},
+				},
+			},
+		},
 	})
 }
 
@@ -512,6 +541,43 @@ func TestInfoSchemaSequences(t *testing.T) {
 					Query: "select sequence_name, increment from information_schema.sequences where sequence_name = 'negative';",
 					Expected: []sql.Row{
 						{"negative", "-1"},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestInfoSchemaTriggers(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema.triggers",
+			SetUpScript: []string{
+				"CREATE TABLE t3330_issue (a INT);",
+				"CREATE FUNCTION report_row() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'trigger fired for a = %', NEW.a; RETURN NEW; END; $$;",
+				"CREATE TRIGGER t_report BEFORE INSERT ON t3330_issue FOR EACH ROW EXECUTE FUNCTION report_row();",
+				"INSERT INTO t3330_issue VALUES (1);",
+				"CREATE TABLE t3330 (a INT PRIMARY KEY, b INT);",
+				"CREATE FUNCTION f3330() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER tr_b BEFORE INSERT OR UPDATE ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330();",
+				"CREATE TRIGGER tr_a AFTER INSERT ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330('x', 'y''z');",
+				"CREATE TRIGGER tr_c BEFORE INSERT ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330();",
+				"CREATE TRIGGER tr_d BEFORE DELETE OR UPDATE ON t3330 FOR EACH ROW WHEN (old.b > 1) EXECUTE FUNCTION f3330();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT trigger_name, event_manipulation, event_object_table FROM information_schema.triggers WHERE event_object_table = 't3330_issue';",
+					Expected: []sql.Row{{"t_report", "INSERT", "t3330_issue"}},
+				},
+				{
+					Query: "SELECT trigger_catalog, trigger_schema, trigger_name, event_manipulation, event_object_catalog, event_object_schema, event_object_table, action_order, action_condition, action_statement, action_orientation, action_timing, action_reference_old_table, action_reference_new_table, action_reference_old_row, action_reference_new_row, created FROM information_schema.triggers WHERE event_object_table = 't3330' ORDER BY trigger_name, event_manipulation;",
+					Expected: []sql.Row{
+						{"postgres", "public", "tr_a", "INSERT", "postgres", "public", "t3330", 1, nil, "EXECUTE FUNCTION f3330('x', 'y''z')", "ROW", "AFTER", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_b", "INSERT", "postgres", "public", "t3330", 1, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_b", "UPDATE", "postgres", "public", "t3330", 1, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_c", "INSERT", "postgres", "public", "t3330", 2, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_d", "DELETE", "postgres", "public", "t3330", 1, "(old.b > 1)", "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_d", "UPDATE", "postgres", "public", "t3330", 2, "(old.b > 1)", "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
 					},
 				},
 			},

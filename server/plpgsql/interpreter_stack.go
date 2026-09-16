@@ -21,6 +21,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -131,6 +133,12 @@ type interpreterVariable struct {
 type InterpreterVariableReference struct {
 	Type  *pgtypes.DoltgresType
 	Value *any
+	// Record is the shape of a reference to a record as a whole. It is nil for any other reference, and also
+	// for a record that has not been assigned yet, which IsRecord distinguishes.
+	Record sql.Schema
+	// IsRecord reports whether the reference is to a record as a whole. Such a reference has no usable type,
+	// since its value is a row rather than a single value, so callers format the fields in Record instead.
+	IsRecord bool
 }
 
 // InterpreterScopeDetails contains all of the details that are relevant to a particular scope.
@@ -236,10 +244,19 @@ func (is *InterpreterStack) GetVariableWithError(name string) (InterpreterVariab
 	if iv := is.findVariable(name); iv != nil {
 		if len(fieldName) == 0 {
 			return InterpreterVariableReference{
-				Type:  iv.Type,
-				Value: &iv.Value,
+				Type:     iv.Type,
+				Value:    &iv.Value,
+				Record:   iv.Record,
+				IsRecord: iv.IsRecord,
 			}, nil
 		} else if len(iv.Record) > 0 {
+			if fieldName == "*" {
+				var record any = recordValues(iv.Record, iv.Value.(sql.Row))
+				return InterpreterVariableReference{
+					Type:  pgtypes.Record,
+					Value: &record,
+				}, nil
+			}
 			fieldIdx := recordFieldIndex(iv.Record, fieldName)
 			if fieldIdx == -1 {
 				return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
@@ -273,6 +290,39 @@ func (is *InterpreterStack) GetVariableWithError(name string) (InterpreterVariab
 		}
 	}
 	return InterpreterVariableReference{}, ErrVariableNotFound.New(fullName)
+}
+
+// recordValues pairs each field of a record variable with its type, which is the value of a `name.*` reference.
+func recordValues(sch sql.Schema, row sql.Row) []pgtypes.RecordValue {
+	values := make([]pgtypes.RecordValue, len(row))
+	for i := range row {
+		values[i] = pgtypes.RecordValue{
+			Value: row[i],
+			Type:  sch[i].Type,
+		}
+	}
+	return values
+}
+
+// ExpandWholeRowReference returns the bindings to use for a statement whose entire expression is a `name.*`
+// reference, which PostgreSQL expands into the record's fields rather than treating as a single value. A record with
+// one field binds that field, while any other count is an error that names `source` as what returned the columns.
+func (is *InterpreterStack) ExpandWholeRowReference(stmt string, bindings []string, source string) ([]string, error) {
+	if len(bindings) != 1 || !strings.HasSuffix(bindings[0], ".*") {
+		return bindings, nil
+	}
+	expression := strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(stmt, "SELECT")), ";")
+	if strings.TrimSpace(expression) != "$1" {
+		return bindings, nil
+	}
+	iv := is.findVariable(strings.TrimSuffix(bindings[0], ".*"))
+	if iv == nil || len(iv.Record) == 0 {
+		return bindings, nil
+	}
+	if len(iv.Record) != 1 {
+		return nil, pgerror.Newf(pgcode.Syntax, "%s returned %d columns", source, len(iv.Record))
+	}
+	return []string{strings.TrimSuffix(bindings[0], "*") + iv.Record[0].Name}, nil
 }
 
 // findVariable returns the variable named |name|, searching from the top of the stack down so that an inner

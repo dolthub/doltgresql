@@ -522,10 +522,9 @@ func TestAlterTable(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					// Note: pg_typeof returns NULL (rather than the column type) for NULL values in Doltgres, so the
-					// NULL row is checked without pg_typeof here.
-					Query:    "SELECT id, c, pg_typeof(c) FROM t1 WHERE c IS NOT NULL ORDER BY id;",
-					Expected: []sql.Row{{1, 100, "integer"}, {2, -42, "integer"}},
+					// A null value still has a type, so the null row reports the column's type as the rest do.
+					Query:    "SELECT id, c, pg_typeof(c) FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, 100, "integer"}, {2, -42, "integer"}, {3, nil, "integer"}},
 				},
 				{
 					Query:    "SELECT id, c FROM t1 ORDER BY id;",
@@ -1825,6 +1824,71 @@ ORDER BY schema_name, table_name;`,
 				{
 					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't7';",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "generated column with COALESCE keeps working after ADD PRIMARY KEY",
+			SetUpScript: []string{
+				"CREATE TABLE t (a int NOT NULL, b int GENERATED ALWAYS AS (COALESCE(a + 1, 0)) STORED);",
+				"INSERT INTO t (a) VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t ADD PRIMARY KEY (a);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY a;",
+					Expected: []sql.Row{{1, 2}, {2, 3}},
+				},
+			},
+		},
+		{
+			Name: "generated columns with function calls keep working after other alterations",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (a INT PRIMARY KEY, b INT GENERATED ALWAYS AS (a + 1) STORED);",
+				"INSERT INTO t1 (a) VALUES (1);",
+				"ALTER TABLE t1 ADD COLUMN c INT DEFAULT 0;",
+				"CREATE TABLE t2 (a INT PRIMARY KEY, b TEXT GENERATED ALWAYS AS (upper(a::text)) STORED);",
+				"INSERT INTO t2 (a) VALUES (1);",
+				"ALTER TABLE t2 ADD COLUMN c INT DEFAULT 0;",
+				"CREATE TABLE t3 (a INT NOT NULL, b INT GENERATED ALWAYS AS (COALESCE(abs(a), 0)) STORED, c INT);",
+				"INSERT INTO t3 (a) VALUES (1);",
+				"ALTER TABLE t3 ADD UNIQUE (a);",
+				"INSERT INTO t3 (a) VALUES (2);",
+				"ALTER TABLE t3 DROP COLUMN c;",
+				"INSERT INTO t3 (a) VALUES (3);",
+				"UPDATE t3 SET a = 4 WHERE a = 3;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t1 (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t1 ORDER BY a;",
+					Expected: []sql.Row{{1, 2, 0}, {2, 3, 0}},
+				},
+				{
+					Query:    "INSERT INTO t2 (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t2 ORDER BY a;",
+					Expected: []sql.Row{{1, "1", 0}, {2, "2", 0}},
+				},
+				{
+					Query:    "INSERT INTO t3 (a) VALUES (5);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3 ORDER BY a;",
+					Expected: []sql.Row{{1, 1}, {2, 2}, {4, 4}, {5, 5}},
 				},
 			},
 		},

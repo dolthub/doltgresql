@@ -99,6 +99,113 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "conditions that evaluate to NULL",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_null_if(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	IF input = 'Hello' THEN
+		RETURN 'Greeting';
+	ELSIF input = 'Bye' THEN
+		RETURN 'Farewell';
+	ELSE
+		RETURN 'Else';
+	END IF;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_while(input TEXT) RETURNS INT AS $$
+DECLARE
+	count1 INT := 0;
+BEGIN
+	WHILE input = 'Hello' LOOP
+		count1 := count1 + 1;
+		EXIT WHEN count1 > 2;
+	END LOOP;
+	RETURN count1;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_exit(input TEXT) RETURNS INT AS $$
+DECLARE
+	count1 INT := 0;
+BEGIN
+	LOOP
+		count1 := count1 + 1;
+		EXIT WHEN input = 'Hello';
+		EXIT WHEN count1 > 2;
+	END LOOP;
+	RETURN count1;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 1 THEN
+			msg := 'one';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_searched_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE
+		WHEN x = 1 THEN
+			msg := 'one';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_null_if(NULL);",
+					Expected: []sql.Row{{"Else"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_if('Bye');",
+					Expected: []sql.Row{{"Farewell"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_while(NULL);",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT interpreted_null_while('Hello');",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT interpreted_null_exit(NULL);",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT interpreted_null_exit('Hello');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT interpreted_null_case(NULL);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_case(1);",
+					Expected: []sql.Row{{"one"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_searched_case(NULL);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_searched_case(1);",
+					Expected: []sql.Row{{"one"}},
+				},
+			},
+		},
+		{
 			Name: "CASE, with ELSE",
 			SetUpScript: []string{`
 CREATE FUNCTION interpreted_case(x INT) RETURNS TEXT AS $$
@@ -972,6 +1079,16 @@ $$ LANGUAGE plpgsql;`},
 					RETURN var1;
 				END;
 				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_raise_errcode() RETURNS TEXT AS $$
+				BEGIN
+					RAISE EXCEPTION 'coded' USING ERRCODE = '22012';
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_raise_condition_name() RETURNS TEXT AS $$
+				BEGIN
+					RAISE EXCEPTION 'named' USING ERRCODE = 'division_by_zero';
+				END;
+				$$ LANGUAGE plpgsql;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -993,8 +1110,22 @@ $$ LANGUAGE plpgsql;`},
 					},
 				},
 				{
-					Query:       "SELECT interpreted_raise2('123');",
-					ExpectedErr: "foo % bar 2",
+					// A RAISE that names no SQLSTATE reports the code PostgreSQL gives a bare RAISE.
+					Query:           "SELECT interpreted_raise2('123');",
+					ExpectedErr:     "foo % bar 2",
+					ExpectedErrCode: "P0001",
+				},
+				{
+					Query:           "SELECT interpreted_raise_errcode();",
+					ExpectedErr:     "coded",
+					ExpectedErrCode: "22012",
+				},
+				{
+					// TODO: PostgreSQL also accepts a condition name here, and would report 22012. Until
+					//  names resolve, the RAISE keeps its default code rather than reporting the name.
+					Query:           "SELECT interpreted_raise_condition_name();",
+					ExpectedErr:     "named",
+					ExpectedErrCode: "P0001",
 				},
 			},
 		},
@@ -1803,6 +1934,86 @@ $$;`,
 				{
 					Query:    "SELECT mylt2('a', 'B', 1) as f;",
 					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name: "DECLARE variable with default value of an expression",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION array_default() RETURNS TEXT[] AS $$ DECLARE permitted TEXT[] := ARRAY['retired_at', 'deleted_at']; BEGIN RETURN permitted; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT array_default();",
+					Expected: []sql.Row{{"{retired_at,deleted_at}"}},
+				},
+				{
+					Query:    `CREATE FUNCTION quote_default() RETURNS TEXT AS $$ DECLARE x TEXT := 'it''s'; BEGIN RETURN x; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT quote_default();",
+					Expected: []sql.Row{{"it's"}},
+				},
+				{
+					Query:    `CREATE FUNCTION call_default() RETURNS TEXT AS $$ DECLARE x TEXT := upper('abc') || length('abcd'); BEGIN RETURN x; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT call_default();",
+					Expected: []sql.Row{{"ABC4"}},
+				},
+				{
+					// A default may name the parameters and the variables declared ahead of it, since
+					// Postgres evaluates the defaults in declaration order.
+					Query: `CREATE FUNCTION chained_default(p INT) RETURNS TEXT AS $$
+DECLARE
+	a INT := p * 2;
+	b INT := a + 1;
+	c TEXT := 'a=' || a || ' b=' || b;
+	d INT := (SELECT count(*) FROM (VALUES (1), (2)) v);
+BEGIN
+	RETURN c || ' d=' || d;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT chained_default(5);",
+					Expected: []sql.Row{{"a=10 b=11 d=2"}},
+				},
+				{
+					Query: `CREATE FUNCTION cast_default() RETURNS TEXT AS $$
+DECLARE
+	a NUMERIC := 1.5::numeric + 1;
+	b TEXT := NULL;
+	c INT[] := ARRAY[1, 2, 3];
+	d TIMESTAMP := '2020-01-01 00:00:00'::timestamp;
+BEGIN
+	RETURN a || '|' || coalesce(b, 'nil') || '|' || c[2] || '|' || d;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT cast_default();",
+					Expected: []sql.Row{{"2.5|nil|2|2020-01-01 00:00:00"}},
+				},
+				{
+					Query: `CREATE FUNCTION qualified_default() RETURNS TEXT AS $$
+DECLARE
+	k CONSTANT TEXT := upper('abc');
+	n TEXT NOT NULL := repeat('n', 2);
+BEGIN
+	RETURN k || n;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT qualified_default();",
+					Expected: []sql.Row{{"ABCnn"}},
 				},
 			},
 		},

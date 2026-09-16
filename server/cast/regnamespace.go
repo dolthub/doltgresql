@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,23 +23,23 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initOid handles all casts that are built-in. This comprises only the source types.
-func initOid(builtInCasts map[id.Cast]casts.Cast) {
-	oidAssignment(builtInCasts)
-	oidImplicit(builtInCasts)
+// initRegnamespace handles all casts that are built-in. This comprises only the source types.
+func initRegnamespace(builtInCasts map[id.Cast]casts.Cast) {
+	regnamespaceAssignment(builtInCasts)
+	regnamespaceImplicit(builtInCasts)
 }
 
-// oidAssignment registers all assignment casts. This comprises only the source types.
-func oidAssignment(builtInCasts map[id.Cast]casts.Cast) {
+// regnamespaceAssignment registers all assignment casts. This comprises only the source types.
+func regnamespaceAssignment(builtInCasts map[id.Cast]casts.Cast) {
 	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Oid,
+		FromType: pgtypes.Regnamespace,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return int32(id.Cache().ToOID(val.(id.Id))), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Oid,
+		FromType: pgtypes.Regnamespace,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return int64(id.Cache().ToOID(val.(id.Id))), nil
@@ -47,32 +47,11 @@ func oidAssignment(builtInCasts map[id.Cast]casts.Cast) {
 	})
 }
 
-// oidImplicit registers all implicit casts. This comprises only the source types.
-func oidImplicit(builtInCasts map[id.Cast]casts.Cast) {
+// regnamespaceImplicit registers all implicit casts. This comprises only the source types.
+func regnamespaceImplicit(builtInCasts map[id.Cast]casts.Cast) {
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regclass,
-		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regnamespace,
-		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regproc,
-		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return val, nil
-		},
-	})
-	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Oid,
-		ToType:   pgtypes.Regtype,
+		FromType: pgtypes.Regnamespace,
+		ToType:   pgtypes.Oid,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
