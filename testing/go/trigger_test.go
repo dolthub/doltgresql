@@ -1129,6 +1129,50 @@ func TestTriggerWholeRecordReference(t *testing.T) {
 			},
 		},
 		{
+			Name: "records compared as a whole when a field leaves NULL",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT, v2 TEXT);",
+				"INSERT INTO test VALUES (1, 'hi', NULL);",
+				"CREATE TABLE log (id SERIAL PRIMARY KEY, msg TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					IF OLD IS DISTINCT FROM NEW THEN
+						INSERT INTO log (msg) VALUES ('changed ' || NEW.pk::text);
+					ELSE
+						INSERT INTO log (msg) VALUES ('same ' || NEW.pk::text);
+					END IF;
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE test SET v1 = 'bye' WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					// A field going from NULL to a value is still a difference between the two records.
+					Query:    "UPDATE test SET v2 = 'now set' WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					// And going back to NULL.
+					Query:    "UPDATE test SET v2 = NULL WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					// Both records having NULL in the same field is not a difference.
+					Query:    "UPDATE test SET v2 = NULL WHERE pk = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT msg FROM log ORDER BY id;",
+					Expected: []sql.Row{{"changed 1"}, {"changed 1"}, {"changed 1"}, {"same 1"}},
+				},
+			},
+		},
+		{
 			Name: "the record an operation does not supply",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
