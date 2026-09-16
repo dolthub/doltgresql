@@ -1620,6 +1620,86 @@ $$;`,
 			},
 		},
 		{
+			Name: "DECLARE variable with default value of an expression",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION array_default() RETURNS TEXT[] AS $$ DECLARE permitted TEXT[] := ARRAY['retired_at', 'deleted_at']; BEGIN RETURN permitted; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT array_default();",
+					Expected: []sql.Row{{"{retired_at,deleted_at}"}},
+				},
+				{
+					Query:    `CREATE FUNCTION quote_default() RETURNS TEXT AS $$ DECLARE x TEXT := 'it''s'; BEGIN RETURN x; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT quote_default();",
+					Expected: []sql.Row{{"it's"}},
+				},
+				{
+					Query:    `CREATE FUNCTION call_default() RETURNS TEXT AS $$ DECLARE x TEXT := upper('abc') || length('abcd'); BEGIN RETURN x; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT call_default();",
+					Expected: []sql.Row{{"ABC4"}},
+				},
+				{
+					// A default may name the parameters and the variables declared ahead of it, since
+					// Postgres evaluates the defaults in declaration order.
+					Query: `CREATE FUNCTION chained_default(p INT) RETURNS TEXT AS $$
+DECLARE
+	a INT := p * 2;
+	b INT := a + 1;
+	c TEXT := 'a=' || a || ' b=' || b;
+	d INT := (SELECT count(*) FROM (VALUES (1), (2)) v);
+BEGIN
+	RETURN c || ' d=' || d;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT chained_default(5);",
+					Expected: []sql.Row{{"a=10 b=11 d=2"}},
+				},
+				{
+					Query: `CREATE FUNCTION cast_default() RETURNS TEXT AS $$
+DECLARE
+	a NUMERIC := 1.5::numeric + 1;
+	b TEXT := NULL;
+	c INT[] := ARRAY[1, 2, 3];
+	d TIMESTAMP := '2020-01-01 00:00:00'::timestamp;
+BEGIN
+	RETURN a || '|' || coalesce(b, 'nil') || '|' || c[2] || '|' || d;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT cast_default();",
+					Expected: []sql.Row{{"2.5|nil|2|2020-01-01 00:00:00"}},
+				},
+				{
+					Query: `CREATE FUNCTION qualified_default() RETURNS TEXT AS $$
+DECLARE
+	k CONSTANT TEXT := upper('abc');
+	n TEXT NOT NULL := repeat('n', 2);
+BEGIN
+	RETURN k || n;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT qualified_default();",
+					Expected: []sql.Row{{"ABCnn"}},
+				},
+			},
+		},
+		{
 			Name: "FOR I LOOP statement",
 			Assertions: []ScriptTestAssertion{
 				{
