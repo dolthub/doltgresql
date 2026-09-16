@@ -1322,6 +1322,41 @@ func TestAuthTests(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Built-in routines are executable without an explicit grant",
+			SetUpScript: []string{
+				"CREATE TABLE t3327 (x INT);",
+				"INSERT INTO t3327 VALUES (1), (2), (3);",
+				"CREATE ROLE reader LOGIN PASSWORD 'password';",
+				"GRANT SELECT ON t3327 TO reader;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT COUNT(*) FROM t3327;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*), SUM(x), MAX(x) FROM t3327;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{3, 6, 3}},
+				},
+				{
+					Query:    "SELECT x, ROW_NUMBER() OVER (ORDER BY x) FROM t3327 ORDER BY x;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{1, 1}, {2, 2}, {3, 3}},
+				},
+				{
+					Query:    "SELECT pg_catalog.lower('A'), lower('A');",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a", "a"}},
+				},
+			},
+		},
 	})
 }
 
