@@ -92,14 +92,18 @@ func charImplicit(builtInCasts map[id.Cast]casts.Cast) {
 			if err != nil {
 				return nil, err
 			}
-			return handleStringCast(str, targetType)
+			return handleStringCast(strings.TrimRight(str, " "), targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Text,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return val, nil
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return strings.TrimRight(str, " "), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
@@ -110,7 +114,7 @@ func charImplicit(builtInCasts map[id.Cast]casts.Cast) {
 			if err != nil {
 				return nil, err
 			}
-			return handleStringCast(str, targetType)
+			return handleStringCast(strings.TrimRight(str, " "), targetType)
 		},
 	})
 }

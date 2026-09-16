@@ -3912,6 +3912,47 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Casting a bpchar value to another string type removes its trailing spaces",
+		SetUpScript: []string{
+			"CREATE TABLE t3325 (id INT PRIMARY KEY, c CHAR(2) CHECK (c::text IN ('L', 'R')));",
+			"CREATE TABLE t3325_check (c CHARACTER(2), CONSTRAINT t3325_check_check CHECK (c::text IN ('L', 'M', 'H')));",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT '[' || 'L '::character(2)::text || ']' AS as_text, length('L '::character(2)::text) AS length, 'L '::character(2)::text = 'L' AS equals_l;",
+				Expected: []sql.Row{{"[L]", 1, "t"}},
+			},
+			{
+				Query:    "INSERT INTO t3325_check VALUES ('L ');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT '[' || c::text || ']' AS as_text FROM t3325_check;",
+				Expected: []sql.Row{{"[L]"}},
+			},
+			{
+				Query:    "INSERT INTO t3325 VALUES (1, 'L'), (2, 'R ');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id, '[' || c || ']', c = 'L' FROM t3325 ORDER BY id;",
+				Expected: []sql.Row{{1, "[L]", "t"}, {2, "[R]", "f"}},
+			},
+			{
+				Query:    "SELECT '[' || 'L'::CHAR(2) || ']', length('L'::CHAR(2)), 'L'::CHAR(2) = 'L', 'L '::CHAR(2) = 'L'::CHAR(2), 'L'::CHAR(2)::TEXT = 'L', 'L'::CHAR(2)::VARCHAR = 'L', bpcharcmp('L'::CHAR(2), 'L ');",
+				Expected: []sql.Row{{"[L]", 1, "t", "t", "t", "t", 0}},
+			},
+			{
+				Query:    "SELECT '[' || 'L '::char(2) || ']', upper('L '::char(2)) = 'L', 'L '::bpchar = 'L'::bpchar, 'L '::character(2)::name = 'L', 'L '::character(2)::varchar(5) = 'L', length('L '::character(2)::varchar);",
+				Expected: []sql.Row{{"[L]", "t", "t", "t", "t", 1}},
+			},
+			{
+				Query:    "SELECT '[' || E'L\\t'::character(3)::text || ']', length(E'L\\t'::character(3)::text), '[' || E'L\\n'::character(3)::text || ']', '[' || E'L \\t '::character(5)::text || ']', E'L\\t'::character(3) = 'L', E'L\\t '::character(4) = E'L\\t'::character(3), bpcharcmp(E'L\\t'::character(3), E'L\\t '::character(4)), '[' || E'L\\t'::character(3)::varchar || ']', length(E'L\\t'::character(3)), E'L\\t'::character(3)::text = E'L\\t';",
+				Expected: []sql.Row{{"[L\t]", 2, "[L\n]", "[L \t]", "f", "t", 0, "[L\t]", 2, "t"}},
+			},
+		},
+	},
 }
 
 func TestSameTypes(t *testing.T) {
