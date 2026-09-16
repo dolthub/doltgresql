@@ -140,6 +140,66 @@ func TestSelect(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3388
+			Name: "ORDER BY NULL ordering",
+			SetUpScript: []string{
+				"CREATE TABLE null_ordering (id INT4 PRIMARY KEY, a INT4, b INT4);",
+				"INSERT INTO null_ordering VALUES (1, NULL, 1), (2, NULL, NULL), (3, 1, 1), (4, 1, NULL), (5, 2, 2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a, id;",
+					Expected: []sql.Row{{3}, {4}, {5}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a ASC NULLS FIRST, id;",
+					Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a ASC NULLS LAST, id;",
+					Expected: []sql.Row{{3}, {4}, {5}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a NULLS FIRST, id;",
+					Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a NULLS LAST, id;",
+					Expected: []sql.Row{{3}, {4}, {5}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a DESC, id;",
+					Expected: []sql.Row{{1}, {2}, {5}, {3}, {4}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a DESC NULLS FIRST, id;",
+					Expected: []sql.Row{{1}, {2}, {5}, {3}, {4}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a DESC NULLS LAST, id;",
+					Expected: []sql.Row{{5}, {3}, {4}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a ASC NULLS LAST, b DESC NULLS FIRST;",
+					Expected: []sql.Row{{4}, {3}, {5}, {2}, {1}},
+				},
+				{
+					Query: "SELECT id, row_number() OVER (ORDER BY a ASC NULLS LAST, id) FROM null_ordering ORDER BY id;",
+					Expected: []sql.Row{
+						{1, int64(4)},
+						{2, int64(5)},
+						{3, int64(1)},
+						{4, int64(2)},
+						{5, int64(3)},
+					},
+				},
+				{
+					Query:    "SELECT array_agg(id ORDER BY a DESC NULLS FIRST, id) FROM null_ordering;",
+					Expected: []sql.Row{{"{1,2,5,3,4}"}},
+				},
+			},
+		},
+		{
 			Name: "select large limit",
 			Assertions: []ScriptTestAssertion{
 				{
