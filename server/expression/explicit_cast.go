@@ -174,9 +174,13 @@ func (c *ExplicitCast) Resolved() bool {
 // String implements the sql.Expression interface.
 func (c *ExplicitCast) String() string {
 	var sqlChild string
-	if c.sqlChild == nil {
+	switch c.sqlChild.(type) {
+	case nil:
 		sqlChild = "unresolved"
-	} else {
+	case *BinaryOperator, *UnaryOperator, *Not, *IsNull, *IsNotNull, *IsDistinctFrom, *IsNotDistinctFrom, *InTuple,
+		*InSubquery, *AnyExpr, *expression.Like:
+		sqlChild = "(" + c.sqlChild.String() + ")"
+	default:
 		sqlChild = c.sqlChild.String()
 	}
 	// Column defaults are persisted as this string and re-parsed later, so the type must be schema-qualified.

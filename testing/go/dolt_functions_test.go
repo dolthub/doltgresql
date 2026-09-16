@@ -2023,6 +2023,34 @@ func TestDoltMerge(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Merge with nested parentheses in default, generated, and check expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t3324 (pk INT4 PRIMARY KEY, a INT4 DEFAULT (1 + 1) * 2, b INT4 GENERATED ALWAYS AS ((pk + 1) * 2) STORED, CONSTRAINT c3324 CHECK (NOT (pk = 0 OR pk + 1 = 0) AND ((pk + 1) * 2) > 3));",
+				"INSERT INTO t3324 (pk) VALUES (1);",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
+				"SELECT DOLT_BRANCH('other');",
+				"INSERT INTO t3324 (pk) VALUES (2);",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'main')::text) = 32;",
+				"SELECT DOLT_CHECKOUT('other');",
+				"INSERT INTO t3324 (pk) VALUES (3);",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'other')::text) = 32;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT strpos(DOLT_MERGE('main', '--no-ff', '-m', 'merge_commit')::text, 'merge successful') > 1;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT * FROM t3324 ORDER BY pk;",
+					Expected: []sql.Row{{1, 4, 4}, {2, 4, 6}, {3, 4, 8}},
+				},
+				{
+					Query:       "INSERT INTO t3324 (pk) VALUES (0);",
+					ExpectedErr: "c3324",
+				},
+			},
+		},
 	})
 }
 

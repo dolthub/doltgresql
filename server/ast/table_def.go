@@ -34,7 +34,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		expr, err := nodeExpr(ctx, node.Expr)
+		expr, err := nodeCheckExpr(ctx, node.Expr)
 		if err != nil {
 			return err
 		}
