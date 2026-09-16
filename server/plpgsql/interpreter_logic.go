@@ -390,7 +390,12 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err != nil {
 				return nil, err
 			}
-			conditionMet := retVal.(bool)
+			// A NULL condition is not met: an IF or a WHILE takes its false path, and a CASE whose
+			// selector is NULL compares unequal to every WHEN and so reaches its ELSE.
+			conditionMet, ok := retVal.(bool)
+			if !ok && retVal != nil {
+				return nil, fmt.Errorf("condition did not evaluate to a boolean, got `%T`", retVal)
+			}
 			if isLoopCondition(operation) {
 				// An integer FOR loop has no cursor to carry the fact that its body ran, so its condition
 				// is what records it, for the FOUND the loop reports once it is left.

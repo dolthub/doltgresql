@@ -231,6 +231,94 @@ $$ LANGUAGE plpgsql;`,
 			},
 		},
 		{
+			Name: "NULL conditions are not met",
+			SetUpScript: []string{
+				`CREATE TABLE case_selector (v TEXT);`,
+				`INSERT INTO case_selector VALUES ('match');`,
+				`CREATE FUNCTION interpreted_case_null(x TEXT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 'match' THEN
+			msg := 'matched';
+		ELSE
+			msg := 'fell through';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_empty_selector() RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE (SELECT v FROM case_selector LIMIT 1)
+		WHEN 'match' THEN
+			msg := 'matched';
+		ELSE
+			msg := 'fell through';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_if_null(x BOOLEAN) RETURNS TEXT AS $$
+BEGIN
+	IF x THEN
+		RETURN 'true';
+	ELSE
+		RETURN 'not true';
+	END IF;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_while_null(x BOOLEAN) RETURNS TEXT AS $$
+BEGIN
+	WHILE x LOOP
+		RETURN 'looped';
+	END LOOP;
+	RETURN 'never looped';
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case_null('match');",
+					Expected: []sql.Row{{"matched"}},
+				},
+				{
+					// A NULL selector matches no WHEN branch, so the CASE falls to its ELSE.
+					Query:    "SELECT interpreted_case_null(NULL);",
+					Expected: []sql.Row{{"fell through"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_empty_selector();",
+					Expected: []sql.Row{{"matched"}},
+				},
+				{
+					// A selector subquery with no rows is NULL, which reaches the ELSE.
+					Query:    "DELETE FROM case_selector;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT interpreted_case_empty_selector();",
+					Expected: []sql.Row{{"fell through"}},
+				},
+				{
+					Query:    "SELECT interpreted_if_null(true);",
+					Expected: []sql.Row{{"true"}},
+				},
+				{
+					// A NULL IF condition is not met, so the ELSE runs.
+					Query:    "SELECT interpreted_if_null(NULL);",
+					Expected: []sql.Row{{"not true"}},
+				},
+				{
+					// A NULL WHILE condition ends the loop.
+					Query:    "SELECT interpreted_while_null(NULL);",
+					Expected: []sql.Row{{"never looped"}},
+				},
+			},
+		},
+		{
 			// TODO: When no CASE statements match, and there is no ELSE block,
 			//       Postgres raises an exception. Unskip this test after we
 			//       add support for raising exceptions from functions.
