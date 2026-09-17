@@ -679,20 +679,22 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			return nil, err
 		}
 
-		if len(node.Indirection) > 1 {
-			return nil, errors.Errorf("multi dimensional array subscripts are not yet supported")
-		} else if node.Indirection[0].Slice {
-			return nil, errors.Errorf("slice subscripts are not yet supported")
-		}
-
-		indexExpr, err := nodeExpr(ctx, node.Indirection[0].Begin)
-		if err != nil {
-			return nil, err
+		children := make(vitess.Exprs, len(node.Indirection)+1)
+		children[0] = childExpr
+		for i, subscript := range node.Indirection {
+			if subscript.Slice {
+				return nil, errors.Errorf("slice subscripts are not yet supported")
+			}
+			indexExpr, err := nodeExpr(ctx, subscript.Begin)
+			if err != nil {
+				return nil, err
+			}
+			children[i+1] = indexExpr
 		}
 
 		return vitess.InjectedExpr{
 			Expression: &pgexprs.Subscript{},
-			Children:   vitess.Exprs{childExpr, indexExpr},
+			Children:   children,
 		}, nil
 	case *tree.IsNotNullExpr:
 		expr, err := nodeExpr(ctx, node.Expr)

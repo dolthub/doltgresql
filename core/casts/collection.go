@@ -244,7 +244,8 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 			}
 			if baseCast.ID.IsValid() {
 				// We use a closure that can unwrap the slice, since conversion functions expect a singular non-nil value
-				evalFunc := func(ctx *sql.Context, vals any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (any, error) {
+				var evalFunc func(ctx *sql.Context, vals any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (any, error)
+				evalFunc = func(ctx *sql.Context, vals any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (any, error) {
 					var err error
 					oldVals := vals.([]any)
 					newVals := make([]any, len(oldVals))
@@ -255,9 +256,13 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 						// Some errors are optional depending on the context, so we'll still process all values even
 						// after an error is received.
 						var nErr error
-						sourceBaseType := sourceType.ArrayBaseType()
-						targetBaseType := targetType.ArrayBaseType()
-						newVals[i], nErr = baseCast.Eval(ctx, oldVal, sourceBaseType, targetBaseType)
+						if _, isSubArray := oldVal.([]any); isSubArray {
+							newVals[i], nErr = evalFunc(ctx, oldVal, sourceType, targetType)
+						} else {
+							sourceBaseType := sourceType.ArrayBaseType()
+							targetBaseType := targetType.ArrayBaseType()
+							newVals[i], nErr = baseCast.Eval(ctx, oldVal, sourceBaseType, targetBaseType)
+						}
 						if nErr != nil && err == nil {
 							err = nErr
 						}

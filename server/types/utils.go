@@ -180,7 +180,13 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 		if i > 0 {
 			sb.WriteString(",")
 		}
-		if v != nil {
+		if subArray, ok := v.([]any); ok && !baseType.IsVectorType() {
+			str, err := ArrToString(ctx, subArray, baseType, trimBool)
+			if err != nil {
+				return "", err
+			}
+			sb.WriteString(str)
+		} else if v != nil {
 			str, err := baseType.IoOutput(ctx, v)
 			if err != nil {
 				return "", err
