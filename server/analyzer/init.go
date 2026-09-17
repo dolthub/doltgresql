@@ -121,14 +121,17 @@ func Init() {
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.QuoteDefaultColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_ParenthesizeColumnDefaults, Apply: ParenthesizeColumnDefaults},
-		// HoistInsertTriggers must run after GMS's 'resolveInsertRows' rule, which is what adds the
-		// projection it moves the triggers above.
-		analyzer.Rule{Id: ruleId_HoistInsertTriggers, Apply: HoistInsertTriggers},
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
 		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer},
+		// HoistInsertTriggers must run after GMS's 'resolveInsertRows' rule, which is what adds the
+		// projection it moves the triggers above. It also has to run after InsertContextRootFinalizer:
+		// 'resolveInsertRows' analyzes a non-literal insert source on its own, and that nested analysis
+		// leaves a finalizer of its own between the projection and the triggers. InsertContextRootFinalizer
+		// is what strips those back out, so only afterwards does the projection sit directly on the triggers.
+		analyzer.Rule{Id: ruleId_HoistInsertTriggers, Apply: HoistInsertTriggers},
 	)
 
 	initEngine()

@@ -61,6 +61,46 @@ func TestCreateTrigger(t *testing.T) {
 			},
 		},
 		{
+			// An INSERT whose source is a query, rather than a literal VALUES list, is analyzed on its
+			// own, which leaves an extra node between the trigger and the projection that pads its rows
+			// out to the table's schema. The triggers have to be hoisted above that projection all the
+			// same, or NEW holds only the columns the INSERT named.
+			Name: "BEFORE INSERT ... SELECT, with columns omitted from or reordered by the INSERT",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, selector TEXT DEFAULT 'DEFAULTED', result TEXT);",
+				"CREATE TABLE source (pk INT PRIMARY KEY, selector TEXT);",
+				"INSERT INTO source VALUES (1, 'FROM_QUERY'), (2, 'ALSO_FROM_QUERY');",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					NEW.result := 'saw_' || NEW.selector || '_' || NEW.pk::text;
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The INSERT names its columns in the opposite order to the table's, and leaves
+					// `result` for the trigger to set.
+					Query:    "INSERT INTO test (selector, pk) SELECT selector, pk FROM source ORDER BY pk;",
+					Expected: []sql.Row{},
+				},
+				{
+					// An omitted column reaches the trigger holding its default.
+					Query:    "INSERT INTO test (pk) SELECT 3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "FROM_QUERY", "saw_FROM_QUERY_1"},
+						{2, "ALSO_FROM_QUERY", "saw_ALSO_FROM_QUERY_2"},
+						{3, "DEFAULTED", "saw_DEFAULTED_3"},
+					},
+				},
+			},
+		},
+		{
 			Name: "BEFORE INSERT",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
