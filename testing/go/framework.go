@@ -66,6 +66,8 @@ var serverHost = "127.0.0.1"
 type ScriptTest struct {
 	// Name of the script.
 	Name string
+	// ServerConfig is an optional configuration to use when starting the Doltgres server.
+	ServerConfig *servercfg.DoltgresConfig
 	// The database to create and use. If not provided, then it defaults to "postgres".
 	Database string
 	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error.
@@ -195,9 +197,9 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 		if script.UseLocalFileSystem {
 			port, err := sql.GetEmptyPort()
 			require.NoError(t, err)
-			ctx, conn, controller = CreateServerLocalWithPort(t, scriptDatabase, port)
+			ctx, conn, controller = CreateServerLocalWithPortAndConfig(t, scriptDatabase, port, script.ServerConfig)
 		} else {
-			ctx, conn, controller = CreateServer(t, scriptDatabase)
+			ctx, conn, controller = CreateServerWithConfig(t, scriptDatabase, script.ServerConfig)
 		}
 		defer func() {
 			conn.Close(ctx)
@@ -458,9 +460,9 @@ func RunTransactionTest(t *testing.T, script ScriptTest) {
 	if script.UseLocalFileSystem {
 		port, err := sql.GetEmptyPort()
 		require.NoError(t, err)
-		ctx, conn, controller = CreateServerLocalWithPort(t, scriptDatabase, port)
+		ctx, conn, controller = CreateServerLocalWithPortAndConfig(t, scriptDatabase, port, script.ServerConfig)
 	} else {
-		ctx, conn, controller = CreateServer(t, scriptDatabase)
+		ctx, conn, controller = CreateServerWithConfig(t, scriptDatabase, script.ServerConfig)
 	}
 	defer func() {
 		conn.Close(ctx)
@@ -611,20 +613,25 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 	return CreateServerWithPort(t, database, port)
 }
 
+// CreateServerWithConfig creates a server with the given database and configuration.
+func CreateServerWithConfig(t *testing.T, database string, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
+	return CreateServerWithPortAndConfig(t, database, port, config)
+}
+
 // CreateServerWithPort creates a server with the given database and port, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying [svcs.Controller] may be used
 // to wait until the server has closed.
 func CreateServerWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
+	return CreateServerWithPortAndConfig(t, database, port, nil)
+}
+
+// CreateServerWithPortAndConfig creates a server with the given database, port, and configuration.
+func CreateServerWithPortAndConfig(t *testing.T, database string, port int, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
 	require.NotEmpty(t, database)
-	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
-		DoltgresConfig: cfgdetails.DoltgresConfig{
-			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
-				PortNumber: &port,
-				HostStr:    &serverHost,
-			},
-			LogLevelStr: &testServerLogLevel,
-		},
-	}, dserver.NewListener)
+	config = testServerConfig(config, port)
+	controller, err := dserver.RunInMemory(config, dserver.NewListener)
 	require.NoError(t, err)
 	auth.ClearDatabase()
 	fmt.Printf("port is %d\n", port)
@@ -638,6 +645,11 @@ func CreateServerWithPort(t *testing.T, database string, port int) (context.Cont
 // |database| at 127.0.0.1:|port|. The server will close when the connection is closed or lost. The returned
 // [svcs.Controller] may be used to wait for the server to stop.
 func CreateServerLocalWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
+	return CreateServerLocalWithPortAndConfig(t, database, port, nil)
+}
+
+// CreateServerLocalWithPortAndConfig creates a server using the local file system and the given configuration.
+func CreateServerLocalWithPortAndConfig(t *testing.T, database string, port int, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
 	// We avoid using [T.TempDir] because it results in a file lock conflict on Windows. [T.TempDir] registers a
 	// [T.Cleanup] function that runs without checking the [svcs.Controller] and it cannot be overwritten.
 	// TODO(elianddb): Setup an optional [T.Cleanup] function for the temporary directory. Our default setup for now is
@@ -652,21 +664,27 @@ func CreateServerLocalWithPort(t *testing.T, database string, port int) (context
 	ctx := context.Background()
 	doltEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fileSys, doltdb.LocalDirDoltDB, dserver.Version)
 
-	controller, err := dserver.RunOnDisk(ctx, &servercfg.DoltgresConfig{
-		DoltgresConfig: cfgdetails.DoltgresConfig{
-			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
-				PortNumber: &port,
-				HostStr:    &serverHost,
-			},
-			LogLevelStr: &testServerLogLevel,
-		},
-	}, doltEnv)
+	config = testServerConfig(config, port)
+	controller, err := dserver.RunOnDisk(ctx, config, doltEnv)
 	require.NoError(t, err)
 	auth.ClearDatabase()
 	fmt.Printf("port is %d\n", port)
 
 	connection := newTestDatabaseConnection(t, ctx, database, serverHost, port)
 	return ctx, connection, controller
+}
+
+func testServerConfig(config *servercfg.DoltgresConfig, port int) *servercfg.DoltgresConfig {
+	if config == nil {
+		config = &servercfg.DoltgresConfig{}
+	}
+	configCopy := *config
+	configCopy.ListenerConfig = &cfgdetails.DoltgresListenerConfig{
+		PortNumber: &port,
+		HostStr:    &serverHost,
+	}
+	configCopy.LogLevelStr = &testServerLogLevel
+	return &configCopy
 }
 
 // newTestDatabaseConnection returns a Connection to the test |database| at |host|:|port|. If the |database| provided

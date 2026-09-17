@@ -42,15 +42,17 @@ type DoltgresConfig struct {
 var _ doltservercfg.ServerConfig = (*DoltgresConfig)(nil)
 
 // Overrides implements the interface doltservercfg.ServerConfig.
-func (*DoltgresConfig) Overrides() sql.EngineOverrides {
+func (cfg *DoltgresConfig) Overrides() sql.EngineOverrides {
 	return sql.EngineOverrides{
 		UpdateExpressionApplier: expression.UpdateExpressionApplier{},
 		Builder: sql.BuilderOverrides{
 			ParseTableAsColumn:          expression.NewTableToComposite,
 			ScalarFunctionAliasAsColumn: true,
 			InsertIgnoreMode:            sql.InsertIgnoreModeDuplicateKeysOnly,
-			Parser:                      pgsql.NewPostgresParser(),
-			ValidateDistinctWindow:      validateDistinctWindow,
+			Parser: pgsql.NewPostgresParserWithOptions(pgsql.ParserOptions{
+				PermitUnsupportedLockingStatements: cfg.PermitUnsupportedLockingStatements(),
+			}),
+			ValidateDistinctWindow: validateDistinctWindow,
 		},
 		Hooks: sql.ExecutionHooks{
 			RenameTable: sql.RenameTable{

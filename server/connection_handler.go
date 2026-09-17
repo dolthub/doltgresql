@@ -65,6 +65,7 @@ type ConnectionHandler struct {
 	portals            map[string]PortalData
 	doltgresHandler    *DoltgresHandler
 	backend            *pgproto3.Backend
+	convertOptions     ast.ConvertOptions
 
 	waitForSync bool
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
@@ -141,6 +142,10 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 	// TODO: possibly should define engine and session manager ourselves
 	//  instead of depending on the GetRunningServer method.
 	server := sqlserver.GetRunningServer()
+	convertOptions := ast.ConvertOptions{}
+	if postgresParser, ok := server.Engine.Parser.(*psql.PostgresParser); ok {
+		convertOptions = postgresParser.ConvertOptions()
+	}
 	doltgresHandler := &DoltgresHandler{
 		e:                 server.Engine,
 		sm:                server.SessionManager(),
@@ -159,6 +164,7 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 		doltgresHandler:    doltgresHandler,
 		backend:            pgproto3.NewBackend(conn, conn),
 		transactionState:   idleTransactionState,
+		convertOptions:     convertOptions,
 	}
 }
 
@@ -1636,7 +1642,7 @@ func (h *ConnectionHandler) convertQuery(query string) ([]ConvertedQuery, error)
 	}
 	converted := make([]ConvertedQuery, len(s))
 	for i := range s {
-		vitessAST, err := ast.Convert(s[i])
+		vitessAST, err := ast.ConvertWithOptions(s[i], h.convertOptions)
 		stmtTag := s[i].AST.StatementTag()
 		if err != nil {
 			return nil, err

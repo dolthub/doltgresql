@@ -67,6 +67,7 @@ const (
 	DefaultPostgresUnixSocketFilePath = "/tmp/.s.PGSQL.5432"
 	DefaultMaxLoggedQueryLen          = 0
 	DefaultEncodeLoggedQuery          = false
+	DefaultPermitUnsupportedLocking   = false
 )
 
 // DOLTGRES_DATA_DIR is an environment variable that defines the location of DoltgreSQL databases
@@ -104,6 +105,8 @@ type DoltgresBehaviorConfig struct {
 	AutoGCBehavior *DoltgresAutoGCBehaviorYAMLConfig `yaml:"auto_gc_behavior,omitempty" minver:"TBD"`
 	// SkipStartupIntegrityCheck disables the data integrity check that runs at server startup, which makes startup faster
 	SkipStartupIntegrityCheck *bool `yaml:"skip_startup_integrity_check,omitempty" minver:"TBD"`
+	// PermitUnsupportedLockingStatements accepts locking clauses such as SELECT ... FOR UPDATE and ignores them.
+	PermitUnsupportedLockingStatements *bool `yaml:"permit_unsupported_locking_statements,omitempty" minver:"TBD"`
 }
 
 // DoltgresAutoGCBehaviorYAMLConfig implements Dolt's doltservercfg.AutoGCBehavior.
@@ -266,6 +269,14 @@ func (cfg *DoltgresConfig) SkipStartupIntegrityCheck() bool {
 		return false
 	}
 	return *cfg.BehaviorConfig.SkipStartupIntegrityCheck
+}
+
+// PermitUnsupportedLockingStatements returns whether unsupported locking clauses should be accepted and ignored.
+func (cfg *DoltgresConfig) PermitUnsupportedLockingStatements() bool {
+	if cfg.BehaviorConfig == nil || cfg.BehaviorConfig.PermitUnsupportedLockingStatements == nil {
+		return false
+	}
+	return *cfg.BehaviorConfig.PermitUnsupportedLockingStatements
 }
 
 func (cfg *DoltgresConfig) DataDir() string {
@@ -754,8 +765,9 @@ func InternalDefaultServerConfig() *DoltgresConfig {
 		LogLevelStr:       Ptr(string(DefaultLogLevel)),
 		EncodeLoggedQuery: Ptr(DefaultEncodeLoggedQuery),
 		BehaviorConfig: &DoltgresBehaviorConfig{
-			ReadOnly:              Ptr(DefaultReadOnly),
-			DoltTransactionCommit: Ptr(DefaultDoltTransactionCommit),
+			ReadOnly:                           Ptr(DefaultReadOnly),
+			DoltTransactionCommit:              Ptr(DefaultDoltTransactionCommit),
+			PermitUnsupportedLockingStatements: Ptr(DefaultPermitUnsupportedLocking),
 		},
 		UserConfig: &DoltgresUserConfig{
 			Name:     Ptr(DefaultUser),
