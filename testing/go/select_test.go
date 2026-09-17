@@ -140,6 +140,27 @@ func TestSelect(t *testing.T) {
 			},
 		},
 		{
+			Name: "VALUES NULL type inference with ORDER BY",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT v FROM (VALUES (NULL), (2), (1)) AS t(v) ORDER BY v + 0 ASC NULLS FIRST;",
+					Expected: []sql.Row{{nil}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT v FROM (VALUES (NULL), (2), (1)) AS t(v) ORDER BY v + 0 ASC NULLS LAST;",
+					Expected: []sql.Row{{1}, {2}, {nil}},
+				},
+				{
+					Query:    "SELECT v FROM (VALUES (NULL), (2), (1)) AS t(v) ORDER BY v + 0 DESC NULLS FIRST;",
+					Expected: []sql.Row{{nil}, {2}, {1}},
+				},
+				{
+					Query:    "SELECT v FROM (VALUES (NULL), (2), (1)) AS t(v) ORDER BY v + 0 DESC NULLS LAST;",
+					Expected: []sql.Row{{2}, {1}, {nil}},
+				},
+			},
+		},
+		{
 			// https://github.com/dolthub/doltgresql/issues/3388
 			Name: "ORDER BY NULL ordering",
 			SetUpScript: []string{
