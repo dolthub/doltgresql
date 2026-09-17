@@ -51,6 +51,13 @@ type ParserOptions struct {
 	PermitUnsupportedLockingStatements bool
 }
 
+// ConvertOptions returns the AST conversion options configured for this parser.
+func (p *PostgresParser) ConvertOptions() ast.ConvertOptions {
+	return ast.ConvertOptions{
+		PermitUnsupportedLockingStatements: p.permitUnsupportedLockingStatements,
+	}
+}
+
 // ParseSimple implements sql.Parser interface.
 func (p *PostgresParser) ParseSimple(query string) (vitess.Statement, error) {
 	stmt, _, _, err := p.ParseWithOptions(context.Background(), query, ';', false, vitess.ParserOptions{})
@@ -76,9 +83,7 @@ func (p *PostgresParser) ParseWithOptions(ctx context.Context, query string, del
 		return nil, q, "", vitess.ErrEmpty
 	}
 
-	vitessAST, err := ast.ConvertWithOptions(stmts[0], ast.ConvertOptions{
-		PermitUnsupportedLockingStatements: p.permitUnsupportedLockingStatements,
-	})
+	vitessAST, err := ast.ConvertWithOptions(stmts[0], p.ConvertOptions())
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -95,9 +100,7 @@ func (p *PostgresParser) ParseOneWithOptions(_ context.Context, query string, _ 
 	if err != nil {
 		return nil, 0, err
 	}
-	vitessAST, err := ast.ConvertWithOptions(stmt, ast.ConvertOptions{
-		PermitUnsupportedLockingStatements: p.permitUnsupportedLockingStatements,
-	})
+	vitessAST, err := ast.ConvertWithOptions(stmt, p.ConvertOptions())
 	if err != nil {
 		return nil, 0, err
 	}
