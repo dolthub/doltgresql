@@ -17,6 +17,7 @@ package expression
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -27,35 +28,45 @@ import (
 
 // Subscript represents a subscript expression, e.g. `a[1]`.
 type Subscript struct {
-	Child sql.Expression
-	Index sql.Expression
+	Child   sql.Expression
+	Indexes []sql.Expression
 }
 
 var _ vitess.Injectable = (*Subscript)(nil)
 var _ sql.Expression = (*Subscript)(nil)
 
 // NewSubscript creates a new Subscript expression.
-func NewSubscript(child, index sql.Expression) *Subscript {
+func NewSubscript(child sql.Expression, indexes ...sql.Expression) *Subscript {
 	return &Subscript{
-		Child: child,
-		Index: index,
+		Child:   child,
+		Indexes: indexes,
 	}
 }
 
 // Resolved implements the sql.Expression interface.
 func (s Subscript) Resolved() bool {
-	return s.Child.Resolved() && s.Index.Resolved()
+	for _, index := range s.Indexes {
+		if !index.Resolved() {
+			return false
+		}
+	}
+	return s.Child.Resolved()
 }
 
 // String implements the sql.Expression interface.
 func (s Subscript) String() string {
-	return fmt.Sprintf("%s[%s]", s.Child, s.Index)
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprint(s.Child))
+	for _, index := range s.Indexes {
+		sb.WriteString(fmt.Sprintf("[%s]", index))
+	}
+	return sb.String()
 }
 
 // Type implements the sql.Expression interface.
 func (s Subscript) Type(ctx *sql.Context) sql.Type {
 
-	dt, ok := s.Child.Type(ctx).(*types.DoltgresType)
+	dt, ok := s.childType(ctx)
 	if !ok {
 		return types.Unknown
 		//panic(fmt.Sprintf("unexpected type %T for subscript", s.Child.Type(ctx)))
@@ -79,16 +90,28 @@ func (s Subscript) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		return nil, nil
 	}
 
-	indexVal, err := s.Index.Eval(ctx, row)
-	if err != nil {
-		return nil, err
+	scalarElements := false
+	if dt, ok := s.childType(ctx); ok {
+		scalarElements = dt.BaseType().IsArrayCategory()
 	}
-	if indexVal == nil {
-		return nil, nil
-	}
-
-	switch child := childVal.(type) {
-	case []interface{}:
+	for i, indexExpr := range s.Indexes {
+		indexVal, err := indexExpr.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		if indexVal == nil {
+			return nil, nil
+		}
+		array, ok := childVal.([]any)
+		if !ok {
+			if i == 0 {
+				return nil, fmt.Errorf("unsupported type %T for subscript", childVal)
+			}
+			return nil, nil
+		}
+		if i > 0 && scalarElements {
+			return nil, nil
+		}
 		index, ok := indexVal.(int32)
 		if !ok {
 			converted, _, err := types.Int32.Convert(ctx, indexVal)
@@ -99,48 +122,56 @@ func (s Subscript) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		}
 
 		// subscripts are 1-based
-		if index < 1 || int(index) > len(child) {
+		if index < 1 || int(index) > len(array) {
 			return nil, nil
 		}
-		return child[index-1], nil
-	default:
-		return nil, fmt.Errorf("unsupported type %T for subscript", child)
+		childVal = array[index-1]
 	}
+	if _, isSubArray := childVal.([]any); isSubArray && !scalarElements {
+		return nil, nil
+	}
+	return childVal, nil
+}
+
+// childType returns the type of the subscripted expression, with a domain resolved to its underlying type.
+func (s Subscript) childType(ctx *sql.Context) (*types.DoltgresType, bool) {
+	dt, ok := s.Child.Type(ctx).(*types.DoltgresType)
+	if ok && dt.TypType == types.TypeType_Domain {
+		dt = dt.DomainUnderlyingBaseType()
+	}
+	return dt, ok
 }
 
 // Children implements the sql.Expression interface.
 func (s Subscript) Children() []sql.Expression {
-	return []sql.Expression{s.Child, s.Index}
+	return append([]sql.Expression{s.Child}, s.Indexes...)
 }
 
 // WithChildren implements the sql.Expression interface.
 func (s Subscript) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
-	if len(children) != 2 {
-		return nil, fmt.Errorf("expected 2 children, got %d", len(children))
+	if len(children) < 2 {
+		return nil, fmt.Errorf("expected at least 2 children, got %d", len(children))
 	}
 	// The subscript index is always int4, regardless of the array's element type, so an untyped bind variable
 	// (e.g. `arr[$1]`) can be resolved to int4 immediately.
-	if bv, ok := children[1].(*expression.BindVar); ok {
-		if _, ok := bv.Typ.(*types.DoltgresType); !ok {
-			bv.Typ = types.Int32
+	for _, index := range children[1:] {
+		if bv, ok := index.(*expression.BindVar); ok {
+			if _, ok := bv.Typ.(*types.DoltgresType); !ok {
+				bv.Typ = types.Int32
+			}
 		}
 	}
-	return NewSubscript(children[0], children[1]), nil
+	return NewSubscript(children[0], children[1:]...), nil
 }
 
 // WithResolvedChildren implements the vitess.Injectable interface.
 func (s Subscript) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
-	if len(children) != 2 {
-		return nil, fmt.Errorf("expected 2 children, got %d", len(children))
+	expressions := make([]sql.Expression, len(children))
+	for i, child := range children {
+		var ok bool
+		if expressions[i], ok = child.(sql.Expression); !ok {
+			return nil, fmt.Errorf("expected child to be an expression but has type `%T`", child)
+		}
 	}
-	child, ok := children[0].(sql.Expression)
-	if !ok {
-		return nil, fmt.Errorf("expected child to be an expression but has type `%T`", children[0])
-	}
-	index, ok := children[1].(sql.Expression)
-	if !ok {
-		return nil, fmt.Errorf("expected index to be an expression but has type `%T`", children[1])
-	}
-
-	return NewSubscript(child, index), nil
+	return s.WithChildren(ctx.(*sql.Context), expressions...)
 }

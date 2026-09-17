@@ -12111,20 +12111,16 @@ cast_target:
   }
 
 opt_array_bounds:
-  // TODO(justin): reintroduce multiple array bounds
-  // opt_array_bounds '[' ']' { $$.val = append($1.int32s(), -1) }
-  '[' ']' { $$.val = []int32{-1} }
-| '[' ']' '[' error { return unimplementedWithIssue(sqllex, 32552) }
-| '[' ICONST ']'
+  opt_array_bounds '[' ']' { $$.val = append($1.int32s(), -1) }
+| opt_array_bounds '[' ICONST ']'
   {
     /* SKIP DOC */
-    bound, err := $2.numVal().AsInt32()
+    bound, err := $3.numVal().AsInt32()
     if err != nil {
       return setErr(sqllex, err)
     }
-    $$.val = []int32{bound}
+    $$.val = append($1.int32s(), bound)
   }
-| '[' ICONST ']' '[' error { return unimplementedWithIssue(sqllex, 32552) }
 | /* EMPTY */ { $$.val = []int32(nil) }
 
 // general_type_name is a variant of type_or_function_name but does not

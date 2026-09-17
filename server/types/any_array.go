@@ -58,6 +58,7 @@ var AnyArray = &DoltgresType{
 	CompareFunc:         toFuncID("btarraycmp", toInternal("anyarray"), toInternal("anyarray")),
 	SerializationFunc:   serializeTypeAnyArray,
 	DeserializationFunc: deserializeTypeAnyArray,
+	serializedVersion:   currentTypeVersion,
 }
 
 // serializeTypeAnyArray handles serialization from the standard representation to our serialized representation that is

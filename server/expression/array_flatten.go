@@ -73,7 +73,7 @@ func (a ArrayFlatten) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	}
 
 	sqType := subquery.Type(ctx)
-	_, ok = sqType.(*types.DoltgresType)
+	dt, ok := sqType.(*types.DoltgresType)
 	if !ok {
 		if tt, ok := sqType.(gmstypes.TupleType); ok {
 			return nil, errors.Errorf("only a single column subquery is supported in ARRAY(), got %d columns", len(tt))
@@ -81,7 +81,16 @@ func (a ArrayFlatten) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		return nil, errors.Errorf("expected doltgres type, got %T", sqType)
 	}
 
-	return subquery.EvalMultiple(ctx, row)
+	vals, err := subquery.EvalMultiple(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	if dt.IsArrayType() && !dt.IsVectorType() {
+		if err = types.ValidateAccumulatedArrays(vals); err != nil {
+			return nil, err
+		}
+	}
+	return vals, nil
 }
 
 // Children implements sql.Expression.

@@ -186,6 +186,11 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 		result[i] = row[(len(row) - 1)]
 	}
 
+	if dt := a.a.selectExprs[0].Type(ctx).(*types.DoltgresType); dt.IsArrayType() && !dt.IsVectorType() {
+		if err := types.ValidateAccumulatedArrays(result); err != nil {
+			return nil, err
+		}
+	}
 	return result, nil
 }
 

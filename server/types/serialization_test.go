@@ -30,11 +30,12 @@ func TestSerializationConsistency(t *testing.T) {
 			require.NoError(t, err)
 			dgt := dt.(*DoltgresType)
 			// require.Equal: Function equality cannot be determined and will always fail.
-			typ.SerializationFunc = nil
-			typ.DeserializationFunc = nil
+			expected := typ.Copy()
+			expected.SerializationFunc = nil
+			expected.DeserializationFunc = nil
 			dgt.SerializationFunc = nil
 			dgt.DeserializationFunc = nil
-			require.Equal(t, typ, dgt)
+			require.Equal(t, expected, dgt)
 		})
 	}
 }
@@ -67,5 +68,42 @@ func TestJsonValueType(t *testing.T) {
 		} else {
 			allValues[typ.Value] = typ.Name
 		}
+	}
+}
+
+func TestArrayVersionZeroRejectsMultidimensional(t *testing.T) {
+	ctx := sql.NewEmptyContext()
+	serializedType := Int32Array.Serialize()
+	serializedType[0] = 0 // The leading byte is the version
+	dt, err := DeserializeType(ctx, serializedType)
+	require.NoError(t, err)
+	oldType := dt.(*DoltgresType)
+	require.Equal(t, uint8(0), oldType.serializedVersion)
+	require.True(t, oldType.Equals(Int32Array))
+
+	flat := []any{int32(1), int32(2), int32(3), int32(4)}
+	oldSerialized, err := oldType.SerializeValue(ctx, flat)
+	require.NoError(t, err)
+	newSerialized, err := Int32Array.SerializeValue(ctx, flat)
+	require.NoError(t, err)
+	require.Equal(t, oldSerialized, newSerialized)
+
+	nested := []any{[]any{int32(1), int32(2)}, []any{int32(3), int32(4)}}
+	_, err = oldType.SerializeValue(ctx, nested)
+	require.ErrorContains(t, err, "multidimensional arrays are not supported")
+	newSerialized, err = Int32Array.SerializeValue(ctx, nested)
+	require.NoError(t, err)
+	deserialized, err := oldType.DeserializeValue(ctx, newSerialized)
+	require.NoError(t, err)
+	require.Equal(t, nested, deserialized)
+}
+
+func TestOnlyArrayTypesUseCurrentVersion(t *testing.T) {
+	for _, typ := range GetAllBuitInTypes() {
+		expectedVersion := byte(0)
+		if typ.IsArrayType() {
+			expectedVersion = currentTypeVersion
+		}
+		require.Equal(t, expectedVersion, typ.Serialize()[0], typ.Name())
 	}
 }

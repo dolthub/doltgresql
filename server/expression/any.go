@@ -228,6 +228,7 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 	if !ok {
 		return nil, errors.Errorf("%T: expected right child to return `%T` but returned `%T`", a, []any{}, rightInterface)
 	}
+	rightValues = pgtypes.FlattenArray(rightValues, a.arrType.ArrayBaseType())
 	if len(rightValues) == 0 {
 		// ALL vacuously holds over an empty array; ANY/SOME cannot match anything.
 		return isAll, nil
