@@ -842,7 +842,10 @@ func TestVersionedViews(t *testing.T) {
 }
 
 func TestWindowFunctions(t *testing.T) {
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"select 1 as a, 'x' as a", // duplicate derived column names are a MySQL-only error
+		"t(a, a)",                 // duplicate derived column names are a MySQL-only error
+	})
 	defer h.Close()
 	enginetest.TestWindowFunctions(t, h)
 }

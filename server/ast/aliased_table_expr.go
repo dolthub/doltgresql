@@ -104,20 +104,20 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 		}
 		aliasExpr = subquery
 	case *tree.RowsFromExpr:
-		var selectStmt vitess.SelectStatement
+		tableExpr, err := nodeTableExpr(ctx, expr)
+		if err != nil {
+			return nil, err
+		}
+
+		// TODO: this should be represented as a table function more directly
+		var selectStmt vitess.SelectStatement = &vitess.Select{
+			From: vitess.TableExprs{tableExpr},
+		}
 		if node.Ordinality {
 			// WITH ORDINALITY appends a bigint column numbering the function's result rows, named
 			// "ordinality" unless renamed by a column alias list. The numbering projection has to
-			// live one level above the function's expansion, so we expand the function in the
-			// select list of a wrapped subquery.
-			items, err := nodeExprs(ctx, expr.Items)
-			if err != nil {
-				return nil, err
-			}
-			innerExprs := make(vitess.SelectExprs, len(items))
-			for i := range items {
-				innerExprs[i] = &vitess.AliasedExpr{Expr: items[i]}
-			}
+			// live one level above the function's expansion, so we keep the function in table
+			// position within a wrapped subquery.
 			selectStmt = &vitess.Select{
 				SelectExprs: vitess.SelectExprs{
 					&vitess.StarExpr{},
@@ -130,21 +130,8 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 					},
 				},
 				From: vitess.TableExprs{
-					&vitess.AliasedTableExpr{
-						Expr: &vitess.Subquery{Select: &vitess.Select{SelectExprs: innerExprs}},
-						As:   vitess.NewTableIdent("with_ordinality"),
-					},
+					rewriteTableFuncExprs(&vitess.AliasedTableExpr{Expr: &vitess.Subquery{Select: selectStmt}}),
 				},
-			}
-		} else {
-			tableExpr, err := nodeTableExpr(ctx, expr)
-			if err != nil {
-				return nil, err
-			}
-
-			// TODO: this should be represented as a table function more directly
-			selectStmt = &vitess.Select{
-				From: vitess.TableExprs{tableExpr},
 			}
 		}
 		subquery := &vitess.Subquery{

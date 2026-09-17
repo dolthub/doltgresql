@@ -572,5 +572,22 @@ func TestWindowFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "a star argument is not a value",
+			SetUpScript: []string{
+				"CREATE TABLE tstar (id INT PRIMARY KEY, val INT);",
+				"INSERT INTO tstar VALUES (1, 10), (2, 20);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT FIRST_VALUE(*) OVER (ORDER BY id) FROM tstar;",
+					ExpectedErr: "first_value",
+				},
+				{
+					Query:    "SELECT COUNT(*) OVER (ORDER BY id) FROM tstar;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+			},
+		},
 	})
 }
