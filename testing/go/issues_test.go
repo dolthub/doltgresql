@@ -693,6 +693,34 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3366 (multi-array unnest)",
+			SetUpScript: []string{
+				`CREATE TABLE bulk_example (id integer PRIMARY KEY, label text);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM unnest(ARRAY[1, 2]::integer[], ARRAY[3, 4]::integer[]);`,
+					Expected: []sql.Row{{1, 3}, {2, 4}},
+				},
+				{
+					Query:    `INSERT INTO bulk_example (id, label) SELECT * FROM unnest(ARRAY[1, 2]::integer[], ARRAY['a', 'b']::text[]);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM bulk_example ORDER BY id;`,
+					Expected: []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query:    `INSERT INTO bulk_example (id, label) SELECT * FROM unnest(ARRAY[1, 3]::integer[], ARRAY['c', 'd']::text[]) ON CONFLICT (id) DO UPDATE SET label = EXCLUDED.label RETURNING *;`,
+					Expected: []sql.Row{{1, "c"}, {3, "d"}},
+				},
+				{
+					Query:    `SELECT * FROM bulk_example ORDER BY id;`,
+					Expected: []sql.Row{{1, "c"}, {2, "b"}, {3, "d"}},
+				},
+			},
+		},
 	})
 }
 
