@@ -30,10 +30,26 @@ var _ sql.Parser = &PostgresParser{}
 
 // PostgresParser is a postgres syntax parser.
 // This parser is used as parser in the engine for Doltgres.
-type PostgresParser struct{}
+type PostgresParser struct {
+	permitUnsupportedLockingStatements bool
+}
 
 // NewPostgresParser creates new PostgresParser.
-func NewPostgresParser() *PostgresParser { return &PostgresParser{} }
+func NewPostgresParser() *PostgresParser {
+	return &PostgresParser{}
+}
+
+// NewPostgresParserWithOptions creates a new PostgresParser with the given options.
+func NewPostgresParserWithOptions(options ParserOptions) *PostgresParser {
+	return &PostgresParser{
+		permitUnsupportedLockingStatements: options.PermitUnsupportedLockingStatements,
+	}
+}
+
+// ParserOptions controls optional parser behavior.
+type ParserOptions struct {
+	PermitUnsupportedLockingStatements bool
+}
 
 // ParseSimple implements sql.Parser interface.
 func (p *PostgresParser) ParseSimple(query string) (vitess.Statement, error) {
@@ -60,7 +76,9 @@ func (p *PostgresParser) ParseWithOptions(ctx context.Context, query string, del
 		return nil, q, "", vitess.ErrEmpty
 	}
 
-	vitessAST, err := ast.Convert(stmts[0])
+	vitessAST, err := ast.ConvertWithOptions(stmts[0], ast.ConvertOptions{
+		PermitUnsupportedLockingStatements: p.permitUnsupportedLockingStatements,
+	})
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -77,7 +95,9 @@ func (p *PostgresParser) ParseOneWithOptions(_ context.Context, query string, _ 
 	if err != nil {
 		return nil, 0, err
 	}
-	vitessAST, err := ast.Convert(stmt)
+	vitessAST, err := ast.ConvertWithOptions(stmt, ast.ConvertOptions{
+		PermitUnsupportedLockingStatements: p.permitUnsupportedLockingStatements,
+	})
 	if err != nil {
 		return nil, 0, err
 	}

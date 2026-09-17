@@ -29,9 +29,19 @@ import (
 // strips this prefix and returns Postgres's "?column?" placeholder on the wire.
 const UnknownColSentinelPrefix = "__?column?__"
 
+// ConvertOptions controls optional behavior during PostgreSQL-to-Vitess AST conversion.
+type ConvertOptions struct {
+	PermitUnsupportedLockingStatements bool
+}
+
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
-	ctx := NewContext(postgresStmt)
+	return ConvertWithOptions(postgresStmt, ConvertOptions{})
+}
+
+// ConvertWithOptions converts a Postgres AST into a Vitess AST using the given options.
+func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (vitess.Statement, error) {
+	ctx := NewContextWithOptions(postgresStmt, options)
 	switch stmt := postgresStmt.AST.(type) {
 	case *tree.AlterAggregate:
 		return nodeAlterAggregate(ctx, stmt)
