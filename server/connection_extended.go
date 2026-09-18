@@ -103,7 +103,7 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 				"prepared statement %q already exists", message.Name)
 		}
 	}
-	queries, err := convertQuery(message.Query)
+	queries, err := h.convertQuery(message.Query)
 	if err != nil {
 		if printErrorStackTraces {
 			fmt.Printf("Error parsing query: %+v\n", err)
@@ -275,7 +275,7 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 		return err
 	}
 
-	handled, _, err := h.handleQueryOutsideEngine(query, newExtendedQueryCopyContinuation())
+	handled, _, err := h.handleQueryOutsideEngine(query, nil)
 	if handled {
 		return err
 	}

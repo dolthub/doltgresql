@@ -33,7 +33,7 @@ type simpleQueryExecution struct {
 
 // handleQuery starts execution of one simple-protocol Query message.
 func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages bool, err error) {
-	queries, err := convertQuery(message.String)
+	queries, err := h.convertQuery(message.String)
 	if err != nil {
 		if printErrorStackTraces {
 			fmt.Printf("Error parsing query: %+v\n", err)
@@ -71,7 +71,7 @@ func (h *ConnectionHandler) resumeSimpleQuery(execution *simpleQueryExecution) (
 			}
 		}
 
-		handled, statementComplete, err := h.handleQueryOutsideEngine(query, newSimpleQueryCopyContinuation(execution))
+		handled, statementComplete, err := h.handleQueryOutsideEngine(query, execution)
 		if err != nil {
 			return true, err
 		}

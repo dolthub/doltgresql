@@ -31,6 +31,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mitchellh/go-ps"
 	"github.com/sirupsen/logrus"
+
+	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/server/ast"
 )
 
 // ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
@@ -256,11 +259,11 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) messageResult {
 
 	switch h.state.mode {
 	case copyInConnectionMode:
-		if h.state.activeCopy == nil {
-			h.state.closeConnection()
+		if h.state.activeCopyFrom == nil {
+			h.state.beginCloseConnectionMode()
 			return messageResult{action: closeConnection, err: errors.New("COPY mode has no active operation")}
 		}
-		return h.handleCopyMessage(h.state.activeCopy, msg)
+		return h.handleCopyInMessage(h.state.activeCopyFrom, msg)
 	case closingConnectionMode:
 		return closeResult()
 	case discardUntilSyncConnectionMode:
@@ -272,7 +275,7 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) messageResult {
 	case readyConnectionMode, extendedQueryConnectionMode:
 		return h.handleNormalMessage(msg)
 	default:
-		h.state.closeConnection()
+		h.state.beginCloseConnectionMode()
 		return messageResult{action: closeConnection, err: errors.New("invalid connection mode")}
 	}
 }
@@ -316,39 +319,6 @@ func (h *ConnectionHandler) handleNormalMessage(msg pgproto3.Message) messageRes
 	default:
 		return readyResult(errors.Errorf(`unhandled message "%t"`, message))
 	}
-}
-
-// convertQuery takes the given Postgres query, and converts it as an ast.ConvertedQuery that will work with the handler.
-// If the query string contains multiple queries, then multiple ConvertedQuery will be returned.
-func (h *ConnectionHandler) convertQuery(query string) ([]ConvertedQuery, error) {
-	s, err := parser.Parse(query)
-	if err != nil {
-		return nil, err
-	}
-	if len(s) == 0 {
-		return []ConvertedQuery{{String: query}}, nil
-	}
-	converted := make([]ConvertedQuery, len(s))
-	for i := range s {
-		vitessAST, err := ast.ConvertWithOptions(s[i], h.convertOptions)
-		stmtTag := s[i].AST.StatementTag()
-		if err != nil {
-			return nil, err
-		}
-		if vitessAST == nil {
-			converted[i] = ConvertedQuery{
-				String:       s[i].AST.String(),
-				StatementTag: stmtTag,
-			}
-		} else {
-			converted[i] = ConvertedQuery{
-				String:       query,
-				AST:          vitessAST,
-				StatementTag: stmtTag,
-			}
-		}
-	}
-	return converted, nil
 }
 
 // messageResultForCompletion converts legacy statement completion into a connection-loop action.

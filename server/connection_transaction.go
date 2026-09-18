@@ -211,7 +211,7 @@ func (h *ConnectionHandler) restoredAutoCommitWithoutTransaction() bool {
 
 // runEngineTransactionControl executes an internal transaction-control statement without client responses.
 func (h *ConnectionHandler) runEngineTransactionControl(statement string) error {
-	queries, err := convertQuery(statement)
+	queries, err := h.convertQuery(statement)
 	if err != nil {
 		return err
 	}

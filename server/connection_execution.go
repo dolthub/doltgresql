@@ -40,7 +40,7 @@ type ConvertedQuery struct {
 }
 
 // handleQueryOutsideEngine handles statements owned by the connection layer instead of the query engine.
-func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, continuation copyContinuation) (handled bool, endOfMessages bool, err error) {
+func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, simpleQuery *simpleQueryExecution) (handled bool, endOfMessages bool, err error) {
 	if handled, err := h.handleTransactionStatement(query); handled || err != nil {
 		return handled, true, err
 	}
@@ -54,9 +54,9 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, conti
 			return true, true, h.discardAll(query)
 		case *node.CopyFrom:
 			if injectedStmt.Stdin {
-				return true, false, h.handleCopyFromStdinQuery(injectedStmt, continuation)
+				return true, false, h.handleCopyFromStdinQuery(injectedStmt, simpleQuery)
 			}
-			return true, true, h.copyFromFileQuery(injectedStmt)
+			return true, true, h.handleCopyFromFileQuery(injectedStmt)
 		case *node.CopyTo:
 			return true, true, h.handleCopyTo(injectedStmt)
 		}
@@ -130,8 +130,8 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 	}
 }
 
-// convertQuery parses PostgreSQL text and converts it into engine statements.
-func convertQuery(query string) ([]ConvertedQuery, error) {
+// convertQuery parses PostgreSQL text using this connection's parser options and converts it into engine statements.
+func (h *ConnectionHandler) convertQuery(query string) ([]ConvertedQuery, error) {
 	s, err := parser.Parse(query)
 	if err != nil {
 		return nil, err
@@ -141,7 +141,7 @@ func convertQuery(query string) ([]ConvertedQuery, error) {
 	}
 	converted := make([]ConvertedQuery, len(s))
 	for i := range s {
-		vitessAST, err := ast.Convert(s[i])
+		vitessAST, err := ast.ConvertWithOptions(s[i], h.convertOptions)
 		stmtTag := s[i].AST.StatementTag()
 		if err != nil {
 			return nil, err

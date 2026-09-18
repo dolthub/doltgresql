@@ -54,38 +54,33 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 func (h *ConnectionHandler) handleMessageError(err error) {
 	switch h.state.mode {
 	case copyInConnectionMode:
-		copyState := h.state.activeCopy
-		if copyState == nil {
-			h.state.closeConnection()
+		copyFrom := h.state.activeCopyFrom
+		if copyFrom == nil {
+			h.state.beginCloseConnectionMode()
 			h.handleOperationError(errors.Wrap(err, "COPY mode has no active operation"))
 			return
 		}
-		continuation := copyState.continuation
-		h.rollbackCopyTransaction(copyState.transaction)
-		if !h.state.finishCopyMode(copyState) {
-			h.state.closeConnection()
+		h.rollbackCopyInTransaction(copyFrom.txOwnership)
+		if !h.state.finishCopyInMode(copyFrom) {
+			h.state.beginCloseConnectionMode()
 			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN state changed during error recovery"))
 			return
 		}
-		switch continuation.kind {
-		case extendedQueryCopyContinuation:
-			h.state.discardUntilSync()
-			h.handleOperationError(err)
-		case simpleQueryCopyContinuation:
+		if copyFrom.suspendedSimpleQuery != nil {
 			h.endOfMessages(err)
-		default:
-			h.state.closeConnection()
-			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN has an invalid protocol continuation"))
+			return
 		}
+		h.state.beginDiscardUntilSyncMode()
+		h.handleOperationError(err)
 	case extendedQueryConnectionMode:
-		h.state.discardUntilSync()
+		h.state.beginDiscardUntilSyncMode()
 		h.handleOperationError(err)
 	case discardUntilSyncConnectionMode, closingConnectionMode:
 		h.handleOperationError(err)
 	case readyConnectionMode:
 		h.endOfMessages(err)
 	default:
-		h.state.closeConnection()
+		h.state.beginCloseConnectionMode()
 		h.handleOperationError(errors.Wrap(err, "invalid connection mode"))
 	}
 }

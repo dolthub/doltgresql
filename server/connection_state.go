@@ -31,7 +31,7 @@ type connectionState struct {
 	txState              transactionState
 	mode                 connectionMode
 	extendedQueryObjects extendedQueryObjects
-	activeCopy           *copyInState
+	activeCopyFrom       *copyFromState
 }
 
 // newConnectionState returns the initial state for a newly authenticated connection.
@@ -55,26 +55,25 @@ func (s *connectionState) finishExtendedQueryMode() {
 	s.mode = readyConnectionMode
 }
 
-// discardUntilSync rejects the remainder of an extended-query batch.
-func (s *connectionState) discardUntilSync() {
+// beginDiscardUntilSyncMode rejects the remainder of an extended-query batch.
+func (s *connectionState) beginDiscardUntilSyncMode() {
 	s.mode = discardUntilSyncConnectionMode
 }
 
 // closeConnection transitions the connection into its terminal mode.
-func (s *connectionState) closeConnection() {
-	s.activeCopy = nil
+func (s *connectionState) beginCloseConnectionMode() {
+	s.activeCopyFrom = nil
 	s.mode = closingConnectionMode
 }
 
-// beginCopyMode transfers exclusive protocol ownership to a COPY operation. Returns true if
-// the mode was successfully changed, otherwise returns false if the mode change was invalid.
-func (s *connectionState) beginCopyMode(copyState *copyInState) bool {
-	if copyState == nil || s.activeCopy != nil {
+// beginCopyInMode enters copy-in mode and records the COPY FROM  operation that owns the connection.
+func (s *connectionState) beginCopyInMode(copyFrom *copyFromState) bool {
+	if copyFrom == nil || s.activeCopyFrom != nil {
 		return false
 	}
 	switch s.mode {
 	case readyConnectionMode, extendedQueryConnectionMode:
-		s.activeCopy = copyState
+		s.activeCopyFrom = copyFrom
 		s.mode = copyInConnectionMode
 		return true
 	default:
@@ -82,12 +81,12 @@ func (s *connectionState) beginCopyMode(copyState *copyInState) bool {
 	}
 }
 
-// finishCopyMode releases COPY mode
-func (s *connectionState) finishCopyMode(copyState *copyInState) bool {
-	if s.mode != copyInConnectionMode || s.activeCopy != copyState {
+// finishCopyInMode releases COPY mode when copyFrom is the operation that currently owns the connection.
+func (s *connectionState) finishCopyInMode(copyFrom *copyFromState) bool {
+	if s.mode != copyInConnectionMode || s.activeCopyFrom != copyFrom {
 		return false
 	}
-	s.activeCopy = nil
+	s.activeCopyFrom = nil
 	s.mode = readyConnectionMode
 	return true
 }
