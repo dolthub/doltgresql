@@ -62,6 +62,20 @@ func TestExtendedProtocolTransitions(t *testing.T) {
 			},
 		},
 		{
+			Name: "named statements and portals support phase-grouped pipelining",
+			Steps: []FlowStep{
+				Parse{Name: "first_statement", Query: "SELECT 11"},
+				Parse{Name: "second_statement", Query: "SELECT 22"},
+				Describe{Name: "first_statement"},
+				Describe{Name: "second_statement"},
+				Bind{PreparedStatement: "first_statement", Portal: "first_portal"},
+				Bind{PreparedStatement: "second_statement", Portal: "second_portal"},
+				Execute{Portal: "first_portal", Tag: "SELECT 1", Rows: [][]string{{"11"}}},
+				Execute{Portal: "second_portal", Tag: "SELECT 1", Rows: [][]string{{"22"}}},
+				Sync{},
+			},
+		},
+		{
 			Name: "duplicate named statement discards later messages and preserves original",
 			Steps: []FlowStep{
 				Parse{Name: "saved", Query: "SELECT 5"},
