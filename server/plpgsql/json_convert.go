@@ -20,6 +20,19 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+// datumNames gives the name of each of a function's datums, indexed by its datum number. A statement may
+// name its target by that number rather than carry the datum itself, as FOREACH names its loop variable.
+type datumNames []string
+
+// Name returns the name of the datum numbered |datumNumber| as declared, which is how an assignment names
+// its target. A quoted declaration's name comes back without its quotes.
+func (names datumNames) Name(datumNumber int32) (string, error) {
+	if datumNumber < 0 || int(datumNumber) >= len(names) || len(names[datumNumber]) == 0 {
+		return "", errors.Errorf("PL/pgSQL datum %d does not name a declared variable", datumNumber)
+	}
+	return names[datumNumber], nil
+}
+
 // jsonConvert handles the conversion from the JSON format into a format that is easier to work with.
 func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 	block := Block{
@@ -106,7 +119,7 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 		}
 	}
 	var err error
-	block.Body, err = jsonConvertStatements(jsonBlock.Action.StmtBlock.Body)
+	block.Body, err = jsonConvertStatements(jsonBlock.Action.StmtBlock.Body, datumNamesFor(jsonBlock.Datums))
 	if err != nil {
 		return Block{}, err
 	}
@@ -114,12 +127,12 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 }
 
 // jsonConvertStatement converts a statement in JSON form to the output form.
-func jsonConvertStatement(stmt statement) (Statement, error) {
+func jsonConvertStatement(stmt statement, datums datumNames) (Statement, error) {
 	switch {
 	case stmt.Assignment != nil:
 		return stmt.Assignment.Convert()
 	case stmt.Block != nil:
-		stmts, err := jsonConvertStatements(stmt.Block.Body)
+		stmts, err := jsonConvertStatements(stmt.Block.Body, datums)
 		if err != nil {
 			return Block{}, err
 		}
@@ -129,21 +142,23 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 	case stmt.Call != nil:
 		return stmt.Call.Convert()
 	case stmt.Case != nil:
-		return stmt.Case.Convert()
+		return stmt.Case.Convert(datums)
 	case stmt.DynExec != nil:
 		return stmt.DynExec.Convert()
 	case stmt.ExecSQL != nil:
 		return stmt.ExecSQL.Convert()
 	case stmt.Exit != nil:
 		return stmt.Exit.Convert(), nil
+	case stmt.ForEachArray != nil:
+		return stmt.ForEachArray.Convert(datums)
 	case stmt.ForILoop != nil:
-		return stmt.ForILoop.Convert()
+		return stmt.ForILoop.Convert(datums)
 	case stmt.ForSLoop != nil:
-		return stmt.ForSLoop.Convert()
+		return stmt.ForSLoop.Convert(datums)
 	case stmt.If != nil:
-		return stmt.If.Convert()
+		return stmt.If.Convert(datums)
 	case stmt.Loop != nil:
-		return stmt.Loop.Convert()
+		return stmt.Loop.Convert(datums)
 	case stmt.Perform != nil:
 		return stmt.Perform.Convert(), nil
 	case stmt.Raise != nil:
@@ -153,21 +168,42 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 	case stmt.ReturnQuery != nil:
 		return stmt.ReturnQuery.Convert(), nil
 	case stmt.While != nil:
-		return stmt.While.Convert()
+		return stmt.While.Convert(datums)
 	default:
 		return Block{}, errors.Errorf("unhandled statement type: %T", stmt)
 	}
 }
 
 // jsonConvertStatements converts a collection of statements in JSON form to their output form.
-func jsonConvertStatements(stmts []statement) ([]Statement, error) {
+func jsonConvertStatements(stmts []statement, datums datumNames) ([]Statement, error) {
 	newStmts := make([]Statement, len(stmts))
 	for i, stmt := range stmts {
 		var err error
-		newStmts[i], err = jsonConvertStatement(stmt)
+		newStmts[i], err = jsonConvertStatement(stmt, datums)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return newStmts, nil
+}
+
+// datumNamesFor indexes the names of |datums| by datum number, which is the order they are declared in.
+func datumNamesFor(datums []datum) datumNames {
+	names := make(datumNames, len(datums))
+	for i, v := range datums {
+		switch {
+		case v.Record != nil:
+			names[i] = v.Record.RefName
+		case v.RecordField != nil:
+			// A field is named through its record, which is always declared ahead of it.
+			if parent := v.RecordField.RecordParentNumber; parent >= 0 && int(parent) < i {
+				names[i] = names[parent] + "." + v.RecordField.FieldName
+			}
+		case v.Row != nil:
+			names[i] = v.Row.RefName
+		case v.Variable != nil:
+			names[i] = v.Variable.RefName
+		}
+	}
+	return names
 }

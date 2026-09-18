@@ -304,11 +304,10 @@ func executeOpCode(targetIsRecord bool) OpCode {
 	return OpCode_Execute
 }
 
-// ForQueryInit executes a SQL query and stores the result set in a named cursor on the stack.
-// It is the first operation emitted for a FOR record IN query LOOP statement.
+// ForQueryInit executes a SQL query and stores the result set as the cursor of the scope it runs in. The
+// rows are a FOR record IN query LOOP's own query, or the elements of a FOREACH's array.
 type ForQueryInit struct {
-	CursorName string
-	Query      string
+	Query string
 }
 
 var _ Statement = ForQueryInit{}
@@ -328,15 +327,13 @@ func (stmt ForQueryInit) AppendOperations(ops *[]InterpreterOperation, stack *In
 		OpCode:        OpCode_ForQueryInit,
 		PrimaryData:   queryStr,
 		SecondaryData: referencedVariables,
-		Target:        stmt.CursorName,
 	})
 	return nil
 }
 
-// ForQueryNext fetches the next row from a named cursor and assigns it to a record variable.
-// When the cursor is exhausted it jumps forward by GotoOffset (like an If), exiting the loop.
+// ForQueryNext fetches the next row from the cursor of the scope it runs in and assigns it to a record
+// variable. When the cursor is exhausted it jumps forward by GotoOffset (like an If), exiting the loop.
 type ForQueryNext struct {
-	CursorName string
 	RecordVar  string
 	GotoOffset int32
 }
@@ -351,10 +348,9 @@ func (ForQueryNext) OperationSize() int32 {
 // AppendOperations implements the interface Statement.
 func (stmt ForQueryNext) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	*ops = append(*ops, InterpreterOperation{
-		OpCode:      OpCode_ForQueryNext,
-		PrimaryData: stmt.CursorName,
-		Target:      stmt.RecordVar,
-		Index:       len(*ops) + int(stmt.GotoOffset),
+		OpCode: OpCode_ForQueryNext,
+		Target: stmt.RecordVar,
+		Index:  len(*ops) + int(stmt.GotoOffset),
 	})
 	return nil
 }

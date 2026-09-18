@@ -107,7 +107,7 @@ const (
 // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-DIAGNOSTICS
 const FoundVariableName = "found"
 
-// cursorState holds the result set for a FOR record IN query LOOP cursor.
+// cursorState holds the result set a loop walks.
 type cursorState struct {
 	Schema sql.Schema
 	Rows   []sql.Row
@@ -145,10 +145,10 @@ type InterpreterVariableReference struct {
 type InterpreterScopeDetails struct {
 	variables map[string]*interpreterVariable
 	label     string
-	// cursor names the FOR..IN..SELECT cursor this scope owns, if it is such a loop's scope. The scope
-	// owning it is what lets the cursor be torn down wherever the loop is left, rather than only where
-	// the cursor runs out.
-	cursor string
+	// cursor holds the result set this scope's loop walks, when the scope is such a loop's. Hanging it
+	// off the scope is what tears it down wherever the loop is left, rather than only where it runs out,
+	// and is what keeps nested loops apart: the inner opens its cursor in its own scope, not the outer's.
+	cursor *cursorState
 	// reportsFound marks the scope of a loop that sets FOUND when it is left, and iterated records
 	// whether that loop ever advanced into its body.
 	reportsFound bool
@@ -166,8 +166,6 @@ type InterpreterStack struct {
 
 	// returnQueryBuffer buffers results from RETURN QUERY statements
 	returnQueryBuffer [][]pgtypes.RecordValue
-	// cursors holds the active FOR record IN query LOOP result sets
-	cursors map[string]*cursorState
 	// unfoldedNames holds the folded names of variables that go through special name resolution for
 	// compatibility with triggers that were compiled by older version of doltgres. These are names
 	// that are declared by the trigger itself --- NEW, OLD and TG_ variables. A body compiled before
@@ -193,7 +191,6 @@ func NewInterpreterStack(runner sql.StatementRunner) InterpreterStack {
 		outParams:     make([]string, 0),
 		stack:         stack,
 		runner:        runner,
-		cursors:       make(map[string]*cursorState),
 		unfoldedNames: make(map[string]struct{}),
 	}
 }
@@ -521,38 +518,25 @@ func (is *InterpreterStack) ReturnOutParamResults() any {
 	return record
 }
 
-// InitCursor stores the result set for a FOR record IN query LOOP cursor. The cursor is opened in the
-// loop's own scope, which takes ownership of it.
-func (is *InterpreterStack) InitCursor(name string, schema sql.Schema, rows []sql.Row) {
-	is.cursors[name] = &cursorState{
+// InitCursor stores the result set a loop walks in the current scope, which is the loop's own.
+func (is *InterpreterStack) InitCursor(schema sql.Schema, rows []sql.Row) {
+	is.stack.Peek().cursor = &cursorState{
 		Schema: schema,
 		Rows:   rows,
 		Index:  0,
 	}
-	is.stack.Peek().cursor = name
 }
 
-// ScopeCursor returns the name of the cursor the current scope owns, or an empty string when the scope is
-// not that of a FOR..IN..SELECT loop.
-func (is *InterpreterStack) ScopeCursor() string {
-	return is.stack.Peek().cursor
-}
-
-// AdvanceCursor returns the next row for the named cursor and advances its index.
-// Returns (schema, row, true) if a row is available, or (nil, nil, false) when exhausted.
-func (is *InterpreterStack) AdvanceCursor(name string) (sql.Schema, sql.Row, bool) {
-	cs, ok := is.cursors[name]
-	if !ok || cs.Index >= len(cs.Rows) {
+// AdvanceCursor returns the next row of the cursor the current scope owns, and false once it is exhausted.
+// The scope is the loop's own, since the operation that advances the cursor sits at the top of the body.
+func (is *InterpreterStack) AdvanceCursor() (sql.Schema, sql.Row, bool) {
+	cs := is.stack.Peek().cursor
+	if cs == nil || cs.Index >= len(cs.Rows) {
 		return nil, nil, false
 	}
 	row := cs.Rows[cs.Index]
 	cs.Index++
 	return cs.Schema, row, true
-}
-
-// CloseCursor removes the named cursor from the stack.
-func (is *InterpreterStack) CloseCursor(name string) {
-	delete(is.cursors, name)
 }
 
 // MarkScopeLoop marks the current scope as a loop's, whose exit reports FOUND, and records whether the loop

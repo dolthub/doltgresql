@@ -2091,6 +2091,413 @@ $$ LANGUAGE plpgsql;`,
 						{7, "name4", 9},
 					},
 				},
+				{
+					// A loop's cursor lives in its own scope, so one nested inside another over the same
+					// record variable iterates its own rows rather than the outer's.
+					Query: `CREATE FUNCTION fors_nested_one_var() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            r RECORD;
+            result TEXT := '';
+        BEGIN
+            FOR r IN SELECT 1 AS n UNION ALL SELECT 2 LOOP FOR r IN SELECT 8 AS n UNION ALL SELECT 9 LOOP result := result || r.n; END LOOP; END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT fors_nested_one_var();`,
+					Expected: []sql.Row{{"8989"}},
+				},
+			},
+		},
+		{
+			Name: "FOREACH IN ARRAY statement",
+			SetUpScript: []string{
+				`CREATE TABLE tags (id int PRIMARY KEY, vals text[]);`,
+				`INSERT INTO tags VALUES (1, '{a,b}'), (2, '{c}');`,
+				`CREATE TABLE maybe_tags (id int PRIMARY KEY, vals text[]);`,
+				`INSERT INTO maybe_tags VALUES (1, '{a,b}'), (3, NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION concat_all(arr TEXT[]) RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH col IN ARRAY arr LOOP
+                result := result || col;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT concat_all('{a,b,c}');`,
+					Expected: []sql.Row{{"abc"}},
+				},
+				{
+					// An empty array runs the body no times, and a NULL element is still an element.
+					Query:    `SELECT concat_all('{}'), concat_all('{a,NULL,b}');`,
+					Expected: []sql.Row{{"", nil}},
+				},
+				{
+					Query:    `SELECT id, concat_all(vals) FROM tags ORDER BY id;`,
+					Expected: []sql.Row{{1, "ab"}, {2, "c"}},
+				},
+				{
+					// The loop variable takes its declared type, not the element type.
+					Query: `CREATE FUNCTION sum_halves() RETURNS NUMERIC
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            n NUMERIC;
+            total NUMERIC := 0;
+        BEGIN
+            FOREACH n IN ARRAY ARRAY[1, 2, 3] LOOP
+                total := total + n / 2;
+            END LOOP;
+            RETURN total;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT sum_halves();`,
+					Expected: []sql.Row{{Numeric("3.0000000000000000")}},
+				},
+				{
+					// FOUND reports whether the loop iterated.
+					Query: `CREATE FUNCTION foreach_found(arr TEXT[]) RETURNS BOOLEAN
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+        BEGIN
+            FOREACH col IN ARRAY arr LOOP
+            END LOOP;
+            RETURN FOUND;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_found('{a}'), foreach_found('{}');`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query: `CREATE FUNCTION foreach_exit(arr TEXT[]) RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH col IN ARRAY arr LOOP
+                CONTINUE WHEN col = 'skip';
+                EXIT WHEN col = 'stop';
+                result := result || col;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_exit('{a,skip,b,stop,c}');`,
+					Expected: []sql.Row{{"ab"}},
+				},
+				{
+					// A labeled loop, exited from a FOREACH nested inside it.
+					Query: `CREATE FUNCTION foreach_labeled() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            r RECORD;
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            <<rows>>
+            FOR r IN SELECT id, vals FROM tags ORDER BY id LOOP
+                FOREACH col IN ARRAY r.vals LOOP
+                    EXIT rows WHEN col = 'c';
+                    result := result || r.id || col;
+                END LOOP;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_labeled();`,
+					Expected: []sql.Row{{"1a1b"}},
+				},
+				{
+					Query: `CREATE FUNCTION foreach_nested() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            a TEXT;
+            b TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH a IN ARRAY ARRAY['1', '2'] LOOP
+                FOREACH b IN ARRAY ARRAY['x', 'y'] LOOP
+                    result := result || a || b;
+                END LOOP;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_nested();`,
+					Expected: []sql.Row{{"1x1y2x2y"}},
+				},
+				{
+					// Loops that share a line share the name of the record their elements are fetched
+					// into, so the inner must shadow the outer rather than overwrite it.
+					Query: `CREATE FUNCTION foreach_nested_one_line() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            a TEXT;
+            b TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH a IN ARRAY ARRAY['1', '2'] LOOP FOREACH b IN ARRAY ARRAY['x', 'y'] LOOP result := result || a || b; END LOOP; END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_nested_one_line();`,
+					Expected: []sql.Row{{"1x1y2x2y"}},
+				},
+				{
+					// Nested loops over one variable share every name there is, so only scope tells their
+					// cursors apart.
+					Query: `CREATE FUNCTION foreach_nested_one_var() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            x TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH x IN ARRAY ARRAY['1', '2'] LOOP FOREACH x IN ARRAY ARRAY['a', 'b'] LOOP result := result || x; END LOOP; END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_nested_one_var();`,
+					Expected: []sql.Row{{"abab"}},
+				},
+				{
+					// The loop variable is written as declared, capitals and all.
+					Query: `CREATE FUNCTION foreach_quoted() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            "MyCol" TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH "MyCol" IN ARRAY ARRAY['x', 'y'] LOOP
+                result := result || "MyCol";
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_quoted();`,
+					Expected: []sql.Row{{"xy"}},
+				},
+				{
+					// The array expression is evaluated once, when the loop is entered.
+					Query: `CREATE FUNCTION foreach_query() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH col IN ARRAY (SELECT vals FROM tags WHERE id = 1) LOOP
+                DELETE FROM tags WHERE id = 1;
+                result := result || col;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_query();`,
+					Expected: []sql.Row{{"ab"}},
+				},
+				{
+					// A null array raises rather than iterating no times.
+					Query: `CREATE FUNCTION foreach_null() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+        BEGIN
+            FOREACH col IN ARRAY CAST(NULL AS TEXT[]) LOOP
+            END LOOP;
+            RETURN 'no raise';
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT foreach_null();`,
+					ExpectedErr:     "FOREACH expression must not be null",
+					ExpectedErrCode: "22004",
+				},
+				{
+					// The array a query read is the one iterated over, null and all.
+					Query: `CREATE FUNCTION foreach_null_column(tag_id INT) RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            arr TEXT[];
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            SELECT vals INTO arr FROM maybe_tags WHERE id = tag_id;
+            FOREACH col IN ARRAY arr LOOP
+                result := result || col;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_null_column(1);`,
+					Expected: []sql.Row{{"ab"}},
+				},
+				{
+					Query:           `SELECT foreach_null_column(3);`,
+					ExpectedErr:     "FOREACH expression must not be null",
+					ExpectedErrCode: "22004",
+				},
+				{
+					// TODO: a variable declared without a default should be null, and this should raise
+					//  `FOREACH expression must not be null`. It iterates no times instead, because the
+					//  interpreter starts an array variable at the empty array rather than at null.
+					Query: `CREATE FUNCTION foreach_undefaulted() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            arr TEXT[];
+            col TEXT;
+            result TEXT := 'none';
+        BEGIN
+            FOREACH col IN ARRAY arr LOOP
+                result := 'ran';
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_undefaulted();`,
+					Expected: []sql.Row{{"none"}},
+				},
+				{
+					// An expression that is not an array raises, and reports the type it did yield.
+					Query: `CREATE FUNCTION foreach_not_array() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+        BEGIN
+            FOREACH col IN ARRAY 42 LOOP
+            END LOOP;
+            RETURN 'no raise';
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT foreach_not_array();`,
+					ExpectedErr:     "FOREACH expression must yield an array, not type integer",
+					ExpectedErrCode: "42804",
+				},
+				{
+					// An untyped NULL is not an array either. PostgreSQL resolves it to text and names that
+					// type; the type it resolves to here is unknown, which is what gets named.
+					Query: `CREATE FUNCTION foreach_bare_null() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+        BEGIN
+            FOREACH col IN ARRAY NULL LOOP
+            END LOOP;
+            RETURN 'no raise';
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT foreach_bare_null();`,
+					ExpectedErr:     "FOREACH expression must yield an array, not type",
+					ExpectedErrCode: "42804",
+				},
+				{
+					// TODO: PostgreSQL iterates the two rows here. pg_typeof spells an array of a
+					//  user-defined element type `_maybe_tags` rather than `maybe_tags[]`, so the array
+					//  check rejects it. Matching that spelling would not be enough on its own: nothing
+					//  in the interpreter can carry a value of such a type yet.
+					Query: `CREATE FUNCTION foreach_composite() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            r RECORD;
+            result TEXT := '';
+        BEGIN
+            FOREACH r IN ARRAY (SELECT array_agg(maybe_tags) FROM maybe_tags) LOOP
+                result := result || r.id;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT foreach_composite();`,
+					ExpectedErr:     "FOREACH expression must yield an array, not type _maybe_tags",
+					ExpectedErrCode: "42804",
+				},
+				{
+					Query: `CREATE FUNCTION foreach_slice() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            row1 TEXT[];
+        BEGIN
+            FOREACH row1 SLICE 1 IN ARRAY ARRAY[['a', 'b']] LOOP
+            END LOOP;
+            RETURN 'done';
+        END;
+        $$;`,
+					ExpectedErr: "FOREACH with SLICE is not yet supported",
+				},
 			},
 		},
 		{
