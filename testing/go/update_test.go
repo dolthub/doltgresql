@@ -174,6 +174,116 @@ func TestUpdate(t *testing.T) {
 			},
 		},
 		{
+			Name: "UPDATE FROM qualifies assignment target with alias",
+			SetUpScript: []string{
+				"CREATE TABLE update_target (id INT PRIMARY KEY, value INT)",
+				"CREATE TABLE update_source (id INT PRIMARY KEY, value INT)",
+				"INSERT INTO update_target VALUES (1, 0), (2, 0)",
+				"INSERT INTO update_source VALUES (1, 9), (3, 7)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE update_target AS target SET value = source.value FROM update_source AS source WHERE target.id = source.id"},
+				{Query: "SELECT * FROM update_target ORDER BY id", Expected: []sql.Row{{1, 9}, {2, 0}}},
+				{Query: "SELECT * FROM update_source ORDER BY id", Expected: []sql.Row{{1, 9}, {3, 7}}},
+			},
+		},
+		{
+			Name: "UPDATE FROM qualifies unaliased and schema-qualified targets",
+			SetUpScript: []string{
+				"CREATE SCHEMA app",
+				"CREATE TABLE app.update_target (id INT PRIMARY KEY, value INT)",
+				"CREATE TABLE app.update_source (id INT PRIMARY KEY, value INT)",
+				"INSERT INTO app.update_target VALUES (1, 0)",
+				"INSERT INTO app.update_source VALUES (1, 11)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE app.update_target SET value = update_source.value FROM app.update_source WHERE update_target.id = update_source.id"},
+				{Query: "SELECT * FROM app.update_target", Expected: []sql.Row{{1, 11}}},
+			},
+		},
+		{
+			Name: "UPDATE FROM preserves quoted target identifiers",
+			SetUpScript: []string{
+				`CREATE TABLE "Update Target" (id INT PRIMARY KEY, "Value" INT)`,
+				`CREATE TABLE "Update Source" (id INT PRIMARY KEY, "Value" INT)`,
+				`INSERT INTO "Update Target" VALUES (1, 0)`,
+				`INSERT INTO "Update Source" VALUES (1, 13)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `UPDATE "Update Target" AS "Target" SET "Value" = "Source"."Value" FROM "Update Source" AS "Source" WHERE "Target".id = "Source".id`},
+				{Query: `SELECT * FROM "Update Target"`, Expected: []sql.Row{{1, 13}}},
+			},
+		},
+		{
+			Name: "UPDATE FROM leaves an unqualified RHS ambiguous",
+			SetUpScript: []string{
+				"CREATE TABLE update_target (id INT PRIMARY KEY, value INT)",
+				"CREATE TABLE update_source (id INT PRIMARY KEY, value INT)",
+				"INSERT INTO update_target VALUES (1, 0)",
+				"INSERT INTO update_source VALUES (1, 9)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "UPDATE update_target AS target SET value = value FROM update_source AS source WHERE target.id = source.id",
+					ExpectedErr: "ambiguous",
+				},
+				{Query: "SELECT * FROM update_target", Expected: []sql.Row{{1, 0}}},
+			},
+		},
+		{
+			Name: "UPDATE SET target remains unqualified in PostgreSQL syntax",
+			SetUpScript: []string{
+				"CREATE TABLE update_target (id INT PRIMARY KEY, value INT)",
+				"CREATE TABLE update_source (id INT PRIMARY KEY, value INT)",
+				"INSERT INTO update_target VALUES (1, 0)",
+				"INSERT INTO update_source VALUES (1, 9)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "UPDATE update_target AS target SET target.value = source.value FROM update_source AS source WHERE target.id = source.id",
+					ExpectedErr: "syntax error",
+				},
+				{Query: "SELECT * FROM update_target", Expected: []sql.Row{{1, 0}}},
+			},
+		},
+		{
+			Name: "recursive CTE updates a hierarchical path",
+			SetUpScript: []string{
+				"CREATE TABLE hierarchy (id INT PRIMARY KEY, parent_id INT, name TEXT, parent_path TEXT)",
+				"INSERT INTO hierarchy VALUES (1, NULL, '1', NULL), (2, 1, '2', NULL), (3, 2, '3', NULL)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `WITH RECURSIVE paths AS (
+						SELECT id, parent_id, name AS path FROM hierarchy WHERE parent_id IS NULL
+						UNION ALL
+						SELECT child.id, child.parent_id, parent.path || '/' || child.name
+						FROM hierarchy AS child JOIN paths AS parent ON child.parent_id = parent.id
+					)
+					UPDATE hierarchy AS target SET parent_path = source.path
+					FROM paths AS source WHERE target.id = source.id`,
+				},
+				{Query: "SELECT id, parent_path FROM hierarchy ORDER BY id", Expected: []sql.Row{{1, "1"}, {2, "1/2"}, {3, "1/2/3"}}},
+			},
+		},
+		{
+			Name: "UPDATE FROM binds multiple assignments to the aliased target",
+			SetUpScript: []string{
+				"CREATE TABLE assignment_target (id INT PRIMARY KEY, value INT, note TEXT)",
+				"CREATE TABLE assignment_source (id INT PRIMARY KEY, value INT, note TEXT)",
+				"INSERT INTO assignment_target VALUES (1, 0, 'old')",
+				"INSERT INTO assignment_source VALUES (1, 21, 'new')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE assignment_target AS target SET value = source.value, note = source.note FROM assignment_source AS source WHERE target.id = source.id"},
+				{Query: "SELECT * FROM assignment_target", Expected: []sql.Row{{1, 21, "new"}}},
+				{
+					Query:       "UPDATE assignment_target AS target SET value = source.value FROM assignment_source AS source WHERE assignment_target.id = source.id",
+					ExpectedErr: "table not found",
+				},
+			},
+		},
+		{
 			Name: "UPDATE with join on two tables",
 			SetUpScript: []string{
 				"CREATE TABLE books (id SERIAL PRIMARY KEY, title TEXT, price INT, author_id INT, publisher_id INT);",
