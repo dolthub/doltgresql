@@ -748,50 +748,6 @@ func TestImplicitTransactionsExtendedProtocol(t *testing.T) {
 	setup := []string{"CREATE TABLE mytable (i BIGINT PRIMARY KEY);"}
 	RunMessageFlowTests(t, []MessageFlowTest{
 		{
-			Name:        "Bind without Parse errors and recovers at Sync",
-			SetUpScript: setup,
-			Steps: []FlowStep{
-				Bind{PreparedStatement: "missing", ExpectedErr: "prepared statement missing does not exist"},
-				Parse{Name: "skipped", Query: "INSERT INTO mytable VALUES (1)"},
-				Sync{},
-				SimpleQuery{Query: "SELECT 1", Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"1"}}}}},
-				QueryOnOtherConnection{Query: "SELECT count(*) FROM mytable", Expected: [][]string{{"0"}}},
-			},
-		},
-		{
-			Name:        "Describe unknown statement errors and recovers at Sync",
-			SetUpScript: setup,
-			Steps: []FlowStep{
-				Describe{Name: "missing", ExpectedErr: "prepared statement missing does not exist"},
-				Sync{},
-				Parse{Name: "select", Query: "SELECT 2"},
-				Bind{PreparedStatement: "select"},
-				Execute{Tag: "SELECT 1", Rows: [][]string{{"2"}}},
-				Sync{},
-			},
-		},
-		{
-			Name:        "Execute unknown portal errors and recovers at Sync",
-			SetUpScript: setup,
-			Steps: []FlowStep{
-				Execute{Portal: "missing", ExpectedErr: "portal missing does not exist"},
-				Sync{},
-				SimpleQuery{Query: "SELECT 3", Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"3"}}}}},
-			},
-		},
-		{
-			Name:        "named statement supports Describe before Bind and reuse after Sync",
-			SetUpScript: setup,
-			Steps: []FlowStep{
-				Parse{Name: "saved", Query: "SELECT 4"},
-				Describe{ObjectType: 'S', Name: "saved"},
-				Sync{},
-				Bind{PreparedStatement: "saved"},
-				Execute{Tag: "SELECT 1", Rows: [][]string{{"4"}}},
-				Sync{},
-			},
-		},
-		{
 			Name:        "failed DO statement rolls back at Sync",
 			SetUpScript: setup,
 			Steps: []FlowStep{
@@ -1148,6 +1104,8 @@ type Parse struct {
 	// After an error, the server skips all messages until Sync, so later steps in the batch must not have
 	// expectations of their own.
 	ExpectedErr string
+	// ExpectedErrCode, when non-empty, asserts the SQLSTATE of the received ErrorResponse.
+	ExpectedErrCode string
 }
 
 // Bind sends an extended-protocol Bind ('B') message. Its response is validated by the next Sync or Flush step.
@@ -1160,6 +1118,8 @@ type Bind struct {
 	Parameters []string
 	// ExpectedErr, when non-empty, asserts that this message draws an ErrorResponse containing this string.
 	ExpectedErr string
+	// ExpectedErrCode, when non-empty, asserts the SQLSTATE of the received ErrorResponse.
+	ExpectedErrCode string
 }
 
 // Describe sends an extended-protocol Describe ('D') message. Its response is validated (loosely: only the
@@ -1172,6 +1132,20 @@ type Describe struct {
 	Name string
 	// ExpectedErr, when non-empty, asserts that this message draws an ErrorResponse containing this string.
 	ExpectedErr string
+	// ExpectedErrCode, when non-empty, asserts the SQLSTATE of the received ErrorResponse.
+	ExpectedErrCode string
+}
+
+// Close sends an extended-protocol Close ('C') message for a prepared statement or portal.
+type Close struct {
+	// ObjectType is 'S' to close a prepared statement or 'P' to close a portal.
+	ObjectType byte
+	// Name is the name of the prepared statement or portal to close.
+	Name string
+	// ExpectedErr, when non-empty, asserts that this message draws an ErrorResponse containing this string.
+	ExpectedErr string
+	// ExpectedErrCode, when non-empty, asserts the SQLSTATE of the received ErrorResponse.
+	ExpectedErrCode string
 }
 
 // Execute sends an extended-protocol Execute ('E') message. Its response is validated by the next Sync or
@@ -1186,6 +1160,8 @@ type Execute struct {
 	Rows [][]string
 	// ExpectedErr, when non-empty, asserts that this message draws an ErrorResponse containing this string.
 	ExpectedErr string
+	// ExpectedErrCode, when non-empty, asserts the SQLSTATE of the received ErrorResponse.
+	ExpectedErrCode string
 }
 
 // Sync sends an extended-protocol Sync ('S') message, then reads and validates the responses to every extended
@@ -1340,6 +1316,7 @@ var _ FlowStep = SimpleQuery{}
 var _ FlowStep = Parse{}
 var _ FlowStep = Bind{}
 var _ FlowStep = Describe{}
+var _ FlowStep = Close{}
 var _ FlowStep = Execute{}
 var _ FlowStep = Sync{}
 var _ FlowStep = Flush{}
@@ -1379,6 +1356,15 @@ func (s Describe) describe() string {
 		name = "(unnamed)"
 	}
 	return fmt.Sprintf("Describe %s %s", objectType, name)
+}
+
+// describe implements FlowStep.
+func (s Close) describe() string {
+	objectType := "statement"
+	if s.ObjectType == 'P' {
+		objectType = "portal"
+	}
+	return fmt.Sprintf("Close %s %s", objectType, s.Name)
 }
 
 // describe implements FlowStep.
@@ -1531,6 +1517,12 @@ func (s Describe) runStep(r *messageFlowRunner) {
 }
 
 // runStep implements FlowStep.
+func (s Close) runStep(r *messageFlowRunner) {
+	r.send(&pgproto3.Close{ObjectType: s.ObjectType, Name: s.Name})
+	r.pending = append(r.pending, pendingFlowStep{idx: r.stepIdx, step: s})
+}
+
+// runStep implements FlowStep.
 func (s Execute) runStep(r *messageFlowRunner) {
 	r.send(&pgproto3.Execute{Portal: s.Portal})
 	r.pending = append(r.pending, pendingFlowStep{idx: r.stepIdx, step: s})
@@ -1598,17 +1590,22 @@ func (r *messageFlowRunner) validatePendingResponses() bool {
 		if !r.runSubtest(fmt.Sprintf("step %d %s", p.idx, p.step.describe()), func() {
 			switch s := p.step.(type) {
 			case Parse:
-				errored = r.expectAck(p.idx, s.ExpectedErr, "ParseComplete", func(msg pgproto3.BackendMessage) bool {
+				errored = r.expectAck(p.idx, s.ExpectedErr, s.ExpectedErrCode, "ParseComplete", func(msg pgproto3.BackendMessage) bool {
 					_, ok := msg.(*pgproto3.ParseComplete)
 					return ok
 				})
 			case Bind:
-				errored = r.expectAck(p.idx, s.ExpectedErr, "BindComplete", func(msg pgproto3.BackendMessage) bool {
+				errored = r.expectAck(p.idx, s.ExpectedErr, s.ExpectedErrCode, "BindComplete", func(msg pgproto3.BackendMessage) bool {
 					_, ok := msg.(*pgproto3.BindComplete)
 					return ok
 				})
 			case Describe:
 				errored = r.expectDescribeResponse(p.idx, s)
+			case Close:
+				errored = r.expectAck(p.idx, s.ExpectedErr, s.ExpectedErrCode, "CloseComplete", func(msg pgproto3.BackendMessage) bool {
+					_, ok := msg.(*pgproto3.CloseComplete)
+					return ok
+				})
 			case Execute:
 				errored = r.expectExecuteResponse(p.idx, s)
 			default:
@@ -1623,7 +1620,7 @@ func (r *messageFlowRunner) validatePendingResponses() bool {
 
 // expectAck reads the next message and asserts that it's the expected acknowledgement (or the expected error).
 // Returns whether an ErrorResponse was received.
-func (r *messageFlowRunner) expectAck(stepIdx int, expectedErr string, expectedDesc string,
+func (r *messageFlowRunner) expectAck(stepIdx int, expectedErr string, expectedErrCode string, expectedDesc string,
 	matches func(pgproto3.BackendMessage) bool) bool {
 	msg := r.receiveNext()
 	if errResp, ok := msg.(*pgproto3.ErrorResponse); ok {
@@ -1631,6 +1628,9 @@ func (r *messageFlowRunner) expectAck(stepIdx int, expectedErr string, expectedD
 			r.t.Fatalf("step %d: unexpected error: %s", stepIdx, errResp.Message)
 		}
 		assert.Contains(r.t, errResp.Message, expectedErr, "step %d: wrong error message", stepIdx)
+		if expectedErrCode != "" {
+			assert.Equal(r.t, expectedErrCode, errResp.Code, "step %d: wrong error SQLSTATE", stepIdx)
+		}
 		return true
 	}
 	if expectedErr != "" {
@@ -1651,6 +1651,9 @@ func (r *messageFlowRunner) expectDescribeResponse(stepIdx int, s Describe) bool
 			r.t.Fatalf("step %d: unexpected error: %s", stepIdx, errResp.Message)
 		}
 		assert.Contains(r.t, errResp.Message, s.ExpectedErr, "step %d: wrong error message", stepIdx)
+		if s.ExpectedErrCode != "" {
+			assert.Equal(r.t, s.ExpectedErrCode, errResp.Code, "step %d: wrong error SQLSTATE", stepIdx)
+		}
 		return true
 	}
 	if s.ExpectedErr != "" {
@@ -1704,6 +1707,9 @@ func (r *messageFlowRunner) expectExecuteResponse(stepIdx int, s Execute) bool {
 				r.t.Fatalf("step %d: unexpected error: %s", stepIdx, m.Message)
 			}
 			assert.Contains(r.t, m.Message, s.ExpectedErr, "step %d: wrong error message", stepIdx)
+			if s.ExpectedErrCode != "" {
+				assert.Equal(r.t, s.ExpectedErrCode, m.Code, "step %d: wrong error SQLSTATE", stepIdx)
+			}
 			return true
 		default:
 			r.t.Fatalf("step %d: unexpected message %T while reading Execute results: %v", stepIdx, msg, msg)

@@ -80,13 +80,13 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 
 // discardAll resets all session-local resources and reports completion.
 func (h *ConnectionHandler) discardAll(query ConvertedQuery) error {
-	if h.state.transaction != idleTransactionState {
+	if h.state.txState != idleTransactionState {
 		return pgerror.New(pgcode.ActiveSQLTransaction, "DISCARD ALL cannot run inside a transaction block")
 	}
 	if err := h.doltgresHandler.ComResetConnection(h.mysqlConn); err != nil {
 		return err
 	}
-	h.extended = newExtendedQueryState()
+	h.state.resetExtendedQueryObjects()
 	return h.send(&pgproto3.CommandComplete{CommandTag: []byte("DISCARD ALL")})
 }
 

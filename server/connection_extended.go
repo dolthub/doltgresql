@@ -30,6 +30,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -51,28 +53,28 @@ type preparedStatementData struct {
 	BindVarTypes []uint32
 }
 
-// extendedQueryState owns the prepared statements and portals belonging to one connection.
-type extendedQueryState struct {
+// extendedQueryObjects owns the prepared statements and portals belonging to one connection.
+type extendedQueryObjects struct {
 	preparedStatements map[string]preparedStatementData
 	portals            map[string]portalData
 }
 
-// newExtendedQueryState returns empty extended-query state for a new connection.
-func newExtendedQueryState() extendedQueryState {
-	return extendedQueryState{
+// newExtendedQueryObjects returns empty extended-query objects for a new connection.
+func newExtendedQueryObjects() extendedQueryObjects {
+	return extendedQueryObjects{
 		preparedStatements: make(map[string]preparedStatementData),
 		portals:            make(map[string]portalData),
 	}
 }
 
 // clearUnnamed removes the unnamed statement and portal replaced by a simple Query message.
-func (s *extendedQueryState) clearUnnamed() {
+func (s *extendedQueryObjects) clearUnnamed() {
 	delete(s.preparedStatements, "")
 	delete(s.portals, "")
 }
 
 // close removes the named statement or portal identified by a Close message.
-func (s *extendedQueryState) close(objectType byte, name string) {
+func (s *extendedQueryObjects) close(objectType byte, name string) {
 	if objectType == 'S' {
 		delete(s.preparedStatements, name)
 	} else {
@@ -81,13 +83,13 @@ func (s *extendedQueryState) close(objectType byte, name string) {
 }
 
 // deallocate removes one prepared statement, or all prepared statements when name is empty.
-func (s *extendedQueryState) deallocate(name string) error {
+func (s *extendedQueryObjects) deallocate(name string) error {
 	if name == "" {
 		clear(s.preparedStatements)
 		return nil
 	}
 	if _, ok := s.preparedStatements[name]; !ok {
-		return errors.Errorf("prepared statement %s does not exist", name)
+		return pgerror.Newf(pgcode.InvalidSQLStatementName, "prepared statement %q does not exist", name)
 	}
 	delete(s.preparedStatements, name)
 	return nil
@@ -95,8 +97,12 @@ func (s *extendedQueryState) deallocate(name string) error {
 
 // handleParse handles a Parse message.
 func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
-	// TODO: Named prepared statements must be explicitly closed before they can be redefined by another Parse
-	// message, but this is not required for the unnamed statement.
+	if message.Name != "" {
+		if _, ok := h.state.extendedQueryObjects.preparedStatements[message.Name]; ok {
+			return pgerror.Newf(pgcode.DuplicatePreparedStatement,
+				"prepared statement %q already exists", message.Name)
+		}
+	}
 	queries, err := convertQuery(message.Query)
 	if err != nil {
 		if printErrorStackTraces {
@@ -114,7 +120,7 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 	}
 
 	if query.AST == nil {
-		h.extended.preparedStatements[message.Name] = preparedStatementData{Query: query}
+		h.state.extendedQueryObjects.preparedStatements[message.Name] = preparedStatementData{Query: query}
 		return nil
 	}
 
@@ -145,7 +151,7 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 		}
 	}
 
-	h.extended.preparedStatements[message.Name] = preparedStatementData{
+	h.state.extendedQueryObjects.preparedStatements[message.Name] = preparedStatementData{
 		Query:        query,
 		ReturnFields: fields,
 		BindVarTypes: bindVarTypes,
@@ -155,22 +161,26 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 
 // handleDescribe handles a Describe message.
 func (h *ConnectionHandler) handleDescribe(message *pgproto3.Describe) error {
+	if message.ObjectType != 'S' && message.ObjectType != 'P' {
+		return pgerror.Newf(pgcode.ProtocolViolation, "invalid DESCRIBE message subtype %d", message.ObjectType)
+	}
 	var fields []pgproto3.FieldDescription
 	var bindVarTypes []uint32
 	var query ConvertedQuery
 
 	if message.ObjectType == 'S' {
-		preparedStatement, ok := h.extended.preparedStatements[message.Name]
+		preparedStatement, ok := h.state.extendedQueryObjects.preparedStatements[message.Name]
 		if !ok {
-			return errors.Errorf("prepared statement %s does not exist", message.Name)
+			return pgerror.Newf(pgcode.InvalidSQLStatementName,
+				"prepared statement %q does not exist", message.Name)
 		}
 		fields = preparedStatement.ReturnFields
 		bindVarTypes = preparedStatement.BindVarTypes
 		query = preparedStatement.Query
 	} else {
-		portal, ok := h.extended.portals[message.Name]
+		portal, ok := h.state.extendedQueryObjects.portals[message.Name]
 		if !ok {
-			return errors.Errorf("portal %s does not exist", message.Name)
+			return pgerror.Newf(pgcode.InvalidCursorName, "portal %q does not exist", message.Name)
 		}
 		fields = portal.Fields
 		query = portal.Query
@@ -183,9 +193,15 @@ func (h *ConnectionHandler) handleDescribe(message *pgproto3.Describe) error {
 func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 	// TODO: A named portal lasts until the end of the current transaction unless explicitly destroyed.
 	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.PreparedStatement)
-	preparedData, ok := h.extended.preparedStatements[message.PreparedStatement]
+	if message.DestinationPortal != "" {
+		if _, ok := h.state.extendedQueryObjects.portals[message.DestinationPortal]; ok {
+			return pgerror.Newf(pgcode.DuplicateCursor, "cursor %q already exists", message.DestinationPortal)
+		}
+	}
+	preparedData, ok := h.state.extendedQueryObjects.preparedStatements[message.PreparedStatement]
 	if !ok {
-		return errors.Errorf("prepared statement %s does not exist", message.PreparedStatement)
+		return pgerror.Newf(pgcode.InvalidSQLStatementName,
+			"prepared statement %q does not exist", message.PreparedStatement)
 	}
 
 	if err := h.rejectStatementIfTransactionFailed(preparedData.Query); err != nil {
@@ -193,7 +209,7 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 	}
 
 	if preparedData.Query.AST == nil {
-		h.extended.portals[message.DestinationPortal] = portalData{Query: preparedData.Query, IsEmptyQuery: true}
+		h.state.extendedQueryObjects.portals[message.DestinationPortal] = portalData{Query: preparedData.Query, IsEmptyQuery: true}
 		return h.send(&pgproto3.BindComplete{})
 	}
 
@@ -221,7 +237,7 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 	if err != nil {
 		return err
 	}
-	h.extended.portals[message.DestinationPortal] = portalData{
+	h.state.extendedQueryObjects.portals[message.DestinationPortal] = portalData{
 		Query:       preparedData.Query,
 		Fields:      fields,
 		BoundPlan:   boundPlan,
@@ -230,12 +246,21 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 	return h.send(&pgproto3.BindComplete{})
 }
 
+// handleClose removes the named statement or portal identified by a valid Close message.
+func (h *ConnectionHandler) handleClose(message *pgproto3.Close) error {
+	if message.ObjectType != 'S' && message.ObjectType != 'P' {
+		return pgerror.Newf(pgcode.ProtocolViolation, "invalid CLOSE message subtype %d", message.ObjectType)
+	}
+	h.state.extendedQueryObjects.close(message.ObjectType, message.Name)
+	return h.send(&pgproto3.CloseComplete{})
+}
+
 // handleExecute handles an Execute message.
 func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 	// TODO: Implement RowMax.
-	portalData, ok := h.extended.portals[message.Portal]
+	portalData, ok := h.state.extendedQueryObjects.portals[message.Portal]
 	if !ok {
-		return errors.Errorf("portal %s does not exist", message.Portal)
+		return pgerror.Newf(pgcode.InvalidCursorName, "portal %q does not exist", message.Portal)
 	}
 
 	logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
@@ -266,7 +291,7 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 
 // deallocatePreparedStatement implements DEALLOCATE for this connection.
 func (h *ConnectionHandler) deallocatePreparedStatement(name string, query ConvertedQuery) error {
-	if err := h.extended.deallocate(name); err != nil {
+	if err := h.state.extendedQueryObjects.deallocate(name); err != nil {
 		return err
 	}
 	return h.send(&pgproto3.CommandComplete{CommandTag: []byte(query.StatementTag)})

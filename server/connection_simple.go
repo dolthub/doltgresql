@@ -42,7 +42,7 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 	}
 
 	// A simple Query message destroys the unnamed prepared statement and unnamed portal.
-	h.extended.clearUnnamed()
+	h.state.extendedQueryObjects.clearUnnamed()
 	if len(queries) == 1 && queries[0].AST == nil {
 		return true, h.send(&pgproto3.EmptyQueryResponse{})
 	}
@@ -82,7 +82,7 @@ func (h *ConnectionHandler) resumeSimpleQuery(execution *simpleQueryExecution) (
 			continue
 		}
 
-		if implicitTransactionControl && i == len(execution.statements)-1 && !h.state.transaction.inExplicitTransactionBlock() {
+		if implicitTransactionControl && i == len(execution.statements)-1 && !h.state.txState.inExplicitTransactionBlock() {
 			ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 			if err != nil {
 				return false, err

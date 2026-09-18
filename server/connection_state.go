@@ -14,78 +14,85 @@
 
 package server
 
-// connectionModeKind identifies the mutually exclusive frontend mode owning the connection.
-type connectionModeKind byte
+// connectionMode identifies the mutually exclusive frontend mode owning the connection.
+type connectionMode byte
 
 const (
-	readyConnectionMode connectionModeKind = iota
+	readyConnectionMode connectionMode = iota
 	extendedQueryConnectionMode
 	discardUntilSyncConnectionMode
 	copyInConnectionMode
 	closingConnectionMode
 )
 
-// connectionMode records the active frontend mode and its mode-specific COPY payload.
-type connectionMode struct {
-	kind connectionModeKind
-	copy *copyInState
-}
-
-// connectionState owns every transaction and frontend-mode transition for a connection.
+// connectionState tracks the current state of a connection, including the transaction status,
+// frontend protocol state, and extended query objects, such as prepared statements.
 type connectionState struct {
-	transaction transactionState
-	mode        connectionMode
+	txState              transactionState
+	mode                 connectionMode
+	extendedQueryObjects extendedQueryObjects
+	activeCopy           *copyInState
 }
 
 // newConnectionState returns the initial state for a newly authenticated connection.
 func newConnectionState() connectionState {
 	return connectionState{
-		transaction: idleTransactionState,
-		mode:        connectionMode{kind: readyConnectionMode},
+		txState:              idleTransactionState,
+		mode:                 readyConnectionMode,
+		extendedQueryObjects: newExtendedQueryObjects(),
 	}
 }
 
-// enterExtendedMode enters an extended-query batch unless another exclusive operation owns the connection.
-func (s *connectionState) enterExtendedMode() {
-	if s.mode.kind == readyConnectionMode {
-		s.mode = connectionMode{kind: extendedQueryConnectionMode}
+// beginExtendedQueryMode enters an extended-query batch unless another exclusive operation owns the connection.
+func (s *connectionState) beginExtendedQueryMode() {
+	if s.mode == readyConnectionMode {
+		s.mode = extendedQueryConnectionMode
 	}
 }
 
-// finishExtended returns the connection to normal command dispatch.
-func (s *connectionState) finishExtended() {
-	s.mode = connectionMode{kind: readyConnectionMode}
+// finishExtendedQueryMode returns the connection to normal command dispatch.
+func (s *connectionState) finishExtendedQueryMode() {
+	s.mode = readyConnectionMode
 }
 
 // discardUntilSync rejects the remainder of an extended-query batch.
 func (s *connectionState) discardUntilSync() {
-	s.mode = connectionMode{kind: discardUntilSyncConnectionMode}
+	s.mode = discardUntilSyncConnectionMode
 }
 
 // closeConnection transitions the connection into its terminal mode.
 func (s *connectionState) closeConnection() {
-	s.mode = connectionMode{kind: closingConnectionMode}
+	s.activeCopy = nil
+	s.mode = closingConnectionMode
 }
 
-// beginCopy transfers exclusive protocol ownership to a valid COPY FROM STDIN operation.
-func (s *connectionState) beginCopy(copyState *copyInState) bool {
-	if copyState == nil {
+// beginCopyMode transfers exclusive protocol ownership to a COPY operation. Returns true if
+// the mode was successfully changed, otherwise returns false if the mode change was invalid.
+func (s *connectionState) beginCopyMode(copyState *copyInState) bool {
+	if copyState == nil || s.activeCopy != nil {
 		return false
 	}
-	switch s.mode.kind {
+	switch s.mode {
 	case readyConnectionMode, extendedQueryConnectionMode:
-		s.mode = connectionMode{kind: copyInConnectionMode, copy: copyState}
+		s.activeCopy = copyState
+		s.mode = copyInConnectionMode
 		return true
 	default:
 		return false
 	}
 }
 
-// finishCopy releases COPY ownership only when copyState is the active operation.
-func (s *connectionState) finishCopy(copyState *copyInState) bool {
-	if s.mode.kind != copyInConnectionMode || s.mode.copy != copyState {
+// finishCopyMode releases COPY mode
+func (s *connectionState) finishCopyMode(copyState *copyInState) bool {
+	if s.mode != copyInConnectionMode || s.activeCopy != copyState {
 		return false
 	}
-	s.mode = connectionMode{kind: readyConnectionMode}
+	s.activeCopy = nil
+	s.mode = readyConnectionMode
 	return true
+}
+
+// resetExtendedQueryObjects removes every prepared statement and portal owned by the connection.
+func (s *connectionState) resetExtendedQueryObjects() {
+	s.extendedQueryObjects = newExtendedQueryObjects()
 }

@@ -45,17 +45,16 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
 		h.handleOperationError(err)
 	}
-	if sendErr := h.send(&pgproto3.ReadyForQuery{TxStatus: h.state.transaction.readyStatus()}); sendErr != nil {
+	if sendErr := h.send(&pgproto3.ReadyForQuery{TxStatus: h.state.txState.readyStatus()}); sendErr != nil {
 		panic(sendErr)
 	}
 }
 
 // handleMessageError applies transaction failure semantics and selects protocol recovery.
 func (h *ConnectionHandler) handleMessageError(err error) {
-	mode := h.state.mode
-	switch mode.kind {
+	switch h.state.mode {
 	case copyInConnectionMode:
-		copyState := mode.copy
+		copyState := h.state.activeCopy
 		if copyState == nil {
 			h.state.closeConnection()
 			h.handleOperationError(errors.Wrap(err, "COPY mode has no active operation"))
@@ -63,7 +62,7 @@ func (h *ConnectionHandler) handleMessageError(err error) {
 		}
 		continuation := copyState.continuation
 		h.rollbackCopyTransaction(copyState.transaction)
-		if !h.state.finishCopy(copyState) {
+		if !h.state.finishCopyMode(copyState) {
 			h.state.closeConnection()
 			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN state changed during error recovery"))
 			return

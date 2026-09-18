@@ -13,8 +13,13 @@ func TestDiscard(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE temporary TABLE test (a INT)`,
 				`insert into test values (1)`,
+				`SET search_path = pg_catalog`,
 			},
 			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SHOW search_path",
+					Expected: []sql.Row{{"pg_catalog"}},
+				},
 				{
 					Query: "select * from test",
 					Expected: []sql.Row{
@@ -28,6 +33,10 @@ func TestDiscard(t *testing.T) {
 				{
 					Query:       "select * from test",
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    "SHOW search_path",
+					Expected: []sql.Row{{`"$user", public`}},
 				},
 			},
 		},
@@ -82,7 +91,7 @@ func TestDiscardAllClearsProtocolPreparedStatements(t *testing.T) {
 				Parse{Name: "saved", Query: "SELECT 1"},
 				Sync{},
 				SimpleQuery{Query: "DISCARD ALL", Expected: []StatementResult{{Tag: "DISCARD ALL"}}},
-				Bind{PreparedStatement: "saved", ExpectedErr: "prepared statement saved does not exist"},
+				Bind{PreparedStatement: "saved", ExpectedErr: `prepared statement "saved" does not exist`, ExpectedErrCode: "26000"},
 				Sync{},
 				SimpleQuery{Query: "SELECT 2", Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"2"}}}}},
 			},

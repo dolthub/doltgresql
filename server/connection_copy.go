@@ -234,7 +234,7 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 // COPY FROM STDIN can't be handled directly by the GMS engine, since COPY FROM STDIN relies on multiple messages sent
 // over the wire.
 func (h *ConnectionHandler) handleCopyFromStdinQuery(copyFrom *node.CopyFrom, continuation copyContinuation) error {
-	if !h.state.beginCopy(newCopyInState(copyFrom, continuation)) {
+	if !h.state.beginCopyMode(newCopyInState(copyFrom, continuation)) {
 		return errors.New("cannot begin COPY FROM STDIN with invalid state")
 	}
 	return h.send(&pgproto3.CopyInResponse{
@@ -291,10 +291,10 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyInState, copyFro
 	if err != nil {
 		return err
 	}
-	if sqlCtx.GetTransaction() == nil && h.state.transaction == idleTransactionState {
+	if sqlCtx.GetTransaction() == nil && h.state.txState == idleTransactionState {
 		copyState.transaction = copyOwnedTransaction
 	}
-	if h.state.transaction != idleTransactionState {
+	if h.state.txState != idleTransactionState {
 		sqlCtx.SetIgnoreAutoCommit(true)
 	}
 	if err = startTransactionIfNecessary(sqlCtx); err != nil {
@@ -386,7 +386,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyInState, copyFro
 
 // finishCopy releases COPY state, rolls back failed work, and resumes the initiating protocol operation.
 func (h *ConnectionHandler) finishCopy(copyState *copyInState, copyErr error) messageResult {
-	if copyState == nil || !h.state.finishCopy(copyState) {
+	if copyState == nil || !h.state.finishCopyMode(copyState) {
 		h.state.closeConnection()
 		return messageResult{
 			action: closeConnection,
@@ -416,7 +416,7 @@ func (h *ConnectionHandler) finishCopy(copyState *copyInState, copyErr error) me
 			h.state.discardUntilSync()
 			return messageResult{err: copyErr}
 		}
-		h.state.enterExtendedMode()
+		h.state.beginExtendedQueryMode()
 		return continueResult()
 	default:
 		h.state.closeConnection()
@@ -503,7 +503,7 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 // run inside a transaction block), this does nothing: the normal statement-failure handling takes care of it,
 // matching Postgres.
 func (h *ConnectionHandler) rollbackCopyTransaction(ownership transactionOwnership) {
-	if ownership != copyOwnedTransaction || h.state.transaction != idleTransactionState {
+	if ownership != copyOwnedTransaction || h.state.txState != idleTransactionState {
 		return
 	}
 	if h.restoredAutoCommitWithoutTransaction() {

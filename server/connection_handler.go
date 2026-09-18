@@ -40,7 +40,6 @@ type ConnectionHandler struct {
 	doltgresHandler *DoltgresHandler
 	backend         *pgproto3.Backend
 	state           connectionState
-	extended        extendedQueryState
 	convertOptions  ast.ConvertOptions
 }
 
@@ -131,7 +130,6 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 		doltgresHandler: doltgresHandler,
 		backend:         pgproto3.NewBackend(conn, conn),
 		state:           newConnectionState(),
-		extended:        newExtendedQueryState(),
 		convertOptions:  convertOptions,
 	}
 }
@@ -220,7 +218,7 @@ func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
 
 				h.handleMessageError(errors.Errorf("receiveMessage recovered panic: %v: %s",
 					r, stackTrace))
-				stop = h.state.mode.kind == closingConnectionMode
+				stop = h.state.mode == closingConnectionMode
 			}
 		}()
 	}
@@ -256,19 +254,18 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) messageResult {
 		return closeResult()
 	}
 
-	mode := h.state.mode
-	switch mode.kind {
+	switch h.state.mode {
 	case copyInConnectionMode:
-		if mode.copy == nil {
+		if h.state.activeCopy == nil {
 			h.state.closeConnection()
 			return messageResult{action: closeConnection, err: errors.New("COPY mode has no active operation")}
 		}
-		return h.handleCopyMessage(mode.copy, msg)
+		return h.handleCopyMessage(h.state.activeCopy, msg)
 	case closingConnectionMode:
 		return closeResult()
 	case discardUntilSyncConnectionMode:
 		if _, ok := msg.(*pgproto3.Sync); ok {
-			h.state.finishExtended()
+			h.state.finishExtendedQueryMode()
 			return readyResult(h.commitImplicitTransaction())
 		}
 		return continueResult()
@@ -286,7 +283,7 @@ func (h *ConnectionHandler) handleNormalMessage(msg pgproto3.Message) messageRes
 	case *pgproto3.Sync:
 		// Sync closes an implicit transaction block, committing it. An explicit transaction block (opened with
 		// BEGIN) is not affected by Sync, and remains open.
-		h.state.finishExtended()
+		h.state.finishExtendedQueryMode()
 		return readyResult(h.commitImplicitTransaction())
 	case *pgproto3.Flush:
 		// We don't buffer output, so Flush is a no-op
@@ -295,21 +292,20 @@ func (h *ConnectionHandler) handleNormalMessage(msg pgproto3.Message) messageRes
 		endOfMessages, err := h.handleQuery(message)
 		return messageResultForCompletion(endOfMessages, err)
 	case *pgproto3.Parse:
-		h.state.enterExtendedMode()
+		h.state.beginExtendedQueryMode()
 		return messageResult{err: h.handleParse(message)}
 	case *pgproto3.Describe:
-		h.state.enterExtendedMode()
+		h.state.beginExtendedQueryMode()
 		return messageResult{err: h.handleDescribe(message)}
 	case *pgproto3.Bind:
-		h.state.enterExtendedMode()
+		h.state.beginExtendedQueryMode()
 		return messageResult{err: h.handleBind(message)}
 	case *pgproto3.Execute:
-		h.state.enterExtendedMode()
+		h.state.beginExtendedQueryMode()
 		return messageResult{err: h.handleExecute(message)}
 	case *pgproto3.Close:
-		h.state.enterExtendedMode()
-		h.extended.close(message.ObjectType, message.Name)
-		return messageResult{err: h.send(&pgproto3.CloseComplete{})}
+		h.state.beginExtendedQueryMode()
+		return messageResult{err: h.handleClose(message)}
 	case *pgproto3.CopyData:
 		// PostgreSQL drops COPY messages that arrive after COPY has already failed and left copy-in mode.
 		return continueResult()

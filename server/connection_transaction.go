@@ -71,21 +71,21 @@ func (s transactionState) readyStatus() byte {
 func (h *ConnectionHandler) handleTransactionStatement(query ConvertedQuery) (bool, error) {
 	switch query.AST.(type) {
 	case *sqlparser.Begin:
-		switch h.state.transaction {
+		switch h.state.txState {
 		case explicitTransactionState:
 			// PostgreSQL treats a nested BEGIN as a no-op and keeps the existing transaction characteristics.
 			return true, h.send(makeCommandComplete(query.StatementTag, 0))
 		case implicitTransactionState:
 			// BEGIN promotes the engine transaction already backing the implicit block.
-			h.state.transaction = explicitTransactionState
+			h.state.txState = explicitTransactionState
 			return true, h.send(makeCommandComplete(query.StatementTag, 0))
 		default:
-			h.state.transaction = explicitTransactionState
+			h.state.txState = explicitTransactionState
 			return false, nil
 		}
 	case *sqlparser.Commit:
-		if h.state.transaction == failedTransactionState {
-			h.state.transaction = idleTransactionState
+		if h.state.txState == failedTransactionState {
+			h.state.txState = idleTransactionState
 			h.clearTransactionLocalVars()
 			if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
 				return true, err
@@ -93,24 +93,24 @@ func (h *ConnectionHandler) handleTransactionStatement(query ConvertedQuery) (bo
 			return true, h.send(&pgproto3.CommandComplete{CommandTag: []byte("ROLLBACK")})
 		}
 		// COMMIT ends either kind of active block; the engine still executes the statement itself.
-		h.state.transaction = idleTransactionState
+		h.state.txState = idleTransactionState
 		h.clearTransactionLocalVars()
 		return false, nil
 	case *sqlparser.Rollback:
-		h.state.transaction = idleTransactionState
+		h.state.txState = idleTransactionState
 		h.clearTransactionLocalVars()
 		return false, nil
 	case *sqlparser.Savepoint:
-		if !h.state.transaction.inExplicitTransactionBlock() {
+		if !h.state.txState.inExplicitTransactionBlock() {
 			return true, noActiveTransactionError("SAVEPOINT")
 		}
 	case *sqlparser.RollbackSavepoint:
-		if !h.state.transaction.inExplicitTransactionBlock() {
+		if !h.state.txState.inExplicitTransactionBlock() {
 			return true, noActiveTransactionError("ROLLBACK TO SAVEPOINT")
 		}
-		h.state.transaction = explicitTransactionState
+		h.state.txState = explicitTransactionState
 	case *sqlparser.ReleaseSavepoint:
-		if !h.state.transaction.inExplicitTransactionBlock() {
+		if !h.state.txState.inExplicitTransactionBlock() {
 			return true, noActiveTransactionError("RELEASE SAVEPOINT")
 		}
 	}
@@ -119,13 +119,15 @@ func (h *ConnectionHandler) handleTransactionStatement(query ConvertedQuery) (bo
 
 // startImplicitTransaction starts an implicit transaction block unless one is already active or the statement controls transactions.
 func (h *ConnectionHandler) startImplicitTransaction(query ConvertedQuery) error {
-	if h.state.transaction != idleTransactionState {
+	if h.state.txState != idleTransactionState {
 		return nil
 	}
 	switch stmt := query.AST.(type) {
 	case *sqlparser.Begin, *sqlparser.Commit, *sqlparser.Rollback:
 		return nil
 	case sqlparser.InjectedStatement:
+		// DISCARD ALL must run outside a transaction, so we don't create an implicit
+		// transaction before DISCARD ALL checks the connection's transaction state.
 		if _, ok := stmt.Statement.(node.DiscardStatement); ok {
 			return nil
 		}
@@ -135,16 +137,16 @@ func (h *ConnectionHandler) startImplicitTransaction(query ConvertedQuery) error
 		return err
 	}
 	ctx.SetIgnoreAutoCommit(true)
-	h.state.transaction = implicitTransactionState
+	h.state.txState = implicitTransactionState
 	return nil
 }
 
 // commitImplicitTransaction commits the active implicit transaction, rolling it back if the commit fails.
 func (h *ConnectionHandler) commitImplicitTransaction() error {
-	if h.state.transaction != implicitTransactionState {
+	if h.state.txState != implicitTransactionState {
 		return nil
 	}
-	h.state.transaction = idleTransactionState
+	h.state.txState = idleTransactionState
 	h.clearTransactionLocalVars()
 	if h.restoredAutoCommitWithoutTransaction() {
 		return nil
@@ -160,10 +162,10 @@ func (h *ConnectionHandler) commitImplicitTransaction() error {
 
 // rollbackImplicitTransaction rolls back the active implicit transaction.
 func (h *ConnectionHandler) rollbackImplicitTransaction() {
-	if h.state.transaction != implicitTransactionState {
+	if h.state.txState != implicitTransactionState {
 		return
 	}
-	h.state.transaction = idleTransactionState
+	h.state.txState = idleTransactionState
 	h.clearTransactionLocalVars()
 	if h.restoredAutoCommitWithoutTransaction() {
 		return
@@ -175,11 +177,11 @@ func (h *ConnectionHandler) rollbackImplicitTransaction() {
 
 // failActiveTransaction applies PostgreSQL statement-error semantics to the active transaction.
 func (h *ConnectionHandler) failActiveTransaction() {
-	switch h.state.transaction {
+	switch h.state.txState {
 	case implicitTransactionState:
 		h.rollbackImplicitTransaction()
 	case explicitTransactionState:
-		h.state.transaction = failedTransactionState
+		h.state.txState = failedTransactionState
 	}
 }
 
@@ -218,7 +220,7 @@ func (h *ConnectionHandler) runEngineTransactionControl(statement string) error 
 
 // rejectStatementIfTransactionFailed rejects statements that cannot run in a failed transaction.
 func (h *ConnectionHandler) rejectStatementIfTransactionFailed(query ConvertedQuery) error {
-	if h.state.transaction != failedTransactionState || query.AST == nil {
+	if h.state.txState != failedTransactionState || query.AST == nil {
 		return nil
 	}
 	switch query.AST.(type) {
