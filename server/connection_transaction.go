@@ -28,6 +28,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/server/node"
 )
 
 // transactionState is the transaction block state reported by ReadyForQuery.
@@ -121,9 +122,13 @@ func (h *ConnectionHandler) startImplicitTransaction(query ConvertedQuery) error
 	if h.state.transaction != idleTransactionState {
 		return nil
 	}
-	switch query.AST.(type) {
+	switch stmt := query.AST.(type) {
 	case *sqlparser.Begin, *sqlparser.Commit, *sqlparser.Rollback:
 		return nil
+	case sqlparser.InjectedStatement:
+		if _, ok := stmt.Statement.(node.DiscardStatement); ok {
+			return nil
+		}
 	}
 	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {

@@ -47,9 +47,11 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 			return false, err
 		}
 		if err = h.chooseInitialParameters(sm); err != nil {
+			// Report invalid startup parameters explicitly; otherwise the client sees only an
+			// unexpected EOF when the connection closes.
 			_ = h.send(&pgproto3.ErrorResponse{
 				Severity: string(ErrorResponseSeverity_Fatal),
-				Code:     "22023",
+				Code:     "22023", // invalid_parameter_value
 				Message:  err.Error(),
 				Routine:  "InitPostgres",
 			})
@@ -93,7 +95,7 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 	}
 	return h.send(&pgproto3.BackendKeyData{
 		ProcessID: processID,
-		SecretKey: make([]byte, 4),
+		SecretKey: make([]byte, 4), // TODO: this should represent an ID that can uniquely identify this connection, so that CancelRequest will work
 	})
 }
 

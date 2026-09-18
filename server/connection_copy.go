@@ -26,7 +26,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
-	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/sirupsen/logrus"
 
@@ -54,27 +53,12 @@ type copyContinuation struct {
 
 // newSimpleQueryCopyContinuation returns a continuation for the remaining statements in a simple Query message.
 func newSimpleQueryCopyContinuation(execution *simpleQueryExecution) copyContinuation {
-	if execution == nil {
-		return copyContinuation{}
-	}
 	return copyContinuation{kind: simpleQueryCopyContinuation, execution: execution}
 }
 
 // newExtendedQueryCopyContinuation returns a continuation for the extended-query batch that initiated COPY.
 func newExtendedQueryCopyContinuation() copyContinuation {
 	return copyContinuation{kind: extendedQueryCopyContinuation}
-}
-
-// valid reports whether the continuation has a recognized kind and the data required by that kind.
-func (c copyContinuation) valid() bool {
-	switch c.kind {
-	case simpleQueryCopyContinuation:
-		return c.execution != nil
-	case extendedQueryCopyContinuation:
-		return c.execution == nil
-	default:
-		return false
-	}
 }
 
 // transactionOwnership records whether COPY created the engine transaction it is using.
@@ -115,7 +99,7 @@ func (h *ConnectionHandler) handleCopyMessage(copyState *copyInState, message pg
 		// PostgreSQL ignores Flush and Sync while COPY owns the connection.
 		return continueResult()
 	default:
-		return h.closeForCopyProtocolViolation(copyState, message)
+		return h.closeForCopyProtocolViolation(copyState)
 	}
 }
 
@@ -351,10 +335,9 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyInState, copyFro
 		}
 
 		// now that we have our insert node, we can build the data loader
-		tbl := getInsertableTable(insertNode.Destination)
-		if tbl == nil {
-			// this should be impossible, enforced by analyzer above
-			return errors.Errorf("no insertable table found in %v", insertNode.Destination)
+		tbl, err := plan.GetInsertable(insertNode.Destination)
+		if err != nil {
+			return errors.Wrap(err, "COPY destination is not insertable")
 		}
 
 		switch copyFromStdinNode.CopyOptions.CopyFormat {
@@ -404,7 +387,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyInState, copyFro
 // finishCopy releases COPY state, rolls back failed work, and resumes the initiating protocol operation.
 func (h *ConnectionHandler) finishCopy(copyState *copyInState, copyErr error) messageResult {
 	if copyState == nil || !h.state.finishCopy(copyState) {
-		h.state.closeProtocol()
+		h.state.closeConnection()
 		return messageResult{
 			action: closeConnection,
 			err:    errors.New("cannot finish inactive COPY FROM STDIN operation"),
@@ -414,15 +397,15 @@ func (h *ConnectionHandler) finishCopy(copyState *copyInState, copyErr error) me
 	if copyErr != nil {
 		h.rollbackCopyTransaction(copyState.transaction)
 	}
-	if !continuation.valid() {
-		h.state.closeProtocol()
-		return messageResult{
-			action: closeConnection,
-			err:    errors.New("COPY FROM STDIN has an invalid protocol continuation"),
-		}
-	}
 	switch continuation.kind {
 	case simpleQueryCopyContinuation:
+		if continuation.execution == nil {
+			h.state.closeConnection()
+			return messageResult{
+				action: closeConnection,
+				err:    errors.New("simple-query COPY continuation has no execution"),
+			}
+		}
 		if copyErr != nil {
 			return readyResult(copyErr)
 		}
@@ -433,10 +416,10 @@ func (h *ConnectionHandler) finishCopy(copyState *copyInState, copyErr error) me
 			h.state.discardUntilSync()
 			return messageResult{err: copyErr}
 		}
-		h.state.beginExtended()
+		h.state.enterExtendedMode()
 		return continueResult()
 	default:
-		h.state.closeProtocol()
+		h.state.closeConnection()
 		return messageResult{
 			action: closeConnection,
 			err:    errors.New("COPY FROM STDIN has an invalid protocol continuation"),
@@ -445,19 +428,15 @@ func (h *ConnectionHandler) finishCopy(copyState *copyInState, copyErr error) me
 }
 
 // closeForCopyProtocolViolation reports COPY protocol desynchronization and terminates the connection.
-func (h *ConnectionHandler) closeForCopyProtocolViolation(copyState *copyInState, message pgproto3.Message) messageResult {
-	messageType, err := frontendMessageType(message)
-	if err != nil {
-		messageType = 0
-	}
+func (h *ConnectionHandler) closeForCopyProtocolViolation(copyState *copyInState) messageResult {
 	h.rollbackCopyTransaction(copyState.transaction)
 	h.failActiveTransaction()
-	h.state.closeProtocol()
+	h.state.closeConnection()
 	responses := []*pgproto3.ErrorResponse{
 		{
 			Severity: string(ErrorResponseSeverity_Error),
 			Code:     pgcode.ProtocolViolation.String(),
-			Message:  fmt.Sprintf("unexpected message type 0x%02x during COPY from stdin", messageType),
+			Message:  "unexpected message during COPY from stdin",
 		},
 		{
 			Severity: string(ErrorResponseSeverity_Fatal),
@@ -516,38 +495,6 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	return h.send(&pgproto3.CommandComplete{
 		CommandTag: []byte(fmt.Sprintf("COPY %d", loadDataResults.RowsLoaded)),
 	})
-}
-
-// frontendMessageType returns the one-byte PostgreSQL wire identifier for a frontend message.
-func frontendMessageType(message pgproto3.Message) (byte, error) {
-	frontend, ok := message.(pgproto3.FrontendMessage)
-	if !ok {
-		return 0, errors.Errorf("message %T is not a frontend message", message)
-	}
-	encoded, err := frontend.Encode(nil)
-	if err != nil {
-		return 0, err
-	}
-	if len(encoded) == 0 {
-		return 0, errors.Errorf("message %T encoded without a type byte", message)
-	}
-	return encoded[0], nil
-}
-
-// getInsertableTable returns the first sql.InsertableTable in the tree, or nil if none is found.
-func getInsertableTable(node sql.Node) sql.InsertableTable {
-	var tbl sql.InsertableTable
-	transform.Inspect(node, func(node sql.Node) bool {
-		if rt, ok := node.(*plan.ResolvedTable); ok {
-			if insertable, ok := rt.Table.(sql.InsertableTable); ok {
-				tbl = insertable
-				return false
-			}
-		}
-		return true
-	})
-
-	return tbl
 }
 
 // rollbackCopyTransaction rolls back the transaction started on behalf of a failed or aborted COPY FROM STDIN

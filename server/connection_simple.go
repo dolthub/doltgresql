@@ -41,6 +41,7 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		return true, err
 	}
 
+	// A simple Query message destroys the unnamed prepared statement and unnamed portal.
 	h.extended.clearUnnamed()
 	if len(queries) == 1 && queries[0].AST == nil {
 		return true, h.send(&pgproto3.EmptyQueryResponse{})

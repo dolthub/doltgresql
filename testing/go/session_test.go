@@ -61,10 +61,30 @@ func TestDiscard(t *testing.T) {
 					Query: "BEGIN",
 				},
 				{
-					Query:       "DISCARD ALL",
-					ExpectedErr: "DISCARD ALL cannot run inside a transaction block",
-					Skip:        true, // not yet implemented
+					Query:           "DISCARD ALL",
+					ExpectedErr:     "DISCARD ALL cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
 				},
+				{
+					Query: "ROLLBACK",
+				},
+			},
+		},
+	})
+}
+
+// TestDiscardAllClearsProtocolPreparedStatements verifies DISCARD ALL resets handler-owned session objects.
+func TestDiscardAllClearsProtocolPreparedStatements(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "DISCARD ALL removes named protocol prepared statements",
+			Steps: []FlowStep{
+				Parse{Name: "saved", Query: "SELECT 1"},
+				Sync{},
+				SimpleQuery{Query: "DISCARD ALL", Expected: []StatementResult{{Tag: "DISCARD ALL"}}},
+				Bind{PreparedStatement: "saved", ExpectedErr: "prepared statement saved does not exist"},
+				Sync{},
+				SimpleQuery{Query: "SELECT 2", Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"2"}}}}},
 			},
 		},
 	})

@@ -52,25 +52,20 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 
 // handleMessageError applies transaction failure semantics and selects protocol recovery.
 func (h *ConnectionHandler) handleMessageError(err error) {
-	mode := h.state.protocol
-	if !mode.valid() {
-		h.state.closeProtocol()
-		h.handleOperationError(errors.Wrap(err, "invalid connection protocol mode"))
-		return
-	}
+	mode := h.state.mode
 	switch mode.kind {
-	case copyInProtocolState:
-		protocol := mode.copy
-		continuation := protocol.continuation
-		h.rollbackCopyTransaction(protocol.transaction)
-		if !h.state.finishCopy(protocol) {
-			h.state.closeProtocol()
-			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN state changed during error recovery"))
+	case copyInConnectionMode:
+		copyState := mode.copy
+		if copyState == nil {
+			h.state.closeConnection()
+			h.handleOperationError(errors.Wrap(err, "COPY mode has no active operation"))
 			return
 		}
-		if !continuation.valid() {
-			h.state.closeProtocol()
-			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN has an invalid protocol continuation"))
+		continuation := copyState.continuation
+		h.rollbackCopyTransaction(copyState.transaction)
+		if !h.state.finishCopy(copyState) {
+			h.state.closeConnection()
+			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN state changed during error recovery"))
 			return
 		}
 		switch continuation.kind {
@@ -80,19 +75,19 @@ func (h *ConnectionHandler) handleMessageError(err error) {
 		case simpleQueryCopyContinuation:
 			h.endOfMessages(err)
 		default:
-			h.state.closeProtocol()
+			h.state.closeConnection()
 			h.handleOperationError(errors.Wrap(err, "COPY FROM STDIN has an invalid protocol continuation"))
 		}
-	case extendedQueryProtocolState:
+	case extendedQueryConnectionMode:
 		h.state.discardUntilSync()
 		h.handleOperationError(err)
-	case discardUntilSyncProtocolState, closingProtocolState:
+	case discardUntilSyncConnectionMode, closingConnectionMode:
 		h.handleOperationError(err)
-	case readyProtocolState:
+	case readyConnectionMode:
 		h.endOfMessages(err)
 	default:
-		h.state.closeProtocol()
-		h.handleOperationError(errors.Wrap(err, "invalid connection protocol mode"))
+		h.state.closeConnection()
+		h.handleOperationError(errors.Wrap(err, "invalid connection mode"))
 	}
 }
 

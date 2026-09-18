@@ -26,6 +26,8 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/node"
 )
@@ -76,12 +78,16 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	return h.send(makeCommandComplete(query.StatementTag, rowsAffected))
 }
 
-// discardAll resets the engine session and reports completion.
+// discardAll resets all session-local resources and reports completion.
 func (h *ConnectionHandler) discardAll(query ConvertedQuery) error {
+	if h.state.transaction != idleTransactionState {
+		return pgerror.New(pgcode.ActiveSQLTransaction, "DISCARD ALL cannot run inside a transaction block")
+	}
 	if err := h.doltgresHandler.ComResetConnection(h.mysqlConn); err != nil {
 		return err
 	}
-	return h.send(&pgproto3.CommandComplete{CommandTag: []byte(query.StatementTag)})
+	h.extended = newExtendedQueryState()
+	return h.send(&pgproto3.CommandComplete{CommandTag: []byte("DISCARD ALL")})
 }
 
 // spoolRowsCallback returns an engine callback that writes a statement's result messages.
@@ -152,10 +158,11 @@ func convertQuery(query string) ([]ConvertedQuery, error) {
 // makeCommandComplete constructs PostgreSQL's command tag for a completed statement.
 func makeCommandComplete(tag string, rows int32) *pgproto3.CommandComplete {
 	switch tag {
-	case "INSERT", "DELETE", "UPDATE", "MERGE", "SELECT", "CREATE TABLE AS", "MOVE", "FETCH", "COPY":
-		if tag == "INSERT" {
-			tag = "INSERT 0"
-		}
+	case "INSERT":
+		// PostgreSQL retains an object-ID field in INSERT tags for protocol compatibility,
+		// but always reports zero.
+		tag = fmt.Sprintf("INSERT 0 %d", rows)
+	case "DELETE", "UPDATE", "MERGE", "SELECT", "CREATE TABLE AS", "MOVE", "FETCH", "COPY":
 		tag = fmt.Sprintf("%s %d", tag, rows)
 	}
 	return &pgproto3.CommandComplete{CommandTag: []byte(tag)}

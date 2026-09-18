@@ -53,7 +53,7 @@ const (
 	closeConnection
 )
 
-// messageResult is the unambiguous outcome of handling one frontend message.
+// messageResult tells the connection loop how to proceed after handling one frontend message.
 type messageResult struct {
 	action messageAction
 	err    error
@@ -220,7 +220,7 @@ func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
 
 				h.handleMessageError(errors.Errorf("receiveMessage recovered panic: %v: %s",
 					r, stackTrace))
-				stop = h.state.protocol.kind == closingProtocolState
+				stop = h.state.mode.kind == closingConnectionMode
 			}
 		}()
 	}
@@ -250,33 +250,33 @@ func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
 	return result.action == closeConnection, nil
 }
 
-// handleMessage routes a frontend message according to the exclusive protocol mode that owns the connection.
+// handleMessage routes a frontend message according to the exclusive mode that owns the connection.
 func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) messageResult {
 	if _, ok := msg.(*pgproto3.Terminate); ok {
 		return closeResult()
 	}
 
-	mode := h.state.protocol
-	if !mode.valid() {
-		h.state.closeProtocol()
-		return messageResult{action: closeConnection, err: errors.New("invalid connection protocol mode")}
-	}
+	mode := h.state.mode
 	switch mode.kind {
-	case copyInProtocolState:
+	case copyInConnectionMode:
+		if mode.copy == nil {
+			h.state.closeConnection()
+			return messageResult{action: closeConnection, err: errors.New("COPY mode has no active operation")}
+		}
 		return h.handleCopyMessage(mode.copy, msg)
-	case closingProtocolState:
+	case closingConnectionMode:
 		return closeResult()
-	case discardUntilSyncProtocolState:
+	case discardUntilSyncConnectionMode:
 		if _, ok := msg.(*pgproto3.Sync); ok {
 			h.state.finishExtended()
 			return readyResult(h.commitImplicitTransaction())
 		}
 		return continueResult()
-	case readyProtocolState, extendedQueryProtocolState:
+	case readyConnectionMode, extendedQueryConnectionMode:
 		return h.handleNormalMessage(msg)
 	default:
-		h.state.closeProtocol()
-		return messageResult{action: closeConnection, err: errors.New("invalid connection protocol mode")}
+		h.state.closeConnection()
+		return messageResult{action: closeConnection, err: errors.New("invalid connection mode")}
 	}
 }
 
@@ -295,19 +295,19 @@ func (h *ConnectionHandler) handleNormalMessage(msg pgproto3.Message) messageRes
 		endOfMessages, err := h.handleQuery(message)
 		return messageResultForCompletion(endOfMessages, err)
 	case *pgproto3.Parse:
-		h.state.beginExtended()
+		h.state.enterExtendedMode()
 		return messageResult{err: h.handleParse(message)}
 	case *pgproto3.Describe:
-		h.state.beginExtended()
+		h.state.enterExtendedMode()
 		return messageResult{err: h.handleDescribe(message)}
 	case *pgproto3.Bind:
-		h.state.beginExtended()
+		h.state.enterExtendedMode()
 		return messageResult{err: h.handleBind(message)}
 	case *pgproto3.Execute:
-		h.state.beginExtended()
+		h.state.enterExtendedMode()
 		return messageResult{err: h.handleExecute(message)}
 	case *pgproto3.Close:
-		h.state.beginExtended()
+		h.state.enterExtendedMode()
 		h.extended.close(message.ObjectType, message.Name)
 		return messageResult{err: h.send(&pgproto3.CloseComplete{})}
 	case *pgproto3.CopyData:

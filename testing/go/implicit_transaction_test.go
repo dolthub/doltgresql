@@ -748,6 +748,50 @@ func TestImplicitTransactionsExtendedProtocol(t *testing.T) {
 	setup := []string{"CREATE TABLE mytable (i BIGINT PRIMARY KEY);"}
 	RunMessageFlowTests(t, []MessageFlowTest{
 		{
+			Name:        "Bind without Parse errors and recovers at Sync",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Bind{PreparedStatement: "missing", ExpectedErr: "prepared statement missing does not exist"},
+				Parse{Name: "skipped", Query: "INSERT INTO mytable VALUES (1)"},
+				Sync{},
+				SimpleQuery{Query: "SELECT 1", Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"1"}}}}},
+				QueryOnOtherConnection{Query: "SELECT count(*) FROM mytable", Expected: [][]string{{"0"}}},
+			},
+		},
+		{
+			Name:        "Describe unknown statement errors and recovers at Sync",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Describe{Name: "missing", ExpectedErr: "prepared statement missing does not exist"},
+				Sync{},
+				Parse{Name: "select", Query: "SELECT 2"},
+				Bind{PreparedStatement: "select"},
+				Execute{Tag: "SELECT 1", Rows: [][]string{{"2"}}},
+				Sync{},
+			},
+		},
+		{
+			Name:        "Execute unknown portal errors and recovers at Sync",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Execute{Portal: "missing", ExpectedErr: "portal missing does not exist"},
+				Sync{},
+				SimpleQuery{Query: "SELECT 3", Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"3"}}}}},
+			},
+		},
+		{
+			Name:        "named statement supports Describe before Bind and reuse after Sync",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Parse{Name: "saved", Query: "SELECT 4"},
+				Describe{ObjectType: 'S', Name: "saved"},
+				Sync{},
+				Bind{PreparedStatement: "saved"},
+				Execute{Tag: "SELECT 1", Rows: [][]string{{"4"}}},
+				Sync{},
+			},
+		},
+		{
 			Name:        "failed DO statement rolls back at Sync",
 			SetUpScript: setup,
 			Steps: []FlowStep{
