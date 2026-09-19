@@ -20,8 +20,324 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/require"
 )
+
+// extendedCopy runs one COPY FROM STDIN exchange through Parse, Bind, Execute, and Sync.
+type extendedCopy struct {
+	query       string
+	input       CopyInput
+	expectedTag string
+	expectedErr string
+}
+
+// fatalCopyMessage sends an illegal frontend message during COPY and verifies fatal protocol shutdown.
+type fatalCopyMessage struct {
+	extended   bool
+	unexpected pgproto3.FrontendMessage
+}
+
+// describe returns a concise label for the fatal COPY protocol step.
+func (s fatalCopyMessage) describe() string {
+	return fmt.Sprintf("Fatal COPY message %T", s.unexpected)
+}
+
+// runStep verifies PostgreSQL-compatible error ordering and connection closure for an illegal COPY message.
+func (s fatalCopyMessage) runStep(r *messageFlowRunner) {
+	require.Empty(r.t, r.pending)
+	if s.extended {
+		r.send(&pgproto3.Parse{Query: "COPY test3 FROM STDIN"})
+		require.IsType(r.t, &pgproto3.ParseComplete{}, r.receiveNext())
+		r.send(&pgproto3.Bind{})
+		require.IsType(r.t, &pgproto3.BindComplete{}, r.receiveNext())
+		r.send(&pgproto3.Execute{})
+	} else {
+		r.send(&pgproto3.Query{String: "COPY test3 FROM STDIN"})
+	}
+	require.IsType(r.t, &pgproto3.CopyInResponse{}, r.receiveNext())
+	r.send(&pgproto3.CopyData{Data: []byte("1\n")})
+	r.send(s.unexpected)
+
+	first, ok := r.receiveNext().(*pgproto3.ErrorResponse)
+	require.True(r.t, ok, "expected ERROR response first")
+	require.Equal(r.t, "ERROR", first.Severity)
+	require.Equal(r.t, "08P01", first.Code)
+	require.Equal(r.t, "unexpected message during COPY from stdin", first.Message)
+	second, ok := r.receiveNext().(*pgproto3.ErrorResponse)
+	require.True(r.t, ok, "expected FATAL response second")
+	require.Equal(r.t, "FATAL", second.Severity)
+	require.Equal(r.t, "08P01", second.Code)
+	require.Equal(r.t, "terminating connection because protocol synchronization was lost", second.Message)
+	message, err := r.flowConn.Receive(r.t)
+	require.Error(r.t, err)
+	require.Nil(r.t, message)
+}
+
+// describe returns a concise label for the extended COPY step.
+func (s extendedCopy) describe() string {
+	return "Extended COPY " + s.query
+}
+
+// runStep executes and validates an extended-protocol COPY exchange.
+func (s extendedCopy) runStep(r *messageFlowRunner) {
+	require.Empty(r.t, r.pending)
+	r.send(&pgproto3.Parse{Query: s.query})
+	require.IsType(r.t, &pgproto3.ParseComplete{}, r.receiveNext())
+	r.send(&pgproto3.Bind{})
+	require.IsType(r.t, &pgproto3.BindComplete{}, r.receiveNext())
+	r.send(&pgproto3.Execute{})
+	require.IsType(r.t, &pgproto3.CopyInResponse{}, r.receiveNext())
+	for _, message := range s.input.BeforeData {
+		r.send(message)
+	}
+	for _, chunk := range s.input.Chunks {
+		r.send(&pgproto3.CopyData{Data: chunk})
+	}
+	if s.input.FailMessage == "" {
+		r.send(&pgproto3.CopyDone{})
+	} else {
+		r.send(&pgproto3.CopyFail{Message: s.input.FailMessage})
+	}
+	result := r.receiveNext()
+	if s.expectedErr != "" {
+		errResponse, ok := result.(*pgproto3.ErrorResponse)
+		require.True(r.t, ok, "expected ErrorResponse, received %T", result)
+		require.Equal(r.t, s.expectedErr, errResponse.Message)
+		require.Equal(r.t, "ERROR", errResponse.Severity)
+		require.Equal(r.t, "57014", errResponse.Code)
+	} else {
+		complete, ok := result.(*pgproto3.CommandComplete)
+		require.True(r.t, ok, "expected CommandComplete, received %T", result)
+		require.Equal(r.t, s.expectedTag, string(complete.CommandTag))
+	}
+	r.send(&pgproto3.Sync{})
+	ready, ok := r.receiveNext().(*pgproto3.ReadyForQuery)
+	require.True(r.t, ok, "expected ReadyForQuery after Sync")
+	require.Equal(r.t, byte('I'), ready.TxStatus)
+}
+
+// TestCopyFromStdinInMultiStatementSimpleQuery verifies that COPY pauses and resumes a compound simple query.
+func TestCopyFromStdinInMultiStatementSimpleQuery(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name:        "empty copy initializes and completes the transfer",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:      "COPY test3 FROM STDIN; SELECT count(*) FROM test3;",
+					CopyInputs: []CopyInput{{}},
+					Expected: []StatementResult{
+						{Tag: "COPY 0"},
+						{Tag: "SELECT 1", Rows: [][]string{{"0"}}},
+					},
+				},
+			},
+		},
+		{
+			Name:        "copy fail before data aborts cleanly",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "COPY test3 FROM STDIN; SELECT 1;",
+					CopyInputs:          []CopyInput{{FailMessage: "client aborted empty copy"}},
+					ExpectedErr:         "client aborted empty copy",
+					ExpectedErrExact:    "COPY from stdin failed: client aborted empty copy",
+					ExpectedErrCode:     "57014",
+					ExpectedErrSeverity: "ERROR",
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "flush and sync are ignored during copy",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query: "COPY test3 FROM STDIN; SELECT count(*) FROM test3;",
+					CopyInputs: []CopyInput{{
+						BeforeData: []pgproto3.FrontendMessage{&pgproto3.Flush{}, &pgproto3.Sync{}},
+						Chunks:     [][]byte{[]byte("1\n")},
+					}},
+					Expected: []StatementResult{
+						{Tag: "COPY 1"},
+						{Tag: "SELECT 1", Rows: [][]string{{"1"}}},
+					},
+				},
+			},
+		},
+		{
+			Name:        "multiple copy inputs preserve statement order",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query: "SELECT 0; COPY test3 FROM STDIN; COPY test3 FROM STDIN; SELECT 1;",
+					CopyInputs: []CopyInput{
+						{Chunks: [][]byte{[]byte("1\n")}},
+						{Chunks: [][]byte{[]byte("2\n")}},
+					},
+					Expected: []StatementResult{
+						{Tag: "SELECT 1", Rows: [][]string{{"0"}}},
+						{Tag: "COPY 1"},
+						{Tag: "COPY 1"},
+						{Tag: "SELECT 1", Rows: [][]string{{"1"}}},
+					},
+				},
+				SimpleQuery{
+					Query:    "SELECT * FROM test3 ORDER BY c;",
+					Expected: []StatementResult{{Tag: "SELECT 2", Rows: [][]string{{"1"}, {"2"}}}},
+				},
+				SimpleQuery{
+					Query:    "DROP TABLE test3;",
+					Expected: []StatementResult{{Tag: "DROP TABLE"}},
+				},
+			},
+		},
+		{
+			Name:        "copy first rolls back when a later statement fails",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:       "COPY test3 FROM STDIN; SELECT * FROM missing_table;",
+					CopyInputs:  []CopyInput{{Chunks: [][]byte{[]byte("1\n")}}},
+					Expected:    []StatementResult{{Tag: "COPY 1"}},
+					ExpectedErr: "missing_table",
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "copy fail rolls back compound query",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query: "INSERT INTO test3 VALUES (0); COPY test3 FROM STDIN; SELECT 1;",
+					CopyInputs: []CopyInput{{
+						Chunks:      [][]byte{[]byte("1\n"), []byte("2\n")},
+						FailMessage: "client aborted copy",
+					}},
+					Expected:        []StatementResult{{Tag: "INSERT 0 1"}},
+					ExpectedErr:     "client aborted copy",
+					ExpectedErrCode: "57014",
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "copy fail marks explicit transaction failed",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "BEGIN; COPY test3 FROM STDIN; SELECT 1;",
+					CopyInputs:          []CopyInput{{Chunks: [][]byte{[]byte("1\n")}, FailMessage: "client aborted copy"}},
+					Expected:            []StatementResult{{Tag: "BEGIN"}},
+					ExpectedErr:         "client aborted copy",
+					ExpectedErrCode:     "57014",
+					ExpectedReadyStatus: 'E',
+				},
+				SimpleQuery{Query: "ROLLBACK;", Expected: []StatementResult{{Tag: "ROLLBACK"}}},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "explicit transaction commits copy and surrounding statements",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:      "BEGIN; INSERT INTO test3 VALUES (0); COPY test3 FROM STDIN; INSERT INTO test3 VALUES (2); COMMIT;",
+					CopyInputs: []CopyInput{{Chunks: [][]byte{[]byte("1\n")}}},
+					Expected: []StatementResult{
+						{Tag: "BEGIN"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "COPY 1"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "COMMIT"},
+					},
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3 ORDER BY c;", Expected: [][]string{{"0"}, {"1"}, {"2"}}},
+			},
+		},
+		{
+			Name:        "explicit transaction rolls back copy and surrounding statements",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:      "BEGIN; INSERT INTO test3 VALUES (0); COPY test3 FROM STDIN; INSERT INTO test3 VALUES (2); ROLLBACK;",
+					CopyInputs: []CopyInput{{Chunks: [][]byte{[]byte("1\n")}}},
+					Expected: []StatementResult{
+						{Tag: "BEGIN"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "COPY 1"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "ROLLBACK"},
+					},
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "copy compound query continues an existing explicit transaction",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{Query: "BEGIN;", Expected: []StatementResult{{Tag: "BEGIN"}}, ExpectedReadyStatus: 'T'},
+				SimpleQuery{
+					Query:               "COPY test3 FROM STDIN; INSERT INTO test3 VALUES (2);",
+					CopyInputs:          []CopyInput{{Chunks: [][]byte{[]byte("1\n")}}},
+					Expected:            []StatementResult{{Tag: "COPY 1"}, {Tag: "INSERT 0 1"}},
+					ExpectedReadyStatus: 'T',
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+				SimpleQuery{Query: "ROLLBACK;", Expected: []StatementResult{{Tag: "ROLLBACK"}}},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+	})
+}
+
+// TestCopyFromStdinExtendedProtocol verifies COPY success and failure return to the initiating extended batch.
+func TestCopyFromStdinExtendedProtocol(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name:        "extended copy completes at sync",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				extendedCopy{query: "COPY test3 FROM STDIN", input: CopyInput{Chunks: [][]byte{[]byte("1\n")}}, expectedTag: "COPY 1"},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: [][]string{{"1"}}},
+			},
+		},
+		{
+			Name:        "extended copy failure discards until sync",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				extendedCopy{query: "COPY test3 FROM STDIN", input: CopyInput{FailMessage: "abort extended copy"}, expectedErr: "COPY from stdin failed: abort extended copy"},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+	})
+}
+
+// TestCopyUnexpectedMessageFatal verifies illegal COPY messages fatally desynchronize simple and extended origins.
+func TestCopyUnexpectedMessageFatal(t *testing.T) {
+	for _, extended := range []bool{false, true} {
+		origin := "simple"
+		if extended {
+			origin = "extended"
+		}
+		for _, unexpected := range []pgproto3.FrontendMessage{
+			&pgproto3.Query{String: "SELECT 2"},
+			&pgproto3.Parse{Query: "SELECT 2"},
+		} {
+			RunMessageFlowTest(t, MessageFlowTest{
+				Name:        fmt.Sprintf("%s origin rejects %T", origin, unexpected),
+				SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+				Steps: []FlowStep{
+					fatalCopyMessage{extended: extended, unexpected: unexpected},
+					QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+				},
+			})
+		}
+	}
+}
 
 func TestCopy(t *testing.T) {
 	absTestDataDir, err := filepath.Abs("testdata")
