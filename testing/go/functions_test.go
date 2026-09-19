@@ -2463,6 +2463,66 @@ func TestArrayFunctions(t *testing.T) {
 					Query:    `select * from unnest(array[1,2,3]);`,
 					Expected: []sql.Row{{1}, {2}, {3}},
 				},
+				{
+					Query:            `SELECT * FROM unnest(ARRAY[1, 2]::integer[], ARRAY[3, 4]::integer[]);`,
+					ExpectedColNames: []string{"unnest", "unnest"},
+					Expected:         []sql.Row{{1, 3}, {2, 4}},
+				},
+				{
+					Query:    `SELECT * FROM unnest(ARRAY[1, 2, 3], ARRAY['a', 'b']::text[]);`,
+					Expected: []sql.Row{{1, "a"}, {2, "b"}, {3, nil}},
+				},
+				{
+					Query:    `SELECT * FROM unnest(ARRAY[]::int[], ARRAY['a']);`,
+					Expected: []sql.Row{{nil, "a"}},
+				},
+				{
+					Query:    `SELECT * FROM unnest(NULL::int[], ARRAY['a']);`,
+					Expected: []sql.Row{{nil, "a"}},
+				},
+				{
+					Query:            `SELECT a, b FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) AS t(a, b);`,
+					ExpectedColNames: []string{"a", "b"},
+					Expected:         []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query:    `SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a', 'b'], ARRAY[true, false]);`,
+					Expected: []sql.Row{{1, "a", "t"}, {2, "b", "f"}},
+				},
+				{
+					Query:    `SELECT * FROM (SELECT 1) s, unnest(ARRAY[1, 2], ARRAY['a', 'b']);`,
+					Expected: []sql.Row{{1, 1, "a"}, {1, 2, "b"}},
+				},
+				{
+					Query:    `SELECT id, a, b FROM testing, unnest(val1, ARRAY['x', 'y', 'z']) AS t(a, b) ORDER BY id, b;`,
+					Expected: []sql.Row{{1, nil, "x"}, {1, nil, "y"}, {1, nil, "z"}, {2, 1, "x"}, {2, nil, "y"}, {2, nil, "z"}, {3, 1, "x"}, {3, 2, "y"}, {3, nil, "z"}},
+				},
+				{
+					Query:       `SELECT * FROM unnest(ARRAY[1, 2], 5);`,
+					ExpectedErr: "function pg_catalog.unnest(integer) does not exist",
+				},
+				{
+					Query:    `SELECT t.* FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) t;`,
+					Expected: []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query:       `SELECT unnest(ARRAY[1, 2], ARRAY[3, 4]);`,
+					ExpectedErr: "function unnest(integer[], integer[]) does not exist",
+				},
+				{
+					Query:            `SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) WITH ORDINALITY;`,
+					ExpectedColNames: []string{"unnest", "unnest", "ordinality"},
+					Expected:         []sql.Row{{1, "a", 1}, {2, "b", 2}},
+				},
+				{
+					Query:            `SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) WITH ORDINALITY AS t(x, y, n);`,
+					ExpectedColNames: []string{"x", "y", "n"},
+					Expected:         []sql.Row{{1, "a", 1}, {2, "b", 2}},
+				},
+				{
+					Query:    `SELECT id, a, b, n FROM testing, unnest(val1, ARRAY['x', 'y']) WITH ORDINALITY AS t(a, b, n) ORDER BY id, n;`,
+					Expected: []sql.Row{{1, nil, "x", 1}, {1, nil, "y", 2}, {2, 1, "x", 1}, {2, nil, "y", 2}, {3, 1, "x", 1}, {3, 2, "y", 2}},
+				},
 			},
 		},
 		{

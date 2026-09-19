@@ -48,6 +48,7 @@ func (cfg *DoltgresConfig) Overrides() sql.EngineOverrides {
 		Builder: sql.BuilderOverrides{
 			ParseTableAsColumn:          expression.NewTableToComposite,
 			ScalarFunctionAliasAsColumn: true,
+			PermitDuplicateColumnNames:  true,
 			InsertIgnoreMode:            sql.InsertIgnoreModeDuplicateKeysOnly,
 			Parser: pgsql.NewPostgresParserWithOptions(pgsql.ParserOptions{
 				PermitUnsupportedLockingStatements: cfg.PermitUnsupportedLockingStatements(),
