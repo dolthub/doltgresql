@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -40,6 +41,9 @@ var array_position_anyarray_anyelement = framework.Function2{
 		}
 
 		array := val1.([]any)
+		if len(pgtypes.ArrayDims(array, t[0].ArrayBaseType())) > 1 {
+			return nil, errors.Errorf("searching for elements in multidimensional arrays is not supported")
+		}
 		searchElement := val2
 		arrayType := t[0]
 		baseType := arrayType.ArrayBaseType()
@@ -72,6 +76,9 @@ var array_position_anyarray_anyelement_int32 = framework.Function3{
 		}
 
 		array := val1.([]any)
+		if len(pgtypes.ArrayDims(array, t[0].ArrayBaseType())) > 1 {
+			return nil, errors.Errorf("searching for elements in multidimensional arrays is not supported")
+		}
 		searchElement := val2
 		start := val3.(int32)
 		arrayType := t[0]
@@ -114,6 +121,9 @@ var array_positions_anyarray_anyelement = framework.Function2{
 		}
 
 		array := val1.([]any)
+		if len(pgtypes.ArrayDims(array, t[0].ArrayBaseType())) > 1 {
+			return nil, errors.Errorf("searching for elements in multidimensional arrays is not supported")
+		}
 		searchElement := val2
 		arrayType := t[0]
 		baseType := arrayType.ArrayBaseType()
