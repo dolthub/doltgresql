@@ -368,5 +368,24 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'`,
 				},
 			},
 		},
+		{
+			Name: "derived table with duplicate column names",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT * FROM (SELECT 1 AS a, 'x' AS a) t;`,
+					Expected:         []sql.Row{{1, "x"}},
+					ExpectedColNames: []string{"a", "a"},
+				},
+				{
+					Query:            `SELECT *, ROW_NUMBER() OVER () AS n FROM (SELECT 1 AS a, 'x' AS a) t;`,
+					Expected:         []sql.Row{{1, "x", 1}},
+					ExpectedColNames: []string{"a", "a", "n"},
+				},
+				{
+					Query:    `SELECT * FROM (SELECT 1, 2) t(a, a);`,
+					Expected: []sql.Row{{1, 2}},
+				},
+			},
+		},
 	})
 }

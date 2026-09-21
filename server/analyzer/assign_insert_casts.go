@@ -92,6 +92,10 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		insertInto = insertInto.WithSource(plan.NewValues(newValues))
 	} else {
 		sourceSchema := insertInto.Source.Schema(ctx)
+		var sourceExprs []sql.Expression
+		if projector, ok := insertInto.Source.(sql.Projector); ok {
+			sourceExprs = projector.ProjectedExprs()
+		}
 		projections := make([]sql.Expression, len(sourceSchema))
 		for i, col := range sourceSchema {
 			colType := col.Type
@@ -103,7 +107,12 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", colType.String())
 			}
 			toColType := destinationTypes[i]
-			getField := expression.NewGetField(i, fromColType, col.Name, true)
+			var getField sql.Expression = expression.NewGetField(i, fromColType, col.Name, true)
+			if i < len(sourceExprs) {
+				if idExpr, ok := sourceExprs[i].(sql.IdExpression); ok {
+					getField = getField.(sql.IdExpression).WithId(idExpr.Id())
+				}
+			}
 			// We only assign the GetField if the types perfectly match (same parameters), otherwise we'll cast
 			if fromColType.Equals(toColType) {
 				projections[i] = getField
