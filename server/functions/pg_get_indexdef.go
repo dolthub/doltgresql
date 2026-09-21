@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -68,7 +70,18 @@ func buildIndexDef(ctx *sql.Context, index sql.Index, table sql.Table, schemaNam
 		unique = " UNIQUE"
 	}
 
-	colsStr := strings.Join(indexColumnExprs(ctx, index, table), ", ")
+	cols := indexColumnExprs(ctx, index, table)
+	if len(cols) == 1 {
+		col := plan.GetColumnFromIndexExpr(ctx, index.Expressions()[0], table)
+		if method, opclass, ok := VectorIndexRendering(index, col); ok {
+			using = method
+			cols[0] += " " + opclass
+		}
+	}
+	for i := range cols {
+		cols[i] += IndexColumnSuffix(ctx, index, i)
+	}
+	colsStr := strings.Join(cols, ", ")
 
 	def := fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schemaName, index.Table(), using, colsStr)
 	if pi, ok := index.(sql.PartialIndex); ok && pi.Predicate() != "" {
@@ -96,6 +109,65 @@ func indexColumnExprs(ctx *sql.Context, index sql.Index, table sql.Table) []stri
 		}
 	}
 	return cols
+}
+
+// IndexOpClasses returns the operator class stored for each column in the index, or nil when no column has one.
+func IndexOpClasses(index sql.Index) []string {
+	if idx, ok := index.(sql.OpClassIndex); ok {
+		return idx.OpClasses()
+	}
+	return nil
+}
+
+// IndexColumnOrder returns the sort order of column `i` of the index. A column without a stored order is ascending with
+// NULLs first, except in a primary key, which never stores one and has no NULLs to place.
+func IndexColumnOrder(ctx *sql.Context, index sql.Index, i int) sql.IndexColumnOrder {
+	if orders := sql.IndexColumnOrders(ctx, index); i < len(orders) {
+		return orders[i]
+	}
+	return sql.IndexColumnOrder{NullsLast: index.ID() == "PRIMARY"}
+}
+
+// IndexColumnSuffix returns the operator class and sort order rendered after column `i` of the index, omitting the
+// Postgres defaults.
+func IndexColumnSuffix(ctx *sql.Context, index sql.Index, i int) string {
+	var suffix string
+	if opClasses := IndexOpClasses(index); i < len(opClasses) && opClasses[i] != "" {
+		suffix += " " + opClasses[i]
+	}
+	order := IndexColumnOrder(ctx, index, i)
+	switch {
+	case order.Descending && order.NullsLast:
+		suffix += " DESC NULLS LAST"
+	case order.Descending:
+		suffix += " DESC"
+	case !order.NullsLast:
+		suffix += " NULLS FIRST"
+	}
+	return suffix
+}
+
+// VectorIndexRendering returns the access method and operator class rendered for the given vector index over the given
+// column.
+func VectorIndexRendering(index sql.Index, col *sql.Column) (method string, opclass string, ok bool) {
+	if col == nil || !index.IsVector() {
+		return "", "", false
+	}
+	vectorIndex, ok := index.(interface {
+		VectorProperties() schema.VectorProperties
+	})
+	if !ok {
+		return "", "", false
+	}
+	colType, ok := col.Type.(*pgtypes.DoltgresType)
+	if !ok {
+		return "", "", false
+	}
+	declared, ok := extensions.GetOperatorClassForIndex(colType.Name(), vectorIndex.VectorProperties().DistanceType)
+	if !ok {
+		return "", "", false
+	}
+	return "hnsw", declared.Name, true
 }
 
 // RenderHiddenIndexColumnExpr returns the original SQL text of the functional expression backing

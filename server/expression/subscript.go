@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/types"
@@ -116,6 +117,13 @@ func (s Subscript) Children() []sql.Expression {
 func (s Subscript) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, fmt.Errorf("expected 2 children, got %d", len(children))
+	}
+	// The subscript index is always int4, regardless of the array's element type, so an untyped bind variable
+	// (e.g. `arr[$1]`) can be resolved to int4 immediately.
+	if bv, ok := children[1].(*expression.BindVar); ok {
+		if _, ok := bv.Typ.(*types.DoltgresType); !ok {
+			bv.Typ = types.Int32
+		}
 	}
 	return NewSubscript(children[0], children[1]), nil
 }

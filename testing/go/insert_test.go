@@ -139,6 +139,224 @@ ON CONFLICT (id) do update set c1 = $4`,
 			},
 		},
 		{
+			Name: "conditional on conflict update",
+			SetUpScript: []string{
+				"CREATE TABLE conditional_upsert (id INT PRIMARY KEY, version INT, note TEXT)",
+				"INSERT INTO conditional_upsert VALUES (1, 5, 'original'), (2, 1, 'second')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (1, 6, 'advanced') ON CONFLICT (id) DO UPDATE SET version = 6, note = 'advanced' WHERE conditional_upsert.version < 6",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (1, 4, 'stale') ON CONFLICT (id) DO UPDATE SET version = 4, note = 'stale' WHERE conditional_upsert.version < 4",
+					ExpectedTag: "INSERT 0 0",
+				},
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (1, 7, 'one'), (2, 0, 'two'), (3, 3, 'three') ON CONFLICT (id) DO UPDATE SET version = 7, note = 'updated' WHERE conditional_upsert.version <= 5",
+					ExpectedTag: "INSERT 0 2",
+				},
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (2, 8, 'null predicate') ON CONFLICT (id) DO UPDATE SET version = 8 WHERE NULL",
+					ExpectedTag: "INSERT 0 0",
+				},
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (2, $1, 'bound') ON CONFLICT (id) DO UPDATE SET version = $1, note = 'bound' WHERE conditional_upsert.version < $1",
+					BindVars:    []any{8},
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query:    "INSERT INTO conditional_upsert VALUES (1, 9, 'proposed') ON CONFLICT (id) DO UPDATE SET version = excluded.version, note = excluded.note WHERE conditional_upsert.version < excluded.version RETURNING id, version, note",
+					Expected: []sql.Row{{1, 9, "proposed"}},
+				},
+				{
+					Query:    "INSERT INTO conditional_upsert VALUES (1, 10, 'casted') ON CONFLICT (id) DO UPDATE SET version = excluded.version::BIGINT, note = excluded.note WHERE conditional_upsert.version < excluded.version RETURNING id, version",
+					Expected: []sql.Row{{1, 10}},
+				},
+				{
+					Query:    "INSERT INTO conditional_upsert SELECT 1, 11::BIGINT, 'selected' ON CONFLICT (id) DO UPDATE SET version = excluded.version, note = excluded.note WHERE conditional_upsert.version < excluded.version RETURNING id, version, note",
+					Expected: []sql.Row{{1, 11, "selected"}},
+				},
+				{
+					Query: "SELECT * FROM conditional_upsert ORDER BY id",
+					Expected: []sql.Row{
+						{1, 11, "selected"},
+						{2, 8, "bound"},
+						{3, 3, "three"},
+					},
+				},
+			},
+		},
+		{
+			Name: "on conflict update returning with check constraint",
+			SetUpScript: []string{
+				"CREATE TABLE checked_upsert (id INT PRIMARY KEY, a TEXT CHECK (a <> ''), b TEXT, c TEXT)",
+				"INSERT INTO checked_upsert VALUES (1, 'x', 'y', 'z')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO checked_upsert VALUES (1, 'x', 'y', 'z') ON CONFLICT (id) DO UPDATE SET a = 'n1', b = 'n2' RETURNING id, a, b",
+					Expected: []sql.Row{{1, "n1", "n2"}},
+				},
+				{
+					Query:    "INSERT INTO checked_upsert VALUES (2, 'x', 'y', 'z') ON CONFLICT (id) DO UPDATE SET a = 'n1', b = 'n2' RETURNING id, a, b",
+					Expected: []sql.Row{{2, "x", "y"}},
+				},
+			},
+		},
+		{
+			Name: "on conflict do nothing only ignores uniqueness conflicts",
+			SetUpScript: []string{
+				"CREATE TABLE conflict_parent (id INT PRIMARY KEY)",
+				"CREATE TABLE conflict_child (id INT PRIMARY KEY, parent_id INT NOT NULL REFERENCES conflict_parent(id), positive INT CHECK (positive > 0))",
+				"CREATE TABLE self_referencing_child (id INT PRIMARY KEY, parent_id INT REFERENCES self_referencing_child(id))",
+				"CREATE TABLE secondary_unique_child (id INT PRIMARY KEY, unique_value INT UNIQUE, parent_id INT REFERENCES conflict_parent(id))",
+				"CREATE TABLE conflict_arbiter (id INT PRIMARY KEY, unique_value INT UNIQUE, a INT, b INT, UNIQUE (a, b))",
+				"CREATE TABLE invalid_conflict_target (id INT PRIMARY KEY, non_unique INT)",
+				"CREATE TABLE crossed_conflict (id INT PRIMARY KEY, unique_value INT UNIQUE)",
+				"CREATE TABLE crossed_keyless_conflict (a INT UNIQUE, b INT UNIQUE)",
+				"CREATE TABLE crossed_partial_conflict (a INT, b INT UNIQUE)",
+				"CREATE UNIQUE INDEX a_partial ON crossed_partial_conflict (a) WHERE b > 0",
+				"CREATE UNIQUE INDEX z_full ON crossed_partial_conflict (a)",
+				"INSERT INTO conflict_parent VALUES (1)",
+				"INSERT INTO conflict_child VALUES (1, 1, 1)",
+				"INSERT INTO secondary_unique_child VALUES (1, 10, 1)",
+				"INSERT INTO conflict_arbiter VALUES (1, 10, 20, 30)",
+				"INSERT INTO crossed_conflict VALUES (1, 10), (2, 20)",
+				"INSERT INTO crossed_keyless_conflict VALUES (1, 10), (2, 20)",
+				"INSERT INTO crossed_partial_conflict VALUES (1, 10), (2, 20)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "INSERT INTO conflict_child VALUES (2, 999, 1) ON CONFLICT DO NOTHING",
+					ExpectedErr:     "Foreign key violation",
+					ExpectedErrCode: "23503",
+				},
+				{
+					Query:           "INSERT INTO conflict_child VALUES (2, 1, -1) ON CONFLICT DO NOTHING",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query: "INSERT INTO conflict_child VALUES (1, 999, 1) ON CONFLICT DO NOTHING",
+				},
+				{
+					Query: "INSERT INTO secondary_unique_child VALUES (2, 10, 999) ON CONFLICT DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM secondary_unique_child ORDER BY id",
+					Expected: []sql.Row{
+						{1, 10, 1},
+					},
+				},
+				{
+					Query: "INSERT INTO conflict_arbiter VALUES (1, 11, 21, 31) ON CONFLICT (id) DO NOTHING",
+				},
+				{
+					Query:           "INSERT INTO conflict_arbiter VALUES (2, 10, 21, 31) ON CONFLICT (id) DO NOTHING",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO conflict_arbiter VALUES (2, 11, 20, 30) ON CONFLICT (a, b) DO NOTHING",
+				},
+				{
+					Query: "INSERT INTO conflict_arbiter VALUES (2, 10, 21, 31) ON CONFLICT DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM conflict_arbiter ORDER BY id",
+					Expected: []sql.Row{
+						{1, 10, 20, 30},
+					},
+				},
+				{
+					Query:           "INSERT INTO invalid_conflict_target VALUES (1, 10) ON CONFLICT (non_unique) DO NOTHING",
+					ExpectedErr:     "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+					ExpectedErrCode: "42P10",
+				},
+				{
+					Query:           "INSERT INTO invalid_conflict_target VALUES (1, 10) ON CONFLICT (missing) DO NOTHING",
+					ExpectedErr:     `column "missing" could not be found in any table in scope`,
+					ExpectedErrCode: "42703",
+				},
+				{
+					Query: "SELECT * FROM invalid_conflict_target",
+				},
+				{
+					Query: "INSERT INTO crossed_conflict VALUES (1, 20) ON CONFLICT (id) DO NOTHING",
+				},
+				{
+					Query: "INSERT INTO crossed_conflict VALUES (1, 20) ON CONFLICT (unique_value) DO NOTHING",
+				},
+				{
+					Query: "INSERT INTO crossed_conflict VALUES (3, 30), (3, 10) ON CONFLICT (id) DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM crossed_conflict ORDER BY id",
+					Expected: []sql.Row{
+						{1, 10},
+						{2, 20},
+						{3, 30},
+					},
+				},
+				{
+					Query: "INSERT INTO crossed_keyless_conflict VALUES (3, 30), (3, 10) ON CONFLICT (a) DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM crossed_keyless_conflict ORDER BY a",
+					Expected: []sql.Row{
+						{1, 10},
+						{2, 20},
+						{3, 30},
+					},
+				},
+				{
+					Query: "INSERT INTO crossed_partial_conflict VALUES (3, -1), (3, 10) ON CONFLICT (a) DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM crossed_partial_conflict ORDER BY a",
+					Expected: []sql.Row{
+						{1, 10},
+						{2, 20},
+						{3, -1},
+					},
+				},
+				{
+					Query: "INSERT INTO self_referencing_child VALUES (1, 1) ON CONFLICT DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM self_referencing_child",
+					Expected: []sql.Row{
+						{1, 1},
+					},
+				},
+				{
+					Query:    "INSERT INTO conflict_child VALUES (1, 1, 1), (2, 1, 1) ON CONFLICT DO NOTHING RETURNING id",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query: "SELECT * FROM conflict_child ORDER BY id",
+					Expected: []sql.Row{
+						{1, 1, 1},
+						{2, 1, 1},
+					},
+				},
+				{
+					Query:           "INSERT INTO conflict_child VALUES (2, 1, 1), (3, 999, 1) ON CONFLICT DO NOTHING",
+					ExpectedErr:     "Foreign key violation",
+					ExpectedErrCode: "23503",
+				},
+				{
+					Query: "SELECT * FROM conflict_child ORDER BY id",
+					Expected: []sql.Row{
+						{1, 1, 1},
+						{2, 1, 1},
+					},
+				},
+			},
+		},
+		{
 			Name: "null and unspecified default values",
 			SetUpScript: []string{
 				"CREATE TABLE t (i INT DEFAULT NULL, j INT)",
@@ -157,19 +375,125 @@ ON CONFLICT (id) do update set c1 = $4`,
 			},
 		},
 		{
-			Name: "implicit default values",
+			Name: "default values compatibility",
 			SetUpScript: []string{
-				"CREATE TABLE t (i INT DEFAULT 123, j INT default 456);",
+				"CREATE TABLE ordinary_defaults (a INT DEFAULT 1, b INT DEFAULT 2)",
+				"CREATE TABLE generated_defaults (a INT DEFAULT 1, b INT GENERATED ALWAYS AS (a + 1) STORED)",
+				"CREATE TABLE identity_defaults (id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, v INT DEFAULT 5)",
+				"CREATE TEMP TABLE serial_defaults (small_id SMALLSERIAL, id SERIAL PRIMARY KEY, big_id BIGSERIAL, v INT DEFAULT 5)",
+				"CREATE TABLE rejected_empty_rows (a INT DEFAULT 1, b INT DEFAULT 2)",
+				"CREATE TABLE required_defaults (a INT NOT NULL, b INT DEFAULT 2)",
+				"INSERT INTO required_defaults VALUES (9, 9)",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:            "INSERT INTO t DEFAULT VALUES;",
-					SkipResultsCheck: true,
+					Query:       "INSERT INTO ordinary_defaults DEFAULT VALUES",
+					ExpectedTag: "INSERT 0 1",
 				},
 				{
-					Query: "SELECT * FROM t",
+					Query: "SELECT * FROM ordinary_defaults",
 					Expected: []sql.Row{
-						{123, 456},
+						{1, 2},
+					},
+				},
+				{
+					Query:       "INSERT INTO generated_defaults DEFAULT VALUES",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query: "SELECT * FROM generated_defaults",
+					Expected: []sql.Row{
+						{1, 2},
+					},
+				},
+				{
+					Query:       "INSERT INTO identity_defaults DEFAULT VALUES",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query:       "INSERT INTO identity_defaults VALUES (DEFAULT, DEFAULT), (DEFAULT, DEFAULT)",
+					ExpectedTag: "INSERT 0 2",
+				},
+				{
+					Query: "SELECT * FROM identity_defaults ORDER BY id",
+					Expected: []sql.Row{
+						{1, 5},
+						{2, 5},
+						{3, 5},
+					},
+				},
+				{
+					Query:       "INSERT INTO serial_defaults DEFAULT VALUES",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query:       "INSERT INTO serial_defaults DEFAULT VALUES",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query: "SELECT * FROM serial_defaults ORDER BY id",
+					Expected: []sql.Row{
+						{1, 1, 1, 5},
+						{2, 2, 2, 5},
+					},
+				},
+				{
+					Query:           "INSERT INTO rejected_empty_rows VALUES ()",
+					ExpectedErr:     "syntax error",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "INSERT INTO rejected_empty_rows VALUES (), ()",
+					ExpectedErr:     "syntax error",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "INSERT INTO rejected_empty_rows () VALUES ()",
+					ExpectedErr:     "syntax error",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "INSERT INTO rejected_empty_rows (a) VALUES ()",
+					ExpectedErr:     "syntax error",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM rejected_empty_rows",
+					Expected: []sql.Row{{int64(0)}},
+				},
+				{
+					Query:       "INSERT INTO ordinary_defaults VALUES (DEFAULT, DEFAULT), (3, DEFAULT)",
+					ExpectedTag: "INSERT 0 2",
+				},
+				{
+					Query: "SELECT * FROM ordinary_defaults ORDER BY a",
+					Expected: []sql.Row{
+						{1, 2},
+						{1, 2},
+						{3, 2},
+					},
+				},
+				{
+					Query:       "INSERT INTO generated_defaults VALUES (DEFAULT, DEFAULT), (3, DEFAULT)",
+					ExpectedTag: "INSERT 0 2",
+				},
+				{
+					Query: "SELECT * FROM generated_defaults ORDER BY a",
+					Expected: []sql.Row{
+						{1, 2},
+						{1, 2},
+						{3, 4},
+					},
+				},
+				{
+					Query:           "INSERT INTO required_defaults VALUES (DEFAULT, DEFAULT), (5, DEFAULT)",
+					ExpectedErr:     "non-nullable",
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query: "SELECT * FROM required_defaults",
+					Expected: []sql.Row{
+						{9, 9},
 					},
 				},
 			},
@@ -290,6 +614,30 @@ ON CONFLICT (id) do update set c1 = $4`,
 				{
 					Query:    `INSERT INTO "django_migrations" ("app", "name", "applied") VALUES ('contenttypes', '0001_initial', '2025-03-24T19:21:59.690479+00:00'::timestamptz) RETURNING "django_migrations"."id"`,
 					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "insert on conflict do nothing returning",
+			SetUpScript: []string{
+				"CREATE TABLE t4 (k INT PRIMARY KEY, v TEXT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t4 VALUES (1, 'a') ON CONFLICT DO NOTHING RETURNING k, v;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "INSERT INTO t4 VALUES (1, 'b'), (2, 'c') ON CONFLICT DO NOTHING RETURNING k;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "INSERT INTO t4 VALUES (1, 'b') ON CONFLICT (k) DO NOTHING RETURNING *;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t4 ORDER BY k;",
+					Expected: []sql.Row{{1, "a"}, {2, "c"}},
 				},
 			},
 		},

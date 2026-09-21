@@ -79,7 +79,67 @@ func DropRole(name string) {
 	if roleID, ok := globalDatabase.rolesByName[name]; ok {
 		delete(globalDatabase.rolesByName, name)
 		delete(globalDatabase.rolesByID, roleID)
-		// TODO: remove from ownership, schema privileges, table privileges, and role membership
+		globalDatabase.removeRolePrivileges(roleID)
+		globalDatabase.removeRoleMemberships(roleID)
+	}
+}
+
+// removeRolePrivileges removes every privilege granted to or by the given role.
+func (db *Database) removeRolePrivileges(roleID RoleID) {
+	for key, value := range db.databasePrivileges.Data {
+		if key.Role == roleID || removeRoleFromPrivilegeMap(roleID, value.Privileges) {
+			delete(db.databasePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.schemaPrivileges.Data {
+		if key.Role == roleID || removeRoleFromPrivilegeMap(roleID, value.Privileges) {
+			delete(db.schemaPrivileges.Data, key)
+		}
+	}
+	for key, value := range db.tablePrivileges.Data {
+		if key.Role == roleID || removeRoleFromPrivilegeMap(roleID, value.Privileges) {
+			delete(db.tablePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.sequencePrivileges.Data {
+		if key.Role == roleID || removeRoleFromPrivilegeMap(roleID, value.Privileges) {
+			delete(db.sequencePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.routinePrivileges.Data {
+		if key.Role == roleID || removeRoleFromPrivilegeMap(roleID, value.Privileges) {
+			delete(db.routinePrivileges.Data, key)
+		}
+	}
+}
+
+// removeRoleFromPrivilegeMap removes grants made by the given role and reports whether the map is empty.
+func removeRoleFromPrivilegeMap(roleID RoleID, privileges map[Privilege]map[GrantedPrivilege]bool) bool {
+	for privilege, grants := range privileges {
+		for grant := range grants {
+			if grant.GrantedBy == roleID {
+				delete(grants, grant)
+			}
+		}
+		if len(grants) == 0 {
+			delete(privileges, privilege)
+		}
+	}
+	return len(privileges) == 0
+}
+
+// removeRoleMemberships removes memberships involving or granted by the given role.
+func (db *Database) removeRoleMemberships(roleID RoleID) {
+	delete(db.roleMembership.Data, roleID)
+	for member, groups := range db.roleMembership.Data {
+		for group, membership := range groups {
+			if group == roleID || membership.GrantedBy == roleID {
+				delete(groups, group)
+			}
+		}
+		if len(groups) == 0 {
+			delete(db.roleMembership.Data, member)
+		}
 	}
 }
 

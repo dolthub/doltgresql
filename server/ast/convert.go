@@ -29,9 +29,19 @@ import (
 // strips this prefix and returns Postgres's "?column?" placeholder on the wire.
 const UnknownColSentinelPrefix = "__?column?__"
 
+// ConvertOptions controls optional behavior during PostgreSQL-to-Vitess AST conversion.
+type ConvertOptions struct {
+	PermitUnsupportedLockingStatements bool
+}
+
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
-	ctx := NewContext(postgresStmt)
+	return ConvertWithOptions(postgresStmt, ConvertOptions{})
+}
+
+// ConvertWithOptions converts a Postgres AST into a Vitess AST using the given options.
+func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (vitess.Statement, error) {
+	ctx := NewContextWithOptions(postgresStmt, options)
 	switch stmt := postgresStmt.AST.(type) {
 	case *tree.AlterAggregate:
 		return nodeAlterAggregate(ctx, stmt)
@@ -91,6 +101,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeControlSchedules(ctx, stmt)
 	case *tree.CopyFrom:
 		return nodeCopyFrom(ctx, stmt)
+	case *tree.CopyTo:
+		return nodeCopyTo(ctx, stmt)
 	case *tree.CreateAggregate:
 		return nodeCreateAggregate(ctx, stmt)
 	case *tree.CreateCast:
@@ -135,6 +147,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDelete(ctx, stmt)
 	case *tree.Discard:
 		return nodeDiscard(ctx, stmt)
+	case *tree.Do:
+		return nodeDo(ctx, stmt)
 	case *tree.DropAggregate:
 		return nodeDropAggregate(ctx, stmt)
 	case *tree.DropCast:

@@ -15,8 +15,6 @@
 package main
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -176,10 +174,10 @@ func TestLargeOutOfBandValues(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, numRows, count)
 
-			// All rows must have the correct byte length. Doltgres panics on
-			// octet_length() over large out-of-band text values, so the length
-			// is verified client-side.
-			count = countTextRowsOfLen(t, conn, ctx, "SELECT txt FROM large_text", textSize)
+			// All rows must have the correct byte length.
+			err = conn.QueryRowContext(ctx,
+				"SELECT COUNT(*) FROM large_text WHERE octet_length(txt) = $1", textSize).Scan(&count)
+			require.NoError(t, err)
 			require.Equal(t, numRows, count, "every row should retain the full text length")
 
 			// Spot-check a few rows for exact content.
@@ -240,21 +238,11 @@ func TestLargeOutOfBandValues(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, numRows, count)
 
-			// Doltgres has no server-side byte-length function for bytea
-			// (octet_length/length/encode are unavailable), so verify every
-			// row's blob length on the client side instead.
-			lenRows, err := conn.QueryContext(ctx, "SELECT data FROM large_blob")
+			// All rows must have the correct byte length.
+			err = conn.QueryRowContext(ctx,
+				"SELECT COUNT(*) FROM large_blob WHERE octet_length(data) = $1", blobSize).Scan(&count)
 			require.NoError(t, err)
-			count = 0
-			for lenRows.Next() {
-				var d []byte
-				require.NoError(t, lenRows.Scan(&d))
-				require.Equal(t, blobSize, len(d), "every row should retain the full blob length")
-				count++
-			}
-			require.NoError(t, lenRows.Err())
-			lenRows.Close()
-			require.Equal(t, numRows, count)
+			require.Equal(t, numRows, count, "every row should retain the full blob length")
 
 			// Spot-check exact binary content for a few rows.
 			for _, id := range []int{0, numRows / 2, numRows - 1} {
@@ -403,23 +391,12 @@ func TestLargeOutOfBandValues(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, numRows, count)
 
-			// Verify lengths of all large columns. Doltgres has no bytea length
-			// function and panics on octet_length() over large out-of-band text,
-			// so the lengths are checked client-side.
-			lenRows, err := conn.QueryContext(ctx, "SELECT txt, bin_data, note FROM mixed_large")
+			// Verify lengths of all large columns.
+			err = conn.QueryRowContext(ctx,
+				"SELECT COUNT(*) FROM mixed_large WHERE octet_length(txt) = $1 "+
+					"AND octet_length(bin_data) = $2 AND octet_length(note) = 5000",
+				textSize, blobSize).Scan(&count)
 			require.NoError(t, err)
-			count = 0
-			for lenRows.Next() {
-				var txtv, notev string
-				var binv []byte
-				require.NoError(t, lenRows.Scan(&txtv, &binv, &notev))
-				require.Equal(t, textSize, len(txtv))
-				require.Equal(t, blobSize, len(binv))
-				require.Equal(t, 5000, len(notev))
-				count++
-			}
-			require.NoError(t, lenRows.Err())
-			lenRows.Close()
 			require.Equal(t, numRows, count, "all large column lengths must be preserved")
 
 			// Spot-check content integrity.
@@ -551,21 +528,10 @@ func TestLargeOutOfBandValues(t *testing.T) {
 		require.Equal(t, numWorkers*rowsPerWorker, count,
 			"all rows from all workers must be present")
 
-		// Doltgres has no bytea length function and panics on octet_length()
-		// over large out-of-band text, so verify sizes client-side.
-		lenRows, err := conn.QueryContext(ctx, "SELECT txt, data FROM large_concurrent")
+		err = conn.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM large_concurrent WHERE octet_length(txt) = $1 AND octet_length(data) = $2",
+			textSize, blobSize).Scan(&count)
 		require.NoError(t, err)
-		count = 0
-		for lenRows.Next() {
-			var txtv string
-			var datav []byte
-			require.NoError(t, lenRows.Scan(&txtv, &datav))
-			require.Equal(t, textSize, len(txtv))
-			require.Equal(t, blobSize, len(datav))
-			count++
-		}
-		require.NoError(t, lenRows.Err())
-		lenRows.Close()
 		require.Equal(t, numWorkers*rowsPerWorker, count,
 			"all large values must have the correct size")
 	})
@@ -797,12 +763,11 @@ func TestTypeDiversity(t *testing.T) {
 		require.Equal(t, len(vals), count)
 
 		// Verify the large TEXT value was preserved intact (200 KB of ASCII).
-		// Doltgres panics on octet_length() over large out-of-band text, so the
-		// length is checked client-side.
-		var longText string
-		err = conn.QueryRowContext(ctx, "SELECT col_longtext FROM string_types WHERE id = 3").Scan(&longText)
+		var longTextLen int
+		err = conn.QueryRowContext(ctx,
+			"SELECT octet_length(col_longtext) FROM string_types WHERE id = 3").Scan(&longTextLen)
 		require.NoError(t, err)
-		require.Equal(t, 200000, len(longText), "200 KB TEXT value must be stored and retrieved intact")
+		require.Equal(t, 200000, longTextLen, "200 KB TEXT value must be stored and retrieved intact")
 
 		// Verify the NULL row.
 		err = conn.QueryRowContext(ctx,
@@ -882,12 +847,12 @@ func TestTypeDiversity(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, len(vals), count)
 
-		// Verify the 500 KB bytea value survived. Doltgres has no server-side
-		// byte-length function for bytea, so check the length client-side.
-		var lb500 []byte
-		err = conn.QueryRowContext(ctx, "SELECT col_longblob FROM binary_types WHERE id = 2").Scan(&lb500)
+		// Verify the 500 KB bytea value survived.
+		var lb500Len int
+		err = conn.QueryRowContext(ctx,
+			"SELECT octet_length(col_longblob) FROM binary_types WHERE id = 2").Scan(&lb500Len)
 		require.NoError(t, err)
-		require.Equal(t, 500_000, len(lb500), "500 KB bytea value must be stored and retrieved intact")
+		require.Equal(t, 500_000, lb500Len, "500 KB bytea value must be stored and retrieved intact")
 
 		// Spot-check exact blob content.
 		var actualLB []byte
@@ -1352,20 +1317,10 @@ func TestWideTable(t *testing.T) {
 		require.Equal(t, numRows, count)
 
 		// Verify that the first and last text columns have the expected length.
-		// Doltgres panics on octet_length() over large out-of-band text, so the
-		// lengths are checked client-side.
-		lenRows, err := conn.QueryContext(ctx, "SELECT c0, c99 FROM wide_text")
+		err = conn.QueryRowContext(ctx,
+			fmt.Sprintf("SELECT COUNT(*) FROM wide_text WHERE octet_length(c0) = %d AND octet_length(c%d) = %d",
+				colDataSize, numCols-1, colDataSize)).Scan(&count)
 		require.NoError(t, err)
-		count = 0
-		for lenRows.Next() {
-			var c0v, c99v string
-			require.NoError(t, lenRows.Scan(&c0v, &c99v))
-			require.Equal(t, colDataSize, len(c0v))
-			require.Equal(t, colDataSize, len(c99v))
-			count++
-		}
-		require.NoError(t, lenRows.Err())
-		lenRows.Close()
 		require.Equal(t, numRows, count, "all TEXT cells must retain their content length")
 
 		// Spot-check exact content of a cell.
@@ -1444,20 +1399,10 @@ func TestWideTable(t *testing.T) {
 		require.Equal(t, numRows, count)
 
 		// Verify total data volume via the byte length of two boundary columns.
-		// Doltgres panics on octet_length() over large out-of-band text, so the
-		// lengths are checked client-side.
-		lenRows, err := conn.QueryContext(ctx, "SELECT c0, c199 FROM extreme_wide")
+		err = conn.QueryRowContext(ctx,
+			fmt.Sprintf("SELECT COUNT(*) FROM extreme_wide WHERE octet_length(c0) = %d AND octet_length(c%d) = %d",
+				colDataSize, numCols-1, colDataSize)).Scan(&count)
 		require.NoError(t, err)
-		count = 0
-		for lenRows.Next() {
-			var c0v, c199v string
-			require.NoError(t, lenRows.Scan(&c0v, &c199v))
-			require.Equal(t, colDataSize, len(c0v))
-			require.Equal(t, colDataSize, len(c199v))
-			count++
-		}
-		require.NoError(t, lenRows.Err())
-		lenRows.Close()
 		require.Equal(t, numRows, count,
 			"extremely wide rows must fully preserve all column data")
 
@@ -1484,23 +1429,4 @@ func TestWideTable(t *testing.T) {
 		require.Equal(t, makeTestText(checkRow*numCols+checkCol, colDataSize), cell,
 			"extreme wide row TEXT cell must be byte-perfect after GC")
 	})
-}
-
-// countTextRowsOfLen runs a single-column text query and returns the number of
-// rows whose value has exactly want bytes, asserting each row matches. Doltgres
-// currently panics on octet_length()/length() over large out-of-band text
-// values, so callers verify text byte-lengths client-side instead of in SQL.
-func countTextRowsOfLen(t *testing.T, conn *sql.Conn, ctx context.Context, query string, want int) int {
-	rows, err := conn.QueryContext(ctx, query)
-	require.NoError(t, err)
-	defer rows.Close()
-	n := 0
-	for rows.Next() {
-		var s string
-		require.NoError(t, rows.Scan(&s))
-		require.Equal(t, want, len(s))
-		n++
-	}
-	require.NoError(t, rows.Err())
-	return n
 }

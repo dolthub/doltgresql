@@ -132,6 +132,7 @@ var _ ResolvableTypeReference = &UnresolvedObjectName{}
 var _ ResolvableTypeReference = &ArrayTypeReference{}
 var _ ResolvableTypeReference = &types.T{}
 var _ ResolvableTypeReference = &OIDTypeReference{}
+var _ ResolvableTypeReference = &ModifiedTypeReference{}
 
 // ResolveType converts a ResolvableTypeReference into a *types.T.
 func ResolveType(
@@ -153,6 +154,8 @@ func ResolveType(
 			return nil, pgerror.Newf(pgcode.UndefinedObject, "type %q does not exist", t)
 		}
 		return resolver.ResolveType(ctx, t)
+	case *ModifiedTypeReference:
+		return ResolveType(ctx, t.Name, resolver)
 	case *OIDTypeReference:
 		if resolver == nil {
 			return nil, pgerror.Newf(pgcode.UndefinedObject, "type OID %d does not exist", t.OID)
@@ -209,6 +212,22 @@ type OIDTypeReference struct {
 // SQLString implements the ResolvableTypeReference interface.
 func (node *OIDTypeReference) SQLString() string {
 	return fmt.Sprintf("@%d", node.OID)
+}
+
+// ModifiedTypeReference is a reference to a type by name with type modifiers attached.
+type ModifiedTypeReference struct {
+	Name      *UnresolvedObjectName
+	Modifiers Exprs
+}
+
+// SQLString implements the ResolvableTypeReference interface.
+func (node *ModifiedTypeReference) SQLString() string {
+	var ctx FmtCtx
+	ctx.WriteString(node.Name.SQLString())
+	ctx.WriteByte('(')
+	ctx.FormatNode(&node.Modifiers)
+	ctx.WriteByte(')')
+	return ctx.String()
 }
 
 // ArrayTypeReference represents an array of possibly unknown type references.

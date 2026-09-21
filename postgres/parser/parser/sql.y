@@ -51,6 +51,21 @@ func purposelyUnimplemented(sqllex sqlLexer, feature string, reason string) int 
     return 1
 }
 
+// copyFormatFromName maps a COPY format name given as an identifier or string (e.g. FORMAT "binary")
+// to its tree.CopyFormat. Like Postgres, format names are matched case-sensitively (unquoted
+// identifiers have already been normalized to lowercase by the lexer).
+func copyFormatFromName(name string) (tree.CopyFormat, bool) {
+    switch name {
+    case "csv":
+        return tree.CopyFormatCsv, true
+    case "text":
+        return tree.CopyFormatText, true
+    case "binary":
+        return tree.CopyFormatBinary, true
+    }
+    return 0, false
+}
+
 func setErr(sqllex sqlLexer, err error) int {
     sqllex.(*lexer).setErr(err)
     return 1
@@ -812,7 +827,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETOF SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
 %token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_LOCKED SKIP_DATABASE_STATS SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
-%token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING
+%token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STDOUT STRATEGY STRICT STRING
 %token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS
 %token <str> SUPERUSER SUPPORT SYMMETRIC SYNTAX SYSID SYSTEM
 
@@ -857,6 +872,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> stmt_block
 %type <tree.Statement> stmt
 %type <tree.Statement> non_transaction_stmt
+%type <tree.Statement> do_stmt
 
 %type <tree.Statement> alter_stmt
 %type <tree.Statement> alter_ddl_stmt
@@ -932,6 +948,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> comment_stmt
 %type <tree.Statement> commit_stmt
 %type <tree.Statement> copy_from_stmt
+%type <tree.Statement> copy_to_stmt
 
 %type <tree.Statement> create_stmt
 %type <tree.Statement> create_cast_stmt
@@ -1510,10 +1527,12 @@ non_transaction_stmt:
 | analyze_stmt      // EXTEND WITH HELP: ANALYZE
 | call_stmt
 | copy_from_stmt
+| copy_to_stmt
 | comment_stmt
 | execute_stmt      // EXTEND WITH HELP: EXECUTE
 | deallocate_stmt   // EXTEND WITH HELP: DEALLOCATE
 | discard_stmt      // EXTEND WITH HELP: DISCARD
+| do_stmt
 | grant_stmt        // EXTEND WITH HELP: GRANT
 | prepare_stmt      // EXTEND WITH HELP: PREPARE
 | revoke_stmt       // EXTEND WITH HELP: REVOKE
@@ -1525,6 +1544,20 @@ non_transaction_stmt:
 | declare_cursor_stmt
 | reindex_stmt
 | vacuum_stmt
+
+do_stmt:
+  DO SCONST
+  {
+    $$.val = &tree.Do{Code: $2}
+  }
+| DO LANGUAGE non_reserved_word_or_sconst SCONST
+  {
+    $$.val = &tree.Do{Language: $3, Code: $4}
+  }
+| DO SCONST LANGUAGE non_reserved_word_or_sconst
+  {
+    $$.val = &tree.Do{Language: $4, Code: $2}
+  }
 
 stmt_list:
   non_transaction_stmt
@@ -3658,6 +3691,84 @@ copy_from_stmt:
     }
   }
 
+copy_to_stmt:
+ COPY table_name opt_column_list TO SCONST opt_with '(' copy_options_list ')'
+  {
+    name := $2.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CopyTo{
+       Table: name,
+       File: $5,
+       Columns: $3.nameList(),
+       Stdout: false,
+       Options: *$8.copyOptions(),
+    }
+  }
+| COPY table_name opt_column_list TO SCONST opt_legacy_copy_options
+  {
+    name := $2.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CopyTo{
+       Table: name,
+       File: $5,
+       Columns: $3.nameList(),
+       Stdout: false,
+       Options: *$6.copyOptions(),
+    }
+  }
+| COPY table_name opt_column_list TO STDOUT opt_with '(' copy_options_list ')'
+  {
+    name := $2.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CopyTo{
+       Table: name,
+       Columns: $3.nameList(),
+       Stdout: true,
+       Options: *$8.copyOptions(),
+    }
+  }
+| COPY table_name opt_column_list TO STDOUT opt_legacy_copy_options
+  {
+    name := $2.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CopyTo{
+       Table: name,
+       Columns: $3.nameList(),
+       Stdout: true,
+       Options: *$6.copyOptions(),
+    }
+  }
+| COPY '(' select_stmt ')' TO SCONST opt_with '(' copy_options_list ')'
+  {
+    $$.val = &tree.CopyTo{
+       Statement: $3.slct(),
+       File: $6,
+       Stdout: false,
+       Options: *$9.copyOptions(),
+    }
+  }
+| COPY '(' select_stmt ')' TO SCONST opt_legacy_copy_options
+  {
+    $$.val = &tree.CopyTo{
+       Statement: $3.slct(),
+       File: $6,
+       Stdout: false,
+       Options: *$7.copyOptions(),
+    }
+  }
+| COPY '(' select_stmt ')' TO STDOUT opt_with '(' copy_options_list ')'
+  {
+    $$.val = &tree.CopyTo{
+       Statement: $3.slct(),
+       Stdout: true,
+       Options: *$9.copyOptions(),
+    }
+  }
+| COPY '(' select_stmt ')' TO STDOUT opt_legacy_copy_options
+  {
+    $$.val = &tree.CopyTo{
+       Statement: $3.slct(),
+       Stdout: true,
+       Options: *$7.copyOptions(),
+    }
+  }
+
 
 // legacy_copy_options represent the previous format that PostgreSQL supported for
 // specifying COPY FROM options. They do not use the WITH keyword and do not use parens.
@@ -3725,6 +3836,24 @@ copy_options:
 | FORMAT BINARY
   {
     $$.val = &tree.CopyOptions{CopyFormat: tree.CopyFormatBinary}
+  }
+| FORMAT IDENT
+  {
+    // Postgres treats the FORMAT value as a generic identifier or string, so quoted format
+    // names (e.g. FORMAT "binary", as sent by DuckDB's postgres extension) must be accepted.
+    format, ok := copyFormatFromName($2)
+    if !ok {
+      return setErr(sqllex, fmt.Errorf("COPY format %q not recognized", $2))
+    }
+    $$.val = &tree.CopyOptions{CopyFormat: format}
+  }
+| FORMAT SCONST
+  {
+    format, ok := copyFormatFromName($2)
+    if !ok {
+      return setErr(sqllex, fmt.Errorf("COPY format %q not recognized", $2))
+    }
+    $$.val = &tree.CopyOptions{CopyFormat: format}
   }
 | HEADER
   {
@@ -9711,6 +9840,10 @@ opt_opclass:
   {
     $$.val = &tree.IndexElemOpClass{Name: $1}
   }
+| simple_ident '.' IDENT
+  {
+    $$.val = &tree.IndexElemOpClass{Name: $1 + "." + $3}
+  }
 | IDENT '(' opclass_option_list ')'
   {
     $$.val = &tree.IndexElemOpClass{Name: $1, Options: $3.opClassOptions()}
@@ -10176,6 +10309,16 @@ transaction_mode_list:
   {
     a := $1.transactionModes()
     b := $3.transactionModes()
+    err := a.Merge(b)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = a
+  }
+| transaction_mode_list transaction_mode
+  {
+    // Postgres allows transaction modes to be separated by spaces as well as commas,
+    // e.g. BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY.
+    a := $1.transactionModes()
+    b := $2.transactionModes()
     err := a.Merge(b)
     if err != nil { return setErr(sqllex, err) }
     $$.val = a
@@ -11160,15 +11303,6 @@ sortby:
     /* FORCE DOC */
     dir := $2.dir()
     nullsOrder := $3.nullsOrder()
-    // We currently only support the opposite of Postgres defaults.
-    if nullsOrder != tree.DefaultNullsOrder {
-      if dir == tree.Descending && nullsOrder == tree.NullsFirst {
-        return unimplementedWithIssue(sqllex, 6224)
-      }
-      if dir != tree.Descending && nullsOrder == tree.NullsLast {
-        return unimplementedWithIssue(sqllex, 6224)
-      }
-    }
     $$.val = &tree.Order{
       OrderType:  tree.OrderByColumn,
       Expr:       $1.expr(),
@@ -12048,6 +12182,20 @@ simple_typename:
       }
     }
   }
+| IDENT '(' expr_list ')'
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    name, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = &tree.ModifiedTypeReference{Name: name, Modifiers: $3.exprs()}
+  }
+| unreserved_keyword '(' expr_list ')'
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    name, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = &tree.ModifiedTypeReference{Name: name, Modifiers: $3.exprs()}
+  }
 | '@' iconst32
   {
     id := $2.int32()
@@ -12056,6 +12204,10 @@ simple_typename:
 | complex_type_name
   {
     $$.val = $1.typeReference()
+  }
+| complex_type_name '(' expr_list ')'
+  {
+    $$.val = &tree.ModifiedTypeReference{Name: $1.typeReference().(*tree.UnresolvedObjectName), Modifiers: $3.exprs()}
   }
 | const_typename
 | bit_with_length
@@ -15354,6 +15506,7 @@ unreserved_keyword:
 | STATISTICS
 | STATUS
 | STDIN
+| STDOUT
 | STORAGE
 | STORE
 | STORED

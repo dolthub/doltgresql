@@ -548,6 +548,7 @@ var KeywordsCategories = map[string]string{
 	"statistics":                   "U",
 	"status":                       "U",
 	"stdin":                        "U",
+	"stdout":                       "U",
 	"storage":                      "U",
 	"store":                        "U",
 	"stored":                       "U",
@@ -1194,6 +1195,7 @@ var KeywordNames = []string{
 	"statistics",
 	"status",
 	"stdin",
+	"stdout",
 	"storage",
 	"store",
 	"stored",
@@ -2390,6 +2392,8 @@ func GetKeywordID(k string) int32 {
 		return STATUS
 	case "stdin":
 		return STDIN
+	case "stdout":
+		return STDOUT
 	case "storage":
 		return STORAGE
 	case "store":

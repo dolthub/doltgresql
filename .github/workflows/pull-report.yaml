@@ -51,10 +51,13 @@ jobs:
 
             // Check if a comment already exists
             const comment = comments.find(comment => comment.body.includes(commentMarker))
-                comment_id: comment.id,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: `${commentMarker}\n@${ACTOR} ${FORMAT}\n${resData}`
+            if (comment) {
+              // Update the existing comment
+                await github.rest.issues.updateComment({
+                  comment_id: comment.id,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: `${commentMarker}\n@${ACTOR} ${FORMAT}\n${resData}`
               })
             } else {
               // Create a new comment

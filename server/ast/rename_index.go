@@ -18,6 +18,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeRenameIndex handles *tree.RenameIndex nodes.
@@ -25,6 +26,26 @@ func nodeRenameIndex(ctx *Context, node *tree.RenameIndex) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-
-	return NotYetSupportedError("RENAME INDEX is not yet supported")
+	var dbName, schemaName, tableName string
+	if node.Index != nil {
+		if node.Index.Table.ExplicitCatalog {
+			dbName = string(node.Index.Table.CatalogName)
+		}
+		if node.Index.Table.ExplicitSchema {
+			schemaName = string(node.Index.Table.SchemaName)
+		}
+		// The table name is only set when using the CockroachDB `table@index` syntax
+		tableName = string(node.Index.Table.ObjectName)
+	}
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewRenameIndex(
+			node.IfExists,
+			dbName,
+			schemaName,
+			tableName,
+			string(node.Index.Index),
+			string(node.NewName),
+		),
+		Children: nil,
+	}, nil
 }

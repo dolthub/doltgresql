@@ -41,6 +41,8 @@ func init() {
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "uuid_ops"), 2968)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "record_ops"), 2994)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "jsonb_ops"), 4033)
+	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "text_pattern_ops"), 2095)
+	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "bpchar_pattern_ops"), 2097)
 
 	// hash operator families
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "hash", "bpchar_ops"), 427)
@@ -55,6 +57,8 @@ func init() {
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "hash", "bool_ops"), 2222)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "hash", "uuid_ops"), 2969)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "hash", "jsonb_ops"), 4034)
+	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "hash", "text_pattern_ops"), 2229)
+	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "hash", "bpchar_pattern_ops"), 2231)
 
 	// btree operator classes (Doltgres-assigned OIDs, see comment above)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "array_ops"), 15000)
@@ -83,6 +87,9 @@ func init() {
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "varchar_ops"), 15023)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "bit_ops"), 15024)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "varbit_ops"), 15025)
+	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "text_pattern_ops"), 15026)
+	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "varchar_pattern_ops"), 15027)
+	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "bpchar_pattern_ops"), 15028)
 
 	// hash operator classes (Doltgres-assigned OIDs, see comment above)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "hash", "bool_ops"), 15100)
@@ -103,4 +110,7 @@ func init() {
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "hash", "timestamptz_ops"), 15115)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "hash", "uuid_ops"), 15116)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "hash", "varchar_ops"), 15117)
+	globalCache.setBuiltIn(NewId(Section_OperatorClass, "hash", "text_pattern_ops"), 15118)
+	globalCache.setBuiltIn(NewId(Section_OperatorClass, "hash", "varchar_pattern_ops"), 15119)
+	globalCache.setBuiltIn(NewId(Section_OperatorClass, "hash", "bpchar_pattern_ops"), 15120)
 }

@@ -38,7 +38,11 @@ var current_setting_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return getCurSetting(ctx, val1.(string), false)
+		val1Str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return getCurSetting(ctx, val1Str, false)
 	},
 }
 
@@ -49,7 +53,11 @@ var current_setting_text_bool = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Bool},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		return getCurSetting(ctx, val1.(string), val2.(bool))
+		val1Str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return getCurSetting(ctx, val1Str, val2.(bool))
 	},
 }
 

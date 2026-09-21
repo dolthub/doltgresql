@@ -16,7 +16,6 @@ package ast
 
 import (
 	"fmt"
-	"regexp"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -27,10 +26,6 @@ import (
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
-
-// createTriggerWhenCapture is a regex that should only capture the contents of the WHEN expression. Although a bit
-// complex, this is done to ensure that the capture group contains only the WHEN expression and nothing else.
-var createTriggerWhenCapture = regexp.MustCompile(`(?is)create\s+(?:or\s+replace\s+)?(?:constraint\s+)?trigger\s+.*\s+for\s+(?:each\s+)?(?:row|statement)\s+when\s+\((.*)\)\s+execute\s+(?:function|procedure).*`)
 
 // nodeCreateTrigger handles *tree.CreateTrigger nodes.
 func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Statement, err error) {
@@ -91,13 +86,13 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Stateme
 	// String() function to return the **exact** same string, so we capture it with a regex.
 	var whenOps []plpgsql.InterpreterOperation
 	if node.When != nil {
-		matches := createTriggerWhenCapture.FindStringSubmatch(ctx.originalQuery)
+		matches := triggers.CreateTriggerWhenCapture.FindStringSubmatch(ctx.originalQuery)
 		if len(matches) != 2 {
 			return nil, errors.New("unable to parse WHEN expression from CREATE TRIGGER")
 		}
 		whenOps, err = plpgsql.Parse(fmt.Sprintf(`CREATE FUNCTION when_wrapper() RETURNS TRIGGER AS $$
 BEGIN
-	RETURN %s;
+	RETURN (%s);
 END;
 $$ LANGUAGE plpgsql;`, matches[1]))
 		if err != nil {

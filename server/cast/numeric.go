@@ -15,6 +15,8 @@
 package cast
 
 import (
+	"math"
+
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -78,8 +80,15 @@ func numericImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		ToType:   pgtypes.Float32,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(*apd.Decimal)
-			f, _ := d.Float64()
-			return float32(f), nil
+			f, err := d.Float64()
+			if err != nil {
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "real out of range")
+			}
+			f32 := float32(f)
+			if math.IsInf(float64(f32), 0) && !math.IsInf(f, 0) {
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "real out of range")
+			}
+			return f32, nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
@@ -87,7 +96,10 @@ func numericImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		ToType:   pgtypes.Float64,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(*apd.Decimal)
-			f, _ := d.Float64()
+			f, err := d.Float64()
+			if err != nil {
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "double precision out of range")
+			}
 			return f, nil
 		},
 	})

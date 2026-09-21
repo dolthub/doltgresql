@@ -15,14 +15,20 @@
 package _go
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions"
 )
 
@@ -361,6 +367,180 @@ func TestAuthTests(t *testing.T) {
 					Username:    `user3`,
 					Password:    `hello3`,
 					ExpectedErr: `authentication failed`,
+				},
+			},
+		},
+		{
+			Name: `DROP ROLE removes all inherited privileges`,
+			SetUpScript: []string{
+				`CREATE TABLE drop_role_table (v integer);`,
+				`INSERT INTO drop_role_table VALUES (1);`,
+				`CREATE SEQUENCE drop_role_sequence;`,
+				`CREATE FUNCTION drop_role_routine() RETURNS integer AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE ROLE dropped_group;`,
+				`CREATE USER surviving_member PASSWORD 'password';`,
+				`GRANT CREATE ON DATABASE postgres TO dropped_group;`,
+				`GRANT CREATE ON SCHEMA public TO dropped_group;`,
+				`GRANT SELECT ON drop_role_table TO dropped_group;`,
+				`GRANT USAGE ON SEQUENCE drop_role_sequence TO dropped_group;`,
+				`GRANT EXECUTE ON FUNCTION drop_role_routine() TO dropped_group;`,
+				`GRANT dropped_group TO surviving_member;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE drop_role_schema_table (v integer);`,
+					Username: `surviving_member`,
+					Password: `password`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM drop_role_table;`,
+					Username: `surviving_member`,
+					Password: `password`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT nextval('drop_role_sequence');`,
+					Username: `surviving_member`,
+					Password: `password`,
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT drop_role_routine();`,
+					Username: `surviving_member`,
+					Password: `password`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `DROP ROLE dropped_group;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `CREATE TABLE drop_role_denied_schema_table (v integer);`,
+					Username:    `surviving_member`,
+					Password:    `password`,
+					ExpectedErr: `permission denied for schema`,
+				},
+				{
+					Query:       `SELECT * FROM drop_role_table;`,
+					Username:    `surviving_member`,
+					Password:    `password`,
+					ExpectedErr: `permission denied for table`,
+				},
+				{
+					Query:       `SELECT nextval('drop_role_sequence');`,
+					Username:    `surviving_member`,
+					Password:    `password`,
+					ExpectedErr: `permission denied`,
+				},
+				{
+					Query:       `SELECT drop_role_routine();`,
+					Username:    `surviving_member`,
+					Password:    `password`,
+					ExpectedErr: `permission denied`,
+				},
+			},
+		},
+		{
+			Name: `CREATE DATABASE authorization`,
+			SetUpScript: []string{
+				`CREATE ROLE demo LOGIN PASSWORD 'password';`,
+				`GRANT ALL PRIVILEGES ON DATABASE postgres TO demo;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = 'demo';`,
+					Expected: []sql.Row{{"f", "f", "f"}},
+				},
+				{
+					Query:           `CREATE DATABASE made_by_demo;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `permission denied to create database`,
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'made_by_demo';`,
+					Expected: []sql.Row{},
+				},
+				{Query: `ALTER ROLE demo CREATEDB;`},
+				{
+					Query:    `CREATE DATABASE made_by_demo;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{Query: `ALTER ROLE demo NOCREATEDB;`},
+				{
+					Query:           `CREATE DATABASE denied_after_revoke;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `permission denied to create database`,
+					ExpectedErrCode: "42501",
+				},
+				{Query: `DROP DATABASE made_by_demo;`},
+				{Query: `ALTER ROLE demo SUPERUSER;`},
+				{
+					Query:    `CREATE DATABASE made_by_super;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{Query: `DROP DATABASE made_by_super;`},
+			},
+		},
+		{
+			Name: `DROP DATABASE authorization`,
+			SetUpScript: []string{
+				`CREATE DATABASE victim;`,
+				`CREATE ROLE demo LOGIN PASSWORD 'password';`,
+				`GRANT ALL PRIVILEGES ON DATABASE victim TO demo;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `DROP DATABASE victim;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `must be owner of database victim`,
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           `DROP DATABASE IF EXISTS victim;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `must be owner of database victim`,
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    `DROP DATABASE IF EXISTS missing_database;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{
+					Query:       `DROP DATABASE missing_database;`,
+					Username:    `demo`,
+					Password:    `password`,
+					ExpectedErr: `database not found: missing_database`,
+				},
+				{Query: `ALTER ROLE demo CREATEDB;`},
+				{
+					Query:           `DROP DATABASE victim;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `must be owner of database victim`,
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'victim';`,
+					Expected: []sql.Row{{"victim"}},
+				},
+				{Query: `ALTER ROLE demo SUPERUSER;`},
+				{
+					Query:    `DROP DATABASE victim;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'victim';`,
+					Expected: []sql.Row{},
 				},
 			},
 		},
@@ -1142,7 +1322,131 @@ func TestAuthTests(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Built-in routines are executable without an explicit grant",
+			SetUpScript: []string{
+				"CREATE TABLE t3327 (x INT);",
+				"INSERT INTO t3327 VALUES (1), (2), (3);",
+				"CREATE ROLE reader LOGIN PASSWORD 'password';",
+				"GRANT SELECT ON t3327 TO reader;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT COUNT(*) FROM t3327;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*), SUM(x), MAX(x) FROM t3327;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{3, 6, 3}},
+				},
+				{
+					Query:    "SELECT x, ROW_NUMBER() OVER (ORDER BY x) FROM t3327 ORDER BY x;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{1, 1}, {2, 2}, {3, 3}},
+				},
+				{
+					Query:    "SELECT pg_catalog.lower('A'), lower('A');",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a", "a"}},
+				},
+			},
+		},
 	})
+}
+
+// TestDropRoleCleansPersistedAuthorizationReferences verifies that no reference to a dropped role survives reload.
+func TestDropRoleCleansPersistedAuthorizationReferences(t *testing.T) {
+	// Keep the directory alive after the test because auth retains its file system globally and later tests may persist
+	// changes through it.
+	tempDir, err := os.MkdirTemp(os.TempDir(), t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileSystem, err := filesys.LocalFilesysWithWorkingDir(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doltEnv := env.Load(context.Background(), env.GetCurrentUserHomeDir, fileSystem, doltdb.LocalDirDoltDB, server.Version)
+	auth.Init(doltEnv, nil)
+
+	survivor := auth.CreateDefaultRole("survivor")
+	auth.SetRole(survivor)
+	otherGroup := auth.CreateDefaultRole("other_group")
+	auth.SetRole(otherGroup)
+	dropped := auth.CreateDefaultRole("dropped")
+	auth.SetRole(dropped)
+
+	droppedGrant := auth.GrantedPrivilege{Privilege: auth.Privilege_SELECT, GrantedBy: dropped.ID()}
+	postgres := auth.GetRole("postgres")
+	postgresGrant := auth.GrantedPrivilege{Privilege: auth.Privilege_SELECT, GrantedBy: postgres.ID()}
+	databaseKey := auth.DatabasePrivilegeKey{Role: dropped.ID(), Name: "database"}
+	schemaKey := auth.SchemaPrivilegeKey{Role: dropped.ID(), Schema: "schema"}
+	tableKey := auth.TablePrivilegeKey{Role: dropped.ID(), Table: doltdb.TableName{Schema: "schema", Name: "table"}}
+	sequenceKey := auth.SequencePrivilegeKey{Role: dropped.ID(), Schema: "schema", Name: "sequence"}
+	routineKey := auth.RoutinePrivilegeKey{Role: dropped.ID(), Schema: "schema", Name: "routine"}
+	auth.AddDatabasePrivilege(databaseKey, postgresGrant, false)
+	auth.AddSchemaPrivilege(schemaKey, postgresGrant, false)
+	auth.AddTablePrivilege(tableKey, postgresGrant, false)
+	auth.AddSequencePrivilege(sequenceKey, postgresGrant, false)
+	auth.AddRoutinePrivilege(routineKey, postgresGrant, false)
+
+	survivorDatabaseKey := auth.DatabasePrivilegeKey{Role: survivor.ID(), Name: "granted_database"}
+	survivorSchemaKey := auth.SchemaPrivilegeKey{Role: survivor.ID(), Schema: "granted_schema"}
+	survivorTableKey := auth.TablePrivilegeKey{Role: survivor.ID(), Table: doltdb.TableName{Schema: "schema", Name: "granted_table"}}
+	survivorSequenceKey := auth.SequencePrivilegeKey{Role: survivor.ID(), Schema: "schema", Name: "granted_sequence"}
+	survivorRoutineKey := auth.RoutinePrivilegeKey{Role: survivor.ID(), Schema: "schema", Name: "granted_routine"}
+	mixedDatabaseKey := auth.DatabasePrivilegeKey{Role: survivor.ID(), Name: "mixed_database"}
+	auth.AddDatabasePrivilege(survivorDatabaseKey, droppedGrant, false)
+	auth.AddSchemaPrivilege(survivorSchemaKey, droppedGrant, false)
+	auth.AddTablePrivilege(survivorTableKey, droppedGrant, false)
+	auth.AddSequencePrivilege(survivorSequenceKey, droppedGrant, false)
+	auth.AddRoutinePrivilege(survivorRoutineKey, droppedGrant, false)
+	auth.AddDatabasePrivilege(mixedDatabaseKey, droppedGrant, false)
+	auth.AddDatabasePrivilege(mixedDatabaseKey, postgresGrant, false)
+
+	auth.AddMemberToGroup(dropped.ID(), otherGroup.ID(), false, survivor.ID())
+	auth.AddMemberToGroup(survivor.ID(), dropped.ID(), false, survivor.ID())
+	auth.AddMemberToGroup(survivor.ID(), otherGroup.ID(), false, dropped.ID())
+	auth.DropRole(dropped.Name)
+	if err = auth.PersistChanges(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	auth.Init(doltEnv, nil)
+
+	assertNoPrivilege := func(name string, hasPrivilege bool) {
+		t.Helper()
+		if hasPrivilege {
+			t.Errorf("dropped role reference retained %s privilege", name)
+		}
+	}
+	assertNoPrivilege("database grantee", auth.HasDatabasePrivilege(databaseKey, auth.Privilege_SELECT))
+	assertNoPrivilege("schema grantee", auth.HasSchemaPrivilege(schemaKey, auth.Privilege_SELECT))
+	assertNoPrivilege("table grantee", auth.HasTablePrivilege(tableKey, auth.Privilege_SELECT))
+	assertNoPrivilege("sequence grantee", auth.HasSequencePrivilege(sequenceKey, auth.Privilege_SELECT))
+	assertNoPrivilege("routine grantee", auth.HasRoutinePrivilege(routineKey, auth.Privilege_SELECT))
+	assertNoPrivilege("database grantor", auth.HasDatabasePrivilege(survivorDatabaseKey, auth.Privilege_SELECT))
+	assertNoPrivilege("schema grantor", auth.HasSchemaPrivilege(survivorSchemaKey, auth.Privilege_SELECT))
+	assertNoPrivilege("table grantor", auth.HasTablePrivilege(survivorTableKey, auth.Privilege_SELECT))
+	assertNoPrivilege("sequence grantor", auth.HasSequencePrivilege(survivorSequenceKey, auth.Privilege_SELECT))
+	assertNoPrivilege("routine grantor", auth.HasRoutinePrivilege(survivorRoutineKey, auth.Privilege_SELECT))
+	if !auth.HasDatabasePrivilege(mixedDatabaseKey, auth.Privilege_SELECT) {
+		t.Error("dropping one grantor removed the surviving grant")
+	}
+	if group, _, _ := auth.IsRoleAMember(dropped.ID(), otherGroup.ID()); group.IsValid() {
+		t.Error("dropped role retained membership as member")
+	}
+	if group, _, _ := auth.IsRoleAMember(survivor.ID(), dropped.ID()); group.IsValid() {
+		t.Error("dropped role retained membership as group")
+	}
+	if group, _, _ := auth.IsRoleAMember(survivor.ID(), otherGroup.ID()); group.IsValid() {
+		t.Error("dropped role retained membership as grantor")
+	}
 }
 
 // TestAuthDoltProcedures tests that Dolt procedure functions apply permission checks for SUPERUSERs and basic users in
@@ -1316,7 +1620,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsBasic("call dolt_commit('-am', 'resolve conflicts');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				authTestAssertAsBasic("call dolt_update_column_tag('test_table', 'v', '123');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				authTestAssertAsBasic("drop database cloned_bak1;", []sql.Row{}, ""),
+				authTestAssertAsBasic("drop database cloned_bak1;", nil, "must be owner of database cloned_bak1"),
+				authTestAssertAsSuper("drop database cloned_bak1;", []sql.Row{}, ""),
 				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
 				authTestSkipAssertAsBasic("call dolt_purge_dropped_databases();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
@@ -1523,7 +1828,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				authTestAssertAsBasic("select dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("drop database cloned_bak1", []sql.Row{}, ""),
+				authTestAssertAsBasic("drop database cloned_bak1", nil, "must be owner of database cloned_bak1"),
+				authTestAssertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
 				authTestAssertAsBasic("select dolt_undrop('cloned_bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				authTestAssertAsBasic("select length(dolt_commit('-am', 'resolve conflicts')::text) = 32;", []sql.Row{{"t"}}, ""),

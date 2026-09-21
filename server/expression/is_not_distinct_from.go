@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/server/compare"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -37,6 +38,7 @@ type IsNotDistinctFrom struct {
 
 var _ vitess.Injectable = (*IsNotDistinctFrom)(nil)
 var _ sql.Expression = (*IsNotDistinctFrom)(nil)
+var _ expression.BinaryExpression = (*IsNotDistinctFrom)(nil)
 
 // NewIsNotDistinctFrom returns a new *IsNotDistinctFrom.
 func NewIsNotDistinctFrom() *IsNotDistinctFrom {
@@ -67,6 +69,10 @@ func (n *IsNotDistinctFrom) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	} else if left == nil || right == nil {
 		return false, nil
 	}
+	if _, ok := left.([]pgtypes.RecordValue); ok {
+		distinct, err := compare.RecordsAreDistinct(ctx, left, right)
+		return !distinct, err
+	}
 
 	n.staticLeftLiteral.Val = left
 	n.staticRightLiteral.Val = right
@@ -82,6 +88,16 @@ func (n *IsNotDistinctFrom) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
+// Left implements the expression.BinaryExpression interface.
+func (n *IsNotDistinctFrom) Left() sql.Expression {
+	return n.leftExpr
+}
+
+// Right implements the expression.BinaryExpression interface.
+func (n *IsNotDistinctFrom) Right() sql.Expression {
+	return n.rightExpr
+}
+
 // Resolved implements the sql.Expression interface.
 func (n *IsNotDistinctFrom) Resolved() bool {
 	if n.leftExpr == nil || n.rightExpr == nil {
@@ -92,6 +108,9 @@ func (n *IsNotDistinctFrom) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (n *IsNotDistinctFrom) String() string {
+	if n.leftExpr == nil || n.rightExpr == nil {
+		return "? IS NOT DISTINCT FROM ?"
+	}
 	return n.leftExpr.String() + " IS NOT DISTINCT FROM " + n.rightExpr.String()
 }
 

@@ -32,11 +32,6 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 	if node == nil {
 		return nil, nil
 	}
-	if len(node.Nullable.ConstraintName) > 0 ||
-		len(node.DefaultExpr.ConstraintName) > 0 ||
-		len(node.UniqueConstraintName) > 0 {
-		return nil, errors.Errorf("non-foreign key column constraint names are not yet supported")
-	}
 	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type, false)
 	if err != nil {
 		return nil, err
@@ -66,8 +61,6 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		keyOpt = 1 // colKeyPrimary
 		isNull = false
 		isNotNull = true
-	} else if node.Unique {
-		keyOpt = 3 // colKeyUnique
 	}
 	defaultExpr, err := nodeExpr(ctx, node.DefaultExpr.Expr)
 	if err != nil {
@@ -112,15 +105,9 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		}
 	}
 
-	if generated != nil {
-		// GMS requires the AST to wrap function expressions in parens
-		if _, ok := generated.(*vitess.FuncExpr); ok {
-			generated = &vitess.ParenExpr{Expr: generated}
-		}
-
-		// clean up the expressions generated here. our default expression handling generates aliases that aren't
-		// appropriate in this context.
-		generated = clearAliases(generated)
+	// GMS requires the AST to wrap function expressions in parens
+	if _, ok := generated.(*vitess.FuncExpr); ok {
+		generated = &vitess.ParenExpr{Expr: generated}
 	}
 
 	if node.IsSerial || computedByDefaultAsIdentity || computedAsIdentity {
@@ -166,7 +153,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		}
 		var checkConstraints = make([]*vitess.ConstraintDefinition, len(node.CheckExprs))
 		for i, checkExpr := range node.CheckExprs {
-			expr, err := nodeExpr(ctx, checkExpr.Expr)
+			expr, err := nodeCheckExpr(ctx, checkExpr.Expr)
 			if err != nil {
 				return nil, err
 			}
@@ -182,17 +169,4 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		colDef.Type.Constraint = checkConstraints[0]
 	}
 	return colDef, nil
-}
-
-// clearAliases removes As and InputExpression from any AliasedExpr in the expression tree given. This is required
-// in some contexts where we expect the expression to serialize to a string without any alias names.
-func clearAliases(e vitess.Expr) vitess.Expr {
-	_ = vitess.Walk(func(node vitess.SQLNode) (kontinue bool, err error) {
-		if expr, ok := node.(*vitess.AliasedExpr); ok {
-			expr.As = vitess.ColIdent{}
-			expr.InputExpression = ""
-		}
-		return true, nil
-	}, e)
-	return e
 }

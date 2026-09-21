@@ -49,8 +49,16 @@ var rpad_text_int32_text = framework.Function3{
 		if length.(int32) <= 0 {
 			return "", nil
 		}
-		runes := []rune(str.(string))
-		fillRunes := []rune(fill.(string))
+		strStr, err := framework.UnwrapString(ctx, str)
+		if err != nil {
+			return nil, err
+		}
+		fillStr, err := framework.UnwrapString(ctx, fill)
+		if err != nil {
+			return nil, err
+		}
+		runes := []rune(strStr)
+		fillRunes := []rune(fillStr)
 		if len(fillRunes) > 0 {
 			for int32(len(runes)) < length.(int32) {
 				runes = append(runes, fillRunes...)

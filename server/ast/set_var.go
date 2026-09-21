@@ -15,13 +15,16 @@
 package ast
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/lex"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/config"
 )
@@ -42,15 +45,17 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 	if node.Namespace == "" && !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
 		return nil, errors.Errorf(`ERROR: unrecognized configuration parameter "%s"`, node.Name)
 	}
-	if node.IsLocal {
-		// TODO: takes effect for only the current transaction rather than the current session.
-		return nil, errors.Errorf("SET LOCAL is not yet supported")
+	if node.IsLocal && node.Namespace != "" {
+		// TODO: support transaction-local values for custom (namespaced) parameters, which are session user vars
+		return nil, errors.Errorf("SET LOCAL is not yet supported for customized options")
 	}
 	var expr vitess.Expr
 	var err error
 	if len(node.Values) == 0 {
 		// sanity check
 		return nil, errors.Errorf(`ERROR: syntax error at or near ";"'`)
+	} else if flattened, ok := flattenIdentifierList(node.Name, node.Values); ok {
+		expr = vitess.NewStrVal([]byte(flattened))
 	} else if len(node.Values) > 1 {
 		vals := make([]string, len(node.Values))
 		for i, val := range node.Values {
@@ -71,7 +76,11 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 		// Dolt's cluster replication variables) are routed to their declared scope directly, symmetric with
 		// current_setting() reading them from the global scope.
 		scope := vitess.SetScope_Session
-		if svScope, ok := config.GlobalOnlySystemVariableScope(node.Name); ok {
+		if node.IsLocal {
+			// SET LOCAL only applies for the duration of the current transaction; the connection handler restores
+			// the session values when the transaction ends. Global-only variables are rejected by the engine.
+			scope = planbuilder.SetScope_TransactionLocal
+		} else if svScope, ok := config.GlobalOnlySystemVariableScope(node.Name); ok {
 			switch svScope {
 			case sql.SystemVariableScope_Persist:
 				scope = vitess.SetScope_Persist
@@ -101,4 +110,39 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 			}},
 		}, nil
 	}
+}
+
+// flattenIdentifierList renders the values assigned to a parameter whose value is a comma separated list of
+// identifiers. It matches the behavior of Postgres's flatten_set_variable_args with a GUC_LIST_QUOTE parameter. Every element
+// is written out with quote_identifier. An element that needs no quoting loses any quotes it was typed with and one
+// that does need it keeps them.
+//
+// The second return is false when the parameter takes a plain string rather than a list of identifiers, or when a
+// value is something other than a name or a literal. The caller is expected to interpret |values| appropriately
+// in such a case.
+func flattenIdentifierList(configParameterName string, values tree.Exprs) (string, bool) {
+	if !config.IsListQuoteConfigParameter(configParameterName) {
+		return "", false
+	}
+	var buf bytes.Buffer
+	for i, value := range values {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		switch value := value.(type) {
+		case *tree.UnresolvedName:
+			if value.NumParts != 1 || value.Star {
+				return "", false
+			}
+			lex.EncodeRestrictedSQLIdent(&buf, value.Parts[0], 0)
+		case *tree.StrVal:
+			lex.EncodeRestrictedSQLIdent(&buf, value.RawString(), 0)
+		case *tree.NumVal:
+			// A number is written out as itself: Postgres does not quote one.
+			buf.WriteString(value.FormattedString())
+		default:
+			return "", false
+		}
+	}
+	return buf.String(), true
 }

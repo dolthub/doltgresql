@@ -13,8 +13,13 @@ func TestDiscard(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE temporary TABLE test (a INT)`,
 				`insert into test values (1)`,
+				`SET search_path = pg_catalog`,
 			},
 			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SHOW search_path",
+					Expected: []sql.Row{{"pg_catalog"}},
+				},
 				{
 					Query: "select * from test",
 					Expected: []sql.Row{
@@ -28,6 +33,10 @@ func TestDiscard(t *testing.T) {
 				{
 					Query:       "select * from test",
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    "SHOW search_path",
+					Expected: []sql.Row{{`"$user", public`}},
 				},
 			},
 		},
@@ -61,10 +70,30 @@ func TestDiscard(t *testing.T) {
 					Query: "BEGIN",
 				},
 				{
-					Query:       "DISCARD ALL",
-					ExpectedErr: "DISCARD ALL cannot run inside a transaction block",
-					Skip:        true, // not yet implemented
+					Query:           "DISCARD ALL",
+					ExpectedErr:     "DISCARD ALL cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
 				},
+				{
+					Query: "ROLLBACK",
+				},
+			},
+		},
+	})
+}
+
+// TestDiscardAllClearsProtocolPreparedStatements verifies DISCARD ALL resets handler-owned session objects.
+func TestDiscardAllClearsProtocolPreparedStatements(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "DISCARD ALL removes named protocol prepared statements",
+			Steps: []FlowStep{
+				Parse{Name: "saved", Query: "SELECT 1"},
+				Sync{},
+				SimpleQuery{Query: "DISCARD ALL", Expected: []StatementResult{{Tag: "DISCARD ALL"}}},
+				Bind{PreparedStatement: "saved", ExpectedErr: `prepared statement "saved" does not exist`, ExpectedErrCode: "26000"},
+				Sync{},
+				SimpleQuery{Query: "SELECT 2", Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"2"}}}}},
 			},
 		},
 	})
@@ -122,6 +151,20 @@ func TestBeginIsolationLevel(t *testing.T) {
 				{
 					Query:    "BEGIN ISOLATION LEVEL REPEATABLE READ, READ WRITE",
 					Expected: []sql.Row{},
+				},
+				{
+					Query:    "COMMIT",
+					Expected: []sql.Row{},
+				},
+				{
+					// Transaction modes may be separated by spaces as well as commas. DuckDB's postgres
+					// extension opens its transactions with this exact statement.
+					Query:    "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
 				},
 				{
 					Query:    "COMMIT",

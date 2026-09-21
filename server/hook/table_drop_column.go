@@ -16,6 +16,7 @@ package hook
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -26,6 +27,68 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+// BeforeTableDropColumn drops the foreign keys that use the column being dropped. Foreign keys declared on the column
+// are dropped with it, while foreign keys referencing it from other tables require CASCADE.
+func BeforeTableDropColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInterface sql.Node) (sql.Node, error) {
+	n, ok := nodeInterface.(*plan.DropColumn)
+	if !ok {
+		return nil, errors.Errorf("DROP COLUMN pre-hook expected `*plan.DropColumn` but received `%T`", nodeInterface)
+	}
+	doltTable := core.SQLNodeToDoltTable(n.Table)
+	if doltTable == nil {
+		return n, nil
+	}
+	tableName := doltTable.TableName()
+	sqlTable, err := core.GetSqlTableFromContext(ctx, "", tableName)
+	if err != nil {
+		return nil, err
+	}
+	fkTable, ok := sqlTable.(sql.ForeignKeyTable)
+	if !ok {
+		return n, nil
+	}
+	referenced, err := fkTable.GetReferencedForeignKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, fk := range referenced {
+		if !foreignKeyUsesColumn(fk.ParentColumns, n.Column) {
+			continue
+		}
+		if !n.Cascade {
+			// TODO: portion after newline should be in DETAILS but we don't yet support that in our error messages
+			return nil, errors.Errorf("cannot drop column %s of table %s because other objects depend on it\nconstraint %s on table %s depends on column %s of table %s",
+				n.Column, tableName.Name, fk.Name, fk.Table, n.Column, tableName.Name)
+		}
+		if err = fkTable.DropForeignKey(ctx, fk.Name, fk.Table, fk.SchemaName); err != nil {
+			return nil, err
+		}
+	}
+	declared, err := fkTable.GetDeclaredForeignKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, fk := range declared {
+		if !foreignKeyUsesColumn(fk.Columns, n.Column) {
+			continue
+		}
+		if err = fkTable.DropForeignKey(ctx, fk.Name, fk.Table, fk.SchemaName); err != nil {
+			return nil, err
+		}
+	}
+	return n, nil
+}
+
+// foreignKeyUsesColumn returns whether the given foreign key columns include the named column.
+func foreignKeyUsesColumn(fkColumns []string, column string) bool {
+	for _, fkColumn := range fkColumns {
+		if strings.EqualFold(fkColumn, column) {
+			return true
+		}
+	}
+	return false
+}
 
 // AfterTableDropColumn handles updating various table columns, alongside other validation that's unique to Doltgres.
 func AfterTableDropColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInterface sql.Node) error {

@@ -41,10 +41,18 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 	}
 	var ignore string
 	var onDuplicate vitess.OnDup
+	var onDuplicateWhere vitess.Expr
+	var conflictTarget vitess.Columns
 
 	if node.OnConflict != nil {
 		if isIgnore(node.OnConflict) {
 			ignore = vitess.IgnoreStr
+			if len(node.OnConflict.Columns) > 0 {
+				conflictTarget = make(vitess.Columns, len(node.OnConflict.Columns))
+				for i, column := range node.OnConflict.Columns {
+					conflictTarget[i] = vitess.NewColIdent(string(column))
+				}
+			}
 		} else if supportedOnConflictClause(node.OnConflict) {
 			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked
 			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs)
@@ -53,6 +61,12 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 			}
 			for _, updateExpr := range updateExprs {
 				onDuplicate = append(onDuplicate, updateExpr)
+			}
+			if node.OnConflict.Where != nil {
+				onDuplicateWhere, err = nodeExpr(ctx, node.OnConflict.Where.Expr)
+				if err != nil {
+					return nil, err
+				}
 			}
 		} else {
 			return nil, errors.Errorf("the ON CONFLICT clause provided is not yet supported")
@@ -107,14 +121,20 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 		}
 	}
 	return &vitess.Insert{
-		Action:    vitess.InsertStr,
-		Ignore:    ignore,
-		Table:     tableName,
-		Returning: returningExprs,
-		With:      with,
-		Columns:   columns,
-		Rows:      rows,
-		OnDup:     onDuplicate,
+		Action:           vitess.InsertStr,
+		Ignore:           ignore,
+		Table:            tableName,
+		Returning:        returningExprs,
+		With:             with,
+		Columns:          columns,
+		ConflictTarget:   conflictTarget,
+		Rows:             rows,
+		OnDup:            onDuplicate,
+		OnDupValuesAlias: "excluded",
+		OnDupWhere:       onDuplicateWhere,
+		// TODO: Apply PostgreSQL's single-row count to unconditional conflict updates once
+		//       enginetests support dialect-specific affected-row expectations.
+		CountOnDuplicateUpdateAsOneRow: node.OnConflict != nil && node.OnConflict.Where != nil,
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_INSERT,
 			TargetType:  auth.AuthTargetType_TableIdentifiers,
@@ -134,11 +154,5 @@ func isIgnore(conflict *tree.OnConflict) bool {
 // supportedOnConflictClause returns true if the ON CONFLICT clause given can be represented as
 // an ON DUPLICATE KEY UPDATE clause in GMS
 func supportedOnConflictClause(conflict *tree.OnConflict) bool {
-	if conflict.ArbiterPredicate != nil {
-		return false
-	}
-	if conflict.Where != nil {
-		return false
-	}
-	return true
+	return conflict.ArbiterPredicate == nil
 }

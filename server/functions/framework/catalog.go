@@ -127,6 +127,7 @@ func Initialize(astConvert func(parser.Statement) (sqlparser.Statement, error)) 
 
 	convertToVitess = astConvert
 	pgtypes.LoadFunctionFromCatalog = getQuickFunctionForTypes
+	pgtypes.LoadExtensionFunction = getQuickExtensionFunction
 	analyzer.ExternalFunctionProvider = &FunctionProvider{}
 	replaceGmsBuiltIns()
 	validateFunctions()

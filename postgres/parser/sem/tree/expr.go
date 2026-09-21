@@ -1784,5 +1784,6 @@ func (node PartitionMinVal) String() string   { return AsString(node) }
 func (node *Placeholder) String() string      { return AsString(node) }
 func (d NullLiteral) String() string          { return AsString(d) }
 func (d DomainColumn) String() string         { return AsString(d) }
+func (u UsingColumn) String() string          { return AsString(u) }
 func (f FunctionColumn) String() string       { return AsString(f) }
 func (list *NameList) String() string         { return AsString(list) }

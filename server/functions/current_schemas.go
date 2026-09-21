@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"slices"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sessiondata"
@@ -36,13 +38,15 @@ var current_schemas = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		schemas := make([]any, 0)
-		if val.(bool) {
-			schemas = append(schemas, sessiondata.PgCatalogName)
-		}
 		searchPaths, err := settings.GetCurrentSchemas(ctx)
 		if err != nil {
 			return nil, err
+		}
+		schemas := make([]any, 0, len(searchPaths)+1)
+		// pg_catalog is searched implicitly, so it is reported first when implicit schemas are requested. A search_path
+		// that names it explicitly has already placed it, so it isn't added a second time.
+		if val.(bool) && !slices.Contains(searchPaths, sessiondata.PgCatalogName) {
+			schemas = append(schemas, sessiondata.PgCatalogName)
 		}
 		for _, schema := range searchPaths {
 			schemas = append(schemas, schema)

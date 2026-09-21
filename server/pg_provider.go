@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
@@ -24,6 +25,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 )
 
@@ -56,6 +58,14 @@ func (p *DoltgresDatabaseProvider) AllDatabases(ctx *sql.Context) []sql.Database
 		all[i] = tables.WrapSqlDatabase(db)
 	}
 	return all
+}
+
+// TableFunction overrides DoltDatabaseProvider.TableFunction to add the table functions defined by Doltgres.
+func (p *DoltgresDatabaseProvider) TableFunction(ctx *sql.Context, name string) (sql.TableFunction, bool) {
+	if strings.EqualFold(name, "unnest") {
+		return &functions.UnnestTableFunction{}, true
+	}
+	return p.DoltDatabaseProvider.TableFunction(ctx, name)
 }
 
 // UnderlyingDoltProvider implements sqle.DoltProviderUnwrapper so that NewSqlEngine can

@@ -203,7 +203,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	}
 	seqState := c.sequence.SequenceState
 	seqName := doltdb.TableName{Name: c.sequence.Id.SequenceName(), Schema: c.sequence.Id.SchemaName()}
-	err = sequenceTracker.AddNewRelation(seqName, seqState)
+	err = sequenceTracker.AddNewRelation(ctx, seqName, seqState)
 	if err != nil {
 		return nil, err
 	}

@@ -39,7 +39,11 @@ func bitExplicit(builtInCasts map[id.Cast]casts.Cast) {
 		CastType: casts.CastType_Explicit,
 		Function: id.NullFunction,
 		BuiltIn: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			array, err := tree.ParseDBitArray(val.(string))
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			array, err := tree.ParseDBitArray(str)
 			if err != nil {
 				return nil, err
 			}
@@ -56,7 +60,11 @@ func bitExplicit(builtInCasts map[id.Cast]casts.Cast) {
 		CastType: casts.CastType_Explicit,
 		Function: id.NullFunction,
 		BuiltIn: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			array, err := tree.ParseDBitArray(val.(string))
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			array, err := tree.ParseDBitArray(str)
 			if err != nil {
 				return nil, err
 			}
@@ -75,13 +83,21 @@ func bitImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Bit,
 		ToType:   pgtypes.Bit,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			input := val.(string)
+			input, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			// A function declared to take bit has no type modifier. Preserve the
+			// input's width when resolving such a function call.
+			if targetType.GetAttTypMod() == -1 {
+				return input, nil
+			}
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
 				return nil, err
 			}
 			expectedLength := targetType.GetAttTypMod()
-			if array.BitLen() != uint(expectedLength) {
+			if expectedLength != -1 && array.BitLen() != uint(expectedLength) {
 				return nil, pgtypes.ErrWrongLengthBit.New(len(input), expectedLength)
 			}
 			return tree.AsStringWithFlags(array, tree.FmtPgwireText), nil
@@ -91,7 +107,10 @@ func bitImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Bit,
 		ToType:   pgtypes.VarBit,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			input := val.(string)
+			input, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
 				return nil, err

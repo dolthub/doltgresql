@@ -19,8 +19,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -52,6 +54,48 @@ func TestMap_RemainsUsableAfterFlushFailure(t *testing.T) {
 	require.NotPanics(t, func() {
 		_, _ = coll.Map(ctx)
 	})
+}
+
+// TestGetTable_NoSchemaToSearch asserts that an unqualified lookup with no schema to search reports no matching table
+// rather than an error, leaving the caller free to resolve the name another way.
+func TestGetTable_NoSchemaToSearch(t *testing.T) {
+	defer withSchemaResolution(t, "", false, nil)()
+
+	coll := newTestTypeCollection(t, tree.NewTestNodeStore())
+	tbl, schema, err := coll.getTable(sql.NewEmptyContext(), "", "registration_status")
+	require.NoError(t, err)
+	require.Nil(t, tbl)
+	require.Empty(t, schema)
+}
+
+// TestGetTable_SchemaResolutionErrorPropagates asserts that a genuine schema resolution failure is still reported.
+func TestGetTable_SchemaResolutionErrorPropagates(t *testing.T) {
+	boom := errors.New("boom")
+	defer withSchemaResolution(t, "", false, boom)()
+
+	coll := newTestTypeCollection(t, tree.NewTestNodeStore())
+	_, _, err := coll.getTable(sql.NewEmptyContext(), "", "registration_status")
+	require.ErrorIs(t, err, boom)
+}
+
+// withSchemaResolution makes resolving an unqualified name yield the given result, returning a restore function. The
+// table hook fails the test if reached, since there is no schema to look a table up in.
+func withSchemaResolution(t *testing.T, schema string, ok bool, err error) func() {
+	t.Helper()
+	origLookupSchemaName, origGetSqlTable := LookupSchemaName, GetSqlTableFromContext
+	LookupSchemaName = func(ctx *sql.Context, db sql.Database, schemaName string) (string, bool, error) {
+		if schemaName == "" {
+			return schema, ok, err
+		}
+		return schemaName, true, nil
+	}
+	GetSqlTableFromContext = func(ctx *sql.Context, databaseName string, tableName doltdb.TableName) (sql.Table, error) {
+		t.Errorf("table lookup attempted with no schema to search: %s", tableName.String())
+		return nil, nil
+	}
+	return func() {
+		LookupSchemaName, GetSqlTableFromContext = origLookupSchemaName, origGetSqlTable
+	}
 }
 
 // newTestTypeCollection returns a TypeCollection backed by |ns| with an

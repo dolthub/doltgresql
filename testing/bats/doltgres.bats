@@ -87,7 +87,7 @@ teardown() {
     PORT=5434
 
     cat > config.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -129,7 +129,7 @@ EOF
     PORT=5434
 
     cat > config.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -171,7 +171,7 @@ EOF
     PORT=5434
 
     cat > config-test.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -215,7 +215,7 @@ EOF
     PORT=5434
 
     cat > config.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -278,7 +278,7 @@ EOF
 @test 'doltgres: config file with all options' {
     PORT=$( definePORT )
     cat > config.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false

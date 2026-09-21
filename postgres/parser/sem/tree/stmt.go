@@ -69,6 +69,8 @@ const (
 	Rows
 	// CopyIn indicates a COPY FROM statement.
 	CopyIn
+	// CopyOut indicates a COPY TO statement.
+	CopyOut
 	// Unknown indicates that the statement does not have a known
 	// return style at the time of parsing. This is not first in the
 	// enumeration because it is more convenient to have Ack as a zero
@@ -459,6 +461,12 @@ func (*CopyFrom) StatementType() StatementType { return CopyIn }
 func (*CopyFrom) StatementTag() string { return "COPY" }
 
 // StatementType implements the Statement interface.
+func (*CopyTo) StatementType() StatementType { return CopyOut }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CopyTo) StatementTag() string { return "COPY" }
+
+// StatementType implements the Statement interface.
 func (*CreateAggregate) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -518,6 +526,12 @@ func (*CreateLanguage) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*CreateLanguage) StatementTag() string { return "CREATE LANGUAGE" }
+
+// StatementType implements the Statement interface.
+func (*Do) StatementType() StatementType { return Ack }
+
+// StatementTag implements the Statement interface.
+func (*Do) StatementTag() string { return "DO" }
 
 // StatementType implements the Statement interface.
 func (*CreateMaterializedView) StatementType() StatementType { return DDL }
@@ -832,7 +846,7 @@ func (*ReparentDatabase) StatementTag() string { return "CONVERT TO SCHEMA" }
 func (*RenameIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*RenameIndex) StatementTag() string { return "RENAME INDEX" }
+func (*RenameIndex) StatementTag() string { return "ALTER INDEX" }
 
 // StatementType implements the Statement interface.
 func (*RenameTable) StatementType() StatementType { return DDL }
@@ -1240,6 +1254,7 @@ func (n *CannedOptPlan) String() string             { return AsString(n) }
 func (n *Comment) String() string                   { return AsString(n) }
 func (n *CommitTransaction) String() string         { return AsString(n) }
 func (n *CopyFrom) String() string                  { return AsString(n) }
+func (n *CopyTo) String() string                    { return AsString(n) }
 func (n *CreateAggregate) String() string           { return AsString(n) }
 func (n *CreateCast) String() string                { return AsString(n) }
 func (n *CreateChangefeed) String() string          { return AsString(n) }

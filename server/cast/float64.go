@@ -38,7 +38,12 @@ func float64Assignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return float32(val.(float64)), nil
+			f := val.(float64)
+			f32 := float32(f)
+			if math.IsInf(float64(f32), 0) && !math.IsInf(f, 0) {
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "real out of range")
+			}
+			return f32, nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{

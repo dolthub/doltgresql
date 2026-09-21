@@ -18,8 +18,8 @@ import "testing"
 
 func TestAlterIndex(t *testing.T) {
 	tests := []QueryParses{
-		Parses("ALTER INDEX name RENAME TO new_name"),
-		Parses("ALTER INDEX IF EXISTS name RENAME TO new_name"),
+		Converts("ALTER INDEX name RENAME TO new_name"),
+		Converts("ALTER INDEX IF EXISTS name RENAME TO new_name"),
 		Parses("ALTER INDEX name SET TABLESPACE tablespace_name"),
 		Parses("ALTER INDEX IF EXISTS name SET TABLESPACE tablespace_name"),
 		Parses("ALTER INDEX name ATTACH PARTITION index_name"),

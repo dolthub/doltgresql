@@ -18,9 +18,11 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression/function/vector"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // testFunction is a stand-in implementation for the extension that these tests register.
@@ -71,6 +73,69 @@ func TestRegistry(t *testing.T) {
 				{Name: "alpha", Symbol: "alpha", Impl: testFunction},
 				{Name: "beta", Symbol: "alpha", Impl: testFunction},
 			},
+		})
+	})
+}
+
+func TestVectorRegistries(t *testing.T) {
+	codec := &pgtypes.TypeCodec{}
+	Register(&extdef.Extension{
+		Name: "doltgres_test_vector",
+		Types: []extdef.Type{
+			{Name: "gamma", Send: "gamma_send", Codec: codec},
+		},
+		Routines: []extdef.Routine{
+			{Name: "gamma_send", Symbol: "gamma_send", Impl: testFunction},
+			{Name: "gamma_distance", Symbol: "gamma_distance", Impl: testFunction, DistanceType: vector.DistanceCosine{}},
+		},
+		OperatorClasses: []extdef.OperatorClass{
+			{Name: "gamma_cosine_ops", AccessMethods: []string{"hnsw"}, Type: "gamma", DistanceType: vector.DistanceCosine{}},
+		},
+		AccessMethods: []extdef.AccessMethod{
+			{Name: "gammatree", Handler: "gammatreehandler"},
+		},
+	})
+
+	require.Same(t, codec, getTypeCodec("gamma_send"))
+	require.Nil(t, getTypeCodec("gamma_send_missing"))
+	require.Equal(t, vector.DistanceCosine{}, GetDistanceType("doltgres_test_vector", "gamma_distance"))
+	require.Nil(t, GetDistanceType("doltgres_test_vector", "gamma_send"))
+	opclass, ok := GetOperatorClass("gamma_cosine_ops")
+	require.True(t, ok)
+	require.Equal(t, vector.DistanceCosine{}, opclass.DistanceType)
+	_, ok = GetOperatorClass("gamma_l2_ops")
+	require.False(t, ok)
+	am, ok := GetAccessMethod("gammatree")
+	require.True(t, ok)
+	require.Equal(t, "gammatreehandler", am.Handler)
+	_, ok = GetAccessMethod("gammaforest")
+	require.False(t, ok)
+
+	// A codec must attach to a declared send routine, since its registry key is the routine's name
+	require.Panics(t, func() {
+		Register(&extdef.Extension{
+			Name:  "doltgres_test_vector_codec",
+			Types: []extdef.Type{{Name: "delta", Codec: codec}},
+		})
+	})
+	// Codec, operator class, and access method names are global, so re-registrations panic
+	require.Panics(t, func() {
+		Register(&extdef.Extension{
+			Name:     "doltgres_test_vector_codec_dup",
+			Types:    []extdef.Type{{Name: "gamma", Send: "gamma_send", Codec: codec}},
+			Routines: []extdef.Routine{{Name: "gamma_send", Symbol: "gamma_send", Impl: testFunction}},
+		})
+	})
+	require.Panics(t, func() {
+		Register(&extdef.Extension{
+			Name:            "doltgres_test_vector_opclass_dup",
+			OperatorClasses: []extdef.OperatorClass{{Name: "gamma_cosine_ops"}},
+		})
+	})
+	require.Panics(t, func() {
+		Register(&extdef.Extension{
+			Name:          "doltgres_test_vector_am_dup",
+			AccessMethods: []extdef.AccessMethod{{Name: "gammatree"}},
 		})
 	})
 }

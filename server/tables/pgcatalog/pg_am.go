@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -44,8 +45,37 @@ func (p PgAmHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAmHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.extensions == nil {
+		err = cachePgExtensions(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	ams := defaultPostgresAms
+	for _, ext := range pgCatalogCache.extensions {
+		declaration, err := extensions.Get(ext.ExtName.Name())
+		if err != nil {
+			return nil, err
+		}
+		for _, am := range declaration.AccessMethods {
+			ams = append(ams, accessMethod{
+				oid:     id.NewAccessMethod(am.Name).AsId(),
+				name:    am.Name,
+				handler: id.NewFunction(ext.Namespace.SchemaName(), am.Handler, pgtypes.Internal.ID).AsId(),
+				typ:     "i",
+			})
+		}
+	}
+
 	return &pgAmRowIter{
-		ams: defaultPostgresAms,
+		ams: ams,
 		idx: 0,
 	}, nil
 }

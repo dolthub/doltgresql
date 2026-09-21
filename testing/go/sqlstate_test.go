@@ -49,6 +49,21 @@ func TestSQLStateCodes(t *testing.T) {
 					ExpectedErrCode: "22003",
 				},
 				{
+					Query:           "SELECT 9223372036854775807::int8 + 1",
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           "SELECT (-9223372036854775807)::int8 - 2",
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           "SELECT 3037000500::int8 * 3037000500::int8",
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
 					Query:           "SELECT acos(2.0)",
 					ExpectedErr:     "input is out of range",
 					ExpectedErrCode: "22003",

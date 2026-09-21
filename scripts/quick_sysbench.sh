@@ -41,7 +41,7 @@ values=(
 for value in "${values[@]}"; do
   SYSBENCH_TEST="$value"
   cat <<YAML > dolt-config.yaml
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false

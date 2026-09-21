@@ -36,6 +36,7 @@ import (
 
 // initBinaryLessThan registers the functions to the catalog.
 func initBinaryLessThan() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, array_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, boollt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, bpcharlt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, bytealt)
@@ -79,6 +80,18 @@ func initBinaryLessThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, uuid_lt)
 }
 
+// array_lt represents the PostgreSQL function of the same name, taking the same parameters.
+var array_lt = framework.Function2{
+	Name:       "array_lt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := t[0].Compare(ctx, val1, val2)
+		return res < 0, err
+	},
+}
+
 // boollt represents the PostgreSQL function of the same name, taking the same parameters.
 var boollt = framework.Function2{
 	Name:       "boollt",
@@ -98,7 +111,7 @@ var bpcharlt = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.BpChar.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.BpChar.Compare(ctx, val1, val2)
 		return res == -1, err
 	},
 }
@@ -122,7 +135,7 @@ var charlt = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.InternalChar.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.InternalChar.Compare(ctx, val1, val2)
 		return res == -1, err
 	},
 }
@@ -362,7 +375,7 @@ var namelt = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Name},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Name.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.Name.Compare(ctx, val1, val2)
 		return res == -1, err
 	},
 }
@@ -374,7 +387,7 @@ var namelttext = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.Text.Compare(ctx, val1, val2)
 		return res == -1, err
 	},
 }
@@ -422,7 +435,7 @@ var textltname = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Name},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.Text.Compare(ctx, val1, val2)
 		return res == -1, err
 	},
 }

@@ -46,7 +46,7 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 	if err != nil {
 		return nil, false
 	}
-	// TODO: this should search all schemas in the search path, but the search path doesn't handle pg_catalog yet
+	// We check pg_catalog first, but not sure if that's how Postgres resolves function order
 	funcName := id.NewFunction("pg_catalog", name)
 	overloads, err := funcCollection.GetFunctionOverloads(ctx, funcName)
 	if err != nil {
@@ -57,21 +57,28 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 		return nil, false
 	}
 	if len(overloads) == 0 && len(aggOverloads) == 0 {
+		var schemasToSearch []string
 		if schema == "" {
-			currentSchema, err := core.GetCurrentSchema(ctx)
+			schemasToSearch, err = core.SearchPath(ctx)
 			if err != nil {
 				return nil, false
 			}
-			schema = currentSchema
+		} else {
+			schemasToSearch = []string{schema}
 		}
-		funcName = id.NewFunction(schema, name)
-		overloads, err = funcCollection.GetFunctionOverloads(ctx, funcName)
-		if err != nil {
-			return nil, false
-		}
-		aggOverloads, err = aggCollection.GetAggregateOverloads(ctx, funcName)
-		if err != nil {
-			return nil, false
+		for _, searchSchema := range schemasToSearch {
+			funcName = id.NewFunction(searchSchema, name)
+			overloads, err = funcCollection.GetFunctionOverloads(ctx, funcName)
+			if err != nil {
+				return nil, false
+			}
+			aggOverloads, err = aggCollection.GetAggregateOverloads(ctx, funcName)
+			if err != nil {
+				return nil, false
+			}
+			if len(overloads) > 0 || len(aggOverloads) > 0 {
+				break
+			}
 		}
 		if len(overloads) == 0 && len(aggOverloads) == 0 {
 			return nil, false

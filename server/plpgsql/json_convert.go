@@ -20,6 +20,19 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+// datumNames gives the name of each of a function's datums, indexed by its datum number. A statement may
+// name its target by that number rather than carry the datum itself, as FOREACH names its loop variable.
+type datumNames []string
+
+// Name returns the name of the datum numbered |datumNumber| as declared, which is how an assignment names
+// its target. A quoted declaration's name comes back without its quotes.
+func (names datumNames) Name(datumNumber int32) (string, error) {
+	if datumNumber < 0 || int(datumNumber) >= len(names) || len(names[datumNumber]) == 0 {
+		return "", errors.Errorf("PL/pgSQL datum %d does not name a declared variable", datumNumber)
+	}
+	return names[datumNumber], nil
+}
+
 // jsonConvert handles the conversion from the JSON format into a format that is easier to work with.
 func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 	block := Block{
@@ -38,6 +51,11 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 		}
 	}
 	offset := int32(0) - lowestRecordNumber
+	// PL/pgSQL creates the built-in FOUND variable itself, immediately after the function's parameters, so
+	// it arrives looking like a parameter (no line number). We track where it lands so it can be turned
+	// back into a declaration below. A parameter may also be named `found`, in which case the built-in is
+	// the later of the two and shadows it, so the last match is the one that counts.
+	foundVariableIndex := -1
 	// Then we do a second loop that actually adds all of the datums to the block
 	for _, v := range jsonBlock.Datums {
 		switch {
@@ -62,6 +80,9 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 				block.Records[recordParentNumber].Fields, v.RecordField.FieldName)
 		case v.Row != nil:
 		case v.Variable != nil:
+			if v.Variable.LineNumber == 0 && strings.EqualFold(v.Variable.RefName, FoundVariableName) {
+				foundVariableIndex = len(block.Variables)
+			}
 			block.Variables = append(block.Variables, Variable{
 				Name:        v.Variable.RefName,
 				Type:        strings.ToLower(v.Variable.Type.Type.Name),
@@ -69,11 +90,36 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 				Default:     v.Variable.Default.Var.Query,
 			})
 		default:
-			return Block{}, errors.Errorf("unhandled datum type: %T", v)
+			// The datum struct is a union of pointers, so printing its type here would only ever say
+			// "plpgsql.datum". Name the arms we do handle instead.
+			return Block{}, errors.New("unhandled declared variable: expected a record, record field, row, or variable")
+		}
+	}
+	// FOUND is not passed in by the caller, so it has to be declared and initialized like any other local.
+	// Postgres starts it out false.
+	if foundVariableIndex >= 0 {
+		block.Variables[foundVariableIndex].IsParameter = false
+		block.Variables[foundVariableIndex].Default = "false"
+		// The datum names the type as `pg_catalog."boolean"`, which OpCode_Declare cannot resolve: it maps
+		// a qualified pg_catalog name through TypeForNonKeywordTypeName, which has no entry for the
+		// `boolean` spelling, so the lookup is left asking for a type named `boolean` and fails. Name the
+		// type by its canonical name instead. The same gap makes a hand-written `DECLARE b
+		// pg_catalog.boolean` fail, so teaching that alias table about `boolean` would let this go away.
+		block.Variables[foundVariableIndex].Type = "pg_catalog.bool"
+	}
+	// The NEW and OLD records of a trigger appear in the datum list like any other record, but they are
+	// supplied by the trigger invocation rather than declared by the function, so they must not be
+	// redeclared (which would shadow the supplied values with an empty record).
+	for _, triggerRecordNumber := range []int32{jsonBlock.NewVariableNumber, jsonBlock.OldVariableNumber} {
+		if triggerRecordNumber == 0 {
+			continue
+		}
+		if idx := triggerRecordNumber + offset; idx >= 0 && int(idx) < len(block.Records) {
+			block.Records[idx].IsTriggerRecord = true
 		}
 	}
 	var err error
-	block.Body, err = jsonConvertStatements(jsonBlock.Action.StmtBlock.Body)
+	block.Body, err = jsonConvertStatements(jsonBlock.Action.StmtBlock.Body, datumNamesFor(jsonBlock.Datums))
 	if err != nil {
 		return Block{}, err
 	}
@@ -81,12 +127,12 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 }
 
 // jsonConvertStatement converts a statement in JSON form to the output form.
-func jsonConvertStatement(stmt statement) (Statement, error) {
+func jsonConvertStatement(stmt statement, datums datumNames) (Statement, error) {
 	switch {
 	case stmt.Assignment != nil:
 		return stmt.Assignment.Convert()
 	case stmt.Block != nil:
-		stmts, err := jsonConvertStatements(stmt.Block.Body)
+		stmts, err := jsonConvertStatements(stmt.Block.Body, datums)
 		if err != nil {
 			return Block{}, err
 		}
@@ -96,21 +142,23 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 	case stmt.Call != nil:
 		return stmt.Call.Convert()
 	case stmt.Case != nil:
-		return stmt.Case.Convert()
+		return stmt.Case.Convert(datums)
 	case stmt.DynExec != nil:
 		return stmt.DynExec.Convert()
 	case stmt.ExecSQL != nil:
 		return stmt.ExecSQL.Convert()
 	case stmt.Exit != nil:
 		return stmt.Exit.Convert(), nil
+	case stmt.ForEachArray != nil:
+		return stmt.ForEachArray.Convert(datums)
 	case stmt.ForILoop != nil:
-		return stmt.ForILoop.Convert()
+		return stmt.ForILoop.Convert(datums)
 	case stmt.ForSLoop != nil:
-		return stmt.ForSLoop.Convert()
+		return stmt.ForSLoop.Convert(datums)
 	case stmt.If != nil:
-		return stmt.If.Convert()
+		return stmt.If.Convert(datums)
 	case stmt.Loop != nil:
-		return stmt.Loop.Convert()
+		return stmt.Loop.Convert(datums)
 	case stmt.Perform != nil:
 		return stmt.Perform.Convert(), nil
 	case stmt.Raise != nil:
@@ -120,21 +168,42 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 	case stmt.ReturnQuery != nil:
 		return stmt.ReturnQuery.Convert(), nil
 	case stmt.While != nil:
-		return stmt.While.Convert()
+		return stmt.While.Convert(datums)
 	default:
 		return Block{}, errors.Errorf("unhandled statement type: %T", stmt)
 	}
 }
 
 // jsonConvertStatements converts a collection of statements in JSON form to their output form.
-func jsonConvertStatements(stmts []statement) ([]Statement, error) {
+func jsonConvertStatements(stmts []statement, datums datumNames) ([]Statement, error) {
 	newStmts := make([]Statement, len(stmts))
 	for i, stmt := range stmts {
 		var err error
-		newStmts[i], err = jsonConvertStatement(stmt)
+		newStmts[i], err = jsonConvertStatement(stmt, datums)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return newStmts, nil
+}
+
+// datumNamesFor indexes the names of |datums| by datum number, which is the order they are declared in.
+func datumNamesFor(datums []datum) datumNames {
+	names := make(datumNames, len(datums))
+	for i, v := range datums {
+		switch {
+		case v.Record != nil:
+			names[i] = v.Record.RefName
+		case v.RecordField != nil:
+			// A field is named through its record, which is always declared ahead of it.
+			if parent := v.RecordField.RecordParentNumber; parent >= 0 && int(parent) < i {
+				names[i] = names[parent] + "." + v.RecordField.FieldName
+			}
+		case v.Row != nil:
+			names[i] = v.Row.RefName
+		case v.Variable != nil:
+			names[i] = v.Variable.RefName
+		}
+	}
+	return names
 }

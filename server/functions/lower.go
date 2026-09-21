@@ -36,6 +36,10 @@ var lower_text = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		//TODO: this doesn't respect collations
-		return strings.ToLower(val1.(string)), nil
+		str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return strings.ToLower(str), nil
 	},
 }

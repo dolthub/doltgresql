@@ -161,7 +161,7 @@ func TestTabDataLoader(t *testing.T) {
 
 		// Assert that the table contains the expected data
 		assert.Equal(t, []sql.Row{
-			{int64(1), int64(100), "\"baz\\nbar\\nbash\""},
+			{int64(1), int64(100), "\"baz\nbar\nbash\""},
 			{int64(2), int64(200), "bash"},
 		}, rows)
 	})

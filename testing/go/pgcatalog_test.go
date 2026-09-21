@@ -450,6 +450,7 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", "f", "f", "f", "t", nil, nil, "test extension to ensure that emulated extensions behave properly"},
 						{"uuid-ossp", "1.1", "f", "t", "t", "t", nil, nil, "generate universally unique identifiers (UUIDs)"},
+						{"vector", "0.8.6", "f", "t", "f", "t", nil, nil, "vector data type and ivfflat and hnsw access methods"},
 					},
 				},
 				{ // No extensions are installed by default
@@ -501,6 +502,7 @@ func TestPgAvailableExtensions(t *testing.T) {
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", nil, "test extension to ensure that emulated extensions behave properly"},
 						{"uuid-ossp", "1.1", nil, "generate universally unique identifiers (UUIDs)"},
+						{"vector", "0.8.6", nil, "vector data type and ivfflat and hnsw access methods"},
 					},
 				},
 				{ // No extensions are installed by default
@@ -569,7 +571,7 @@ func TestPgCast(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT COUNT(*) FROM "pg_catalog"."pg_cast";`,
-					Expected: []sql.Row{{118}},
+					Expected: []sql.Row{{125}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_cast";`,
@@ -581,7 +583,7 @@ func TestPgCast(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT COUNT(*) FROM PG_catalog.pg_CAST ORDER BY oid;",
-					Expected: []sql.Row{{118}},
+					Expected: []sql.Row{{125}},
 				},
 			},
 		},
@@ -666,6 +668,20 @@ func TestPgClass(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE oid=1234`,
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name:        "pg_class branch virtual index names",
+			SetUpScript: []string{"set dolt_show_system_tables=1"},
+			Assertions: []ScriptTestAssertion{
+				// Branch and remote-branch virtual indexes have distinct catalog names.
+				{
+					Query: `SELECT c.relname, c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = 'public' AND c.relname IN ('dolt_branches_dolt_branches_name_idx_key', 'dolt_remote_branches_dolt_branches_name_idx_key') ORDER BY c.relname;`,
+					Expected: []sql.Row{
+						{"dolt_branches_dolt_branches_name_idx_key", "i"},
+						{"dolt_remote_branches_dolt_branches_name_idx_key", "i"},
+					},
 				},
 			},
 		},
@@ -1093,7 +1109,29 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{" ├─ columns: [pg_constraint.conname]"},
 						{" └─ Sort(pg_constraint.conname ASC)"},
 						{"     └─ Filter"},
-						{"         ├─ ((pg_constraint.conrelid >= Subquery((select  min(oid) from pg_class where relname like 'test_%')) AND pg_constraint.conrelid <= Subquery((select min max(oid) from pg_class where relname like 'test_%'))) AND pg_constraint.contypid = 0)"},
+						{"         ├─ ((pg_constraint.conrelid >= Subquery"},
+						{"         │   ├─ cacheable: true"},
+						{"         │   └─ Project"},
+						{"         │       ├─ columns: [min(pg_class.oid) as `min`]"},
+						{"         │       └─ GroupBy"},
+						{"         │           ├─ select: MIN(pg_class.oid)"},
+						{"         │           ├─ group: "},
+						{"         │           └─ Filter"},
+						{"         │               ├─ pg_class.relname LIKE 'test_%'"},
+						{"         │               └─ Table"},
+						{"         │                   └─ name: pg_class"},
+						{"         │   AND pg_constraint.conrelid <= Subquery"},
+						{"         │   ├─ cacheable: true"},
+						{"         │   └─ Project"},
+						{"         │       ├─ columns: [max(pg_class.oid) as `max`]"},
+						{"         │       └─ GroupBy"},
+						{"         │           ├─ select: MAX(pg_class.oid)"},
+						{"         │           ├─ group: "},
+						{"         │           └─ Filter"},
+						{"         │               ├─ pg_class.relname LIKE 'test_%'"},
+						{"         │               └─ Table"},
+						{"         │                   └─ name: pg_class"},
+						{"         │  ) AND pg_constraint.contypid = 0)"},
 						{"         └─ IndexedTableAccess(pg_constraint)"},
 						{"             ├─ index: [pg_constraint.contypid]"},
 						{"             └─ filters: [{[{OID:[\"0\"]}, {OID:[\"0\"]}]}]"},
@@ -1284,7 +1322,7 @@ func TestPgDatabase(t *testing.T) {
 				{
 					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
-						{258611842, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
+						{258611842, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "C", "C", nil, "", nil, nil},
 					},
 				},
 			},
@@ -1754,9 +1792,9 @@ func TestPgIndex(t *testing.T) {
 						WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'
 						ORDER BY 1;`,
 					Expected: []sql.Row{
-						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "", "", "0", nil, nil},
-						{2070175302, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "", "", "0", nil, nil},
-						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "", "", "0", nil, nil},
+						{1067629180, 3120782595, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "15009", "0", nil, nil},
+						{2070175302, 3120782595, 1, 1, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "15009", "0", nil, nil},
+						{3185790121, 1784425749, 2, 2, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "0 0", "15009 15009", "0 0", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1789,7 +1827,34 @@ func TestPgIndex(t *testing.T) {
 				},
 				{
 					Query:    "SELECT unnest(indoption) FROM pg_index LIMIT 1;",
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
+		{
+			Name: "pg_index indoption has one entry per key column", // https://github.com/dolthub/doltgresql/issues/3110
+			SetUpScript: []string{
+				`CREATE TABLE bug13 (a integer, b integer);`,
+				`CREATE INDEX bug13_ab ON bug13 (a, b);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT indkey, indoption, array_length(indkey, 1), array_length(indoption, 1)
+						FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{
+						{"1 2", "0 0", 2, 2},
+					},
+				},
+				{
+					Query: `SELECT indnatts, indnkeyatts, array_length(indcollation, 1), array_length(indclass, 1)
+						FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{
+						{2, 2, 2, 2},
+					},
+				},
+				{
+					Query:    `SELECT unnest(indoption) FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{{0}, {0}},
 				},
 			},
 		},
@@ -2089,6 +2154,48 @@ func TestPgNamespace(t *testing.T) {
 					Expected: []sql.Row{
 						{2200},
 					},
+				},
+			},
+		},
+		{
+			Name: "regnamespace",
+			SetUpScript: []string{
+				"CREATE SCHEMA s3334;",
+				"CREATE TABLE t3334 (id INT PRIMARY KEY, ns REGNAMESPACE);",
+				"INSERT INTO t3334 VALUES (1, 'public'), (2, 's3334');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT 'public'::regnamespace;",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT oid::regnamespace FROM pg_namespace WHERE nspname = 'public';",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT 'public'::REGNAMESPACE, 'public'::REGNAMESPACE::OID = (SELECT oid FROM pg_namespace WHERE nspname = 'public'), 's3334'::REGNAMESPACE::TEXT, to_regnamespace('s3334') IS NOT NULL, to_regnamespace('nope'), (SELECT nspname FROM pg_namespace WHERE oid = 's3334'::REGNAMESPACE);",
+					Expected: []sql.Row{{"public", "t", "s3334", "t", nil, "s3334"}},
+				},
+				{
+					Query:    "SELECT relnamespace::REGNAMESPACE FROM pg_class WHERE relname = 't3334';",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT typname FROM pg_type WHERE typname = 'regnamespace';",
+					Expected: []sql.Row{{"regnamespace"}},
+				},
+				{
+					Query:    "SELECT id, ns, ns::TEXT FROM t3334 ORDER BY id;",
+					Expected: []sql.Row{{1, "public", "public"}, {2, "s3334", "s3334"}},
+				},
+				{
+					Query:       "SELECT 'nope'::REGNAMESPACE;",
+					ExpectedErr: `schema "nope" does not exist`,
+				},
+				{
+					Query:       "SELECT 'a.b'::REGNAMESPACE;",
+					ExpectedErr: "invalid name syntax",
 				},
 			},
 		},
@@ -2474,6 +2581,20 @@ func TestPgOpclass(t *testing.T) {
 							WHERE opc.opcname = 'varchar_ops' AND am.amname = 'hash';`,
 					Expected: []sql.Row{
 						{"varchar_ops", "text", "f"},
+					},
+				},
+				{ // The hash pattern classes belong to the hash pattern families, which have their own fixed OIDs
+					Query: `SELECT opf.oid, opc.opcname, t.typname, opc.opcdefault
+							FROM pg_catalog.pg_opclass opc
+							JOIN pg_catalog.pg_am am ON opc.opcmethod = am.oid
+							JOIN pg_catalog.pg_opfamily opf ON opc.opcfamily = opf.oid
+							JOIN pg_catalog.pg_type t ON opc.opcintype = t.oid
+							WHERE opc.opcname LIKE '%pattern%' AND am.amname = 'hash'
+							ORDER BY opc.opcname;`,
+					Expected: []sql.Row{
+						{2231, "bpchar_pattern_ops", "bpchar", "f"},
+						{2229, "text_pattern_ops", "text", "f"},
+						{2229, "varchar_pattern_ops", "text", "f"},
 					},
 				},
 				{
@@ -5972,8 +6093,8 @@ func TestPgIndexIndexes(t *testing.T) {
 					Query: `SELECT * FROM pg_catalog.pg_index i 
 WHERE i.indrelid = 1496157034 order by 1`,
 					Expected: []sql.Row{
-						{3992679530, 1496157034, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "", "", "0", nil, nil},
-						{4052612617, 1496157034, 1, 0, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "", "", "0", nil, nil},
+						{3992679530, 1496157034, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "15009", "0", nil, nil},
+						{4052612617, 1496157034, 1, 1, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "15009", "0", nil, nil},
 					},
 				},
 				{
@@ -6017,7 +6138,6 @@ WHERE i.indrelid IN (1496157033, 1496157034)`,
 					},
 				},
 				{
-					// TODO: this uses an index but the plan doesn't show it because of prepared statements
 					Query: `EXPLAIN SELECT i.indrelid FROM pg_catalog.pg_index i 
 WHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't1_pkey')
 ORDER BY 1;`,
@@ -6026,7 +6146,16 @@ ORDER BY 1;`,
 						{" ├─ columns: [i.indrelid]"},
 						{" └─ Sort(i.indrelid ASC)"},
 						{"     └─ Filter"},
-						{"         ├─ i.indexrelid = Subquery((select  c.oid from pg_class as c where ? = ?))"},
+						{"         ├─ i.indexrelid = Subquery"},
+						{"         │   ├─ cacheable: true"},
+						{"         │   └─ Project"},
+						{"         │       ├─ columns: [c.oid]"},
+						{"         │       └─ Filter"},
+						{"         │           ├─ c.relname = 't1_pkey'"},
+						{"         │           └─ TableAlias(c)"},
+						{"         │               └─ IndexedTableAccess(pg_class)"},
+						{"         │                   ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"         │                   └─ filters: [{[t1_pkey, t1_pkey], [NULL, ∞)}]"},
 						{"         └─ TableAlias(i)"},
 						{"             └─ Table"},
 						{"                 └─ name: pg_index"},
@@ -6037,8 +6166,8 @@ ORDER BY 1;`,
 WHERE i.indrelid = 1496157034 ORDER BY 1`,
 					Expected: []sql.Row{
 						{"Project"},
-						{" ├─ columns: [count(1) as count]"},
-						{" └─ Sort(count(1) as count ASC)"},
+						{" ├─ columns: [count(1) as `count`]"},
+						{" └─ Sort(count(1) as `count` ASC)"},
 						{"     └─ GroupBy"},
 						{"         ├─ select: COUNT(1)"},
 						{"         ├─ group: "},
@@ -6055,8 +6184,8 @@ WHERE i.indrelid = 1496157034 ORDER BY 1`,
 WHERE i.indrelid IN (1496157033, 1496157034) ORDER BY 1`,
 					Expected: []sql.Row{
 						{"Project"},
-						{" ├─ columns: [count(1) as count]"},
-						{" └─ Sort(count(1) as count ASC)"},
+						{" ├─ columns: [count(1) as `count`]"},
+						{" └─ Sort(count(1) as `count` ASC)"},
 						{"     └─ GroupBy"},
 						{"         ├─ select: COUNT(1)"},
 						{"         ├─ group: "},
@@ -6434,7 +6563,7 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
   AND NOT pg_catalog.pg_index.indisprimary
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 					Expected: []sql.Row{
-						{3491847678, "dolt_log_commit_hash_key", "t", "t", "0", interface{}(nil), "btree", interface{}(nil), 0, "f", "{commit_hash}", "{f}"},
+						{3491847678, "dolt_log_commit_hash_key", "t", "t", "2", interface{}(nil), "btree", interface{}(nil), 1, "f", "{commit_hash}", "{f}"},
 					},
 				},
 			},
@@ -6574,7 +6703,7 @@ FROM pg_catalog.pg_index
 WHERE pg_catalog.pg_index.indrelid IN (select oid from pg_class where relname='t2')
   AND NOT pg_catalog.pg_index.indisprimary ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 					Expected: []sql.Row{
-						{1496157034, "t2_b_idx", "f", "f", "0", nil, "btree", nil, 0, "f", "{b}", "{f}"},
+						{1496157034, "t2_b_idx", "f", "f", "0", nil, "btree", nil, 1, "f", "{b}", "{f}"},
 					},
 				},
 			},
@@ -6624,7 +6753,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{"public", "dolt_schema_conflicts", "postgres", nil, "f", "f", "f", "f"},
 						{"public", "dolt_status", "postgres", nil, "f", "f", "f", "f"},
 						{"public", "dolt_status_ignored", "postgres", nil, "f", "f", "f", "f"},
-						{"public", "dolt_tags", "postgres", nil, "f", "f", "f", "f"},
+						{"public", "dolt_tags", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_branches", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_column_diff", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_commit_ancestors", "postgres", nil, "t", "f", "f", "f"},
@@ -6644,7 +6773,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{"s1", "dolt_schema_conflicts", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_status", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_status_ignored", "postgres", nil, "f", "f", "f", "f"},
-						{"s1", "dolt_tags", "postgres", nil, "f", "f", "f", "f"},
+						{"s1", "dolt_tags", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_workspace_t1", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "t1", "postgres", nil, "t", "f", "f", "f"},
 					},
@@ -6684,6 +6813,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1060579466, "dolt_status", 2200, "r"},
 						{1523309269, "dolt_status_ignored", 2200, "r"},
 						{1807684176, "dolt_tags", 2200, "r"},
+						{1241754361, "dolt_tags_dolt_tags_name_idx_key", 2200, "i"},
 						{2969045375, "commits_from", 1634633383, "i"},
 						{1819666711, "commits_to", 1634633383, "i"},
 						{1763579892, "dolt_branches", 1634633383, "r"},
@@ -6716,6 +6846,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{3554775706, "dolt_status", 1634633383, "r"},
 						{1227149778, "dolt_status_ignored", 1634633383, "r"},
 						{3246414078, "dolt_tags", 1634633383, "r"},
+						{1294273546, "dolt_tags_dolt_tags_name_idx_key", 1634633383, "i"},
 						{1640933374, "dolt_workspace_t1", 1634633383, "r"},
 						{170053857, "from_pks", 1634633383, "i"},
 						{2849341124, "t1", 1634633383, "r"},
@@ -6740,6 +6871,22 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1670572237, "remotes", 1882653564, "r"},
 						{3431637196, "status", 1882653564, "r"},
 						{3418072419, "status_ignored", 1882653564, "r"},
+					},
+				},
+			},
+		},
+		{
+			Name: "ref index catalog names",
+			SetUpScript: []string{
+				`SET dolt_show_system_tables = 1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT tablename, indexname FROM pg_catalog.pg_indexes WHERE schemaname = 'public' AND tablename IN ('dolt_branches', 'dolt_remote_branches', 'dolt_tags') ORDER BY tablename;`,
+					Expected: []sql.Row{
+						{"dolt_branches", "dolt_branches_dolt_branches_name_idx_key"},
+						{"dolt_remote_branches", "dolt_remote_branches_dolt_branches_name_idx_key"},
+						{"dolt_tags", "dolt_tags_dolt_tags_name_idx_key"},
 					},
 				},
 			},

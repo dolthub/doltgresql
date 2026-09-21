@@ -348,7 +348,13 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		right, err := nodeExpr(ctx, node.Right)
+		var right vitess.Expr
+		switch node.Operator {
+		case tree.Any, tree.Some, tree.All:
+			right, err = nodeDelimitedExpr(ctx, node.Right)
+		default:
+			right, err = nodeExpr(ctx, node.Right)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -613,6 +619,14 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		return vitess.InjectedExpr{
 			Expression: &pgnodes.DomainColumn{Typ: dataType},
 		}, nil
+	case tree.UsingColumn:
+		return vitess.InjectedExpr{
+			Expression: &pgnodes.UsingColumn{
+				SchemaName: node.SchemaName,
+				TableName:  node.TableName,
+				ColumnName: node.Name,
+			},
+		}, nil
 	case tree.FunctionColumn:
 		if !node.FromCreate {
 			return vitess.InjectedExpr{
@@ -701,7 +715,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.IsOfTypeExpr:
 		return nil, errors.Errorf("IS OF is not yet supported")
 	case *tree.NotExpr:
-		expr, err := nodeExpr(ctx, node.Expr)
+		expr, err := nodeDelimitedExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -754,13 +768,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Right: right,
 		}, nil
 	case *tree.ParenExpr:
-		expr, err := nodeExpr(ctx, node.Expr)
-		if err != nil {
-			return nil, err
-		}
-		return &vitess.ParenExpr{
-			Expr: expr,
-		}, nil
+		return nodeParenExpr(ctx, node)
 	case *tree.PartitionMaxVal:
 		return nil, errors.Errorf("MAXVALUE is not yet supported")
 	case *tree.PartitionMinVal:
@@ -968,4 +976,44 @@ func translateConvertType(convertType *vitess.ConvertType) (*vitess.ConvertType,
 	default:
 		return nil, errors.Errorf("unknown convert type: `%T`", convertType.Type)
 	}
+}
+
+// nodeCheckExpr converts a check constraint expression, keeping every set of parentheses that its string form would
+// not otherwise carry, so that the stored string re-parses to an expression with an identical string form.
+func nodeCheckExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
+	ctx.preserveParens = true
+	expr, err := nodeExpr(ctx, node)
+	ctx.preserveParens = false
+	return expr, err
+}
+
+// nodeParenExpr converts a parenthesized expression. Within a check constraint the parentheses are kept, except around
+// AND, OR, NOT, and BETWEEN, whose string forms already carry their own.
+func nodeParenExpr(ctx *Context, node *tree.ParenExpr) (vitess.Expr, error) {
+	expr, err := nodeExpr(ctx, node.Expr)
+	if err != nil {
+		return nil, err
+	}
+	if ctx.preserveParens {
+		switch node.Expr.(type) {
+		case *tree.AndExpr, *tree.OrExpr, *tree.NotExpr, *tree.RangeCond:
+		default:
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewParens(),
+				Children:   vitess.Exprs{expr},
+			}, nil
+		}
+	}
+	return &vitess.ParenExpr{
+		Expr: expr,
+	}, nil
+}
+
+// nodeDelimitedExpr converts an expression whose parent already delimits it with parentheses in its string form, so
+// that within a check constraint its outermost parentheses are not kept.
+func nodeDelimitedExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
+	if parens, ok := node.(*tree.ParenExpr); ok && ctx.preserveParens {
+		node = parens.Expr
+	}
+	return nodeExpr(ctx, node)
 }

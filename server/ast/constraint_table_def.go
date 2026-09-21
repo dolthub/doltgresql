@@ -37,7 +37,7 @@ func nodeCheckConstraintTableDef(
 		return nil, errors.Errorf("NO INHERIT is not yet supported for check constraints")
 	}
 
-	expr, err := nodeExpr(ctx, node.Expr)
+	expr, err := nodeCheckExpr(ctx, node.Expr)
 	if err != nil {
 		return nil, err
 	}

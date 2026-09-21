@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -92,6 +93,7 @@ type DoltgresType struct {
 	// Below are not stored
 	IsSerial            bool    // used for serial types only (e.g.: smallserial)
 	IsUnresolved        bool    // used internally to know if a type has been resolved
+	UnresolvedTypmods   []any   // used internally to carry type modifiers until the type is resolved
 	BaseTypeForInternal id.Type // used for INTERNAL type only
 	SerializationFunc   internalSerializationFunc
 	DeserializationFunc internalDeserializationFunc
@@ -160,13 +162,19 @@ func (t *DoltgresType) AnalyzeFuncName() string {
 
 // ArrayBaseType returns the base type of an array type.
 func (t *DoltgresType) ArrayBaseType() *DoltgresType {
-	if !t.IsArrayType() {
-		return t
-	}
 	// Some array types have no declared element type for pg_catalog compatibility, but still have a logical type
 	// we return for analysis.
 	if t.ID == AnyArray.ID {
 		return AnyElement
+	}
+	// TODO: IsArrayType() currently conflates different meanings (iterable via t.Elem, array versus
+	// vector output formatting, how ToArrayType() checks if a type is already an array type).
+	// Types like int2vector and oidvector have meanings that diverge for some of those
+	// and need to be handled differently. Longer term, we should probably untangle these different
+	// traits into separate APIs that can be queried for types, but for now, we just check if Elem
+	// is the NULL type here to determine if the type contains a nested element type or not.
+	if t.Elem.ID == id.NullType {
+		return t
 	}
 	return t.Elem.WithAttTypMod(t.attTypMod)
 }
@@ -323,18 +331,18 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		}
 	case float32:
 		bb := v2.(float32)
-		if ab == bb {
+		if ab == bb || (ab != ab && bb != bb) {
 			return 0, nil
-		} else if ab < bb {
+		} else if ab < bb || bb != bb {
 			return -1, nil
 		} else {
 			return 1, nil
 		}
 	case float64:
 		bb := v2.(float64)
-		if ab == bb {
+		if ab == bb || (math.IsNaN(ab) && math.IsNaN(bb)) {
 			return 0, nil
-		} else if ab < bb {
+		} else if ab < bb || math.IsNaN(bb) {
 			return -1, nil
 		} else {
 			return 1, nil
@@ -377,6 +385,10 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		}
 	case string:
 		bb := v2.(string)
+		if t.ID == BpChar.ID {
+			ab = strings.TrimRight(ab, " ")
+			bb = strings.TrimRight(bb, " ")
+		}
 		if ab == bb {
 			return 0, nil
 		} else if ab < bb {
@@ -480,6 +492,17 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 			return 1, nil
 		}
 	default:
+		if t.CompareFunc != 0 {
+			sqlCtx, ok := ctx.(*sql.Context)
+			if !ok {
+				sqlCtx = sql.NewEmptyContext()
+			}
+			i, err := globalFunctionRegistry.GetFunction(sqlCtx, t.CompareFunc).CallVariadic(nil, v1, v2)
+			if err != nil {
+				return 0, err
+			}
+			return int(i.(int32)), nil
+		}
 		return 0, errors.Errorf("unhandled type %T in Compare", v1)
 	}
 }
@@ -495,7 +518,11 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 			return v, sql.InRange, nil
 		}
 	case "bytea":
-		if _, ok := v.([]byte); ok {
+		_, ok, err := sql.Unwrap[[]byte](ctx, v)
+		if err != nil {
+			return nil, sql.InRange, err
+		}
+		if ok {
 			return v, sql.InRange, nil
 		}
 	case "bpchar", "char", "name", "text", "varchar":
@@ -538,10 +565,14 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.(sql.JSONWrapper); ok {
 			return v, sql.InRange, nil
 		}
-		if _, ok := v.(string); ok {
+		_, ok, err := sql.Unwrap[string](ctx, v)
+		if err != nil {
+			return nil, sql.InRange, err
+		}
+		if ok {
 			return v, sql.InRange, nil
 		}
-	case "oid", "regclass", "regproc", "regtype":
+	case "oid", "regclass", "regnamespace", "regproc", "regtype":
 		if _, ok := v.(id.Id); ok {
 			return v, sql.InRange, nil
 		}
@@ -728,6 +759,12 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 
 // IoOutput converts given type value to output string.
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
+	// A pseudo-type carries a placeholder rather than a real output function, since its values never reach
+	// the wire, and handing that placeholder to the registry would panic. PostgreSQL's own placeholder output
+	// handler reports this error.
+	if t.OutputFunc == placeholderIoFuncID {
+		return "", errors.Errorf("cannot display a value of type %s", t.ID.TypeName())
+	}
 	outFunc := t.getOrResolveOutFunc(ctx)
 
 	o, err := outFunc.CallVariadic(ctx, val)
@@ -771,6 +808,11 @@ func (t *DoltgresType) IsArrayType() bool {
 // It can be either array types or vector types.
 func (t *DoltgresType) IsArrayCategory() bool {
 	return t.TypCategory == TypeCategory_ArrayTypes
+}
+
+// IsVectorType returns whether the type is one of PostgreSQL's legacy array-compatible vector types.
+func (t *DoltgresType) IsVectorType() bool {
+	return t.ID == Int16vector.ID || t.ID == Oidvector.ID
 }
 
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
@@ -991,6 +1033,9 @@ func (t *DoltgresType) SerializedCompare(ctx context.Context, v1 []byte, v2 []by
 	case TypeCategory_StringTypes:
 		return serializedStringCompare(v1, v2), nil
 	default:
+		if codec := t.codec(); codec != nil {
+			return codec.SerializedCompare(v1, v2)
+		}
 		// TODO: there are certainly other types that could be compared in serialized form
 		return deserializeAndCompare(ctx, t, v1, v2)
 	}
@@ -1044,6 +1089,18 @@ func (t *DoltgresType) String() string {
 		}
 	}
 	return str
+}
+
+// SchemaQualifiedString returns String with a schema qualifier for types outside `pg_catalog`. Persisted expressions
+// are re-parsed under whatever search path is in effect later, which may not reach the type's schema, or may match its
+// bare name in more than one schema.
+func (t *DoltgresType) SchemaQualifiedString() string {
+	str := t.String()
+	schema := t.ID.SchemaName()
+	if schema == "" || schema == "pg_catalog" {
+		return str
+	}
+	return fmt.Sprintf("%s.%s", schema, str)
 }
 
 // SubscriptFuncName returns the name that would be displayed in pg_type for the `typsubscript` field.
@@ -1124,7 +1181,7 @@ func (t *DoltgresType) Type() query.Type {
 			return sqltypes.Decimal
 		case "oid":
 			return sqltypes.VarChar
-		case "regclass", "regproc", "regtype":
+		case "regclass", "regnamespace", "regproc", "regtype":
 			return sqltypes.Text
 		default:
 			// TODO
@@ -1218,7 +1275,7 @@ func (t *DoltgresType) Zero() interface{} {
 			return int64(0)
 		case "numeric":
 			return apd.New(0, 0)
-		case "oid", "regclass", "regproc", "regtype":
+		case "oid", "regclass", "regnamespace", "regproc", "regtype":
 			return id.Null
 		default:
 			// TODO
@@ -1243,6 +1300,9 @@ func (t *DoltgresType) SerializeValue(ctx context.Context, val any) ([]byte, err
 	if t.SerializationFunc != nil {
 		return t.SerializationFunc(sqlCtx, t, val)
 	}
+	if codec := t.codec(); codec != nil {
+		return codec.Serialize(val)
+	}
 	// If there's not a built-in serialization function, then we'll use the `send` function instead
 	return t.CallSend(sqlCtx, val)
 }
@@ -1255,6 +1315,9 @@ func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, e
 	sqlCtx, _ := ctx.(*sql.Context) // There are cases where it's okay to deserialize with a nil SQL context
 	if t.DeserializationFunc != nil {
 		return t.DeserializationFunc(sqlCtx, t, val)
+	}
+	if codec := t.codec(); codec != nil {
+		return codec.Deserialize(val)
 	}
 	// If there's not a built-in deserialization function, then we'll use the `receive` function instead
 	return t.CallReceive(sqlCtx, val)

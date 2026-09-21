@@ -21,30 +21,81 @@ type OpCode uint16
 const (
 	// New OpCode values MUST be added to the END of this list!
 	// Function OpCodes are persisted to disk, so these values MUST be stable across Doltgres versions.
-	OpCode_Alias        OpCode = 0  // https://www.postgresql.org/docs/15/plpgsql-declarations.html#PLPGSQL-DECLARATION-ALIAS
-	OpCode_Assign       OpCode = 1  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-ASSIGNMENT
-	OpCode_Case         OpCode = 2  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
-	OpCode_Declare      OpCode = 3  // https://www.postgresql.org/docs/15/plpgsql-declarations.html
-	OpCode_DeleteInto   OpCode = 4  // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_Exception    OpCode = 5  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-ERROR-TRAPPING
-	OpCode_Execute      OpCode = 6  // Executing a standard SQL statement (expects no rows returned unless Target is specified)
-	OpCode_Get          OpCode = 7  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-DIAGNOSTICS
-	OpCode_Goto         OpCode = 8  // All control-flow structures can be represented using Goto
-	OpCode_If           OpCode = 9  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
-	OpCode_InsertInto   OpCode = 10 // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_Perform      OpCode = 11 // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_Raise        OpCode = 12 // https://www.postgresql.org/docs/15/plpgsql-errors-and-messages.html
-	OpCode_Return       OpCode = 13 // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING
-	OpCode_ScopeBegin   OpCode = 14 // This is used for scope control, specific to Doltgres
-	OpCode_ScopeEnd     OpCode = 15 // This is used for scope control, specific to Doltgres
-	OpCode_SelectInto   OpCode = 16 // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_UpdateInto   OpCode = 17 // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_ReturnQuery  OpCode = 18 // https://www.postgresql.org/docs/current/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING-RETURN-NEXT
-	OpCode_ForQueryInit OpCode = 19 // Initialize a cursor for FOR record IN query LOOP
-	OpCode_ForQueryNext OpCode = 20 // Advance cursor and assign next row to record, or jump to exit
+	OpCode_Alias         OpCode = 0  // https://www.postgresql.org/docs/15/plpgsql-declarations.html#PLPGSQL-DECLARATION-ALIAS
+	OpCode_Assign        OpCode = 1  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-ASSIGNMENT
+	OpCode_Case          OpCode = 2  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
+	OpCode_Declare       OpCode = 3  // https://www.postgresql.org/docs/15/plpgsql-declarations.html
+	OpCode_DeleteInto    OpCode = 4  // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_Exception     OpCode = 5  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-ERROR-TRAPPING
+	OpCode_Execute       OpCode = 6  // Executing a standard SQL statement (expects no rows returned unless Target is specified)
+	OpCode_Get           OpCode = 7  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-DIAGNOSTICS
+	OpCode_Goto          OpCode = 8  // All control-flow structures can be represented using Goto
+	OpCode_If            OpCode = 9  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
+	OpCode_InsertInto    OpCode = 10 // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_Perform       OpCode = 11 // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_Raise         OpCode = 12 // https://www.postgresql.org/docs/15/plpgsql-errors-and-messages.html
+	OpCode_Return        OpCode = 13 // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING
+	OpCode_ScopeBegin    OpCode = 14 // This is used for scope control, specific to Doltgres
+	OpCode_ScopeEnd      OpCode = 15 // This is used for scope control, specific to Doltgres
+	OpCode_SelectInto    OpCode = 16 // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_UpdateInto    OpCode = 17 // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_ReturnQuery   OpCode = 18 // https://www.postgresql.org/docs/current/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING-RETURN-NEXT
+	OpCode_ForQueryInit  OpCode = 19 // Initialize a cursor for FOR record IN query LOOP
+	OpCode_ForQueryNext  OpCode = 20 // Advance cursor and assign next row to record, or jump to exit
+	OpCode_DeclareRecord OpCode = 21 // Declares a RECORD variable, which has no shape until it is assigned
+	OpCode_ExecuteInto   OpCode = 22 // Executing a SQL statement whose first result row is assigned to a RECORD
 	// New OpCode values MUST be added to the END of this list!
 	// Function OpCodes are persisted to disk, so these values MUST be stable across Doltgres versions.
 )
+
+// DeclareDefaultSourceIndex and DeclareDefaultQueryIndex are the positions of a declaration's default
+// within an OpCode_Declare operation's SecondaryData: the source text, the query compiled from it, then
+// that query's bindings. A declaration with no default carries none of them.
+//
+// Operations are persisted and read by other Doltgres versions, so both forms of the default are kept.
+// Versions that evaluate a default by running it through the declared type's input function read the
+// source text and need it first; they also store it alone, which is why an absent query marks an
+// operation written by one of them.
+const (
+	DeclareDefaultSourceIndex = 0
+	DeclareDefaultQueryIndex  = 1
+)
+
+// OptionSetsFound is an Options key marking an operation that updates the built-in FOUND variable. Static
+// and dynamic execution share an opcode, and PostgreSQL defines a static statement as setting FOUND while a
+// dynamic EXECUTE deliberately leaves it alone, so the two are told apart by this option rather than by
+// their opcode. Operations that always set FOUND do not carry it.
+const OptionSetsFound = "sets_found"
+
+// OptionDynamicExpression marks an execute operation whose primary data is an expression producing SQL text.
+const OptionDynamicExpression = "dynamic_expression"
+
+// OptionDynamicBindingPrefix prefixes indexed variable bindings used to evaluate a dynamic SQL expression.
+const OptionDynamicBindingPrefix = "dynamic_binding_"
+
+// OptionDynamicBindingCount records how many indexed bindings a dynamic SQL expression uses.
+const OptionDynamicBindingCount = "dynamic_binding_count"
+
+// OptionDynamicUsingCount records how many USING expressions a dynamic command has.
+const OptionDynamicUsingCount = "dynamic_using_count"
+
+// OptionDynamicUsingExpressionPrefix prefixes indexed dynamic USING expressions.
+const OptionDynamicUsingExpressionPrefix = "dynamic_using_expression_"
+
+// OptionDynamicUsingBindingCountPrefix prefixes the binding count for an indexed USING expression.
+const OptionDynamicUsingBindingCountPrefix = "dynamic_using_binding_count_"
+
+// OptionDynamicUsingBindingPrefix prefixes bindings by USING-expression index and binding index.
+const OptionDynamicUsingBindingPrefix = "dynamic_using_binding_"
+
+// OptionRetypeTarget is an Options key marking an assignment that takes its target's type from the value
+// assigned, rather than casting the value to the type the target was declared with.
+const OptionRetypeTarget = "retype_target"
+
+// OptionLoopCondition is an Options key marking the conditional jump that advances an integer FOR loop.
+// Every kind of loop compiles to the same conditional jump, and PostgreSQL defines a FOR loop as setting
+// FOUND on exit while a WHILE or a plain LOOP leaves it alone, so the two are told apart by this option.
+const OptionLoopCondition = "loop_condition"
 
 // InterpreterOperation is an operation that will be performed by the interpreter.
 type InterpreterOperation struct {

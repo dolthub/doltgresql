@@ -546,7 +546,13 @@ func ResolveNameOnCollections(ctx context.Context, colls []objinterface.Collecti
 		}
 		if rID.IsValid() {
 			if resolvedObjID != objinterface.RootObjectID_None {
-				return doltdb.TableName{}, id.Null, objinterface.RootObjectID_None, fmt.Errorf(`"%s" is ambiguous`, name.String())
+				// An exact name match takes precedence over a name that was resolved through the search
+				if resolvedName == name && rName != name {
+					continue
+				}
+				if (resolvedName == name) == (rName == name) {
+					return doltdb.TableName{}, id.Null, objinterface.RootObjectID_None, fmt.Errorf(`"%s" is ambiguous`, name.String())
+				}
 			}
 			resolvedName = rName
 			resolvedRawID = rID
@@ -572,7 +578,13 @@ func resolveNameFromObjects(ctx context.Context, name doltdb.TableName, rootObje
 		}
 		if rID.IsValid() {
 			if resolvedRawID != id.Null {
-				return doltdb.TableName{}, id.Null, fmt.Errorf(`"%s" is ambiguous`, name.String())
+				// An exact name match takes precedence over a name that was resolved through the search
+				if resolvedName == name && rName != name {
+					continue
+				}
+				if (resolvedName == name) == (rName == name) {
+					return doltdb.TableName{}, id.Null, fmt.Errorf(`"%s" is ambiguous`, name.String())
+				}
 			}
 			resolvedName = rName
 			resolvedRawID = rID

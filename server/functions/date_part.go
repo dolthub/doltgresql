@@ -46,7 +46,10 @@ var date_part_text_date = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		field := val1.(string)
+		field, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		dateVal := val2.(time.Time)
 		switch strings.ToLower(field) {
 		case "hour", "hours", "microsecond", "microseconds", "millisecond", "milliseconds",
@@ -72,7 +75,10 @@ var date_part_text_time = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Time},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		field := val1.(string)
+		field, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		timeVal := val2.(timeofday.TimeOfDay).ToTime()
 		switch strings.ToLower(field) {
 		case "century", "centuries", "day", "days", "decade", "decades", "dow", "doy",
@@ -97,7 +103,10 @@ var date_part_text_timetz = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		field := val1.(string)
+		field, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		timetzVal := val2.(timetz.TimeTZ).ToTime()
 		_, currentOffset := timetzVal.Zone()
 		switch strings.ToLower(field) {
@@ -129,7 +138,10 @@ var date_part_text_timestamp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		field := val1.(string)
+		field, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		tsVal := val2.(time.Time)
 		switch strings.ToLower(field) {
 		case "timezone", "timezone_hour", "timezone_minute":
@@ -152,7 +164,10 @@ var date_part_text_timestamptz = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimestampTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		field := val1.(string)
+		field, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		loc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
@@ -186,7 +201,10 @@ var date_part_text_interval = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		field := val1.(string)
+		field, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		dur := val2.(duration.Duration)
 
 		// This mirrors the exact logic from extract_text_interval

@@ -103,6 +103,50 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	return values, nil
 }
 
+// evalVectorCast evaluates a direct ARRAY[...] constructor as a PostgreSQL vector type. PostgreSQL coerces the
+// constructor's elements to the vector's element type, but does not expose a general array-to-vector cast.
+func (array *Array) evalVectorCast(ctx *sql.Context, row sql.Row, targetType *pgtypes.DoltgresType) (any, error) {
+	if len(array.children) == 0 {
+		return nil, errors.Errorf("array is not a valid %s", targetType.Name())
+	}
+
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]any, len(array.children))
+	elementType := targetType.ArrayBaseType()
+	for i, child := range array.children {
+		value, err := child.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		if value == nil {
+			return nil, errors.Errorf("array is not a valid %s", targetType.Name())
+		}
+		if _, nested := value.([]any); nested {
+			return nil, errors.Errorf("array is not a valid %s", targetType.Name())
+		}
+		sourceType, ok := child.Type(ctx).(*pgtypes.DoltgresType)
+		if !ok {
+			return nil, errors.Errorf("array is not a valid %s", targetType.Name())
+		}
+		cast, err := castsColl.GetExplicitCast(ctx, sourceType, elementType)
+		if err != nil {
+			return nil, err
+		}
+		if !cast.ID.IsValid() {
+			return nil, errors.Errorf("cannot cast type %s to %s", sourceType.Name(), elementType.Name())
+		}
+		result[i], err = cast.Eval(ctx, value, sourceType, elementType)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
 // IsNullable implements the sql.Expression interface.
 func (array *Array) IsNullable(ctx *sql.Context) bool {
 	// TODO: verify if this is actually nullable

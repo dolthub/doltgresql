@@ -76,7 +76,10 @@ var record_recv = framework.Function3{
 
 // record_recv_callable is the function definition of record_recv.
 func record_recv_callable(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-	data := val1.([]byte)
+	data, err := framework.UnwrapBytes(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
 	if data == nil {
 		return nil, nil
 	}
@@ -179,8 +182,14 @@ var btrecordcmp = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO
-		ab := val1.(string)
-		bb := val2.(string)
+		ab, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		bb, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		if ab == bb {
 			return int32(0), nil
 		} else if ab < bb {

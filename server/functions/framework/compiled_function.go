@@ -28,6 +28,8 @@ import (
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/id"
 	procedures2 "github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -45,16 +47,23 @@ type Function interface {
 
 // CompiledFunction is an expression that represents a fully-analyzed PostgreSQL function.
 type CompiledFunction struct {
-	Name          string
-	Arguments     []sql.Expression
-	IsOperator    bool
-	overloads     *Overloads
-	fnOverloads   []Overload
-	overload      overloadMatch
-	originalTypes []*pgtypes.DoltgresType
-	callResolved  []*pgtypes.DoltgresType
-	runner        sql.StatementRunner
-	stashedErr    error
+	Name           string
+	Arguments      []sql.Expression
+	IsOperator     bool
+	overloads      *Overloads
+	fnOverloads    []Overload
+	overload       overloadMatch
+	originalTypes  []*pgtypes.DoltgresType
+	callResolved   []*pgtypes.DoltgresType
+	runner         sql.StatementRunner
+	stashedErr     error
+	distinctWindow *distinctWindowCall
+}
+
+// distinctWindowCall preserves the parsed function identity until overload resolution completes.
+type distinctWindowCall struct {
+	schema string
+	name   string
 }
 
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
@@ -62,6 +71,31 @@ var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 var _ procedures.InterpreterExpr = (*CompiledFunction)(nil)
 var _ sql.RowIterExpression = (*CompiledFunction)(nil)
 var _ sql.ExtendedTableFunction = (*CompiledFunction)(nil)
+var _ sql.DistinctWindowFunctionValidator = (*CompiledFunction)(nil)
+
+// ValidateDistinctWindow returns PostgreSQL's error for DISTINCT after overload resolution identifies the function class.
+func (c *CompiledFunction) ValidateDistinctWindow(schema, name string) error {
+	c.distinctWindow = &distinctWindowCall{schema: schema, name: name}
+	return c.distinctWindowError()
+}
+
+// distinctWindowError classifies DISTINCT window usage from the selected overload.
+func (c *CompiledFunction) distinctWindowError() error {
+	if !c.overload.Valid() {
+		return nil
+	}
+	functionName := c.distinctWindow.name
+	if c.distinctWindow.schema != "" {
+		functionName = c.distinctWindow.schema + "." + c.distinctWindow.name
+	}
+	switch c.overload.Function().(type) {
+	case AggregateFunctionInterface, WindowFunctionInterface:
+		return pgerror.New(pgcode.FeatureNotSupported, "DISTINCT is not implemented for window functions")
+	default:
+		return pgerror.Newf(pgcode.WrongObjectType,
+			"DISTINCT specified, but %s is not an aggregate function", functionName)
+	}
+}
 
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(ctx *sql.Context, name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
@@ -185,12 +219,35 @@ func (c *CompiledFunction) Description() string {
 	return fmt.Sprintf("The PostgreSQL function `%s`", c.Name)
 }
 
-// OutParametersSchema implements the interface sql.ExtendedTableFunction.
+// OutParametersSchema implements the interface sql.ExtendedTableFunction. It returns the columns this function
+// produces when it is invoked in a FROM clause, which is one column per OUT parameter, or one column per field of the
+// return type for a function declared RETURNS TABLE(...) or RETURNS SETOF <composite>.
 func (c *CompiledFunction) OutParametersSchema() sql.Schema {
 	if !c.overload.Valid() {
 		return nil
 	}
-	return c.overload.Function().GetOutParameters()
+	if outParams := c.overload.Function().GetOutParameters(); len(outParams) > 0 {
+		return outParams
+	}
+	return compositeReturnSchema(c.overload.Function().GetReturn())
+}
+
+// compositeReturnSchema returns one column per field of |returnType| when it is a composite type. A function declared
+// RETURNS TABLE(...) stores its result columns as the fields of an anonymous composite type, and one declared
+// RETURNS SETOF <composite> names an existing one, so in both cases those fields are the function's result columns in
+// a FROM clause. Returns nil for every other return type.
+func compositeReturnSchema(returnType *pgtypes.DoltgresType) sql.Schema {
+	if returnType == nil || returnType.TypCategory != pgtypes.TypeCategory_CompositeTypes || len(returnType.CompositeAttrs) == 0 {
+		return nil
+	}
+	schema := make(sql.Schema, len(returnType.CompositeAttrs))
+	for i, attr := range returnType.CompositeAttrs {
+		schema[i] = &sql.Column{
+			Name: attr.Name,
+			Type: attr.Type,
+		}
+	}
+	return schema
 }
 
 // Unwrap implements the interface sql.ExtendedTableFunction.
@@ -199,7 +256,7 @@ func (c *CompiledFunction) Unwrap(v any) sql.Row {
 		return sql.Row{v}
 	}
 	if rv, ok := v.([]pgtypes.RecordValue); ok {
-		if len(rv) == len(c.overload.Function().GetOutParameters()) {
+		if len(rv) == len(c.OutParametersSchema()) {
 			var r sql.Row
 			for _, val := range rv {
 				r = append(r, val.Value)
@@ -384,8 +441,27 @@ func (c *CompiledFunction) func2FastPath(ctx *sql.Context, f Function2, row sql.
 	return res, true, nil
 }
 
-// Eval implements the interface sql.Expression.
+// Eval implements the interface sql.Expression. A set-returning function returns a sql.RowIter here, with one column
+// per result column, which is the shape a FROM clause consumes. EvalRowIter returns the SELECT-list shape instead,
+// where a multi-column result is collapsed into a single record value per row.
 func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
+	res, err := c.evalRaw(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	rowIter, ok := res.(sql.RowIter)
+	if !ok {
+		return res, nil
+	}
+	if outParams := c.OutParametersSchema(); len(outParams) > 0 {
+		return &recordExpandingRowIter{child: rowIter, outParams: outParams}, nil
+	}
+	return rowIter, nil
+}
+
+// evalRaw invokes the resolved overload, leaving the result in whatever form the function itself produced. A
+// set-returning function with a multi-column result produces one record value per row here.
+func (c *CompiledFunction) evalRaw(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	// If we have a stashed error, then we should return that now. Errors are stashed when they're supposed to be
 	// returned during the call to Eval. This helps to ensure consistency with how errors are returned in Postgres.
 	if c.stashedErr != nil {
@@ -502,6 +578,11 @@ func (c *CompiledFunction) callFunction(ctx *sql.Context, args []any) (interface
 		if err != nil {
 			return nil, err
 		}
+		for i, arg := range args {
+			if args[i], err = sql.UnwrapAny(ctx, arg); err != nil {
+				return nil, err
+			}
+		}
 		return extFunc(ctx, args...)
 	case SQLFunction:
 		return CallSqlFunction(ctx, f, c.runner, args)
@@ -512,11 +593,17 @@ func (c *CompiledFunction) callFunction(ctx *sql.Context, args []any) (interface
 
 // EvalRowIter implements sql.RowIterExpression
 func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	eval, err := c.Eval(ctx, r)
+	eval, err := c.evalRaw(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	return rowIterForSRF(c.Name, eval, c.OutParametersSchema())
+	// Only real OUT parameters collapse here. A composite return type already produces one record value per row,
+	// which is the shape a SELECT list wants.
+	var outParams sql.Schema
+	if c.overload.Valid() {
+		outParams = c.overload.Function().GetOutParameters()
+	}
+	return rowIterForSRF(c.Name, eval, outParams)
 }
 
 // rowIterForSRF converts the value returned by a set-returning function into the sql.RowIter used to expand it in a
@@ -574,6 +661,87 @@ func (r *recordCollapsingRowIter) Close(ctx *sql.Context) error {
 	return r.child.Close(ctx)
 }
 
+// recordExpandingRowIter wraps the row iterator of a set-returning function whose result has multiple columns,
+// expanding the single record value in each row back into one column per result column. This is the shape a FROM
+// clause consumes, as opposed to the record value a SELECT list sees.
+type recordExpandingRowIter struct {
+	child     sql.RowIter
+	outParams sql.Schema
+	casts     []casts.Cast
+}
+
+var _ sql.RowIter = (*recordExpandingRowIter)(nil)
+
+// Next implements the interface sql.RowIter.
+func (r *recordExpandingRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	row, err := r.child.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(row) != 1 {
+		return row, nil
+	}
+	record, ok := row[0].([]pgtypes.RecordValue)
+	if !ok || len(record) != len(r.outParams) {
+		// The function's body produced a result that doesn't line up with the columns it declares, so there is
+		// nothing to expand it into. Leave the row alone rather than reporting an error the SELECT-list form of the
+		// same call doesn't report.
+		return row, nil
+	}
+	if r.casts == nil {
+		// A function's result rows all come from one query, so they share a set of field types and the casts only
+		// have to be resolved once.
+		if r.casts, err = r.resolveCasts(ctx, record); err != nil {
+			return nil, err
+		}
+	}
+	expanded := make(sql.Row, len(record))
+	for i, field := range record {
+		expanded[i] = field.Value
+		if field.Value == nil || !r.casts[i].ID.IsValid() {
+			continue
+		}
+		sourceType, sourceOk := field.Type.(*pgtypes.DoltgresType)
+		targetType, targetOk := r.outParams[i].Type.(*pgtypes.DoltgresType)
+		if !sourceOk || !targetOk {
+			continue
+		}
+		if expanded[i], err = r.casts[i].Eval(ctx, field.Value, sourceType, targetType); err != nil {
+			return nil, err
+		}
+	}
+	return expanded, nil
+}
+
+// resolveCasts returns the cast needed to bring each field of |record| to the type of the result column it fills. A
+// function body isn't required to produce the exact types the function declares (`RETURNS TABLE(n int)` over a body
+// selecting a bigint, say), and the FROM clause reads these values as the declared types, so each field is assignment
+// cast the way Postgres coerces a function's result. Fields that already have the declared type get an invalid cast,
+// which the caller skips.
+func (r *recordExpandingRowIter) resolveCasts(ctx *sql.Context, record []pgtypes.RecordValue) ([]casts.Cast, error) {
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	resolved := make([]casts.Cast, len(record))
+	for i, field := range record {
+		sourceType, sourceOk := field.Type.(*pgtypes.DoltgresType)
+		targetType, targetOk := r.outParams[i].Type.(*pgtypes.DoltgresType)
+		if !sourceOk || !targetOk || sourceType.ID == targetType.ID {
+			continue
+		}
+		if resolved[i], err = castsColl.GetAssignmentCast(ctx, sourceType, targetType); err != nil {
+			return nil, err
+		}
+	}
+	return resolved, nil
+}
+
+// Close implements the interface sql.RowIter.
+func (r *recordExpandingRowIter) Close(ctx *sql.Context) error {
+	return r.child.Close(ctx)
+}
+
 // ReturnsRowIter implements the interface sql.RowIterExpression
 func (c *CompiledFunction) ReturnsRowIter() bool {
 	return c.IsSRF()
@@ -591,7 +759,14 @@ func (c *CompiledFunction) WithChildren(ctx *sql.Context, children ...sql.Expres
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	return newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner), nil
+	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner)
+	nc.distinctWindow = c.distinctWindow
+	if nc.distinctWindow != nil {
+		if err := nc.distinctWindowError(); err != nil {
+			nc.stashedErr = err
+		}
+	}
+	return nc, nil
 }
 
 // SetStatementRunner implements the interface analyzer.Interpreter.
@@ -643,6 +818,19 @@ func (c *CompiledFunction) GetQuickFunction(ctx *sql.Context) QuickFunction {
 	default:
 		return nil
 	}
+}
+
+// ResolvedExtensionRoutine returns the extension name and symbol of the resolved overload. Returns
+// false when the function is unresolved or the resolved overload is not an extension routine.
+func (c *CompiledFunction) ResolvedExtensionRoutine() (extensionName string, symbol string, ok bool) {
+	if c.stashedErr != nil || !c.overload.Valid() {
+		return "", "", false
+	}
+	extFunc, isExtFunc := c.overload.Function().(ExtensionFunction)
+	if !isExtFunc {
+		return "", "", false
+	}
+	return extFunc.ExtensionName, extFunc.ExtensionSymbol, true
 }
 
 // resolve returns an overloadMatch that either matches the given parameters exactly, or is a viable match after casting.

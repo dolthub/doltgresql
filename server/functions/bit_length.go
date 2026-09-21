@@ -24,6 +24,8 @@ import (
 // initBitLength registers the functions to the catalog.
 func initBitLength() {
 	framework.RegisterFunction(bit_length_text)
+	framework.RegisterFunction(bit_length_bytea)
+	framework.RegisterFunction(bit_length_bit)
 }
 
 // bit_length_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -32,11 +34,42 @@ var bit_length_text = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		result, err := octet_length_text.Callable(ctx, t, val1)
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		return valueBitLength(ctx, val1)
+	},
+}
+
+// bit_length_bytea represents the PostgreSQL function of the same name, taking the same parameters.
+var bit_length_bytea = framework.Function1{
+	Name:       "bit_length",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bytea},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		return valueBitLength(ctx, val1)
+	},
+}
+
+// bit_length_bit represents the PostgreSQL function of the same name, taking the same parameters.
+var bit_length_bit = framework.Function1{
+	Name:       "bit_length",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bit},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		val1str, err := framework.UnwrapString(ctx, val1)
 		if err != nil {
 			return nil, err
 		}
-		return result.(int32) * 8, nil
+		return lengthToInt32(int64(len(val1str)))
 	},
+}
+
+// valueBitLength returns the number of bits in a string- or bytes-typed value, which is its byte length times eight.
+func valueBitLength(ctx *sql.Context, val any) (int32, error) {
+	length, err := framework.UnwrapByteLength(ctx, val)
+	if err != nil {
+		return 0, err
+	}
+	return lengthToInt32(length * 8)
 }

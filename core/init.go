@@ -37,7 +37,7 @@ func Init() {
 	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext
 	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
 	typecollection.GetSqlTableFromContext = GetSqlTableFromContext
-	typecollection.GetSchemaName = GetSchemaName
+	typecollection.LookupSchemaName = LookupSchemaName
 	pgtypes.GetTypesCollectionFromContext = func(ctx *sql.Context, database string) (pgtypes.TypeCollection, error) {
 		return GetTypesCollectionFromContext(ctx, database)
 	}

@@ -36,6 +36,41 @@ type ReplayOptions struct {
 	FailQueries  []string // These are queries that cause catastrophic failures, like OOM errors, stack limits, etc.
 }
 
+// recordedCopyStreams preserves COPY stream boundaries within a recorded simple-query response.
+type recordedCopyStreams struct {
+	activeDirection copyDirection
+	copyFromInputs  [][]*pgproto3.CopyData
+	copyToOutput    []*pgproto3.CopyData
+}
+
+// copyDirection identifies which side produced the recorded COPY data currently being read.
+type copyDirection byte
+
+const (
+	copyDirectionNone copyDirection = iota
+	copyDirectionIn
+	copyDirectionOut
+)
+
+// record records a COPY protocol message while retaining each COPY FROM STDIN input as a separate stream.
+func (s *recordedCopyStreams) record(message pgproto3.Message) {
+	switch message := message.(type) {
+	case *pgproto3.CopyInResponse:
+		s.activeDirection = copyDirectionIn
+		s.copyFromInputs = append(s.copyFromInputs, nil)
+	case *pgproto3.CopyOutResponse:
+		s.activeDirection = copyDirectionOut
+	case *pgproto3.CopyData:
+		if s.activeDirection == copyDirectionIn {
+			s.copyFromInputs[len(s.copyFromInputs)-1] = append(s.copyFromInputs[len(s.copyFromInputs)-1], message)
+		} else if s.activeDirection == copyDirectionOut {
+			s.copyToOutput = append(s.copyToOutput, message)
+		}
+	case *pgproto3.CopyDone, *pgproto3.CommandComplete:
+		s.activeDirection = copyDirectionNone
+	}
+}
+
 // Replay will replay the given messages onto the Doltgres server running on the given port.
 func Replay(options ReplayOptions) (*ReplayTracker, error) {
 	tracker := NewReplayTracker(options.File)
@@ -503,16 +538,20 @@ ListenerLoop:
 				var expectedError *pgproto3.ErrorResponse
 				var expectedRowDesc *pgproto3.RowDescription
 				var expectedDataRows []*pgproto3.DataRow
-				var expectedCopyData []*pgproto3.CopyData
+				var recordedCopy recordedCopyStreams
 			QueryLoop:
 				for {
 					switch queryMessage := reader.Next().(type) {
 					case *pgproto3.CommandComplete:
+						recordedCopy.record(queryMessage)
 					case *pgproto3.CopyData:
-						expectedCopyData = append(expectedCopyData, queryMessage)
+						recordedCopy.record(queryMessage)
 					case *pgproto3.CopyDone:
+						recordedCopy.record(queryMessage)
 					case *pgproto3.CopyInResponse:
+						recordedCopy.record(queryMessage)
 					case *pgproto3.CopyOutResponse:
+						recordedCopy.record(queryMessage)
 					case *pgproto3.DataRow:
 						expectedDataRows = append(expectedDataRows, queryMessage)
 					case *pgproto3.EmptyQueryResponse:
@@ -529,6 +568,10 @@ ListenerLoop:
 				var responseError *pgproto3.ErrorResponse
 				var responseRowDesc *pgproto3.RowDescription
 				var responseDataRows []*pgproto3.DataRow
+				var responseCopyData []*pgproto3.CopyData
+				receivedCopyOut := false
+				nextCopyFromInput := 0
+				unexpectedCopyFrom := false
 			ResponseLoop:
 				for {
 					response, err := connection.Receive()
@@ -543,10 +586,23 @@ ListenerLoop:
 					response = DuplicateMessage(response).(pgproto3.BackendMessage)
 					switch response := response.(type) {
 					case *pgproto3.CommandComplete:
+					case *pgproto3.CopyData:
+						responseCopyData = append(responseCopyData, response)
+					case *pgproto3.CopyDone:
 					case *pgproto3.CopyInResponse:
-						for _, copyData := range expectedCopyData {
+						if nextCopyFromInput >= len(recordedCopy.copyFromInputs) {
+							unexpectedCopyFrom = true
+							// Abort Doltgres' unexpected COPY operation and keep reading through ReadyForQuery so the
+							// connection stays synchronized with the next recorded query.
+							if err = connection.SendNoSync(&pgproto3.CopyFail{Message: "unexpected COPY FROM STDIN request"}); err != nil {
+								continue ListenerLoop
+							}
+							continue ResponseLoop
+						}
+						for _, copyData := range recordedCopy.copyFromInputs[nextCopyFromInput] {
 							connection.Queue(copyData)
 						}
+						nextCopyFromInput++
 						if err = connection.SendNoSync(&pgproto3.CopyDone{}); err != nil {
 							tracker.Failed++
 							tracker.AddFailure(ReplayTrackerItem{
@@ -555,6 +611,8 @@ ListenerLoop:
 							})
 							continue ListenerLoop
 						}
+					case *pgproto3.CopyOutResponse:
+						receivedCopyOut = true
 					case *pgproto3.DataRow:
 						responseDataRows = append(responseDataRows, response)
 					case *pgproto3.EmptyQueryResponse:
@@ -566,7 +624,7 @@ ListenerLoop:
 					case *pgproto3.RowDescription:
 						responseRowDesc = response
 					default:
-						return nil, errors.Errorf("unable to determine what to do with %T", message)
+						return nil, errors.Errorf("unable to determine what to do with %T", response)
 					}
 				}
 				if err = connection.EmptyReceiveBuffer(); err != nil {
@@ -576,6 +634,42 @@ ListenerLoop:
 						UnexpectedError: err.Error(),
 					})
 					continue MessageLoop
+				}
+				if unexpectedCopyFrom {
+					tracker.Failed++
+					tracker.AddFailure(ReplayTrackerItem{
+						Query:           message.String,
+						UnexpectedError: "Doltgres requested more COPY FROM STDIN streams than PostgreSQL",
+					})
+					continue MessageLoop
+				}
+				if nextCopyFromInput != len(recordedCopy.copyFromInputs) {
+					tracker.Failed++
+					tracker.AddFailure(ReplayTrackerItem{
+						Query: message.String,
+						UnexpectedError: fmt.Sprintf("expected %d COPY FROM STDIN streams but received %d",
+							len(recordedCopy.copyFromInputs), nextCopyFromInput),
+					})
+					continue MessageLoop
+				}
+				// For a COPY ... TO STDOUT statement, the results arrive as CopyData messages rather than
+				// DataRows, so we compare those against the recorded CopyData before the normal result
+				// handling below (which sees no row description on either side).
+				if receivedCopyOut && expectedError == nil && responseError == nil {
+					if strings.Contains(strings.ToLower(message.String), "order by") {
+						err = CompareCopyDataOrdered(recordedCopy.copyToOutput, responseCopyData)
+					} else {
+						// Without an ORDER BY, our native row order may differ from Postgres.
+						err = CompareCopyDataUnordered(recordedCopy.copyToOutput, responseCopyData)
+					}
+					if err != nil {
+						tracker.Failed++
+						tracker.AddFailure(ReplayTrackerItem{
+							Query:           message.String,
+							UnexpectedError: err.Error(),
+						})
+						continue MessageLoop
+					}
 				}
 				if expectedError == nil {
 					if responseError != nil {

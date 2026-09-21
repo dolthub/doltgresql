@@ -36,7 +36,11 @@ func textAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Text,
 		ToType:   pgtypes.InternalChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }
@@ -47,28 +51,44 @@ func textImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Text,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Text,
 		ToType:   pgtypes.Name,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Text,
 		ToType:   pgtypes.Regclass,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Text,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }

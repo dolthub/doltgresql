@@ -61,7 +61,11 @@ var Json = &DoltgresType{
 // serializeTypeJson handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeJson(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	return []byte(val.(string)), nil
+	str, err := unwrapSerializationString(ctx, "json", val)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(str), nil
 }
 
 // deserializeTypeJson handles deserialization from the Dolt serialized format to our standard representation used by

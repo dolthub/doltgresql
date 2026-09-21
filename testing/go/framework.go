@@ -16,6 +16,7 @@ package _go
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	goerrors "errors"
@@ -65,6 +66,8 @@ var serverHost = "127.0.0.1"
 type ScriptTest struct {
 	// Name of the script.
 	Name string
+	// ServerConfig is an optional configuration to use when starting the Doltgres server.
+	ServerConfig *servercfg.DoltgresConfig
 	// The database to create and use. If not provided, then it defaults to "postgres".
 	Database string
 	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error.
@@ -98,6 +101,14 @@ type ScriptTestAssertion struct {
 	ExpectedErrCode string
 	ExpectedNotices []ExpectedNotice
 	Focus           bool
+
+	// ExpectedBlocking starts the query asynchronously and asserts that it has
+	// not completed after 200ms. Transaction tests keep the query running so a
+	// later assertion from another named client can unblock it.
+	ExpectedBlocking bool
+	// CloseClient closes the named client's connection without executing Query.
+	// This is only supported by transaction tests using named clients.
+	CloseClient bool
 
 	BindVars []any
 
@@ -133,6 +144,15 @@ type ScriptTestAssertion struct {
 
 	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
 	CopyFromStdInFile string
+
+	// CopyToStdOutFile is used to test the COPY TO STDOUT command. It names a file in the testdata directory whose
+	// contents are the expected output of the COPY TO STDOUT query.
+	CopyToStdOutFile string
+
+	// CopyRoundTripStdInQuery is used to test that COPY TO STDOUT output can be read back in by COPY FROM STDIN.
+	// The bytes the server sends for Query (a COPY ... TO STDOUT statement) are piped directly into this
+	// COPY ... FROM STDIN statement, without touching the filesystem.
+	CopyRoundTripStdInQuery string
 }
 
 // EmptyCommandTag is special command tag placeholder to check for the empty string
@@ -177,9 +197,9 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 		if script.UseLocalFileSystem {
 			port, err := sql.GetEmptyPort()
 			require.NoError(t, err)
-			ctx, conn, controller = CreateServerLocalWithPort(t, scriptDatabase, port)
+			ctx, conn, controller = CreateServerLocalWithPortAndConfig(t, scriptDatabase, port, script.ServerConfig)
 		} else {
-			ctx, conn, controller = CreateServer(t, scriptDatabase)
+			ctx, conn, controller = CreateServerWithConfig(t, scriptDatabase, script.ServerConfig)
 		}
 		defer func() {
 			conn.Close(ctx)
@@ -231,6 +251,12 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
 			}
+			if assertion.ExpectedBlocking {
+				t.Fatal("ExpectedBlocking assertions require RunTransactionTest")
+			}
+			if assertion.CloseClient {
+				t.Fatal("CloseClient assertions require RunTransactionTest")
+			}
 
 			// Clear out any previously received notices
 			receivedNotices = nil
@@ -248,7 +274,11 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.CopyFromStdInFile != "" {
-				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile)
+				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile, assertion.ExpectedErr)
+			} else if assertion.CopyRoundTripStdInQuery != "" {
+				copyRoundTrip(t, conn.Current, assertion.Query, assertion.CopyRoundTripStdInQuery)
+			} else if assertion.CopyToStdOutFile != "" {
+				copyToStdout(t, conn.Current, assertion.Query, assertion.CopyToStdOutFile)
 			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" || assertion.ExpectedErrCode != "" {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				if assertion.ExpectedErrCode != "" {
@@ -265,7 +295,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 					require.NoError(t, err)
 				}
 			} else if assertion.ExpectedTag != "" {
-				commandTag, err := conn.Exec(ctx, assertion.Query)
+				commandTag, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)
 				tag := assertion.ExpectedTag
 				if tag == EmptyCommandTag {
@@ -344,7 +374,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	}
 }
 
-func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) {
+// copyFromStdin runs the COPY FROM STDIN statement given, sending it the contents of the testdata file named. If
+// expectedErr is non-empty, the load is expected to be rejected with an error containing it.
+func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string, expectedErr string) {
 	filePath := filepath.Join("testdata", filename)
 
 	file, err := os.Open(filePath)
@@ -355,6 +387,35 @@ func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) 
 
 	reader := bufio.NewReader(file)
 	_, err = conn.PgConn().CopyFrom(context.Background(), reader, query)
+	if expectedErr != "" {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), expectedErr)
+	} else {
+		require.NoError(t, err)
+	}
+}
+
+// copyToStdout runs the COPY TO STDOUT statement given and asserts that the data sent to the client matches the
+// contents of the testdata file named.
+func copyToStdout(t *testing.T, conn *pgx.Conn, query string, filename string) {
+	filePath := filepath.Join("testdata", filename)
+
+	expected, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	_, err = conn.PgConn().CopyTo(context.Background(), &buf, query)
+	require.NoError(t, err)
+	assert.Equal(t, string(expected), buf.String())
+}
+
+// copyRoundTrip runs the COPY TO STDOUT statement given and pipes the data the server sends back into the given
+// COPY FROM STDIN statement, verifying that COPY output can be read back in without touching the filesystem.
+func copyRoundTrip(t *testing.T, conn *pgx.Conn, copyToQuery string, copyFromQuery string) {
+	var buf bytes.Buffer
+	_, err := conn.PgConn().CopyTo(context.Background(), &buf, copyToQuery)
+	require.NoError(t, err)
+	_, err = conn.PgConn().CopyFrom(context.Background(), &buf, copyFromQuery)
 	require.NoError(t, err)
 }
 
@@ -366,6 +427,144 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 // RunScriptsWithoutNormalization runs the given collection of scripts, without normalizing any rows.
 func RunScriptsWithoutNormalization(t *testing.T, scripts []ScriptTest) {
 	runScripts(t, scripts, false)
+}
+
+const expectedBlockingTimeout = 200 * time.Millisecond
+
+// RunTransactionTests runs scripts whose assertion queries identify persistent
+// client sessions with comments such as "/* client A */".
+func RunTransactionTests(t *testing.T, scripts []ScriptTest) {
+	for _, script := range scripts {
+		RunTransactionTest(t, script)
+	}
+}
+
+// RunTransactionTest runs a script using one persistent connection per named
+// client. A query marked ExpectedBlocking remains in flight until another
+// assertion unblocks it.
+func RunTransactionTest(t *testing.T, script ScriptTest) {
+	if script.Skip {
+		t.Run(script.Name, func(t *testing.T) {
+			t.Skip("Skip has been set in the script")
+		})
+		return
+	}
+	scriptDatabase := script.Database
+	if scriptDatabase == "" {
+		scriptDatabase = "postgres"
+	}
+
+	var ctx context.Context
+	var conn *Connection
+	var controller *svcs.Controller
+	if script.UseLocalFileSystem {
+		port, err := sql.GetEmptyPort()
+		require.NoError(t, err)
+		ctx, conn, controller = CreateServerLocalWithPortAndConfig(t, scriptDatabase, port, script.ServerConfig)
+	} else {
+		ctx, conn, controller = CreateServerWithConfig(t, scriptDatabase, script.ServerConfig)
+	}
+	defer func() {
+		conn.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+
+	t.Run(script.Name, func(t *testing.T) {
+		for _, query := range script.SetUpScript {
+			_, err := conn.Exec(ctx, query)
+			require.NoError(t, err, "error running setup query: %s", query)
+		}
+
+		clients := make(map[string]*pgx.Conn)
+		defer func() {
+			for _, client := range clients {
+				_ = client.Close(ctx)
+			}
+		}()
+		blocking := make(map[string]<-chan error)
+
+		waitForClient := func(t *testing.T, clientName string) {
+			done, ok := blocking[clientName]
+			if !ok {
+				return
+			}
+			select {
+			case err := <-done:
+				require.NoError(t, err, "blocked query for client %s failed", clientName)
+				delete(blocking, clientName)
+			case <-time.After(5 * time.Second):
+				t.Fatalf("blocked query for client %s did not complete", clientName)
+			}
+		}
+
+		for _, assertion := range script.Assertions {
+			assertion := assertion
+			clientName := transactionTestClient(assertion.Query)
+			client, ok := clients[clientName]
+			if !ok {
+				if assertion.CloseClient {
+					t.Fatalf("cannot close unknown client %s", clientName)
+				}
+				config := conn.Default.Config().Copy()
+				var err error
+				client, err = pgx.ConnectConfig(ctx, config)
+				require.NoError(t, err)
+				clients[clientName] = client
+			}
+
+			t.Run(assertion.Query, func(t *testing.T) {
+				if assertion.Skip {
+					t.Skip("Skip has been set in the assertion")
+				}
+				waitForClient(t, clientName)
+				if assertion.CloseClient {
+					require.NoError(t, client.Close(ctx))
+					delete(clients, clientName)
+					return
+				}
+				if assertion.ExpectedBlocking {
+					done := make(chan error, 1)
+					go func() {
+						_, err := client.Exec(ctx, assertion.Query, assertion.BindVars...)
+						done <- err
+					}()
+					select {
+					case err := <-done:
+						require.NoError(t, err)
+						t.Fatalf("query completed before blocking timeout")
+					case <-time.After(expectedBlockingTimeout):
+						blocking[clientName] = done
+					}
+					return
+				}
+
+				// Reuse the standard assertion implementation after selecting this
+				// named client's persistent connection.
+				conn.Current = client
+				conn.Username = ""
+				conn.Password = ""
+				runScript(t, ctx, ScriptTest{Assertions: []ScriptTestAssertion{assertion}}, conn, true)
+			})
+		}
+
+		for clientName := range blocking {
+			waitForClient(t, clientName)
+		}
+	})
+}
+
+func transactionTestClient(query string) string {
+	start := strings.Index(query, "/*")
+	end := strings.Index(query, "*/")
+	if start < 0 || end < start {
+		panic("no client comment found in query " + query)
+	}
+	comment := strings.TrimSpace(query[start+2 : end])
+	if !strings.HasPrefix(strings.ToLower(comment), "client ") {
+		panic("no client comment found in query " + query)
+	}
+	return strings.TrimSpace(comment[len("client "):])
 }
 
 // runScripts is the implementation of both RunScripts and RunScriptsWithoutNormalization.
@@ -414,20 +613,25 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 	return CreateServerWithPort(t, database, port)
 }
 
+// CreateServerWithConfig creates a server with the given database and configuration.
+func CreateServerWithConfig(t *testing.T, database string, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
+	return CreateServerWithPortAndConfig(t, database, port, config)
+}
+
 // CreateServerWithPort creates a server with the given database and port, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying [svcs.Controller] may be used
 // to wait until the server has closed.
 func CreateServerWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
+	return CreateServerWithPortAndConfig(t, database, port, nil)
+}
+
+// CreateServerWithPortAndConfig creates a server with the given database, port, and configuration.
+func CreateServerWithPortAndConfig(t *testing.T, database string, port int, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
 	require.NotEmpty(t, database)
-	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
-		DoltgresConfig: cfgdetails.DoltgresConfig{
-			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
-				PortNumber: &port,
-				HostStr:    &serverHost,
-			},
-			LogLevelStr: &testServerLogLevel,
-		},
-	}, dserver.NewListener)
+	config = testServerConfig(config, port)
+	controller, err := dserver.RunInMemory(config, dserver.NewListener)
 	require.NoError(t, err)
 	auth.ClearDatabase()
 	fmt.Printf("port is %d\n", port)
@@ -441,6 +645,11 @@ func CreateServerWithPort(t *testing.T, database string, port int) (context.Cont
 // |database| at 127.0.0.1:|port|. The server will close when the connection is closed or lost. The returned
 // [svcs.Controller] may be used to wait for the server to stop.
 func CreateServerLocalWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
+	return CreateServerLocalWithPortAndConfig(t, database, port, nil)
+}
+
+// CreateServerLocalWithPortAndConfig creates a server using the local file system and the given configuration.
+func CreateServerLocalWithPortAndConfig(t *testing.T, database string, port int, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
 	// We avoid using [T.TempDir] because it results in a file lock conflict on Windows. [T.TempDir] registers a
 	// [T.Cleanup] function that runs without checking the [svcs.Controller] and it cannot be overwritten.
 	// TODO(elianddb): Setup an optional [T.Cleanup] function for the temporary directory. Our default setup for now is
@@ -455,21 +664,27 @@ func CreateServerLocalWithPort(t *testing.T, database string, port int) (context
 	ctx := context.Background()
 	doltEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fileSys, doltdb.LocalDirDoltDB, dserver.Version)
 
-	controller, err := dserver.RunOnDisk(ctx, &servercfg.DoltgresConfig{
-		DoltgresConfig: cfgdetails.DoltgresConfig{
-			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
-				PortNumber: &port,
-				HostStr:    &serverHost,
-			},
-			LogLevelStr: &testServerLogLevel,
-		},
-	}, doltEnv)
+	config = testServerConfig(config, port)
+	controller, err := dserver.RunOnDisk(ctx, config, doltEnv)
 	require.NoError(t, err)
 	auth.ClearDatabase()
 	fmt.Printf("port is %d\n", port)
 
 	connection := newTestDatabaseConnection(t, ctx, database, serverHost, port)
 	return ctx, connection, controller
+}
+
+func testServerConfig(config *servercfg.DoltgresConfig, port int) *servercfg.DoltgresConfig {
+	if config == nil {
+		config = &servercfg.DoltgresConfig{}
+	}
+	configCopy := *config
+	configCopy.ListenerConfig = &cfgdetails.DoltgresListenerConfig{
+		PortNumber: &port,
+		HostStr:    &serverHost,
+	}
+	configCopy.LogLevelStr = &testServerLogLevel
+	return &configCopy
 }
 
 // newTestDatabaseConnection returns a Connection to the test |database| at |host|:|port|. If the |database| provided

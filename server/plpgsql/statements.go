@@ -16,7 +16,7 @@ package plpgsql
 
 import (
 	"fmt"
-	"strings"
+	"strconv"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -37,6 +37,9 @@ type Assignment struct {
 	VariableName  string
 	Expression    string
 	VariableIndex int32 // TODO: figure out what this is used for, probably to get around shadowed variables?
+	// RetypeTarget sets the target's type from the value assigned. A CASE statement's variable is declared
+	// int4 whatever its expression yields, so its type is only known once the expression has run.
+	RetypeTarget bool
 }
 
 var _ Statement = Assignment{}
@@ -53,12 +56,16 @@ func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 		return err
 	}
 
-	*ops = append(*ops, InterpreterOperation{
+	op := InterpreterOperation{
 		OpCode:        OpCode_Assign,
 		PrimaryData:   "SELECT " + expression + ";",
 		SecondaryData: referencedVariables,
 		Target:        stmt.VariableName,
-	})
+	}
+	if stmt.RetypeTarget {
+		op.Options = map[string]string{OptionRetypeTarget: "true"}
+	}
+	*ops = append(*ops, op)
 	return nil
 }
 
@@ -72,6 +79,10 @@ type Block struct {
 	Body       []Statement
 	Label      string
 	IsLoop     bool
+	// ContinueTargetOffset gives the loop's next-iteration operation, where a CONTINUE for this loop jumps, as
+	// an offset from the body's first operation. It applies only when IsLoop is true, and the zero value suits
+	// WHILE and plain LOOP, whose bodies begin with that step rather than with loop setup.
+	ContinueTargetOffset int32
 }
 
 var _ Statement = Block{}
@@ -81,6 +92,11 @@ func (stmt Block) OperationSize() int32 {
 	total := int32(2) // We start with 2 since we'll have ScopeBegin and ScopeEnd
 	for _, variable := range stmt.Variables {
 		if !variable.IsParameter {
+			total++
+		}
+	}
+	for _, record := range stmt.Records {
+		if record.IsDeclared() {
 			total++
 		}
 	}
@@ -103,33 +119,59 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 			stmt.Label = stack.GetCurrentLabel()
 		}
 	}
+	scopeBeginIndex := len(*ops)
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:      OpCode_ScopeBegin,
 		PrimaryData: stmt.Label,
 		Target:      loop,
 	})
+	// Records are registered ahead of the variables so that a default expression may name one, as a
+	// trigger's `OLD.id` or `to_jsonb(OLD)` does.
+	for _, record := range stmt.Records {
+		// The schema here only exists so that field references such as `r.id` are recognized as variable
+		// references while the body is compiled. The real schema is not known until the record is assigned.
+		var fakeSch sql.Schema
+		for _, fieldName := range record.Fields {
+			fakeSch = append(fakeSch, &sql.Column{Name: fieldName})
+		}
+		stack.NewRecord(record.Name, fakeSch, nil)
+		if record.IsDeclared() {
+			*ops = append(*ops, InterpreterOperation{
+				OpCode: OpCode_DeclareRecord,
+				Target: record.Name,
+			})
+		}
+	}
 	for _, variable := range stmt.Variables {
 		op := InterpreterOperation{
 			OpCode:      OpCode_Declare,
 			PrimaryData: variable.Type,
 			Target:      variable.Name,
 		}
-		var val any
 		if variable.Default != "" {
-			op.SecondaryData = []string{variable.Default}
-			val = variable.Default
+			// A default is an arbitrary expression, so it compiles like the right-hand side of an
+			// assignment. Registering each variable as we go leaves only those declared ahead of
+			// this one in scope, matching PostgreSQL's evaluation of defaults in declaration order.
+			query, referencedVariables, err := compileDeclareDefault(variable.Default, stack)
+			if err != nil {
+				return err
+			}
+			op.SecondaryData = append([]string{variable.Default, query}, referencedVariables...)
 		}
 		if !variable.IsParameter {
 			*ops = append(*ops, op)
 		}
-		stack.NewVariableWithValue(variable.Name, nil, val)
+		// This stack only resolves names; the variable's type and value are not known until the
+		// declaration runs.
+		stack.NewVariableWithValue(variable.Name, nil, nil)
 	}
-	for _, record := range stmt.Records {
-		var fakeSch sql.Schema
-		for _, fieldName := range record.Fields {
-			fakeSch = append(fakeSch, &sql.Column{Name: fieldName})
+	if stmt.IsLoop {
+		// Declarations are already appended, so the body starts at the next operation. reconcileLabels
+		// resolves this loop's CONTINUE statements through this offset.
+		continueTarget := len(*ops) + int(stmt.ContinueTargetOffset)
+		(*ops)[scopeBeginIndex].Options = map[string]string{
+			continueTargetOption: strconv.Itoa(continueTarget - scopeBeginIndex),
 		}
-		stack.NewRecord(record.Name, fakeSch, nil)
 	}
 	for _, innerStmt := range stmt.Body {
 		if err := innerStmt.AppendOperations(ops, stack); err != nil {
@@ -147,6 +189,32 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 type ExecuteSQL struct {
 	Statement string
 	Target    string
+	// TargetIsRecord states that Target names a single RECORD variable that receives the entire result row,
+	// rather than a comma-separated list of scalar variables that each receive one column.
+	TargetIsRecord bool
+	// SetsFound states that the statement updates the built-in FOUND variable. PostgreSQL limits that to
+	// statements carrying an INTO clause and to data-modifying statements. Everything else leaves FOUND
+	// as it was, a utility statement such as CREATE TABLE in particular.
+	SetsFound bool
+}
+
+// isDataModifying reports whether |query| is an INSERT, UPDATE, DELETE, or MERGE. Those are the statements
+// PostgreSQL treats as data-modifying when deciding whether to update FOUND; its own compiler records the
+// same thing as PLpgSQL_stmt_execsql.mod_stmt. A query that does not parse is reported as not data-modifying,
+// since leaving FOUND alone is what every statement outside this set does.
+func isDataModifying(query string) bool {
+	result, err := pg_query.Parse(query)
+	if err != nil {
+		return false
+	}
+	for _, rawStmt := range result.GetStmts() {
+		switch rawStmt.GetStmt().GetNode().(type) {
+		case *pg_query.Node_InsertStmt, *pg_query.Node_UpdateStmt,
+			*pg_query.Node_DeleteStmt, *pg_query.Node_MergeStmt:
+			return true
+		}
+	}
+	return false
 }
 
 var _ Statement = ExecuteSQL{}
@@ -162,12 +230,16 @@ func (stmt ExecuteSQL) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 	if err != nil {
 		return err
 	}
-	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_Execute,
+	op := InterpreterOperation{
+		OpCode:        executeOpCode(stmt.TargetIsRecord),
 		PrimaryData:   statementStr,
 		SecondaryData: referencedVariables,
 		Target:        stmt.Target,
-	})
+	}
+	if stmt.SetsFound {
+		op.Options = map[string]string{OptionSetsFound: "true"}
+	}
+	*ops = append(*ops, op)
 	return nil
 }
 
@@ -176,6 +248,9 @@ type DynamicExecute struct {
 	Query  string
 	Params []string
 	Target string
+	// TargetIsRecord states that Target names a single RECORD variable that receives the entire result row,
+	// rather than a comma-separated list of scalar variables that each receive one column.
+	TargetIsRecord bool
 }
 
 var _ Statement = DynamicExecute{}
@@ -187,20 +262,52 @@ func (DynamicExecute) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (stmt DynamicExecute) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+	query, bindings, err := substituteVariableReferences(stmt.Query, stack)
+	if err != nil {
+		return err
+	}
+	options := map[string]string{
+		OptionDynamicExpression:   "true",
+		OptionDynamicBindingCount: strconv.Itoa(len(bindings)),
+	}
+	for i, binding := range bindings {
+		options[OptionDynamicBindingPrefix+strconv.Itoa(i)] = binding
+	}
+	options[OptionDynamicUsingCount] = strconv.Itoa(len(stmt.Params))
+	for i, param := range stmt.Params {
+		expression, paramBindings, err := substituteVariableReferences(param, stack)
+		if err != nil {
+			return err
+		}
+		index := strconv.Itoa(i)
+		options[OptionDynamicUsingExpressionPrefix+index] = expression
+		options[OptionDynamicUsingBindingCountPrefix+index] = strconv.Itoa(len(paramBindings))
+		for j, binding := range paramBindings {
+			options[OptionDynamicUsingBindingPrefix+index+"_"+strconv.Itoa(j)] = binding
+		}
+	}
 	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_Execute,
-		PrimaryData:   stmt.Query,
-		SecondaryData: stmt.Params,
-		Target:        stmt.Target,
+		OpCode:      executeOpCode(stmt.TargetIsRecord),
+		PrimaryData: query,
+		Target:      stmt.Target,
+		Options:     options,
 	})
 	return nil
 }
 
-// ForQueryInit executes a SQL query and stores the result set in a named cursor on the stack.
-// It is the first operation emitted for a FOR record IN query LOOP statement.
+// executeOpCode returns the opcode used to run a SQL statement whose results are written into the given
+// kind of INTO target.
+func executeOpCode(targetIsRecord bool) OpCode {
+	if targetIsRecord {
+		return OpCode_ExecuteInto
+	}
+	return OpCode_Execute
+}
+
+// ForQueryInit executes a SQL query and stores the result set as the cursor of the scope it runs in. The
+// rows are a FOR record IN query LOOP's own query, or the elements of a FOREACH's array.
 type ForQueryInit struct {
-	CursorName string
-	Query      string
+	Query string
 }
 
 var _ Statement = ForQueryInit{}
@@ -220,15 +327,13 @@ func (stmt ForQueryInit) AppendOperations(ops *[]InterpreterOperation, stack *In
 		OpCode:        OpCode_ForQueryInit,
 		PrimaryData:   queryStr,
 		SecondaryData: referencedVariables,
-		Target:        stmt.CursorName,
 	})
 	return nil
 }
 
-// ForQueryNext fetches the next row from a named cursor and assigns it to a record variable.
-// When the cursor is exhausted it jumps forward by GotoOffset (like an If), exiting the loop.
+// ForQueryNext fetches the next row from the cursor of the scope it runs in and assigns it to a record
+// variable. When the cursor is exhausted it jumps forward by GotoOffset (like an If), exiting the loop.
 type ForQueryNext struct {
-	CursorName string
 	RecordVar  string
 	GotoOffset int32
 }
@@ -243,10 +348,9 @@ func (ForQueryNext) OperationSize() int32 {
 // AppendOperations implements the interface Statement.
 func (stmt ForQueryNext) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	*ops = append(*ops, InterpreterOperation{
-		OpCode:      OpCode_ForQueryNext,
-		PrimaryData: stmt.CursorName,
-		Target:      stmt.RecordVar,
-		Index:       len(*ops) + int(stmt.GotoOffset),
+		OpCode: OpCode_ForQueryNext,
+		Target: stmt.RecordVar,
+		Index:  len(*ops) + int(stmt.GotoOffset),
 	})
 	return nil
 }
@@ -300,6 +404,9 @@ func (stmt Goto) AppendOperations(ops *[]InterpreterOperation, stack *Interprete
 type If struct {
 	Condition  string
 	GotoOffset int32
+	// IsLoopCondition marks this as the conditional jump that advances an integer FOR loop, whose result
+	// is the only record of the loop having run its body.
+	IsLoopCondition bool
 }
 
 var _ Statement = If{}
@@ -316,12 +423,16 @@ func (stmt If) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterS
 		return err
 	}
 
-	*ops = append(*ops, InterpreterOperation{
+	op := InterpreterOperation{
 		OpCode:        OpCode_If,
 		PrimaryData:   "SELECT " + condition + ";",
 		SecondaryData: referencedVariables,
 		Index:         len(*ops) + int(stmt.GotoOffset),
-	})
+	}
+	if stmt.IsLoopCondition {
+		op.Options = map[string]string{OptionLoopCondition: "true"}
+	}
+	*ops = append(*ops, op)
 	return nil
 }
 
@@ -358,6 +469,11 @@ type Raise struct {
 	Message string
 	Params  []string
 	Options map[string]string
+	// SqlState gives the SQLSTATE that an EXCEPTION-level RAISE reports, and is empty for a RAISE that does
+	// not name one. A RAISE written in a function body carries its code in Options, put there by the USING
+	// clause's ERRCODE option; this is for the RAISE statements the compiler generates itself, which have no
+	// source text to carry one.
+	SqlState string
 }
 
 var _ Statement = Raise{}
@@ -369,11 +485,20 @@ func (r Raise) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack) error {
+	options := r.Options
+	if len(r.SqlState) > 0 {
+		// The statement's own options are left alone, since a Statement may be appended more than once.
+		options = make(map[string]string, len(r.Options)+1)
+		for key, value := range r.Options {
+			options[key] = value
+		}
+		options[errCodeOptionKey] = r.SqlState
+	}
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:        OpCode_Raise,
 		PrimaryData:   r.Level,
 		SecondaryData: append([]string{r.Message}, r.Params...),
-		Options:       r.Options,
+		Options:       options,
 	})
 	return nil
 }
@@ -382,6 +507,15 @@ func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack
 type Record struct {
 	Name   string
 	Fields []string
+	// IsTriggerRecord is true for the NEW and OLD records of a trigger function. Those are created by the
+	// trigger invocation rather than by the function body, so they are not declared when the block is entered.
+	IsTriggerRecord bool
+}
+
+// IsDeclared returns whether entering the record's block should declare it. Trigger records are supplied by
+// the trigger invocation, and PL/pgSQL leaves a record's name empty when it is only referenced internally.
+func (record Record) IsDeclared() bool {
+	return !record.IsTriggerRecord && len(record.Name) > 0
 }
 
 // ReturnQuery represents a RETURN QUERY statement.
@@ -457,6 +591,17 @@ func OperationSizeForStatements(stmts []Statement) int32 {
 	return total
 }
 
+// compileDeclareDefault compiles the source text of a declaration's default into the query that
+// evaluates it, along with the names of the variables that query binds. Whatever the |stack| holds is
+// in scope for the default.
+func compileDeclareDefault(defaultText string, stack *InterpreterStack) (query string, bindings []string, err error) {
+	expression, bindings, err := substituteVariableReferences(defaultText, stack)
+	if err != nil {
+		return "", nil, err
+	}
+	return "SELECT " + expression + ";", bindings, nil
+}
+
 // substituteVariableReferences parses the specified |expression| and replaces
 // any token that matches a variable name in the |stack| with "$N", where N
 // indicates which variable in the returned |referenceVars| slice is used.
@@ -474,24 +619,29 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 		isAfterDot := i > 0 && scanResult.Tokens[i-1].Token == '.'
 
 		if !isAfterDot {
-			if _, ok := varMap[strings.ToLower(substring)]; ok {
+			// A variable is named by whatever the reference folds to, not by how it happens to be spelled
+			// here, so the binding is recorded under the folded name.
+			normalized := NormalizeIdentifier(substring)
+			if _, ok := varMap[normalized]; ok {
+				bindingName := normalized
 				// If there's a '.', then we'll assume this is accessing a record's field (`NEW.val1` for example)
 				for i+2 < len(scanResult.Tokens) && scanResult.Tokens[i+1].Token == '.' {
 					nextFieldSubstring := expression[scanResult.Tokens[i+2].Start:scanResult.Tokens[i+2].End]
 					substring += "." + nextFieldSubstring
+					bindingName += "." + nextFieldSubstring
 					i += 2
 				}
 				// Variables cannot have a '(' after their name as that would classify them as functions, so we have to
 				// explicitly check for that. This is because variables and functions can share names, for example:
 				// SELECT COUNT(*) INTO count FROM table_name;
 				if i+1 >= len(scanResult.Tokens) || scanResult.Tokens[i+1].Token != '(' {
-					referencedVars = append(referencedVars, substring)
+					referencedVars = append(referencedVars, bindingName)
 					newExpression += fmt.Sprintf("$%d ", len(referencedVars))
 				} else {
 					newExpression += substring + " "
 				}
-			} else if _, ok := triggerSpecialVariables[substring]; ok {
-				referencedVars = append(referencedVars, substring)
+			} else if _, ok := triggerSpecialVariables[normalized]; ok {
+				referencedVars = append(referencedVars, normalized)
 				newExpression += fmt.Sprintf("$%d ", len(referencedVars))
 			} else {
 				newExpression += substring + " "

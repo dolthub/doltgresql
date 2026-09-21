@@ -99,6 +99,113 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "conditions that evaluate to NULL",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_null_if(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	IF input = 'Hello' THEN
+		RETURN 'Greeting';
+	ELSIF input = 'Bye' THEN
+		RETURN 'Farewell';
+	ELSE
+		RETURN 'Else';
+	END IF;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_while(input TEXT) RETURNS INT AS $$
+DECLARE
+	count1 INT := 0;
+BEGIN
+	WHILE input = 'Hello' LOOP
+		count1 := count1 + 1;
+		EXIT WHEN count1 > 2;
+	END LOOP;
+	RETURN count1;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_exit(input TEXT) RETURNS INT AS $$
+DECLARE
+	count1 INT := 0;
+BEGIN
+	LOOP
+		count1 := count1 + 1;
+		EXIT WHEN input = 'Hello';
+		EXIT WHEN count1 > 2;
+	END LOOP;
+	RETURN count1;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 1 THEN
+			msg := 'one';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_null_searched_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE
+		WHEN x = 1 THEN
+			msg := 'one';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_null_if(NULL);",
+					Expected: []sql.Row{{"Else"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_if('Bye');",
+					Expected: []sql.Row{{"Farewell"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_while(NULL);",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT interpreted_null_while('Hello');",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT interpreted_null_exit(NULL);",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT interpreted_null_exit('Hello');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT interpreted_null_case(NULL);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_case(1);",
+					Expected: []sql.Row{{"one"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_searched_case(NULL);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_null_searched_case(1);",
+					Expected: []sql.Row{{"one"}},
+				},
+			},
+		},
+		{
 			Name: "CASE, with ELSE",
 			SetUpScript: []string{`
 CREATE FUNCTION interpreted_case(x INT) RETURNS TEXT AS $$
@@ -128,6 +235,193 @@ $$ LANGUAGE plpgsql;`},
 				{
 					Query:    "SELECT interpreted_case(0);",
 					Expected: []sql.Row{{"other value than one or two"}},
+				},
+			},
+		},
+		{
+			Name: "CASE over a non-integer expression",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_case_text(x TEXT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 'Hello', 'Hi' THEN
+			msg := 'greeting';
+		WHEN 'Bye' THEN
+			msg := 'farewell';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_bool(x BOOLEAN) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN true THEN
+			msg := 'yes';
+		ELSE
+			msg := 'no';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_numeric(x NUMERIC) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 1.5 THEN
+			msg := 'one point five';
+		ELSE
+			msg := 'other';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_loop() RETURNS TEXT AS $$
+DECLARE
+	i INT := 0;
+	msg TEXT;
+	result TEXT := '';
+BEGIN
+	WHILE i < 3 LOOP
+		i := i + 1;
+		CASE i::TEXT
+			WHEN '2' THEN
+				msg := 'two';
+			ELSE
+				msg := 'n';
+		END CASE;
+		result := result || msg;
+	END LOOP;
+	RETURN result;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case_text('Hello');",
+					Expected: []sql.Row{{"greeting"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_text('Bye');",
+					Expected: []sql.Row{{"farewell"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_text('zzz');",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_bool(true);",
+					Expected: []sql.Row{{"yes"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_bool(false);",
+					Expected: []sql.Row{{"no"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_numeric(1.5);",
+					Expected: []sql.Row{{"one point five"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_numeric(2.5);",
+					Expected: []sql.Row{{"other"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_loop();",
+					Expected: []sql.Row{{"ntwon"}},
+				},
+			},
+		},
+		{
+			Name: "NULL conditions are not met",
+			SetUpScript: []string{
+				`CREATE TABLE case_selector (v TEXT);`,
+				`INSERT INTO case_selector VALUES ('match');`,
+				`CREATE FUNCTION interpreted_case_null(x TEXT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 'match' THEN
+			msg := 'matched';
+		ELSE
+			msg := 'fell through';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_case_empty_selector() RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE (SELECT v FROM case_selector LIMIT 1)
+		WHEN 'match' THEN
+			msg := 'matched';
+		ELSE
+			msg := 'fell through';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_if_null(x BOOLEAN) RETURNS TEXT AS $$
+BEGIN
+	IF x THEN
+		RETURN 'true';
+	ELSE
+		RETURN 'not true';
+	END IF;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_while_null(x BOOLEAN) RETURNS TEXT AS $$
+BEGIN
+	WHILE x LOOP
+		RETURN 'looped';
+	END LOOP;
+	RETURN 'never looped';
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case_null('match');",
+					Expected: []sql.Row{{"matched"}},
+				},
+				{
+					// A NULL selector matches no WHEN branch, so the CASE falls to its ELSE.
+					Query:    "SELECT interpreted_case_null(NULL);",
+					Expected: []sql.Row{{"fell through"}},
+				},
+				{
+					Query:    "SELECT interpreted_case_empty_selector();",
+					Expected: []sql.Row{{"matched"}},
+				},
+				{
+					// A selector subquery with no rows is NULL, which reaches the ELSE.
+					Query:    "DELETE FROM case_selector;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT interpreted_case_empty_selector();",
+					Expected: []sql.Row{{"fell through"}},
+				},
+				{
+					Query:    "SELECT interpreted_if_null(true);",
+					Expected: []sql.Row{{"true"}},
+				},
+				{
+					// A NULL IF condition is not met, so the ELSE runs.
+					Query:    "SELECT interpreted_if_null(NULL);",
+					Expected: []sql.Row{{"not true"}},
+				},
+				{
+					// A NULL WHILE condition ends the loop.
+					Query:    "SELECT interpreted_while_null(NULL);",
+					Expected: []sql.Row{{"never looped"}},
 				},
 			},
 		},
@@ -785,6 +1079,16 @@ $$ LANGUAGE plpgsql;`},
 					RETURN var1;
 				END;
 				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_raise_errcode() RETURNS TEXT AS $$
+				BEGIN
+					RAISE EXCEPTION 'coded' USING ERRCODE = '22012';
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_raise_condition_name() RETURNS TEXT AS $$
+				BEGIN
+					RAISE EXCEPTION 'named' USING ERRCODE = 'division_by_zero';
+				END;
+				$$ LANGUAGE plpgsql;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -806,8 +1110,22 @@ $$ LANGUAGE plpgsql;`},
 					},
 				},
 				{
-					Query:       "SELECT interpreted_raise2('123');",
-					ExpectedErr: "foo % bar 2",
+					// A RAISE that names no SQLSTATE reports the code PostgreSQL gives a bare RAISE.
+					Query:           "SELECT interpreted_raise2('123');",
+					ExpectedErr:     "foo % bar 2",
+					ExpectedErrCode: "P0001",
+				},
+				{
+					Query:           "SELECT interpreted_raise_errcode();",
+					ExpectedErr:     "coded",
+					ExpectedErrCode: "22012",
+				},
+				{
+					// TODO: PostgreSQL also accepts a condition name here, and would report 22012. Until
+					//  names resolve, the RAISE keeps its default code rather than reporting the name.
+					Query:           "SELECT interpreted_raise_condition_name();",
+					ExpectedErr:     "named",
+					ExpectedErrCode: "P0001",
 				},
 			},
 		},
@@ -931,6 +1249,45 @@ $$ LANGUAGE plpgsql;`},
 					Query:    "SELECT interpreted_null(43);",
 					Expected: []sql.Row{{"No"}},
 				},
+			},
+		},
+		{
+			Name: "DO statement",
+			SetUpScript: []string{
+				`CREATE TABLE interpreted_do_values (v INT PRIMARY KEY)`,
+				`CREATE FUNCTION interpreted_do() RETURNS void AS $function$
+BEGIN
+	DO $block$ BEGIN
+		INSERT INTO interpreted_do_values VALUES (42);
+	END $block$;
+END;
+$function$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT interpreted_do()`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT * FROM interpreted_do_values`, Expected: []sql.Row{{int64(42)}}},
+			},
+		},
+		{
+			Name: "DO statement failure is atomic",
+			SetUpScript: []string{
+				`CREATE TABLE interpreted_do_atomic (v INT PRIMARY KEY)`,
+				`CREATE FUNCTION interpreted_do_error() RETURNS void AS $function$
+BEGIN
+	DO $block$ BEGIN
+		INSERT INTO interpreted_do_atomic VALUES (1);
+		RAISE EXCEPTION 'nested DO failed';
+	END $block$;
+END;
+$function$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `SELECT interpreted_do_error()`,
+					ExpectedErr:     "nested DO failed",
+					ExpectedErrCode: "P0001",
+				},
+				{Query: `SELECT * FROM interpreted_do_atomic`, Expected: []sql.Row{}},
 			},
 		},
 		{
@@ -1581,6 +1938,86 @@ $$;`,
 			},
 		},
 		{
+			Name: "DECLARE variable with default value of an expression",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION array_default() RETURNS TEXT[] AS $$ DECLARE permitted TEXT[] := ARRAY['retired_at', 'deleted_at']; BEGIN RETURN permitted; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT array_default();",
+					Expected: []sql.Row{{"{retired_at,deleted_at}"}},
+				},
+				{
+					Query:    `CREATE FUNCTION quote_default() RETURNS TEXT AS $$ DECLARE x TEXT := 'it''s'; BEGIN RETURN x; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT quote_default();",
+					Expected: []sql.Row{{"it's"}},
+				},
+				{
+					Query:    `CREATE FUNCTION call_default() RETURNS TEXT AS $$ DECLARE x TEXT := upper('abc') || length('abcd'); BEGIN RETURN x; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT call_default();",
+					Expected: []sql.Row{{"ABC4"}},
+				},
+				{
+					// A default may name the parameters and the variables declared ahead of it, since
+					// Postgres evaluates the defaults in declaration order.
+					Query: `CREATE FUNCTION chained_default(p INT) RETURNS TEXT AS $$
+DECLARE
+	a INT := p * 2;
+	b INT := a + 1;
+	c TEXT := 'a=' || a || ' b=' || b;
+	d INT := (SELECT count(*) FROM (VALUES (1), (2)) v);
+BEGIN
+	RETURN c || ' d=' || d;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT chained_default(5);",
+					Expected: []sql.Row{{"a=10 b=11 d=2"}},
+				},
+				{
+					Query: `CREATE FUNCTION cast_default() RETURNS TEXT AS $$
+DECLARE
+	a NUMERIC := 1.5::numeric + 1;
+	b TEXT := NULL;
+	c INT[] := ARRAY[1, 2, 3];
+	d TIMESTAMP := '2020-01-01 00:00:00'::timestamp;
+BEGIN
+	RETURN a || '|' || coalesce(b, 'nil') || '|' || c[2] || '|' || d;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT cast_default();",
+					Expected: []sql.Row{{"2.5|nil|2|2020-01-01 00:00:00"}},
+				},
+				{
+					Query: `CREATE FUNCTION qualified_default() RETURNS TEXT AS $$
+DECLARE
+	k CONSTANT TEXT := upper('abc');
+	n TEXT NOT NULL := repeat('n', 2);
+BEGIN
+	RETURN k || n;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT qualified_default();",
+					Expected: []sql.Row{{"ABCnn"}},
+				},
+			},
+		},
+		{
 			Name: "FOR I LOOP statement",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1653,6 +2090,413 @@ $$ LANGUAGE plpgsql;`,
 						{2, "name2", 4},
 						{7, "name4", 9},
 					},
+				},
+				{
+					// A loop's cursor lives in its own scope, so one nested inside another over the same
+					// record variable iterates its own rows rather than the outer's.
+					Query: `CREATE FUNCTION fors_nested_one_var() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            r RECORD;
+            result TEXT := '';
+        BEGIN
+            FOR r IN SELECT 1 AS n UNION ALL SELECT 2 LOOP FOR r IN SELECT 8 AS n UNION ALL SELECT 9 LOOP result := result || r.n; END LOOP; END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT fors_nested_one_var();`,
+					Expected: []sql.Row{{"8989"}},
+				},
+			},
+		},
+		{
+			Name: "FOREACH IN ARRAY statement",
+			SetUpScript: []string{
+				`CREATE TABLE tags (id int PRIMARY KEY, vals text[]);`,
+				`INSERT INTO tags VALUES (1, '{a,b}'), (2, '{c}');`,
+				`CREATE TABLE maybe_tags (id int PRIMARY KEY, vals text[]);`,
+				`INSERT INTO maybe_tags VALUES (1, '{a,b}'), (3, NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION concat_all(arr TEXT[]) RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH col IN ARRAY arr LOOP
+                result := result || col;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT concat_all('{a,b,c}');`,
+					Expected: []sql.Row{{"abc"}},
+				},
+				{
+					// An empty array runs the body no times, and a NULL element is still an element.
+					Query:    `SELECT concat_all('{}'), concat_all('{a,NULL,b}');`,
+					Expected: []sql.Row{{"", nil}},
+				},
+				{
+					Query:    `SELECT id, concat_all(vals) FROM tags ORDER BY id;`,
+					Expected: []sql.Row{{1, "ab"}, {2, "c"}},
+				},
+				{
+					// The loop variable takes its declared type, not the element type.
+					Query: `CREATE FUNCTION sum_halves() RETURNS NUMERIC
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            n NUMERIC;
+            total NUMERIC := 0;
+        BEGIN
+            FOREACH n IN ARRAY ARRAY[1, 2, 3] LOOP
+                total := total + n / 2;
+            END LOOP;
+            RETURN total;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT sum_halves();`,
+					Expected: []sql.Row{{Numeric("3.0000000000000000")}},
+				},
+				{
+					// FOUND reports whether the loop iterated.
+					Query: `CREATE FUNCTION foreach_found(arr TEXT[]) RETURNS BOOLEAN
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+        BEGIN
+            FOREACH col IN ARRAY arr LOOP
+            END LOOP;
+            RETURN FOUND;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_found('{a}'), foreach_found('{}');`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query: `CREATE FUNCTION foreach_exit(arr TEXT[]) RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH col IN ARRAY arr LOOP
+                CONTINUE WHEN col = 'skip';
+                EXIT WHEN col = 'stop';
+                result := result || col;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_exit('{a,skip,b,stop,c}');`,
+					Expected: []sql.Row{{"ab"}},
+				},
+				{
+					// A labeled loop, exited from a FOREACH nested inside it.
+					Query: `CREATE FUNCTION foreach_labeled() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            r RECORD;
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            <<rows>>
+            FOR r IN SELECT id, vals FROM tags ORDER BY id LOOP
+                FOREACH col IN ARRAY r.vals LOOP
+                    EXIT rows WHEN col = 'c';
+                    result := result || r.id || col;
+                END LOOP;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_labeled();`,
+					Expected: []sql.Row{{"1a1b"}},
+				},
+				{
+					Query: `CREATE FUNCTION foreach_nested() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            a TEXT;
+            b TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH a IN ARRAY ARRAY['1', '2'] LOOP
+                FOREACH b IN ARRAY ARRAY['x', 'y'] LOOP
+                    result := result || a || b;
+                END LOOP;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_nested();`,
+					Expected: []sql.Row{{"1x1y2x2y"}},
+				},
+				{
+					// Loops that share a line share the name of the record their elements are fetched
+					// into, so the inner must shadow the outer rather than overwrite it.
+					Query: `CREATE FUNCTION foreach_nested_one_line() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            a TEXT;
+            b TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH a IN ARRAY ARRAY['1', '2'] LOOP FOREACH b IN ARRAY ARRAY['x', 'y'] LOOP result := result || a || b; END LOOP; END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_nested_one_line();`,
+					Expected: []sql.Row{{"1x1y2x2y"}},
+				},
+				{
+					// Nested loops over one variable share every name there is, so only scope tells their
+					// cursors apart.
+					Query: `CREATE FUNCTION foreach_nested_one_var() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            x TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH x IN ARRAY ARRAY['1', '2'] LOOP FOREACH x IN ARRAY ARRAY['a', 'b'] LOOP result := result || x; END LOOP; END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_nested_one_var();`,
+					Expected: []sql.Row{{"abab"}},
+				},
+				{
+					// The loop variable is written as declared, capitals and all.
+					Query: `CREATE FUNCTION foreach_quoted() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            "MyCol" TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH "MyCol" IN ARRAY ARRAY['x', 'y'] LOOP
+                result := result || "MyCol";
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_quoted();`,
+					Expected: []sql.Row{{"xy"}},
+				},
+				{
+					// The array expression is evaluated once, when the loop is entered.
+					Query: `CREATE FUNCTION foreach_query() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            FOREACH col IN ARRAY (SELECT vals FROM tags WHERE id = 1) LOOP
+                DELETE FROM tags WHERE id = 1;
+                result := result || col;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_query();`,
+					Expected: []sql.Row{{"ab"}},
+				},
+				{
+					// A null array raises rather than iterating no times.
+					Query: `CREATE FUNCTION foreach_null() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+        BEGIN
+            FOREACH col IN ARRAY CAST(NULL AS TEXT[]) LOOP
+            END LOOP;
+            RETURN 'no raise';
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT foreach_null();`,
+					ExpectedErr:     "FOREACH expression must not be null",
+					ExpectedErrCode: "22004",
+				},
+				{
+					// The array a query read is the one iterated over, null and all.
+					Query: `CREATE FUNCTION foreach_null_column(tag_id INT) RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            arr TEXT[];
+            col TEXT;
+            result TEXT := '';
+        BEGIN
+            SELECT vals INTO arr FROM maybe_tags WHERE id = tag_id;
+            FOREACH col IN ARRAY arr LOOP
+                result := result || col;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_null_column(1);`,
+					Expected: []sql.Row{{"ab"}},
+				},
+				{
+					Query:           `SELECT foreach_null_column(3);`,
+					ExpectedErr:     "FOREACH expression must not be null",
+					ExpectedErrCode: "22004",
+				},
+				{
+					// TODO: a variable declared without a default should be null, and this should raise
+					//  `FOREACH expression must not be null`. It iterates no times instead, because the
+					//  interpreter starts an array variable at the empty array rather than at null.
+					Query: `CREATE FUNCTION foreach_undefaulted() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            arr TEXT[];
+            col TEXT;
+            result TEXT := 'none';
+        BEGIN
+            FOREACH col IN ARRAY arr LOOP
+                result := 'ran';
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_undefaulted();`,
+					Expected: []sql.Row{{"none"}},
+				},
+				{
+					// An expression that is not an array raises, and reports the type it did yield.
+					Query: `CREATE FUNCTION foreach_not_array() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+        BEGIN
+            FOREACH col IN ARRAY 42 LOOP
+            END LOOP;
+            RETURN 'no raise';
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT foreach_not_array();`,
+					ExpectedErr:     "FOREACH expression must yield an array, not type integer",
+					ExpectedErrCode: "42804",
+				},
+				{
+					// An untyped NULL is not an array either. PostgreSQL resolves it to text and names that
+					// type; the type it resolves to here is unknown, which is what gets named.
+					Query: `CREATE FUNCTION foreach_bare_null() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            col TEXT;
+        BEGIN
+            FOREACH col IN ARRAY NULL LOOP
+            END LOOP;
+            RETURN 'no raise';
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT foreach_bare_null();`,
+					ExpectedErr:     "FOREACH expression must yield an array, not type",
+					ExpectedErrCode: "42804",
+				},
+				{
+					// TODO: PostgreSQL iterates the two rows here. pg_typeof spells an array of a
+					//  user-defined element type `_maybe_tags` rather than `maybe_tags[]`, so the array
+					//  check rejects it. Matching that spelling would not be enough on its own: nothing
+					//  in the interpreter can carry a value of such a type yet.
+					Query: `CREATE FUNCTION foreach_composite() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            r RECORD;
+            result TEXT := '';
+        BEGIN
+            FOREACH r IN ARRAY (SELECT array_agg(maybe_tags) FROM maybe_tags) LOOP
+                result := result || r.id;
+            END LOOP;
+            RETURN result;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT foreach_composite();`,
+					ExpectedErr:     "FOREACH expression must yield an array, not type _maybe_tags",
+					ExpectedErrCode: "42804",
+				},
+				{
+					Query: `CREATE FUNCTION foreach_slice() RETURNS TEXT
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+            row1 TEXT[];
+        BEGIN
+            FOREACH row1 SLICE 1 IN ARRAY ARRAY[['a', 'b']] LOOP
+            END LOOP;
+            RETURN 'done';
+        END;
+        $$;`,
+					ExpectedErr: "FOREACH with SLICE is not yet supported",
 				},
 			},
 		},
@@ -1773,6 +2617,82 @@ $$ LANGUAGE plpgsql;`,
 					Query:            "SELECT bonus_amount FROM calculate_bonus(5000);",
 					ExpectedColNames: []string{"bonus_amount"},
 					Expected:         []sql.Row{{Numeric("500.00")}},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE in a FROM clause",
+			SetUpScript: []string{
+				`CREATE FUNCTION figures() RETURNS TABLE(shape TEXT, sides INT)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 'triangle', 3;
+						RETURN QUERY SELECT 'square', 4;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT * FROM figures();",
+					ExpectedColNames: []string{"shape", "sides"},
+					Expected:         []sql.Row{{"triangle", 3}, {"square", 4}},
+				},
+				{
+					Query:            "SELECT shape FROM figures() WHERE sides = 4;",
+					ExpectedColNames: []string{"shape"},
+					Expected:         []sql.Row{{"square"}},
+				},
+				{
+					// In a SELECT list the same call produces one record value per row
+					Query:    "SELECT figures();",
+					Expected: []sql.Row{{"(triangle,3)"}, {"(square,4)"}},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE with a single column in a FROM clause",
+			SetUpScript: []string{
+				`CREATE FUNCTION shapes() RETURNS TABLE(shape TEXT)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 'triangle';
+						RETURN QUERY SELECT 'square';
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT * FROM shapes();",
+					ExpectedColNames: []string{"shape"},
+					Expected:         []sql.Row{{"triangle"}, {"square"}},
+				},
+				{
+					Query:    "SELECT shapes();",
+					Expected: []sql.Row{{"(triangle)"}, {"(square)"}},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF a scalar type",
+			SetUpScript: []string{
+				`CREATE FUNCTION sides() RETURNS SETOF INT
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 3 UNION ALL SELECT 4;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM sides();",
+					Expected: []sql.Row{{3}, {4}},
+				},
+				{
+					Query:    "SELECT sides();",
+					Expected: []sql.Row{{3}, {4}},
 				},
 			},
 		},

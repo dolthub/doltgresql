@@ -42,11 +42,16 @@ var pg_get_serial_sequence_text_text = framework.Function2{
 	IsNonDeterministic: false,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		tableName := val1.(string)
-		columnName := val2.(string)
+		tableName, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		columnName, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 
 		// Parse out the schema if one was supplied
-		var err error
 		schemaName := ""
 		if strings.Contains(tableName, ".") {
 			schemaName, tableName, err = ParseRelationName(ctx, tableName)

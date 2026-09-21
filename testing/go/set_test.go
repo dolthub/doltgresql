@@ -4112,8 +4112,9 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				// This parameter holds a list of identifiers, so "/" is quoted to stay one element
 				Query:    "SHOW local_preload_libraries",
-				Expected: []sql.Row{{"/"}},
+				Expected: []sql.Row{{`"/"`}},
 			},
 			{
 				Query:    "SET local_preload_libraries TO DEFAULT",
@@ -6384,6 +6385,288 @@ var setStmts = []ScriptTest{
 		},
 	},
 	{
+		// Postgres does not store a search_path as it was typed. It re-renders each element with the same quoting
+		// rules an identifier gets, so quoting that carries meaning survives and quoting that does not is dropped.
+		// Every expectation here was taken from PostgreSQL 16.
+		Name:        "search_path elements keep the quoting they need",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				// The quotes around $user are what distinguishes it from a schema of that name, so they are kept.
+				// This is the form pg_dump and most clients emit.
+				Query:    `SET search_path TO "$user", public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				Query:    `SET search_path TO "$user"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user"`}},
+			},
+			{
+				// A bare element needs no quoting and gets none
+				Query:    `SET search_path TO public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`public`}},
+			},
+			{
+				// Quoting a name that does not need it is not preserved
+				Query:    `SET search_path TO "public"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`public`}},
+			},
+			{
+				// Quotes are what preserve case, so they are kept
+				Query:    `SET search_path TO "MixedCase", public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"MixedCase", public`}},
+			},
+			{
+				// An unquoted element is lower cased, so it needs no quoting afterwards
+				Query:    `SET search_path TO MiXeD`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`mixed`}},
+			},
+			{
+				// A space is not valid in a bare identifier, so the quotes are kept
+				Query:    `SET search_path TO "with space"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"with space"`}},
+			},
+			{
+				// A quote within a quoted element stays doubled
+				Query:    `SET search_path TO "with""quote"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"with""quote"`}},
+			},
+			{
+				// A reserved keyword is not valid bare, so the quotes are kept
+				Query:    `SET search_path TO "user", public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"user", public`}},
+			},
+			{
+				Query:    `SET search_path TO pg_catalog, public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`pg_catalog, public`}},
+			},
+			{
+				Query:    `SET search_path TO public, public2`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`public, public2`}},
+			},
+			{
+				// A number is written out as itself, without quoting
+				Query:    `SET search_path TO 1, public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`1, public`}},
+			},
+			{
+				// A string literal is one element, comma and all, so the comma has to be quoted to stay inside it
+				Query:    `SET search_path TO 'a, b'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"a, b"`}},
+			},
+			{
+				Query:    `SET search_path TO 'public, public2'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"public, public2"`}},
+			},
+			{
+				// A string literal that looks like a path is still a single element, quotes included
+				Query:    `SET search_path TO '"$user", public'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"""$user"", public"`}},
+			},
+			{
+				// The empty element is quoted, which is what distinguishes it from a setting naming no schemas
+				Query:    `SET search_path TO ''`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`""`}},
+			},
+			{
+				Query:    `SELECT current_setting('search_path')`,
+				Expected: []sql.Row{{`""`}},
+			},
+			{
+				Query:    `SET search_path TO DEFAULT`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				Query:    `SET search_path TO "MixedCase"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `RESET search_path`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				// SET SCHEMA takes a single schema name, which is quoted only when it has to be
+				Query:    `SET SCHEMA 'MixedCase'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"MixedCase"`}},
+			},
+			{
+				Query:    `SET SCHEMA 'postgres'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`postgres`}},
+			},
+		},
+	},
+	{
+		// Parameters that are not lists of identifiers keep their values verbatim, without any quoting applied.
+		Name:        "non-identifier parameters are not quoted",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SET datestyle TO ISO, MDY`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW datestyle`,
+				Expected: []sql.Row{{`ISO, MDY`}},
+			},
+			{
+				Query:    `SET application_name TO "MixedCase"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW application_name`,
+				Expected: []sql.Row{{`MixedCase`}},
+			},
+			{
+				Query:    `SET timezone TO "UTC"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW timezone`,
+				Expected: []sql.Row{{`UTC`}},
+			},
+		},
+	},
+	{
+		// The quoting SHOW reports has to be the quoting name resolution reads back, or a search_path that round
+		// trips through a client stops naming the same schemas.
+		Name: "quoted search_path elements resolve to their schemas",
+		SetUpScript: []string{
+			`CREATE SCHEMA "MixedCase";`,
+			`CREATE SCHEMA postgres;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SET search_path TO "MixedCase"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT current_schema()`,
+				Expected: []sql.Row{{"MixedCase"}},
+			},
+			{
+				Query:    `CREATE TABLE t1 (a int)`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 't1'`,
+				Expected: []sql.Row{{"MixedCase"}},
+			},
+			{
+				// "$user" expands to the session user, "postgres", which has a schema here. Keeping the quotes
+				// through the SET is what lets it be recognized as the placeholder at all.
+				Query:    `SET search_path TO "$user", public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT current_schema()`,
+				Expected: []sql.Row{{"postgres"}},
+			},
+			{
+				Query:    `CREATE TABLE t2 (a int)`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 't2'`,
+				Expected: []sql.Row{{"postgres"}},
+			},
+			{
+				// A quoted element holding a comma names one schema, not two
+				Query:    `SET search_path TO 'MixedCase, public'`,
+				Expected: []sql.Row{},
+			},
+			{
+				// No schema is named "MixedCase, public", so the path names nothing searchable. Were the comma
+				// splitting the value into two elements instead, both would name existing schemas and be reported.
+				Query:    `SELECT current_schemas(false)`,
+				Expected: []sql.Row{{`{}`}},
+			},
+		},
+	},
+	{
 		Name:        "set 'segment_size' configuration variable",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
@@ -6522,8 +6805,9 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				// This parameter holds a list of identifiers, so "/" is quoted to stay one element
 				Query:    "SHOW session_preload_libraries",
-				Expected: []sql.Row{{"/"}},
+				Expected: []sql.Row{{`"/"`}},
 			},
 			{
 				Query:    "SET session_preload_libraries TO DEFAULT",

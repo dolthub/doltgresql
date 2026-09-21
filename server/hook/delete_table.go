@@ -30,7 +30,7 @@ import (
 
 // BeforeTableDeletion performs all validation necessary to ensure that table deletion does not leave the database in an
 // invalid state.
-func BeforeTableDeletion(ctx *sql.Context, _ sql.StatementRunner, nodeInterface sql.Node) (sql.Node, error) {
+func BeforeTableDeletion(ctx *sql.Context, runner sql.StatementRunner, nodeInterface sql.Node) (sql.Node, error) {
 	// TODO: handle casts using a table name
 	n, ok := nodeInterface.(*plan.DropTable)
 	if !ok {
@@ -47,7 +47,14 @@ func BeforeTableDeletion(ctx *sql.Context, _ sql.StatementRunner, nodeInterface 
 		resolvedTables = append(resolvedTables, doltTable)
 		allTableNames = append(allTableNames, doltTable.TableName())
 	}
-	// TODO: handle DROP TABLE CASCADE
+	if n.Cascade {
+		// CASCADE drops the objects that depend on the dropped tables before the standard drop path runs.
+		if err := cascadeDropDependencies(ctx, runner, allTableNames); err != nil {
+			return nil, err
+		}
+	}
+	// These checks error on any remaining dependency: everything with CASCADE was dropped above, so anything left
+	// (or anything at all, without CASCADE) blocks the drop.
 	for _, doltTable := range resolvedTables {
 		// Check if the table is in a column
 		if err := beforeTableDeletionCheckTableColumns(ctx, doltTable, allTableNames); err != nil {

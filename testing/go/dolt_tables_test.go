@@ -103,7 +103,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -116,6 +116,19 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT "dolt_branches"."name" FROM "dolt_branches" WHERE "dolt_branches"."name" IN ('main') ORDER BY "dolt_branches"."name" DESC LIMIT 21;`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					// https://github.com/dolthub/doltgresql/issues/3115
+					Query:    `SELECT name FROM dolt.branches WHERE name IN ('main')`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.branches WHERE name IN ('main', 'nonexistent')`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.branches WHERE name NOT IN ('nonexistent')`,
 					Expected: []sql.Row{{"main"}},
 				},
 			},
@@ -272,7 +285,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -349,7 +362,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -363,7 +376,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Skip: true, // TODO: dolt_commit_diff_* tables must be filtered to a single 'to_commit'
 			Name: "dolt commit diff with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -424,8 +436,8 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 				},
 				{
-					Query:    `SELECT to_id, diff_type FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
-					Expected: []sql.Row{{11, "added"}},
+					Query:       `SELECT to_id, diff_type FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
+					ExpectedErr: "invalid ancestor spec",
 				},
 				{
 					Query:       `SELECT to_id FROM public.dolt_commit_diff_test_sch WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
@@ -526,7 +538,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -632,7 +644,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -884,7 +896,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1168,7 +1180,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1279,7 +1291,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1402,7 +1414,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{nil, 10, "added"}},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1410,7 +1422,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{nil, 12, "added"}},
 				},
 				{
-					Query:    "SET search_path = 'public,newschema'",
+					Query:    "SET search_path = public, newschema",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1525,6 +1537,34 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt_commit_diff subselect",
+			SetUpScript: []string{
+				`CREATE TABLE bug6 (id integer PRIMARY KEY, v text);`,
+				`INSERT INTO bug6 VALUES (1, 'a');`,
+				`SELECT dolt_add('-A');`,
+				`SELECT dolt_commit('--all', '--message', 'base', '--author', 'A <a@example.com>');`,
+				`UPDATE bug6 SET v = 'b' WHERE id = 1;`,
+				`SELECT dolt_add('-A');`,
+				`SELECT dolt_commit('--all', '--message', 'change', '--author', 'A <a@example.com>');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Skip: true,
+					Query: `SELECT to_id FROM dolt_commit_diff_bug6                                                                   
+WHERE to_commit = (SELECT commit_hash FROM dolt.log ORDER BY date DESC LIMIT 1)                         
+  AND from_commit = (SELECT commit_hash FROM dolt.log ORDER BY date DESC OFFSET 1 LIMIT 1);`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					// workaround: use hashof
+					Query: `SELECT to_id FROM dolt_commit_diff_bug6                                                                   
+WHERE to_commit = dolt_hashof('HEAD')                         
+  AND from_commit = dolt_hashof('HEAD~');`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
 			Name: "dolt history with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -1630,7 +1670,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{10, "Another Doe"}, {10, "John Doe"}, {10, "postgres"}},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1826,6 +1866,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{2}},
 				},
 				{
+					Query:    `SELECT count(*) FROM dolt.log WHERE message IN ('Initialize data repository')`,
+					Expected: []sql.Row{{1}},
+				},
+				{
 					Query:       `SELECT * FROM public.log`,
 					ExpectedErr: "table not found",
 				},
@@ -1939,7 +1983,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2175,7 +2219,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2259,7 +2303,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2316,7 +2360,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2453,7 +2497,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2585,7 +2629,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2618,6 +2662,10 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_remotes.name FROM dolt_remotes`,
+					Expected: []sql.Row{{"origin"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.remotes WHERE name IN ('origin')`,
 					Expected: []sql.Row{{"origin"}},
 				},
 				{
@@ -2665,7 +2713,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2768,7 +2816,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2942,7 +2990,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"testview"}},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{
@@ -3101,7 +3149,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{

@@ -308,3 +308,69 @@ WHERE  nsp.oid = 2200::OID;`,
 		},
 	},
 }
+
+// TestAnyAllSerialization verifies that the serialized form of an ANY/SOME/ALL expression preserves the comparison
+// operator the user wrote. Check constraints are stored as this serialized text and re-parsed on every write, so
+// hardcoding `=` silently rewrote the constraint.
+func TestAnyAllSerialization(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			// Note: the `<name> CHECK <expr> ENFORCED` shape of these results is a separate pg_get_constraintdef
+			// defect (Postgres renders `CHECK (<expr>)`); what matters here is the comparison operator inside.
+			Name: "ANY/ALL check constraint round trip",
+			SetUpScript: []string{
+				`CREATE TABLE t_all (id int, v text, CONSTRAINT ck_all CHECK (v <> ALL (ARRAY['no','nope'])));`,
+				`CREATE TABLE t_any (id int, v text, CONSTRAINT ck_any CHECK (v <> ANY (ARRAY['no','nope'])));`,
+				`CREATE TABLE t_some (id int, v int, CONSTRAINT ck_some CHECK (v > SOME (ARRAY[1,2])));`,
+				`CREATE TABLE t_eq (id int, v text, CONSTRAINT ck_eq CHECK (v = ANY (ARRAY['yes','yep'])));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conname = 'ck_all';`,
+					Expected: []sql.Row{{`ck_all CHECK "v" <> ALL (ARRAY['no', 'nope']) ENFORCED`}},
+				},
+				{
+					Query:    `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conname = 'ck_any';`,
+					Expected: []sql.Row{{`ck_any CHECK "v" <> ANY (ARRAY['no', 'nope']) ENFORCED`}},
+				},
+				{
+					Query:    `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conname = 'ck_some';`,
+					Expected: []sql.Row{{`ck_some CHECK "v" > SOME (ARRAY[1, 2]) ENFORCED`}},
+				},
+				{
+					Query:    `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conname = 'ck_eq';`,
+					Expected: []sql.Row{{`ck_eq CHECK "v" = ANY (ARRAY['yes', 'yep']) ENFORCED`}},
+				},
+				{
+					// The stored constraint is re-parsed on every write, so a row the constraint permits must insert.
+					Query:    `INSERT INTO t_all VALUES (1, 'ok');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO t_all VALUES (2, 'no');`,
+					ExpectedErr: "Check constraint",
+				},
+				{
+					Query:    `INSERT INTO t_any VALUES (1, 'no');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t_some VALUES (1, 2);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO t_some VALUES (2, 1);`,
+					ExpectedErr: "Check constraint",
+				},
+				{
+					Query:    `INSERT INTO t_eq VALUES (1, 'yes');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO t_eq VALUES (2, 'nope');`,
+					ExpectedErr: "Check constraint",
+				},
+			},
+		},
+	})
+}

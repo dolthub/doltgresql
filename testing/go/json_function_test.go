@@ -961,3 +961,483 @@ func TestJsonbNumericCasts(t *testing.T) {
 		},
 	})
 }
+
+// TestJsonTypeof exercises json_typeof and jsonb_typeof, which report the
+// shape of a JSON value. These show up most often inside CHECK constraints,
+// which is covered at the end of the test.
+func TestJsonTypeof(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "jsonb_typeof over every JSON type",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT jsonb_typeof('{}'::jsonb);`,
+					Expected: []sql.Row{{"object"}},
+				},
+				{
+					Query:    `SELECT jsonb_typeof('{"a":1}'::jsonb);`,
+					Expected: []sql.Row{{"object"}},
+				},
+				{
+					Query:    `SELECT jsonb_typeof('[]'::jsonb);`,
+					Expected: []sql.Row{{"array"}},
+				},
+				{
+					Query:    `SELECT jsonb_typeof('[1,2,3]'::jsonb);`,
+					Expected: []sql.Row{{"array"}},
+				},
+				{
+					Query:    `SELECT jsonb_typeof('"str"'::jsonb);`,
+					Expected: []sql.Row{{"string"}},
+				},
+				{
+					Query:    `SELECT jsonb_typeof('1'::jsonb), jsonb_typeof('-1.5'::jsonb), jsonb_typeof('1e3'::jsonb);`,
+					Expected: []sql.Row{{"number", "number", "number"}},
+				},
+				{
+					Query:    `SELECT jsonb_typeof('true'::jsonb), jsonb_typeof('false'::jsonb);`,
+					Expected: []sql.Row{{"boolean", "boolean"}},
+				},
+				{
+					// The JSON value `null` reports as "null"...
+					Query:    `SELECT jsonb_typeof('null'::jsonb);`,
+					Expected: []sql.Row{{"null"}},
+				},
+				{
+					// ...while a SQL NULL input yields a SQL NULL result.
+					Query:    `SELECT jsonb_typeof(null::jsonb);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// Only the top level is inspected, not the nested values.
+					Query:    `SELECT jsonb_typeof('{"a":[1,2]}'::jsonb);`,
+					Expected: []sql.Row{{"object"}},
+				},
+				{
+					Query:    `SELECT pg_typeof(jsonb_typeof('{}'::jsonb));`,
+					Expected: []sql.Row{{"text"}},
+				},
+			},
+		},
+		{
+			Name: "json_typeof over every JSON type",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_typeof('{"a":1}'::json);`,
+					Expected: []sql.Row{{"object"}},
+				},
+				{
+					Query:    `SELECT json_typeof('[1]'::json);`,
+					Expected: []sql.Row{{"array"}},
+				},
+				{
+					Query:    `SELECT json_typeof('"str"'::json);`,
+					Expected: []sql.Row{{"string"}},
+				},
+				{
+					Query:    `SELECT json_typeof('42'::json);`,
+					Expected: []sql.Row{{"number"}},
+				},
+				{
+					Query:    `SELECT json_typeof('true'::json);`,
+					Expected: []sql.Row{{"boolean"}},
+				},
+				{
+					Query:    `SELECT json_typeof('null'::json);`,
+					Expected: []sql.Row{{"null"}},
+				},
+				{
+					Query:    `SELECT json_typeof(null::json);`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_typeof pins the shape of a column in a CHECK constraint",
+			SetUpScript: []string{
+				`CREATE TABLE public.t (
+				    ext jsonb,
+				    evidence jsonb,
+				    CONSTRAINT t_ext_object_check CHECK ((jsonb_typeof(ext) = 'object'::text)),
+				    CONSTRAINT t_evidence_check   CHECK (((jsonb_typeof(evidence) = 'array'::text)
+				                                          AND (jsonb_array_length(evidence) >= 1)))
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO t VALUES ('{"a":1}', '[1]');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO t VALUES ('[1]', '[1]');`,
+					ExpectedErr: `"t_ext_object_check" violated`,
+				},
+				{
+					// The array is the right shape but empty, so the length
+					// half of the constraint rejects it.
+					Query:       `INSERT INTO t VALUES ('{"a":1}', '[]');`,
+					ExpectedErr: `"t_evidence_check" violated`,
+				},
+				{
+					Query:    `SELECT jsonb_typeof(ext), jsonb_array_length(evidence) FROM t;`,
+					Expected: []sql.Row{{"object", int32(1)}},
+				},
+			},
+		},
+	})
+}
+
+// TestJsonArrayLength exercises json_array_length and jsonb_array_length,
+// including the two distinct errors Postgres raises for non-array inputs.
+func TestJsonArrayLength(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "jsonb_array_length",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT jsonb_array_length('[]'::jsonb);`,
+					Expected: []sql.Row{{int32(0)}},
+				},
+				{
+					Query:    `SELECT jsonb_array_length('[1,2,3]'::jsonb);`,
+					Expected: []sql.Row{{int32(3)}},
+				},
+				{
+					// Only the top level is counted; nested arrays count as
+					// one element each.
+					Query:    `SELECT jsonb_array_length('[[1,2],[3,4],[5]]'::jsonb);`,
+					Expected: []sql.Row{{int32(3)}},
+				},
+				{
+					Query:    `SELECT jsonb_array_length('[null,null]'::jsonb);`,
+					Expected: []sql.Row{{int32(2)}},
+				},
+				{
+					Query:    `SELECT jsonb_array_length(null::jsonb);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(jsonb_array_length('[]'::jsonb));`,
+					Expected: []sql.Row{{"integer"}},
+				},
+				{
+					// Postgres words the object and scalar cases differently.
+					Query:           `SELECT jsonb_array_length('{}'::jsonb);`,
+					ExpectedErr:     "cannot get array length of a non-array",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT jsonb_array_length('1'::jsonb);`,
+					ExpectedErr:     "cannot get array length of a scalar",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:       `SELECT jsonb_array_length('"str"'::jsonb);`,
+					ExpectedErr: "cannot get array length of a scalar",
+				},
+				{
+					Query:       `SELECT jsonb_array_length('null'::jsonb);`,
+					ExpectedErr: "cannot get array length of a scalar",
+				},
+			},
+		},
+		{
+			Name: "json_array_length",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_array_length('[1,2]'::json);`,
+					Expected: []sql.Row{{int32(2)}},
+				},
+				{
+					Query:    `SELECT json_array_length('[]'::json);`,
+					Expected: []sql.Row{{int32(0)}},
+				},
+				{
+					Query:    `SELECT json_array_length(null::json);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:       `SELECT json_array_length('{"a":1}'::json);`,
+					ExpectedErr: "cannot get array length of a non-array",
+				},
+				{
+					Query:       `SELECT json_array_length('true'::json);`,
+					ExpectedErr: "cannot get array length of a scalar",
+				},
+			},
+		},
+	})
+}
+
+// TestJsonObjectKeys exercises json_object_keys and jsonb_object_keys, which
+// are set-returning functions over the top-level keys of a JSON object.
+func TestJsonObjectKeys(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "jsonb_object_keys",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Keys come back in jsonb order: shortest first, then
+					// bytewise, matching the order the document prints in.
+					Query:    `SELECT jsonb_object_keys('{"b":1,"aa":2,"c":3}'::jsonb);`,
+					Expected: []sql.Row{{"b"}, {"c"}, {"aa"}},
+				},
+				{
+					Query:            `SELECT jsonb_object_keys('{"a":1}'::jsonb);`,
+					Expected:         []sql.Row{{"a"}},
+					ExpectedColNames: []string{"jsonb_object_keys"},
+				},
+				{
+					// An empty object produces no rows at all.
+					Query:    `SELECT jsonb_object_keys('{}'::jsonb);`,
+					Expected: []sql.Row{},
+				},
+				{
+					// Only top-level keys are returned, not nested ones.
+					Query:    `SELECT jsonb_object_keys('{"a":{"nested":1},"b":2}'::jsonb);`,
+					Expected: []sql.Row{{"a"}, {"b"}},
+				},
+				{
+					// Usable in the FROM clause with an alias.
+					Query:    `SELECT k FROM jsonb_object_keys('{"b":1,"aa":2}'::jsonb) AS k;`,
+					Expected: []sql.Row{{"b"}, {"aa"}},
+				},
+				{
+					Query:           `SELECT jsonb_object_keys('[1,2]'::jsonb);`,
+					ExpectedErr:     "cannot call jsonb_object_keys on an array",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT jsonb_object_keys('42'::jsonb);`,
+					ExpectedErr:     "cannot call jsonb_object_keys on a scalar",
+					ExpectedErrCode: "22023",
+				},
+			},
+		},
+		{
+			Name: "json_object_keys",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_object_keys('{"b":1,"aa":2,"c":3}'::json);`,
+					Expected: []sql.Row{{"b"}, {"c"}, {"aa"}},
+				},
+				{
+					Query:    `SELECT json_object_keys('{}'::json);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT json_object_keys('["a"]'::json);`,
+					ExpectedErr: "cannot call json_object_keys on an array",
+				},
+				{
+					Query:       `SELECT json_object_keys('"str"'::json);`,
+					ExpectedErr: "cannot call json_object_keys on a scalar",
+				},
+			},
+		},
+	})
+}
+
+// TestJsonStripNulls exercises json_strip_nulls and jsonb_strip_nulls, which
+// recursively drop object fields whose value is JSON null.
+func TestJsonStripNulls(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "jsonb_strip_nulls",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT jsonb_strip_nulls('{"a":1,"b":null}'::jsonb);`,
+					Expected: []sql.Row{{`{"a": 1}`}},
+				},
+				{
+					// Nulls are stripped at every level of nesting.
+					Query:    `SELECT jsonb_strip_nulls('{"a":1,"b":null,"c":{"d":null,"e":2}}'::jsonb);`,
+					Expected: []sql.Row{{`{"a": 1, "c": {"e": 2}}`}},
+				},
+				{
+					// Null array elements are kept, as are objects nested
+					// inside arrays, whose null fields are still stripped.
+					Query:    `SELECT jsonb_strip_nulls('{"a":[1,null,{"b":null,"c":3}]}'::jsonb);`,
+					Expected: []sql.Row{{`{"a": [1, null, {"c": 3}]}`}},
+				},
+				{
+					// Stripping every field leaves an empty object, not null.
+					Query:    `SELECT jsonb_strip_nulls('{"a":null}'::jsonb);`,
+					Expected: []sql.Row{{`{}`}},
+				},
+				{
+					Query:    `SELECT jsonb_strip_nulls('[1,null,2]'::jsonb);`,
+					Expected: []sql.Row{{`[1, null, 2]`}},
+				},
+				{
+					Query:    `SELECT jsonb_strip_nulls('{}'::jsonb);`,
+					Expected: []sql.Row{{`{}`}},
+				},
+				{
+					Query:    `SELECT jsonb_strip_nulls(null::jsonb);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(jsonb_strip_nulls('{}'::jsonb));`,
+					Expected: []sql.Row{{"jsonb"}},
+				},
+			},
+		},
+		{
+			Name: "json_strip_nulls",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_strip_nulls('{"a":null,"b":1}'::json);`,
+					Expected: []sql.Row{{`{"b": 1}`}},
+				},
+				{
+					Query:    `SELECT json_strip_nulls('{"a":{"b":null}}'::json);`,
+					Expected: []sql.Row{{`{"a": {}}`}},
+				},
+				{
+					Query:    `SELECT json_strip_nulls(null::json);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(json_strip_nulls('{}'::json));`,
+					Expected: []sql.Row{{"json"}},
+				},
+			},
+		},
+	})
+}
+
+// TestToJsonb exercises to_jsonb, the jsonb counterpart of to_json. Unlike
+// to_json, which hands back the rendered text as-is, to_jsonb produces a
+// parsed document, so object keys come back deduplicated and reordered.
+func TestToJsonb(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "to_jsonb over scalar types",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT to_jsonb(1), to_jsonb(1.5::numeric), to_jsonb(true), to_jsonb('a'::text);`,
+					Expected: []sql.Row{{`1`, `1.5`, `true`, `"a"`}},
+				},
+				{
+					// Text is quoted and escaped rather than parsed as JSON.
+					Query:    `SELECT to_jsonb('{"not":"parsed"}'::text);`,
+					Expected: []sql.Row{{`"{\"not\":\"parsed\"}"`}},
+				},
+				{
+					// Dates and timestamps render as ISO 8601 strings.
+					Query:    `SELECT to_jsonb('2020-01-01'::date), jsonb_typeof(to_jsonb('2020-01-01'::date));`,
+					Expected: []sql.Row{{`"2020-01-01"`, "string"}},
+				},
+				{
+					Query:    `SELECT to_jsonb(null::int4);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(to_jsonb(1));`,
+					Expected: []sql.Row{{"jsonb"}},
+				},
+			},
+		},
+		{
+			Name: "to_jsonb over composite values",
+			SetUpScript: []string{
+				`CREATE TABLE t (id int4, name text)`,
+				`INSERT INTO t VALUES (1, 'one')`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT to_jsonb(ARRAY[1,2,3]);`,
+					Expected: []sql.Row{{`[1, 2, 3]`}},
+				},
+				{
+					Query:    `SELECT to_jsonb(ARRAY['a','b']::text[]);`,
+					Expected: []sql.Row{{`["a", "b"]`}},
+				},
+				{
+					// A row value becomes an object keyed by column name,
+					// which is how to_jsonb(NEW)/to_jsonb(OLD) is used in
+					// trigger bodies.
+					Query:    `SELECT to_jsonb(t) FROM t;`,
+					Expected: []sql.Row{{`{"id": 1, "name": "one"}`}},
+				},
+				{
+					// Unlike to_json, to_jsonb reorders object keys into
+					// jsonb order (shortest first, then bytewise).
+					Query:    `SELECT to_jsonb('{"bbb":1,"a":2}'::json), to_json('{"bbb":1,"a":2}'::json);`,
+					Expected: []sql.Row{{`{"a": 2, "bbb": 1}`, `{"bbb":1,"a":2}`}},
+				},
+				{
+					Query:    `SELECT to_jsonb('{"a":1}'::jsonb);`,
+					Expected: []sql.Row{{`{"a": 1}`}},
+				},
+			},
+		},
+	})
+}
+
+// TestJsonInspectionStoredValues runs the inspection functions against JSONB
+// values read out of a table column rather than written as literals. Documents
+// over ~4 KB are held as out-of-band IndexedJsonDocument values by Dolt's
+// storage layer, a different sql.JSONWrapper implementation than the one a
+// literal produces.
+func TestJsonInspectionStoredValues(t *testing.T) {
+	largeObj := makeLargeJSONObject(100) // ~8 KB
+	largeArr := makeLargeJSONArray(80)   // ~5 KB
+
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "inspection functions on large stored documents (>4 KB)",
+			SetUpScript: []string{
+				`CREATE TABLE bigdoc (id INT PRIMARY KEY, doc JSONB)`,
+				`INSERT INTO bigdoc (id, doc) VALUES (1, '` + largeObj + `'::jsonb)`,
+				`INSERT INTO bigdoc (id, doc) VALUES (2, '` + largeArr + `'::jsonb)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Sanity check: both documents exercise the indexed path.
+					Query:    `SELECT length(doc::text) > 4096 FROM bigdoc ORDER BY id;`,
+					Expected: []sql.Row{{"t"}, {"t"}},
+				},
+				{
+					Query:    `SELECT jsonb_typeof(doc) FROM bigdoc ORDER BY id;`,
+					Expected: []sql.Row{{"object"}, {"array"}},
+				},
+				{
+					Query:    `SELECT jsonb_array_length(doc) FROM bigdoc WHERE id = 2;`,
+					Expected: []sql.Row{{int32(80)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM jsonb_object_keys((SELECT doc FROM bigdoc WHERE id = 1)) AS k;`,
+					Expected: []sql.Row{{int64(100)}},
+				},
+				{
+					// Nothing to strip, so the document round-trips.
+					Query:    `SELECT jsonb_strip_nulls(doc) = doc FROM bigdoc ORDER BY id;`,
+					Expected: []sql.Row{{"t"}, {"t"}},
+				},
+			},
+		},
+		{
+			Name: "inspection functions on a NULL column value",
+			SetUpScript: []string{
+				`CREATE TABLE nulldoc (id INT PRIMARY KEY, doc JSONB, j JSON)`,
+				`INSERT INTO nulldoc VALUES (1, NULL, NULL)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// All of these are strict, so a NULL column value yields
+					// a NULL result rather than an error.
+					Query: `SELECT jsonb_typeof(doc), json_typeof(j), jsonb_array_length(doc),
+					               jsonb_strip_nulls(doc), to_jsonb(doc) FROM nulldoc;`,
+					Expected: []sql.Row{{nil, nil, nil, nil, nil}},
+				},
+				{
+					// A strict set-returning function over NULL yields no rows.
+					Query:    `SELECT jsonb_object_keys(doc) FROM nulldoc;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}

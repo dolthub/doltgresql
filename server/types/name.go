@@ -65,7 +65,10 @@ var Name = &DoltgresType{
 // serializeTypeName handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeName(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	str := val.(string)
+	str, err := unwrapSerializationString(ctx, "name", val)
+	if err != nil {
+		return nil, err
+	}
 	writer := utils.NewWriter(uint64(len(str) + 1))
 	writer.String(str)
 	return writer.Data(), nil

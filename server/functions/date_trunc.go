@@ -41,7 +41,10 @@ var date_trunc_text_timestamp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		unit := val1.(string)
+		unit, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		ts := val2.(time.Time)
 		return truncateTime(unit, ts)
 	},
@@ -54,7 +57,10 @@ var date_trunc_text_timestamptz = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimestampTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		unit := val1.(string)
+		unit, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		ts := val2.(time.Time)
 		// Convert to server location for consistent behavior
 		loc, err := GetServerLocation(ctx)
@@ -77,9 +83,15 @@ var date_trunc_text_timestamptz_text = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.TimestampTZ, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		unit := val1.(string)
+		unit, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		ts := val2.(time.Time)
-		timezone := val3.(string)
+		timezone, err := framework.UnwrapString(ctx, val3)
+		if err != nil {
+			return nil, err
+		}
 
 		// Convert timezone string to offset
 		_, newOffset, _, err := convertTzToOffsetSecs(ts, timezone)
@@ -115,7 +127,10 @@ var date_trunc_text_interval = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		unit := val1.(string)
+		unit, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		interval := val2.(duration.Duration)
 		return truncateInterval(unit, interval)
 	},

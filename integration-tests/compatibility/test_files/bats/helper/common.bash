@@ -29,7 +29,7 @@ write_config() {
   local dir="$1"
   local port="$2"
   cat > "$dir/compat-config.yaml" <<EOF
-log_level: warning
+log_level: warn
 behavior:
   read_only: false
   disable_client_multi_statements: false

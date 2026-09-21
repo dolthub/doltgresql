@@ -551,7 +551,7 @@ func TestForeignKeys(t *testing.T) {
 					"create schema child",
 					"create schema fake",
 					"select dolt_commit('-Am', 'create schemas')",
-					"set search_path to 'parent, child'",
+					"set search_path to parent, child",
 					`create table parent.parent (pk int, val int, primary key(pk));`,
 					`create table fake.parent (pk int, val int, primary key(pk));`,
 					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references parent(pk))",
@@ -602,7 +602,7 @@ func TestForeignKeys(t *testing.T) {
 					"create schema child",
 					"create schema fake",
 					"select dolt_commit('-Am', 'create schemas')",
-					"set search_path to 'child, fake'",
+					"set search_path to child, fake",
 					`create table parent.parent (pk int, val int, primary key(pk));`,
 					`create table fake.parent (pk int, val int, primary key(pk));`,
 					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references parent.parent(pk))",
@@ -703,7 +703,7 @@ func TestForeignKeys(t *testing.T) {
 					"create schema child",
 					"create schema fake",
 					"select dolt_commit('-Am', 'create schemas')",
-					"set search_path to 'child, parent'",
+					"set search_path to child, parent",
 					`create table parent.parent (pk int, val int, primary key(pk));`,
 					`create table fake.parent (pk int, val int, primary key(pk));`,
 					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id))",
@@ -738,7 +738,7 @@ func TestForeignKeys(t *testing.T) {
 					"create schema child",
 					"create schema fake",
 					"select dolt_commit('-Am', 'create schemas')",
-					"set search_path to 'child, fake'",
+					"set search_path to child, fake",
 					`create table parent.parent (pk int, val int, primary key(pk));`,
 					`create table fake.parent (pk int, val int, primary key(pk));`,
 					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id))",
@@ -807,7 +807,7 @@ func TestForeignKeys(t *testing.T) {
 					"create schema child",
 					"create schema fake",
 					"select dolt_commit('-Am', 'create schemas')",
-					"set search_path to 'child, parent'",
+					"set search_path to child, parent",
 					`create table parent.parent (pk int, val int, primary key(pk));`,
 					`create table fake.parent (pk int, val int, primary key(pk));`,
 					"CREATE TABLE child.child (id int, info varchar(255), test_pk int, primary key(id))",
@@ -2040,6 +2040,119 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query:    "select violation_type, table2_col1, table2_col2, table2_col3, table2_col4 from dolt_constraint_violations_table2;",
 						Expected: []sql.Row{{"foreign key", "abc", "xyz", "ghi", "def"}},
+					},
+				},
+			},
+			{
+				Name: "Self-referential foreign key with schema-qualified column reference",
+				SetUpScript: []string{
+					`CREATE SCHEMA myschema`,
+					`CREATE TABLE myschema.t (a INT PRIMARY KEY, b INT REFERENCES myschema.t (a))`,
+					`INSERT INTO myschema.t VALUES (1, NULL), (2, 1)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO myschema.t VALUES (3, 2)",
+					},
+					{
+						Query:       "INSERT INTO myschema.t VALUES (4, 99)",
+						ExpectedErr: "Foreign key violation",
+					},
+				},
+			},
+			{
+				Name: "Self-referential foreign key with schema-qualified table constraint",
+				SetUpScript: []string{
+					`CREATE TABLE public.t (a INT PRIMARY KEY, b INT, FOREIGN KEY (b) REFERENCES public.t (a))`,
+					`INSERT INTO public.t VALUES (1, NULL), (2, 1)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO t VALUES (3, 2)",
+					},
+					{
+						Query:       "INSERT INTO t VALUES (4, 99)",
+						ExpectedErr: "Foreign key violation",
+					},
+				},
+			},
+			{
+				Name: "dropping a column that removes the index backing a foreign key",
+				SetUpScript: []string{
+					"CREATE TABLE fkbug_parent (id INT NOT NULL PRIMARY KEY);",
+					"CREATE TABLE fkbug_child (id INT NOT NULL PRIMARY KEY, a_id INT NOT NULL, b_id INT NOT NULL);",
+					"ALTER TABLE fkbug_child ADD CONSTRAINT fkbug_child_a_b_uniq UNIQUE (a_id, b_id);",
+					"ALTER TABLE fkbug_child ADD CONSTRAINT fkbug_child_a_id_fk FOREIGN KEY (a_id) REFERENCES fkbug_parent (id);",
+					"INSERT INTO fkbug_parent VALUES (1);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "ALTER TABLE fkbug_child DROP COLUMN b_id;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT dolt_add('-A');",
+						Expected: []sql.Row{{int64(0)}},
+					},
+					{
+						Query:            "SELECT dolt_commit('-am', 'probe');",
+						SkipResultsCheck: true,
+					},
+					{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'fkbug_child'::regclass AND contype = 'f';",
+						Expected: []sql.Row{{"fkbug_child_a_id_fk"}},
+					},
+					{
+						Query:    "INSERT INTO fkbug_child VALUES (1, 1);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       "INSERT INTO fkbug_child VALUES (2, 2);",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM fkbug_child;",
+						Expected: []sql.Row{{1, 1}},
+					},
+				},
+			},
+			{
+				Name: "DROP COLUMN drops dependent foreign keys",
+				SetUpScript: []string{
+					"CREATE TABLE fkbug2_parent (id INT NOT NULL PRIMARY KEY, u INT UNIQUE);",
+					"CREATE TABLE fkbug2_child (id INT NOT NULL PRIMARY KEY, p_id INT NULL, q_id INT);",
+					"CREATE INDEX fkbug2_child_p_id_idx ON fkbug2_child (p_id);",
+					"ALTER TABLE fkbug2_child ADD CONSTRAINT fkbug2_child_p_id_fk FOREIGN KEY (p_id) REFERENCES fkbug2_parent (id);",
+					"ALTER TABLE fkbug2_child ADD CONSTRAINT fkbug2_child_q_id_fk FOREIGN KEY (q_id) REFERENCES fkbug2_parent (u);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:       "ALTER TABLE fkbug2_parent DROP COLUMN u;",
+						ExpectedErr: "cannot drop column u of table fkbug2_parent because other objects depend on it",
+					},
+					{
+						Query:    "ALTER TABLE fkbug2_parent DROP COLUMN u CASCADE;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'fkbug2_child'::regclass AND contype = 'f' ORDER BY 1;",
+						Expected: []sql.Row{{"fkbug2_child_p_id_fk"}},
+					},
+					{
+						Query:    "ALTER TABLE fkbug2_child DROP COLUMN p_id CASCADE;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'fkbug2_child'::regclass AND contype = 'f' ORDER BY 1;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "INSERT INTO fkbug2_child VALUES (1, 99);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT * FROM fkbug2_child;",
+						Expected: []sql.Row{{1, 99}},
 					},
 				},
 			},

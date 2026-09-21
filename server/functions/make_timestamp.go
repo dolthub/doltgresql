@@ -70,7 +70,10 @@ var make_timestamptz_int32_int32_int32_int32_int32_float64_text = framework.Func
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [8]*pgtypes.DoltgresType, val1, val2, val3, val4, val5, val6, val7 any) (any, error) {
-		tz := val7.(string)
+		tz, err := framework.UnwrapString(ctx, val7)
+		if err != nil {
+			return nil, err
+		}
 		loc, _, _, err := convertTzToOffsetSecs(time.Now().UTC(), tz)
 		if err != nil {
 			return nil, errors.Errorf(`time zone "%s" not recognized`, tz)

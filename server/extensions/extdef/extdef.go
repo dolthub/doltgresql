@@ -16,6 +16,7 @@ package extdef
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression/function/vector"
 
 	"github.com/dolthub/doltgresql/core/casts"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -38,13 +39,15 @@ type Control struct {
 
 // Extension is a Postgres extension that Doltgres emulates.
 type Extension struct {
-	Name       string
-	Control    Control
-	Types      []Type
-	Routines   []Routine
-	Operators  []Operator
-	Casts      []Cast
-	Aggregates []Aggregate
+	Name            string
+	Control         Control
+	Types           []Type
+	Routines        []Routine
+	Operators       []Operator
+	Casts           []Cast
+	Aggregates      []Aggregate
+	OperatorClasses []OperatorClass
+	AccessMethods   []AccessMethod
 }
 
 // Type is a base type that an extension provides. Definition carries every option except the support functions, which
@@ -58,6 +61,9 @@ type Type struct {
 	Send       string
 	ModIn      string
 	ModOut     string
+	Compare    string
+	// Codec stores values of the type natively instead of through the send and receive routines.
+	Codec *pgtypes.TypeCodec
 }
 
 // Routine is a function that an extension provides. Symbol is its C link symbol, which is unique within the extension.
@@ -68,6 +74,8 @@ type Routine struct {
 	Returns    string
 	Strict     bool
 	Impl       Function
+	// DistanceType is set on distance routines whose ascending order a vector index can serve.
+	DistanceType vector.DistanceType
 }
 
 // Parameter is a single input parameter of a routine.
@@ -94,6 +102,36 @@ type Cast struct {
 	Target   string
 	Routine  string
 	CastType casts.CastType
+}
+
+// OperatorClass is an operator class that an extension provides for its index access methods.
+type OperatorClass struct {
+	Name          string
+	AccessMethods []string
+	// DefaultFor lists the access methods where this is the default operator class for Type.
+	DefaultFor []string
+	Type       string
+	// DistanceType is nil when index support for the class is not yet implemented.
+	DistanceType vector.DistanceType
+	// MaxDimensions caps the dimension count of an indexed column, when positive.
+	MaxDimensions int32
+}
+
+// AccessMethod is an index access method that an extension provides.
+type AccessMethod struct {
+	Name    string
+	Handler string
+	Params  []AccessMethodParam
+	// CheckParams validates the combination of storage parameter values, after defaults are applied.
+	CheckParams func(params map[string]int64) error
+}
+
+// AccessMethodParam is an integer storage parameter that an index access method accepts.
+type AccessMethodParam struct {
+	Name    string
+	Min     int64
+	Max     int64
+	Default int64
 }
 
 // Aggregate is an aggregate function that an extension provides.

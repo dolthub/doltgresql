@@ -414,3 +414,39 @@ func rowKVsToErrorString(postgresRows []utils.KeyValue[string, int], doltgresRow
 	// Removing the last newline since it's not necessary
 	return returnErr[:len(returnErr)-1]
 }
+
+// CompareCopyDataOrdered compares the data sent for a COPY ... TO STDOUT statement, enforcing that the order matches.
+// The expected messages are always the recorded Postgres responses, while the actual messages are the Doltgres
+// responses. Each CopyData message holds one row of COPY output.
+func CompareCopyDataOrdered(expected, actual []*pgproto3.CopyData) error {
+	if len(expected) != len(actual) {
+		return errors.Errorf("expected a COPY data row count of %d but received %d", len(expected), len(actual))
+	}
+	for i := range expected {
+		if string(expected[i].Data) != string(actual[i].Data) {
+			return errors.Errorf("COPY data differs from the expected data:\n    Postgres: {%s}\n    Doltgres: {%s}",
+				string(expected[i].Data), string(actual[i].Data))
+		}
+	}
+	return nil
+}
+
+// CompareCopyDataUnordered compares the data sent for a COPY ... TO STDOUT statement, without enforcing an order.
+// The expected messages are always the recorded Postgres responses, while the actual messages are the Doltgres
+// responses. Each CopyData message holds one row of COPY output.
+func CompareCopyDataUnordered(expected, actual []*pgproto3.CopyData) error {
+	if len(expected) != len(actual) {
+		return errors.Errorf("expected a COPY data row count of %d but received %d", len(expected), len(actual))
+	}
+	counts := make(map[string]int)
+	for _, message := range expected {
+		counts[string(message.Data)]++
+	}
+	for _, message := range actual {
+		counts[string(message.Data)]--
+		if counts[string(message.Data)] < 0 {
+			return errors.Errorf("COPY data contains an unexpected row: {%s}", string(message.Data))
+		}
+	}
+	return nil
+}

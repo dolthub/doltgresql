@@ -39,7 +39,7 @@ var void_in = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO
-		return val1.(string), nil
+		return framework.UnwrapString(ctx, val1)
 	},
 }
 
@@ -63,7 +63,10 @@ var void_recv = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO
-		data := val1.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		if len(data) == 0 {
 			return nil, nil
 		}
@@ -80,7 +83,10 @@ var void_send = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
-		str := val.(string)
+		str, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)
 		return writer.Data(), nil

@@ -39,7 +39,10 @@ var array_to_string_anyarray_text = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		arr := val1.([]any)
-		delimiter := val2.(string)
+		delimiter, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		return getStringArrFromAnyArray(ctx, paramsAndReturn[0], arr, delimiter, nil)
 	},
 }
@@ -58,7 +61,10 @@ var array_to_string_anyarray_text_text = framework.Function3{
 			return nil, nil
 		}
 		arr := val1.([]any)
-		delimiter := val2.(string)
+		delimiter, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		return getStringArrFromAnyArray(ctx, paramsAndReturn[0], arr, delimiter, val3)
 	},
 }
@@ -76,7 +82,11 @@ func getStringArrFromAnyArray(ctx *sql.Context, arrType *pgtypes.DoltgresType, a
 			}
 			strs = append(strs, v)
 		} else if nullEntry != nil {
-			strs = append(strs, nullEntry.(string))
+			nullEntryStr, err := framework.UnwrapString(ctx, nullEntry)
+			if err != nil {
+				return "", err
+			}
+			strs = append(strs, nullEntryStr)
 		}
 	}
 	return strings.Join(strs, delimiter), nil

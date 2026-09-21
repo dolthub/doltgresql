@@ -35,8 +35,14 @@ var to_date_text_text = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		input := val1.(string)
-		format := val2.(string)
+		input, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		format, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 
 		// Parse the date using PostgreSQL format patterns
 		t, err := getDateTimeFromFormat(ctx, input, format)

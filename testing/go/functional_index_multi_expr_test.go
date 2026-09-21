@@ -134,6 +134,27 @@ func TestFunctionalIndexMultiExpr(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3094
+			Name: "expression index on non-doltgres-native functions work correctly",
+			SetUpScript: []string{
+				"CREATE TABLE t_expr (id int PRIMARY KEY, col text);",
+				"INSERT INTO t_expr VALUES (1, 'before-index');",
+				"CREATE INDEX idx_expr_coalesce ON t_expr ((coalesce(col, '')));",
+				"INSERT INTO t_expr VALUES (2, 'after-index');",
+				"UPDATE t_expr SET col = 'updated' WHERE id = 1;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT id, col FROM t_expr ORDER BY id;",
+					Expected: []sql.Row{{1, "updated"}, {2, "after-index"}},
+				},
+				{
+					Query:    "SELECT coalesce(col, '') FROM t_expr WHERE id = 2;",
+					Expected: []sql.Row{{"after-index"}},
+				},
+			},
+		},
+		{
 			Name: "DROP INDEX removes only its own hidden columns, a second index survives",
 			SetUpScript: []string{
 				"CREATE TABLE t (pk int primary key, c1 int, c2 int, c3 int);",

@@ -140,6 +140,87 @@ func TestSelect(t *testing.T) {
 			},
 		},
 		{
+			Name: "VALUES NULL type inference with ORDER BY",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT v FROM (VALUES (NULL), (2), (1)) AS t(v) ORDER BY v + 0 ASC NULLS FIRST;",
+					Expected: []sql.Row{{nil}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT v FROM (VALUES (NULL), (2), (1)) AS t(v) ORDER BY v + 0 ASC NULLS LAST;",
+					Expected: []sql.Row{{1}, {2}, {nil}},
+				},
+				{
+					Query:    "SELECT v FROM (VALUES (NULL), (2), (1)) AS t(v) ORDER BY v + 0 DESC NULLS FIRST;",
+					Expected: []sql.Row{{nil}, {2}, {1}},
+				},
+				{
+					Query:    "SELECT v FROM (VALUES (NULL), (2), (1)) AS t(v) ORDER BY v + 0 DESC NULLS LAST;",
+					Expected: []sql.Row{{2}, {1}, {nil}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3388
+			Name: "ORDER BY NULL ordering",
+			SetUpScript: []string{
+				"CREATE TABLE null_ordering (id INT4 PRIMARY KEY, a INT4, b INT4);",
+				"INSERT INTO null_ordering VALUES (1, NULL, 1), (2, NULL, NULL), (3, 1, 1), (4, 1, NULL), (5, 2, 2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a, id;",
+					Expected: []sql.Row{{3}, {4}, {5}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a ASC NULLS FIRST, id;",
+					Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a ASC NULLS LAST, id;",
+					Expected: []sql.Row{{3}, {4}, {5}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a NULLS FIRST, id;",
+					Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a NULLS LAST, id;",
+					Expected: []sql.Row{{3}, {4}, {5}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a DESC, id;",
+					Expected: []sql.Row{{1}, {2}, {5}, {3}, {4}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a DESC NULLS FIRST, id;",
+					Expected: []sql.Row{{1}, {2}, {5}, {3}, {4}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a DESC NULLS LAST, id;",
+					Expected: []sql.Row{{5}, {3}, {4}, {1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM null_ordering ORDER BY a ASC NULLS LAST, b DESC NULLS FIRST;",
+					Expected: []sql.Row{{4}, {3}, {5}, {2}, {1}},
+				},
+				{
+					Query: "SELECT id, row_number() OVER (ORDER BY a ASC NULLS LAST, id) FROM null_ordering ORDER BY id;",
+					Expected: []sql.Row{
+						{1, int64(4)},
+						{2, int64(5)},
+						{3, int64(1)},
+						{4, int64(2)},
+						{5, int64(3)},
+					},
+				},
+				{
+					Query:    "SELECT array_agg(id ORDER BY a DESC NULLS FIRST, id) FROM null_ordering;",
+					Expected: []sql.Row{{"{1,2,5,3,4}"}},
+				},
+			},
+		},
+		{
 			Name: "select large limit",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -240,6 +321,69 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'`,
 						{"drop table gexec_test", "select '2000-01-01'::date as party_over"},
 					},
 					ExpectedColNames: []string{"?column?", "?column?"},
+				},
+			},
+		},
+		{
+			// A function called in FROM without an alias keeps the column name given by its named OUT
+			// parameter, and only the table takes the function's name; a table alias renames a
+			// single-column result. Regression test for a fabricated table alias clobbering the OUT
+			// parameter's column name (pg_partition_ancestors's relid, which psql's \d foreign-key
+			// listing query references unqualified).
+			Name: "column names of functions called in FROM",
+			SetUpScript: []string{
+				"CREATE TABLE ft (id integer primary key);",
+				"INSERT INTO ft VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The named OUT parameter provides the column name when no alias is given
+					Query:            "SELECT relid FROM pg_partition_ancestors('ft');",
+					Expected:         []sql.Row{{"ft"}},
+					ExpectedColNames: []string{"relid"},
+				},
+				{
+					// The table takes the function's name, leaving the column name alone
+					Query:            "SELECT pg_partition_ancestors.relid FROM pg_partition_ancestors('ft');",
+					Expected:         []sql.Row{{"ft"}},
+					ExpectedColNames: []string{"relid"},
+				},
+				{
+					// A table alias renames a single-column function result
+					Query:            "SELECT x FROM pg_partition_ancestors('ft') AS x;",
+					Expected:         []sql.Row{{"ft"}},
+					ExpectedColNames: []string{"x"},
+				},
+				{
+					// The OUT parameter's name also survives an implicit lateral join
+					Query:            "SELECT relid FROM ft, pg_partition_ancestors('ft');",
+					Expected:         []sql.Row{{"ft"}},
+					ExpectedColNames: []string{"relid"},
+				},
+				{
+					// A function without named OUT parameters names its column after the function
+					Query:            "SELECT unnest FROM unnest(ARRAY[1]);",
+					Expected:         []sql.Row{{1}},
+					ExpectedColNames: []string{"unnest"},
+				},
+			},
+		},
+		{
+			Name: "derived table with duplicate column names",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT * FROM (SELECT 1 AS a, 'x' AS a) t;`,
+					Expected:         []sql.Row{{1, "x"}},
+					ExpectedColNames: []string{"a", "a"},
+				},
+				{
+					Query:            `SELECT *, ROW_NUMBER() OVER () AS n FROM (SELECT 1 AS a, 'x' AS a) t;`,
+					Expected:         []sql.Row{{1, "x", 1}},
+					ExpectedColNames: []string{"a", "a", "n"},
+				},
+				{
+					Query:    `SELECT * FROM (SELECT 1, 2) t(a, a);`,
+					Expected: []sql.Row{{1, 2}},
 				},
 			},
 		},

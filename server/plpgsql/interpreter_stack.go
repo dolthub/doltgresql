@@ -19,12 +19,95 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// cursorState holds the result set for a FOR record IN query LOOP cursor.
+// ErrRecordNotAssigned is returned when a field is read from a RECORD variable that has not been assigned yet,
+// and therefore has no shape to read a field from.
+var ErrRecordNotAssigned = errors.NewKind(`record "%s" is not assigned yet`)
+
+// ErrRecordHasNoField is returned when a field is read from a RECORD variable that has no such field.
+var ErrRecordHasNoField = errors.NewKind(`record "%s" has no field "%s"`)
+
+// ErrVariableNotFound is returned when a referenced variable does not exist on the stack.
+var ErrVariableNotFound = errors.NewKind("variable `%s` could not be found")
+
+// NormalizeIdentifier folds a PL/pgSQL identifier the way Postgres does, so that the name a reference is
+// written with and the name a variable was declared with can be compared directly. An unquoted identifier
+// folds to lowercase; a quoted one keeps its case and loses its quotes, with a doubled quote inside standing
+// for a literal one. `MyVar` and `MYVAR` therefore name the same variable, and `"MyVar"` names a different
+// one. pg_query already stores declared names in this form, so normalizing every name we take from raw
+// source text is what puts both sides in the same alphabet.
+func NormalizeIdentifier(ident string) string {
+	if len(ident) >= 2 && strings.HasPrefix(ident, `"`) && strings.HasSuffix(ident, `"`) {
+		return strings.ReplaceAll(ident[1:len(ident)-1], `""`, `"`)
+	}
+	return strings.ToLower(ident)
+}
+
+// NormalizeIdentifierPath folds a bare reference of the form `name` or `name.field` and reports whether the
+// text was such a reference at all. Some statements, RAISE among them, carry their arguments as raw source
+// text rather than through the expression rewriter, and each one may be either a variable reference or an
+// expression to evaluate. Anything that is not a plain reference is left alone for the caller to evaluate.
+func NormalizeIdentifierPath(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	// GetVariable resolves at most one level of field access, so anything deeper is not a reference it
+	// could answer anyway.
+	base, field, hasField := strings.Cut(text, ".")
+	if !isIdentifier(base) || (hasField && !isIdentifier(field)) {
+		return "", false
+	}
+	// Only the base names a variable; the field is matched against the record's columns separately.
+	if hasField {
+		return NormalizeIdentifier(base) + "." + field, true
+	}
+	return NormalizeIdentifier(base), true
+}
+
+// isIdentifier reports whether |s| is a single SQL identifier, quoted or otherwise.
+func isIdentifier(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	if strings.HasPrefix(s, `"`) {
+		return len(s) >= 2 && strings.HasSuffix(s, `"`) && !strings.Contains(s[1:len(s)-1], `"`)
+	}
+	for i, r := range s {
+		switch {
+		case r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+		case i > 0 && (r == '$' || (r >= '0' && r <= '9')):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// QuoteIdentifier renders |name| so that it survives NormalizeIdentifier unchanged. Use it when building SQL
+// that refers to a variable whose declared name is already known, since that name may hold capitals that an
+// unquoted mention would fold away.
+func QuoteIdentifier(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// TriggerNewRecordName and TriggerOldRecordName are the names a trigger invocation supplies its row records
+// under. They are the folded form of NEW and OLD, matching how pg_query names them in a parsed function.
+const (
+	TriggerNewRecordName = "new"
+	TriggerOldRecordName = "old"
+)
+
+// FoundVariableName is the name of the built-in FOUND variable, which PL/pgSQL creates for every function
+// and which reports whether the most recent statement that is defined to set it produced any row.
+// https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-DIAGNOSTICS
+const FoundVariableName = "found"
+
+// cursorState holds the result set a loop walks.
 type cursorState struct {
 	Schema sql.Schema
 	Rows   []sql.Row
@@ -38,6 +121,9 @@ type interpreterVariable struct {
 	Record sql.Schema // TODO: all records carry their type information alongside the value, so this is redundant
 	Type   *pgtypes.DoltgresType
 	Value  any
+	// IsRecord marks a variable declared as RECORD (or a trigger's NEW/OLD). Such a variable has no shape
+	// until something is assigned to it, at which point Record and Value are set together.
+	IsRecord bool
 }
 
 // InterpreterVariableReference is a reference to a variable that lives on the stack. If the type is not null, then it
@@ -47,12 +133,26 @@ type interpreterVariable struct {
 type InterpreterVariableReference struct {
 	Type  *pgtypes.DoltgresType
 	Value *any
+	// Record is the shape of a reference to a record as a whole. It is nil for any other reference, and also
+	// for a record that has not been assigned yet, which IsRecord distinguishes.
+	Record sql.Schema
+	// IsRecord reports whether the reference is to a record as a whole. Such a reference has no usable type,
+	// since its value is a row rather than a single value, so callers format the fields in Record instead.
+	IsRecord bool
 }
 
 // InterpreterScopeDetails contains all of the details that are relevant to a particular scope.
 type InterpreterScopeDetails struct {
 	variables map[string]*interpreterVariable
 	label     string
+	// cursor holds the result set this scope's loop walks, when the scope is such a loop's. Hanging it
+	// off the scope is what tears it down wherever the loop is left, rather than only where it runs out,
+	// and is what keeps nested loops apart: the inner opens its cursor in its own scope, not the outer's.
+	cursor *cursorState
+	// reportsFound marks the scope of a loop that sets FOUND when it is left, and iterated records
+	// whether that loop ever advanced into its body.
+	reportsFound bool
+	iterated     bool
 }
 
 // InterpreterStack represents the working information that an interpreter will use during execution. It is not exactly
@@ -66,8 +166,18 @@ type InterpreterStack struct {
 
 	// returnQueryBuffer buffers results from RETURN QUERY statements
 	returnQueryBuffer [][]pgtypes.RecordValue
-	// cursors holds the active FOR record IN query LOOP result sets
-	cursors map[string]*cursorState
+	// unfoldedNames holds the folded names of variables that go through special name resolution for
+	// compatibility with triggers that were compiled by older version of doltgres. These are names
+	// that are declared by the trigger itself --- NEW, OLD and TG_ variables. A body compiled before
+	// Doltgres folded references will refer to these by the identifiers as they appear in the source
+	// text. When these operations name `NEW`, and the the variable is now registered as `new`, the
+	// lookup will fail to find a direct match.
+	//
+	// A lookup that misses retries against this set case-insensitively. This keeps these triggers
+	// running without them needing to be recreated. Only these names are retried, since declared
+	// names, for example, were unfolded at both declare time and reference time by the previous
+	// code.
+	unfoldedNames map[string]struct{}
 }
 
 // NewInterpreterStack creates a new InterpreterStack.
@@ -78,10 +188,10 @@ func NewInterpreterStack(runner sql.StatementRunner) InterpreterStack {
 		variables: make(map[string]*interpreterVariable),
 	})
 	return InterpreterStack{
-		outParams: make([]string, 0),
-		stack:     stack,
-		runner:    runner,
-		cursors:   make(map[string]*cursorState),
+		outParams:     make([]string, 0),
+		stack:         stack,
+		runner:        runner,
+		unfoldedNames: make(map[string]struct{}),
 	}
 }
 
@@ -107,56 +217,158 @@ func (is *InterpreterStack) GetCurrentLabel() string {
 	return ""
 }
 
-// GetVariable traverses the stack (starting from the top) to find a variable with a matching name. Returns nil if no
-// variable was found.
+// GetVariable traverses the stack (starting from the top) to find a variable with a matching name. Returns a
+// reference with a nil type if no variable was found. Use GetVariableWithError when the reason for the failure
+// matters.
 func (is *InterpreterStack) GetVariable(name string) InterpreterVariableReference {
+	ref, _ := is.GetVariableWithError(name)
+	return ref
+}
+
+// GetVariableWithError behaves like GetVariable, but explains why the reference could not be resolved rather
+// than returning an empty reference.
+func (is *InterpreterStack) GetVariableWithError(name string) (InterpreterVariableReference, error) {
 	// TODO: handle nested record access
+	fullName := name
 	fieldName := ""
 	if strings.Count(name, ".") == 1 {
 		splitName := strings.Split(name, ".")
 		name = splitName[0]
-		fieldName = splitName[1]
+		// A field may be written as a quoted identifier (`blocker."id"`), which reaches us with its quotes
+		// still attached. Field lookup is case-insensitive here, so the quotes are all that need removing.
+		fieldName = strings.Trim(splitName[1], `"`)
 	}
-	for i := 0; i < is.stack.Len(); i++ {
-		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
-			if len(fieldName) == 0 {
+	if iv := is.findVariable(name); iv != nil {
+		if len(fieldName) == 0 {
+			return InterpreterVariableReference{
+				Type:     iv.Type,
+				Value:    &iv.Value,
+				Record:   iv.Record,
+				IsRecord: iv.IsRecord,
+			}, nil
+		} else if len(iv.Record) > 0 {
+			if fieldName == "*" {
+				var record any = recordValues(iv.Record, iv.Value.(sql.Row))
 				return InterpreterVariableReference{
-					Type:  iv.Type,
-					Value: &iv.Value,
-				}
-			} else if len(iv.Record) > 0 {
-				fieldIdx := iv.Record.IndexOf(fieldName, iv.Record[0].Source)
-				if fieldIdx == -1 {
-					// TODO: implement this as a proper error for missing record field rather than the generic "variable not found"
-					return InterpreterVariableReference{}
-				}
-				return InterpreterVariableReference{
-					Type:  iv.Record[fieldIdx].Type.(*pgtypes.DoltgresType),
-					Value: &(iv.Value.(sql.Row)[fieldIdx]),
-				}
-			} else if iv.Type.IsCompositeType() {
-				for fieldIdx := range iv.Type.CompositeAttrs {
-					if iv.Type.CompositeAttrs[fieldIdx].Name == fieldName {
-						vals := iv.Value.([]pgtypes.RecordValue)
-						return InterpreterVariableReference{
-							Type:  vals[fieldIdx].Type.(*pgtypes.DoltgresType),
-							Value: &(vals[fieldIdx].Value),
-						}
-					}
-				}
-				// The field could not be found
-				return InterpreterVariableReference{}
-			} else {
-				// Can't access fields on an empty record
-				return InterpreterVariableReference{}
+					Type:  pgtypes.Record,
+					Value: &record,
+				}, nil
 			}
+			fieldIdx := recordFieldIndex(iv.Record, fieldName)
+			if fieldIdx == -1 {
+				return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
+			}
+			fieldType, ok := iv.Record[fieldIdx].Type.(*pgtypes.DoltgresType)
+			if !ok {
+				return InterpreterVariableReference{}, fmt.Errorf(
+					"field `%s` of record `%s` does not have a Postgres type", fieldName, name)
+			}
+			return InterpreterVariableReference{
+				Type:  fieldType,
+				Value: &(iv.Value.(sql.Row)[fieldIdx]),
+			}, nil
+		} else if iv.IsRecord {
+			// A record that has never been assigned has no shape, so there is no field to read.
+			return InterpreterVariableReference{}, ErrRecordNotAssigned.New(name)
+		} else if iv.Type != nil && iv.Type.IsCompositeType() {
+			for fieldIdx := range iv.Type.CompositeAttrs {
+				if iv.Type.CompositeAttrs[fieldIdx].Name == fieldName {
+					vals := iv.Value.([]pgtypes.RecordValue)
+					return InterpreterVariableReference{
+						Type:  vals[fieldIdx].Type.(*pgtypes.DoltgresType),
+						Value: &(vals[fieldIdx].Value),
+					}, nil
+				}
+			}
+			return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
+		} else {
+			return InterpreterVariableReference{}, fmt.Errorf(
+				"could not identify column `%s` in variable `%s`", fieldName, name)
 		}
 	}
-	return InterpreterVariableReference{}
+	return InterpreterVariableReference{}, ErrVariableNotFound.New(fullName)
 }
 
-// ListVariables returns a map with the names of all variables. The attached slice represents field names for records.
-// All names are lowercased.
+// recordValues pairs each field of a record variable with its type, which is the value of a `name.*` reference.
+func recordValues(sch sql.Schema, row sql.Row) []pgtypes.RecordValue {
+	values := make([]pgtypes.RecordValue, len(row))
+	for i := range row {
+		values[i] = pgtypes.RecordValue{
+			Value: row[i],
+			Type:  sch[i].Type,
+		}
+	}
+	return values
+}
+
+// ExpandWholeRowReference returns the bindings to use for a statement whose entire expression is a `name.*`
+// reference, which PostgreSQL expands into the record's fields rather than treating as a single value. A record with
+// one field binds that field, while any other count is an error that names `source` as what returned the columns.
+func (is *InterpreterStack) ExpandWholeRowReference(stmt string, bindings []string, source string) ([]string, error) {
+	if len(bindings) != 1 || !strings.HasSuffix(bindings[0], ".*") {
+		return bindings, nil
+	}
+	expression := strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(stmt, "SELECT")), ";")
+	if strings.TrimSpace(expression) != "$1" {
+		return bindings, nil
+	}
+	iv := is.findVariable(strings.TrimSuffix(bindings[0], ".*"))
+	if iv == nil || len(iv.Record) == 0 {
+		return bindings, nil
+	}
+	if len(iv.Record) != 1 {
+		return nil, pgerror.Newf(pgcode.Syntax, "%s returned %d columns", source, len(iv.Record))
+	}
+	return []string{strings.TrimSuffix(bindings[0], "*") + iv.Record[0].Name}, nil
+}
+
+// findVariable returns the variable named |name|, searching from the top of the stack down so that an inner
+// declaration shadows an outer one. Returns nil when no scope holds the name. A name that matches nothing
+// exactly is retried folded when it names a caller-supplied variable, which is what lets operations compiled
+// before Doltgres folded references keep resolving; see the unfoldedNames field.
+func (is *InterpreterStack) findVariable(name string) *interpreterVariable {
+	for i := 0; i < is.stack.Len(); i++ {
+		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
+			return iv
+		}
+	}
+	folded := strings.ToLower(name)
+	if folded == name {
+		return nil
+	}
+	if _, ok := is.unfoldedNames[folded]; !ok {
+		return nil
+	}
+	for i := 0; i < is.stack.Len(); i++ {
+		if iv, ok := is.stack.PeekDepth(i).variables[folded]; ok {
+			return iv
+		}
+	}
+	return nil
+}
+
+// markUnfoldedName records that the variable named |name|, which must already be folded, may also be reached
+// by any other casing of that name. It is for the variables a caller supplies to a function rather than ones
+// the function declares, since only those changed names when reference folding was introduced.
+func (is *InterpreterStack) markUnfoldedName(name string) {
+	is.unfoldedNames[name] = struct{}{}
+}
+
+// recordFieldIndex returns the index of the field named |fieldName| within |sch|, or -1 if there is no such
+// field. Unlike sql.Schema.IndexOf, the column's source is ignored, since a record's shape comes from the
+// output columns of whatever query was assigned to it and those may originate in different tables.
+func recordFieldIndex(sch sql.Schema, fieldName string) int {
+	for i, col := range sch {
+		if strings.EqualFold(col.Name, fieldName) {
+			return i
+		}
+	}
+	return -1
+}
+
+// ListVariables returns a map with the names of all variables. The attached slice represents field names for
+// records. Names are keyed exactly as they were declared, which is already the folded form, so a reference
+// matches by being folded the same way rather than by being compared case-insensitively.
 func (is *InterpreterStack) ListVariables() map[string][]string {
 	seen := make(map[string][]string)
 	for i := 0; i < is.stack.Len(); i++ {
@@ -167,26 +379,37 @@ func (is *InterpreterStack) ListVariables() map[string][]string {
 					fieldNames = append(fieldNames, strings.ToLower(col.Name))
 				}
 			}
-			seen[strings.ToLower(varName)] = fieldNames
+			seen[varName] = fieldNames
 		}
 	}
 	return seen
 }
 
 // NewRecord creates a new record in the current scope. If a record with the same name exists in a previous scope, then
-// that record will be shadowed until the current scope exits.
+// that record will be shadowed until the current scope exits. A nil |sch| declares a record that has no shape yet,
+// which is what a `DECLARE r RECORD` produces until something is assigned to it. When |sch| is non-nil but |val| is
+// nil, the record has a shape whose every field is NULL, which is what a trigger's OLD record is on an INSERT.
 func (is *InterpreterStack) NewRecord(name string, sch sql.Schema, val sql.Row) {
-	// TODO: this is currently implemented only for the specific record types used in triggers: OLD and NEW
-	var newVal sql.Row
-	if val != nil {
-		newVal = make(sql.Row, len(val))
-		copy(newVal, val)
-	}
 	is.stack.Peek().variables[name] = &interpreterVariable{
-		Record: sch,
-		Type:   pgtypes.Trigger, // TODO: we need to implement the RECORD pseudotype and replace the TRIGGER type here
-		Value:  newVal,
+		Record:   sch,
+		Type:     pgtypes.Trigger, // TODO: we need to implement the RECORD pseudotype and replace the TRIGGER type here
+		Value:    copyRecordRow(sch, val),
+		IsRecord: true,
 	}
+}
+
+// copyRecordRow returns a copy of |val| for storage in a record. A nil |val| becomes an all-NULL row matching
+// |sch|, so that every field of a record with a known shape is addressable.
+func copyRecordRow(sch sql.Schema, val sql.Row) sql.Row {
+	if val == nil {
+		if len(sch) == 0 {
+			return nil
+		}
+		return make(sql.Row, len(sch))
+	}
+	newVal := make(sql.Row, len(val))
+	copy(newVal, val)
+	return newVal
 }
 
 // NewVariable creates a new variable in the current scope. If a variable with the same name exists in a previous scope,
@@ -206,12 +429,9 @@ func (is *InterpreterStack) NewVariableWithValue(name string, typ *pgtypes.Doltg
 // NewVariableAlias creates a new variable alias, named |alias|, in the current frame of this stack,
 // pointing to the specified |variable|.
 func (is *InterpreterStack) NewVariableAlias(alias string, target string) {
-	for i := 0; i < is.stack.Len(); i++ {
-		if iv, ok := is.stack.PeekDepth(i).variables[target]; ok {
-			// TODO: this won't work for RECORD types
-			is.stack.Peek().variables[alias] = iv
-			break
-		}
+	if iv := is.findVariable(target); iv != nil {
+		// TODO: this won't work for RECORD types
+		is.stack.Peek().variables[alias] = iv
 	}
 }
 
@@ -241,6 +461,17 @@ func (is *InterpreterStack) SetVariable(ctx *sql.Context, name string, val any) 
 		return fmt.Errorf("variable `%s` could not be found", name)
 	}
 	*iv.Value = val
+	return nil
+}
+
+// SetVariableWithType sets the value of the variable with the given name, along with its type.
+func (is *InterpreterStack) SetVariableWithType(name string, typ *pgtypes.DoltgresType, val any) error {
+	iv := is.findVariable(name)
+	if iv == nil {
+		return fmt.Errorf("variable `%s` could not be found", name)
+	}
+	iv.Type = typ
+	iv.Value = val
 	return nil
 }
 
@@ -287,20 +518,20 @@ func (is *InterpreterStack) ReturnOutParamResults() any {
 	return record
 }
 
-// InitCursor stores the result set for a FOR record IN query LOOP cursor.
-func (is *InterpreterStack) InitCursor(name string, schema sql.Schema, rows []sql.Row) {
-	is.cursors[name] = &cursorState{
+// InitCursor stores the result set a loop walks in the current scope, which is the loop's own.
+func (is *InterpreterStack) InitCursor(schema sql.Schema, rows []sql.Row) {
+	is.stack.Peek().cursor = &cursorState{
 		Schema: schema,
 		Rows:   rows,
 		Index:  0,
 	}
 }
 
-// AdvanceCursor returns the next row for the named cursor and advances its index.
-// Returns (schema, row, true) if a row is available, or (nil, nil, false) when exhausted.
-func (is *InterpreterStack) AdvanceCursor(name string) (sql.Schema, sql.Row, bool) {
-	cs, ok := is.cursors[name]
-	if !ok || cs.Index >= len(cs.Rows) {
+// AdvanceCursor returns the next row of the cursor the current scope owns, and false once it is exhausted.
+// The scope is the loop's own, since the operation that advances the cursor sits at the top of the body.
+func (is *InterpreterStack) AdvanceCursor() (sql.Schema, sql.Row, bool) {
+	cs := is.stack.Peek().cursor
+	if cs == nil || cs.Index >= len(cs.Rows) {
 		return nil, nil, false
 	}
 	row := cs.Rows[cs.Index]
@@ -308,19 +539,66 @@ func (is *InterpreterStack) AdvanceCursor(name string) (sql.Schema, sql.Row, boo
 	return cs.Schema, row, true
 }
 
-// CloseCursor removes the named cursor from the stack.
-func (is *InterpreterStack) CloseCursor(name string) {
-	delete(is.cursors, name)
+// MarkScopeLoop marks the current scope as a loop's, whose exit reports FOUND, and records whether the loop
+// has just advanced into its body. Only the loop itself knows that it advanced, and it cannot record it in
+// FOUND, which PostgreSQL leaves alone until the loop is left.
+func (is *InterpreterStack) MarkScopeLoop(advanced bool) {
+	details := is.stack.Peek()
+	details.reportsFound = true
+	details.iterated = details.iterated || advanced
 }
 
-// UpdateRecord finds the named variable and sets its schema and row value.
+// ScopeLoop reports whether leaving the current scope sets FOUND, and if so whether its loop body ran.
+func (is *InterpreterStack) ScopeLoop() (reportsFound bool, iterated bool) {
+	details := is.stack.Peek()
+	return details.reportsFound, details.iterated
+}
+
+// SetFound updates the built-in FOUND variable. Functions compiled before FOUND was supported do not declare
+// it, and a function may shadow the name with a variable of its own, so anything other than the built-in
+// boolean is left alone rather than being overwritten.
+func (is *InterpreterStack) SetFound(ctx *sql.Context, found bool) error {
+	ref := is.GetVariable(FoundVariableName)
+	if ref.Type == nil || ref.Type.ID != pgtypes.Bool.ID {
+		return nil
+	}
+	return is.SetVariable(ctx, FoundVariableName, found)
+}
+
+// UpdateRecord finds the named variable and sets its schema and row value. A nil |val| gives the record the
+// shape of |schema| with every field NULL, which is what PostgreSQL does when an INTO query matches no rows.
 func (is *InterpreterStack) UpdateRecord(name string, schema sql.Schema, val sql.Row) error {
-	for i := 0; i < is.stack.Len(); i++ {
-		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
-			iv.Record = schema
-			iv.Value = val
-			return nil
-		}
+	normalizedSchema, err := normalizeRecordSchema(schema)
+	if err != nil {
+		return err
+	}
+	if iv := is.findVariable(name); iv != nil {
+		iv.Record = normalizedSchema
+		iv.Value = copyRecordRow(normalizedSchema, val)
+		iv.IsRecord = true
+		return nil
 	}
 	return fmt.Errorf("record variable `%s` could not be found", name)
+}
+
+// normalizeRecordSchema returns |schema| with every column type converted to a DoltgresType. Query results can
+// carry plain GMS types (an aggregate such as `count(*)`, for example), but a record's fields are read back as
+// Doltgres values, so the types have to be converted before the schema is stored.
+func normalizeRecordSchema(schema sql.Schema) (sql.Schema, error) {
+	normalized := make(sql.Schema, len(schema))
+	for i, col := range schema {
+		if _, ok := col.Type.(*pgtypes.DoltgresType); ok {
+			normalized[i] = col
+			continue
+		}
+		// TODO: this only converts the type, not the value. See the same TODO in convertRowsToRecords.
+		doltgresType, err := pgtypes.FromGmsTypeToDoltgresType(col.Type)
+		if err != nil {
+			return nil, err
+		}
+		newCol := *col
+		newCol.Type = doltgresType
+		normalized[i] = &newCol
+	}
+	return normalized, nil
 }

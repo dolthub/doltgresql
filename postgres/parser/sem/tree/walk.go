@@ -700,6 +700,11 @@ func (d DomainColumn) Walk(_ Visitor) Expr {
 }
 
 // Walk implements the Expr interface.
+func (u UsingColumn) Walk(_ Visitor) Expr {
+	return u
+}
+
+// Walk implements the Expr interface.
 func (f FunctionColumn) Walk(_ Visitor) Expr {
 	return f
 }

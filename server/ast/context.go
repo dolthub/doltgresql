@@ -23,15 +23,23 @@ import (
 // determine which larger statement an expression exists in, which may influence how the expression should handle
 // authorization.
 type Context struct {
-	authContext   *auth.AuthContext
-	originalQuery string
+	authContext                        *auth.AuthContext
+	originalQuery                      string
+	preserveParens                     bool
+	permitUnsupportedLockingStatements bool
 }
 
 // NewContext returns a new *Context.
 func NewContext(postgresStmt parser.Statement) *Context {
+	return NewContextWithOptions(postgresStmt, ConvertOptions{})
+}
+
+// NewContextWithOptions returns a new *Context using the given conversion options.
+func NewContextWithOptions(postgresStmt parser.Statement, options ConvertOptions) *Context {
 	return &Context{
-		authContext:   auth.NewAuthContext(),
-		originalQuery: postgresStmt.SQL,
+		authContext:                        auth.NewAuthContext(),
+		originalQuery:                      postgresStmt.SQL,
+		permitUnsupportedLockingStatements: options.PermitUnsupportedLockingStatements,
 	}
 }
 

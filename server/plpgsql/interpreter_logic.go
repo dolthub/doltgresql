@@ -22,10 +22,13 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/typecollection"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -34,12 +37,12 @@ import (
 // framework package.
 type InterpretedFunction interface {
 	ApplyBindings(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string, enforceType bool) (newStmt string, varFound bool, err error)
-	GetAllNames() []string
 	GetOutputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetReturn() *pgtypes.DoltgresType
 	GetStatements() []InterpreterOperation
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (schema sql.Schema, rows []sql.Row, err error)
+	QueryRowReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetTypes []*pgtypes.DoltgresType, bindings []string) (row sql.Row, ok bool, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
 	// IsSRF returns whether the function is a set returning function, meaning whether the
 	// function returns one or more rows as a result.
@@ -76,14 +79,26 @@ func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.Stateme
 	// Set up the initial state of the function
 	stack := NewInterpreterStack(runner)
 	// Add the special variables
-	stack.NewRecord("OLD", sch, oldRow)
-	stack.NewRecord("NEW", sch, newRow)
+	// These are declared under their folded names, the same as anything the function declares itself, so
+	// that a body may write them in any case (`NEW.x`, `new.x`) the way Postgres allows.
+	//
+	// These variables are specially marked as being reachable from the code by any casing. This is
+	// because a trigger which was compiled before references were folded will hold operations that
+	// refer to these by names which reflect the source text. Thus, the references will be `NEW.x`
+	// rather than `new.x`. For such a trigger to keep working, these go through a compatibility
+	// shim.
+	stack.NewRecord(TriggerOldRecordName, sch, oldRow)
+	stack.NewRecord(TriggerNewRecordName, sch, newRow)
+	stack.markUnfoldedName(TriggerOldRecordName)
+	stack.markUnfoldedName(TriggerNewRecordName)
 	for varName, val := range trigVars {
-		varType, ok := triggerSpecialVariables[varName]
+		normalized := NormalizeIdentifier(varName)
+		varType, ok := triggerSpecialVariables[normalized]
 		if !ok {
 			return nil, fmt.Errorf("unknown variable %s for trigger", varName)
 		}
-		stack.NewVariableWithValue(varName, varType, val)
+		stack.NewVariableWithValue(normalized, varType, val)
+		stack.markUnfoldedName(normalized)
 	}
 	return call(ctx, iFunc, stack)
 }
@@ -115,13 +130,39 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if iv.Type == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
 			}
-			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "assignment source")
 			if err != nil {
 				return nil, err
 			}
-			err = stack.SetVariable(ctx, operation.Target, retVal)
-			if err != nil {
-				return nil, err
+			if operation.Options[OptionRetypeTarget] == "true" {
+				schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, bindings)
+				if err != nil {
+					return nil, err
+				}
+				if len(schema) != 1 {
+					return nil, errors.New("expression does not result in a single value")
+				}
+				valType, ok := schema[0].Type.(*pgtypes.DoltgresType)
+				if !ok {
+					if valType, err = pgtypes.FromGmsTypeToDoltgresType(schema[0].Type); err != nil {
+						return nil, err
+					}
+				}
+				var val any
+				if len(rows) > 0 {
+					val = rows[0][0]
+				}
+				if err = stack.SetVariableWithType(operation.Target, valType, val); err != nil {
+					return nil, err
+				}
+			} else {
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, bindings)
+				if err != nil {
+					return nil, err
+				}
+				if err = stack.SetVariable(ctx, operation.Target, retVal); err != nil {
+					return nil, err
+				}
 			}
 		case OpCode_Declare:
 			typeCollection, err := GetTypesCollectionFromContext(ctx, "")
@@ -138,15 +179,19 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				parts := strings.Split(typeName, ".")
 				schemaName = parts[0]
 				typeName = parts[1]
-				// Check the NonKeyword type names to see if we're looking at
-				// an alias of a type if we're in the pg_catalog schema.
-				// Skip array types (names starting with "_") since their internal
-				// lookup key uses the "_typename" form, not the "typename[]" form
-				// that TypeForNonKeywordTypeName returns.
-				if schemaName == "pg_catalog" && !strings.HasPrefix(typeName, "_") {
-					typ, ok, _ := types.TypeForNonKeywordTypeName(typeName)
+				// Within pg_catalog the name may be an alias, so map it to the name the type is
+				// registered under (`pg_catalog.boolean` to `pg_catalog.bool`). An array type arrives
+				// as "_typename", which is also the form its lookup key takes, so it is the element
+				// name that gets mapped.
+				if schemaName == "pg_catalog" {
+					arrayPrefix := ""
+					elementName := typeName
+					if strings.HasPrefix(typeName, "_") {
+						arrayPrefix, elementName = "_", typeName[1:]
+					}
+					typ, ok, _ := types.TypeForNonKeywordTypeName(elementName)
 					if ok && typ != nil {
-						typeName = typ.Name()
+						typeName = arrayPrefix + typ.PGName()
 					}
 				}
 			}
@@ -158,29 +203,15 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
 			if len(operation.SecondaryData) != 0 {
-				defVal := operation.SecondaryData[0]
-				// Default value can be a literal value or a reference to parameter
-				isParam := false
-				for _, param := range iFunc.GetAllNames() {
-					if param == defVal {
-						isParam = true
-						break
-					}
+				query, bindings, err := declareDefault(operation, &stack)
+				if err != nil {
+					return nil, err
 				}
-				if isParam {
-					ivr := stack.GetVariable(defVal)
-					if ivr.Value != nil {
-						stack.NewVariableWithValue(operation.Target, resolvedType, *ivr.Value)
-					} else {
-						stack.NewVariable(operation.Target, resolvedType)
-					}
-				} else {
-					val, err := resolvedType.IoInput(ctx, strings.Trim(operation.SecondaryData[0], "'"))
-					if err != nil {
-						return nil, err
-					}
-					stack.NewVariableWithValue(operation.Target, resolvedType, val)
+				val, err := iFunc.QuerySingleReturn(ctx, stack, query, resolvedType, bindings)
+				if err != nil {
+					return nil, err
 				}
+				stack.NewVariableWithValue(operation.Target, resolvedType, val)
 			} else {
 				stack.NewVariable(operation.Target, resolvedType)
 			}
@@ -189,82 +220,177 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		case OpCode_Exception:
 			// TODO: implement
 		case OpCode_Execute:
-			if len(operation.Target) > 0 {
-				if vars := strings.Split(operation.Target, ","); len(vars) > 1 {
-					// multiple column row result
-					sch, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
-					if err != nil {
-						return nil, err
-					}
-					if len(rows) > 1 {
-						return nil, errors.New("query returned more than one row")
-					}
-					for i, row := range rows {
-						if len(row) != len(vars) {
-							return nil, errors.New("number of row values does not match number of schema columns")
-						}
-						target := stack.GetVariable(vars[i])
-						if target.Type == nil {
-							return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
-						}
-						if sch[i].Type.(*pgtypes.DoltgresType).ID != target.Type.ID {
-							return nil, fmt.Errorf("variable type `%s` does not match `%s`", sch[i].Type.String(), target.Type.String())
-						}
-						err = stack.SetVariable(ctx, vars[i], rows[0][i])
-						if err != nil {
-							return nil, err
-						}
-					}
-				} else {
-					// single column
-					target := stack.GetVariable(operation.Target)
-					if target.Type == nil {
-						return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
-					}
-					retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, target.Type, operation.SecondaryData)
-					if err != nil {
-						return nil, err
-					}
-					err = stack.SetVariable(ctx, operation.Target, retVal)
-					if err != nil {
-						return nil, err
-					}
+			dynamic := operation.Options[OptionDynamicExpression] == "true"
+			if dynamic {
+				query, err := evaluateDynamicQuery(ctx, iFunc, operation, stack)
+				if err != nil {
+					return nil, err
 				}
-			} else {
-				_, _, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				operation.PrimaryData = query
+				operation.SecondaryData, err = evaluateDynamicUsing(ctx, iFunc, operation, stack)
 				if err != nil {
 					return nil, err
 				}
 			}
+			if len(operation.Target) > 0 {
+				vars := strings.Split(operation.Target, ",")
+				targetTypes := make([]*pgtypes.DoltgresType, len(vars))
+				for i, varName := range vars {
+					target := stack.GetVariable(varName)
+					if target.Type == nil {
+						if dynamic {
+							stack.PopScope()
+						}
+						return nil, fmt.Errorf("variable `%s` could not be found", varName)
+					}
+					targetTypes[i] = target.Type
+				}
+				row, rowFound, err := iFunc.QueryRowReturn(ctx, stack, operation.PrimaryData, targetTypes, operation.SecondaryData)
+				if err != nil {
+					if dynamic {
+						stack.PopScope()
+					}
+					return nil, err
+				}
+				// When the query matches nothing, every target is set to NULL rather than left alone.
+				for i, varName := range vars {
+					var val any
+					if rowFound {
+						val = row[i]
+					}
+					if err = stack.SetVariable(ctx, varName, val); err != nil {
+						if dynamic {
+							stack.PopScope()
+						}
+						return nil, err
+					}
+				}
+				if setsFound(operation) {
+					if err = stack.SetFound(ctx, rowFound); err != nil {
+						if dynamic {
+							stack.PopScope()
+						}
+						return nil, err
+					}
+				}
+			} else {
+				_, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				if err != nil {
+					if dynamic {
+						stack.PopScope()
+					}
+					return nil, err
+				}
+				if setsFound(operation) {
+					if err = stack.SetFound(ctx, queryProducedRow(rows)); err != nil {
+						if dynamic {
+							stack.PopScope()
+						}
+						return nil, err
+					}
+				}
+			}
+			if dynamic {
+				stack.PopScope()
+			}
+		case OpCode_ExecuteInto:
+			dynamic := operation.Options[OptionDynamicExpression] == "true"
+			if dynamic {
+				query, err := evaluateDynamicQuery(ctx, iFunc, operation, stack)
+				if err != nil {
+					return nil, err
+				}
+				operation.PrimaryData = query
+				operation.SecondaryData, err = evaluateDynamicUsing(ctx, iFunc, operation, stack)
+				if err != nil {
+					return nil, err
+				}
+			}
+			// The target is a RECORD, which takes on the shape of the query's result columns.
+			schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			if err != nil {
+				if dynamic {
+					stack.PopScope()
+				}
+				return nil, err
+			}
+			// Without STRICT, Postgres keeps the first row and discards the rest, and leaves every field NULL
+			// when there are no rows at all.
+			var row sql.Row
+			if len(rows) > 0 {
+				row = rows[0]
+			}
+			if err = stack.UpdateRecord(operation.Target, schema, row); err != nil {
+				if dynamic {
+					stack.PopScope()
+				}
+				return nil, err
+			}
+			if setsFound(operation) {
+				if err = stack.SetFound(ctx, len(rows) > 0); err != nil {
+					if dynamic {
+						stack.PopScope()
+					}
+					return nil, err
+				}
+			}
+			if dynamic {
+				stack.PopScope()
+			}
+		case OpCode_DeclareRecord:
+			stack.NewRecord(operation.Target, nil, nil)
 		case OpCode_Get:
 			// TODO: implement
 		case OpCode_Goto:
 			// We must compare to the index - 1, so that the increment hits our target
 			if counter <= operation.Index {
+				// Jumping forward leaves every scope it passes over for good, so each one is torn down
+				// the same way reaching its ScopeEnd would tear it down. A labelled EXIT out of a nested
+				// loop passes over that loop's ScopeEnd this way.
 				for ; counter < operation.Index-1; counter++ {
 					switch statements[counter].OpCode {
 					case OpCode_ScopeBegin:
 						stack.PushScope()
 					case OpCode_ScopeEnd:
-						stack.PopScope()
+						if err := exitScope(ctx, stack); err != nil {
+							return nil, err
+						}
 					}
 				}
 			} else {
+				// Jumping backward passes a scope's ScopeBegin only when that scope is being left for
+				// good, so that is torn down like any other scope exit. A labelled CONTINUE of an outer
+				// loop leaves the inner loop this way. Reaching a ScopeEnd backwards is the opposite: a
+				// scope that already closed is being re-entered, and the fresh scope this pushes carries
+				// nothing to tear down when the walk reaches its ScopeBegin a moment later.
 				for ; counter > operation.Index-1; counter-- {
 					switch statements[counter].OpCode {
 					case OpCode_ScopeBegin:
-						stack.PopScope()
+						if err := exitScope(ctx, stack); err != nil {
+							return nil, err
+						}
 					case OpCode_ScopeEnd:
 						stack.PushScope()
 					}
 				}
 			}
 		case OpCode_If:
-			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, operation.SecondaryData)
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "query")
 			if err != nil {
 				return nil, err
 			}
-			if retVal.(bool) {
+			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, bindings)
+			if err != nil {
+				return nil, err
+			}
+			// PostgreSQL treats a condition that evaluates to NULL as false.
+			conditionMet, _ := retVal.(bool)
+			if isLoopCondition(operation) {
+				// An integer FOR loop has no cursor to carry the fact that its body ran, so its condition
+				// is what records it, for the FOUND the loop reports once it is left.
+				stack.MarkScopeLoop(conditionMet)
+			}
+			if conditionMet {
 				// We're never changing the scope, so we can just assign it directly.
 				// Also, we must assign to index-1, so that the increment hits our target.
 				counter = operation.Index - 1
@@ -272,8 +398,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		case OpCode_InsertInto:
 			// TODO: implement
 		case OpCode_Perform:
-			_, _, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			_, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
+				return nil, err
+			}
+			if err = stack.SetFound(ctx, queryProducedRow(rows)); err != nil {
 				return nil, err
 			}
 		case OpCode_Raise:
@@ -287,8 +416,12 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			}
 
 			if operation.PrimaryData == "EXCEPTION" {
-				// TODO: Notices at the EXCEPTION level should also abort the current tx.
-				return nil, errors.New(message)
+				// A RAISE that does not name a SQLSTATE reports the code PostgreSQL gives a bare RAISE.
+				code := pgcode.RaiseException
+				if sqlState, ok := sqlStateFromErrCode(operation.Options[errCodeOptionKey]); ok {
+					code = pgcode.MakeCode(sqlState)
+				}
+				return nil, pgerror.New(code, message)
 			} else {
 				noticeResponse := &pgproto3.NoticeResponse{
 					Severity: operation.PrimaryData,
@@ -305,9 +438,16 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if len(stack.ReturnQueryResults()) > 0 {
 				records := stack.ReturnQueryResults()
 
+				// A function that declares a single, non-composite result column returns that column's value
+				// directly rather than a one-field record.
+				returnsRecord := iFunc.GetReturn().TypCategory == pgtypes.TypeCategory_CompositeTypes
 				rows := make([]sql.Row, len(records))
 				for i, record := range records {
-					rows[i] = sql.Row{record}
+					if !returnsRecord && len(record) == 1 {
+						rows[i] = sql.Row{record[0].Value}
+					} else {
+						rows[i] = sql.Row{record}
+					}
 				}
 
 				return sql.RowsToRowIter(rows...), nil
@@ -325,14 +465,18 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if iFunc.GetReturn().ID == pgtypes.Trigger.ID && len(operation.SecondaryData) == 1 {
 				normalized := strings.ReplaceAll(strings.ToLower(operation.PrimaryData), " ", "")
 				if normalized == "select$1;" {
-					if strings.EqualFold(operation.SecondaryData[0], "new") {
-						return *stack.GetVariable("NEW").Value, nil
-					} else if strings.EqualFold(operation.SecondaryData[0], "old") {
-						return *stack.GetVariable("OLD").Value, nil
+					if strings.EqualFold(operation.SecondaryData[0], TriggerNewRecordName) {
+						return *stack.GetVariable(TriggerNewRecordName).Value, nil
+					} else if strings.EqualFold(operation.SecondaryData[0], TriggerOldRecordName) {
+						return *stack.GetVariable(TriggerOldRecordName).Value, nil
 					}
 				}
 			}
-			val, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
+			bindings, err := stack.ExpandWholeRowReference(operation.PrimaryData, operation.SecondaryData, "query")
+			if err != nil {
+				return nil, err
+			}
+			val, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), bindings)
 			if err != nil {
 				return nil, err
 			}
@@ -348,14 +492,18 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err != nil {
 				return nil, err
 			}
-			stack.InitCursor(operation.Target, schema, rows)
+			stack.InitCursor(schema, rows)
+			// The loop reports FOUND when it is left even if the query matched nothing.
+			stack.MarkScopeLoop(false)
 		case OpCode_ForQueryNext:
-			schema, row, ok := stack.AdvanceCursor(operation.PrimaryData)
+			schema, row, ok := stack.AdvanceCursor()
 			if !ok {
-				stack.CloseCursor(operation.PrimaryData)
-				// Jump forward past the loop body and back-goto, same mechanism as OpCode_If.
+				// Jump forward past the loop body and back-goto, same mechanism as OpCode_If. The loop's
+				// ScopeEnd is what closes the cursor and reports FOUND, since every way out of the loop
+				// reaches it and this one does not.
 				counter = operation.Index - 1
 			} else {
+				stack.MarkScopeLoop(true)
 				if err := stack.UpdateRecord(operation.Target, schema, row); err != nil {
 					return nil, err
 				}
@@ -370,10 +518,15 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, err
 			}
 			stack.BufferReturnQueryResults(records)
+			if err = stack.SetFound(ctx, len(rows) > 0); err != nil {
+				return nil, err
+			}
 		case OpCode_ScopeBegin:
 			stack.PushScope()
 		case OpCode_ScopeEnd:
-			stack.PopScope()
+			if err := exitScope(ctx, stack); err != nil {
+				return nil, err
+			}
 		case OpCode_SelectInto:
 			// TODO: implement
 		case OpCode_UpdateInto:
@@ -383,6 +536,125 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		}
 	}
 	return nil, nil
+}
+
+// evaluateDynamicQuery evaluates the expression supplying a dynamic EXECUTE command string.
+func evaluateDynamicQuery(ctx *sql.Context, iFunc InterpretedFunction, operation InterpreterOperation, stack InterpreterStack) (string, error) {
+	bindingCount, err := strconv.Atoi(operation.Options[OptionDynamicBindingCount])
+	if err != nil {
+		return "", err
+	}
+	bindings := make([]string, bindingCount)
+	for i := range bindings {
+		bindings[i] = operation.Options[OptionDynamicBindingPrefix+strconv.Itoa(i)]
+	}
+	value, err := iFunc.QuerySingleReturn(ctx, stack, "SELECT ("+operation.PrimaryData+")::text", pgtypes.Text, bindings)
+	if err != nil {
+		return "", err
+	}
+	if value == nil {
+		return "", pgerror.New(pgcode.NullValueNotAllowed, "query string argument of EXECUTE is null")
+	}
+	return value.(string), nil
+}
+
+// evaluateDynamicUsing evaluates USING expressions and exposes their typed values as temporary interpreter variables.
+func evaluateDynamicUsing(ctx *sql.Context, iFunc InterpretedFunction, operation InterpreterOperation, stack InterpreterStack) ([]string, error) {
+	usingCount, err := strconv.Atoi(operation.Options[OptionDynamicUsingCount])
+	if err != nil {
+		return nil, err
+	}
+	temporaryNames := make([]string, usingCount)
+	types := make([]*pgtypes.DoltgresType, usingCount)
+	values := make([]any, usingCount)
+	for i := range usingCount {
+		index := strconv.Itoa(i)
+		bindingCount, err := strconv.Atoi(operation.Options[OptionDynamicUsingBindingCountPrefix+index])
+		if err != nil {
+			return nil, err
+		}
+		bindings := make([]string, bindingCount)
+		for j := range bindings {
+			bindings[j] = operation.Options[OptionDynamicUsingBindingPrefix+index+"_"+strconv.Itoa(j)]
+		}
+		expression := operation.Options[OptionDynamicUsingExpressionPrefix+index]
+		schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, "SELECT ("+expression+")", bindings)
+		if err != nil {
+			return nil, err
+		}
+		if len(schema) != 1 || len(rows) != 1 || len(rows[0]) != 1 {
+			return nil, errors.New("USING expression did not return exactly one value")
+		}
+		typ, ok := schema[0].Type.(*pgtypes.DoltgresType)
+		if !ok {
+			typ, err = pgtypes.FromGmsTypeToDoltgresType(schema[0].Type)
+			if err != nil {
+				return nil, err
+			}
+		}
+		types[i] = typ
+		values[i] = rows[0][0]
+	}
+	stack.PushScope()
+	for i := range usingCount {
+		// A NUL byte cannot occur in a PostgreSQL identifier, so this internal binding cannot shadow a user variable.
+		name := fmt.Sprintf("\x00dynamic_using_%d", i)
+		stack.NewVariableWithValue(name, types[i], values[i])
+		temporaryNames[i] = name
+	}
+	return temporaryNames, nil
+}
+
+// exitScope performs everything that leaving a scope entails. Both the ScopeEnd opcode and the forward walk
+// of a Goto leave scopes, so they share this rather than each handling scope depth on its own, which would
+// leave whichever of them grew a new responsibility last out of step with the other.
+//
+// Leaving the scope is what reports a FOR loop's FOUND: PostgreSQL sets FOUND when such a loop exits, by
+// whichever path, to whether the body ran at all, and leaves it alone while the loop runs. A WHILE or plain
+// LOOP never sets FOUND, so only a loop that marked its scope reports one.
+func exitScope(ctx *sql.Context, stack InterpreterStack) error {
+	if reportsFound, iterated := stack.ScopeLoop(); reportsFound {
+		if err := stack.SetFound(ctx, iterated); err != nil {
+			return err
+		}
+	}
+	stack.PopScope()
+	return nil
+}
+
+// setsFound reports whether the operation should update the built-in FOUND variable. Only the opcodes that
+// static and dynamic execution share have to ask: PostgreSQL defines a static statement as setting FOUND
+// and a dynamic EXECUTE as leaving it alone.
+func setsFound(operation InterpreterOperation) bool {
+	return operation.Options[OptionSetsFound] == "true"
+}
+
+// declareDefault returns the query that evaluates the default of the given declaration operation, along
+// with the names of the variables that query binds.
+//
+// An operation carrying only the source text was stored by a version that did not compile defaults, so
+// its query is compiled here instead. The |stack| holds the variables declared ahead of this one, the
+// same scope compilation at CREATE time would have seen.
+func declareDefault(operation InterpreterOperation, stack *InterpreterStack) (query string, bindings []string, err error) {
+	if len(operation.SecondaryData) > DeclareDefaultQueryIndex {
+		return operation.SecondaryData[DeclareDefaultQueryIndex], operation.SecondaryData[DeclareDefaultQueryIndex+1:], nil
+	}
+	return compileDeclareDefault(operation.SecondaryData[DeclareDefaultSourceIndex], stack)
+}
+
+// isLoopCondition reports whether the operation is the conditional jump that advances an integer FOR loop.
+func isLoopCondition(operation InterpreterOperation) bool {
+	return operation.Options[OptionLoopCondition] == "true"
+}
+
+// queryProducedRow reports whether a statement produced a row for the purposes of FOUND. A data-modifying
+// statement without RETURNING reports a single OkResult row no matter how many rows it touched, so for those
+// it is the affected-row count that answers the question.
+func queryProducedRow(rows []sql.Row) bool {
+	if len(rows) == 1 && gmstypes.IsOkResult(rows[0]) {
+		return rows[0][0].(gmstypes.OkResult).RowsAffected > 0
+	}
+	return len(rows) > 0
 }
 
 // convertRowsToRecords iterates overs |rows| and converts each field in each row
@@ -430,7 +702,11 @@ func applyNoticeOptions(ctx *sql.Context, noticeResponse *pgproto3.NoticeRespons
 
 		switch NoticeOptionType(i) {
 		case NoticeOptionTypeErrCode:
-			noticeResponse.Code = value
+			// A value that does not name a SQLSTATE leaves the notice reporting the default code, rather
+			// than reporting the unresolved value as though it were one.
+			if sqlState, ok := sqlStateFromErrCode(value); ok {
+				noticeResponse.Code = sqlState
+			}
 		case NoticeOptionTypeMessage:
 			noticeResponse.Message = value
 		case NoticeOptionTypeDetail:
@@ -470,7 +746,17 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 				}
 				currentParam := params[currentParamIdx]
 				currentParamIdx += 1
-				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", []string{currentParam}, false)
+				// RAISE carries its arguments as raw source text, so a reference among them still has to
+				// be folded before it will match the variable it names.
+				lookupName := currentParam
+				if normalized, isRef := NormalizeIdentifierPath(currentParam); isRef {
+					lookupName = normalized
+				}
+				bindings, err := stack.ExpandWholeRowReference("$1", []string{lookupName}, "query")
+				if err != nil {
+					return "", err
+				}
+				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", bindings, false)
 				if varFound {
 					if err != nil {
 						return "", err
@@ -498,17 +784,18 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 // triggerSpecialVariables are the list of special variables for triggers.
 // https://www.postgresql.org/docs/15/plpgsql-trigger.html
 // TODO: NEW and OLD variables are handled separately using `InterpreterStack.NewRecord` function.
+// Keys are the folded form of each name, since that is what a reference to one normalizes to.
 var triggerSpecialVariables = map[string]*pgtypes.DoltgresType{
-	//"NEW":
-	//"OLD":
-	"TG_NAME":         pgtypes.Name,
-	"TG_WHEN":         pgtypes.Text,
-	"TG_LEVEL":        pgtypes.Text,
-	"TG_OP":           pgtypes.Text,
-	"TG_RELID":        pgtypes.Oid,
-	"TG_RELNAME":      pgtypes.Name,
-	"TG_TABLE_NAME":   pgtypes.Name,
-	"TG_TABLE_SCHEMA": pgtypes.Name,
-	"TG_NARGS":        pgtypes.Int32,
-	"TG_ARGV[]":       pgtypes.TextArray,
+	//"new":
+	//"old":
+	"tg_name":         pgtypes.Name,
+	"tg_when":         pgtypes.Text,
+	"tg_level":        pgtypes.Text,
+	"tg_op":           pgtypes.Text,
+	"tg_relid":        pgtypes.Oid,
+	"tg_relname":      pgtypes.Name,
+	"tg_table_name":   pgtypes.Name,
+	"tg_table_schema": pgtypes.Name,
+	"tg_nargs":        pgtypes.Int32,
+	"tg_argv[]":       pgtypes.TextArray,
 }

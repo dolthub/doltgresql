@@ -45,7 +45,10 @@ var regtypein = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// If the string just represents a number, then we return it.
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if parsedOid, err := strconv.ParseUint(input, 10, 32); err == nil {
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
@@ -102,6 +105,15 @@ var regtypeout = framework.Function1{
 		if internalID.Section() == id.Section_OID {
 			return internalID.Segment(0), nil
 		}
+		// GMS represents both PostgreSQL json and jsonb with its single JSON
+		// type, whose SQLStandardName is jsonb. Preserve the distinct
+		// PostgreSQL names when formatting regtype values.
+		if typ := pgtypes.GetTypeByID(id.Type(internalID)); typ != nil {
+			switch typ.ID.TypeName() {
+			case "json", "jsonb":
+				return typ.ID.TypeName(), nil
+			}
+		}
 		toid := id.Cache().ToOID(internalID)
 		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
 			return t.SQLStandardName(), nil
@@ -118,7 +130,10 @@ var regtyperecv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}

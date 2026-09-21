@@ -34,30 +34,22 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 		if node[i].OrderType != tree.OrderByColumn {
 			return nil, errors.Errorf("ORDER BY type is not yet supported")
 		}
-		var direction string
+		direction := vitess.AscScr
+		nullsOrder := vitess.NullsLastStr
 		switch node[i].Direction {
-		case tree.DefaultDirection:
-			direction = vitess.AscScr
-		case tree.Ascending:
-			direction = vitess.AscScr
+		case tree.DefaultDirection, tree.Ascending:
 		case tree.Descending:
 			direction = vitess.DescScr
+			nullsOrder = vitess.NullsFirstStr
 		default:
 			return nil, errors.Errorf("unknown ORDER BY sorting direction")
 		}
 		switch node[i].NullsOrder {
 		case tree.DefaultNullsOrder:
-			//TODO: the default NULL order is reversed compared to MySQL, so the default is technically always wrong.
-			// To prevent choking on every ORDER BY, we allow this to proceed (even with incorrect results) for now.
-			// If the NULL order is explicitly declared, then we want to error rather than return incorrect results.
 		case tree.NullsFirst:
-			if direction != vitess.AscScr {
-				return nil, errors.Errorf("this NULL ordering is not yet supported for this ORDER BY direction")
-			}
+			nullsOrder = vitess.NullsFirstStr
 		case tree.NullsLast:
-			if direction != vitess.DescScr {
-				return nil, errors.Errorf("this NULL ordering is not yet supported for this ORDER BY direction")
-			}
+			nullsOrder = vitess.NullsLastStr
 		default:
 			return nil, errors.Errorf("unknown NULL ordering in ORDER BY")
 		}
@@ -75,8 +67,9 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 			}
 		}
 		orderBys[i] = &vitess.Order{
-			Expr:      expr,
-			Direction: direction,
+			Expr:       expr,
+			Direction:  direction,
+			NullsOrder: nullsOrder,
 		}
 	}
 	return orderBys, nil

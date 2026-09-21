@@ -92,14 +92,27 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		insertInto = insertInto.WithSource(plan.NewValues(newValues))
 	} else {
 		sourceSchema := insertInto.Source.Schema(ctx)
+		var sourceExprs []sql.Expression
+		if projector, ok := insertInto.Source.(sql.Projector); ok {
+			sourceExprs = projector.ProjectedExprs()
+		}
 		projections := make([]sql.Expression, len(sourceSchema))
 		for i, col := range sourceSchema {
-			fromColType, ok := col.Type.(*pgtypes.DoltgresType)
+			colType := col.Type
+			if colType == nil || colType == types.Null {
+				colType = pgtypes.Unknown
+			}
+			fromColType, ok := colType.(*pgtypes.DoltgresType)
 			if !ok {
-				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", fromColType.String())
+				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", colType.String())
 			}
 			toColType := destinationTypes[i]
-			getField := expression.NewGetField(i, fromColType, col.Name, true)
+			var getField sql.Expression = expression.NewGetField(i, fromColType, col.Name, true)
+			if i < len(sourceExprs) {
+				if idExpr, ok := sourceExprs[i].(sql.IdExpression); ok {
+					getField = getField.(sql.IdExpression).WithId(idExpr.Id())
+				}
+			}
 			// We only assign the GetField if the types perfectly match (same parameters), otherwise we'll cast
 			if fromColType.Equals(toColType) {
 				projections[i] = getField
@@ -116,8 +129,13 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if err != nil {
 			return nil, false, err
 		}
+		exprs := append(newDupExprs, insertInto.Checks().ToExpressions()...)
+		if insertInto.OnDupWhere != nil {
+			exprs = append(exprs, insertInto.OnDupWhere)
+		}
+		exprs = append(exprs, insertInto.Returning...)
 		// TODO: this relies on a particular implementation detail InsertInto.WithExpressions
-		newInsertInto, err := insertInto.WithExpressions(ctx, append(newDupExprs, insertInto.Checks().ToExpressions()...)...)
+		newInsertInto, err := insertInto.WithExpressions(ctx, exprs...)
 		if err != nil {
 			return nil, false, err
 		}

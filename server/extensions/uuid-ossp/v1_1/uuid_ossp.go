@@ -101,7 +101,7 @@ func uuidGenerateV1mc(ctx *sql.Context, args ...any) (any, error) {
 // uuidGenerateV3 implements uuid_generate_v3, which returns a version 3 UUID formed from the MD5 hash
 // of the given namespace and name.
 func uuidGenerateV3(ctx *sql.Context, args ...any) (any, error) {
-	namespace, name, err := namespaceAndName(args)
+	namespace, name, err := namespaceAndName(ctx, args)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func uuidGenerateV4(ctx *sql.Context, args ...any) (any, error) {
 // uuidGenerateV5 implements uuid_generate_v5, which returns a version 5 UUID formed from the SHA-1
 // hash of the given namespace and name.
 func uuidGenerateV5(ctx *sql.Context, args ...any) (any, error) {
-	namespace, name, err := namespaceAndName(args)
+	namespace, name, err := namespaceAndName(ctx, args)
 	if err != nil {
 		return nil, err
 	}
@@ -126,12 +126,15 @@ func uuidGenerateV5(ctx *sql.Context, args ...any) (any, error) {
 
 // namespaceAndName reads the namespace and name arguments that uuid_generate_v3 and uuid_generate_v5
 // share.
-func namespaceAndName(args []any) (uuid.UUID, string, error) {
+func namespaceAndName(ctx *sql.Context, args []any) (uuid.UUID, string, error) {
 	namespace, ok := args[0].(uuid.UUID)
 	if !ok {
 		return uuid.Nil, "", errors.Errorf("expected a UUID namespace, received `%T`", args[0])
 	}
-	name, ok := args[1].(string)
+	name, ok, err := sql.Unwrap[string](ctx, args[1])
+	if err != nil {
+		return uuid.Nil, "", err
+	}
 	if !ok {
 		return uuid.Nil, "", errors.Errorf("expected a TEXT name, received `%T`", args[1])
 	}

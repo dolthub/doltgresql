@@ -64,15 +64,6 @@ func (iFunc InterpretedFunction) GetName() string {
 	return iFunc.ID.FunctionName()
 }
 
-// GetAllNames implements the interface InterpretedFunction.
-func (iFunc InterpretedFunction) GetAllNames() []string {
-	var names []string
-	for _, param := range iFunc.AllParams {
-		names = append(names, param.Name)
-	}
-	return names
-}
-
 // GetInputParameterNamesAndTypes implements the interface InterpretedFunction.
 func (iFunc InterpretedFunction) GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType) {
 	var names []string
@@ -195,45 +186,84 @@ func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgs
 		if len(rows[0]) != 1 {
 			return nil, errors.New("expression returned multiple results")
 		}
-		if targetType == nil {
-			return rows[0][0], nil
+		return castQueryValue(subCtx, rows[0][0], sch[0].Type, targetType)
+	})
+}
+
+// castQueryValue converts |val|, which a query produced with the column type |columnType|, into the form
+// expected by |targetType| using an assignment cast. A nil |targetType| leaves the value as it is.
+func castQueryValue(ctx *sql.Context, val any, columnType sql.Type, targetType *pgtypes.DoltgresType) (any, error) {
+	if targetType == nil {
+		return val, nil
+	}
+	if val == nil {
+		return nil, nil
+	}
+	sourceType, ok := columnType.(*pgtypes.DoltgresType)
+	if !ok {
+		// TODO: We ensure we have a DoltgresType, but we should also convert the value to
+		//       ensure it's in the correct form for the DoltgresType. This logic lives in
+		//       pgexpressions.GMSCast, but need to be extracted to avoid a dependency cycle
+		//       so it can be used here and from server.plpgsql.
+		var err error
+		sourceType, err = pgtypes.FromGmsTypeToDoltgresType(columnType)
+		if err != nil {
+			return nil, err
 		}
-		if rows[0][0] == nil {
-			return nil, nil
+	}
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	cast, err := castsColl.GetAssignmentCast(ctx, sourceType, targetType)
+	if err != nil {
+		return nil, err
+	}
+	if !cast.ID.IsValid() {
+		// TODO: We're using assignment casting, but for some reason we have to use I/O casting here, which is incorrect?
+		//  We need to dig into this and figure out exactly what's happening, as this is "wrong" according to what
+		//  I understand. This lines up more with explicit casting, but it's supposed to be assignment.
+		//  Maybe there are specific rules for pgsql?
+		if sourceType.TypCategory == pgtypes.TypeCategory_StringTypes {
+			cast.ID = id.NewCast(sourceType.ID, targetType.ID)
+			cast.UseInOut = true
+		} else {
+			return nil, errors.New("no valid cast for return value")
 		}
-		sourceType, ok := sch[0].Type.(*pgtypes.DoltgresType)
-		if !ok {
-			// TODO: We ensure we have a DoltgresType, but we should also convert the value to
-			//       ensure it's in the correct form for the DoltgresType. This logic lives in
-			//       pgexpressions.GMSCast, but need to be extracted to avoid a dependency cycle
-			//       so it can be used here and from server.plpgsql.
-			sourceType, err = pgtypes.FromGmsTypeToDoltgresType(sch[0].Type)
+	}
+	return cast.Eval(ctx, val, sourceType, targetType)
+}
+
+// QueryRowReturn handles a statement whose result is written into an INTO clause's targets. It returns the
+// first row of the result with each value cast to the matching entry of |targetTypes|, and reports whether
+// the query produced a row at all. Any rows after the first are discarded, and no rows is not an error:
+// that is what PL/pgSQL does for an INTO clause without STRICT.
+func (iFunc InterpretedFunction) QueryRowReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, targetTypes []*pgtypes.DoltgresType, bindings []string) (row sql.Row, ok bool, err error) {
+	schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, stmt, bindings)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	if len(rows[0]) != len(targetTypes) {
+		return nil, false, errors.Errorf("INTO expects %d values, query returned %d", len(targetTypes), len(rows[0]))
+	}
+	row, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (sql.Row, error) {
+		castRow := make(sql.Row, len(targetTypes))
+		for i := range castRow {
+			castVal, err := castQueryValue(subCtx, rows[0][i], schema[i].Type, targetTypes[i])
 			if err != nil {
 				return nil, err
 			}
+			castRow[i] = castVal
 		}
-		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
-		if err != nil {
-			return nil, err
-		}
-		cast, err := castsColl.GetAssignmentCast(ctx, sourceType, targetType)
-		if err != nil {
-			return nil, err
-		}
-		if !cast.ID.IsValid() {
-			// TODO: We're using assignment casting, but for some reason we have to use I/O casting here, which is incorrect?
-			//  We need to dig into this and figure out exactly what's happening, as this is "wrong" according to what
-			//  I understand. This lines up more with explicit casting, but it's supposed to be assignment.
-			//  Maybe there are specific rules for pgsql?
-			if sourceType.TypCategory == pgtypes.TypeCategory_StringTypes {
-				cast.ID = id.NewCast(sourceType.ID, targetType.ID)
-				cast.UseInOut = true
-			} else {
-				return nil, errors.New("no valid cast for return value")
-			}
-		}
-		return cast.Eval(subCtx, rows[0][0], sourceType, targetType)
+		return castRow, nil
 	})
+	if err != nil {
+		return nil, false, err
+	}
+	return row, true, nil
 }
 
 // QueryMultiReturn handles queries that may return multiple values over multiple rows.
@@ -266,37 +296,157 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 		return stmt, false, nil
 	}
 	newStmt = stmt
-	for i, bindingName := range bindings {
-		variable := stack.GetVariable(bindingName)
-		if variable.Type == nil {
-			return newStmt, false, fmt.Errorf("variable `%s` could not be found", bindingName)
+	for i := len(bindings) - 1; i >= 0; i-- {
+		bindingName := bindings[i]
+		variable, err := stack.GetVariableWithError(bindingName)
+		if err != nil {
+			// Only a name that matches no variable at all leaves the caller free to try something else; a
+			// bad field on a variable that does exist is a real error that has to surface.
+			return newStmt, !plpgsql.ErrVariableNotFound.Is(err), err
 		}
-		var formattedVar string
-		if *variable.Value != nil {
-			formattedVar, err = variable.Type.FormatValueWithContext(ctx, *variable.Value)
+		// A record holds a row rather than a single value, and the type it carries is only a placeholder,
+		// so it is rendered from its fields before the type is considered.
+		if variable.IsRecord {
+			formattedRecord, err := formatRecordBinding(ctx, bindingName, variable, enforceType)
 			if err != nil {
 				return newStmt, true, err
 			}
-			if enforceType {
-				switch variable.Type.TypCategory {
-				case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_CompositeTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes, pgtypes.TypeCategory_UserDefinedTypes:
-					formattedVar = pq.QuoteLiteral(formattedVar)
-				}
-			}
-		} else {
-			formattedVar = "NULL"
+			newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), formattedRecord)
+			continue
 		}
-		if enforceType {
-			if variable.Type.TypCategory == pgtypes.TypeCategory_CompositeTypes {
-				newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`(%s::%s)`, formattedVar, variable.Type.String()), 1)
-			} else {
-				newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`((%s)::%s)`, formattedVar, variable.Type.String()), 1)
-			}
-		} else {
-			newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
+		if variable.Type == nil {
+			return newStmt, false, plpgsql.ErrVariableNotFound.New(bindingName)
 		}
+		formattedVar, err := formatValueBinding(ctx, variable.Type, *variable.Value, enforceType)
+		if err != nil {
+			return newStmt, true, err
+		}
+		newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), formattedVar)
 	}
 	return newStmt, true, nil
+}
+
+// formatValueBinding renders |val|, of type |typ|, for interpolation into a statement in place of a binding.
+// `enforceType` adds casting and quotes to ensure that the value is correctly represented in the string.
+func formatValueBinding(ctx *sql.Context, typ *pgtypes.DoltgresType, val any, enforceType bool) (string, error) {
+	// A value that is itself a record, such as a record-typed field of an enclosing record, has no single
+	// text form to cast. It becomes a ROW constructor over its formatted fields instead. Field names are lost
+	// here, which is why a whole record named in its own right goes through formatRecordBinding.
+	if typ.ID == pgtypes.Record.ID {
+		fields, ok := val.([]pgtypes.RecordValue)
+		if !ok {
+			return "", errors.Errorf("expected a record value, got %T", val)
+		}
+		formattedFields := make([]string, len(fields))
+		for i, field := range fields {
+			fieldType, ok := field.Type.(*pgtypes.DoltgresType)
+			if !ok {
+				return "", errors.Errorf("field %d of record does not have a Postgres type", i)
+			}
+			var err error
+			formattedFields[i], err = formatValueBinding(ctx, fieldType, field.Value, enforceType)
+			if err != nil {
+				return "", err
+			}
+		}
+		return fmt.Sprintf("ROW(%s)", strings.Join(formattedFields, ", ")), nil
+	}
+	formattedVar := "NULL"
+	if val != nil {
+		var err error
+		formattedVar, err = typ.FormatValueWithContext(ctx, val)
+		if err != nil {
+			return "", err
+		}
+		if enforceType {
+			switch typ.TypCategory {
+			case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_CompositeTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes, pgtypes.TypeCategory_UserDefinedTypes:
+				formattedVar = pq.QuoteLiteral(formattedVar)
+			}
+		}
+	}
+	if !enforceType {
+		return formattedVar, nil
+	}
+	if typ.TypCategory == pgtypes.TypeCategory_CompositeTypes {
+		return fmt.Sprintf(`(%s::%s)`, formattedVar, typ.String()), nil
+	}
+	return fmt.Sprintf(`((%s)::%s)`, formattedVar, typ.String()), nil
+}
+
+// formatRecordBinding renders the record |variable|, named |bindingName|, as a whole. With `enforceType` it
+// becomes an expression carrying the field names alongside the values, so that a function receiving it, such
+// as to_jsonb(), sees the fields PostgreSQL would; without it, its text representation, which is what RAISE
+// interpolates into a message.
+func formatRecordBinding(ctx *sql.Context, bindingName string, variable plpgsql.InterpreterVariableReference, enforceType bool) (string, error) {
+	if len(variable.Record) == 0 {
+		// A RECORD variable has no shape until something is assigned to it, so it has no fields to render.
+		return "", plpgsql.ErrRecordNotAssigned.New(bindingName)
+	}
+	row, _ := (*variable.Value).(sql.Row)
+	if !enforceType {
+		fields := make([]pgtypes.RecordValue, len(variable.Record))
+		for i, col := range variable.Record {
+			fields[i] = pgtypes.RecordValue{Type: col.Type}
+			if i < len(row) {
+				fields[i].Value = row[i]
+			}
+		}
+		str, err := pgtypes.RecordToString(ctx, fields)
+		if err != nil {
+			return "", err
+		}
+		formatted, ok := str.(string)
+		if !ok {
+			return "", errors.Errorf("expected a string from record output, got %T", str)
+		}
+		return formatted, nil
+	}
+	// A row constructor would lose the field names, so the record is rendered as a single-row derived table
+	// selected by its whole-row reference. The table's alias must differ from every field name, since a bare
+	// name in the select list resolves to a field before it resolves to the table.
+	alias := "record"
+	for recordHasField(variable.Record, alias) {
+		alias += "_"
+	}
+	sb := strings.Builder{}
+	sb.WriteString("(SELECT ")
+	sb.WriteString(plpgsql.QuoteIdentifier(alias))
+	sb.WriteString(" FROM (SELECT ")
+	for i, col := range variable.Record {
+		colType, ok := col.Type.(*pgtypes.DoltgresType)
+		if !ok {
+			return "", errors.Errorf("field `%s` of record `%s` does not have a Postgres type", col.Name, bindingName)
+		}
+		var val any
+		if i < len(row) {
+			val = row[i]
+		}
+		formattedField, err := formatValueBinding(ctx, colType, val, true)
+		if err != nil {
+			return "", err
+		}
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(formattedField)
+		sb.WriteString(" AS ")
+		sb.WriteString(plpgsql.QuoteIdentifier(col.Name))
+	}
+	sb.WriteString(") ")
+	sb.WriteString(plpgsql.QuoteIdentifier(alias))
+	sb.WriteString(")")
+	return sb.String(), nil
+}
+
+// recordHasField reports whether |sch| has a field named |name|.
+func recordHasField(sch sql.Schema, name string) bool {
+	for _, col := range sch {
+		if strings.EqualFold(col.Name, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // enforceInterfaceInheritance implements the interface FunctionInterface.

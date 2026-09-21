@@ -18,8 +18,8 @@ import "testing"
 
 func TestDo(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("DO 'code'"),
-		Unimplemented("DO LANGUAGE lang_name 'code'"),
+		Parses("DO 'code'"),
+		Parses("DO LANGUAGE lang_name 'code'"),
 	}
 	RunTests(t, tests)
 }

@@ -61,7 +61,10 @@ var setval_text_int64_boolean = framework.Function3{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error) {
 		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
-		relationName := val1.(string)
+		relationName, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		newVal := val2.(int64)
 		autoAdvance := val3.(bool)
 		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())

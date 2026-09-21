@@ -1642,6 +1642,11 @@ func (d DomainColumn) TypeCheck(ctx context.Context, semaCtx *SemaContext, desir
 }
 
 // TypeCheck implements the Expr interface.
+func (u UsingColumn) TypeCheck(ctx context.Context, semaCtx *SemaContext, desired *types.T) (TypedExpr, error) {
+	return u, nil
+}
+
+// TypeCheck implements the Expr interface.
 func (f FunctionColumn) TypeCheck(ctx context.Context, semaCtx *SemaContext, desired *types.T) (TypedExpr, error) {
 	return f, nil
 }
