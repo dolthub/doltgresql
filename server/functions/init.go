@@ -69,6 +69,7 @@ func initTypeFunctions() {
 	initVarChar()
 	initVoid()
 	initXid()
+	initXml()
 }
 
 // Init initializes all functions in this package.
@@ -249,4 +250,9 @@ func Init() {
 	initUpper()
 	initVersion()
 	initWidthBucket()
+	initXmlcomment()
+	initXmlexists()
+	initXmlIsWellFormed()
+	initXpath()
+	initXpathExists()
 }

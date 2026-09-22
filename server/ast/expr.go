@@ -918,6 +918,34 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		}
 
 		return colName, nil
+	case *tree.XmlConcat:
+		children, err := nodeExprs(ctx, node.Exprs)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{Expression: &pgexprs.XmlConcat{}, Children: children}, nil
+	case *tree.XmlElement:
+		return nodeXmlElement(ctx, node)
+	case *tree.XmlParse:
+		child, err := nodeExpr(ctx, node.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{Expression: &pgexprs.XmlParse{Document: node.Document}, Children: vitess.Exprs{child}}, nil
+	case *tree.XmlForest:
+		return nodeXmlForest(ctx, node)
+	case *tree.XmlIsDocument:
+		child, err := nodeExpr(ctx, node.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{Expression: &pgexprs.XmlIsDocument{}, Children: vitess.Exprs{child}}, nil
+	case *tree.XmlPi:
+		return nodeXmlPi(ctx, node)
+	case *tree.XmlRoot:
+		return nodeXmlRoot(ctx, node)
+	case *tree.XmlSerialize:
+		return nodeXmlSerialize(ctx, node)
 	case nil:
 		return nil, nil
 	default:

@@ -69,6 +69,17 @@ func charExplicit(builtInCasts map[id.Cast]casts.Cast) {
 			return int32(out), nil
 		},
 	})
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.BpChar,
+		ToType:   pgtypes.Xml,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
+		},
+	})
 }
 
 // charImplicit registers all implicit casts. This comprises only the source types.

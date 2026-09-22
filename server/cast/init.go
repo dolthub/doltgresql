@@ -48,4 +48,5 @@ func Init(builtInCasts map[id.Cast]casts.Cast) {
 	initTimeTZ(builtInCasts)
 	initVarBit(builtInCasts)
 	initVarChar(builtInCasts)
+	initXml(builtInCasts)
 }

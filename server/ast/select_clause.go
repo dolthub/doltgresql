@@ -15,8 +15,9 @@
 package ast
 
 import (
-	"github.com/dolthub/go-mysql-server/sql/expression"
+	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -177,7 +178,8 @@ func markImplicitLateralFunctions(tables tree.TableExprs) {
 		switch table := table.(type) {
 		case *tree.AliasedTableExpr:
 			if followsFromItem {
-				if _, ok := table.Expr.(*tree.RowsFromExpr); ok {
+				switch table.Expr.(type) {
+				case *tree.RowsFromExpr, *tree.XmlTableExpr:
 					table.Lateral = true
 				}
 			}
@@ -271,4 +273,23 @@ func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
 		}
 	}
 	return fromExpr
+}
+
+// wrapLateralTableFunc wraps `tableFuncExpr` in a lateral subquery, since GMS only supports lateral scoping for
+// subqueries. A function called in FROM implicitly uses the function's name as the subquery's alias.
+func wrapLateralTableFunc(tableFuncExpr *vitess.TableFuncExpr) vitess.TableExpr {
+	alias := tableFuncExpr.Alias
+	if alias.IsEmpty() {
+		alias = vitess.NewTableIdent(strings.ToLower(tableFuncExpr.Name))
+	}
+	return &vitess.AliasedTableExpr{
+		Expr: &vitess.Subquery{
+			Select: &vitess.Select{
+				SelectExprs: vitess.SelectExprs{&vitess.StarExpr{}},
+				From:        vitess.TableExprs{tableFuncExpr},
+			},
+		},
+		As:      alias,
+		Lateral: true,
+	}
 }

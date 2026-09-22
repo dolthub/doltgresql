@@ -117,6 +117,8 @@ var regtypeout = framework.Function1{
 		toid := id.Cache().ToOID(internalID)
 		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
 			return t.SQLStandardName(), nil
+		} else if typ := pgtypes.GetTypeByID(id.Type(internalID)); typ != nil && typ.IsArrayType() {
+			return typ.ArrayBaseType().Name() + "[]", nil
 		} else {
 			return internalID.Segment(1), nil
 		}

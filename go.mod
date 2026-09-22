@@ -4,6 +4,8 @@ go 1.26.2
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
+	github.com/antchfx/xmlquery v1.4.3
+	github.com/antchfx/xpath v1.3.3
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20260924184407-4a2e8ce2f155
@@ -125,6 +127,7 @@ require (
 	github.com/gocraft/dbr/v2 v2.7.2 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-github/v57 v57.0.0 // indirect

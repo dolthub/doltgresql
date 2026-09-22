@@ -3796,7 +3796,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Xml type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_xml (id INTEGER primary key, v1 XML);",
 			"INSERT INTO t_xml VALUES (1, '<note><to>Tove</to><from>Jani</from><body>Don''t forget me this weekend!</body></note>'), (2, '<book><title>Introduction to Golang</title><author>John Doe</author></book>');",
@@ -3808,6 +3807,30 @@ var typesTests = []ScriptTest{
 					{1, "<note><to>Tove</to><from>Jani</from><body>Don't forget me this weekend!</body></note>"},
 					{2, "<book><title>Introduction to Golang</title><author>John Doe</author></book>"},
 				},
+			},
+			{
+				Query:       "INSERT INTO t_xml VALUES (3, '<a>');",
+				ExpectedErr: "invalid XML content",
+			},
+			{
+				Query:       "INSERT INTO t_xml VALUES (3, 1);",
+				ExpectedErr: "is of type",
+			},
+			{
+				Query:    "INSERT INTO t_xml VALUES (3, NULL);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id, pg_typeof(v1) FROM t_xml WHERE id < 3 ORDER BY id;",
+				Expected: []sql.Row{{1, "xml"}, {2, "xml"}},
+			},
+			{
+				Query:    "SELECT data_type, udt_name FROM information_schema.columns WHERE table_name = 't_xml' AND column_name = 'v1';",
+				Expected: []sql.Row{{"xml", "xml"}},
+			},
+			{
+				Query:    "SELECT typname FROM pg_catalog.pg_type WHERE oid = 142;",
+				Expected: []sql.Row{{"xml"}},
 			},
 		},
 	},
@@ -3950,6 +3973,143 @@ var typesTests = []ScriptTest{
 			{
 				Query:    "SELECT '[' || E'L\\t'::character(3)::text || ']', length(E'L\\t'::character(3)::text), '[' || E'L\\n'::character(3)::text || ']', '[' || E'L \\t '::character(5)::text || ']', E'L\\t'::character(3) = 'L', E'L\\t '::character(4) = E'L\\t'::character(3), bpcharcmp(E'L\\t'::character(3), E'L\\t '::character(4)), '[' || E'L\\t'::character(3)::varchar || ']', length(E'L\\t'::character(3)), E'L\\t'::character(3)::text = E'L\\t';",
 				Expected: []sql.Row{{"[L\t]", 2, "[L\n]", "[L \t]", "f", "t", 0, "[L\t]", 2, "t"}},
+			},
+		},
+	},
+	{
+		Name: "Xml literals",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT '<a>x</a>'::xml AS doc;",
+				Expected: []sql.Row{{"<a>x</a>"}},
+			},
+			{
+				Query:    "SELECT pg_typeof('<a>x</a>'::xml);",
+				Expected: []sql.Row{{"xml"}},
+			},
+			{
+				Query:    "SELECT 'x'::xml, ''::xml, '<a/><b/>'::xml, '<!-- c --><a/>'::xml, '<a><![CDATA[<x>]]></a>'::xml, '<a xmlns:p=\"urn:x\"><p:b/></a>'::xml;",
+				Expected: []sql.Row{{"x", "", "<a/><b/>", "<!-- c --><a/>", "<a><![CDATA[<x>]]></a>", `<a xmlns:p="urn:x"><p:b/></a>`}},
+			},
+			{
+				Query:    "SELECT '<?xml version=\"1.0\"?><a/>'::xml, '<?xml version=\"1.0\" encoding=\"UTF-8\"?><a/>'::xml, '<?xml version=\"1.0\" standalone=\"yes\"?><a/>'::xml, '<?xml version=\"1.1\"?><a/>'::xml;",
+				Expected: []sql.Row{{"<a/>", "<a/>", `<?xml version="1.0" standalone="yes"?><a/>`, `<?xml version="1.1"?><a/>`}},
+			},
+			{
+				Query:    "SELECT E'<?xml version=\"1.0\"?>\\n<a/>'::xml, E'<?xml version=\"1.0\"?>\\n\\n<a/>'::xml, E'<a>\\n</a>'::xml;",
+				Expected: []sql.Row{{"<a/>", "\n<a/>", "<a>\n</a>"}},
+			},
+			{
+				Query:       "SELECT '<a>'::xml;",
+				ExpectedErr: "invalid XML content",
+			},
+			{
+				Query:       "SELECT 'x<'::xml;",
+				ExpectedErr: "invalid XML content",
+			},
+			{
+				Query:       "SELECT '<a>&foo;</a>'::xml;",
+				ExpectedErr: "invalid XML content",
+			},
+			{
+				Query:    "SELECT '<a>x</a>'::text::xml, '<a>x</a>'::xml::text, '<a>x</a>'::xml::varchar, '<a>x</a>'::xml::char(5), '<a>x</a>'::varchar::xml, '<?xml version=\"1.0\"?><a/>'::xml::text;",
+				Expected: []sql.Row{{"<a>x</a>", "<a>x</a>", "<a>x</a>", "<a>x<", "<a>x</a>", `<?xml version="1.0"?><a/>`}},
+			},
+			{
+				Query:       "SELECT '<a>'::text::xml;",
+				ExpectedErr: "invalid XML content",
+			},
+			{
+				Query:       "SELECT '<a/>'::xml::int;",
+				ExpectedErr: "cast from `xml` to `integer` does not exist",
+			},
+			{
+				Query:       "SELECT 1::xml;",
+				ExpectedErr: "cast from `integer` to `xml` does not exist",
+			},
+			{
+				Query:       "SELECT '<a/>'::xml = '<a/>'::xml;",
+				ExpectedErr: "operator does not exist",
+			},
+		},
+	},
+	{
+		Name: "Xml document option",
+		SetUpScript: []string{
+			"SET xmloption TO document;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT '<a/>'::xml, '<?xml version=\"1.0\"?><a/>'::xml, '<!-- c --><a/>'::xml, ' <a/>'::xml;",
+				Expected: []sql.Row{{"<a/>", "<a/>", "<!-- c --><a/>", " <a/>"}},
+			},
+			{
+				Query:       "SELECT 'x'::xml;",
+				ExpectedErr: "invalid XML document",
+			},
+			{
+				Query:       "SELECT '<a/><b/>'::xml;",
+				ExpectedErr: "invalid XML document",
+			},
+			{
+				Query:       "SELECT ''::xml;",
+				ExpectedErr: "invalid XML document",
+			},
+		},
+	},
+	{
+		Name: "Xml column default",
+		SetUpScript: []string{
+			"CREATE TABLE t_xml (id INTEGER PRIMARY KEY, v1 XML DEFAULT '<d/>'::xml);",
+			"INSERT INTO t_xml VALUES (1, '<a>x</a>');",
+			"INSERT INTO t_xml (id) VALUES (2);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM t_xml ORDER BY id;",
+				Expected: []sql.Row{{1, "<a>x</a>"}, {2, "<d/>"}},
+			},
+		},
+	},
+	{
+		Name: "Xml array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_xml (id INTEGER PRIMARY KEY, v1 XML[]);",
+			"INSERT INTO t_xml VALUES (1, ARRAY['<a/>'::xml, '<b>x y</b>']), (2, '{<c/>,NULL}'), (3, NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM t_xml ORDER BY id;",
+				Expected: []sql.Row{{1, `{<a/>,"<b>x y</b>"}`}, {2, "{<c/>,NULL}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT id, v1[2] FROM t_xml ORDER BY id;",
+				Expected: []sql.Row{{1, "<b>x y</b>"}, {2, nil}, {3, nil}},
+			},
+			{
+				Query:       "INSERT INTO t_xml VALUES (4, '{<a>}');",
+				ExpectedErr: "invalid XML content",
+			},
+			{
+				Query:    "SELECT ARRAY['<a>x</a>'::xml, '<b c=\"1\">y z</b>', 'q,\"r\"'];",
+				Expected: []sql.Row{{`{<a>x</a>,"<b c=\"1\">y z</b>","q,\"r\""}`}},
+			},
+		},
+	},
+	{
+		Name: "Xml schema-qualified type",
+		SetUpScript: []string{
+			"CREATE TABLE t3337 (id INT PRIMARY KEY, doc pg_catalog.xml, docs xml[]);",
+			"INSERT INTO t3337 VALUES (1, '<a>x</a>', ARRAY['<b/>'::xml]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT '<a>x</a>'::pg_catalog.xml, pg_typeof('<a>x</a>'::pg_catalog.xml), pg_typeof(ARRAY['<a/>'::xml]);",
+				Expected: []sql.Row{{"<a>x</a>", "xml", "xml[]"}},
+			},
+			{
+				Query:    "SELECT id, doc, docs, pg_typeof(doc), pg_typeof(docs) FROM t3337;",
+				Expected: []sql.Row{{1, "<a>x</a>", "{<b/>}", "xml", "xml[]"}},
 			},
 		},
 	},

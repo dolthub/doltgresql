@@ -27,7 +27,23 @@ import (
 // initText handles all casts that are built-in. This comprises only the source types.
 func initText(builtInCasts map[id.Cast]casts.Cast) {
 	textAssignment(builtInCasts)
+	textExplicit(builtInCasts)
 	textImplicit(builtInCasts)
+}
+
+// textExplicit registers all explicit casts. This comprises only the source types.
+func textExplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.Text,
+		ToType:   pgtypes.Xml,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
+		},
+	})
 }
 
 // textAssignment registers all assignment casts. This comprises only the source types.

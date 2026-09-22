@@ -156,6 +156,7 @@ var postgresOnlyAggregateFuncNames = map[string]bool{
 	"bool_and":  true,
 	"bool_or":   true,
 	"json_agg":  true,
+	"xmlagg":    true,
 }
 
 // postgresOnlyWindowFuncNames holds Postgres functions that may only be used as window functions (i.e.

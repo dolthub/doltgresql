@@ -96,6 +96,7 @@ var KeywordsCategories = map[string]string{
 	"connection":                   "U",
 	"constraint":                   "R",
 	"constraints":                  "U",
+	"content":                      "U",
 	"controlchangefeed":            "U",
 	"controljob":                   "U",
 	"conversion":                   "U",
@@ -146,6 +147,7 @@ var KeywordsCategories = map[string]string{
 	"discard":                      "U",
 	"distinct":                     "R",
 	"do":                           "R",
+	"document":                     "U",
 	"domain":                       "U",
 	"double":                       "U",
 	"drop":                         "U",
@@ -414,6 +416,7 @@ var KeywordsCategories = map[string]string{
 	"partition":                    "U",
 	"partitions":                   "U",
 	"passedbyvalue":                "U",
+	"passing":                      "U",
 	"password":                     "U",
 	"pause":                        "U",
 	"paused":                       "U",
@@ -543,6 +546,7 @@ var KeywordsCategories = map[string]string{
 	"sql":                          "U",
 	"sspace":                       "U",
 	"stable":                       "U",
+	"standalone":                   "U",
 	"start":                        "U",
 	"statement":                    "U",
 	"statistics":                   "U",
@@ -555,6 +559,7 @@ var KeywordsCategories = map[string]string{
 	"strategy":                     "U",
 	"strict":                       "U",
 	"string":                       "C",
+	"strip":                        "U",
 	"stype":                        "U",
 	"subscript":                    "U",
 	"subscription":                 "U",
@@ -633,6 +638,7 @@ var KeywordsCategories = map[string]string{
 	"volatile":                     "C",
 	"when":                         "R",
 	"where":                        "R",
+	"whitespace":                   "U",
 	"window":                       "R",
 	"with":                         "R",
 	"within":                       "U",
@@ -641,6 +647,17 @@ var KeywordsCategories = map[string]string{
 	"wrapper":                      "R",
 	"write":                        "U",
 	"xml":                          "U",
+	"xmlattributes":                "C",
+	"xmlconcat":                    "C",
+	"xmlelement":                   "C",
+	"xmlexists":                    "C",
+	"xmlforest":                    "C",
+	"xmlnamespaces":                "C",
+	"xmlparse":                     "C",
+	"xmlpi":                        "C",
+	"xmlroot":                      "C",
+	"xmlserialize":                 "C",
+	"xmltable":                     "C",
 	"yaml":                         "U",
 	"year":                         "U",
 	"yes":                          "U",
@@ -743,6 +760,7 @@ var KeywordNames = []string{
 	"connection",
 	"constraint",
 	"constraints",
+	"content",
 	"controlchangefeed",
 	"controljob",
 	"conversion",
@@ -793,6 +811,7 @@ var KeywordNames = []string{
 	"discard",
 	"distinct",
 	"do",
+	"document",
 	"domain",
 	"double",
 	"drop",
@@ -1061,6 +1080,7 @@ var KeywordNames = []string{
 	"partition",
 	"partitions",
 	"passedbyvalue",
+	"passing",
 	"password",
 	"pause",
 	"paused",
@@ -1190,6 +1210,7 @@ var KeywordNames = []string{
 	"sql",
 	"sspace",
 	"stable",
+	"standalone",
 	"start",
 	"statement",
 	"statistics",
@@ -1202,6 +1223,7 @@ var KeywordNames = []string{
 	"strategy",
 	"strict",
 	"string",
+	"strip",
 	"stype",
 	"subscript",
 	"subscription",
@@ -1280,6 +1302,7 @@ var KeywordNames = []string{
 	"volatile",
 	"when",
 	"where",
+	"whitespace",
 	"window",
 	"with",
 	"within",
@@ -1288,6 +1311,17 @@ var KeywordNames = []string{
 	"wrapper",
 	"write",
 	"xml",
+	"xmlattributes",
+	"xmlconcat",
+	"xmlelement",
+	"xmlexists",
+	"xmlforest",
+	"xmlnamespaces",
+	"xmlparse",
+	"xmlpi",
+	"xmlroot",
+	"xmlserialize",
+	"xmltable",
 	"yaml",
 	"year",
 	"yes",
@@ -1488,6 +1522,8 @@ func GetKeywordID(k string) int32 {
 		return CONSTRAINT
 	case "constraints":
 		return CONSTRAINTS
+	case "content":
+		return CONTENT
 	case "controlchangefeed":
 		return CONTROLCHANGEFEED
 	case "controljob":
@@ -1588,6 +1624,8 @@ func GetKeywordID(k string) int32 {
 		return DISTINCT
 	case "do":
 		return DO
+	case "document":
+		return DOCUMENT
 	case "domain":
 		return DOMAIN
 	case "double":
@@ -2124,6 +2162,8 @@ func GetKeywordID(k string) int32 {
 		return PARTITIONS
 	case "passedbyvalue":
 		return PASSEDBYVALUE
+	case "passing":
+		return PASSING
 	case "password":
 		return PASSWORD
 	case "pause":
@@ -2382,6 +2422,8 @@ func GetKeywordID(k string) int32 {
 		return SSPACE
 	case "stable":
 		return STABLE
+	case "standalone":
+		return STANDALONE
 	case "start":
 		return START
 	case "statement":
@@ -2406,6 +2448,8 @@ func GetKeywordID(k string) int32 {
 		return STRICT
 	case "string":
 		return STRING
+	case "strip":
+		return STRIP
 	case "stype":
 		return STYPE
 	case "subscript":
@@ -2562,6 +2606,8 @@ func GetKeywordID(k string) int32 {
 		return WHEN
 	case "where":
 		return WHERE
+	case "whitespace":
+		return WHITESPACE
 	case "window":
 		return WINDOW
 	case "with":
@@ -2578,6 +2624,28 @@ func GetKeywordID(k string) int32 {
 		return WRITE
 	case "xml":
 		return XML
+	case "xmlattributes":
+		return XMLATTRIBUTES
+	case "xmlconcat":
+		return XMLCONCAT
+	case "xmlelement":
+		return XMLELEMENT
+	case "xmlexists":
+		return XMLEXISTS
+	case "xmlforest":
+		return XMLFOREST
+	case "xmlnamespaces":
+		return XMLNAMESPACES
+	case "xmlparse":
+		return XMLPARSE
+	case "xmlpi":
+		return XMLPI
+	case "xmlroot":
+		return XMLROOT
+	case "xmlserialize":
+		return XMLSERIALIZE
+	case "xmltable":
+		return XMLTABLE
 	case "yaml":
 		return YAML
 	case "year":

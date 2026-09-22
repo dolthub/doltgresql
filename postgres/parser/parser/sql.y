@@ -327,6 +327,27 @@ func (u *sqlSymUnion) tblExpr() tree.TableExpr {
 func (u *sqlSymUnion) tblExprs() tree.TableExprs {
     return u.val.(tree.TableExprs)
 }
+func (u *sqlSymUnion) xmlAttribute() tree.XmlAttribute {
+    return u.val.(tree.XmlAttribute)
+}
+func (u *sqlSymUnion) xmlAttributes() []tree.XmlAttribute {
+    return u.val.([]tree.XmlAttribute)
+}
+func (u *sqlSymUnion) xmlRootStandalone() tree.XmlRootStandalone {
+    return u.val.(tree.XmlRootStandalone)
+}
+func (u *sqlSymUnion) xmlNamespace() tree.XmlNamespace {
+    return u.val.(tree.XmlNamespace)
+}
+func (u *sqlSymUnion) xmlNamespaces() []tree.XmlNamespace {
+    return u.val.([]tree.XmlNamespace)
+}
+func (u *sqlSymUnion) xmlTableColumn() tree.XmlTableColumn {
+    return u.val.(tree.XmlTableColumn)
+}
+func (u *sqlSymUnion) xmlTableColumns() []tree.XmlTableColumn {
+    return u.val.([]tree.XmlTableColumn)
+}
 func (u *sqlSymUnion) from() tree.From {
     return u.val.(tree.From)
 }
@@ -755,7 +776,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
 %token <str> BLOCK_COMMENT HINT
 %token <str> COMMIT COMMITTED COMMUTATOR COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
-%token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
+%token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTENT CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COST CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
@@ -763,7 +784,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESCRIBE DESERIALFUNC DESTINATION
-%token <str> DETACH DETACHED DICTIONARY DISABLE DISABLE_PAGE_SKIPPING DISCARD DISTINCT DO DOMAIN DOUBLE DROP
+%token <str> DETACH DETACHED DICTIONARY DISABLE DISABLE_PAGE_SKIPPING DISCARD DISTINCT DO DOCUMENT DOMAIN DOUBLE DROP
 
 %token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE ENCRYPTED END ENUM ENUMS ESCAPE EVENT
 %token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
@@ -809,7 +830,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY ONLY_DATABASE_STATS OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OUTPUT OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
-%token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSWORD PAUSE PAUSED PHYSICAL
+%token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSING PASSWORD PAUSE PAUSED PHYSICAL
 %token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLICY POLYGON POLYGONM POLYGONZ POLYGONZM
 %token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
 %token <str> PROCEDURAL PROCEDURE PROCEDURES PROCESS_MAIN PROCESS_TOAST PUBLIC PUBLICATION
@@ -827,7 +848,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETOF SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
 %token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_LOCKED SKIP_DATABASE_STATS SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
-%token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STDOUT STRATEGY STRICT STRING
+%token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE STANDALONE START STATEMENT STATISTICS STATUS STDIN STDOUT STRATEGY STRICT STRING STRIP
 %token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS
 %token <str> SUPERUSER SUPPORT SYMMETRIC SYNTAX SYSID SYSTEM
 
@@ -842,9 +863,9 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> VACUUM VALID VALIDATE VALIDATOR VALUE VALUES VERBOSE
 %token <str> VARBIT VARCHAR VARIABLE VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
 
-%token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
+%token <str> WHEN WHERE WHITESPACE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
-%token <str> XML
+%token <str> XML XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST XMLNAMESPACES XMLPARSE XMLPI XMLROOT XMLSERIALIZE XMLTABLE
 
 %token <str> YAML YEAR
 
@@ -1281,6 +1302,18 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %type <tree.Exprs> extract_list
 %type <tree.Exprs> overlay_list
+%type <bool> document_or_content
+%type <empty> xml_whitespace_option xml_passing_mech
+%type <tree.Expr> xmlexists_argument
+%type <tree.XmlAttribute> xml_attribute_el
+%type <[]tree.XmlAttribute> xml_attributes xml_attribute_list
+%type <tree.XmlNamespace> xml_namespace_el
+%type <[]tree.XmlNamespace> xml_namespace_list
+%type <tree.XmlTableColumn> xmltable_column_el xmltable_column_option_el
+%type <[]tree.XmlTableColumn> xmltable_column_list xmltable_column_option_list
+%type <tree.TableExpr> xmltable
+%type <tree.Expr> xml_root_version
+%type <tree.XmlRootStandalone> opt_xml_root_standalone
 %type <tree.Exprs> position_list
 %type <tree.Exprs> substr_list
 %type <tree.Exprs> trim_list
@@ -11664,6 +11697,14 @@ numeric_table_ref table_ref_options
       As: $4.aliasClause(),
     }
   }
+| xmltable opt_alias_clause
+  {
+    $$.val = &tree.AliasedTableExpr{Expr: $1.tblExpr(), As: $2.aliasClause()}
+  }
+| LATERAL xmltable opt_alias_clause
+  {
+    $$.val = &tree.AliasedTableExpr{Expr: $2.tblExpr(), Lateral: true, As: $3.aliasClause()}
+  }
 // The following syntax is a CockroachDB extension:
 //     SELECT ... FROM [ EXPLAIN .... ] WHERE ...
 //     SELECT ... FROM [ SHOW .... ] WHERE ...
@@ -11747,6 +11788,136 @@ numeric_table_ref:
       Columns: $3.tableRefCols(),
       As:      $4.aliasClause(),
     }
+  }
+
+xmltable:
+  XMLTABLE '(' c_expr xmlexists_argument COLUMNS xmltable_column_list ')'
+  {
+    $$.val = &tree.XmlTableExpr{RowPath: $3.expr(), Document: $4.expr(), Columns: $6.xmlTableColumns()}
+  }
+| XMLTABLE '(' XMLNAMESPACES '(' xml_namespace_list ')' ',' c_expr xmlexists_argument COLUMNS xmltable_column_list ')'
+  {
+    $$.val = &tree.XmlTableExpr{Namespaces: $5.xmlNamespaces(), RowPath: $8.expr(), Document: $9.expr(), Columns: $11.xmlTableColumns()}
+  }
+
+xml_namespace_list:
+  xml_namespace_el
+  {
+    $$.val = []tree.XmlNamespace{$1.xmlNamespace()}
+  }
+| xml_namespace_list ',' xml_namespace_el
+  {
+    $$.val = append($1.xmlNamespaces(), $3.xmlNamespace())
+  }
+
+xml_namespace_el:
+  b_expr AS unrestricted_name
+  {
+    $$.val = tree.XmlNamespace{URI: $1.expr(), Prefix: tree.Name($3)}
+  }
+| DEFAULT b_expr
+  {
+    $$.val = tree.XmlNamespace{URI: $2.expr()}
+  }
+
+xmlexists_argument:
+  PASSING c_expr
+  {
+    $$.val = $2.expr()
+  }
+| PASSING c_expr xml_passing_mech
+  {
+    $$.val = $2.expr()
+  }
+| PASSING xml_passing_mech c_expr
+  {
+    $$.val = $3.expr()
+  }
+| PASSING xml_passing_mech c_expr xml_passing_mech
+  {
+    $$.val = $3.expr()
+  }
+
+xml_passing_mech:
+  BY REF {}
+| BY VALUE {}
+
+xmltable_column_list:
+  xmltable_column_el
+  {
+    $$.val = []tree.XmlTableColumn{$1.xmlTableColumn()}
+  }
+| xmltable_column_list ',' xmltable_column_el
+  {
+    $$.val = append($1.xmlTableColumns(), $3.xmlTableColumn())
+  }
+
+xmltable_column_el:
+  name typename
+  {
+    $$.val = tree.XmlTableColumn{Name: tree.Name($1), Type: $2.typeReference()}
+  }
+| name typename xmltable_column_option_list
+  {
+    column := tree.XmlTableColumn{Name: tree.Name($1), Type: $2.typeReference()}
+    nullabilitySeen := false
+    for _, option := range $3.xmlTableColumns() {
+      switch {
+      case option.Path != nil:
+        if column.Path != nil {
+          return setErr(sqllex, fmt.Errorf("only one PATH value per column is allowed"))
+        }
+        column.Path = option.Path
+      case option.Default != nil:
+        if column.Default != nil {
+          return setErr(sqllex, fmt.Errorf("only one DEFAULT value is allowed"))
+        }
+        column.Default = option.Default
+      default:
+        if nullabilitySeen {
+          return setErr(sqllex, fmt.Errorf("conflicting or redundant NULL / NOT NULL declarations for column \"%s\"", column.Name))
+        }
+        column.NotNull = option.NotNull
+        nullabilitySeen = true
+      }
+    }
+    $$.val = column
+  }
+| name FOR ORDINALITY
+  {
+    $$.val = tree.XmlTableColumn{Name: tree.Name($1), ForOrdinality: true}
+  }
+
+xmltable_column_option_list:
+  xmltable_column_option_el
+  {
+    $$.val = []tree.XmlTableColumn{$1.xmlTableColumn()}
+  }
+| xmltable_column_option_list xmltable_column_option_el
+  {
+    $$.val = append($1.xmlTableColumns(), $2.xmlTableColumn())
+  }
+
+// Each option is returned as a column with only the field it sets, and xmltable_column_el merges them.
+xmltable_column_option_el:
+  IDENT b_expr
+  {
+    if $1 != "path" {
+      return setErr(sqllex, fmt.Errorf("unrecognized column option \"%s\"", $1))
+    }
+    $$.val = tree.XmlTableColumn{Path: $2.expr()}
+  }
+| DEFAULT b_expr
+  {
+    $$.val = tree.XmlTableColumn{Default: $2.expr()}
+  }
+| NOT NULL
+  {
+    $$.val = tree.XmlTableColumn{NotNull: true}
+  }
+| NULL
+  {
+    $$.val = tree.XmlTableColumn{}
   }
 
 func_table:
@@ -13004,6 +13175,14 @@ a_expr:
   {
     $$.val = &tree.ComparisonExpr{Operator: tree.TextSearchMatch, Left: $1.expr(), Right: $3.expr()}
   }
+| a_expr IS DOCUMENT %prec IS
+  {
+    $$.val = &tree.XmlIsDocument{Expr: $1.expr()}
+  }
+| a_expr IS NOT DOCUMENT %prec IS
+  {
+    $$.val = &tree.NotExpr{Expr: &tree.XmlIsDocument{Expr: $1.expr()}}
+  }
 | a_expr IS NAN %prec IS
   {
     $$.val = &tree.ComparisonExpr{Operator: tree.EQ, Left: $1.expr(), Right: tree.NewStrVal("NaN")}
@@ -13860,6 +14039,54 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | LEAST '(' error { return helpWithFunctionByName(sqllex, $1) }
+| XMLCONCAT '(' expr_list ')'
+  {
+    $$.val = &tree.XmlConcat{Exprs: $3.exprs()}
+  }
+| XMLELEMENT '(' NAME unrestricted_name ')'
+  {
+    $$.val = &tree.XmlElement{Name: tree.Name($4)}
+  }
+| XMLELEMENT '(' NAME unrestricted_name ',' xml_attributes ')'
+  {
+    $$.val = &tree.XmlElement{Name: tree.Name($4), Attributes: $6.xmlAttributes()}
+  }
+| XMLELEMENT '(' NAME unrestricted_name ',' expr_list ')'
+  {
+    $$.val = &tree.XmlElement{Name: tree.Name($4), Content: $6.exprs()}
+  }
+| XMLELEMENT '(' NAME unrestricted_name ',' xml_attributes ',' expr_list ')'
+  {
+    $$.val = &tree.XmlElement{Name: tree.Name($4), Attributes: $6.xmlAttributes(), Content: $8.exprs()}
+  }
+| XMLPARSE '(' document_or_content a_expr xml_whitespace_option ')'
+  {
+    $$.val = &tree.XmlParse{Document: $3.bool(), Expr: $4.expr()}
+  }
+| XMLEXISTS '(' c_expr xmlexists_argument ')'
+  {
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("xmlexists"), Exprs: tree.Exprs{$3.expr(), $4.expr()}}
+  }
+| XMLFOREST '(' xml_attribute_list ')'
+  {
+    $$.val = &tree.XmlForest{Elements: $3.xmlAttributes()}
+  }
+| XMLPI '(' NAME unrestricted_name ')'
+  {
+    $$.val = &tree.XmlPi{Name: tree.Name($4)}
+  }
+| XMLPI '(' NAME unrestricted_name ',' a_expr ')'
+  {
+    $$.val = &tree.XmlPi{Name: tree.Name($4), Content: $6.expr()}
+  }
+| XMLROOT '(' a_expr ',' xml_root_version opt_xml_root_standalone ')'
+  {
+    $$.val = &tree.XmlRoot{Xml: $3.expr(), Version: $5.expr(), Standalone: $6.xmlRootStandalone()}
+  }
+| XMLSERIALIZE '(' document_or_content a_expr AS simple_typename ')'
+  {
+    $$.val = &tree.XmlSerialize{Document: $3.bool(), Expr: $4.expr(), Type: $6.typeReference()}
+  }
 
 
 // Aggregate decoration clauses
@@ -14342,6 +14569,76 @@ overlay_placing:
   PLACING a_expr
   {
     $$.val = $2.expr()
+  }
+
+xml_root_version:
+  VERSION a_expr
+  {
+    $$.val = $2.expr()
+  }
+| VERSION NO VALUE
+  {
+    $$.val = tree.Expr(nil)
+  }
+
+opt_xml_root_standalone:
+  ',' STANDALONE YES
+  {
+    $$.val = tree.XmlRootStandaloneYes
+  }
+| ',' STANDALONE NO
+  {
+    $$.val = tree.XmlRootStandaloneNo
+  }
+| ',' STANDALONE NO VALUE
+  {
+    $$.val = tree.XmlRootStandaloneNoValue
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.XmlRootStandaloneOmitted
+  }
+
+document_or_content:
+  DOCUMENT
+  {
+    $$.val = true
+  }
+| CONTENT
+  {
+    $$.val = false
+  }
+
+// Whitespace handling is accepted for compatibility, but PostgreSQL ignores it as well.
+xml_whitespace_option:
+  PRESERVE WHITESPACE {}
+| STRIP WHITESPACE {}
+| /* EMPTY */ {}
+
+xml_attributes:
+  XMLATTRIBUTES '(' xml_attribute_list ')'
+  {
+    $$.val = $3.xmlAttributes()
+  }
+
+xml_attribute_list:
+  xml_attribute_el
+  {
+    $$.val = []tree.XmlAttribute{$1.xmlAttribute()}
+  }
+| xml_attribute_list ',' xml_attribute_el
+  {
+    $$.val = append($1.xmlAttributes(), $3.xmlAttribute())
+  }
+
+xml_attribute_el:
+  a_expr AS unrestricted_name
+  {
+    $$.val = tree.XmlAttribute{Expr: $1.expr(), Name: tree.Name($3)}
+  }
+| a_expr
+  {
+    $$.val = tree.XmlAttribute{Expr: $1.expr()}
   }
 
 // position_list uses b_expr not a_expr to avoid conflict with general IN
@@ -15150,6 +15447,7 @@ unreserved_keyword:
 | CONFLICT
 | CONNECTION
 | CONSTRAINTS
+| CONTENT
 | CONTROLCHANGEFEED
 | CONTROLJOB
 | CONVERSION
@@ -15183,6 +15481,7 @@ unreserved_keyword:
 | DISABLE
 | DISABLE_PAGE_SKIPPING
 | DISCARD
+| DOCUMENT
 | DOMAIN
 | DOUBLE
 | DROP
@@ -15385,6 +15684,7 @@ unreserved_keyword:
 | PARTITION
 | PARTITIONS
 | PASSEDBYVALUE
+| PASSING
 | PASSWORD
 | PAUSE
 | PAUSED
@@ -15497,6 +15797,7 @@ unreserved_keyword:
 | SQL
 | SSPACE
 | STABLE
+| STANDALONE
 | START
 | STATEMENT
 | STATISTICS
@@ -15508,6 +15809,7 @@ unreserved_keyword:
 | STORED
 | STRATEGY
 | STRICT
+| STRIP
 | STYPE
 | SUBSCRIPT
 | SUBSCRIPTION
@@ -15560,6 +15862,7 @@ unreserved_keyword:
 | VERSION
 | VIEW
 | VIEWACTIVITY
+| WHITESPACE
 | WITHIN
 | WITHOUT
 | WRITE
@@ -15637,6 +15940,17 @@ col_name_keyword:
 | VIRTUAL
 | VOLATILE
 | WORK
+| XMLATTRIBUTES
+| XMLCONCAT
+| XMLELEMENT
+| XMLEXISTS
+| XMLFOREST
+| XMLNAMESPACES
+| XMLPARSE
+| XMLPI
+| XMLROOT
+| XMLSERIALIZE
+| XMLTABLE
 
 // type_func_name_keyword contains both the standard set of
 // type_func_name_keyword's along with the set of CRDB extensions.

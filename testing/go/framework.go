@@ -924,6 +924,8 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return s
+	case types.Xml.ID:
+		return string(v.([]byte))
 	case types.InternalChar.ID:
 		if v == nil {
 			return nil
@@ -1051,6 +1053,10 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 		return string(str)
 	case types.JsonB.ID:
 		return gmstypes.JSONDocument{Val: v}
+	case types.Xml.ID:
+		if bytes, ok := v.([]byte); ok {
+			return string(bytes)
+		}
 	case types.Oid.ID, types.Regclass.ID, types.Regproc.ID, types.Regtype.ID:
 		if uval, ok := v.(uint32); ok {
 			if internalID := id.Cache().ToInternal(uval); internalID.IsValid() {
