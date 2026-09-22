@@ -136,10 +136,18 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 		}
 		stack.NewRecord(record.Name, fakeSch, nil)
 		if record.IsDeclared() {
-			*ops = append(*ops, InterpreterOperation{
+			op := InterpreterOperation{
 				OpCode: OpCode_DeclareRecord,
 				Target: record.Name,
-			})
+			}
+			if record.Default != "" {
+				query, referencedVariables, err := compileRecordDeclareDefault(record.Default, stack)
+				if err != nil {
+					return err
+				}
+				op.SecondaryData = append([]string{record.Default, query}, referencedVariables...)
+			}
+			*ops = append(*ops, op)
 		}
 	}
 	for _, variable := range stmt.Variables {
@@ -505,8 +513,9 @@ func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack
 
 // Record represents a record (along with known fields for future access). These are exclusively found within Block.
 type Record struct {
-	Name   string
-	Fields []string
+	Name    string
+	Fields  []string
+	Default string
 	// IsTriggerRecord is true for the NEW and OLD records of a trigger function. Those are created by the
 	// trigger invocation rather than by the function body, so they are not declared when the block is entered.
 	IsTriggerRecord bool
@@ -595,6 +604,15 @@ func OperationSizeForStatements(stmts []Statement) int32 {
 // evaluates it, along with the names of the variables that query binds. Whatever the |stack| holds is
 // in scope for the default.
 func compileDeclareDefault(defaultText string, stack *InterpreterStack) (query string, bindings []string, err error) {
+	expression, bindings, err := substituteVariableReferences(defaultText, stack)
+	if err != nil {
+		return "", nil, err
+	}
+	return "SELECT " + expression + ";", bindings, nil
+}
+
+// compileRecordDeclareDefault evaluates a RECORD default like the right-hand side of an assignment.
+func compileRecordDeclareDefault(defaultText string, stack *InterpreterStack) (query string, bindings []string, err error) {
 	expression, bindings, err := substituteVariableReferences(defaultText, stack)
 	if err != nil {
 		return "", nil, err

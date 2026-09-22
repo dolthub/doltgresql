@@ -26,6 +26,45 @@ import (
 func TestPlpgsqlRecordInto(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "RECORD declaration default",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD := ROW(1, 'a');
+BEGIN RETURN r::text; END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_record_default();`,
+					Expected: []sql.Row{{"(1,a)"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default from NEW",
+			SetUpScript: []string{
+				`CREATE TABLE src (id int, note text);`,
+				`CREATE TABLE res (id int, note text);`,
+				`CREATE FUNCTION trg_record_default() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE whole RECORD := NEW;
+BEGIN
+	INSERT INTO res VALUES (whole.id, whole.note);
+	RETURN NEW;
+END; $$;`,
+				`CREATE TRIGGER t_record_default AFTER INSERT ON src FOR EACH ROW EXECUTE FUNCTION trg_record_default();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO src VALUES (1, 'a');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id, note FROM res;`,
+					Expected: []sql.Row{{1, "a"}},
+				},
+			},
+		},
+		{
 			Name: "SELECT INTO a RECORD variable",
 			SetUpScript: []string{
 				`CREATE TABLE k (id int, name text, amt numeric);`,

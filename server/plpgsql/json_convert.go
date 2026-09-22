@@ -70,6 +70,7 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 
 			if v.Record.DatumNumber > 0 {
 				block.Records[datumNumber].Name = v.Record.RefName
+				block.Records[datumNumber].Default = v.Record.Default.Var.Query
 			}
 		case v.RecordField != nil:
 			recordParentNumber := v.RecordField.RecordParentNumber + offset

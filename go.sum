@@ -266,6 +266,8 @@ github.com/dolthub/jsonpath v0.0.2-0.20260807003725-336cd89c1c76 h1:ZmLDDKnfbWc8
 github.com/dolthub/jsonpath v0.0.2-0.20260807003725-336cd89c1c76/go.mod h1:2/2zjLQ/JOOSbbSboojeg+cAwcRV0fDLzIiWch/lhqI=
 github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1 h1:GY17cGA4XJA4x2c5JKveps5gNwv5utYl7ntvz9uEuJc=
 github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1/go.mod h1:qnrZP3/1slFl2Bq5yw38HLOsArZareGwdpEceriblLc=
+github.com/dolthub/pg_query_go/v6 v6.0.0-20260922094746-ae7577e21dfe h1:5QQHZM+ZlsICc3W2/PT4mRoTtRRFbclLFKpBtWkUixI=
+github.com/dolthub/pg_query_go/v6 v6.0.0-20260922094746-ae7577e21dfe/go.mod h1:qnrZP3/1slFl2Bq5yw38HLOsArZareGwdpEceriblLc=
 github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166 h1:fdexJBpLDyAGnFbviZYfZ0jhLMnbTWTh39CyQ1EhA28=
 github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166/go.mod h1:e/FIZVvT2IR53HBCAo41NjqgtEnjMJGKca3Y/dAmZaA=
 github.com/dolthub/vitess v0.0.0-20260916192104-15c5c4158b37 h1:F8kNW/lTJQ70FMP/s9MtQpGjURvbwE/B318Q6uEFG30=
