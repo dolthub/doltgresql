@@ -36,10 +36,11 @@ var generate_subscripts = framework.Function2{
 	Strict:     true,
 	SRF:        true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		arr := val1.([]any)
+		dims := pgtypes.ArrayDims(val1.([]any), t[0].ArrayBaseType())
 		dimension := val2.(int32)
-		if dimension != 1 {
-			return nil, sql.ErrUnsupportedFeature.New("generate_subscripts only supports 1-dimensional arrays")
+		count := 0
+		if dimension >= 1 && int(dimension) <= len(dims) {
+			count = int(dims[dimension-1])
 		}
 
 		// Int2vector (int16vector in doltgresql) and Oidvector are old postgres types that are primarily found in pg_catalog tables.
@@ -51,7 +52,7 @@ var generate_subscripts = framework.Function2{
 
 		var i = start
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			if i >= len(arr)+start {
+			if i >= count+start {
 				return nil, io.EOF
 			}
 			idx := i

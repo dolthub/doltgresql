@@ -74,7 +74,7 @@ var array_to_string_anyarray_text_text = framework.Function3{
 func getStringArrFromAnyArray(ctx *sql.Context, arrType *pgtypes.DoltgresType, arr []any, delimiter string, nullEntry any) (string, error) {
 	baseType := arrType.ArrayBaseType()
 	strs := make([]string, 0)
-	for _, el := range arr {
+	for _, el := range pgtypes.FlattenArray(arr, baseType) {
 		if el != nil {
 			v, err := baseType.IoOutput(ctx, el)
 			if err != nil {

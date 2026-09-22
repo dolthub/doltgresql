@@ -1,4 +1,4 @@
-// Copyright 2025 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,29 +15,35 @@
 package functions
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initArrayUpper registers the functions to the catalog.
-func initArrayUpper() {
-	framework.RegisterFunction(array_upper_anyarray_int32)
+// initArrayDims registers the functions to the catalog.
+func initArrayDims() {
+	framework.RegisterFunction(array_dims_anyarray)
 }
 
-// array_upper_anyarray_int32 represents the PostgreSQL function of the same name, taking the same parameters.
-var array_upper_anyarray_int32 = framework.Function2{
-	Name:       "array_upper",
-	Return:     pgtypes.Int32,
-	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32},
+// array_dims_anyarray represents the PostgreSQL function of the same name, taking the same parameters.
+var array_dims_anyarray = framework.Function1{
+	Name:       "array_dims",
+	Return:     pgtypes.Text,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		dims := pgtypes.ArrayDims(val1.([]any), t[0].ArrayBaseType())
-		dimension := val2.(int32)
-		if dimension < 1 || int(dimension) > len(dims) {
+		if len(dims) == 0 {
 			return nil, nil
 		}
-		return dims[dimension-1], nil
+		sb := strings.Builder{}
+		for _, dim := range dims {
+			sb.WriteString(fmt.Sprintf("[1:%d]", dim))
+		}
+		return sb.String(), nil
 	},
 }

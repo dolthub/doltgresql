@@ -16,10 +16,14 @@ package binary
 
 import (
 	"fmt"
+	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -74,6 +78,9 @@ var array_append = framework.Function2{
 			return []any{val2}, nil
 		}
 		array := val1.([]any)
+		if len(pgtypes.ArrayDims(array, paramsAndReturn[0].ArrayBaseType())) > 1 {
+			return nil, pgerror.WithCandidateCode(errors.New("argument must be empty or one-dimensional array"), pgcode.DataException)
+		}
 		returnArray := make([]any, len(array)+1)
 		copy(returnArray, array)
 		returnArray[len(returnArray)-1] = val2
@@ -98,6 +105,19 @@ var array_cat = framework.Function2{
 
 		array1 := val1.([]any)
 		array2 := val2.([]any)
+		dims1, dims2 := pgtypes.ArrayDims(array1, paramsAndReturn[0].ArrayBaseType()), pgtypes.ArrayDims(array2, paramsAndReturn[1].ArrayBaseType())
+		switch {
+		case len(dims1) == 0:
+			return array2, nil
+		case len(dims2) == 0:
+			return array1, nil
+		case len(dims1) == len(dims2)+1 && slices.Equal(dims1[1:], dims2):
+			array2 = []any{array2}
+		case len(dims1)+1 == len(dims2) && slices.Equal(dims1, dims2[1:]):
+			array1 = []any{array1}
+		case len(dims1) != len(dims2) || !slices.Equal(dims1[1:], dims2[1:]):
+			return nil, pgerror.WithCandidateCode(errors.New("cannot concatenate incompatible arrays"), pgcode.ArraySubscript)
+		}
 
 		// Concatenate the arrays
 		result := make([]any, len(array1)+len(array2))
@@ -117,6 +137,9 @@ var array_prepend = framework.Function2{
 	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2 == nil {
 			return []any{val1}, nil
+		}
+		if len(pgtypes.ArrayDims(val2.([]any), paramsAndReturn[1].ArrayBaseType())) > 1 {
+			return nil, pgerror.WithCandidateCode(errors.New("argument must be empty or one-dimensional array"), pgcode.DataException)
 		}
 		return append([]any{val1}, val2.([]any)...), nil
 	},

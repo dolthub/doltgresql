@@ -32,6 +32,10 @@ func init() {
 	types.SetExtendedTypeSerializers(SerializeType, DeserializeType)
 }
 
+// arrayTypeVersion is the serialized version of newly created array types. Each type carries its own version, and
+// existing types keep the version that they were created with.
+const arrayTypeVersion = 1
+
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
 // by DoltgreSQL.
 func SerializeType(ctx *sql.Context, extendedType sql.ExtendedType) ([]byte, error) {
@@ -60,7 +64,10 @@ func DeserializeTypeFromCollection(ctx *sql.Context, typeColl TypeCollection, se
 	typ := &DoltgresType{}
 	reader := utils.NewReader(serializedType)
 	version := reader.VariableUint()
-	if version != 0 {
+	switch version {
+	case 0, 1:
+		typ.serializedVersion = uint8(version)
+	default:
 		return nil, errors.Errorf("version %d of types is not supported, please upgrade the server", version)
 	}
 
@@ -182,7 +189,7 @@ func DeserializeTypeFromCollection(ctx *sql.Context, typeColl TypeCollection, se
 // Serialize returns the DoltgresType as a byte slice.
 func (t *DoltgresType) Serialize() []byte {
 	writer := utils.NewWriter(256)
-	writer.VariableUint(0) // Version
+	writer.VariableUint(uint64(t.serializedVersion)) // Version
 	// Write the type to the writer
 	writer.Id(t.ID.AsId())
 	writer.Int16(t.TypLength)

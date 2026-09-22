@@ -503,6 +503,19 @@ func TestSubscript(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "null index on a non-array value",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT ('123'::jsonb)[NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT ('{"a": 1}'::jsonb)[NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
 	})
 }
 

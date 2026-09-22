@@ -24,6 +24,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -70,6 +72,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	nested := false
 	for i, expr := range array.children {
 		val, err := expr.Eval(ctx, row)
 		if err != nil {
@@ -86,18 +89,34 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, errors.Errorf("expected DoltgresType, but got %s", expr.Type(ctx).String())
 		}
 
+		targetTyp := resultTyp
+		if doltgresType.IsArrayType() && !resultTyp.IsVectorType() {
+			targetTyp = array.coercedType
+			nested = true
+		}
+
 		// We always cast the element, as there may be parameter restrictions in place
-		cast, err := castsColl.GetImplicitCast(ctx, doltgresType, resultTyp)
+		cast, err := castsColl.GetImplicitCast(ctx, doltgresType, targetTyp)
 		if err != nil {
 			return nil, err
 		}
 		if !cast.ID.IsValid() {
-			return nil, errors.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
+			return nil, errors.Errorf("cannot find cast function from %s to %s", doltgresType.String(), targetTyp.String())
 		}
 
-		values[i], err = cast.Eval(ctx, val, doltgresType, resultTyp)
+		values[i], err = cast.Eval(ctx, val, doltgresType, targetTyp)
 		if err != nil {
 			return nil, err
+		}
+	}
+	if nested {
+		if !pgtypes.SameArrayDims(values) {
+			return nil, pgerror.WithCandidateCode(errors.New("multidimensional arrays must have array expressions with matching dimensions"), pgcode.ArraySubscript)
+		}
+		for subArray, ok := values[0].([]any); ok; subArray, ok = subArray[0].([]any) {
+			if len(subArray) == 0 {
+				return []any{}, nil
+			}
 		}
 	}
 	return values, nil
@@ -221,6 +240,9 @@ func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) 
 			if !ok {
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray, nil
+			}
+			if childType.ID == pgtypes.AnyArray.ID {
+				continue
 			}
 			childrenTypes = append(childrenTypes, childType)
 		}

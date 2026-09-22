@@ -53,6 +53,7 @@ import (
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
@@ -750,9 +751,31 @@ func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, readRawRow
 		if err != nil {
 			return nil, nil, err
 		}
+		for i := range row {
+			row[i] = reshapeFlattenedArray(rows.FieldDescriptions()[i], rawSlice[i], row[i])
+		}
 		slices = append(slices, row)
 	}
 	return NormalizeRows(rows.FieldDescriptions(), slices, normalizeRows), rawSlices, nil
+}
+
+// reshapeFlattenedArray restores the dimensions of a multidimensional array value, which pgx flattens when decoding
+// the binary format.
+func reshapeFlattenedArray(fd pgconn.FieldDescription, raw []byte, val any) any {
+	arr, ok := val.([]any)
+	dt, isBuiltIn := types.IDToBuiltInDoltgresType[id.Type(id.Cache().ToInternal(fd.DataTypeOID))]
+	if !ok || !isBuiltIn || !dt.IsArrayType() || fd.Format != pgtype.BinaryFormatCode {
+		return val
+	}
+	reader := utils.NewWireReader(raw)
+	dims := make([]int32, reader.ReadInt32())
+	reader.ReadInt32()
+	reader.ReadUint32()
+	for i := range dims {
+		dims[i] = reader.ReadInt32()
+		reader.ReadInt32()
+	}
+	return types.InflateArray(arr, dims)
 }
 
 // NormalizeRows normalizes each value's type within each row, as the tests only want to compare values. Returns a new
