@@ -787,9 +787,15 @@ func (t *DoltgresType) getOrResolveOutFunc(ctx *sql.Context) QuickFunction {
 	if t.outFunc == nil || t.outFuncID != t.OutputFunc {
 		t.outFuncID = t.OutputFunc
 		t.outFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
-		if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
+		resolvedType := t
+		// A domain over an array uses the base array's I/O functions, which need
+		// the array's element metadata rather than the domain's wrapper metadata.
+		if t.TypType == TypeType_Domain && t.BaseTypeType != nil && t.BaseTypeType.IsArrayType() {
+			resolvedType = t.BaseTypeType
+		}
+		if resolvedType.ModInFunc != 0 || resolvedType.IsArrayType() || resolvedType.IsCompositeType() {
 			resTypes := t.outFunc.ResolvedTypes()
-			resTypes[0] = t
+			resTypes[0] = resolvedType
 			t.outFunc = t.outFunc.WithResolvedTypes(resTypes).(QuickFunction)
 		}
 	}
