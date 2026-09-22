@@ -331,11 +331,13 @@ func (stmt ForQueryInit) AppendOperations(ops *[]InterpreterOperation, stack *In
 	return nil
 }
 
-// ForQueryNext fetches the next row from the cursor of the scope it runs in and assigns it to a record
-// variable. When the cursor is exhausted it jumps forward by GotoOffset (like an If), exiting the loop.
+// ForQueryNext fetches the next row from the cursor of the scope it runs in and assigns it to either a
+// RECORD variable or a list of scalar variables. When the cursor is exhausted it jumps forward by
+// GotoOffset (like an If), exiting the loop.
 type ForQueryNext struct {
-	RecordVar  string
-	GotoOffset int32
+	RecordVar     string
+	VariableNames []string
+	GotoOffset    int32
 }
 
 var _ Statement = ForQueryNext{}
@@ -348,9 +350,10 @@ func (ForQueryNext) OperationSize() int32 {
 // AppendOperations implements the interface Statement.
 func (stmt ForQueryNext) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	*ops = append(*ops, InterpreterOperation{
-		OpCode: OpCode_ForQueryNext,
-		Target: stmt.RecordVar,
-		Index:  len(*ops) + int(stmt.GotoOffset),
+		OpCode:        OpCode_ForQueryNext,
+		Target:        stmt.RecordVar,
+		SecondaryData: stmt.VariableNames,
+		Index:         len(*ops) + int(stmt.GotoOffset),
 	})
 	return nil
 }

@@ -581,6 +581,26 @@ func (is *InterpreterStack) UpdateRecord(name string, schema sql.Schema, val sql
 	return fmt.Errorf("record variable `%s` could not be found", name)
 }
 
+// UpdateVariables assigns a query result row to a list of scalar variables. A FOR .. IN query LOOP
+// requires one target for each result column, and each value is converted to the declared target type.
+func (is *InterpreterStack) UpdateVariables(ctx *sql.Context, names []string, schema sql.Schema, row sql.Row) error {
+	if len(names) != len(schema) {
+		return fmt.Errorf("FOR query returned %d columns for %d target variables", len(schema), len(names))
+	}
+	for i, name := range names {
+		iv := is.findVariable(name)
+		if iv == nil || iv.Type == nil {
+			return fmt.Errorf("variable `%s` could not be found", name)
+		}
+		value, _, err := iv.Type.Convert(ctx, row[i])
+		if err != nil {
+			return err
+		}
+		iv.Value = value
+	}
+	return nil
+}
+
 // normalizeRecordSchema returns |schema| with every column type converted to a DoltgresType. Query results can
 // carry plain GMS types (an aggregate such as `count(*)`, for example), but a record's fields are read back as
 // Doltgres values, so the types have to be converted before the schema is stored.

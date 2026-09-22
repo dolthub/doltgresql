@@ -269,6 +269,36 @@ END; $$;`,
 					Query:    `SELECT f_forloop();`,
 					Expected: []sql.Row{{"1a2b3c"}},
 				},
+				{
+					Query: `CREATE FUNCTION f_for_scalar_loop() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE v int; result text := '';
+BEGIN
+	FOR v IN SELECT 1 LOOP
+		result := result || v;
+	END LOOP;
+	RETURN result;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_for_scalar_loop();`,
+					Expected: []sql.Row{{"1"}},
+				},
+				{
+					Query: `CREATE FUNCTION f_for_variable_list_loop() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE a int; b int; result text := '';
+BEGIN
+	FOR a, b IN SELECT 1, 2 LOOP
+		result := result || a || ':' || b;
+	END LOOP;
+	RETURN result;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_for_variable_list_loop();`,
+					Expected: []sql.Row{{"1:2"}},
+				},
 			},
 		},
 		{

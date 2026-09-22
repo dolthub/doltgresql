@@ -504,7 +504,13 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				counter = operation.Index - 1
 			} else {
 				stack.MarkScopeLoop(true)
-				if err := stack.UpdateRecord(operation.Target, schema, row); err != nil {
+				var err error
+				if len(operation.SecondaryData) > 0 {
+					err = stack.UpdateVariables(ctx, operation.SecondaryData, schema, row)
+				} else {
+					err = stack.UpdateRecord(operation.Target, schema, row)
+				}
+				if err != nil {
 					return nil, err
 				}
 			}
