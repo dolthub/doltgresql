@@ -228,7 +228,7 @@ func (iFunc InterpretedFunction) CastQueryValue(ctx *sql.Context, val any, colum
 			cast.ID = id.NewCast(sourceType.ID, targetType.ID)
 			cast.UseInOut = true
 		} else {
-			return nil, errors.New("no valid cast for assignment value")
+			return nil, errors.New("no valid cast for return value")
 		}
 	}
 	return cast.Eval(ctx, val, sourceType, targetType)
