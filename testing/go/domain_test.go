@@ -365,5 +365,35 @@ func TestDomain(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "domains over array types",
+			SetUpScript: []string{
+				`CREATE DOMAIN domint4arr AS INT4[];`,
+				`CREATE DOMAIN domvarchar4arr AS VARCHAR(4)[2][3];`,
+				`CREATE TABLE domarr (pk INT PRIMARY KEY, i domint4arr, v domvarchar4arr);`,
+				`INSERT INTO domarr VALUES (1, '{3,4}', '{{a,b},{c,d}}'), (2, NULL, NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '{1,2}'::domint4arr, '{{a},{b}}'::domvarchar4arr;`,
+					Expected: []sql.Row{{"{1,2}", "{{a},{b}}"}},
+				},
+				{
+					Query:    `SELECT * FROM domarr ORDER BY pk;`,
+					Expected: []sql.Row{{1, "{3,4}", "{{a,b},{c,d}}"}, {2, nil, nil}},
+				},
+				{
+					Query:    `SELECT i[2], v[2][1], pg_typeof(i[2]) FROM domarr ORDER BY pk;`,
+					Expected: []sql.Row{{4, "c", "integer"}, {nil, nil, "integer"}},
+				},
+				{
+					Query: `UPDATE domarr SET i = '{{1,2},{3,4}}' WHERE pk = 2;`,
+				},
+				{
+					Query:    `SELECT i, array_ndims(i) FROM domarr ORDER BY pk;`,
+					Expected: []sql.Row{{"{3,4}", 1}, {"{{1,2},{3,4}}", 2}},
+				},
+			},
+		},
 	})
 }

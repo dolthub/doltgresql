@@ -16,6 +16,7 @@ package functions
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -61,109 +62,156 @@ var array_in = framework.Function3{
 			return nil, errors.Errorf("unknown array element type: %s", string(baseTypeOid))
 		}
 		typmod := val3.(int32)
-		baseType = baseType.WithAttTypMod(typmod)
-		if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
-			// This error is regarded as a critical error, and thus we immediately return the error alongside a nil
-			// value. Returning a nil value is a signal to not ignore the error.
-			return nil, errors.Errorf(`malformed array literal: "%s"`, input)
-		}
-		// We'll remove the surrounding braces since we've already verified that they're there
-		input = input[1 : len(input)-1]
-		var values []any
-		sb := strings.Builder{}
-		pendingWS := strings.Builder{}
-		quoteStartCount := 0
-		quoteEndCount := 0
-		escaped := false
-		flushPendingWS := func() {
-			if sb.Len() > 0 {
-				sb.WriteString(pendingWS.String())
-			}
-			pendingWS.Reset()
-		}
-		// Iterate over each rune in the input to collect and process the rune elements
-		for _, r := range input {
-			if escaped {
-				sb.WriteRune(r)
-				escaped = false
-			} else if quoteStartCount > quoteEndCount {
-				switch r {
-				case '\\':
-					escaped = true
-				case '"':
-					quoteEndCount++
-				default:
-					sb.WriteRune(r)
-				}
-			} else {
-				switch r {
-				case ' ', '\t', '\n', '\r':
-					pendingWS.WriteRune(r)
-				case '\\':
-					flushPendingWS()
-					escaped = true
-				case '"':
-					flushPendingWS()
-					quoteStartCount++
-				case ',':
-					if quoteStartCount >= 2 {
-						// This is a malformed string, thus we treat it as a critical error.
-						return nil, errors.Errorf(`malformed array literal: "%s"`, input)
-					}
-					pendingWS.Reset()
-					str := sb.String()
-					var innerValue any
-					if quoteStartCount == 0 && strings.EqualFold(str, "null") {
-						// An unquoted case-insensitive NULL is treated as an actual null value
-						innerValue = nil
-					} else {
-						var nErr error
-						innerValue, nErr = baseType.IoInput(ctx, str)
-						if nErr != nil && err == nil {
-							// This is a non-critical error, therefore the error may be ignored at a higher layer (such as
-							// an explicit cast) and the inner type will still return a valid result, so we must allow the
-							// values to propagate.
-							err = nErr
-						}
-					}
-					values = append(values, innerValue)
-					sb.Reset()
-					quoteStartCount = 0
-					quoteEndCount = 0
-				default:
-					flushPendingWS()
-					sb.WriteRune(r)
-				}
-			}
-		}
-		// Use anything remaining in the buffer as the last element
-		if sb.Len() > 0 {
-			if escaped || quoteStartCount > quoteEndCount || quoteStartCount >= 2 {
-				// These errors are regarded as critical errors, and thus we immediately return the error alongside a nil
-				// value. Returning a nil value is a signal to not ignore the error.
-				return nil, errors.Errorf(`malformed array literal: "%s"`, input)
-			} else {
-				str := sb.String()
-				var innerValue any
-				if quoteStartCount == 0 && strings.EqualFold(str, "NULL") {
-					// An unquoted case-insensitive NULL is treated as an actual null value
-					innerValue = nil
-				} else {
-					var nErr error
-					innerValue, nErr = baseType.IoInput(ctx, str)
-					if nErr != nil && err == nil {
-						// This is a non-critical error, therefore the error may be ignored at a higher layer (such as
-						// an explicit cast) and the inner type will still return a valid result, so we must allow the
-						// values to propagate.
-						err = nErr
-					}
-				}
-				values = append(values, innerValue)
-			}
-		}
-
-		return values, err
+		parser := arrayLiteralParser{input: input, runes: []rune(input), baseType: baseType.WithAttTypMod(typmod)}
+		return parser.parse(ctx)
 	},
+}
+
+// arrayLiteralParser parses the text representation of an array, which may be multidimensional. Malformed literals are
+// critical errors that return a nil value, while element conversion errors are non-critical and are returned alongside
+// the parsed value so that a higher layer (such as an explicit cast) may ignore them.
+type arrayLiteralParser struct {
+	input      string
+	runes      []rune
+	pos        int
+	baseType   *pgtypes.DoltgresType
+	elementErr error
+}
+
+// parse parses the entire input.
+func (p *arrayLiteralParser) parse(ctx *sql.Context) (any, error) {
+	p.skipWhitespace()
+	if p.peek() != '{' {
+		return nil, p.malformed()
+	}
+	vals, err := p.parseArray(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	p.skipWhitespace()
+	if p.pos != len(p.runes) {
+		return nil, p.malformed()
+	}
+	return vals, p.elementErr
+}
+
+// parseArray parses the array that starts at the current opening brace.
+func (p *arrayLiteralParser) parseArray(ctx *sql.Context, nested bool) ([]any, error) {
+	p.pos++
+	p.skipWhitespace()
+	if p.peek() == '}' && !nested {
+		p.pos++
+		return []any{}, nil
+	}
+	var vals []any
+	for {
+		p.skipWhitespace()
+		var val any
+		var err error
+		if p.peek() == '{' {
+			val, err = p.parseArray(ctx, true)
+		} else {
+			val, err = p.parseElement(ctx)
+		}
+		if err != nil {
+			return nil, err
+		}
+		vals = append(vals, val)
+		p.skipWhitespace()
+		switch p.next() {
+		case ',':
+		case '}':
+			if !p.baseType.IsVectorType() && !pgtypes.SameArrayDims(vals) {
+				return nil, p.malformed()
+			}
+			return vals, nil
+		default:
+			return nil, p.malformed()
+		}
+	}
+}
+
+// parseElement parses a single, optionally quoted, element and converts it to the base type. An unquoted NULL is the
+// null value.
+func (p *arrayLiteralParser) parseElement(ctx *sql.Context) (any, error) {
+	sb := strings.Builder{}
+	pendingWhitespace := strings.Builder{}
+	quoted := p.peek() == '"'
+	if quoted {
+		p.pos++
+	}
+	for {
+		r := p.next()
+		switch {
+		case r == 0:
+			return nil, p.malformed()
+		case r == '\\':
+			escaped := p.next()
+			if escaped == 0 {
+				return nil, p.malformed()
+			}
+			sb.WriteString(pendingWhitespace.String())
+			pendingWhitespace.Reset()
+			sb.WriteRune(escaped)
+		case quoted && r == '"':
+			return p.convert(ctx, sb.String())
+		case quoted:
+			sb.WriteRune(r)
+		case r == ',' || r == '}':
+			p.pos--
+			if sb.Len() == 0 {
+				return nil, p.malformed()
+			}
+			if strings.EqualFold(sb.String(), "null") {
+				return nil, nil
+			}
+			return p.convert(ctx, sb.String())
+		case r == '{' || r == '"':
+			return nil, p.malformed()
+		case unicode.IsSpace(r):
+			pendingWhitespace.WriteRune(r)
+		default:
+			sb.WriteString(pendingWhitespace.String())
+			pendingWhitespace.Reset()
+			sb.WriteRune(r)
+		}
+	}
+}
+
+// convert converts the element text to the base type, recording the first conversion error.
+func (p *arrayLiteralParser) convert(ctx *sql.Context, str string) (any, error) {
+	val, err := p.baseType.IoInput(ctx, str)
+	if err != nil && p.elementErr == nil {
+		p.elementErr = err
+	}
+	return val, nil
+}
+
+// skipWhitespace advances past any whitespace.
+func (p *arrayLiteralParser) skipWhitespace() {
+	for p.pos < len(p.runes) && unicode.IsSpace(p.runes[p.pos]) {
+		p.pos++
+	}
+}
+
+// peek returns the current rune without advancing, or zero at the end of the input.
+func (p *arrayLiteralParser) peek() rune {
+	if p.pos >= len(p.runes) {
+		return 0
+	}
+	return p.runes[p.pos]
+}
+
+// next returns the current rune and advances, or returns zero at the end of the input.
+func (p *arrayLiteralParser) next() rune {
+	r := p.peek()
+	p.pos++
+	return r
+}
+
+// malformed returns the error for an invalid literal.
+func (p *arrayLiteralParser) malformed() error {
+	return errors.Errorf(`malformed array literal: "%s"`, p.input)
 }
 
 // array_out represents the PostgreSQL function of array type IO output.
@@ -212,29 +260,32 @@ func array_recv_callable(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val
 	if baseType == nil {
 		return nil, pgtypes.ErrTypeDoesNotExist.New(baseTypeID.TypeName())
 	}
-	// TODO: handle more than 1 dimension
-	if dimensions > 1 {
-		return nil, errors.Errorf("array dimensions greater than 1 are not yet supported")
-	}
-	var vals []any
-	for dimensionIdx := int32(0); dimensionIdx < dimensions; dimensionIdx++ {
-		elementsCount := reader.ReadInt32()
+	dims := make([]int32, dimensions)
+	elementsCount := int32(0)
+	for dimensionIdx := range dims {
+		dims[dimensionIdx] = reader.ReadInt32()
 		_ = reader.ReadInt32() // Lower bound, not sure what to do with this
-		for i := int32(0); i < elementsCount; i++ {
-			elementLen := reader.ReadInt32()
-			if elementLen != -1 {
-				valBytes := reader.ReadBytes(uint32(elementLen))
-				val, err := baseType.CallReceive(ctx, valBytes)
-				if err != nil {
-					return nil, err
-				}
-				vals = append(vals, val)
-			} else {
-				vals = append(vals, nil)
-			}
+		if dimensionIdx == 0 {
+			elementsCount = dims[dimensionIdx]
+		} else {
+			elementsCount *= dims[dimensionIdx]
 		}
 	}
-	return vals, nil
+	var vals []any
+	for i := int32(0); i < elementsCount; i++ {
+		elementLen := reader.ReadInt32()
+		if elementLen != -1 {
+			valBytes := reader.ReadBytes(uint32(elementLen))
+			val, err := baseType.CallReceive(ctx, valBytes)
+			if err != nil {
+				return nil, err
+			}
+			vals = append(vals, val)
+		} else {
+			vals = append(vals, nil)
+		}
+	}
+	return pgtypes.InflateArray(vals, dims), nil
 }
 
 // array_send represents the PostgreSQL function of array type IO send.
@@ -254,7 +305,8 @@ var array_send = framework.Function1{
 				return nil, nil
 			}
 		}
-		vals := val.([]any)
+		dims := pgtypes.ArrayDims(val.([]any), t[0].BaseType())
+		vals := pgtypes.FlattenArray(val.([]any), t[0].BaseType())
 		// Check for nulls first
 		hasNull := false
 		for _, val := range vals {
@@ -263,46 +315,32 @@ var array_send = framework.Function1{
 				break
 			}
 		}
-		// Count the number of dimensions
-		dimensions := int32(0)
-		innerVals := vals
-		for len(innerVals) > 0 {
-			dimensions++
-			slice, ok := innerVals[0].([]any)
-			if !ok {
-				break
-			}
-			innerVals = slice
-		}
-		if dimensions > 1 {
-			return nil, errors.Errorf("arrays with %d dimensions are not yet supported using the binary format", dimensions)
-		}
 		writer := utils.NewWireWriter()
-		writer.WriteInt32(dimensions) // Write the number of dimensions
+		writer.WriteInt32(int32(len(dims))) // Write the number of dimensions
 		if hasNull {
 			writer.WriteInt32(1)
 		} else {
 			writer.WriteInt32(0)
 		}
 		writer.WriteUint32(id.Cache().ToOID(t[0].BaseType().ID.AsId())) // Element OID
-		for i := int32(0); i < dimensions; i++ {
-			writer.WriteInt32(int32(len(vals))) // Elements in this dimension
+		for _, dim := range dims {
+			writer.WriteInt32(dim) // Elements in this dimension
 			if t[0].IsArrayType() {
 				writer.WriteInt32(1) // Lower bound, or what index number we start at (seems to always be 1?)
 			} else {
 				writer.WriteInt32(0)
 			}
-			for _, val := range vals {
-				if val == nil {
-					writer.WriteInt32(-1)
-				} else {
-					valBytes, err := t[0].BaseType().CallSend(ctx, val)
-					if err != nil {
-						return nil, err
-					}
-					writer.WriteInt32(int32(len(valBytes)))
-					writer.WriteBytes(valBytes)
+		}
+		for _, val := range vals {
+			if val == nil {
+				writer.WriteInt32(-1)
+			} else {
+				valBytes, err := t[0].BaseType().CallSend(ctx, val)
+				if err != nil {
+					return nil, err
 				}
+				writer.WriteInt32(int32(len(valBytes)))
+				writer.WriteBytes(valBytes)
 			}
 		}
 		return writer.BufferData(), nil
@@ -324,25 +362,11 @@ var btarraycmp = framework.Function2{
 			return nil, errors.Errorf("different type comparison is not supported yet")
 		}
 
-		ab := val1.([]any)
-		bb := val2.([]any)
-		minLength := utils.Min(len(ab), len(bb))
-		for i := 0; i < minLength; i++ {
-			res, err := at.ArrayBaseType().Compare(ctx, ab[i], bb[i])
-			if err != nil {
-				return 0, err
-			}
-			if res != 0 {
-				return res, nil
-			}
+		res, err := at.Compare(ctx, val1, val2)
+		if err != nil {
+			return nil, err
 		}
-		if len(ab) == len(bb) {
-			return int32(0), nil
-		} else if len(ab) < len(bb) {
-			return int32(-1), nil
-		} else {
-			return int32(1), nil
-		}
+		return int32(res), nil
 	},
 }
 
