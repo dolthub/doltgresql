@@ -36,6 +36,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
+	"github.com/dolthub/go-mysql-server/testutils"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jackc/pgx/v5"
@@ -592,7 +593,7 @@ func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schem
 		for j := range sch {
 			field := row[j]
 			// Special case for custom values
-			if cvv, isCustom := field.(enginetest.CustomValueValidator); isCustom {
+			if cvv, isCustom := field.(testutils.CustomValueValidator); isCustom {
 				if i >= len(actual) {
 					continue
 				}
