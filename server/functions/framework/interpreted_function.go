@@ -186,13 +186,13 @@ func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgs
 		if len(rows[0]) != 1 {
 			return nil, errors.New("expression returned multiple results")
 		}
-		return castQueryValue(subCtx, rows[0][0], sch[0].Type, targetType)
+		return iFunc.CastQueryValue(subCtx, rows[0][0], sch[0].Type, targetType)
 	})
 }
 
-// castQueryValue converts |val|, which a query produced with the column type |columnType|, into the form
+// CastQueryValue converts |val|, which a query produced with the column type |columnType|, into the form
 // expected by |targetType| using an assignment cast. A nil |targetType| leaves the value as it is.
-func castQueryValue(ctx *sql.Context, val any, columnType sql.Type, targetType *pgtypes.DoltgresType) (any, error) {
+func (iFunc InterpretedFunction) CastQueryValue(ctx *sql.Context, val any, columnType sql.Type, targetType *pgtypes.DoltgresType) (any, error) {
 	if targetType == nil {
 		return val, nil
 	}
@@ -228,7 +228,7 @@ func castQueryValue(ctx *sql.Context, val any, columnType sql.Type, targetType *
 			cast.ID = id.NewCast(sourceType.ID, targetType.ID)
 			cast.UseInOut = true
 		} else {
-			return nil, errors.New("no valid cast for return value")
+			return nil, errors.New("no valid cast for assignment value")
 		}
 	}
 	return cast.Eval(ctx, val, sourceType, targetType)
@@ -252,7 +252,7 @@ func (iFunc InterpretedFunction) QueryRowReturn(ctx *sql.Context, stack plpgsql.
 	row, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (sql.Row, error) {
 		castRow := make(sql.Row, len(targetTypes))
 		for i := range castRow {
-			castVal, err := castQueryValue(subCtx, rows[0][i], schema[i].Type, targetTypes[i])
+			castVal, err := iFunc.CastQueryValue(subCtx, rows[0][i], schema[i].Type, targetTypes[i])
 			if err != nil {
 				return nil, err
 			}
