@@ -28,8 +28,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// BeforeTableDropColumn drops the foreign keys that use the column being dropped. Foreign keys declared on the column
-// are dropped with it, while foreign keys referencing it from other tables require CASCADE.
+// BeforeTableDropColumn drops the foreign keys and triggers that use the column being dropped. Foreign keys declared on
+// the column are dropped with it, while foreign keys referencing it from other tables require CASCADE.
 func BeforeTableDropColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInterface sql.Node) (sql.Node, error) {
 	n, ok := nodeInterface.(*plan.DropColumn)
 	if !ok {
@@ -40,6 +40,27 @@ func BeforeTableDropColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInt
 		return n, nil
 	}
 	tableName := doltTable.TableName()
+	trigColl, err := core.GetTriggersCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var dependentTrigs []id.Trigger
+	for _, trig := range trigColl.GetTriggersForTable(ctx, id.NewTable(tableName.Schema, tableName.Name)) {
+		for _, event := range trig.Events {
+			if !usesColumn(event.ColumnNames, n.Column) {
+				continue
+			}
+			if !n.Cascade {
+				return nil, errors.Errorf("cannot drop column %s of table %s because other objects depend on it\ntrigger %s on table %s depends on column %s of table %s",
+					n.Column, tableName.Name, trig.ID.TriggerName(), tableName.Name, n.Column, tableName.Name)
+			}
+			dependentTrigs = append(dependentTrigs, trig.ID)
+			break
+		}
+	}
+	if err = trigColl.DropTrigger(ctx, dependentTrigs...); err != nil {
+		return nil, err
+	}
 	sqlTable, err := core.GetSqlTableFromContext(ctx, "", tableName)
 	if err != nil {
 		return nil, err
@@ -53,7 +74,7 @@ func BeforeTableDropColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInt
 		return nil, err
 	}
 	for _, fk := range referenced {
-		if !foreignKeyUsesColumn(fk.ParentColumns, n.Column) {
+		if !usesColumn(fk.ParentColumns, n.Column) {
 			continue
 		}
 		if !n.Cascade {
@@ -70,7 +91,7 @@ func BeforeTableDropColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInt
 		return nil, err
 	}
 	for _, fk := range declared {
-		if !foreignKeyUsesColumn(fk.Columns, n.Column) {
+		if !usesColumn(fk.Columns, n.Column) {
 			continue
 		}
 		if err = fkTable.DropForeignKey(ctx, fk.Name, fk.Table, fk.SchemaName); err != nil {
@@ -80,10 +101,10 @@ func BeforeTableDropColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInt
 	return n, nil
 }
 
-// foreignKeyUsesColumn returns whether the given foreign key columns include the named column.
-func foreignKeyUsesColumn(fkColumns []string, column string) bool {
-	for _, fkColumn := range fkColumns {
-		if strings.EqualFold(fkColumn, column) {
+// usesColumn returns whether the given columns include the named column.
+func usesColumn(columns []string, column string) bool {
+	for _, col := range columns {
+		if strings.EqualFold(col, column) {
 			return true
 		}
 	}

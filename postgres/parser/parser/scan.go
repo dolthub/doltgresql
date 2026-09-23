@@ -1081,7 +1081,7 @@ func Tokens(sql string) (tokens []TokenString, ok bool) {
 		if lval.id == 0 {
 			break
 		}
-		tokens = append(tokens, TokenString{TokenID: lval.id, Str: lval.str})
+		tokens = append(tokens, TokenString{TokenID: lval.id, Str: lval.str, Start: int(lval.pos), End: s.pos})
 	}
 	return tokens, true
 }
@@ -1090,6 +1090,8 @@ func Tokens(sql string) (tokens []TokenString, ok bool) {
 type TokenString struct {
 	TokenID int32
 	Str     string
+	Start   int
+	End     int
 }
 
 // LastLexicalToken returns the last lexical token. If the string has no lexical

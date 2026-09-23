@@ -18,6 +18,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -174,6 +175,25 @@ func triggerArgs(args []string) []byte {
 	return encoded
 }
 
+// triggerAttrs returns the tgattr column numbers of the trigger's UPDATE OF columns.
+func triggerAttrs(ctx *sql.Context, t triggers.Trigger) ([]any, error) {
+	attrs := []any{}
+	for _, event := range t.Events {
+		if len(event.ColumnNames) == 0 {
+			continue
+		}
+		table, err := core.GetSqlTableFromContext(ctx, "", doltdb.TableName{Name: t.ID.TableName(), Schema: t.ID.SchemaName()})
+		if err != nil {
+			return nil, err
+		}
+		sch := table.Schema(ctx)
+		for _, colName := range event.ColumnNames {
+			attrs = append(attrs, int16(sch.IndexOfColName(colName))+1)
+		}
+	}
+	return attrs, nil
+}
+
 // pgTriggerRowIter is the sql.RowIter for the pg_trigger table.
 type pgTriggerRowIter struct {
 	triggers []triggers.Trigger
@@ -203,6 +223,10 @@ func (iter *pgTriggerRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	if len(t.NewTransitionName) > 0 {
 		newTable = t.NewTransitionName
 	}
+	attrs, err := triggerAttrs(ctx, t)
+	if err != nil {
+		return nil, err
+	}
 
 	return sql.Row{
 		t.ID.AsId(),        // oid
@@ -219,7 +243,7 @@ func (iter *pgTriggerRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		t.Deferrable != triggers.TriggerDeferrable_NotDeferrable,      // tgdeferrable
 		t.Deferrable == triggers.TriggerDeferrable_DeferrableDeferred, // tginitdeferred
 		int16(len(t.Arguments)),  // tgnargs
-		[]any{},                  // tgattr (TODO: column numbers for UPDATE OF column lists)
+		attrs,                    // tgattr
 		triggerArgs(t.Arguments), // tgargs
 		nil,                      // tgqual (TODO: node tree for the WHEN condition)
 		oldTable,                 // tgoldtable

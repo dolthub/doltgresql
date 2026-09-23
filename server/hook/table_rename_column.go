@@ -15,7 +15,9 @@
 package hook
 
 import (
+	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -24,6 +26,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/lex"
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -97,5 +101,55 @@ func AfterTableRenameColumn(ctx *sql.Context, runner sql.StatementRunner, nodeIn
 			}
 		}
 	}
+	trigColl, err := core.GetTriggersCollectionFromContext(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, trig := range trigColl.GetTriggersForTable(ctx, id.NewTable(tableName.Schema, tableName.Name)) {
+		renamed := false
+		for _, event := range trig.Events {
+			for i, colName := range event.ColumnNames {
+				if strings.EqualFold(colName, n.ColumnName) {
+					event.ColumnNames[i] = n.NewColumnName
+					renamed = true
+				}
+			}
+		}
+		if !renamed {
+			continue
+		}
+		trig.Definition = renameTriggerDefinitionColumn(trig.Definition, n.ColumnName, n.NewColumnName)
+		if err = trigColl.DropTrigger(ctx, trig.ID); err != nil {
+			return err
+		}
+		if err = trigColl.AddTrigger(ctx, trig); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// renameTriggerDefinitionColumn returns the given CREATE TRIGGER definition with `oldName` replaced by `newName` in
+// every UPDATE OF column list.
+func renameTriggerDefinitionColumn(definition string, oldName string, newName string) string {
+	tokens, _ := parser.Tokens(definition)
+	var buf bytes.Buffer
+	lastEnd := 0
+	for i := 0; i+1 < len(tokens); i++ {
+		if tokens[i].TokenID != lex.UPDATE || tokens[i+1].TokenID != lex.OF {
+			continue
+		}
+		for i += 2; i < len(tokens); i += 2 {
+			if strings.EqualFold(tokens[i].Str, oldName) {
+				buf.WriteString(definition[lastEnd:tokens[i].Start])
+				lex.EncodeRestrictedSQLIdent(&buf, newName, lex.EncNoFlags)
+				lastEnd = tokens[i].End
+			}
+			if i+1 >= len(tokens) || tokens[i+1].TokenID != ',' {
+				break
+			}
+		}
+	}
+	buf.WriteString(definition[lastEnd:])
+	return buf.String()
 }
