@@ -26,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // handleStartup handles the entire startup routine, including SSL requests, authentication, etc. Returns false if the
@@ -41,6 +42,14 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 	switch sm := startupMessage.(type) {
 	case *pgproto3.StartupMessage:
 		if err = h.handleAuthentication(sm); err != nil {
+			return false, err
+		}
+		// The first SQL can run during startup parameter selection. Install the
+		// authenticated identity before that path creates or executes a plan.
+		if err = h.doltgresHandler.sm.NewSession(context.Background(), h.mysqlConn); err != nil {
+			return false, err
+		}
+		if err = auth.InitializeSessionIdentity(h.doltgresHandler.sm.GetSession(h.mysqlConn), h.mysqlConn.User); err != nil {
 			return false, err
 		}
 		if err = h.sendClientStartupMessages(); err != nil {

@@ -153,6 +153,24 @@ func GetRole(name string) Role {
 	return globalDatabase.rolesByID[roleID]
 }
 
+// LookupRole returns an existing role by name. The caller must hold LockRead
+// or LockWrite; this accessor never takes the auth lock itself.
+func LookupRole(name string) (Role, bool) {
+	id, ok := globalDatabase.rolesByName[name]
+	if !ok {
+		return Role{}, false
+	}
+	role, ok := globalDatabase.rolesByID[id]
+	return role, ok
+}
+
+// LookupRoleByID resolves an identity without reusing a later role of the same
+// name. The caller must hold LockRead or LockWrite.
+func LookupRoleByID(id RoleID) (Role, bool) {
+	role, ok := globalDatabase.rolesByID[id]
+	return role, ok
+}
+
 // RenameRole renames the role with the old name to the new name. If the role does not exist, then this is a no-op.
 func RenameRole(oldName string, newName string) {
 	if roleID, ok := globalDatabase.rolesByName[oldName]; ok {
