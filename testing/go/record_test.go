@@ -523,5 +523,99 @@ func TestRecords(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ROW() compared to subqueries",
+			SetUpScript: []string{
+				"CREATE TABLE sq (x INT4, y INT4);",
+				"INSERT INTO sq VALUES (1, 2), (1, NULL), (3, 4);",
+				"CREATE TABLE rf (id INT4 PRIMARY KEY, a INT4, b INT4);",
+				"CREATE INDEX rfi ON rf (a, b);",
+				"INSERT INTO rf VALUES (1, 1, NULL), (2, 1, 2), (3, 2, 1);",
+				"CREATE TABLE ck (a INT4, b INT4, CHECK (ROW(a, b) IS DISTINCT FROM ROW(1, 1)));",
+				"CREATE SEQUENCE rseq;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT ROW(1, NULL::INT4) IN (SELECT 1, NULL::INT4), ROW(1, 2) IN (SELECT 1, 2), ROW(1, 2) IN (SELECT 1, 3), ROW(1, 2) NOT IN (SELECT 1, 3);",
+					Expected: []sql.Row{{nil, "t", "f", "t"}},
+				},
+				{
+					Query:    "SELECT ROW(1, NULL::INT4) = ANY(SELECT 1, NULL::INT4), ROW(1, 2) = ANY(SELECT 1, 2), ROW(1, 2) < ANY(SELECT 1, 3), ROW(1, 2) < ALL(SELECT 1, 1), ROW(1, 2) <> ALL(SELECT 1, NULL::INT4);",
+					Expected: []sql.Row{{nil, "t", "t", "f", nil}},
+				},
+				{
+					Query:    "SELECT ROW(1, NULL::INT4) = (SELECT 1, NULL::INT4), ROW(1, 2) = (SELECT 1, 2), ROW(1, 2) < (SELECT 1, 3), ROW(1, 2) <> (SELECT 1, 2), ROW(1, 2) >= (SELECT 1, NULL::INT4);",
+					Expected: []sql.Row{{nil, "t", "t", "f", nil}},
+				},
+				{
+					Query:    "SELECT ROW(1, 2) IN (SELECT x, y FROM sq), ROW(1, 5) IN (SELECT x, y FROM sq), ROW(9, 9) IN (SELECT x, y FROM sq), ROW(1, 2) = ANY(SELECT x, y FROM sq), ROW(1, 5) < ALL(SELECT x, y FROM sq), ROW(0, 0) < ALL(SELECT x, y FROM sq);",
+					Expected: []sql.Row{{"t", nil, "f", "t", "f", "t"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 2) = (SELECT x, y FROM sq WHERE x = 3), ROW(1, 2) = (SELECT x, y FROM sq WHERE x = 99), ROW(1, 2) IN (SELECT x, y FROM sq WHERE x = 99), ROW(1, 2) = ALL(SELECT x, y FROM sq WHERE x = 99);",
+					Expected: []sql.Row{{"f", nil, "f", "t"}},
+				},
+				{
+					Query:    "SELECT x, y, ROW(x, y) IN (SELECT 1, 2), ROW(x, y) < (SELECT 2, 0) FROM sq ORDER BY x, y;",
+					Expected: []sql.Row{{1, 2, "t", "t"}, {1, nil, nil, "t"}, {3, 4, "f", "f"}},
+				},
+				{
+					Query:    "SELECT x FROM sq WHERE ROW(x, y) IN (SELECT 1, y FROM sq WHERE y IS NOT NULL) ORDER BY x;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT ROW(1) IN (SELECT 1), ROW(NULL::INT4) = ANY(SELECT NULL::INT4);",
+					Expected: []sql.Row{{"t", nil}},
+				},
+				{
+					Query:       "SELECT ROW(1, 2) = (SELECT x, y FROM sq);",
+					ExpectedErr: "more than",
+				},
+				{
+					Query:       "SELECT ROW(1, 2) IN (SELECT x FROM sq);",
+					ExpectedErr: "subquery has too few columns",
+				},
+				{
+					Query:       "SELECT ROW(1, 2) = ANY(SELECT 1, 2, 3);",
+					ExpectedErr: "subquery has too many columns",
+				},
+				{
+					Query:       "SELECT ROW(1, 2) = (SELECT 1);",
+					ExpectedErr: "subquery has too few columns",
+				},
+				{
+					Query:       "SELECT ROW(NULL::INT4) = (SELECT ROW(NULL::INT4));",
+					ExpectedErr: "operator does not exist: integer = record",
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE ROW(ROW(a, b)) < ROW(ROW(1, 3)) ORDER BY id;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT id, (a, b) < (1, 3), (a, b) >= (1, 2) FROM rf ORDER BY id;",
+					Expected: []sql.Row{{1, nil, nil}, {2, "t", "t"}, {3, "f", "t"}},
+				},
+				{
+					Query:    "SELECT ROW(nextval('rseq'), 1) < ROW(100, 2);",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT nextval('rseq');",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "INSERT INTO ck VALUES (1, 2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO ck VALUES (1, 1);",
+					ExpectedErr: "Check constraint",
+				},
+				{
+					Query:    "SELECT * FROM ck;",
+					Expected: []sql.Row{{1, 2}},
+				},
+			},
+		},
 	})
 }
