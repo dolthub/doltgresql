@@ -91,13 +91,13 @@ func TestDeserializeRemovesInvalidRoleReferences(t *testing.T) {
 	if !HasDatabasePrivilege(mixedDatabaseKey, Privilege_SELECT) {
 		t.Error("sanitizing one grantor removed the surviving grant")
 	}
-	if group, _, _ := IsRoleAMember(orphan.ID(), otherGroup.ID()); group.IsValid() {
+	if HasRoleMembership(orphan.ID(), otherGroup.ID()) {
 		t.Error("orphaned role retained membership as member")
 	}
-	if group, _, _ := IsRoleAMember(survivor.ID(), orphan.ID()); group.IsValid() {
+	if HasRoleMembership(survivor.ID(), orphan.ID()) {
 		t.Error("orphaned role retained membership as group")
 	}
-	if group, _, _ := IsRoleAMember(survivor.ID(), otherGroup.ID()); group.IsValid() {
+	if HasRoleMembership(survivor.ID(), otherGroup.ID()) {
 		t.Error("orphaned role retained membership as grantor")
 	}
 }

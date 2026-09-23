@@ -31,9 +31,10 @@ import (
 
 // AuthorizationQueryState contains any cached state for a query.
 type AuthorizationQueryState struct {
-	role   Role
-	public Role
-	err    error
+	role    Role
+	public  Role
+	err     error
+	roleErr error // deferred until a statement actually needs authorization
 }
 
 var _ sql.AuthorizationQueryState = AuthorizationQueryState{}
@@ -41,6 +42,13 @@ var _ sql.AuthorizationQueryState = AuthorizationQueryState{}
 // Error implements the sql.AuthorizationQueryState interface.
 func (state AuthorizationQueryState) Error() error {
 	return state.err
+}
+
+func (state AuthorizationQueryState) authorizationError() error {
+	if state.err != nil {
+		return state.err
+	}
+	return state.roleErr
 }
 
 // AuthorizationQueryStateImpl implements the sql.AuthorizationQueryState interface.
@@ -70,9 +78,8 @@ var _ sql.ResolvedTableAuthorizationHandler = (*AuthorizationHandler)(nil)
 func (h *AuthorizationHandler) NewQueryState(ctx *sql.Context) sql.AuthorizationQueryState {
 	state := AuthorizationQueryState{}
 	LockRead(func() {
-		state.role = GetRole(ctx.Client().User)
-		if !state.role.IsValid() {
-			state.err = errors.Errorf(`role "%s" does not exist`, state.role.Name)
+		state.role, state.roleErr = CurrentRoleLocked(ctx)
+		if state.roleErr != nil {
 			return
 		}
 		state.public = GetRole("public")
@@ -90,12 +97,15 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	if len(auth.AuthType) == 0 && len(auth.TargetType) == 0 {
 		return nil
 	}
+	if auth.AuthType == AuthType_IGNORE {
+		return nil
+	}
 	if aqs == nil {
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	globalLock.RLock()
 	defer globalLock.RUnlock()
@@ -103,9 +113,6 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	checkSchemaForUsage := false
 	var privileges []Privilege
 	switch auth.AuthType {
-	case AuthType_IGNORE:
-		// This means that authorization is being handled elsewhere (such as a child or parent), and should be ignored here
-		return nil
 	case AuthType_CREATE:
 		privileges = []Privilege{Privilege_CREATE}
 	case AuthType_CREATEDATABASE:
@@ -264,8 +271,8 @@ func (h *AuthorizationHandler) HandleAuthNode(ctx *sql.Context, aqs sql.Authoriz
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	// TODO: implement this
 	return nil
@@ -277,8 +284,8 @@ func (h *AuthorizationHandler) CheckDatabase(ctx *sql.Context, aqs sql.Authoriza
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	// TODO: implement this
 	return nil
@@ -290,8 +297,8 @@ func (h *AuthorizationHandler) CheckSchema(ctx *sql.Context, aqs sql.Authorizati
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	// TODO: implement this
 	return nil
@@ -303,8 +310,8 @@ func (h *AuthorizationHandler) CheckTable(ctx *sql.Context, aqs sql.Authorizatio
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	// TODO: implement this
 	return nil

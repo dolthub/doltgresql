@@ -71,12 +71,13 @@ func (c *CreateRole) Resolved() bool {
 func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var userRole auth.Role
 	var roleExists bool
+	var roleErr error
 	auth.LockRead(func() {
 		roleExists = auth.RoleExists(c.Name)
-		userRole = auth.GetRole(ctx.Client().User)
+		userRole, roleErr = auth.CurrentRoleLocked(ctx)
 	})
-	if !userRole.IsValid() {
-		return nil, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	if roleErr != nil {
+		return nil, roleErr
 	}
 	if roleExists {
 		if c.IfNotExists {
