@@ -1168,8 +1168,9 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.DropBehavior> opt_drop_behavior
 %type <tree.ValidationBehavior> opt_validate_behavior
 
-%type <str> opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale
-%type <str> opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_using_index_tablespace
+%type <str> opt_tablespace opt_using_index_tablespace
+%type <tree.KVOption> create_database_option
+%type <[]tree.KVOption> create_database_options
 
 %type <tree.IsolationLevel> transaction_iso_level
 %type <tree.UserPriority> transaction_user_priority
@@ -1328,7 +1329,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <*tree.When> when_clause
 %type <[]*tree.When> when_clause_list
 %type <tree.ComparisonOperator> sub_type
-%type <tree.Expr> numeric_only opt_allow_connections opt_connection_limit opt_is_template opt_oid
+%type <tree.Expr> numeric_only
 %type <tree.AliasClause> alias_clause opt_alias_clause
 %type <bool> opt_ordinality opt_compact
 %type <*tree.Order> sortby
@@ -10384,213 +10385,64 @@ deferrable_mode:
 // %Text: CREATE DATABASE [IF NOT EXISTS] <name>
 // %SeeAlso: WEBDOCS/create-database.html
 create_database_stmt:
-  CREATE DATABASE database_name opt_with opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_allow_connections opt_connection_limit opt_is_template opt_oid
+  CREATE DATABASE database_name opt_with create_database_options
   {
-    $$.val = &tree.CreateDatabase{
-      Name: tree.Name($3),
-      Owner: $5,
-      Template: $6,
-      Encoding: $7,
-      Strategy: $8,
-      Locale: $9,
-      Collate: $10,
-      CType: $11,
-      IcuLocale: $12,
-      IcuRules: $13,
-      LocaleProvider: $14,
-      CollationVersion: $15,
-      Tablespace: $16,
-      AllowConnections: $17.expr(),
-      ConnectionLimit: $18.expr(),
-      IsTemplate: $19.expr(),
-      Oid: $20.expr(),
-    }
+    db, err := makeCreateDatabase(tree.Name($3), false, $5.kvOptions())
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = db
   }
-| CREATE DATABASE IF NOT EXISTS database_name opt_with opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_allow_connections opt_connection_limit opt_is_template opt_oid
+| CREATE DATABASE IF NOT EXISTS database_name opt_with create_database_options
   {
-    $$.val = &tree.CreateDatabase{
-      IfNotExists: true,
-      Name: tree.Name($6),
-      Owner: $8,
-      Template: $9,
-      Encoding: $10,
-      Strategy: $11,
-      Locale: $12,
-      Collate: $13,
-      CType: $14,
-      IcuLocale: $15,
-      IcuRules: $16,
-      LocaleProvider: $17,
-      CollationVersion: $18,
-      Tablespace: $19,
-      AllowConnections: $20.expr(),
-      ConnectionLimit: $21.expr(),
-      IsTemplate: $22.expr(),
-      Oid: $23.expr(),
-    }
-   }
+    db, err := makeCreateDatabase(tree.Name($6), true, $8.kvOptions())
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = db
+  }
 | CREATE DATABASE error // SHOW HELP: CREATE DATABASE
 
-// Optional parameters can be written in any order, not only the order illustrated above.
-opt_owner:
+create_database_options:
+  /* EMPTY */ { $$.val = []tree.KVOption(nil) }
+| create_database_options create_database_option
+  { $$.val = append($1.kvOptions(), $2.kvOption()) }
+
+// Database options are unordered; duplicate detection occurs before constructing the AST.
+create_database_option:
   OWNER opt_equal role_spec
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
+  { $$.val = tree.KVOption{Key: "owner", Value: tree.NewStrVal($3)} }
+| TEMPLATE opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "template", Value: tree.NewStrVal($3)} }
+| ENCODING opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "encoding", Value: tree.NewStrVal($3)} }
+| STRATEGY opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "strategy", Value: tree.NewStrVal($3)} }
+| LOCALE opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "locale", Value: tree.NewStrVal($3)} }
+| LC_COLLATE opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "lc_collate", Value: tree.NewStrVal($3)} }
+| LC_CTYPE opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "lc_ctype", Value: tree.NewStrVal($3)} }
+| ICU_LOCALE opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "icu_locale", Value: tree.NewStrVal($3)} }
+| ICU_RULES opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "icu_rules", Value: tree.NewStrVal($3)} }
+| LOCALE_PROVIDER opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "locale_provider", Value: tree.NewStrVal($3)} }
+| COLLATION_VERSION opt_equal non_reserved_word_or_sconst
+  { $$.val = tree.KVOption{Key: "collation_version", Value: tree.NewStrVal($3)} }
+| TABLESPACE opt_equal tablespace_name
+  { $$.val = tree.KVOption{Key: "tablespace", Value: tree.NewStrVal($3)} }
+| ALLOW_CONNECTIONS opt_equal a_expr
+  { $$.val = tree.KVOption{Key: "allow_connections", Value: $3.expr()} }
+| CONNECTION LIMIT opt_equal signed_iconst
+  { $$.val = tree.KVOption{Key: "connection limit", Value: $4.expr()} }
+| IS_TEMPLATE opt_equal a_expr
+  { $$.val = tree.KVOption{Key: "is_template", Value: $3.expr()} }
+| OID opt_equal signed_iconst
+  { $$.val = tree.KVOption{Key: "oid", Value: $3.expr()} }
 
-opt_template:
-  TEMPLATE opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_encoding:
-  ENCODING opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_strategy:
-  STRATEGY opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_locale:
-  LOCALE opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_lc_collate:
-  LC_COLLATE opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_lc_ctype:
-  LC_CTYPE opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_icu_locale:
-  ICU_LOCALE opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_icu_rules:
-  ICU_RULES opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_locale_provider:
-  LOCALE_PROVIDER opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_collation_version:
-  COLLATION_VERSION opt_equal non_reserved_word_or_sconst
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
+// Shared by CREATE TABLE, INDEX and MATERIALIZED VIEW.
 opt_tablespace:
-  TABLESPACE opt_equal tablespace_name
-  {
-    $$ = $3
-  }
-| /* EMPTY */
-  {
-    $$ = ""
-  }
-
-opt_allow_connections:
-  ALLOW_CONNECTIONS opt_equal a_expr
-  {
-    $$.val = $3.expr()
-  }
-| /* EMPTY */
-  {
-    $$.val = nil
-  }
-
-opt_connection_limit:
-  CONNECTION LIMIT opt_equal signed_iconst
-  {
-    $$.val = $4.expr()
-  }
-| /* EMPTY */
-  {
-    $$.val = nil
-  }
-
-opt_is_template:
-  IS_TEMPLATE opt_equal a_expr
-  {
-    $$.val = $3.expr()
-  }
-| /* EMPTY */
-  {
-    $$.val = nil
-  }
-
-opt_oid:
-  OID opt_equal signed_iconst
-  {
-    $$.val = $3.expr()
-  }
-| /* EMPTY */
-  {
-    $$.val = nil
-  }
+  TABLESPACE opt_equal tablespace_name { $$ = $3 }
+| /* EMPTY */ { $$ = "" }
 
 opt_equal:
   '=' {}
