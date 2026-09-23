@@ -124,7 +124,7 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 		return nil
 	}
 
-	ctx, err := h.doltgresHandler.sm.NewContextWithQuery(context.Background(), h.mysqlConn, query.String)
+	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, query.String)
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/sessionstate"
@@ -89,5 +90,37 @@ func TestIdentityExpressionsUseSelectedRole(t *testing.T) {
 	})
 	if _, err := identityName(ctx, "current_user"); err == nil {
 		t.Fatal("deleted ID resolved to replacement role")
+	}
+}
+
+func TestDoltProcedureAdminGateUsesEffectiveRole(t *testing.T) {
+	auth.Init(nil, nil)
+	loginName, _ := auth.GetSuperUserAndPassword()
+	var actor auth.Role
+	auth.LockWrite(func() {
+		actor = auth.CreateDefaultRole("actor")
+		auth.SetRole(actor)
+	})
+	ctx := sql.NewContext(context.Background(), sql.WithSession(&dsess.DoltSession{Session: sql.NewBaseSession()}))
+	if err := auth.InitializeSessionIdentity(ctx.Session, loginName); err != nil {
+		t.Fatal(err)
+	}
+	selectRole := func(target sessionstate.RoleID) {
+		t.Helper()
+		if err := core.ApplyAuthorizedIdentityChange(ctx, false, func(next *sessionstate.Identity) error {
+			next.SelectRole(target)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	procedure := &plan.ExternalProcedure{ExternalStoredProcedureDetails: sql.ExternalStoredProcedureDetails{ReadOnly: true, AdminOnly: true}}
+	selectRole(sessionstate.RoleID(actor.ID()))
+	if err := checkDoltProcedureAccess(ctx, procedure); err != ErrDoltProcedurePermissionDenied {
+		t.Fatalf("ordinary role access = %v", err)
+	}
+	selectRole(0)
+	if err := checkDoltProcedureAccess(ctx, procedure); err != nil {
+		t.Fatalf("login superuser access = %v", err)
 	}
 }

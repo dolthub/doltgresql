@@ -181,19 +181,20 @@ func (r *Revoke) common(ctx *sql.Context) (roles []auth.Role, userRole auth.Role
 		}
 	}
 	// Then we'll check that the role that is revoking the privileges exists
-	userRole = auth.GetRole(ctx.Client().User)
-	if !userRole.IsValid() {
-		return nil, auth.Role{}, 0, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	userRole, err = auth.CurrentRoleLocked(ctx)
+	if err != nil {
+		return nil, auth.Role{}, 0, err
 	}
 	if len(r.GrantedBy) != 0 {
 		grantedByRole := auth.GetRole(r.GrantedBy)
 		if !grantedByRole.IsValid() {
 			return nil, auth.Role{}, 0, errors.Errorf(`role "%s" does not exist`, r.GrantedBy)
 		}
-		if groupID, _, _ := auth.IsRoleAMember(userRole.ID(), grantedByRole.ID()); !groupID.IsValid() {
+		if !auth.CanSetRole(userRole.ID(), grantedByRole.ID()) {
 			// TODO: grab the actual error message
 			return nil, auth.Role{}, 0, errors.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
 		}
+		grantedByID = grantedByRole.ID()
 	} else {
 		grantedByID = userRole.ID()
 	}
@@ -383,8 +384,7 @@ func (r *Revoke) revokeRole(ctx *sql.Context) error {
 	}
 	for _, member := range members {
 		for _, group := range groups {
-			memberGroupID, _, withAdminOption := auth.IsRoleAMember(userRole.ID(), group.ID())
-			if !memberGroupID.IsValid() || !withAdminOption {
+			if !auth.CanAdministerRole(userRole.ID(), group.ID()) {
 				// TODO: grab the actual error message
 				return errors.Errorf(`role "%s" does not have permission to revoke role "%s"`, userRole.Name, group.Name)
 			}
