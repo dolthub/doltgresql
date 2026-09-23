@@ -62,9 +62,6 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Stateme
 				Type: triggers.TriggerEventType_Insert,
 			})
 		case tree.TriggerEventUpdate:
-			if len(event.Cols) > 0 {
-				return NotYetSupportedError("UPDATE specific columns are not yet supported for CREATE TRIGGER")
-			}
 			events = append(events, triggers.TriggerEvent{
 				Type:        triggers.TriggerEventType_Update,
 				ColumnNames: event.Cols.ToStrings(),

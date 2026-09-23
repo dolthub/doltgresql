@@ -1110,6 +1110,188 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "UPDATE OF specific columns",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT4 PRIMARY KEY, name TEXT, data TEXT, other TEXT);",
+				"INSERT INTO test VALUES (1, 'a', 'b', 'c');",
+				"CREATE TABLE log (msg TEXT);",
+				`CREATE FUNCTION trig_func1() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log VALUES ('tr1: ' || OLD.name || ',' || OLD.data || ',' || OLD.other || ' -> ' || NEW.name || ',' || NEW.data || ',' || NEW.other);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION trig_func4() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log VALUES ('tr4: ' || OLD.name || ',' || OLD.data || ',' || OLD.other || ' -> ' || NEW.name || ',' || NEW.data || ',' || NEW.other);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TRIGGER tr1 BEFORE UPDATE OF name, data ON test FOR EACH ROW EXECUTE PROCEDURE trig_func1();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE TRIGGER tr2 BEFORE UPDATE OF nope ON test FOR EACH ROW EXECUTE PROCEDURE trig_func1();",
+					ExpectedErr: `column "nope" of relation "test" does not exist`,
+				},
+				{
+					Query:       "CREATE TRIGGER tr3 BEFORE UPDATE OF name, name ON test FOR EACH ROW EXECUTE PROCEDURE trig_func1();",
+					ExpectedErr: `column "name" specified more than once`,
+				},
+				{
+					Query:    "CREATE TRIGGER tr4 AFTER INSERT OR UPDATE OF other ON test FOR EACH ROW EXECUTE PROCEDURE trig_func4();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE test SET other = 'd';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE test SET name = 'e';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE test SET data = data;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE test SET id = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM log ORDER BY msg;",
+					Expected: []sql.Row{
+						{"tr1: a,b,d -> e,b,d"},
+						{"tr1: e,b,d -> e,b,d"},
+						{"tr4: a,b,c -> a,b,d"},
+					},
+				},
+				{
+					Query:    "SELECT tgname, tgattr::TEXT, tgtype FROM pg_trigger WHERE tgrelid = 'test'::regclass ORDER BY tgname;",
+					Expected: []sql.Row{{"tr1", "2 3", 19}, {"tr4", "4", 21}},
+				},
+			},
+		},
+		{
+			Name: "UPDATE OF columns that are renamed or dropped",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT4 PRIMARY KEY, name TEXT, data TEXT, other TEXT);",
+				"INSERT INTO test VALUES (1, 'a', 'b', 'c');",
+				"CREATE TABLE log (msg TEXT);",
+				`CREATE FUNCTION trig_func1() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log VALUES ('tr1: ' || NEW.id);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION trig_func4() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log VALUES ('tr4: ' || NEW.id);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				"CREATE TRIGGER tr1 BEFORE UPDATE OF name, data ON public.test FOR EACH ROW EXECUTE FUNCTION trig_func1();",
+				"CREATE TRIGGER tr4 AFTER INSERT OR UPDATE OF other ON public.test FOR EACH ROW EXECUTE FUNCTION trig_func4();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE test RENAME COLUMN name TO "Name2";`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `UPDATE test SET "Name2" = 'x';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM log ORDER BY msg;",
+					Expected: []sql.Row{{"tr1: 1"}},
+				},
+				{
+					Query: "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid = 'test'::regclass ORDER BY tgname;",
+					Expected: []sql.Row{
+						{`CREATE TRIGGER tr1 BEFORE UPDATE OF "Name2", data ON public.test FOR EACH ROW EXECUTE FUNCTION trig_func1()`},
+						{"CREATE TRIGGER tr4 AFTER INSERT OR UPDATE OF other ON public.test FOR EACH ROW EXECUTE FUNCTION trig_func4()"},
+					},
+				},
+				{
+					Query:    "SELECT tgname, tgattr::TEXT FROM pg_trigger WHERE tgrelid = 'test'::regclass ORDER BY tgname;",
+					Expected: []sql.Row{{"tr1", "2 3"}, {"tr4", "4"}},
+				},
+				{
+					Query:       "ALTER TABLE test DROP COLUMN data;",
+					ExpectedErr: "cannot drop column data of table test because other objects depend on it",
+				},
+				{
+					Query:       "ALTER TABLE test DROP COLUMN other;",
+					ExpectedErr: "cannot drop column other of table test because other objects depend on it",
+				},
+				{
+					Query:    "ALTER TABLE test DROP COLUMN data CASCADE;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT tgname FROM pg_trigger WHERE tgrelid = 'test'::regclass ORDER BY tgname;",
+					Expected: []sql.Row{{"tr4"}},
+				},
+			},
+		},
+		{
+			Name: "UPDATE OF triggers alongside an ordinary UPDATE trigger",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT4 PRIMARY KEY, name TEXT, data TEXT);",
+				"INSERT INTO test VALUES (1, 'initial', 'initial');",
+				"CREATE TABLE log (kind TEXT, id INT4, name TEXT, data TEXT);",
+				`CREATE FUNCTION log_ordinary() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log VALUES ('ordinary', NEW.id, NEW.name, NEW.data);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION log_named_before() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log VALUES ('named_before', NEW.id, NEW.name, NEW.data);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION log_named_after() RETURNS TRIGGER AS $$
+				BEGIN
+					INSERT INTO log VALUES ('named_after', NEW.id, NEW.name, NEW.data);
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				"CREATE TRIGGER ordinary BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION log_ordinary();",
+				"CREATE TRIGGER named_before BEFORE UPDATE OF name ON test FOR EACH ROW EXECUTE FUNCTION log_named_before();",
+				"CREATE TRIGGER named_after AFTER UPDATE OF name ON test FOR EACH ROW EXECUTE FUNCTION log_named_after();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE test SET data = 'data-only' WHERE id = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE test AS t SET data = 'aliased' WHERE t.id = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE test SET name = name WHERE id = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM log ORDER BY data, kind;",
+					Expected: []sql.Row{
+						{"named_after", 1, "initial", "aliased"},
+						{"named_before", 1, "initial", "aliased"},
+						{"ordinary", 1, "initial", "aliased"},
+						{"ordinary", 1, "initial", "aliased"},
+						{"ordinary", 1, "initial", "data-only"},
+					},
+				},
+			},
+		},
 	})
 }
 
