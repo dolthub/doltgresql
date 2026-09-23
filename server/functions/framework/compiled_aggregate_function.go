@@ -62,11 +62,11 @@ func newCompiledAggregateFunctionInternal(ctx *sql.Context, name string, args []
 // the arguments actually bound, rather than a single implementation shared across every overload of the name.
 func (c *CompiledAggregateFunction) aggregateOverload() (AggregateFunctionInterface, error) {
 	if !c.overload.Valid() {
-		return nil, cerrors.Errorf("%s: no matching overload was resolved", c.Name)
+		return nil, cerrors.Errorf("%s: no matching overload was resolved", c.name)
 	}
 	agg, ok := c.overload.Function().(AggregateFunctionInterface)
 	if !ok {
-		return nil, cerrors.Errorf("%s: resolved overload is not an aggregate function", c.Name)
+		return nil, cerrors.Errorf("%s: resolved overload is not an aggregate function", c.name)
 	}
 	return agg, nil
 }
@@ -97,7 +97,7 @@ func (c *CompiledAggregateFunction) WithChildren(ctx *sql.Context, children ...s
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledAggregateFunctionInternal(ctx, c.Name, children[:numArgs], c.overloads, c.fnOverloads)
+	nc := newCompiledAggregateFunctionInternal(ctx, c.name, children[:numArgs], c.overloads, c.fnOverloads)
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {
@@ -132,7 +132,7 @@ func (*CompiledAggregateFunction) specificFuncImpl() {}
 func (c *CompiledAggregateFunction) DebugString(ctx *sql.Context) string {
 	sb := strings.Builder{}
 	sb.WriteString("CompiledAggregateFunction:")
-	sb.WriteString(c.Name + "(")
+	sb.WriteString(c.name + "(")
 	for i, param := range c.Arguments {
 		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
 		if alias, ok := param.(*expression.Alias); ok {
@@ -183,7 +183,7 @@ func (c *CompiledAggregateFunction) NewWindowFunction(ctx *sql.Context) (sql.Win
 	}
 	newWindowFunc := agg.NewWindowFunc()
 	if newWindowFunc == nil {
-		return nil, cerrors.Errorf("aggregate function %s cannot be used as a window function", c.Name)
+		return nil, cerrors.Errorf("aggregate function %s cannot be used as a window function", c.name)
 	}
 	args, err := cloneArguments(ctx, c.Arguments)
 	if err != nil {

@@ -140,7 +140,7 @@ func sanitizeExprType(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Ex
 			if _, ok := expr.(sql.WindowAdaptableExpression); ok {
 				return expr, transform.SameTree, nil
 			}
-			switch expr.FunctionName() {
+			switch expr.Name() {
 			case "coalesce":
 				// Replace GMS Coalesce with a Doltgres-native implementation that uses
 				// Postgres type-resolution rules (FindCommonType) to infer the result type.

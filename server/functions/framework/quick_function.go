@@ -41,7 +41,7 @@ type QuickFunction interface {
 
 // QuickFunction1 is an implementation of QuickFunction that handles a single parameter.
 type QuickFunction1 struct {
-	Name         string
+	name         string
 	Argument     sql.Expression
 	IsStrict     bool
 	IsSRF        bool
@@ -51,14 +51,14 @@ type QuickFunction1 struct {
 
 var _ QuickFunction = (*QuickFunction1)(nil)
 
-// FunctionName implements the interface sql.Expression.
-func (q *QuickFunction1) FunctionName() string {
-	return q.Name
+// Name implements the interface sql.FunctionExpression.
+func (q *QuickFunction1) Name() string {
+	return q.name
 }
 
 // Description implements the interface sql.Expression.
 func (q *QuickFunction1) Description() string {
-	return fmt.Sprintf("The PostgreSQL function `%s`", q.Name)
+	return fmt.Sprintf("The PostgreSQL function `%s`", q.name)
 }
 
 // Resolved implements the interface sql.Expression.
@@ -70,7 +70,7 @@ func (q *QuickFunction1) Resolved() bool {
 func (q *QuickFunction1) String() string {
 	// We'll reuse the compiled function's output so that the logic is centralized
 	c := CompiledFunction{
-		Name:      q.Name,
+		name:      q.name,
 		Arguments: []sql.Expression{q.Argument},
 	}
 	return c.String()
@@ -109,7 +109,7 @@ func (q *QuickFunction1) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
+	return rowIterForSRF(q.name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.
@@ -137,7 +137,7 @@ func (q *QuickFunction1) ResolvedTypes() []*pgtypes.DoltgresType {
 // WithResolvedTypes implements the interface QuickFunction.
 func (q *QuickFunction1) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any {
 	return &QuickFunction1{
-		Name:         q.Name,
+		name:         q.name,
 		Argument:     q.Argument,
 		IsStrict:     q.IsStrict,
 		IsSRF:        q.IsSRF,
@@ -171,7 +171,7 @@ func (*QuickFunction1) specificFuncImpl() {}
 
 // QuickFunction2 is an implementation of QuickFunction that handles two parameters.
 type QuickFunction2 struct {
-	Name         string
+	name         string
 	Arguments    [2]sql.Expression
 	IsStrict     bool
 	IsSRF        bool
@@ -181,14 +181,14 @@ type QuickFunction2 struct {
 
 var _ QuickFunction = (*QuickFunction2)(nil)
 
-// FunctionName implements the interface sql.Expression.
-func (q *QuickFunction2) FunctionName() string {
-	return q.Name
+// Name implements the interface sql.FunctionExpression.
+func (q *QuickFunction2) Name() string {
+	return q.name
 }
 
 // Description implements the interface sql.Expression.
 func (q *QuickFunction2) Description() string {
-	return fmt.Sprintf("The PostgreSQL function `%s`", q.Name)
+	return fmt.Sprintf("The PostgreSQL function `%s`", q.name)
 }
 
 // Resolved implements the interface sql.Expression.
@@ -200,7 +200,7 @@ func (q *QuickFunction2) Resolved() bool {
 func (q *QuickFunction2) String() string {
 	// We'll reuse the compiled function's output so that the logic is centralized
 	c := CompiledFunction{
-		Name:      q.Name,
+		name:      q.name,
 		Arguments: q.Arguments[:],
 	}
 	return c.String()
@@ -243,7 +243,7 @@ func (q *QuickFunction2) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
+	return rowIterForSRF(q.name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.
@@ -271,7 +271,7 @@ func (q *QuickFunction2) ResolvedTypes() []*pgtypes.DoltgresType {
 // WithResolvedTypes implements the interface QuickFunction.
 func (q *QuickFunction2) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any {
 	return &QuickFunction2{
-		Name:         q.Name,
+		name:         q.name,
 		Arguments:    q.Arguments,
 		IsStrict:     q.IsStrict,
 		IsSRF:        q.IsSRF,
@@ -306,7 +306,7 @@ func (*QuickFunction2) specificFuncImpl() {}
 
 // QuickFunction3 is an implementation of QuickFunction that handles three parameters.
 type QuickFunction3 struct {
-	Name         string
+	name         string
 	Arguments    [3]sql.Expression
 	IsStrict     bool
 	IsSRF        bool
@@ -316,14 +316,14 @@ type QuickFunction3 struct {
 
 var _ QuickFunction = (*QuickFunction3)(nil)
 
-// FunctionName implements the interface sql.Expression.
-func (q *QuickFunction3) FunctionName() string {
-	return q.Name
+// Name implements the interface sql.FunctionExpression.
+func (q *QuickFunction3) Name() string {
+	return q.name
 }
 
 // Description implements the interface sql.Expression.
 func (q *QuickFunction3) Description() string {
-	return fmt.Sprintf("The PostgreSQL function `%s`", q.Name)
+	return fmt.Sprintf("The PostgreSQL function `%s`", q.name)
 }
 
 // Resolved implements the interface sql.Expression.
@@ -335,7 +335,7 @@ func (q *QuickFunction3) Resolved() bool {
 func (q *QuickFunction3) String() string {
 	// We'll reuse the compiled function's output so that the logic is centralized
 	c := CompiledFunction{
-		Name:      q.Name,
+		name:      q.name,
 		Arguments: q.Arguments[:],
 	}
 	return c.String()
@@ -378,7 +378,7 @@ func (q *QuickFunction3) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
+	return rowIterForSRF(q.name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.
@@ -406,7 +406,7 @@ func (q *QuickFunction3) ResolvedTypes() []*pgtypes.DoltgresType {
 // WithResolvedTypes implements the interface QuickFunction.
 func (q *QuickFunction3) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any {
 	return &QuickFunction3{
-		Name:         q.Name,
+		name:         q.name,
 		Arguments:    q.Arguments,
 		IsStrict:     q.IsStrict,
 		IsSRF:        q.IsSRF,

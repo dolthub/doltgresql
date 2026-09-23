@@ -47,7 +47,7 @@ type Function interface {
 
 // CompiledFunction is an expression that represents a fully-analyzed PostgreSQL function.
 type CompiledFunction struct {
-	Name           string
+	name           string
 	Arguments      []sql.Expression
 	IsOperator     bool
 	overloads      *Overloads
@@ -113,7 +113,7 @@ func newCompiledFunctionInternal(
 	runner sql.StatementRunner,
 ) *CompiledFunction {
 	c := &CompiledFunction{
-		Name:        name,
+		name:        name,
 		Arguments:   args,
 		IsOperator:  isOperator,
 		overloads:   overloads,
@@ -193,7 +193,7 @@ func newCompiledFunctionInternal(
 	if returnType.IsPolymorphicType() {
 		if hasPolymorphicParam {
 			c.callResolved[len(c.callResolved)-1] = c.resolvePolymorphicReturnType(overload.params.paramTypes, originalTypes, returnType)
-		} else if c.Name == "array_in" || c.Name == "array_recv" || c.Name == "enum_in" || c.Name == "enum_recv" || c.Name == "anyenum_in" || c.Name == "anyenum_recv" {
+		} else if c.name == "array_in" || c.name == "array_recv" || c.name == "enum_in" || c.name == "enum_recv" || c.name == "anyenum_in" || c.name == "anyenum_recv" {
 			// The return type should resolve to the type of OID value passed in as second argument.
 			// TODO: Possible that the oid type has a special property with polymorphic return types,
 			//  in that perhaps their value will set the return type in the absence of another polymorphic type in the parameter list
@@ -209,14 +209,14 @@ func newCompiledFunctionInternal(
 	return c
 }
 
-// FunctionName implements the interface sql.Expression.
-func (c *CompiledFunction) FunctionName() string {
-	return c.Name
+// Name implements the interface sql.FunctionExpression.
+func (c *CompiledFunction) Name() string {
+	return c.name
 }
 
 // Description implements the interface sql.Expression.
 func (c *CompiledFunction) Description() string {
-	return fmt.Sprintf("The PostgreSQL function `%s`", c.Name)
+	return fmt.Sprintf("The PostgreSQL function `%s`", c.name)
 }
 
 // OutParametersSchema implements the interface sql.ExtendedTableFunction. It returns the columns this function
@@ -290,7 +290,7 @@ func (c *CompiledFunction) StashedError() error {
 // String implements the interface sql.Expression.
 func (c *CompiledFunction) String() string {
 	sb := strings.Builder{}
-	sb.WriteString(c.Name + "(")
+	sb.WriteString(c.name + "(")
 	for i, param := range c.Arguments {
 		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
 		if alias, ok := param.(*expression.Alias); ok {
@@ -308,7 +308,7 @@ func (c *CompiledFunction) String() string {
 // OverloadString returns the name of the function represented by the given overload.
 func (c *CompiledFunction) OverloadString(types []*pgtypes.DoltgresType) string {
 	sb := strings.Builder{}
-	sb.WriteString(c.Name + "(")
+	sb.WriteString(c.name + "(")
 	for i, t := range types {
 		if i > 0 {
 			sb.WriteString(", ")
@@ -603,7 +603,7 @@ func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter
 	if c.overload.Valid() {
 		outParams = c.overload.Function().GetOutParameters()
 	}
-	return rowIterForSRF(c.Name, eval, outParams)
+	return rowIterForSRF(c.name, eval, outParams)
 }
 
 // rowIterForSRF converts the value returned by a set-returning function into the sql.RowIter used to expand it in a
@@ -759,7 +759,7 @@ func (c *CompiledFunction) WithChildren(ctx *sql.Context, children ...sql.Expres
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner)
+	nc := newCompiledFunctionInternal(ctx, c.name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner)
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {
@@ -790,7 +790,7 @@ func (c *CompiledFunction) GetQuickFunction(ctx *sql.Context) QuickFunction {
 	switch f := c.overload.Function().(type) {
 	case Function1:
 		return &QuickFunction1{
-			Name:         c.Name,
+			name:         c.name,
 			Argument:     args[0],
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),
@@ -799,7 +799,7 @@ func (c *CompiledFunction) GetQuickFunction(ctx *sql.Context) QuickFunction {
 		}
 	case Function2:
 		return &QuickFunction2{
-			Name:         c.Name,
+			name:         c.name,
 			Arguments:    ([2]sql.Expression)(args),
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),
@@ -808,7 +808,7 @@ func (c *CompiledFunction) GetQuickFunction(ctx *sql.Context) QuickFunction {
 		}
 	case Function3:
 		return &QuickFunction3{
-			Name:         c.Name,
+			name:         c.name,
 			Arguments:    ([3]sql.Expression)(args),
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),

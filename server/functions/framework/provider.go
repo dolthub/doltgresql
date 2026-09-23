@@ -176,19 +176,13 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 		return nil, false
 	}
 	if len(aggOverloads) > 0 || len(AggregateCatalog[name]) > 0 {
-		return sql.FunctionN{
-			Name: name,
-			Fn: func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
-				return NewCompiledAggregateFunction(ctx, name, params, overloadTree), nil
-			},
-		}, true
+		return sql.NewFunctionN(name, func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
+			return NewCompiledAggregateFunction(ctx, name, params, overloadTree), nil
+		}), true
 	}
-	return sql.FunctionN{
-		Name: name,
-		Fn: func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
-			return NewCompiledFunction(ctx, name, params, overloadTree, false), nil
-		},
-	}, true
+	return sql.NewFunctionN(name, func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
+		return NewCompiledFunction(ctx, name, params, overloadTree, false), nil
+	}), true
 }
 
 // addBuiltInOverloads adds the built-in overloads of the given name to the tree, skipping any signature that a

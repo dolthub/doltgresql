@@ -150,7 +150,7 @@ func replaceGmsBuiltIns() {
 	}
 	var newBuiltIns []sql.Function
 	for _, f := range function.BuiltIns {
-		if _, ok := functionNames[strings.ToLower(f.FunctionName())]; !ok {
+		if _, ok := functionNames[strings.ToLower(f.Name())]; !ok {
 			newBuiltIns = append(newBuiltIns, f)
 		}
 	}
@@ -210,10 +210,7 @@ func compileNonOperatorFunction(funcName string, overloads []FunctionInterface) 
 	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
 		return NewCompiledFunction(ctx, funcName, params, overloadTree, false), nil
 	}
-	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
-		Name: funcName,
-		Fn:   createFunc,
-	})
+	function.BuiltIns = append(function.BuiltIns, sql.NewFunctionN(funcName, createFunc))
 	compiledCatalog[funcName] = createFunc
 }
 
@@ -231,10 +228,7 @@ func compileAggFunction(funcName string, overloads []AggregateFunctionInterface)
 	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
 		return NewCompiledAggregateFunction(ctx, funcName, params, overloadTree), nil
 	}
-	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
-		Name: funcName,
-		Fn:   createFunc,
-	})
+	function.BuiltIns = append(function.BuiltIns, sql.NewFunctionN(funcName, createFunc))
 	compiledCatalog[funcName] = createFunc
 }
 
@@ -251,10 +245,7 @@ func compileWindowFunction(funcName string, overloads []WindowFunctionInterface)
 	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
 		return NewCompiledWindowFunction(ctx, funcName, params, overloadTree), nil
 	}
-	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
-		Name: funcName,
-		Fn:   createFunc,
-	})
+	function.BuiltIns = append(function.BuiltIns, sql.NewFunctionN(funcName, createFunc))
 	compiledCatalog[funcName] = createFunc
 }
 

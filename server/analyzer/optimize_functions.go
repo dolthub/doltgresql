@@ -47,7 +47,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		n, sameNode, err := transform.NodeExprsWithNode(ctx, projectNode.Child, func(ctx *sql.Context, in sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 				// TODO: need better way to detect sequence usage
-				switch compiledFunction.FunctionName() {
+				switch compiledFunction.Name() {
 				case "nextval", "setval", "currval":
 					err := authCheckSequenceFromExpr(ctx, a.Catalog.AuthHandler, compiledFunction.Arguments[0])
 					if err != nil {
@@ -96,7 +96,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 					return quickFunction, transform.NewTree, nil
 				}
 				// TODO: need better way to detect sequence usage
-				switch compiledFunction.FunctionName() {
+				switch compiledFunction.Name() {
 				case "nextval", "setval", "currval":
 					err = authCheckSequenceFromExpr(ctx, a.Catalog.AuthHandler, compiledFunction.Arguments[0])
 					if err != nil {

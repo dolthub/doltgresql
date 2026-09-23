@@ -48,8 +48,8 @@ func NewPgCoalesce(ctx *sql.Context, args ...sql.Expression) (*PgCoalesce, error
 	return expr.(*PgCoalesce), nil
 }
 
-// FunctionName implements sql.FunctionExpression.
-func (c *PgCoalesce) FunctionName() string { return "coalesce" }
+// Name implements sql.FunctionExpression.
+func (c *PgCoalesce) Name() string { return "coalesce" }
 
 // Description implements sql.FunctionExpression.
 func (c *PgCoalesce) Description() string { return "returns the first non-null value in a list." }

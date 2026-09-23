@@ -40,10 +40,10 @@ var _ sql.ExecSourceRel = (*UnnestTableFunction)(nil)
 // NewInstance implements the interface sql.TableFunction.
 func (u *UnnestTableFunction) NewInstance(ctx *sql.Context, database sql.Database, args []sql.Expression) (sql.Node, error) {
 	if len(args) == 1 {
-		unnest := sql.FunctionN{Name: u.Name(), Fn: func(ctx *sql.Context, args ...sql.Expression) (sql.Expression, error) {
+		unnest := sql.NewFunctionN(u.Name(), func(ctx *sql.Context, args ...sql.Expression) (sql.Expression, error) {
 			compiledFunction, _, err := framework.GetFunction(ctx, u.Name(), args...)
 			return compiledFunction, err
-		}}
+		})
 		return dtablefunctions.NewTableFunctionWrapper(unnest).NewInstance(ctx, database, args)
 	}
 	return (&UnnestTableFunction{database: database}).WithExpressions(ctx, args...)

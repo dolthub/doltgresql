@@ -56,11 +56,11 @@ func newCompiledWindowFunctionInternal(ctx *sql.Context, name string, args []sql
 // actual argument types, mirroring CompiledAggregateFunction.aggregateOverload.
 func (c *CompiledWindowFunction) windowOverload() (WindowFunctionInterface, error) {
 	if !c.overload.Valid() {
-		return nil, cerrors.Errorf("%s: no matching overload was resolved", c.Name)
+		return nil, cerrors.Errorf("%s: no matching overload was resolved", c.name)
 	}
 	fn, ok := c.overload.Function().(WindowFunctionInterface)
 	if !ok {
-		return nil, cerrors.Errorf("%s: resolved overload is not a window function", c.Name)
+		return nil, cerrors.Errorf("%s: resolved overload is not a window function", c.name)
 	}
 	return fn, nil
 }
@@ -91,7 +91,7 @@ func (c *CompiledWindowFunction) WithChildren(ctx *sql.Context, children ...sql.
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledWindowFunctionInternal(ctx, c.Name, children[:numArgs], c.overloads, c.fnOverloads)
+	nc := newCompiledWindowFunctionInternal(ctx, c.name, children[:numArgs], c.overloads, c.fnOverloads)
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {
@@ -126,7 +126,7 @@ func (*CompiledWindowFunction) specificFuncImpl() {}
 func (c *CompiledWindowFunction) DebugString(ctx *sql.Context) string {
 	sb := strings.Builder{}
 	sb.WriteString("CompiledWindowFunction:")
-	sb.WriteString(c.Name + "(")
+	sb.WriteString(c.name + "(")
 	for i, param := range c.Arguments {
 		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
 		if alias, ok := param.(*expression.Alias); ok {
@@ -160,7 +160,7 @@ func (c *CompiledWindowFunction) NewWindowFunction(ctx *sql.Context) (sql.Window
 	// non-nil, zero-value definition). Window-only functions like cume_dist() have no scalar evaluation path,
 	// so without this check a bare call reaches GMS's windowToIter with a nil window and panics.
 	if c.window == nil {
-		return nil, cerrors.Errorf("window function %s() requires an OVER clause", c.Name)
+		return nil, cerrors.Errorf("window function %s() requires an OVER clause", c.name)
 	}
 	fn, err := c.windowOverload()
 	if err != nil {
@@ -168,7 +168,7 @@ func (c *CompiledWindowFunction) NewWindowFunction(ctx *sql.Context) (sql.Window
 	}
 	newWindowFunc := fn.NewWindowFunc()
 	if newWindowFunc == nil {
-		return nil, cerrors.Errorf("function %s cannot be used as a window function", c.Name)
+		return nil, cerrors.Errorf("function %s cannot be used as a window function", c.name)
 	}
 	// See cloneArguments: each partition needs its own argument expression instances so stateful
 	// expressions (e.g. DISTINCT's dedup cache) don't leak state across partitions.

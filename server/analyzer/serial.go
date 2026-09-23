@@ -69,7 +69,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			transform.InspectExpr(ctx, col.Generated, func(ctx *sql.Context, expr sql.Expression) bool {
 				switch e := expr.(type) {
 				case *framework.CompiledFunction:
-					if strings.ToLower(e.Name) == "nextval" {
+					if strings.ToLower(e.Name()) == "nextval" {
 						seenNextVal = true
 					}
 				case *expression.Literal:
