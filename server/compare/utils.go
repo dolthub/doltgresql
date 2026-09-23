@@ -25,10 +25,10 @@ import (
 )
 
 // CompareRecords compares two record values using the specified comparison operator, |op| and returns a result
-// indicating if the comparison was true, false, or indeterminate (nil).
+// indicating if the comparison was true or false.
 //
 // More info on rules for comparing records:
-// https://www.postgresql.org/docs/current/functions-comparisons.html#ROW-WISE-COMPARISON
+// https://www.postgresql.org/docs/current/functions-comparisons.html#COMPOSITE-TYPE-COMPARISON
 func CompareRecords(ctx *sql.Context, op framework.Operator, v1 interface{}, v2 interface{}) (res any, err error) {
 	leftRecord, rightRecord, err := checkRecordArgs(v1, v2)
 	if err != nil {
@@ -38,17 +38,22 @@ func CompareRecords(ctx *sql.Context, op framework.Operator, v1 interface{}, v2 
 	// TODO: This can be a hot path when filtering a large table against a tuple, for example.
 	//  We can reduce branching by splitting each case into their individual functions, which will also make the code
 	//  more readable. A downside would be a ton of repeated code.
-	var hasNull bool
 	var leftLiteral, rightLiteral expression.Literal
 	for i := 0; i < len(leftRecord); i++ {
-		// NULL values are by definition not comparable
+		// NULL values are equal to each other and greater than all other values
 		if leftRecord[i].Value == nil || rightRecord[i].Value == nil {
-			switch op {
-			case framework.Operator_BinaryEqual, framework.Operator_BinaryNotEqual:
-				hasNull = true
+			if leftRecord[i].Value == nil && rightRecord[i].Value == nil {
 				continue
+			}
+			switch op {
+			case framework.Operator_BinaryEqual:
+				return false, nil
+			case framework.Operator_BinaryNotEqual:
+				return true, nil
+			case framework.Operator_BinaryLessThan, framework.Operator_BinaryLessOrEqual:
+				return rightRecord[i].Value == nil, nil
 			default:
-				return nil, nil
+				return leftRecord[i].Value == nil, nil
 			}
 		}
 		leftLiteral.Val = leftRecord[i].Value
@@ -100,10 +105,6 @@ func CompareRecords(ctx *sql.Context, op framework.Operator, v1 interface{}, v2 
 		default:
 			return false, fmt.Errorf("unsupported binary operator: %s", op)
 		}
-	}
-
-	if hasNull {
-		return nil, nil
 	}
 
 	// Every field is equal

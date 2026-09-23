@@ -387,5 +387,141 @@ func TestRecords(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ROW() NULL handling depends on the comparison context",
+			SetUpScript: []string{
+				"CREATE TYPE ct AS (a INT4, b INT4);",
+				"CREATE TABLE ctt (id INT4, c ct);",
+				"INSERT INTO ctt VALUES (1, ROW(1, NULL)), (2, ROW(1, 2)), (3, ROW(NULL, NULL)), (4, NULL);",
+				"CREATE TABLE rf (id INT4 PRIMARY KEY, a INT4, b INT4);",
+				"CREATE INDEX rfi ON rf (a, b);",
+				"INSERT INTO rf VALUES (1, 1, NULL), (2, 1, 2), (3, 2, 1);",
+				"CREATE TABLE ck (a INT4, b INT4, CHECK ((a, b) < (5, 5)));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT ROW(NULL::INT4) = ROW(NULL::INT4), ROW(NULL::INT4) = ANY(ARRAY[ROW(NULL::INT4)]);",
+					Expected: []sql.Row{{nil, "t"}},
+				},
+				{
+					Query:    "SELECT ROW(1, NULL::INT4) = ANY(ARRAY[ROW(1, NULL::INT4)]), ROW(1, NULL::INT4) <> ALL(ARRAY[ROW(1, NULL::INT4)]), ROW(1, NULL::INT4) < ANY(ARRAY[ROW(1, 2)]), ROW(1, 2) < ANY(ARRAY[ROW(1, NULL::INT4)]), ROW(1, NULL::INT4) > ANY(ARRAY[ROW(1, 2)]);",
+					Expected: []sql.Row{{"t", "f", "f", "t", "t"}},
+				},
+				{
+					Query:    "SELECT ROW(1, NULL::INT4) IS DISTINCT FROM ROW(1, NULL::INT4), ROW(1, NULL::INT4) = ALL(ARRAY[ROW(1, NULL::INT4)]), ROW(1, NULL::INT4) <= ANY(ARRAY[ROW(1, NULL::INT4)]), ROW(NULL::INT4, 1) < ANY(ARRAY[ROW(1, 1)]);",
+					Expected: []sql.Row{{"f", "t", "t", "f"}},
+				},
+				{
+					Query:    "SELECT ROW(ROW(NULL::INT4)) = ROW(ROW(NULL::INT4)), ARRAY[ROW(NULL::INT4)] = ARRAY[ROW(NULL::INT4)];",
+					Expected: []sql.Row{{"t", "t"}},
+				},
+				{
+					Query:    "SELECT record_eq(ROW(NULL::INT4), ROW(NULL::INT4)), record_lt(ROW(NULL::INT4), ROW(1)), record_gt(ROW(NULL::INT4), ROW(1)), record_ne(ROW(1, NULL::INT4), ROW(1, NULL::INT4));",
+					Expected: []sql.Row{{"t", "f", "t", "f"}},
+				},
+				{
+					Query:    "SELECT ROW(1, NULL)::ct = ROW(1, NULL)::ct, (ROW(1, NULL::INT4)) = (ROW(1, NULL::INT4)), (1, NULL::INT4) = (1, NULL::INT4), ROW(1, NULL)::ct = ROW(1, NULL::INT4);",
+					Expected: []sql.Row{{"t", nil, nil, "t"}},
+				},
+				{
+					Query:    "SELECT ROW(1, NULL::INT4) < ROW(1, NULL::INT4), ROW(NULL::INT4, 1) <= ROW(NULL::INT4, 1), ROW(1, 2, NULL::INT4) >= ROW(1, 1, NULL::INT4), ROW(1, 2, 3) > ROW(1, 2, NULL::INT4);",
+					Expected: []sql.Row{{nil, nil, "t", nil}},
+				},
+				{
+					Query:    "SELECT ROW(1, NULL::INT4) IN (ROW(1, NULL::INT4), ROW(2, 3)), ROW(1, NULL::INT4) NOT IN (ROW(1, NULL::INT4), ROW(2, 3)), ROW(1, NULL::INT4) IN (ROW(2, NULL::INT4), ROW(2, 3));",
+					Expected: []sql.Row{{nil, nil, "f"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 2) IN (ROW(1, 2)), ROW(1, 2) NOT IN (ROW(1, 3), ROW(2, 2));",
+					Expected: []sql.Row{{"t", "t"}},
+				},
+				{
+					Query:       "SELECT ROW(1, 2) IN (ROW(1, 2), ROW(1));",
+					ExpectedErr: "unequal number of entries",
+				},
+				{
+					Query: "SELECT id, c = c, c = ROW(1, NULL)::ct, c < ROW(1, 3)::ct, c > ROW(1, 3)::ct, c <> ROW(1, NULL)::ct, c >= ROW(NULL, NULL)::ct FROM ctt ORDER BY id;",
+					Expected: []sql.Row{
+						{1, "t", "t", "f", "t", "f", "f"},
+						{2, "t", "f", "t", "f", "t", "f"},
+						{3, "t", "f", "f", "t", "t", "t"},
+						{4, nil, nil, nil, nil, nil, nil},
+					},
+				},
+				{
+					Query: "SELECT id, ROW(1, NULL::INT4) = c, c = ROW(1, NULL::INT4), c IN (ROW(1, NULL::INT4)), ROW(1, NULL::INT4) IN (c) FROM ctt ORDER BY id;",
+					Expected: []sql.Row{
+						{1, "t", "t", "t", "t"},
+						{2, "f", "f", "f", "f"},
+						{3, "f", "f", "f", "f"},
+						{4, nil, nil, nil, nil},
+					},
+				},
+				{
+					Query:    "SELECT id FROM ctt WHERE c = ANY(ARRAY[ROW(1, NULL)::ct, ROW(NULL, NULL)::ct]) ORDER BY id;",
+					Expected: []sql.Row{{1}, {3}},
+				},
+				{
+					Query:    "SELECT id FROM ctt WHERE c IN (ROW(1, NULL)::ct, ROW(NULL, NULL)::ct) ORDER BY id;",
+					Expected: []sql.Row{{1}, {3}},
+				},
+				{
+					Query:    "SELECT id FROM ctt WHERE c IN (SELECT c FROM ctt WHERE id = 1) ORDER BY id;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE ROW(ROW(a, b)) = ROW(ROW(1, NULL::INT4)) ORDER BY id;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE ROW(a, b) = ROW(1, 2) ORDER BY id;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE (a, b) < (1, 3) ORDER BY id;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE (a, b) >= (1, 2) ORDER BY id;",
+					Expected: []sql.Row{{2}, {3}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE (a, b) > (1, 1) ORDER BY id;",
+					Expected: []sql.Row{{2}, {3}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE (a, b) <= (2, 0) ORDER BY id;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE (a, b) <> (1, 2) ORDER BY id;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE (a, b) IN ((1, 2), (2, 1)) ORDER BY id;",
+					Expected: []sql.Row{{2}, {3}},
+				},
+				{
+					Query:    "SELECT id FROM rf WHERE (a, b) NOT IN ((1, 2), (5, 5)) ORDER BY id;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:       "SELECT ROW() = ROW();",
+					ExpectedErr: "cannot compare rows of zero length",
+				},
+				{
+					Query:    "INSERT INTO ck VALUES (1, 9);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO ck VALUES (5, 6);",
+					ExpectedErr: "Check constraint",
+				},
+				{
+					Query:    "SELECT * FROM ck;",
+					Expected: []sql.Row{{1, 9}},
+				},
+			},
+		},
 	})
 }

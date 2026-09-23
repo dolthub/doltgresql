@@ -343,6 +343,16 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		if len(node.Schema) > 0 && node.Schema != "pg_catalog" {
 			return nil, errors.Errorf("schema %q not allowed in OPERATOR syntax", node.Schema)
 		}
+		if leftRow, ok := tree.StripParens(node.Left).(*tree.Tuple); ok {
+			if rightRow, ok := tree.StripParens(node.Right).(*tree.Tuple); ok {
+				switch node.Operator {
+				case tree.EQ, tree.NE, tree.LT, tree.LE, tree.GT, tree.GE:
+					return nodeRowComparison(ctx, node.Operator, leftRow, rightRow)
+				case tree.In, tree.NotIn:
+					return nodeRowIn(ctx, node.Operator, leftRow, rightRow)
+				}
+			}
+		}
 
 		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
@@ -1018,4 +1028,85 @@ func nodeDelimitedExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		node = parens.Expr
 	}
 	return nodeExpr(ctx, node)
+}
+
+// nodeRowComparison converts a comparison between two row constructors into comparisons between their fields.
+func nodeRowComparison(ctx *Context, operator tree.ComparisonOperator, left *tree.Tuple, right *tree.Tuple) (vitess.Expr, error) {
+	if len(left.Exprs) != len(right.Exprs) {
+		return nil, errors.Errorf("unequal number of entries in row expressions")
+	}
+	if len(left.Exprs) == 0 {
+		return nil, errors.Errorf("cannot compare rows of zero length")
+	}
+	lastOperator, err := framework.GetOperatorFromString(operator.String())
+	if err != nil {
+		return nil, err
+	}
+	fieldOperator := lastOperator
+	switch operator {
+	case tree.LE:
+		fieldOperator = framework.Operator_BinaryLessThan
+	case tree.GE:
+		fieldOperator = framework.Operator_BinaryGreaterThan
+	}
+	fieldComparison := func(operator framework.Operator, i int) (vitess.Expr, error) {
+		leftField, err := nodeExpr(ctx, left.Exprs[i])
+		if err != nil {
+			return nil, err
+		}
+		rightField, err := nodeExpr(ctx, right.Exprs[i])
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewBinaryOperator(operator),
+			Children:   vitess.Exprs{leftField, rightField},
+		}, nil
+	}
+	expr, err := fieldComparison(lastOperator, len(left.Exprs)-1)
+	if err != nil {
+		return nil, err
+	}
+	for i := len(left.Exprs) - 2; i >= 0; i-- {
+		comparison, err := fieldComparison(fieldOperator, i)
+		if err != nil {
+			return nil, err
+		}
+		switch operator {
+		case tree.EQ:
+			expr = &vitess.AndExpr{Left: comparison, Right: expr}
+		case tree.NE:
+			expr = &vitess.OrExpr{Left: comparison, Right: expr}
+		default:
+			equality, err := fieldComparison(framework.Operator_BinaryEqual, i)
+			if err != nil {
+				return nil, err
+			}
+			expr = &vitess.OrExpr{Left: comparison, Right: &vitess.AndExpr{Left: equality, Right: expr}}
+		}
+	}
+	return expr, nil
+}
+
+// nodeRowIn converts an IN or NOT IN with a row constructor on the left into an equality comparison against each value.
+func nodeRowIn(ctx *Context, operator tree.ComparisonOperator, left *tree.Tuple, right *tree.Tuple) (vitess.Expr, error) {
+	var expr vitess.Expr
+	for i := len(right.Exprs) - 1; i >= 0; i-- {
+		comparison, err := nodeExpr(ctx, &tree.ComparisonExpr{Operator: tree.EQ, Left: left, Right: right.Exprs[i]})
+		if err != nil {
+			return nil, err
+		}
+		if expr == nil {
+			expr = comparison
+		} else {
+			expr = &vitess.OrExpr{Left: comparison, Right: expr}
+		}
+	}
+	if operator == tree.NotIn {
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewNot(),
+			Children:   vitess.Exprs{expr},
+		}, nil
+	}
+	return expr, nil
 }
