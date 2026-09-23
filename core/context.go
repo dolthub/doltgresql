@@ -45,7 +45,7 @@ import (
 // identity and resource bookkeeping survive root/cache invalidation; the
 // collection, catalog, runner, and formatting fields are disposable caches.
 type contextValues struct {
-	identity sessionstate.Identity
+	identity sessionstate.Journal[sessionstate.Identity]
 	colls    map[string]*databaseCollections
 
 	pgCatalogCache any
@@ -68,10 +68,10 @@ func InitializeIdentityOnSession(sess sql.Session, id sessionstate.RoleID, super
 	if err != nil {
 		return err
 	}
-	if cv.identity.Initialized() {
+	if cv.identity.Current().Initialized() {
 		return errors.New("session identity is already initialized")
 	}
-	cv.identity = sessionstate.NewIdentity(id, superuser)
+	cv.identity = sessionstate.NewJournal(sessionstate.NewIdentity(id, superuser))
 	return nil
 }
 
@@ -82,10 +82,10 @@ func IdentityFromSession(sess sql.Session) (sessionstate.IdentitySnapshot, error
 	if err != nil {
 		return sessionstate.IdentitySnapshot{}, err
 	}
-	if !cv.identity.Initialized() {
+	if !cv.identity.Current().Initialized() {
 		return sessionstate.IdentitySnapshot{}, errors.New("session identity is not initialized")
 	}
-	return cv.identity.Snapshot(), nil
+	return cv.identity.Current().Snapshot(), nil
 }
 
 // InitializeIdentity is a context convenience wrapper for SQL entry points.
@@ -104,7 +104,41 @@ func Identity(ctx *sql.Context) (sessionstate.IdentitySnapshot, error) {
 	return IdentityFromSession(ctx.Session)
 }
 
+// ApplyAuthorizedIdentityChange journals a transition after its caller has
+// resolved roles and checked authorization. SQL entry points must not pass
+// user input directly to this function without those checks.
+func ApplyAuthorizedIdentityChange(ctx *sql.Context, local bool, change func(*sessionstate.Identity) error) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	if !cv.identity.Current().Initialized() {
+		return errors.New("session identity is not initialized")
+	}
+	next := *cv.identity.Current()
+	if err := change(&next); err != nil {
+		return err
+	}
+	if next.SessionRole() == 0 || next.CurrentRole() == 0 {
+		return errors.New("identity transition produced an invalid role ID")
+	}
+	if local {
+		cv.identity.SetLocal(next)
+	} else {
+		cv.identity.SetSession(next)
+	}
+	return nil
+}
+
 var _ dsess.DoltgresSessionLifecycle = (*contextValues)(nil)
+var _ dsess.DoltgresTransactionLifecycle = (*contextValues)(nil)
+
+func (cv *contextValues) DoltgresTransactionStarted()             { cv.identity.Begin() }
+func (cv *contextValues) DoltgresTransactionCommitted()           { cv.identity.Commit() }
+func (cv *contextValues) DoltgresTransactionRolledBack()          { cv.identity.Rollback() }
+func (cv *contextValues) DoltgresSavepointCreated(name string)    { cv.identity.Savepoint(name) }
+func (cv *contextValues) DoltgresSavepointRolledBack(name string) { cv.identity.RollbackTo(name) }
+func (cv *contextValues) DoltgresSavepointReleased(name string)   { cv.identity.Release(name) }
 
 // DoltgresSessionCacheClear clears branch-dependent cached state while
 // preserving transaction-end callbacks and session advisory lock counts.
