@@ -39,7 +39,6 @@ const (
 	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
 	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
 	ruleId_ReplaceNode                                                   // replaceNode
-	ruleId_TransformRecordFilter                                         // transformRecordFilter
 	ruleId_ReplaceSerial                                                 // replaceSerial
 	ruleId_InsertContextRootFinalizer                                    // insertContextRootFinalizer
 	ruleId_ResolveType                                                   // resolveType
@@ -104,10 +103,6 @@ func Init() {
 
 	// Remove all other validation rules that do not apply to Postgres
 	analyzer.DefaultValidationRules = removeAnalyzerRules(analyzer.DefaultValidationRules, analyzer.ValidateOperandsId)
-
-	analyzer.DefaultRules = append(analyzer.DefaultRules,
-		analyzer.Rule{Id: ruleId_TransformRecordFilter, Apply: TransformRecordFilter},
-	)
 
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
