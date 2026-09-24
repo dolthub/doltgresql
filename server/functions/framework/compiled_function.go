@@ -1216,11 +1216,8 @@ func (*CompiledFunction) specificFuncImpl() {}
 // getTypeIfRowType returns the underlying type if it's Row Type;
 // otherwise, it returns the type that is passed.
 func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) *pgtypes.DoltgresType {
-	if isSRF {
-		// TODO: need support for used defined types
-		if typ, ok := pgtypes.IDToBuiltInDoltgresType[t.Elem.ID]; ok {
-			return typ
-		}
+	if isSRF && t.ID == pgtypes.Row.ID {
+		return t.Elem
 	}
 	return t
 }
