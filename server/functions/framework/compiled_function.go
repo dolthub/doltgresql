@@ -1150,9 +1150,11 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 	// We can use the first polymorphic non-unknown type that we find, since we can morph it into any type that we need.
 	// We've verified that all polymorphic types are compatible in a previous step, so this is safe to do.
 	var firstPolymorphicType *pgtypes.DoltgresType
+	var firstPolymorphicParameter *pgtypes.DoltgresType
 	for i, functionInterfaceType := range functionInterfaceTypes {
 		if functionInterfaceType.IsPolymorphicType() && originalTypes[i].ID != pgtypes.Unknown.ID {
 			firstPolymorphicType = originalTypes[i]
+			firstPolymorphicParameter = functionInterfaceType
 			break
 		}
 	}
@@ -1169,7 +1171,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		// "...anynonarray and anyenum do not represent separate type variables; they are the same type as anyelement..."
 		// The implication of this being that anyelement will always return the base type even for array types,
 		// just like anynonarray would.
-		if firstPolymorphicType.IsArrayCategory() {
+		if firstPolymorphicType.IsArrayType() || firstPolymorphicType.IsVectorType() && firstPolymorphicParameter == pgtypes.AnyArray {
 			return firstPolymorphicType.ArrayBaseType()
 		} else {
 			return firstPolymorphicType

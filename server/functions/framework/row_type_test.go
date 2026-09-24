@@ -27,3 +27,9 @@ func TestSetReturningArrayType(t *testing.T) {
 	require.Same(t, pgtypes.Int32Array, getTypeIfRowType(true, pgtypes.RowTypeWithReturnType(pgtypes.Int32Array)))
 	require.Same(t, pgtypes.Int32, getTypeIfRowType(true, pgtypes.RowTypeWithReturnType(pgtypes.Int32)))
 }
+
+func TestVectorPolymorphicReturnType(t *testing.T) {
+	f := &CompiledFunction{}
+	require.Equal(t, pgtypes.Int16.ID, f.resolvePolymorphicReturnType([]*pgtypes.DoltgresType{pgtypes.AnyArray}, []*pgtypes.DoltgresType{pgtypes.Int16vector}, pgtypes.AnyElement).ID)
+	require.Same(t, pgtypes.Int16vector, f.resolvePolymorphicReturnType([]*pgtypes.DoltgresType{pgtypes.AnyElement}, []*pgtypes.DoltgresType{pgtypes.Int16vector}, pgtypes.AnyElement))
+}

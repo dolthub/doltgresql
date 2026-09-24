@@ -15,15 +15,25 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestUnnestMultidimensionalArguments(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "multi-array unnest flattens each input", Assertions: []ScriptTestAssertion{
-		{Query: "SELECT unnest('1 2'::int2vector);", Expected: []sql.Row{{1}, {2}}},
+	RunScripts(t, []ScriptTest{{
+		Name: "multi-array unnest flattens each input",
+		Assertions: []ScriptTestAssertion{
+			{Query: "SELECT unnest('1 2'::int2vector);", Expected: []sql.Row{{1}, {2}}},
 
-		{Query: "SELECT * FROM unnest(ARRAY[[1,2],[3,4]],ARRAY['a','b']::varchar[]) AS u(n,label);", Expected: []sql.Row{{1, "a"}, {2, "b"}, {3, nil}, {4, nil}}},
-		{Query: "SELECT * FROM unnest(NULL::int[],ARRAY[[1,2],[3,4]]) AS u(a,b);", Expected: []sql.Row{{nil, 1}, {nil, 2}, {nil, 3}, {nil, 4}}},
-	}}})
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2],[3,4]],ARRAY['a','b']::varchar[]) AS u(n,label);",
+				Expected: []sql.Row{{1, "a"}, {2, "b"}, {3, nil}, {4, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(NULL::int[],ARRAY[[1,2],[3,4]]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 1}, {nil, 2}, {nil, 3}, {nil, 4}},
+			},
+		},
+	}})
 }
