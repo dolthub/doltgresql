@@ -237,7 +237,14 @@ func (array *Array) WithResolvedChildren(ctx context.Context, children []any) (a
 // Returns the "anyarray" type if the type combination is invalid.
 func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) (*pgtypes.DoltgresType, error) {
 	if len(children) == 0 && array.coercedType != nil {
-		return array.coercedType, nil
+		if array.coercedType.IsResolvedType() {
+			return array.coercedType, nil
+		}
+		typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		return typeColl.ResolveTypeWithTypmod(ctx, array.coercedType.ID, array.coercedType.UnresolvedTypmods)
 	}
 
 	var childrenTypes []*pgtypes.DoltgresType
