@@ -15,24 +15,28 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestArrayRemove(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "array_remove", Assertions: []ScriptTestAssertion{
-		{
-			Query:    "SELECT array_remove(ARRAY[1,2,1,NULL],1), array_remove(ARRAY[1,NULL,2],NULL), array_remove(NULL::int[],1);",
-			Expected: []sql.Row{{"{2,NULL}", "{1,2}", nil}},
+	RunScripts(t, []ScriptTest{{
+		Name: "array_remove",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_remove(ARRAY[1,2,1,NULL],1), array_remove(ARRAY[1,NULL,2],NULL), array_remove(NULL::int[],1);",
+				Expected: []sql.Row{{"{2,NULL}", "{1,2}", nil}},
+			},
+			{
+				Query:    "SELECT array_remove(ARRAY[1,1],1), array_remove(ARRAY[]::text[],'a');",
+				Expected: []sql.Row{{"{}", "{}"}},
+			},
+			{
+				Query:           "SELECT array_remove(ARRAY[[1,2],[3,4]],2);",
+				ExpectedErr:     "removing elements",
+				ExpectedErrCode: "0A000",
+			},
 		},
-		{
-			Query:    "SELECT array_remove(ARRAY[1,1],1), array_remove(ARRAY[]::text[],'a');",
-			Expected: []sql.Row{{"{}", "{}"}},
-		},
-		{
-			Query:           "SELECT array_remove(ARRAY[[1,2],[3,4]],2);",
-			ExpectedErr:     "removing elements",
-			ExpectedErrCode: "0A000",
-		},
-	}}})
+	}})
 }

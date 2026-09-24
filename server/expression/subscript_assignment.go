@@ -17,10 +17,12 @@ package expression
 import (
 	"context"
 	"fmt"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // SubscriptAssignment constructs the new array value for a subscript UPDATE target.

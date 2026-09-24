@@ -15,15 +15,19 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func initArrayLower() { framework.RegisterFunction(array_lower) }
 
 var array_lower = framework.Function2{
-	Name: "array_lower", Return: pgtypes.Int32, Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32}, Strict: true,
+	Name:       "array_lower",
+	Return:     pgtypes.Int32,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, dimension any) (any, error) {
 		dims := pgtypes.ArrayDims(val.([]any), t[0].ArrayBaseType())
 		dim := dimension.(int32)

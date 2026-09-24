@@ -15,19 +15,23 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestArrayReverse(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "array_reverse", Assertions: []ScriptTestAssertion{
-		{
-			Query:    "SELECT array_reverse(ARRAY[[2,4],[3,1],[1,9]]), array_reverse(ARRAY[1,NULL,2]);",
-			Expected: []sql.Row{{"{{1,9},{3,1},{2,4}}", "{2,NULL,1}"}},
+	RunScripts(t, []ScriptTest{{
+		Name: "array_reverse",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_reverse(ARRAY[[2,4],[3,1],[1,9]]), array_reverse(ARRAY[1,NULL,2]);",
+				Expected: []sql.Row{{"{{1,9},{3,1},{2,4}}", "{2,NULL,1}"}},
+			},
+			{
+				Query:    "SELECT array_reverse(ARRAY[]::int[]),array_reverse(NULL::int[]);",
+				Expected: []sql.Row{{"{}", nil}},
+			},
 		},
-		{
-			Query:    "SELECT array_reverse(ARRAY[]::int[]),array_reverse(NULL::int[]);",
-			Expected: []sql.Row{{"{}", nil}},
-		},
-	}}})
+	}})
 }

@@ -15,17 +15,20 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func initArrayRemove() { framework.RegisterFunction(array_remove) }
 
 var array_remove = framework.Function2{
-	Name: "array_remove", Return: pgtypes.AnyArray, Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
+	Name:       "array_remove",
+	Return:     pgtypes.AnyArray,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, search any) (any, error) {
 		if val == nil {
 			return nil, nil

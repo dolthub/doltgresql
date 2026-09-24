@@ -15,15 +15,19 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func initArrayReverse() { framework.RegisterFunction(array_reverse) }
 
 var array_reverse = framework.Function1{
-	Name: "array_reverse", Return: pgtypes.AnyArray, Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray}, Strict: true,
+	Name:       "array_reverse",
+	Return:     pgtypes.AnyArray,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		vals := val.([]any)
 		result := make([]any, len(vals))

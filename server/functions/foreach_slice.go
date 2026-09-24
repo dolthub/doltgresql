@@ -15,20 +15,25 @@
 package functions
 
 import (
+	"io"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
-	"io"
 )
 
 // initForeachSlice registers the internal iterator used by PL/pgSQL FOREACH SLICE.
 func initForeachSlice() { framework.RegisterFunction(foreach_slice) }
 
 var foreach_slice = framework.Function2{
-	Name: "__doltgres_foreach_slice", Return: pgtypes.RowTypeWithReturnType(pgtypes.AnyArray),
-	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32}, Strict: true, SRF: true,
+	Name:       "__doltgres_foreach_slice",
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.AnyArray),
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32},
+	Strict:     true,
+	SRF:        true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, slice any) (any, error) {
 		vals := val.([]any)
 		dims := pgtypes.ArrayDims(vals, t[0].ArrayBaseType())

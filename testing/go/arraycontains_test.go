@@ -15,19 +15,23 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestArrayContains(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "arraycontains", Assertions: []ScriptTestAssertion{
-		{
-			Query:    "SELECT ARRAY[[1,2],[3,4]] @> ARRAY[4,1],ARRAY[1] @> ARRAY[1,1],ARRAY[NULL]::int[] @> ARRAY[NULL]::int[];",
-			Expected: []sql.Row{{"t", "t", "f"}},
+	RunScripts(t, []ScriptTest{{
+		Name: "arraycontains",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[[1,2],[3,4]] @> ARRAY[4,1],ARRAY[1] @> ARRAY[1,1],ARRAY[NULL]::int[] @> ARRAY[NULL]::int[];",
+				Expected: []sql.Row{{"t", "t", "f"}},
+			},
+			{
+				Query:    "SELECT ARRAY['red','blue']::varchar[] @> ARRAY['red']::varchar[],ARRAY[1] @> ARRAY[]::int[],NULL::int[] @> ARRAY[1];",
+				Expected: []sql.Row{{"t", "t", nil}},
+			},
 		},
-		{
-			Query:    "SELECT ARRAY['red','blue']::varchar[] @> ARRAY['red']::varchar[],ARRAY[1] @> ARRAY[]::int[],NULL::int[] @> ARRAY[1];",
-			Expected: []sql.Row{{"t", "t", nil}},
-		},
-	}}})
+	}})
 }

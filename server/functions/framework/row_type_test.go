@@ -15,9 +15,11 @@
 package framework
 
 import (
-	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 func TestSetReturningArrayType(t *testing.T) {

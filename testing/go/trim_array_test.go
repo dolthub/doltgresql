@@ -15,29 +15,33 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestTrimArray(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "trim_array", Assertions: []ScriptTestAssertion{
-		{
-			Query:    "SELECT trim_array(ARRAY[[1,2],[3,4],[5,6]],1), trim_array(ARRAY[1,2],2), trim_array(NULL::int[],1);",
-			Expected: []sql.Row{{"{{1,2},{3,4}}", "{}", nil}},
+	RunScripts(t, []ScriptTest{{
+		Name: "trim_array",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT trim_array(ARRAY[[1,2],[3,4],[5,6]],1), trim_array(ARRAY[1,2],2), trim_array(NULL::int[],1);",
+				Expected: []sql.Row{{"{{1,2},{3,4}}", "{}", nil}},
+			},
+			{
+				Query:    "SELECT trim_array(ARRAY[]::int[],0);",
+				Expected: []sql.Row{{"{}"}},
+			},
+			{
+				Query:           "SELECT trim_array(ARRAY[[1,2],[3,4]],3);",
+				ExpectedErr:     "number of elements",
+				ExpectedErrCode: "2202E",
+			},
+			{
+				Query:           "SELECT trim_array(ARRAY[1],-1);",
+				ExpectedErr:     "number of elements",
+				ExpectedErrCode: "2202E",
+			},
 		},
-		{
-			Query:    "SELECT trim_array(ARRAY[]::int[],0);",
-			Expected: []sql.Row{{"{}"}},
-		},
-		{
-			Query:           "SELECT trim_array(ARRAY[[1,2],[3,4]],3);",
-			ExpectedErr:     "number of elements",
-			ExpectedErrCode: "2202E",
-		},
-		{
-			Query:           "SELECT trim_array(ARRAY[1],-1);",
-			ExpectedErr:     "number of elements",
-			ExpectedErrCode: "2202E",
-		},
-	}}})
+	}})
 }

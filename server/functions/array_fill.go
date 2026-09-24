@@ -15,11 +15,12 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func initArrayFill() {
@@ -28,13 +29,17 @@ func initArrayFill() {
 }
 
 var array_fill_two = framework.Function2{
-	Name: "array_fill", Return: pgtypes.AnyArray, Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyElement, pgtypes.Int32Array},
+	Name:       "array_fill",
+	Return:     pgtypes.AnyArray,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyElement, pgtypes.Int32Array},
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, dims any) (any, error) {
 		return fillArray(val, dims, nil, false)
 	},
 }
 var array_fill_three = framework.Function3{
-	Name: "array_fill", Return: pgtypes.AnyArray, Parameters: [3]*pgtypes.DoltgresType{pgtypes.AnyElement, pgtypes.Int32Array, pgtypes.Int32Array},
+	Name:       "array_fill",
+	Return:     pgtypes.AnyArray,
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.AnyElement, pgtypes.Int32Array, pgtypes.Int32Array},
 	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val, dims, bounds any) (any, error) {
 		return fillArray(val, dims, bounds, true)
 	},

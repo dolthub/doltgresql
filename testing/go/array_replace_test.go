@@ -15,13 +15,23 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestArrayReplace(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "array_replace", Assertions: []ScriptTestAssertion{
-		{Query: "SELECT array_replace(ARRAY[[1,NULL],[1,4]],1,9), array_replace(ARRAY[[1,NULL],[1,4]],NULL,0);", Expected: []sql.Row{{"{{9,NULL},{9,4}}", "{{1,0},{1,4}}"}}},
-		{Query: "SELECT array_replace(ARRAY['a','b'],'a',NULL), array_replace(NULL::int[],1,2), array_replace(ARRAY[]::int[],1,2);", Expected: []sql.Row{{"{NULL,b}", nil, "{}"}}},
-	}}})
+	RunScripts(t, []ScriptTest{{
+		Name: "array_replace",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_replace(ARRAY[[1,NULL],[1,4]],1,9), array_replace(ARRAY[[1,NULL],[1,4]],NULL,0);",
+				Expected: []sql.Row{{"{{9,NULL},{9,4}}", "{{1,0},{1,4}}"}},
+			},
+			{
+				Query:    "SELECT array_replace(ARRAY['a','b'],'a',NULL), array_replace(NULL::int[],1,2), array_replace(ARRAY[]::int[],1,2);",
+				Expected: []sql.Row{{"{NULL,b}", nil, "{}"}},
+			},
+		},
+	}})
 }

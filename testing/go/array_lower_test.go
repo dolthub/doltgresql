@@ -15,19 +15,23 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestArrayLower(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "array_lower", Assertions: []ScriptTestAssertion{
-		{
-			Query:    "SELECT array_lower(ARRAY[[1,2],[3,4]],1),array_lower(ARRAY[[1,2],[3,4]],2),array_lower(ARRAY[1],2);",
-			Expected: []sql.Row{{1, 1, nil}},
+	RunScripts(t, []ScriptTest{{
+		Name: "array_lower",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_lower(ARRAY[[1,2],[3,4]],1),array_lower(ARRAY[[1,2],[3,4]],2),array_lower(ARRAY[1],2);",
+				Expected: []sql.Row{{1, 1, nil}},
+			},
+			{
+				Query:    "SELECT array_lower(ARRAY[]::int[],1),array_lower(NULL::int[],1),array_lower(ARRAY[1],0),array_lower('1 2'::int2vector,1);",
+				Expected: []sql.Row{{nil, nil, nil, 0}},
+			},
 		},
-		{
-			Query:    "SELECT array_lower(ARRAY[]::int[],1),array_lower(NULL::int[],1),array_lower(ARRAY[1],0),array_lower('1 2'::int2vector,1);",
-			Expected: []sql.Row{{nil, nil, nil, 0}},
-		},
-	}}})
+	}})
 }

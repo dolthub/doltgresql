@@ -15,15 +15,19 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func initCardinality() { framework.RegisterFunction(cardinality_anyarray) }
 
 var cardinality_anyarray = framework.Function1{
-	Name: "cardinality", Return: pgtypes.Int32, Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray}, Strict: true,
+	Name:       "cardinality",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		dims := pgtypes.ArrayDims(val.([]any), t[0].ArrayBaseType())
 		if len(dims) == 0 {

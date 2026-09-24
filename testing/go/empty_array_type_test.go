@@ -15,17 +15,29 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestEmptyArrayType(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
 		Name: "empty array element types",
 		Assertions: []ScriptTestAssertion{
-			{Query: "SELECT ARRAY[];", ExpectedErr: "cannot determine type of empty array", ExpectedErrCode: "42P18"},
-			{Query: "SELECT pg_typeof(ARRAY[]);", ExpectedErr: "cannot determine type of empty array", ExpectedErrCode: "42P18"},
-			{Query: "SELECT ARRAY[]::int[],pg_typeof(ARRAY[]::int[]),ARRAY[ARRAY[]]::int[];", Expected: []sql.Row{{"{}", "integer[]", "{}"}}},
+			{
+				Query:           "SELECT ARRAY[];",
+				ExpectedErr:     "cannot determine type of empty array",
+				ExpectedErrCode: "42P18",
+			},
+			{
+				Query:           "SELECT pg_typeof(ARRAY[]);",
+				ExpectedErr:     "cannot determine type of empty array",
+				ExpectedErrCode: "42P18",
+			},
+			{
+				Query:    "SELECT ARRAY[]::int[],pg_typeof(ARRAY[]::int[]),ARRAY[ARRAY[]]::int[];",
+				Expected: []sql.Row{{"{}", "integer[]", "{}"}},
+			},
 			{Query: "SELECT ARRAY[ARRAY[]::int[]];", Expected: []sql.Row{{"{}"}}},
 		},
 	}})

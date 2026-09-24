@@ -15,10 +15,12 @@
 package functions
 
 import (
+	"sort"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
-	"sort"
 )
 
 func initArraySort() {
@@ -28,19 +30,28 @@ func initArraySort() {
 }
 
 var array_sort_one = framework.Function1{
-	Name: "array_sort", Return: pgtypes.AnyArray, Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray}, Strict: true,
+	Name:       "array_sort",
+	Return:     pgtypes.AnyArray,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return sortArray(ctx, t[0].ArrayBaseType(), val, false, false)
 	},
 }
 var array_sort_two = framework.Function2{
-	Name: "array_sort", Return: pgtypes.AnyArray, Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Bool}, Strict: true,
+	Name:       "array_sort",
+	Return:     pgtypes.AnyArray,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Bool},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, desc any) (any, error) {
 		return sortArray(ctx, t[0].ArrayBaseType(), val, desc.(bool), desc.(bool))
 	},
 }
 var array_sort_three = framework.Function3{
-	Name: "array_sort", Return: pgtypes.AnyArray, Parameters: [3]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Bool, pgtypes.Bool}, Strict: true,
+	Name:       "array_sort",
+	Return:     pgtypes.AnyArray,
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Bool, pgtypes.Bool},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val, desc, nullsFirst any) (any, error) {
 		return sortArray(ctx, t[0].ArrayBaseType(), val, desc.(bool), nullsFirst.(bool))
 	},

@@ -15,9 +15,10 @@
 package binary
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func initArrayContained() {
@@ -25,7 +26,10 @@ func initArrayContained() {
 }
 
 var arraycontained = framework.Function2{
-	Name: "arraycontained", Return: pgtypes.Bool, Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray}, Strict: true,
+	Name:       "arraycontained",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, left, right any) (any, error) {
 		return arrayContains(ctx, t[0].ArrayBaseType(), right.([]any), left.([]any))
 	},

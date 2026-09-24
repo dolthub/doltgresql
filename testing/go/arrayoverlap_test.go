@@ -15,19 +15,23 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestArrayOverlap(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "arrayoverlap", Assertions: []ScriptTestAssertion{
-		{
-			Query:    "SELECT ARRAY[[1,2],[3,4]] && ARRAY[4,9],ARRAY[1,2] && ARRAY[9],ARRAY[NULL]::int[] && ARRAY[NULL]::int[];",
-			Expected: []sql.Row{{"t", "f", "f"}},
+	RunScripts(t, []ScriptTest{{
+		Name: "arrayoverlap",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[[1,2],[3,4]] && ARRAY[4,9],ARRAY[1,2] && ARRAY[9],ARRAY[NULL]::int[] && ARRAY[NULL]::int[];",
+				Expected: []sql.Row{{"t", "f", "f"}},
+			},
+			{
+				Query:    "SELECT ARRAY[]::int[] && ARRAY[1],NULL::int[] && ARRAY[1],ARRAY['a']::varchar[] && ARRAY['b','a']::varchar[];",
+				Expected: []sql.Row{{"f", nil, "t"}},
+			},
 		},
-		{
-			Query:    "SELECT ARRAY[]::int[] && ARRAY[1],NULL::int[] && ARRAY[1],ARRAY['a']::varchar[] && ARRAY['b','a']::varchar[];",
-			Expected: []sql.Row{{"f", nil, "t"}},
-		},
-	}}})
+	}})
 }

@@ -15,17 +15,21 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func initTrimArray() { framework.RegisterFunction(trim_array) }
 
 var trim_array = framework.Function2{
-	Name: "trim_array", Return: pgtypes.AnyArray, Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32}, Strict: true,
+	Name:       "trim_array",
+	Return:     pgtypes.AnyArray,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, count any) (any, error) {
 		vals := val.([]any)
 		n := count.(int32)

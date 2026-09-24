@@ -15,15 +15,18 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func initArrayReplace() { framework.RegisterFunction(array_replace) }
 
 var array_replace = framework.Function3{
-	Name: "array_replace", Return: pgtypes.AnyArray, Parameters: [3]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement, pgtypes.AnyElement},
+	Name:       "array_replace",
+	Return:     pgtypes.AnyArray,
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement, pgtypes.AnyElement},
 	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val, search, replacement any) (any, error) {
 		if val == nil {
 			return nil, nil

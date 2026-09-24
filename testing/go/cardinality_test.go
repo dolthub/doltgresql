@@ -15,13 +15,20 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestCardinality(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "cardinality", Assertions: []ScriptTestAssertion{
-		{Query: "SELECT cardinality(ARRAY[[1,NULL],[3,4]]), cardinality(ARRAY[]::int[]), cardinality(NULL::int[]);", Expected: []sql.Row{{4, 0, nil}}},
-		{Query: "SELECT cardinality(ARRAY[[[1,2]],[[3,4]]]);", Expected: []sql.Row{{4}}},
-	}}})
+	RunScripts(t, []ScriptTest{{
+		Name: "cardinality",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT cardinality(ARRAY[[1,NULL],[3,4]]), cardinality(ARRAY[]::int[]), cardinality(NULL::int[]);",
+				Expected: []sql.Row{{4, 0, nil}},
+			},
+			{Query: "SELECT cardinality(ARRAY[[[1,2]],[[3,4]]]);", Expected: []sql.Row{{4}}},
+		},
+	}})
 }

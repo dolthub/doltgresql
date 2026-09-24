@@ -15,13 +15,20 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestArrayRegtype(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "array dimensionality does not change regtype", Assertions: []ScriptTestAssertion{
-		{Query: "SELECT 'integer[]'::regtype='integer[][]'::regtype,'varchar[][][]'::regtype='varchar[]'::regtype;", Expected: []sql.Row{{"t", "t"}}},
-		{Query: "SELECT 'pg_catalog.int4[][]'::regtype;", Expected: []sql.Row{{"integer[]"}}},
-	}}})
+	RunScripts(t, []ScriptTest{{
+		Name: "array dimensionality does not change regtype",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT 'integer[]'::regtype='integer[][]'::regtype,'varchar[][][]'::regtype='varchar[]'::regtype;",
+				Expected: []sql.Row{{"t", "t"}},
+			},
+			{Query: "SELECT 'pg_catalog.int4[][]'::regtype;", Expected: []sql.Row{{"integer[]"}}},
+		},
+	}})
 }

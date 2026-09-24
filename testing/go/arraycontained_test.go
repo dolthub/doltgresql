@@ -15,15 +15,19 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestArrayContained(t *testing.T) {
-	RunScripts(t, []ScriptTest{{Name: "arraycontained", Assertions: []ScriptTestAssertion{
-		{
-			Query:    "SELECT ARRAY[4,1] <@ ARRAY[[1,2],[3,4]],ARRAY[5] <@ ARRAY[1,2],ARRAY[]::int[] <@ ARRAY[1];",
-			Expected: []sql.Row{{"t", "f", "t"}},
+	RunScripts(t, []ScriptTest{{
+		Name: "arraycontained",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[4,1] <@ ARRAY[[1,2],[3,4]],ARRAY[5] <@ ARRAY[1,2],ARRAY[]::int[] <@ ARRAY[1];",
+				Expected: []sql.Row{{"t", "f", "t"}},
+			},
 		},
-	}}})
+	}})
 }
