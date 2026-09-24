@@ -17,8 +17,6 @@ package ast
 import (
 	"context"
 	"fmt"
-	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
-	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"go/constant"
 	"strings"
 
@@ -28,6 +26,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
