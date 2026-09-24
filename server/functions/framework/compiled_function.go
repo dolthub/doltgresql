@@ -1169,7 +1169,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		// "...anynonarray and anyenum do not represent separate type variables; they are the same type as anyelement..."
 		// The implication of this being that anyelement will always return the base type even for array types,
 		// just like anynonarray would.
-		if firstPolymorphicType.IsArrayType() {
+		if firstPolymorphicType.IsArrayCategory() {
 			return firstPolymorphicType.ArrayBaseType()
 		} else {
 			return firstPolymorphicType
