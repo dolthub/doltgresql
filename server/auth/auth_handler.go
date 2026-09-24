@@ -200,11 +200,20 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			return errors.Errorf("table identifiers has an unsupported count: %d", len(auth.TargetNames))
 		}
 		for i := 0; i < len(auth.TargetNames); i += 3 {
-			// TODO: handle database
-			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i+1])
+			schemaName := auth.TargetNames[i+1]
+			var err error
+			if schemaName == "" {
+				// An unqualified table can be in a later search-path schema.
+				// The first existing schema is not necessarily the table's schema.
+				schemaName, err = tableSchemaOnSearchPath(ctx, auth.TargetNames[i], auth.TargetNames[i+2])
+			}
 			if err != nil {
 				// If this fails, then there's an issue with the search path.
 				// This will error later in the process, so we'll pass auth for now.
+				return nil
+			}
+			if schemaName == "" {
+				// Leave missing relations to the normal table resolver.
 				return nil
 			}
 			err = checkPrivilegeOnTable(state, schemaName, auth.TargetNames[i+2], privileges)
@@ -257,6 +266,45 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		}
 	}
 	return nil
+}
+
+// tableSchemaOnSearchPath mirrors table lookup for authorization. It must
+// inspect each schema, since search_path's first schema may lack the table.
+func tableSchemaOnSearchPath(ctx *sql.Context, databaseName, tableName string) (string, error) {
+	if doltdb.HasDoltPrefix(tableName) {
+		// Dolt system tables retain their existing SQL privilege namespace;
+		// branch-control permissions are checked by their own table handlers.
+		return core.GetSchemaName(ctx, nil, "")
+	}
+	db, err := core.GetSqlDatabaseFromContext(ctx, databaseName)
+	if err != nil || db == nil {
+		return "", err
+	}
+	schemaDB, ok := db.(sql.SchemaDatabase)
+	if !ok {
+		return core.GetSchemaName(ctx, nil, "")
+	}
+	path, err := core.SearchPath(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, candidate := range path {
+		schema, exists, err := schemaDB.GetSchema(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			continue
+		}
+		_, found, err := schema.GetTableInsensitive(ctx, tableName)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			return schema.SchemaName(), nil
+		}
+	}
+	return "", nil
 }
 
 // HandleAuthNode implements the sql.AuthorizationHandler interface.

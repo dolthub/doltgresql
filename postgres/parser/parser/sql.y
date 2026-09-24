@@ -6514,6 +6514,10 @@ set_role:
       $$.val = &tree.SetRole{Name: $2}
     }
   }
+| ROLE DEFAULT
+  {
+    $$.val = &tree.SetRole{Default: true}
+  }
 
 // SET NAMES is the SQL standard syntax for SET client_encoding.
 // "SET NAMES value is an alias for SET client_encoding TO value."
@@ -6940,6 +6944,10 @@ session_var:
 // separate rules.
 | ALL
 | DATABASE
+| ROLE
+  {
+    $$ = "role"
+  }
 // SET NAMES is standard SQL for SET client_encoding.
 // See https://www.postgresql.org/docs/9.6/static/multibyte.html#AEN39236
 | NAMES { $$ = "client_encoding" }

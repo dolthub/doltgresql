@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,19 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package output
+package ast
 
-import "testing"
+import (
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-func TestSetRole(t *testing.T) {
-	tests := []QueryParses{
-		Converts("SET ROLE role_name"),
-		Converts("SET SESSION ROLE role_name"),
-		Converts("SET LOCAL ROLE role_name"),
-		Converts("SET ROLE NONE"),
-		Converts("SET SESSION ROLE NONE"),
-		Converts("SET LOCAL ROLE NONE"),
-		Converts("RESET ROLE"),
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/node"
+)
+
+func nodeSetRole(_ *Context, stmt *tree.SetRole) (vitess.Statement, error) {
+	if stmt == nil {
+		return nil, nil
 	}
-	RunTests(t, tests)
+	return vitess.InjectedStatement{Statement: &node.SetRole{
+		Name: stmt.Name, Local: stmt.IsLocal, None: stmt.None, Reset: stmt.Reset || stmt.Default,
+	}}, nil
 }
