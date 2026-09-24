@@ -119,6 +119,9 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			}
 		}
 	}
+	if dims := pgtypes.ArrayDims(values, resultTyp); len(dims) > 6 {
+		return nil, pgerror.Newf(pgcode.ProgramLimitExceeded, "number of array dimensions (%d) exceeds the maximum allowed (6)", len(dims))
+	}
 	return values, nil
 }
 
