@@ -23,6 +23,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -122,7 +124,7 @@ func (p *arrayLiteralParser) parseArray(ctx *sql.Context, nested bool) ([]any, e
 		case ',':
 		case '}':
 			if !p.baseType.IsVectorType() && !pgtypes.SameArrayDims(vals) {
-				return nil, p.malformed()
+				return nil, errors.WithDetail(p.malformed(), "Multidimensional arrays must have sub-arrays with matching dimensions.")
 			}
 			return vals, nil
 		default:
@@ -211,7 +213,7 @@ func (p *arrayLiteralParser) next() rune {
 
 // malformed returns the error for an invalid literal.
 func (p *arrayLiteralParser) malformed() error {
-	return errors.Errorf(`malformed array literal: "%s"`, p.input)
+	return pgerror.Newf(pgcode.InvalidTextRepresentation, `malformed array literal: "%s"`, p.input)
 }
 
 // array_out represents the PostgreSQL function of array type IO output.
