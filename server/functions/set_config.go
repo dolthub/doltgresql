@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -51,6 +52,12 @@ var set_config_text_text_boolean = framework.Function3{
 		newValueStr, err := framework.UnwrapString(ctx, newValue)
 		if err != nil {
 			return nil, err
+		}
+		if strings.EqualFold(settingNameStr, "role") {
+			if err := auth.ApplySetRole(ctx, newValueStr, strings.EqualFold(newValueStr, "none"), strings.EqualFold(newValueStr, "default"), isLocal == true); err != nil {
+				return nil, err
+			}
+			return auth.SelectedRoleSetting(ctx)
 		}
 
 		// set_config can set system configuration or user configuration. System configuration settings are in top

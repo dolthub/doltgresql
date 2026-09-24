@@ -23,7 +23,10 @@ import (
 // TestDeserializeRemovesInvalidRoleReferences verifies that upgrades sanitize authorization data written by affected releases.
 func TestDeserializeRemovesInvalidRoleReferences(t *testing.T) {
 	originalDatabase := globalDatabase
-	t.Cleanup(func() { globalDatabase = originalDatabase })
+	t.Cleanup(func() {
+		globalDatabase = originalDatabase
+		publishRoleNames()
+	})
 	globalDatabase = newEmptyDatabase()
 
 	survivor := Role{Name: "survivor", InheritPrivileges: true, id: 1}
