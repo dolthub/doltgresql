@@ -1608,12 +1608,12 @@ UPDATE <tablename> [[AS] <name>]
 		SeeAlso: `INSERT, UPSERT, DELETE, WEBDOCS/update.html
 `,
 	},
-	//line sql.y: 10984
+	//line sql.y: 10988
 	`<SELECTCLAUSE>`: {
 		ShortDescription: `access tabular data`,
-		//line sql.y: 10985
+		//line sql.y: 10989
 		Category: hDML,
-		//line sql.y: 10986
+		//line sql.y: 10990
 		Text: `
 Select clause:
   TABLE <tablename>
@@ -1621,12 +1621,12 @@ Select clause:
   SELECT ... [ { INTERSECT | UNION | EXCEPT } [ ALL | DISTINCT ] <selectclause> ]
 `,
 	},
-	//line sql.y: 11021
+	//line sql.y: 11025
 	`SELECT`: {
 		ShortDescription: `retrieve rows from a data source and compute a result`,
-		//line sql.y: 11022
+		//line sql.y: 11026
 		Category: hDML,
-		//line sql.y: 11023
+		//line sql.y: 11027
 		Text: `
 SELECT [DISTINCT [ ON ( <expr> [ , ... ] ) ] ]
        { <expr> [[AS] <name>] | [ [<dbname>.] <tablename>. ] * } [, ...]
@@ -1640,40 +1640,40 @@ SELECT [DISTINCT [ ON ( <expr> [ , ... ] ) ] ]
        [ LIMIT { <expr> | ALL } ]
        [ OFFSET <expr> [ ROW | ROWS ] ]
 `,
-		//line sql.y: 11035
+		//line sql.y: 11039
 		SeeAlso: `WEBDOCS/select-clause.html
 `,
 	},
-	//line sql.y: 11121
+	//line sql.y: 11125
 	`TABLE`: {
 		ShortDescription: `select an entire table`,
-		//line sql.y: 11122
+		//line sql.y: 11126
 		Category: hDML,
-		//line sql.y: 11123
+		//line sql.y: 11127
 		Text: `TABLE <tablename>
 `,
-		//line sql.y: 11124
+		//line sql.y: 11128
 		SeeAlso: `SELECT, VALUES, WEBDOCS/table-expressions.html
 `,
 	},
-	//line sql.y: 11470
+	//line sql.y: 11474
 	`VALUES`: {
 		ShortDescription: `select a given set of values`,
-		//line sql.y: 11471
+		//line sql.y: 11475
 		Category: hDML,
-		//line sql.y: 11472
+		//line sql.y: 11476
 		Text: `VALUES ( <exprs...> ) [, ...]
 `,
-		//line sql.y: 11473
+		//line sql.y: 11477
 		SeeAlso: `SELECT, TABLE, WEBDOCS/table-expressions.html
 `,
 	},
-	//line sql.y: 11582
+	//line sql.y: 11586
 	`<SOURCE>`: {
 		ShortDescription: `define a data source for SELECT`,
-		//line sql.y: 11583
+		//line sql.y: 11587
 		Category: hDML,
-		//line sql.y: 11584
+		//line sql.y: 11588
 		Text: `
 Data sources:
   <tablename> [ @ { <idxname> | <indexflags> } ]
@@ -1697,7 +1697,7 @@ Join types:
   { INNER | { LEFT | RIGHT | FULL } [OUTER] } [ { HASH | MERGE | LOOKUP } ]
 
 `,
-		//line sql.y: 11606
+		//line sql.y: 11610
 		SeeAlso: `WEBDOCS/table-expressions.html
 `,
 	},

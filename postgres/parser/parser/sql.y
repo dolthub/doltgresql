@@ -10804,6 +10804,10 @@ single_set_clause:
   {
     $$.val = &tree.UpdateExpr{Names: tree.NameList{tree.Name($1)}, Expr: $3.expr()}
   }
+| column_name array_subscripts '=' a_expr
+  {
+    $$.val = &tree.UpdateExpr{Names: tree.NameList{tree.Name($1)}, Expr: $4.expr(), Indirection: $2.arraySubscripts()}
+  }
 | column_name '.' error { return unimplementedWithIssue(sqllex, 27792) }
 
 multiple_set_clause:
