@@ -981,7 +981,12 @@ func (*SetTransaction) StatementTag() string { return "SET TRANSACTION" }
 func (*SetSessionAuthorization) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetSessionAuthorization) StatementTag() string { return "SET" }
+func (n *SetSessionAuthorization) StatementTag() string {
+	if n.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetSessionCharacteristics) StatementType() StatementType { return Ack }

@@ -57,6 +57,26 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 		role.None = role.Name == "none"
 		return nodeSetRole(ctx, role)
 	}
+	if node.Namespace == "" && strings.EqualFold(node.Name, "session_authorization") {
+		if len(node.Values) != 1 {
+			return nil, errors.New("SET SESSION AUTHORIZATION requires one role name")
+		}
+		stmt := &tree.SetSessionAuthorization{IsLocal: node.IsLocal}
+		switch value := node.Values[0].(type) {
+		case tree.DefaultVal:
+			stmt.Default = true
+		case *tree.UnresolvedName:
+			if value.NumParts != 1 || value.Star {
+				return nil, errors.New("SET SESSION AUTHORIZATION requires one role name")
+			}
+			stmt.Username = value.Parts[0]
+		case *tree.StrVal:
+			stmt.Username = value.RawString()
+		default:
+			return nil, errors.New("SET SESSION AUTHORIZATION requires one role name")
+		}
+		return nodeSetSessionAuthorization(ctx, stmt)
+	}
 	// USE statement alias
 	if node.Name == "database" {
 		// strip off all quotes from the database name

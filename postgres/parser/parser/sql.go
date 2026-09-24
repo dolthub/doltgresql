@@ -33457,7 +33457,7 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-3 : sqlpt+1]
 //line sql-gen.y:6254
 		{
-			sqlVAL.union.val = &tree.SetSessionAuthorization{}
+			sqlVAL.union.val = &tree.SetSessionAuthorization{Reset: true}
 		}
 	case 1085:
 		sqlDollar = sqlS[sqlpt-2 : sqlpt+1]
@@ -33721,7 +33721,7 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-3 : sqlpt+1]
 //line sql-gen.y:6539
 		{
-			sqlVAL.union.val = &tree.SetSessionAuthorization{}
+			sqlVAL.union.val = &tree.SetSessionAuthorization{Default: true}
 		}
 	case 1142:
 		sqlDollar = sqlS[sqlpt-3 : sqlpt+1]

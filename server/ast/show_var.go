@@ -41,7 +41,7 @@ func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 	//   need better way to get these info
 	// We treat namespaced variables (e.g. myvar.myvalue) as user variables.
 	// See set_var.go
-	isUserVar := strings.Index(node.Name, ".") > 0 || strings.EqualFold(node.Name, "role")
+	isUserVar := strings.Index(node.Name, ".") > 0 || strings.EqualFold(node.Name, "role") || strings.EqualFold(node.Name, "session_authorization")
 	if isUserVar {
 		varName := vitess.NewColIdent(node.Name)
 		return &vitess.Select{

@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,17 +15,17 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/node"
 )
 
-// nodeSetSessionAuthorization handles *tree.SetSessionAuthorization nodes.
-func nodeSetSessionAuthorization(ctx *Context, node *tree.SetSessionAuthorization) (vitess.Statement, error) {
-	if node == nil {
+func nodeSetSessionAuthorization(_ *Context, stmt *tree.SetSessionAuthorization) (vitess.Statement, error) {
+	if stmt == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("SET SESSION AUTHORIZATION is not yet supported")
+	return vitess.InjectedStatement{Statement: &node.SetSessionAuthorization{
+		Name: stmt.Username, Local: stmt.IsLocal, Reset: stmt.Reset || stmt.Default,
+	}}, nil
 }
