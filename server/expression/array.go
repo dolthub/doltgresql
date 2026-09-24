@@ -236,6 +236,10 @@ func (array *Array) WithResolvedChildren(ctx context.Context, children []any) (a
 // getTargetType returns the evaluated type for this expression.
 // Returns the "anyarray" type if the type combination is invalid.
 func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) (*pgtypes.DoltgresType, error) {
+	if len(children) == 0 && array.coercedType != nil {
+		return array.coercedType, nil
+	}
+
 	var childrenTypes []*pgtypes.DoltgresType
 	for _, child := range children {
 		if child != nil {
