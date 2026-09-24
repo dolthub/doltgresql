@@ -339,6 +339,24 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			}
 		case OpCode_DeclareRecord:
 			stack.NewRecord(operation.Target, nil, nil)
+			if len(operation.SecondaryData) != 0 {
+				query, bindings, err := declareDefault(operation, &stack)
+				if err != nil {
+					return nil, err
+				}
+				schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, query, bindings)
+				if err != nil {
+					return nil, err
+				}
+				var row sql.Row
+				if len(rows) > 0 {
+					row = rows[0]
+				}
+				schema, row = unpackRecordDefault(operation, stack, schema, row, bindings)
+				if err = stack.UpdateRecord(operation.Target, schema, row); err != nil {
+					return nil, err
+				}
+			}
 		case OpCode_Get:
 			// TODO: implement
 		case OpCode_Goto:
@@ -536,6 +554,44 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		}
 	}
 	return nil, nil
+}
+
+// unpackRecordDefault turns the single record-valued result of a RECORD default into the record's fields.
+// A whole-record default such as `whole RECORD := NEW` keeps the source record's field names; a ROW(...)
+// default has PostgreSQL's anonymous f1, f2, ... names.
+func unpackRecordDefault(operation InterpreterOperation, stack InterpreterStack, schema sql.Schema, row sql.Row, bindings []string) (sql.Schema, sql.Row) {
+	if len(schema) != 1 || len(row) != 1 {
+		return schema, row
+	}
+	fields, ok := row[0].([]pgtypes.RecordValue)
+	if !ok {
+		return schema, row
+	}
+	if len(bindings) == 1 && len(operation.SecondaryData) > DeclareDefaultSourceIndex &&
+		NormalizeIdentifier(operation.SecondaryData[DeclareDefaultSourceIndex]) == bindings[0] {
+		source := stack.GetVariable(bindings[0])
+		if source.IsRecord && len(source.Record) > 0 {
+			return source.Record, recordValueRow(fields)
+		}
+	}
+	unpackedSchema := make(sql.Schema, len(fields))
+	for i, field := range fields {
+		fieldType := field.Type
+		if doltgresType, ok := fieldType.(*pgtypes.DoltgresType); ok && doltgresType.ID == pgtypes.Unknown.ID {
+			// A string literal in a ROW constructor is initially unknown, but a RECORD stores it as text.
+			fieldType = pgtypes.Text
+		}
+		unpackedSchema[i] = &sql.Column{Name: fmt.Sprintf("f%d", i+1), Type: fieldType}
+	}
+	return unpackedSchema, recordValueRow(fields)
+}
+
+func recordValueRow(fields []pgtypes.RecordValue) sql.Row {
+	row := make(sql.Row, len(fields))
+	for i, field := range fields {
+		row[i] = field.Value
+	}
+	return row
 }
 
 // evaluateDynamicQuery evaluates the expression supplying a dynamic EXECUTE command string.
