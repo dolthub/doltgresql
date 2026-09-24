@@ -22,6 +22,7 @@ func initTypeFunctions() {
 	initAnyEnum()
 	initAnyNonArray()
 	initArray()
+	initArrayReverse()
 	initTrimArray()
 	initArrayRemove()
 	initArrayReplace()
