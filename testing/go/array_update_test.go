@@ -24,6 +24,7 @@ func TestArraySubscriptUpdate(t *testing.T) {
 		Name:        "array subscript updates",
 		SetUpScript: []string{"CREATE TABLE t (id int PRIMARY KEY, a int[]);", "INSERT INTO t VALUES (1,ARRAY[[1,2,3],[4,5,6]]),(2,ARRAY[1,2,3]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
+
 			{Query: "UPDATE t SET a[2][3]=60 WHERE id=1 RETURNING a;", Expected: []sql.Row{{"{{1,2,3},{4,5,60}}"}}},
 			{Query: "UPDATE t SET a[1:2][2:3]=ARRAY[[20,30],[50,60]] WHERE id=1 RETURNING a;", Expected: []sql.Row{{"{{1,20,30},{4,50,60}}"}}},
 			{Query: "UPDATE t SET a[6]=99 WHERE id=2 RETURNING a;", Expected: []sql.Row{{"{1,2,3,NULL,NULL,99}"}}},
@@ -33,6 +34,7 @@ func TestArraySubscriptUpdate(t *testing.T) {
 			{Query: "UPDATE t SET a[1:2][1:2]=ARRAY[[9,8]] WHERE id=1;", ExpectedErr: "source array too small", ExpectedErrCode: "2202E"},
 			{Query: "UPDATE t SET a[NULL]=7 WHERE id=2;", ExpectedErr: "must not be null", ExpectedErrCode: "22004"},
 			{Query: "SELECT a FROM t WHERE id=1;", Expected: []sql.Row{{"{{1,2,3},{4,5,6}}"}}},
+			{Query: "UPDATE t SET a[NULL:2]=NULL WHERE id=1;", ExpectedErr: "must not be null", ExpectedErrCode: "22004"},
 		},
 	}})
 }

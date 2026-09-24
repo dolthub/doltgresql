@@ -80,9 +80,6 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.Slice && replacement == nil {
-		return value, nil
-	}
 	var vals []any
 	if value != nil {
 		vals = value.([]any)
@@ -136,6 +133,9 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			lower[i] = n
 			upper[i] = n
 		}
+	}
+	if s.Slice && replacement == nil {
+		return value, nil
 	}
 	for i := range dims {
 		if lower[i] > upper[i] {
