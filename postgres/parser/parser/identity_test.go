@@ -42,3 +42,23 @@ func TestSetRoleRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionAuthorizationRoundTrip(t *testing.T) {
+	for _, query := range []string{
+		"SET SESSION AUTHORIZATION reader", "SET SESSION SESSION AUTHORIZATION reader",
+		"SET LOCAL SESSION AUTHORIZATION reader", "SET SESSION AUTHORIZATION DEFAULT",
+		"SET LOCAL SESSION AUTHORIZATION DEFAULT", "RESET SESSION AUTHORIZATION",
+		`SET SESSION AUTHORIZATION "Mixed Case"`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			stmt, err := ParseOne(query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			formatted := tree.AsString(stmt.AST)
+			if _, err := ParseOne(formatted); err != nil {
+				t.Fatalf("%q formatted as %q, which cannot be parsed: %v", query, formatted, err)
+			}
+		})
+	}
+}
