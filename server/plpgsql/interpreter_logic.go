@@ -41,6 +41,7 @@ type InterpretedFunction interface {
 	GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetReturn() *pgtypes.DoltgresType
 	GetStatements() []InterpreterOperation
+	CastQueryValue(ctx *sql.Context, val any, columnType sql.Type, targetType *pgtypes.DoltgresType) (any, error)
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (schema sql.Schema, rows []sql.Row, err error)
 	QueryRowReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetTypes []*pgtypes.DoltgresType, bindings []string) (row sql.Row, ok bool, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
@@ -522,7 +523,13 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				counter = operation.Index - 1
 			} else {
 				stack.MarkScopeLoop(true)
-				if err := stack.UpdateRecord(operation.Target, schema, row); err != nil {
+				var err error
+				if len(operation.SecondaryData) > 0 {
+					err = stack.UpdateVariables(ctx, iFunc, operation.SecondaryData, schema, row)
+				} else {
+					err = stack.UpdateRecord(operation.Target, schema, row)
+				}
+				if err != nil {
 					return nil, err
 				}
 			}

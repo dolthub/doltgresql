@@ -750,14 +750,21 @@ func (stmt *plpgSQL_stmt_fors) Convert(datums datumNames) (block Block, err erro
 		return Block{}, errors.New("FOR..IN..SELECT loop must have a query")
 	}
 
-	var varName string
+	var recordVar string
+	var variableNames []string
 	switch {
 	case stmt.Var.Record != nil:
-		varName = stmt.Var.Record.RefName
+		recordVar = stmt.Var.Record.RefName
 	case stmt.Var.Variable != nil:
-		varName = stmt.Var.Variable.RefName
+		variableNames = []string{stmt.Var.Variable.RefName}
 	case stmt.Var.Row != nil:
-		varName = stmt.Var.Row.RefName
+		variableNames = make([]string, len(stmt.Var.Row.Fields))
+		for i, field := range stmt.Var.Row.Fields {
+			variableNames[i], err = datums.Name(field.VariableNumber)
+			if err != nil {
+				return Block{}, err
+			}
+		}
 	default:
 		return Block{}, errors.New("FOR..IN..SELECT loop variable must be a record, row, or variable")
 	}
@@ -781,7 +788,7 @@ func (stmt *plpgSQL_stmt_fors) Convert(datums datumNames) (block Block, err erro
 	block.ContinueTargetOffset = 1
 	block.Body = []Statement{
 		ForQueryInit{Query: query},
-		ForQueryNext{RecordVar: varName, GotoOffset: bodySize + 2},
+		ForQueryNext{RecordVar: recordVar, VariableNames: variableNames, GotoOffset: bodySize + 2},
 	}
 	block.Body = append(block.Body, convertedBody...)
 	block.Body = append(block.Body, Goto{Offset: -(1 + bodySize)})
