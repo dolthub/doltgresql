@@ -16,6 +16,7 @@ package plpgsql
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -125,17 +126,21 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 		PrimaryData: stmt.Label,
 		Target:      loop,
 	})
-	// Records are registered ahead of the variables so that a default expression may name one, as a
-	// trigger's `OLD.id` or `to_jsonb(OLD)` does.
+	// NEW and OLD are supplied by the trigger invocation, so they are in scope for every declaration.
 	for _, record := range stmt.Records {
-		// The schema here only exists so that field references such as `r.id` are recognized as variable
-		// references while the body is compiled. The real schema is not known until the record is assigned.
-		var fakeSch sql.Schema
-		for _, fieldName := range record.Fields {
-			fakeSch = append(fakeSch, &sql.Column{Name: fieldName})
+		if !record.IsDeclared() {
+			stack.NewRecord(record.Name, record.fakeSchema(), nil)
 		}
-		stack.NewRecord(record.Name, fakeSch, nil)
-		if record.IsDeclared() {
+	}
+	// Everything else is declared in the order it was written, so that a default expression sees the
+	// parameters and the declarations ahead of it, as `r RECORD := ROW(n)` or `id int := OLD.id` does.
+	for _, decl := range stmt.orderedDeclarations() {
+		if decl.record != nil {
+			record := decl.record
+			// The schema here only exists so that field references such as `r.id` are recognized as
+			// variable references while the body is compiled. The real schema is not known until the
+			// record is assigned.
+			stack.NewRecord(record.Name, record.fakeSchema(), nil)
 			op := InterpreterOperation{
 				OpCode: OpCode_DeclareRecord,
 				Target: record.Name,
@@ -148,9 +153,9 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 				op.SecondaryData = append([]string{record.Default, query}, referencedVariables...)
 			}
 			*ops = append(*ops, op)
+			continue
 		}
-	}
-	for _, variable := range stmt.Variables {
+		variable := decl.variable
 		op := InterpreterOperation{
 			OpCode:      OpCode_Declare,
 			PrimaryData: variable.Type,
@@ -191,6 +196,38 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 	})
 	stack.PopScope()
 	return nil
+}
+
+// declaration is either a Record or a Variable declared by a Block.
+type declaration struct {
+	record   *Record
+	variable *Variable
+}
+
+// orderedDeclarations returns the block's declared records and its variables in declaration order.
+func (stmt Block) orderedDeclarations() []declaration {
+	decls := make([]declaration, 0, len(stmt.Records)+len(stmt.Variables))
+	for i := range stmt.Records {
+		if stmt.Records[i].IsDeclared() {
+			decls = append(decls, declaration{record: &stmt.Records[i]})
+		}
+	}
+	for i := range stmt.Variables {
+		decls = append(decls, declaration{variable: &stmt.Variables[i]})
+	}
+	// Blocks built by the interpreter rather than parsed leave every DatumNumber at zero, and a stable sort
+	// keeps those in the order above.
+	sort.SliceStable(decls, func(i, j int) bool {
+		return decls[i].datumNumber() < decls[j].datumNumber()
+	})
+	return decls
+}
+
+func (decl declaration) datumNumber() int32 {
+	if decl.record != nil {
+		return decl.record.DatumNumber
+	}
+	return decl.variable.DatumNumber
 }
 
 // ExecuteSQL represents a standard SQL statement's execution (including the INTO syntax).
@@ -516,6 +553,8 @@ type Record struct {
 	Name    string
 	Fields  []string
 	Default string
+	// DatumNumber is the record's position among the function's declarations.
+	DatumNumber int32
 	// IsTriggerRecord is true for the NEW and OLD records of a trigger function. Those are created by the
 	// trigger invocation rather than by the function body, so they are not declared when the block is entered.
 	IsTriggerRecord bool
@@ -525,6 +564,15 @@ type Record struct {
 // the trigger invocation, and PL/pgSQL leaves a record's name empty when it is only referenced internally.
 func (record Record) IsDeclared() bool {
 	return !record.IsTriggerRecord && len(record.Name) > 0
+}
+
+// fakeSchema returns a schema naming the record's known fields, with no types.
+func (record Record) fakeSchema() sql.Schema {
+	var fakeSch sql.Schema
+	for _, fieldName := range record.Fields {
+		fakeSch = append(fakeSch, &sql.Column{Name: fieldName})
+	}
+	return fakeSch
 }
 
 // ReturnQuery represents a RETURN QUERY statement.
@@ -589,6 +637,8 @@ type Variable struct {
 	Type        string
 	IsParameter bool
 	Default     string
+	// DatumNumber is the variable's position among the function's declarations.
+	DatumNumber int32
 }
 
 // OperationSizeForStatements returns the sum of OperationSize for every statement.

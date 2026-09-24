@@ -57,7 +57,7 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 	// the later of the two and shadows it, so the last match is the one that counts.
 	foundVariableIndex := -1
 	// Then we do a second loop that actually adds all of the datums to the block
-	for _, v := range jsonBlock.Datums {
+	for datumIndex, v := range jsonBlock.Datums {
 		switch {
 		case v.Record != nil:
 			// TODO: support normal record types
@@ -71,6 +71,7 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 			if v.Record.DatumNumber > 0 {
 				block.Records[datumNumber].Name = v.Record.RefName
 				block.Records[datumNumber].Default = v.Record.Default.Var.Query
+				block.Records[datumNumber].DatumNumber = int32(datumIndex)
 			}
 		case v.RecordField != nil:
 			recordParentNumber := v.RecordField.RecordParentNumber + offset
@@ -89,6 +90,7 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 				Type:        strings.ToLower(v.Variable.Type.Type.Name),
 				IsParameter: v.Variable.LineNumber == 0,
 				Default:     v.Variable.Default.Var.Query,
+				DatumNumber: int32(datumIndex),
 			})
 		default:
 			// The datum struct is a union of pointers, so printing its type here would only ever say
