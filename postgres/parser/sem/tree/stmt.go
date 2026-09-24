@@ -876,7 +876,7 @@ func (n *Relocate) StatementTag() string {
 func (*ResetAll) StatementType() StatementType { return Rows }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*ResetAll) StatementTag() string { return "RESET ALL" }
+func (*ResetAll) StatementTag() string { return "RESET" }
 
 // StatementType implements the Statement interface.
 func (*Restore) StatementType() StatementType { return Rows }
@@ -952,7 +952,12 @@ func (*SelectClause) StatementTag() string { return "SELECT" }
 func (*SetVar) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetVar) StatementTag() string { return "SET" }
+func (s *SetVar) StatementTag() string {
+	if s.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetConstraints) StatementType() StatementType { return Ack }

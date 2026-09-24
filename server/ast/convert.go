@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/node"
 )
 
 // UnknownColSentinelPrefix is prepended to the index position of unaliased string literals in a
@@ -229,6 +230,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeRollbackToSavepoint(ctx, stmt)
 	case *tree.RollbackTransaction:
 		return nodeRollbackTransaction(ctx, stmt)
+	case *tree.ResetAll:
+		return vitess.InjectedStatement{Statement: &node.ResetSettings{}}, nil
 	case *tree.Savepoint:
 		return nodeSavepoint(ctx, stmt)
 	case *tree.Scatter:

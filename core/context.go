@@ -45,8 +45,12 @@ import (
 // identity and resource bookkeeping survive root/cache invalidation; the
 // collection, catalog, runner, and formatting fields are disposable caches.
 type contextValues struct {
-	identity sessionstate.Journal[sessionstate.Identity]
-	colls    map[string]*databaseCollections
+	identity           sessionstate.Journal[sessionstate.Identity]
+	settings           map[string]*sessionSetting
+	settingsSavepoints []string
+	settingsRestoreErr error
+	session            sql.Session
+	colls              map[string]*databaseCollections
 
 	pgCatalogCache any
 	runner         sql.StatementRunner
@@ -133,12 +137,54 @@ func ApplyAuthorizedIdentityChange(ctx *sql.Context, local bool, change func(*se
 var _ dsess.DoltgresSessionLifecycle = (*contextValues)(nil)
 var _ dsess.DoltgresTransactionLifecycle = (*contextValues)(nil)
 
-func (cv *contextValues) DoltgresTransactionStarted()             { cv.identity.Begin() }
-func (cv *contextValues) DoltgresTransactionCommitted()           { cv.identity.Commit() }
-func (cv *contextValues) DoltgresTransactionRolledBack()          { cv.identity.Rollback() }
-func (cv *contextValues) DoltgresSavepointCreated(name string)    { cv.identity.Savepoint(name) }
-func (cv *contextValues) DoltgresSavepointRolledBack(name string) { cv.identity.RollbackTo(name) }
-func (cv *contextValues) DoltgresSavepointReleased(name string)   { cv.identity.Release(name) }
+func (cv *contextValues) DoltgresTransactionStarted() {
+	if cv.identity.InTransaction() {
+		return
+	}
+	cv.identity.Begin()
+	for _, setting := range cv.settings {
+		setting.journal.Begin()
+	}
+	cv.settingsSavepoints = nil
+}
+func (cv *contextValues) DoltgresTransactionCommitted() {
+	cv.identity.Commit()
+	for _, setting := range cv.settings {
+		setting.journal.Commit()
+	}
+	cv.settingsSavepoints = nil
+	cv.restoreSettings()
+}
+func (cv *contextValues) DoltgresTransactionRolledBack() {
+	cv.identity.Rollback()
+	for _, setting := range cv.settings {
+		setting.journal.Rollback()
+	}
+	cv.settingsSavepoints = nil
+	cv.restoreSettings()
+}
+func (cv *contextValues) DoltgresSavepointCreated(name string) {
+	cv.identity.Savepoint(name)
+	for _, setting := range cv.settings {
+		setting.journal.Savepoint(name)
+	}
+	cv.settingsSavepoints = append(cv.settingsSavepoints, name)
+}
+func (cv *contextValues) DoltgresSavepointRolledBack(name string) {
+	cv.identity.RollbackTo(name)
+	for _, setting := range cv.settings {
+		setting.journal.RollbackTo(name)
+	}
+	cv.trimSettingsSavepoints(name, false)
+	cv.restoreSettings()
+}
+func (cv *contextValues) DoltgresSavepointReleased(name string) {
+	cv.identity.Release(name)
+	for _, setting := range cv.settings {
+		setting.journal.Release(name)
+	}
+	cv.trimSettingsSavepoints(name, true)
+}
 
 // DoltgresSessionCacheClear clears branch-dependent cached state while
 // preserving transaction-end callbacks and session advisory lock counts.
@@ -231,13 +277,16 @@ func getSessionValues(session sql.Session) (*contextValues, error) {
 		return nil, errors.Errorf("expected a Dolt session, got %T", session)
 	}
 	if sess.DoltgresSessObj == nil {
-		cv := &contextValues{}
+		cv := &contextValues{session: sess}
 		sess.DoltgresSessObj = cv
 		return cv, nil
 	}
 	cv, ok := sess.DoltgresSessObj.(*contextValues)
 	if !ok {
 		return nil, errors.Errorf("context contains an unknown values struct of type: %T", sess.DoltgresSessObj)
+	}
+	if cv.settingsRestoreErr != nil {
+		return nil, cv.settingsRestoreErr
 	}
 	return cv, nil
 }

@@ -40,6 +40,7 @@ var _ Statement = &SetVar{}
 // SetVar represents a SET or RESET <configuration_param> statement.
 type SetVar struct {
 	IsLocal   bool
+	Reset     bool
 	Name      string
 	Namespace string
 	Values    Exprs
@@ -53,12 +54,25 @@ func (node *SetVar) SetLocalSetStmt() {
 
 // Format implements the NodeFormatter interface.
 func (node *SetVar) Format(ctx *FmtCtx) {
+	if node.Reset {
+		ctx.WriteString("RESET ")
+		if node.Namespace != "" {
+			ctx.FormatNameP(&node.Namespace)
+			ctx.WriteByte('.')
+		}
+		ctx.FormatNameP(&node.Name)
+		return
+	}
 	ctx.WriteString("SET ")
 	if node.Name == "" {
 		ctx.WriteString("ROW (")
 		ctx.FormatNode(&node.Values)
 		ctx.WriteString(")")
 	} else {
+		if node.Namespace != "" {
+			ctx.FormatNameP(&node.Namespace)
+			ctx.WriteByte('.')
+		}
 		ctx.WithFlags(ctx.flags & ^FmtAnonymize, func() {
 			// Session var names never contain PII and should be distinguished
 			// for feature tracking purposes.
