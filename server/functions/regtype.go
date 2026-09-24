@@ -78,16 +78,25 @@ var regtypein = framework.Function1{
 		default:
 			return id.Null, errors.Errorf("regtype failed validation")
 		}
+		// All dimensionalities of an array share one PostgreSQL type.
+		isArray := false
+		for strings.HasSuffix(typeName, "[]") {
+			isArray = true
+			typeName = strings.TrimSpace(strings.TrimSuffix(typeName, "[]"))
+		}
 		// Remove everything after the first parenthesis
 		typeName = strings.Split(typeName, "(")[0]
 
-		if typeName == "char" && schema == "" {
+		if typeName == "char" && schema == "" && !isArray {
 			return id.NewType("pg_catalog", "bpchar").AsId(), nil
 		}
 		if typeName == "int" {
 			typeName = "int4"
 		}
 		if internalID, ok := pgtypes.NameToInternalID[typeName]; ok && (internalID.SchemaName() == schema || schema == "") {
+			if isArray {
+				return pgtypes.IDToBuiltInDoltgresType[internalID].ToArrayType().ID.AsId(), nil
+			}
 			return internalID.AsId(), nil
 		}
 		return id.Null, pgtypes.ErrTypeDoesNotExist.New(input)

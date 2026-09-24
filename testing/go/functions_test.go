@@ -2799,6 +2799,246 @@ func TestArrayFunctions(t *testing.T) {
 	})
 }
 
+func TestCardinality(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "cardinality",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT cardinality(ARRAY[[1,NULL],[3,4]]), cardinality(ARRAY[]::int[]), cardinality(NULL::int[]);",
+				Expected: []sql.Row{{4, 0, nil}},
+			},
+			{Query: "SELECT cardinality(ARRAY[[[1,2]],[[3,4]]]);", Expected: []sql.Row{{4}}},
+		},
+	}})
+}
+
+func TestArrayLower(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "array_lower",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_lower(ARRAY[[1,2],[3,4]],1),array_lower(ARRAY[[1,2],[3,4]],2),array_lower(ARRAY[1],2);",
+				Expected: []sql.Row{{1, 1, nil}},
+			},
+			{
+				Query:    "SELECT array_lower(ARRAY[]::int[],1),array_lower(NULL::int[],1),array_lower(ARRAY[1],0),array_lower('1 2'::int2vector,1);",
+				Expected: []sql.Row{{nil, nil, nil, 0}},
+			},
+		},
+	}})
+}
+
+func TestArrayFill(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "array_fill",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_fill(7,ARRAY[2,3]),array_fill(NULL::int,ARRAY[2,2]),array_fill('x'::varchar,ARRAY[2],ARRAY[1]);",
+				Expected: []sql.Row{{"{{7,7,7},{7,7,7}}", "{{NULL,NULL},{NULL,NULL}}", "{x,x}"}},
+			},
+			{
+				Query:    "SELECT array_fill(1,ARRAY[]::int[]),array_fill(1,ARRAY[2,0]);",
+				Expected: []sql.Row{{"{}", "{}"}},
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[1,1,1,1,1,1,1]);",
+				ExpectedErr:     "array",
+				ExpectedErrCode: "54000",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[NULL]::int[]);",
+				ExpectedErr:     "cannot be null",
+				ExpectedErrCode: "22004",
+			},
+			{
+				Query:           "SELECT array_fill(1,NULL::int[]);",
+				ExpectedErr:     "cannot be null",
+				ExpectedErrCode: "22004",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2],ARRAY[0]);",
+				ExpectedErr:     "array",
+				ExpectedErrCode: "0A000",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[[2,2]]);",
+				ExpectedErr:     "array",
+				ExpectedErrCode: "2202E",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2147483647,2]);",
+				ExpectedErr:     "array",
+				ExpectedErrCode: "54000",
+			},
+		},
+	}})
+}
+
+func TestArrayRemove(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "array_remove",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_remove(ARRAY[1,2,1,NULL],1), array_remove(ARRAY[1,NULL,2],NULL), array_remove(NULL::int[],1);",
+				Expected: []sql.Row{{"{2,NULL}", "{1,2}", nil}},
+			},
+			{
+				Query:    "SELECT array_remove(ARRAY[1,1],1), array_remove(ARRAY[]::text[],'a');",
+				Expected: []sql.Row{{"{}", "{}"}},
+			},
+			{
+				Query:           "SELECT array_remove(ARRAY[[1,2],[3,4]],2);",
+				ExpectedErr:     "removing elements",
+				ExpectedErrCode: "0A000",
+			},
+		},
+	}})
+}
+
+func TestArrayReplace(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "array_replace",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_replace(ARRAY[[1,NULL],[1,4]],1,9), array_replace(ARRAY[[1,NULL],[1,4]],NULL,0);",
+				Expected: []sql.Row{{"{{9,NULL},{9,4}}", "{{1,0},{1,4}}"}},
+			},
+			{
+				Query:    "SELECT array_replace(ARRAY['a','b'],'a',NULL), array_replace(NULL::int[],1,2), array_replace(ARRAY[]::int[],1,2);",
+				Expected: []sql.Row{{"{NULL,b}", nil, "{}"}},
+			},
+		},
+	}})
+}
+
+func TestTrimArray(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "trim_array",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT trim_array(ARRAY[[1,2],[3,4],[5,6]],1), trim_array(ARRAY[1,2],2), trim_array(NULL::int[],1);",
+				Expected: []sql.Row{{"{{1,2},{3,4}}", "{}", nil}},
+			},
+			{
+				Query:    "SELECT trim_array(ARRAY[]::int[],0);",
+				Expected: []sql.Row{{"{}"}},
+			},
+			{
+				Query:           "SELECT trim_array(ARRAY[[1,2],[3,4]],3);",
+				ExpectedErr:     "number of elements",
+				ExpectedErrCode: "2202E",
+			},
+			{
+				Query:           "SELECT trim_array(ARRAY[1],-1);",
+				ExpectedErr:     "number of elements",
+				ExpectedErrCode: "2202E",
+			},
+		},
+	}})
+}
+
+func TestArrayReverse(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "array_reverse",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_reverse(ARRAY[[2,4],[3,1],[1,9]]), array_reverse(ARRAY[1,NULL,2]);",
+				Expected: []sql.Row{{"{{1,9},{3,1},{2,4}}", "{2,NULL,1}"}},
+			},
+			{
+				Query:    "SELECT array_reverse(ARRAY[]::int[]),array_reverse(NULL::int[]);",
+				Expected: []sql.Row{{"{}", nil}},
+			},
+		},
+	}})
+}
+
+func TestArraySort(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "array_sort",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_sort(ARRAY[[2,4],[3,1],[1,9]]), array_sort(ARRAY[3,NULL,1,2]);",
+				Expected: []sql.Row{{"{{1,9},{2,4},{3,1}}", "{1,2,3,NULL}"}},
+			},
+			{
+				Query:    "SELECT array_sort(ARRAY[3,NULL,1],true), array_sort(ARRAY[3,NULL,1],true,false), array_sort(ARRAY[3,NULL,1],false,true);",
+				Expected: []sql.Row{{"{NULL,3,1}", "{3,1,NULL}", "{NULL,1,3}"}},
+			},
+			{
+				Query:    "SELECT array_sort(ARRAY[[1,NULL],[1,2],[NULL,1]]), array_sort(ARRAY[]::int[]), array_sort(NULL::int[]);",
+				Expected: []sql.Row{{"{{1,2},{1,NULL},{NULL,1}}", "{}", nil}},
+			},
+			{
+				Query:    "SELECT array_sort(ARRAY['z','a','m']),array_sort(ARRAY[1],NULL);",
+				Expected: []sql.Row{{"{a,m,z}", nil}},
+			},
+		},
+	}})
+}
+
+func TestArrayContains(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "arraycontains",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[[1,2],[3,4]] @> ARRAY[4,1],ARRAY[1] @> ARRAY[1,1],ARRAY[NULL]::int[] @> ARRAY[NULL]::int[];",
+				Expected: []sql.Row{{"t", "t", "f"}},
+			},
+			{
+				Query:    "SELECT ARRAY['red','blue']::varchar[] @> ARRAY['red']::varchar[],ARRAY[1] @> ARRAY[]::int[],NULL::int[] @> ARRAY[1];",
+				Expected: []sql.Row{{"t", "t", nil}},
+			},
+		},
+	}})
+}
+
+func TestArrayContained(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "arraycontained",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[4,1] <@ ARRAY[[1,2],[3,4]],ARRAY[5] <@ ARRAY[1,2],ARRAY[]::int[] <@ ARRAY[1];",
+				Expected: []sql.Row{{"t", "f", "t"}},
+			},
+		},
+	}})
+}
+
+func TestArrayOverlap(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "arrayoverlap",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[[1,2],[3,4]] && ARRAY[4,9],ARRAY[1,2] && ARRAY[9],ARRAY[NULL]::int[] && ARRAY[NULL]::int[];",
+				Expected: []sql.Row{{"t", "f", "f"}},
+			},
+			{
+				Query:    "SELECT ARRAY[]::int[] && ARRAY[1],NULL::int[] && ARRAY[1],ARRAY['a']::varchar[] && ARRAY['b','a']::varchar[];",
+				Expected: []sql.Row{{"f", nil, "t"}},
+			},
+		},
+	}})
+}
+
+func TestUnnestMultidimensionalArguments(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "multi-array unnest flattens each input",
+		Assertions: []ScriptTestAssertion{
+			{Query: "SELECT unnest('1 2'::int2vector);", Expected: []sql.Row{{1}, {2}}},
+
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2],[3,4]],ARRAY['a','b']::varchar[]) AS u(n,label);",
+				Expected: []sql.Row{{1, "a"}, {2, "b"}, {3, nil}, {4, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(NULL::int[],ARRAY[[1,2],[3,4]]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 1}, {nil, 2}, {nil, 3}, {nil, 4}},
+			},
+		},
+	}})
+}
+
 func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

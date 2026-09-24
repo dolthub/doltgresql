@@ -26,6 +26,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
@@ -106,34 +108,8 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.AnnotateTypeExpr:
 		return nil, errors.Errorf("ANNOTATE_TYPE is not yet supported")
 	case *tree.Array:
-		unresolvedChildren := make([]vitess.Expr, len(node.Exprs))
-		var coercedType *pgtypes.DoltgresType
-		if node.HasResolvedType() {
-			_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ResolvedType(), false)
-			if err != nil {
-				return nil, err
-			}
-			if resolvedType.IsArrayType() {
-				coercedType = resolvedType
-			} else {
-				return nil, errors.Errorf("array has invalid resolved type")
-			}
-		}
-		for i, arrayExpr := range node.Exprs {
-			var err error
-			unresolvedChildren[i], err = nodeExpr(ctx, arrayExpr)
-			if err != nil {
-				return nil, err
-			}
-		}
-		arrayExpr, err := pgexprs.NewArray(coercedType)
-		if err != nil {
-			return nil, err
-		}
-		return vitess.InjectedExpr{
-			Expression: arrayExpr,
-			Children:   unresolvedChildren,
-		}, nil
+		return nodeArrayExpr(ctx, node, nil)
+
 	case *tree.ArrayFlatten:
 		subquery, err := nodeExpr(ctx, node.Subquery)
 		if err != nil {
@@ -244,7 +220,21 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Else:  else_,
 		}, nil
 	case *tree.CastExpr:
-		expr, err := nodeExpr(ctx, node.Expr)
+		var expr vitess.Expr
+		var err error
+		if array, ok := node.Expr.(*tree.Array); ok {
+			_, target, e := nodeResolvableTypeReference(ctx, node.Type, false)
+			if e != nil {
+				return nil, e
+			}
+			if target.IsArrayType() {
+				expr, err = nodeArrayExpr(ctx, array, target)
+			} else {
+				expr, err = nodeExpr(ctx, node.Expr)
+			}
+		} else {
+			expr, err = nodeExpr(ctx, node.Expr)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -495,7 +485,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.Overlaps:
-			return nil, errors.Errorf("&& is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryArrayOverlap), Children: vitess.Exprs{left, right}}, nil
 		case tree.Any:
 			return vitess.InjectedExpr{
 				Expression: pgexprs.NewAnyExpr(node.SubOperator.String()),
@@ -689,23 +679,8 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			return nil, err
 		}
 
-		children := make(vitess.Exprs, len(node.Indirection)+1)
-		children[0] = childExpr
-		for i, subscript := range node.Indirection {
-			if subscript.Slice {
-				return nil, errors.Errorf("slice subscripts are not yet supported")
-			}
-			indexExpr, err := nodeExpr(ctx, subscript.Begin)
-			if err != nil {
-				return nil, err
-			}
-			children[i+1] = indexExpr
-		}
+		return subscriptExpr(ctx, childExpr, node.Indirection)
 
-		return vitess.InjectedExpr{
-			Expression: &pgexprs.Subscript{},
-			Children:   children,
-		}, nil
 	case *tree.IsNotNullExpr:
 		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
@@ -1109,4 +1084,72 @@ func nodeRowIn(ctx *Context, operator tree.ComparisonOperator, left *tree.Tuple,
 		}, nil
 	}
 	return expr, nil
+}
+
+// subscriptExpr translates array indexes, including PostgreSQL's rule that any slice
+// turns all other indexes into slices with an implicit lower bound of one.
+func subscriptExpr(ctx *Context, child vitess.Expr, indexes tree.ArraySubscripts) (vitess.Expr, error) {
+	slice := false
+	for _, index := range indexes {
+		slice = slice || index.Slice
+	}
+	expr := &pgexprs.Subscript{Slice: slice}
+	children := vitess.Exprs{child}
+	for _, index := range indexes {
+		bounds := []tree.Expr{index.Begin}
+		if slice {
+			bounds = []tree.Expr{index.Begin, index.End}
+			if !index.Slice {
+				bounds = []tree.Expr{tree.NewNumVal(constant.MakeInt64(1), "1", false), index.Begin}
+			}
+		}
+		for _, bound := range bounds {
+			expr.Omitted = append(expr.Omitted, bound == nil)
+			if bound == nil {
+				children = append(children, &vitess.NullVal{})
+				continue
+			}
+			converted, err := nodeExpr(ctx, bound)
+			if err != nil {
+				return nil, err
+			}
+			children = append(children, converted)
+		}
+	}
+	return vitess.InjectedExpr{Expression: expr, Children: children}, nil
+}
+
+// nodeArrayExpr carries an explicit array cast into nested constructors so an empty
+// constructor has an element type. Without such context PostgreSQL rejects ARRAY[].
+func nodeArrayExpr(ctx *Context, node *tree.Array, coercedType *pgtypes.DoltgresType) (vitess.Expr, error) {
+	if coercedType == nil && node.HasResolvedType() {
+		_, resolved, err := nodeResolvableTypeReference(ctx, node.ResolvedType(), false)
+		if err != nil {
+			return nil, err
+		}
+		if !resolved.IsArrayType() {
+			return nil, errors.Errorf("array has invalid resolved type")
+		}
+		coercedType = resolved
+	}
+	if len(node.Exprs) == 0 && coercedType == nil {
+		return nil, errors.WithHint(pgerror.New(pgcode.IndeterminateDatatype, "cannot determine type of empty array"), "Explicitly cast to the desired type, for example ARRAY[]::integer[].")
+	}
+	children := make(vitess.Exprs, len(node.Exprs))
+	for i, child := range node.Exprs {
+		var err error
+		if nested, ok := child.(*tree.Array); ok && coercedType != nil {
+			children[i], err = nodeArrayExpr(ctx, nested, coercedType)
+		} else {
+			children[i], err = nodeExpr(ctx, child)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	array, err := pgexprs.NewArray(coercedType)
+	if err != nil {
+		return nil, err
+	}
+	return vitess.InjectedExpr{Expression: array, Children: children}, nil
 }

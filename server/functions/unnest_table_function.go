@@ -143,6 +143,9 @@ func (u *UnnestTableFunction) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIte
 			return nil, err
 		}
 		arrays[i], _ = val.([]any)
+		if typ, ok := array.Type(ctx).(*pgtypes.DoltgresType); ok && val != nil {
+			arrays[i] = pgtypes.FlattenArray(arrays[i], typ.ArrayBaseType())
+		}
 		rowCount = max(rowCount, len(arrays[i]))
 	}
 

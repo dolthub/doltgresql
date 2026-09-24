@@ -23,6 +23,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -76,6 +78,7 @@ type arrayLiteralParser struct {
 	pos        int
 	baseType   *pgtypes.DoltgresType
 	elementErr error
+	depth      int
 }
 
 // parse parses the entire input.
@@ -97,6 +100,12 @@ func (p *arrayLiteralParser) parse(ctx *sql.Context) (any, error) {
 
 // parseArray parses the array that starts at the current opening brace.
 func (p *arrayLiteralParser) parseArray(ctx *sql.Context, nested bool) ([]any, error) {
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > 6 {
+		return nil, pgerror.New(pgcode.ProgramLimitExceeded, "number of array dimensions (7) exceeds the maximum allowed (6)")
+	}
+
 	p.pos++
 	p.skipWhitespace()
 	if p.peek() == '}' && !nested {
@@ -122,7 +131,7 @@ func (p *arrayLiteralParser) parseArray(ctx *sql.Context, nested bool) ([]any, e
 		case ',':
 		case '}':
 			if !p.baseType.IsVectorType() && !pgtypes.SameArrayDims(vals) {
-				return nil, p.malformed()
+				return nil, errors.WithDetail(p.malformed(), "Multidimensional arrays must have sub-arrays with matching dimensions.")
 			}
 			return vals, nil
 		default:
@@ -211,7 +220,7 @@ func (p *arrayLiteralParser) next() rune {
 
 // malformed returns the error for an invalid literal.
 func (p *arrayLiteralParser) malformed() error {
-	return errors.Errorf(`malformed array literal: "%s"`, p.input)
+	return pgerror.Newf(pgcode.InvalidTextRepresentation, `malformed array literal: "%s"`, p.input)
 }
 
 // array_out represents the PostgreSQL function of array type IO output.

@@ -119,6 +119,9 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			}
 		}
 	}
+	if dims := pgtypes.ArrayDims(values, resultTyp); len(dims) > 6 {
+		return nil, pgerror.Newf(pgcode.ProgramLimitExceeded, "number of array dimensions (%d) exceeds the maximum allowed (6)", len(dims))
+	}
 	return values, nil
 }
 
@@ -233,6 +236,17 @@ func (array *Array) WithResolvedChildren(ctx context.Context, children []any) (a
 // getTargetType returns the evaluated type for this expression.
 // Returns the "anyarray" type if the type combination is invalid.
 func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) (*pgtypes.DoltgresType, error) {
+	if len(children) == 0 && array.coercedType != nil {
+		if array.coercedType.IsResolvedType() {
+			return array.coercedType, nil
+		}
+		typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		return typeColl.ResolveTypeWithTypmod(ctx, array.coercedType.ID, array.coercedType.UnresolvedTypmods)
+	}
+
 	var childrenTypes []*pgtypes.DoltgresType
 	for _, child := range children {
 		if child != nil {

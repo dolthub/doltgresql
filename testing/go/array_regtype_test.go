@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,29 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package binary
+package _go
 
-// Init initializes all binary operators in this package.
-func Init() {
-	initArrayOverlap()
-	initArrayContained()
-	initArrayContains()
-	initBinaryBitAnd()
-	initBinaryBitOr()
-	initBinaryBitXor()
-	initBinaryConcatenate()
-	initBinaryDivide()
-	initBinaryEqual()
-	initBinaryGreaterOrEqual()
-	initBinaryGreaterThan()
-	initBinaryLessOrEqual()
-	initBinaryLessThan()
-	initBinaryMinus()
-	initBinaryMod()
-	initBinaryMultiply()
-	initBinaryNotEqual()
-	initBinaryPlus()
-	initBinaryShiftLeft()
-	initBinaryShiftRight()
-	initJSON()
+import (
+	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
+)
+
+func TestArrayRegtype(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "array dimensionality does not change regtype",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT 'integer[]'::regtype='integer[][]'::regtype,'varchar[][][]'::regtype='varchar[]'::regtype;",
+				Expected: []sql.Row{{"t", "t"}},
+			},
+			{Query: "SELECT 'pg_catalog.int4[][]'::regtype;", Expected: []sql.Row{{"integer[]"}}},
+		},
+	}})
 }

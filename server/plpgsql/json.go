@@ -560,10 +560,6 @@ func (stmt *plpgSQL_stmt_foreach_a) Convert(datums datumNames) (block Block, err
 	block.Label = stmt.Label
 	block.IsLoop = true
 
-	if stmt.Slice > 0 {
-		// TODO: SLICE iterates over sub-arrays, which needs multidimensional array support.
-		return Block{}, errors.New("FOREACH with SLICE is not yet supported")
-	}
 	varName, err := datums.Name(stmt.VarNo)
 	if err != nil {
 		return Block{}, err
@@ -589,6 +585,10 @@ func (stmt *plpgSQL_stmt_foreach_a) Convert(datums datumNames) (block Block, err
 	// cursor machinery fetch them, and assigning out of it is what casts each to the variable's declared type.
 	iterateQuery := fmt.Sprintf("SELECT __foreach_source__ AS %s FROM unnest(%s) AS __foreach_source__",
 		foreachElementField, arrayRef)
+
+	if stmt.Slice > 0 {
+		iterateQuery = fmt.Sprintf("SELECT __foreach_source__ AS %s FROM __doltgres_foreach_slice(%s,%d) AS __foreach_source__", foreachElementField, arrayRef, stmt.Slice)
+	}
 
 	convertedBody, err := jsonConvertStatements(stmt.Body, datums)
 	if err != nil {
@@ -644,6 +644,17 @@ func (stmt *plpgSQL_stmt_foreach_a) Convert(datums datumNames) (block Block, err
 		ForQueryNext{RecordVar: rowName, GotoOffset: bodySize + 3},
 		Assignment{VariableName: varName, Expression: rowName + "." + foreachElementField},
 	}
+	if stmt.Slice > 0 {
+		checks := []Statement{
+			If{Condition: fmt.Sprintf("CAST(pg_typeof(%s) AS TEXT) LIKE '%%[]'", QuoteIdentifier(varName)), GotoOffset: 2},
+			Raise{Level: NoticeLevelException.String(), Message: "FOREACH ... SLICE loop variable must be of an array type", SqlState: pgcode.DatatypeMismatch.String()},
+		}
+		body := append([]Statement{}, block.Body[:5]...)
+		body = append(body, checks...)
+		block.Body = append(body, block.Body[5:]...)
+		block.ContinueTargetOffset += int32(len(checks))
+	}
+
 	block.Body = append(block.Body, convertedBody...)
 	block.Body = append(block.Body, Goto{Offset: -(2 + bodySize)})
 	return block, nil
