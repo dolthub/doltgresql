@@ -485,7 +485,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.Overlaps:
-			return nil, errors.Errorf("&& is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryArrayOverlap), Children: vitess.Exprs{left, right}}, nil
 		case tree.Any:
 			return vitess.InjectedExpr{
 				Expression: pgexprs.NewAnyExpr(node.SubOperator.String()),
