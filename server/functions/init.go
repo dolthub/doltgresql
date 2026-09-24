@@ -22,6 +22,7 @@ func initTypeFunctions() {
 	initAnyEnum()
 	initAnyNonArray()
 	initArray()
+	initCardinality()
 	initBit()
 	initBool()
 	initBpChar()
