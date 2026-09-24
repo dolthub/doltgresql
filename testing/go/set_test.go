@@ -15,12 +15,44 @@
 package _go
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/server/config"
 )
 
 func TestSetStatements(t *testing.T) {
+	// Phase 1F renders PostgreSQL booleans as on/off and validates read-only
+	// parameters through the PostgreSQL setting service. Keep the large
+	// generated parameter corpus while adjusting those shared expectations.
+	for i := range setStmts {
+		for j := range setStmts[i].Assertions {
+			a := &setStmts[i].Assertions[j]
+			if a.ExpectedErr == "is a read only variable" {
+				a.ExpectedErr = "cannot be changed now"
+			}
+			_, queryName, found := strings.Cut(a.Query, "current_setting('")
+			if !found {
+				continue
+			}
+			name, _, found := strings.Cut(queryName, "'")
+			if !found {
+				continue
+			}
+			parameter := config.PostgresConfigParameters()[name]
+			if parameter == nil || parameter.GetType().String() != "system_bool" || len(a.Expected) != 1 || len(a.Expected[0]) != 1 {
+				continue
+			}
+			switch a.Expected[0][0] {
+			case "0":
+				a.Expected[0][0] = "off"
+			case "1":
+				a.Expected[0][0] = "on"
+			}
+		}
+	}
 	RunScripts(t, setStmts)
 }
 
