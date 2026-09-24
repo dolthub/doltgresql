@@ -30,6 +30,9 @@ import (
 type Subscript struct {
 	Child   sql.Expression
 	Indexes []sql.Expression
+	// Slice uses lower/upper pairs in Indexes. Omitted distinguishes an omitted bound from SQL NULL.
+	Slice   bool
+	Omitted []bool
 }
 
 var _ vitess.Injectable = (*Subscript)(nil)
@@ -57,8 +60,22 @@ func (s Subscript) Resolved() bool {
 func (s Subscript) String() string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprint(s.Child))
-	for _, index := range s.Indexes {
-		sb.WriteString(fmt.Sprintf("[%s]", index))
+	for i, index := range s.Indexes {
+		if !s.Slice {
+			sb.WriteString(fmt.Sprintf("[%s]", index))
+			continue
+		}
+		if i%2 == 0 {
+			sb.WriteByte('[')
+		} else {
+			sb.WriteByte(':')
+		}
+		if !s.Omitted[i] {
+			sb.WriteString(fmt.Sprint(index))
+		}
+		if i%2 == 1 {
+			sb.WriteByte(']')
+		}
 	}
 	return sb.String()
 }
@@ -72,6 +89,9 @@ func (s Subscript) Type(ctx *sql.Context) sql.Type {
 		//panic(fmt.Sprintf("unexpected type %T for subscript", s.Child.Type(ctx)))
 	}
 	// can be either array type or vector type, so use its base type if it exists
+	if s.Slice {
+		return dt
+	}
 	return dt.BaseType()
 }
 
@@ -88,6 +108,10 @@ func (s Subscript) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	}
 	if childVal == nil {
 		return nil, nil
+	}
+
+	if s.Slice {
+		return s.evalSlice(ctx, row, childVal)
 	}
 
 	scalarElements := false
@@ -161,7 +185,10 @@ func (s Subscript) WithChildren(ctx *sql.Context, children ...sql.Expression) (s
 			}
 		}
 	}
-	return NewSubscript(children[0], children[1:]...), nil
+	result := NewSubscript(children[0], children[1:]...)
+	result.Slice = s.Slice
+	result.Omitted = s.Omitted
+	return result, nil
 }
 
 // WithResolvedChildren implements the vitess.Injectable interface.
@@ -174,4 +201,70 @@ func (s Subscript) WithResolvedChildren(ctx context.Context, children []any) (an
 		}
 	}
 	return s.WithChildren(ctx.(*sql.Context), expressions...)
+}
+
+// evalSlice clips each requested range to the stored bounds. Slices preserve all axes and
+// normalize lower bounds to one. A disjoint range produces an empty array.
+func (s Subscript) evalSlice(ctx *sql.Context, row sql.Row, value any) (any, error) {
+	dt, ok := s.childType(ctx)
+	if !ok {
+		return nil, fmt.Errorf("unsupported type %T for subscript", value)
+	}
+	vals := value.([]any)
+	dims := types.ArrayDims(vals, dt.BaseType())
+	lower := make([]int, len(dims))
+	upper := make([]int, len(dims))
+	for i, d := range dims {
+		lower[i] = 1
+		upper[i] = int(d)
+	}
+	empty := len(dims) == 0 || len(s.Indexes)/2 > len(dims)
+	for i, expr := range s.Indexes {
+		if s.Omitted[i] {
+			continue
+		}
+		v, err := expr.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		if v == nil {
+			return nil, nil
+		}
+		v, _, err = types.Int32.Convert(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		axis := i / 2
+		if axis >= len(dims) {
+			continue
+		}
+		bound := int(v.(int32))
+		if i%2 == 0 {
+			lower[axis] = max(1, bound)
+		} else {
+			upper[axis] = min(int(dims[axis]), bound)
+		}
+	}
+	for i := range dims {
+		if lower[i] > upper[i] {
+			empty = true
+		}
+	}
+	if empty {
+		return []any{}, nil
+	}
+	return sliceArray(vals, lower, upper), nil
+}
+
+// sliceArray copies a rectangular region with inclusive, one-based bounds.
+func sliceArray(vals []any, lower, upper []int) []any {
+	result := make([]any, upper[0]-lower[0]+1)
+	for i := range result {
+		v := vals[lower[0]-1+i]
+		if len(lower) > 1 {
+			v = sliceArray(v.([]any), lower[1:], upper[1:])
+		}
+		result[i] = v
+	}
+	return result
 }

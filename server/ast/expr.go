@@ -689,23 +689,8 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			return nil, err
 		}
 
-		children := make(vitess.Exprs, len(node.Indirection)+1)
-		children[0] = childExpr
-		for i, subscript := range node.Indirection {
-			if subscript.Slice {
-				return nil, errors.Errorf("slice subscripts are not yet supported")
-			}
-			indexExpr, err := nodeExpr(ctx, subscript.Begin)
-			if err != nil {
-				return nil, err
-			}
-			children[i+1] = indexExpr
-		}
+		return subscriptExpr(ctx, childExpr, node.Indirection)
 
-		return vitess.InjectedExpr{
-			Expression: &pgexprs.Subscript{},
-			Children:   children,
-		}, nil
 	case *tree.IsNotNullExpr:
 		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
@@ -1109,4 +1094,37 @@ func nodeRowIn(ctx *Context, operator tree.ComparisonOperator, left *tree.Tuple,
 		}, nil
 	}
 	return expr, nil
+}
+
+// subscriptExpr translates array indexes, including PostgreSQL's rule that any slice
+// turns all other indexes into slices with an implicit lower bound of one.
+func subscriptExpr(ctx *Context, child vitess.Expr, indexes tree.ArraySubscripts) (vitess.Expr, error) {
+	slice := false
+	for _, index := range indexes {
+		slice = slice || index.Slice
+	}
+	expr := &pgexprs.Subscript{Slice: slice}
+	children := vitess.Exprs{child}
+	for _, index := range indexes {
+		bounds := []tree.Expr{index.Begin}
+		if slice {
+			bounds = []tree.Expr{index.Begin, index.End}
+			if !index.Slice {
+				bounds = []tree.Expr{tree.NewNumVal(constant.MakeInt64(1), "1", false), index.Begin}
+			}
+		}
+		for _, bound := range bounds {
+			expr.Omitted = append(expr.Omitted, bound == nil)
+			if bound == nil {
+				children = append(children, &vitess.NullVal{})
+				continue
+			}
+			converted, err := nodeExpr(ctx, bound)
+			if err != nil {
+				return nil, err
+			}
+			children = append(children, converted)
+		}
+	}
+	return vitess.InjectedExpr{Expression: expr, Children: children}, nil
 }
