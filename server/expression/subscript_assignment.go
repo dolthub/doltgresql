@@ -67,7 +67,7 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, err
 	}
 	dt, ok := s.childType(ctx)
-	if !ok {
+	if !ok || !dt.IsArrayCategory() {
 		return nil, pgerror.New(pgcode.DatatypeMismatch, "subscripted object is not an array")
 	}
 	target := dt.BaseType()

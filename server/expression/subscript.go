@@ -23,6 +23,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -102,6 +104,10 @@ func (s Subscript) IsNullable(ctx *sql.Context) bool {
 
 // Eval implements the sql.Expression interface.
 func (s Subscript) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
+	if dt, ok := s.childType(ctx); s.Slice && (!ok || !dt.IsArrayCategory()) {
+		return nil, pgerror.New(pgcode.DatatypeMismatch, "subscripted object is not an array")
+	}
+
 	childVal, err := s.Child.Eval(ctx, row)
 	if err != nil {
 		return nil, err
