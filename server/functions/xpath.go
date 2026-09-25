@@ -17,9 +17,10 @@ package functions
 import (
 	"github.com/antchfx/xmlquery"
 	"github.com/antchfx/xpath"
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/xml"
@@ -92,19 +93,23 @@ func evaluateXpath(ctx *sql.Context, exprVal any, xmlVal any, namespacesVal any)
 
 // xpathNamespaces converts the namespace array of `xpath` and `xpath_exists` into a prefix-to-URI map.
 func xpathNamespaces(ctx *sql.Context, vals []any) (map[string]string, error) {
-	if len(vals)%2 != 0 {
-		return nil, errors.Errorf("invalid array for XML namespace mapping")
+	dims := pgtypes.ArrayDims(vals, pgtypes.Text)
+	if len(dims) == 0 {
+		return nil, nil
+	} else if len(dims) != 2 || dims[1] != 2 {
+		return nil, pgerror.New(pgcode.DataException, "invalid array for XML namespace mapping")
 	}
-	namespaces := make(map[string]string, len(vals)/2)
-	for i := 0; i < len(vals); i += 2 {
-		if vals[i] == nil || vals[i+1] == nil {
-			return nil, errors.Errorf("neither namespace name nor URI may be null")
+	namespaces := make(map[string]string, len(vals))
+	for _, val := range vals {
+		mapping := val.([]any)
+		if mapping[0] == nil || mapping[1] == nil {
+			return nil, pgerror.New(pgcode.NullValueNotAllowed, "neither namespace name nor URI may be null")
 		}
-		prefix, err := framework.UnwrapString(ctx, vals[i])
+		prefix, err := framework.UnwrapString(ctx, mapping[0])
 		if err != nil {
 			return nil, err
 		}
-		uri, err := framework.UnwrapString(ctx, vals[i+1])
+		uri, err := framework.UnwrapString(ctx, mapping[1])
 		if err != nil {
 			return nil, err
 		}

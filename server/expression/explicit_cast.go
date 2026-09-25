@@ -25,6 +25,8 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -109,7 +111,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, err
 	}
 	if !cast.ID.IsValid() {
-		return nil, errors.Errorf(
+		return nil, pgerror.Newf(pgcode.CannotCoerce,
 			"EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
 			sourceType.String(), c.castToType.String(), c.sqlChild.String(),
 		)

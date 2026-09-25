@@ -248,22 +248,8 @@ func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
 							if expr.Lateral {
 								// GMS only supports lateral scoping for subqueries, so we wrap the table function
 								// in a subquery marked as lateral. This makes columns of the preceding FROM items
-								// visible to the function's arguments. The wrapping subquery requires an alias;
-								// a function called in FROM implicitly uses the function's name as its table alias.
-								alias := expr.As
-								if alias.IsEmpty() {
-									alias = vitess.NewTableIdent(funcExpr.Name.Lowered())
-								}
-								return &vitess.AliasedTableExpr{
-									Expr: &vitess.Subquery{
-										Select: &vitess.Select{
-											SelectExprs: vitess.SelectExprs{&vitess.StarExpr{}},
-											From:        vitess.TableExprs{tableFuncExpr},
-										},
-									},
-									As:      alias,
-									Lateral: true,
-								}
+								// visible to the function's arguments.
+								return wrapLateralTableFunc(tableFuncExpr)
 							}
 							return tableFuncExpr
 						}

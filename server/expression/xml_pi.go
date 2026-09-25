@@ -19,10 +19,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -38,7 +39,7 @@ var _ sql.Expression = (*XmlPi)(nil)
 // NewXmlPi returns a new XmlPi targeting the SQL identifier `name`, which is mapped to an XML name.
 func NewXmlPi(name string) (*XmlPi, error) {
 	if strings.EqualFold(name, "xml") {
-		return nil, errors.Errorf(`invalid XML processing instruction: XML processing instruction target name cannot be "%s"`, name)
+		return nil, pgerror.Newf(pgcode.Syntax, `invalid XML processing instruction: XML processing instruction target name cannot be "%s"`, name)
 	}
 	return &XmlPi{Name: xmlName(name)}, nil
 }
@@ -58,7 +59,7 @@ func (x *XmlPi) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, err
 	}
 	if strings.Contains(*str, "?>") {
-		return nil, errors.Errorf(`invalid XML processing instruction: XML processing instruction cannot contain "?>"`)
+		return nil, pgerror.New(pgcode.InvalidXMLProcessingInstruction, `invalid XML processing instruction: XML processing instruction cannot contain "?>"`)
 	}
 	return "<?" + x.Name + " " + strings.TrimLeftFunc(*str, unicode.IsSpace) + "?>", nil
 }

@@ -17,9 +17,10 @@ package functions
 import (
 	"strings"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -41,7 +42,7 @@ var xmlcomment_text = framework.Function1{
 			return nil, err
 		}
 		if strings.Contains(str, "--") || strings.HasSuffix(str, "-") {
-			return nil, errors.Errorf("invalid XML comment")
+			return nil, pgerror.New(pgcode.InvalidXMLComment, "invalid XML comment")
 		}
 		return "<!--" + str + "-->", nil
 	},

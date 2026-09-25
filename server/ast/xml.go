@@ -15,9 +15,10 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
@@ -34,7 +35,7 @@ func nodeXmlTable(ctx *Context, node *tree.AliasedTableExpr, xmlTable *tree.XmlT
 	}
 	for _, namespace := range xmlTable.Namespaces {
 		if namespace.Prefix == "" {
-			return nil, errors.Errorf("DEFAULT namespace is not supported")
+			return nil, pgerror.New(pgcode.FeatureNotSupported, "DEFAULT namespace is not supported")
 		}
 		uri, err := nodeExpr(ctx, namespace.URI)
 		if err != nil {
@@ -48,12 +49,12 @@ func nodeXmlTable(ctx *Context, node *tree.AliasedTableExpr, xmlTable *tree.XmlT
 	for _, column := range xmlTable.Columns {
 		name := string(column.Name)
 		if _, ok := names[name]; ok {
-			return nil, errors.Errorf(`column name "%s" is not unique`, name)
+			return nil, pgerror.Newf(pgcode.Syntax, `column name "%s" is not unique`, name)
 		}
 		names[name] = struct{}{}
 		if column.ForOrdinality {
 			if hasOrdinality {
-				return nil, errors.Errorf("only one FOR ORDINALITY column is allowed")
+				return nil, pgerror.New(pgcode.Syntax, "only one FOR ORDINALITY column is allowed")
 			}
 			hasOrdinality = true
 			table.Columns = append(table.Columns, pgnodes.XmlTableColumn{Name: name, Type: pgtypes.Int32, ForOrdinality: true})
@@ -133,7 +134,7 @@ func nodeXmlAttributes(ctx *Context, attributes []tree.XmlAttribute, kind string
 		if names[i] == "" {
 			columnName, ok := attribute.Expr.(*tree.UnresolvedName)
 			if !ok || columnName.Star {
-				return nil, nil, errors.Errorf("unnamed XML %s value must be a column reference", kind)
+				return nil, nil, pgerror.Newf(pgcode.Syntax, "unnamed XML %s value must be a column reference", kind)
 			}
 			names[i] = columnName.Parts[0]
 		}

@@ -22,7 +22,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cockroachdb/errors"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
 // declarationRegex matches the XML declaration that may begin an xml value, capturing its version and standalone
@@ -32,9 +33,9 @@ var declarationRegex = regexp.MustCompile(`^<\?xml\s+version\s*=\s*["']([^"']*)[
 // CheckWellFormed returns an error if `input` is not well-formed XML content, or not a well-formed XML document when
 // `document` is set.
 func CheckWellFormed(input string, document bool) error {
-	kind := "content"
+	kind, code := "content", pgcode.InvalidXMLContent
 	if document {
-		kind = "document"
+		kind, code = "document", pgcode.InvalidXMLDocument
 	}
 	_, _, input = SplitDeclaration(input)
 	decoder := xml.NewDecoder(strings.NewReader(input))
@@ -45,7 +46,7 @@ func CheckWellFormed(input string, document bool) error {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return errors.Errorf("invalid XML %s: %s", kind, err)
+			return pgerror.Newf(code, "invalid XML %s: %s", kind, err)
 		}
 		switch token := token.(type) {
 		case xml.StartElement:
@@ -57,12 +58,12 @@ func CheckWellFormed(input string, document bool) error {
 			depth--
 		case xml.CharData:
 			if document && depth == 0 && len(bytes.TrimSpace(token)) > 0 {
-				return errors.Errorf("invalid XML document")
+				return pgerror.New(pgcode.InvalidXMLDocument, "invalid XML document")
 			}
 		}
 	}
 	if document && roots != 1 {
-		return errors.Errorf("invalid XML document")
+		return pgerror.New(pgcode.InvalidXMLDocument, "invalid XML document")
 	}
 	return nil
 }

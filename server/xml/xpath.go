@@ -22,6 +22,9 @@ import (
 	"github.com/antchfx/xmlquery"
 	"github.com/antchfx/xpath"
 	"github.com/cockroachdb/errors"
+
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
 // textEscaper escapes the characters that may not appear literally in XML text.
@@ -38,7 +41,7 @@ func EscapeText(str string) string {
 // Compile compiles the XPath expression `expr` using the prefix-to-URI map `namespaces`.
 func Compile(expr string, namespaces map[string]string) (*xpath.Expr, error) {
 	if len(expr) == 0 {
-		return nil, errors.Errorf("empty XPath expression")
+		return nil, pgerror.New(pgcode.DataException, "empty XPath expression")
 	}
 	compiled, err := xpath.CompileWithNS(expr, namespaces)
 	if err != nil {
@@ -50,11 +53,11 @@ func Compile(expr string, namespaces map[string]string) (*xpath.Expr, error) {
 // ParseDocument parses `str` as an XML document.
 func ParseDocument(str string) (*xmlquery.Node, error) {
 	if err := CheckWellFormed(str, true); err != nil {
-		return nil, errors.Errorf("could not parse XML document")
+		return nil, pgerror.New(pgcode.InvalidXMLDocument, "could not parse XML document")
 	}
 	doc, err := xmlquery.Parse(strings.NewReader(str))
 	if err != nil {
-		return nil, errors.Errorf("could not parse XML document")
+		return nil, pgerror.New(pgcode.InvalidXMLDocument, "could not parse XML document")
 	}
 	return doc, nil
 }

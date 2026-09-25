@@ -15,10 +15,11 @@
 package expression
 
 import (
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -62,7 +63,7 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, err
 	}
 	if !cast.ID.IsValid() {
-		return nil, errors.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
+		return nil, pgerror.Newf(pgcode.DatatypeMismatch, "ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
 			ac.targetType.String(), ac.sourceType.String(), ac.expr.String())
 	}
 	return cast.Eval(ctx, val, ac.sourceType, ac.targetType)

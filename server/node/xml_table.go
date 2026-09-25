@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	"io"
 	"strings"
 
 	"github.com/antchfx/xmlquery"
@@ -25,6 +26,8 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/xml"
 )
@@ -105,7 +108,7 @@ func (x *XmlTable) NewInstance(ctx *sql.Context, db sql.Database, args []sql.Exp
 		return nil, errors.Errorf("expected an XMLTABLE definition but found `%T`", args[0])
 	}
 	if documentType, ok := definition.table.Document.Type(ctx).(*pgtypes.DoltgresType); ok && documentType.ID != pgtypes.Xml.ID && documentType.ID != pgtypes.Unknown.ID {
-		return nil, errors.Errorf("argument of XMLTABLE must be type xml, not type %s", documentType.String())
+		return nil, pgerror.Newf(pgcode.DatatypeMismatch, "argument of XMLTABLE must be type xml, not type %s", documentType.String())
 	}
 	table := *definition.table
 	table.database = db
@@ -152,9 +155,9 @@ func (x *XmlTable) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	} else if rowPath == nil {
-		return nil, errors.Errorf("row filter expression must not be null")
+		return nil, pgerror.New(pgcode.NullValueNotAllowed, "row filter expression must not be null")
 	} else if *rowPath == "" {
-		return nil, errors.Errorf("row path filter must not be empty string")
+		return nil, pgerror.New(pgcode.DataException, "row path filter must not be empty string")
 	}
 	namespaces := make(map[string]string, len(x.Namespaces))
 	for _, namespace := range x.Namespaces {
@@ -162,13 +165,13 @@ func (x *XmlTable) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIter, error) {
 		if err != nil {
 			return nil, err
 		} else if uri == nil {
-			return nil, errors.Errorf("namespace URI must not be null")
+			return nil, pgerror.New(pgcode.NullValueNotAllowed, "namespace URI must not be null")
 		}
 		namespaces[namespace.Prefix] = *uri
 	}
 	rowExpr, err := xml.Compile(*rowPath, namespaces)
 	if err != nil {
-		return nil, err
+		return nil, pgerror.WithCandidateCode(err, pgcode.Syntax)
 	}
 	columnExprs := make([]*xpath.Expr, len(x.Columns))
 	for i, column := range x.Columns {
@@ -179,10 +182,12 @@ func (x *XmlTable) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIter, error) {
 		if err != nil {
 			return nil, err
 		} else if path == nil {
-			return nil, errors.Errorf("column filter expression must not be null")
+			return nil, pgerror.New(pgcode.NullValueNotAllowed, "column filter expression must not be null")
+		} else if *path == "" {
+			return nil, pgerror.New(pgcode.DataException, "column path filter must not be empty string")
 		}
 		if columnExprs[i], err = xml.Compile(*path, namespaces); err != nil {
-			return nil, err
+			return nil, pgerror.WithCandidateCode(err, pgcode.DataException)
 		}
 	}
 	result, err := xml.Evaluate(rowExpr, xmlquery.CreateXPathNavigator(doc))
@@ -193,22 +198,26 @@ func (x *XmlTable) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIter, error) {
 	if !ok {
 		return sql.RowsToRowIter(), nil
 	}
-	var rows []sql.Row
-	for nodes.MoveNext() {
+	ordinality := int32(0)
+	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+		if !nodes.MoveNext() {
+			return nil, io.EOF
+		}
+		ordinality++
 		rowNode := nodes.Current().Copy()
 		outputRow := make(sql.Row, len(x.Columns))
 		for i, column := range x.Columns {
 			if column.ForOrdinality {
-				outputRow[i] = int32(len(rows) + 1)
+				outputRow[i] = ordinality
 				continue
 			}
+			var err error
 			if outputRow[i], err = x.columnValue(ctx, column, columnExprs[i], rowNode.Copy(), row); err != nil {
 				return nil, err
 			}
 		}
-		rows = append(rows, outputRow)
-	}
-	return sql.RowsToRowIter(rows...), nil
+		return outputRow, nil
+	}), nil
 }
 
 // Schema implements the interface sql.TableFunction.
@@ -297,7 +306,7 @@ func (x *XmlTable) columnValue(ctx *sql.Context, column XmlTableColumn, columnEx
 		return nil, err
 	}
 	if value == nil && column.NotNull {
-		return nil, errors.Errorf(`null is not allowed in column "%s"`, column.Name)
+		return nil, pgerror.Newf(pgcode.NullValueNotAllowed, `null is not allowed in column "%s"`, column.Name)
 	}
 	return value, nil
 }
@@ -313,7 +322,7 @@ func (x *XmlTable) nodesValue(column XmlTableColumn, nodes *xpath.NodeIterator) 
 		if column.Type.ID == pgtypes.Xml.ID {
 			sb.WriteString(xml.NodeToXml(nav))
 		} else if count > 1 {
-			return nil, errors.Errorf("more than one value returned by column XPath expression")
+			return nil, pgerror.New(pgcode.CardinalityViolation, "more than one value returned by column XPath expression")
 		} else if nav.NodeType() != xpath.AttributeNode && nav.Current().Type == xmlquery.CharDataNode {
 			sb.WriteString(nav.Current().Data)
 		} else {
@@ -349,7 +358,7 @@ func (x *XmlTable) defaultValue(ctx *sql.Context, column XmlTableColumn, row sql
 		return nil, err
 	}
 	if !cast.ID.IsValid() {
-		return nil, errors.Errorf("argument of XMLTABLE must be type %s, not type %s", column.Type.String(), defaultType.String())
+		return nil, pgerror.Newf(pgcode.DatatypeMismatch, "argument of XMLTABLE must be type %s, not type %s", column.Type.String(), defaultType.String())
 	}
 	return cast.Eval(ctx, value, defaultType, column.Type)
 }

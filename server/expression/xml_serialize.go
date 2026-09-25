@@ -17,11 +17,12 @@ package expression
 import (
 	"context"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/xml"
@@ -58,7 +59,7 @@ func (x *XmlSerialize) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 	}
 	if x.Document && xml.CheckWellFormed(str, true) != nil {
-		return nil, errors.Errorf("not an XML document")
+		return nil, pgerror.New(pgcode.NotAnXMLDocument, "not an XML document")
 	}
 	if x.TargetType.Equals(pgtypes.Text) {
 		return str, nil
@@ -72,7 +73,7 @@ func (x *XmlSerialize) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, err
 	}
 	if !cast.ID.IsValid() {
-		return nil, errors.Errorf("cannot cast XMLSERIALIZE result to %s", x.TargetType.String())
+		return nil, pgerror.Newf(pgcode.CannotCoerce, "cannot cast XMLSERIALIZE result to %s", x.TargetType.String())
 	}
 	return cast.Eval(ctx, str, pgtypes.Text, x.TargetType)
 }

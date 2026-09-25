@@ -570,8 +570,15 @@ func TestPgCast(t *testing.T) {
 			Name: "pg_cast",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT COUNT(*) FROM "pg_catalog"."pg_cast";`,
-					Expected: []sql.Row{{131}},
+					Query: `SELECT castsource::regtype, casttarget::regtype, castcontext FROM "pg_catalog"."pg_cast" WHERE castsource = 'xml'::regtype OR casttarget = 'xml'::regtype ORDER BY castsource::regtype::text, casttarget::regtype::text;`,
+					Expected: []sql.Row{
+						{"character", "xml", "e"},
+						{"character varying", "xml", "e"},
+						{"text", "xml", "e"},
+						{"xml", "character", "a"},
+						{"xml", "character varying", "a"},
+						{"xml", "text", "a"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_cast";`,
@@ -582,8 +589,8 @@ func TestPgCast(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT COUNT(*) FROM PG_catalog.pg_CAST ORDER BY oid;",
-					Expected: []sql.Row{{131}},
+					Query:    "SELECT castsource::regtype, casttarget::regtype, castcontext, castmethod FROM PG_catalog.pg_CAST WHERE castsource = 'int4'::regtype AND casttarget = 'int8'::regtype;",
+					Expected: []sql.Row{{"integer", "bigint", "i", "f"}},
 				},
 			},
 		},

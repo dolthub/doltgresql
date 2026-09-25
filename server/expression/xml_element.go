@@ -26,6 +26,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/server/xml"
@@ -54,7 +56,7 @@ func NewXmlElement(name string, attributeNames []string) (*XmlElement, error) {
 	mappedAttributes := make([]string, len(attributeNames))
 	for i, attributeName := range attributeNames {
 		if _, ok := seen[attributeName]; ok {
-			return nil, errors.Errorf(`XML attribute name "%s" appears more than once`, attributeName)
+			return nil, pgerror.Newf(pgcode.Syntax, `XML attribute name "%s" appears more than once`, attributeName)
 		}
 		seen[attributeName] = struct{}{}
 		mappedAttributes[i] = xmlName(attributeName)

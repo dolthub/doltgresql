@@ -145,7 +145,7 @@ func newCompiledFunctionInternal(
 				if len(originalTypes) > 1 {
 					rightType = originalTypes[1].String()
 				}
-				c.stashedErr = cerrors.Errorf("operator does not exist: %s %s %s", leftType, opStr, rightType)
+				c.stashedErr = pgerror.Newf(pgcode.UndefinedFunction, "operator does not exist: %s %s %s", leftType, opStr, rightType)
 				return c
 			} else if strings.HasPrefix(name, "internal_unary_operator_func_") {
 				opStr := strings.TrimPrefix(name, "internal_unary_operator_func_")
@@ -153,7 +153,7 @@ func newCompiledFunctionInternal(
 				if len(originalTypes) > 0 {
 					childType = originalTypes[0].String()
 				}
-				c.stashedErr = cerrors.Errorf("operator does not exist: %s%s", opStr, childType)
+				c.stashedErr = pgerror.Newf(pgcode.UndefinedFunction, "operator does not exist: %s%s", opStr, childType)
 				return c
 			}
 		}
