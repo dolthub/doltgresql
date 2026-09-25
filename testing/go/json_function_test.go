@@ -1441,3 +1441,704 @@ func TestJsonInspectionStoredValues(t *testing.T) {
 		},
 	})
 }
+
+func TestJsonTable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "JSON_TABLE",
+			SetUpScript: []string{
+				"CREATE TABLE docs (id INT PRIMARY KEY, doc JSONB);",
+				`INSERT INTO docs VALUES (1, '[{"a":1},{"a":2}]'), (2, '[{"a":3}]'), (3, NULL), (4, '{"a":4}');`,
+				"CREATE TABLE texts (id INT PRIMARY KEY, doc TEXT);",
+				`INSERT INTO texts VALUES (1, '{"a":"x"}');`,
+				"CREATE VIEW v AS SELECT docs.id, jt.a FROM docs, JSON_TABLE(docs.doc, '$[*]' COLUMNS (a INT PATH '$.a')) AS jt;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (a INT PATH '$.a')) AS jt;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]', '$[*]' COLUMNS (a INT PATH '$.a')) AS jt;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::json, '$[*]' COLUMNS (a INT PATH '$.a')) AS jt;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::text, '$[*]' COLUMNS (a INT PATH '$.a')) AS jt;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1]'::varchar, '$[*]' COLUMNS (a INT PATH '$')) AS jt;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1]'::text FORMAT JSON, '$[*]' COLUMNS (a INT PATH '$')) AS jt;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE(1, '$[*]' COLUMNS (a INT PATH '$.a')) AS jt;`,
+					ExpectedErr:     "cannot cast type integer to jsonb",
+					ExpectedErrCode: "42846",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::bytea, '$[*]' COLUMNS (a INT PATH '$')) AS jt;`,
+					ExpectedErr:     "cannot cast type bytea to jsonb",
+					ExpectedErrCode: "42846",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb FORMAT JSON ENCODING UTF8, '$[*]' COLUMNS (a INT PATH '$')) AS jt;`,
+					ExpectedErr:     "JSON ENCODING clause is only allowed for bytea input type",
+					ExpectedErrCode: "42804",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('not json'::text, '$[*]' COLUMNS (a INT)) AS jt;`,
+					ExpectedErr:     "invalid input syntax for type json",
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:            `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (a INT)) AS jt(x);`,
+					Expected:         []sql.Row{{1}, {2}},
+					ExpectedColNames: []string{"x"},
+				},
+				{
+					Query:    `SELECT json_table.a FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (a INT));`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE(NULL::jsonb, '$[*]' COLUMNS (a INT)) AS jt;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE(NULL, '$[*]' COLUMNS (a INT)) AS jt;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT docs.id, jt.* FROM docs, JSON_TABLE(docs.doc, '$[*]' COLUMNS (a INT PATH '$.a')) AS jt ORDER BY 1, 2;",
+					Expected: []sql.Row{{1, 1}, {1, 2}, {2, 3}, {4, 4}},
+				},
+				{
+					Query:    "SELECT docs.id, jt.* FROM docs CROSS JOIN LATERAL JSON_TABLE(docs.doc, '$[*]' COLUMNS (a INT PATH '$.a')) AS jt ORDER BY 1, 2;",
+					Expected: []sql.Row{{1, 1}, {1, 2}, {2, 3}, {4, 4}},
+				},
+				{
+					Query:    "SELECT docs.id, jt.* FROM docs LEFT JOIN LATERAL JSON_TABLE(docs.doc, '$[*]' COLUMNS (a INT PATH '$.a')) AS jt ON TRUE ORDER BY 1, 2;",
+					Expected: []sql.Row{{1, 1}, {1, 2}, {2, 3}, {3, nil}, {4, 4}},
+				},
+				{
+					Query:    "SELECT docs.id, jt.* FROM docs, JSON_TABLE(docs.doc, '$[*] ? (@.a > $m)' PASSING docs.id AS m COLUMNS (a INT PATH '$.a' DEFAULT -1 ON EMPTY)) AS jt ORDER BY 1, 2;",
+					Expected: []sql.Row{{1, 2}, {2, 3}},
+				},
+				{
+					Query:    "SELECT * FROM v ORDER BY 1, 2;",
+					Expected: []sql.Row{{1, 1}, {1, 2}, {2, 3}, {4, 4}},
+				},
+				{
+					Query:    "SELECT jt.a FROM texts, JSON_TABLE(texts.doc, '$' COLUMNS (a TEXT)) AS jt;",
+					Expected: []sql.Row{{"x"}},
+				},
+				{
+					Query:    "SELECT count(*), sum(jt.a) FROM docs, JSON_TABLE(docs.doc, '$[*]' COLUMNS (a INT)) AS jt WHERE jt.a > 1;",
+					Expected: []sql.Row{{3, 9}},
+				},
+			},
+		},
+		{
+			Name: "JSON_TABLE paths and PASSING",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*] ? (@.a > $x)' PASSING 1 AS x COLUMNS (a INT)) AS jt;`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' AS p COLUMNS (a INT)) AS jt;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1,2,3]'::jsonb, '$[*] ? (@ >= $a && @ < $b)' PASSING 2 AS a, 3.5::numeric AS b COLUMNS (v INT PATH '$')) AS jt;`,
+					Expected: []sql.Row{{2}, {3}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('["a","b"]'::jsonb, '$[*] ? (@ == $s)' PASSING 'b' AS s, 'b'::varchar AS t COLUMNS (v TEXT PATH '$', w TEXT PATH '$t')) AS jt;`,
+					Expected: []sql.Row{{"b", "b"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[true,false]'::jsonb, '$[*] ? (@ == $s)' PASSING TRUE AS s COLUMNS (v TEXT PATH '$')) AS jt;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"k":1},2]'::jsonb, '$[*] ? (@ == $s.k)' PASSING '{"k":2}'::jsonb AS s COLUMNS (v TEXT PATH '$')) AS jt;`,
+					Expected: []sql.Row{{"2"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1,2]'::jsonb, '$' PASSING '2020-01-01'::date AS d, '2020-01-01 10:00'::timestamp AS ts, '10:00'::time AS t COLUMNS (v TEXT PATH '$d', w JSONB PATH '$d', x TEXT PATH '$ts', y JSONB PATH '$ts', z TEXT PATH '$t')) AS jt;`,
+					Expected: []sql.Row{{"2020-01-01", `"2020-01-01"`, "2020-01-01 10:00:00", `"2020-01-01T10:00:00"`, "10:00:00"}},
+				},
+				{
+					Query:    `SELECT v, w::text FROM JSON_TABLE('[1,2]'::jsonb, '$' PASSING NULL AS d, NULL::int AS e COLUMNS (v TEXT PATH '$d', w JSONB PATH '$e')) AS jt;`,
+					Expected: []sql.Row{{nil, "null"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1,2]'::jsonb, '$' PASSING 1.5::float8 AS d, 2::int8 AS e, 3::int2 AS f, 4.5::float4 AS g COLUMNS (v TEXT PATH '$d', w TEXT PATH '$e', x TEXT PATH '$f', y TEXT PATH '$g')) AS jt;`,
+					Expected: []sql.Row{{"1.5", "2", "3", "4.5"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$' PASSING ARRAY[1] AS d, ROW(1,2) AS e COLUMNS (v JSONB PATH '$d' ERROR ON ERROR, w JSONB PATH '$e' ERROR ON ERROR)) AS jt;`,
+					Expected: []sql.Row{{"[1]", `{"f1": 1, "f2": 2}`}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1,2]'::jsonb, '$' PASSING 1 AS d, 2 AS d, 3 AS "D" COLUMNS (v TEXT PATH '$d', w TEXT PATH '$D')) AS jt;`,
+					Expected: []sql.Row{{"1", "3"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1,2]'::jsonb, '$' PASSING '[1]' FORMAT JSON AS d, '[2]'::text FORMAT JSON AS e COLUMNS (v TEXT PATH '$d[0]', w TEXT PATH '$e[0]')) AS jt;`,
+					Expected: []sql.Row{{"1", "2"}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1,2]'::jsonb, '$' PASSING 1 AS D COLUMNS (v TEXT PATH '$D')) AS jt;`,
+					ExpectedErr:     `could not find jsonpath variable "D"`,
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*] ? ($x > 0)' COLUMNS (e INT PATH '$')) AS jt;`,
+					ExpectedErr:     `could not find jsonpath variable "x"`,
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('["a","b"]'::jsonb, '$[*] ? (@ == $s)' PASSING 'b'::name AS s COLUMNS (v TEXT PATH '$')) AS jt;`,
+					ExpectedErr:     "could not convert value of type name to jsonpath",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (a INT, a TEXT)) AS jt;`,
+					ExpectedErr:     "duplicate JSON_TABLE column or path name: a",
+					ExpectedErrCode: "42712",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' AS a COLUMNS (a INT)) AS jt;`,
+					ExpectedErr:     "duplicate JSON_TABLE column or path name: a",
+					ExpectedErrCode: "42712",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (n FOR ORDINALITY, m FOR ORDINALITY)) AS jt;`,
+					ExpectedErr:     "only one FOR ORDINALITY column is allowed",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*' COLUMNS (a INT)) AS jt;`,
+					ExpectedErr:     "syntax error at end of jsonpath input",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '' COLUMNS (a INT)) AS jt;`,
+					ExpectedErr:     `invalid input syntax for type jsonpath: ""`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$' || '[*]' COLUMNS (a INT)) AS jt;`,
+					ExpectedErr:     "only string constants are supported in JSON_TABLE path specification",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, 'strict $.b' COLUMNS (a INT)) AS jt;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, 'strict $.b' COLUMNS (a INT) EMPTY ARRAY ON ERROR) AS jt;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, 'strict $.b' COLUMNS (a INT) ERROR ON ERROR) AS jt;`,
+					ExpectedErr:     `JSON object does not contain key "b"`,
+					ExpectedErrCode: "2203A",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, 'strict $.b' COLUMNS (a INT) NULL ON ERROR) AS jt;`,
+					ExpectedErr:     "invalid ON ERROR behavior",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*] / 0' COLUMNS (e INT PATH '$') ERROR ON ERROR) AS jt;`,
+					ExpectedErr:     "division by zero",
+					ExpectedErrCode: "22012",
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a') ERROR ON ERROR) AS jt;`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			Name: "JSON_TABLE columns",
+			SetUpScript: []string{
+				"CREATE TYPE pair AS (x INT, y TEXT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (n FOR ORDINALITY, a INT)) AS jt;`,
+					Expected: []sql.Row{{1, 1}, {2, 2}},
+				},
+				{
+					Query:    `SELECT a, b::text, n FROM JSON_TABLE('[1,"x",true,null,1.5]'::jsonb, '$[*]' COLUMNS (a TEXT PATH '$', b JSONB PATH '$', n FOR ORDINALITY)) AS jt;`,
+					Expected: []sql.Row{{"1", "1", 1}, {"x", `"x"`, 2}, {"t", "true", 3}, {nil, "null", 4}, {"1.5", "1.5", 5}},
+				},
+				{
+					Query: `SELECT i, t, n, b, j::text, js::text FROM JSON_TABLE('[{"a":1.5},{"a":"12"},{"a":true},{"a":[1]},{"a":{"b":1}},{"a":null},{}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a', t TEXT PATH '$.a', n NUMERIC PATH '$.a', b BOOL PATH '$.a', j JSONB PATH '$.a', js JSON PATH '$.a')) AS jt;`,
+					Expected: []sql.Row{
+						{nil, "1.5", Numeric("1.5"), nil, "1.5", "1.5"},
+						{12, "12", Numeric("12"), nil, `"12"`, `"12"`},
+						{nil, "t", nil, "t", "true", "true"},
+						{nil, nil, nil, nil, "[1]", "[1]"},
+						{nil, nil, nil, nil, `{"b": 1}`, `{"b": 1}`},
+						{nil, nil, nil, nil, "null", "null"},
+						{nil, nil, nil, nil, nil, nil},
+					},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('{"a":{"b":1}}'::jsonb, '$' COLUMNS (a TEXT PATH '$.a', b TEXT FORMAT JSON PATH '$.a', c JSON PATH '$.a', d TEXT PATH '$."a"."b"', "A" INT PATH '$.a.b')) AS jt;`,
+					Expected: []sql.Row{{nil, `{"b": 1}`, `{"b": 1}`, "1", 1}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('{"A":1, "a":2, "a b":3, "q\"x":4}'::jsonb, '$' COLUMNS ("A" INT, a INT, "a b" INT, "q""x" INT)) AS jt;`,
+					Expected: []sql.Row{{1, 2, 3, 4}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1.5}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "invalid input syntax for type",
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":[1]}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     `JSON path expression for column "i" must return single scalar item`,
+					ExpectedErrCode: "2203F",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a[*]' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     `JSON path expression for column "i" must return single scalar item`,
+					ExpectedErrCode: "22034",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (i JSONB PATH '$.a[*]' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     `JSON path expression for column "i" must return single item when no wrapper is requested`,
+					ExpectedErrCode: "22034",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' ERROR ON EMPTY)) AS jt;`,
+					ExpectedErr:     `no SQL/JSON item found for specified path of column "i"`,
+					ExpectedErrCode: "22035",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{}]'::jsonb, '$[*]' COLUMNS (i INT PATH 'strict $.a' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     `JSON object does not contain key "a"`,
+					ExpectedErrCode: "2203A",
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{}]'::jsonb, '$[*]' COLUMNS (i INT PATH 'strict $.a' ERROR ON EMPTY, j INT PATH '$.a' DEFAULT 5 ON EMPTY)) AS jt;`,
+					Expected: []sql.Row{{nil, 5}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' DEFAULT 5 ON EMPTY DEFAULT 6 ON ERROR, j INT PATH '$.a' DEFAULT '7' ON ERROR, k INT PATH '$.a' DEFAULT 7.5 ON ERROR, l INT PATH '$.a' DEFAULT 1 + 1 ON ERROR, m INT PATH '$.a' DEFAULT length('ab') ON ERROR)) AS jt;`,
+					Expected: []sql.Row{{6, 7, 8, 2, 2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i JSONB PATH '$.b' DEFAULT '{"q":1}' ON EMPTY)) AS jt;`,
+					Expected: []sql.Row{{`{"q": 1}`}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' DEFAULT 'q' ON ERROR)) AS jt;`,
+					ExpectedErr:     "invalid input syntax for type",
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' DEFAULT (SELECT 1) ON ERROR)) AS jt;`,
+					ExpectedErr:     "can only specify a constant, non-aggregate function, or operator expression for DEFAULT",
+					ExpectedErrCode: "42804",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' EMPTY ON ERROR)) AS jt;`,
+					ExpectedErr:     `invalid ON ERROR behavior for column "i"`,
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' EMPTY ARRAY ON EMPTY)) AS jt;`,
+					ExpectedErr:     `invalid ON EMPTY behavior for column "i"`,
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (q JSONB PATH '$.a[*]' TRUE ON ERROR)) AS jt;`,
+					ExpectedErr:     `invalid ON ERROR behavior for column "q"`,
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query: `SELECT * FROM JSON_TABLE('[{"a":[1,2]},{"a":3},{"a":"s"},{"a":[]},{"a":{"k":1}},{}]'::jsonb, '$[*]' COLUMNS (w1 JSONB PATH '$.a[*]' WITH WRAPPER, w2 JSONB PATH '$.a[*]' WITH CONDITIONAL WRAPPER, w3 JSONB PATH '$.a' WITH CONDITIONAL WRAPPER, w4 JSONB PATH '$.a' WITH UNCONDITIONAL ARRAY WRAPPER, w5 JSONB PATH '$.a' WITHOUT WRAPPER, q1 TEXT PATH '$.a' OMIT QUOTES, q2 TEXT PATH '$.a' KEEP QUOTES, q3 TEXT PATH '$.a' OMIT QUOTES ON SCALAR STRING, q4 JSONB PATH '$.a' OMIT QUOTES, f1 TEXT FORMAT JSON PATH '$.a', f2 TEXT PATH '$.a' WITH WRAPPER, f3 INT PATH '$.a' KEEP QUOTES, f4 INT PATH '$.a' OMIT QUOTES)) AS jt;`,
+					Expected: []sql.Row{
+						{"[1, 2]", "[1, 2]", "[1, 2]", "[[1, 2]]", "[1, 2]", "[1, 2]", "[1, 2]", "[1, 2]", "[1, 2]", "[1, 2]", "[[1, 2]]", nil, nil},
+						{"[3]", "3", "3", "[3]", "3", "3", "3", "3", "3", "3", "[3]", 3, 3},
+						{`["s"]`, `"s"`, `"s"`, `["s"]`, `"s"`, "s", `"s"`, "s", nil, `"s"`, `["s"]`, nil, nil},
+						{nil, nil, "[]", "[[]]", "[]", "[]", "[]", "[]", "[]", "[]", "[[]]", nil, nil},
+						{`[{"k": 1}]`, `{"k": 1}`, `{"k": 1}`, `[{"k": 1}]`, `{"k": 1}`, `{"k": 1}`, `{"k": 1}`, `{"k": 1}`, `{"k": 1}`, `{"k": 1}`, `[{"k": 1}]`, nil, nil},
+						{nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil},
+					},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (q JSONB PATH '$.a[*]' EMPTY ON ERROR, r JSONB PATH '$.a[*]' EMPTY OBJECT ON ERROR, s JSONB PATH '$.b' EMPTY ARRAY ON EMPTY, t TEXT FORMAT JSON PATH '$.b' EMPTY OBJECT ON EMPTY, u JSONB PATH '$.a[*]' DEFAULT '"z"' ON ERROR)) AS jt;`,
+					Expected: []sql.Row{{"[]", "{}", "[]", "{}", `"z"`}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (q JSONB PATH '$.b' WITH WRAPPER, r JSONB PATH '$.b' WITH WRAPPER ERROR ON EMPTY)) AS jt;`,
+					ExpectedErr:     `no SQL/JSON item found for specified path of column "r"`,
+					ExpectedErrCode: "22035",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":"s"}]'::jsonb, '$[*]' COLUMNS (q JSONB PATH '$.a' OMIT QUOTES ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "invalid input syntax for type json",
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (q TEXT PATH '$.a' WITH WRAPPER OMIT QUOTES)) AS jt;`,
+					ExpectedErr:     "SQL/JSON QUOTES behavior must not be specified when WITH WRAPPER is used",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a INT FORMAT JSON)) AS jt;`,
+					ExpectedErr:     "cannot use JSON format with non-string output types",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a JSON FORMAT JSON ENCODING UTF8 PATH '$.a')) AS jt;`,
+					ExpectedErr:     "cannot set JSON encoding for non-bytea output types",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a BYTEA FORMAT JSON ENCODING UTF16)) AS jt;`,
+					ExpectedErr:     "unsupported JSON encoding",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a BYTEA FORMAT JSON ENCODING FOO)) AS jt;`,
+					ExpectedErr:     "unrecognized JSON encoding: foo",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a INT PATH '$.a' WITHOUT ARRAY WRAPPER, b INT PATH '$.a' WITH CONDITIONAL ARRAY WRAPPER, c INT PATH '$.a' WITH ARRAY WRAPPER, d TEXT PATH '$.a' WITHOUT WRAPPER OMIT QUOTES, e TEXT PATH 'lax $.a' DEFAULT 'x' ON EMPTY ERROR ON ERROR)) AS jt;`,
+					Expected: []sql.Row{{1, 1, nil, "1", "1"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"d":"2020-01-02"}]'::jsonb, '$[*]' COLUMNS (d DATE PATH '$.d', t TEXT PATH '$.d.datetime()', j JSONB PATH '$.d.datetime()')) AS jt;`,
+					Expected: []sql.Row{{"2020-01-02", "2020-01-02", `"2020-01-02"`}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":[[1,2],[3,4]]},{"a":[["a"]]},{"a":[1,[2]]},{"a":[null,"3"]},{"a":[]}]'::jsonb, '$[*]' COLUMNS (a INT[], t TEXT[] PATH '$.a')) AS jt;`,
+					Expected: []sql.Row{{"{{1,2},{3,4}}", "{{1,2},{3,4}}"}, {nil, "{{a}}"}, {nil, "{1,[2]}"}, {"{NULL,3}", "{NULL,3}"}, {"{}", "{}"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":"12"},{"a":"{1,2}"}]'::jsonb, '$[*]' COLUMNS (a INT[] PATH '$.a' OMIT QUOTES)) AS jt;`,
+					Expected: []sql.Row{{nil}, {"{1,2}"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":{"x":1,"y":"q"}},{"a":{"x":"z"}},{"a":3}]'::jsonb, '$[*]' COLUMNS (a pair)) AS jt;`,
+					Expected: []sql.Row{{"(1,q)"}, {nil}, {nil}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{}]'::jsonb, '$[*]' COLUMNS (e BOOL EXISTS PATH '$.a', i INT EXISTS PATH '$.a', t TEXT EXISTS PATH '$.a', j JSONB EXISTS PATH '$.a', a BOOL EXISTS)) AS jt;`,
+					Expected: []sql.Row{{"t", 1, "true", "true", "t"}, {"f", 0, "false", "false", "f"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1},{}]'::jsonb, '$[*]' COLUMNS (e BOOL EXISTS PATH 'strict $.a', f BOOL EXISTS PATH 'strict $.a' TRUE ON ERROR, g BOOL EXISTS PATH 'strict $.a' UNKNOWN ON ERROR, h BOOL EXISTS PATH 'strict $.a' FALSE ON ERROR)) AS jt;`,
+					Expected: []sql.Row{{"t", "t", "t", "t"}, {"f", "t", nil, "f"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT EXISTS PATH '$.a' TRUE ON ERROR, u INT EXISTS PATH 'strict $.a' UNKNOWN ON ERROR, x INT EXISTS PATH 'strict $.a' TRUE ON ERROR, y BOOL EXISTS PATH '$ ? (@ / 0 > 1)' ERROR ON ERROR)) AS jt;`,
+					Expected: []sql.Row{{0, nil, 1, "f"}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1},{}]'::jsonb, '$[*]' COLUMNS (e BOOL EXISTS PATH 'strict $.a' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     `JSON object does not contain key "a"`,
+					ExpectedErrCode: "2203A",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1},{}]'::jsonb, '$[*]' COLUMNS (e DATE EXISTS PATH '$.a')) AS jt;`,
+					ExpectedErr:     "could not coerce ON ERROR expression (FALSE) to the RETURNING type",
+					ExpectedErrCode: "42804",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e BOOL EXISTS PATH '$.a' NULL ON ERROR)) AS jt;`,
+					ExpectedErr:     `invalid ON ERROR behavior for column "e"`,
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e BOOL EXISTS PATH '$.a' EMPTY ON ERROR)) AS jt;`,
+					ExpectedErr:     `invalid ON ERROR behavior for column "e"`,
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH '$ / 0')) AS jt;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH '$ / 0' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "division by zero",
+					ExpectedErrCode: "22012",
+				},
+			},
+		},
+		{
+			Name: "JSON_TABLE NESTED PATH",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM JSON_TABLE('[{"a":1,"b":[10,20],"c":["x"]},{"a":2,"b":[],"c":[]},{"a":3,"b":[30],"c":["y","z"]}]'::jsonb, '$[*]' COLUMNS (n FOR ORDINALITY, a INT, NESTED PATH '$.b[*]' COLUMNS (bn FOR ORDINALITY, b INT PATH '$'), NESTED '$.c[*]' AS cp COLUMNS (cn FOR ORDINALITY, c TEXT PATH '$'))) AS jt;`,
+					Expected: []sql.Row{
+						{1, 1, 1, 10, nil, nil},
+						{1, 1, 2, 20, nil, nil},
+						{1, 1, nil, nil, 1, "x"},
+						{2, 2, nil, nil, nil, nil},
+						{3, 3, 1, 30, nil, nil},
+						{3, 3, nil, nil, 1, "y"},
+						{3, 3, nil, nil, 2, "z"},
+					},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1,"b":[{"x":[1,2]},{"x":[3]}]}]'::jsonb, '$[*]' COLUMNS (a INT, NESTED PATH '$.b[*]' COLUMNS (bn FOR ORDINALITY, NESTED PATH '$.x[*]' COLUMNS (xn FOR ORDINALITY, x INT PATH '$')))) AS jt;`,
+					Expected: []sql.Row{{1, 1, 1, 1}, {1, 1, 2, 2}, {1, 2, 1, 3}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1,"b":[1]}]'::jsonb, '$[*]' COLUMNS (NESTED PATH '$.b[*]' COLUMNS (b INT PATH '$'))) AS jt;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1,"b":1}]'::jsonb, '$[*]' COLUMNS (a INT, NESTED PATH 'strict $.q' COLUMNS (b INT PATH '$'))) AS jt;`,
+					Expected: []sql.Row{{1, nil}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1,"b":1}]'::jsonb, '$[*]' COLUMNS (a INT, NESTED PATH 'strict $.q' COLUMNS (b INT PATH '$')) ERROR ON ERROR) AS jt;`,
+					ExpectedErr:     `JSON object does not contain key "q"`,
+					ExpectedErrCode: "2203A",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1,"b":[1]}]'::jsonb, '$[*]' COLUMNS (a INT, NESTED PATH '$.b[*]' COLUMNS (a INT PATH '$'))) AS jt;`,
+					ExpectedErr:     "duplicate JSON_TABLE column or path name: a",
+					ExpectedErrCode: "42712",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":1,"b":[1]}]'::jsonb, '$[*]' AS p COLUMNS (a INT, NESTED PATH '$.b[*]' AS p COLUMNS (b INT PATH '$'))) AS jt;`,
+					ExpectedErr:     "duplicate JSON_TABLE column or path name: p",
+					ExpectedErrCode: "42712",
+				},
+			},
+		},
+		{
+			Name: "JSON_TABLE composition",
+			SetUpScript: []string{
+				"CREATE TABLE orders (id INT PRIMARY KEY, doc JSONB);",
+				`INSERT INTO orders VALUES (1, '{"customer":"ann","items":[{"sku":"a","qty":2,"tags":["x","y"]},{"sku":"b","qty":1,"tags":[]}]}'), (2, '{"customer":"bob","items":[{"sku":"c","qty":5,"tags":["z"]}]}'), (3, '{"customer":"cy","items":[]}');`,
+				"CREATE VIEW order_items AS SELECT o.id, jt.* FROM orders o, JSON_TABLE(o.doc, '$' AS root PASSING 1 AS minqty COLUMNS (customer TEXT, NESTED PATH '$.items[*] ? (@.qty >= $minqty)' AS items COLUMNS (n FOR ORDINALITY, sku TEXT, qty INT, big BOOL EXISTS PATH '$ ? (@.qty > 1)', NESTED PATH '$.tags[*]' COLUMNS (tag TEXT PATH '$')))) AS jt;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM order_items ORDER BY id, n, tag;",
+					Expected: []sql.Row{
+						{1, "ann", 1, "a", 2, "t", "x"},
+						{1, "ann", 1, "a", 2, "t", "y"},
+						{1, "ann", 2, "b", 1, "f", nil},
+						{2, "bob", 1, "c", 5, "t", "z"},
+						{3, "cy", nil, nil, nil, nil, nil},
+					},
+				},
+				{
+					Query:    "SELECT o.id, i.sku, t.tag FROM orders o, JSON_TABLE(o.doc, '$.items[*]' COLUMNS (sku TEXT, tags JSONB)) AS i, JSON_TABLE(i.tags, '$[*]' COLUMNS (tag TEXT PATH '$')) AS t ORDER BY 1, 2, 3;",
+					Expected: []sql.Row{{1, "a", "x"}, {1, "a", "y"}, {2, "c", "z"}},
+				},
+				{
+					Query:    "SELECT jt.customer, count(*) FROM orders, JSON_TABLE(orders.doc, '$' COLUMNS (customer TEXT, NESTED PATH '$.items[*]' COLUMNS (sku TEXT))) AS jt WHERE jt.sku IS NOT NULL GROUP BY jt.customer ORDER BY 1;",
+					Expected: []sql.Row{{"ann", 2}, {"bob", 1}},
+				},
+				{
+					Query:    "WITH items AS (SELECT jt.* FROM orders, JSON_TABLE(orders.doc, '$.items[*]' COLUMNS (sku TEXT, qty INT)) AS jt) SELECT sum(qty) FROM items;",
+					Expected: []sql.Row{{8}},
+				},
+				{
+					Query:    "SELECT id FROM orders WHERE EXISTS (SELECT 1 FROM JSON_TABLE(orders.doc, '$.items[*]' COLUMNS (qty INT)) AS jt WHERE jt.qty > 4);",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT (SELECT max(qty) FROM JSON_TABLE(orders.doc, '$.items[*]' COLUMNS (qty INT)) AS jt) AS m FROM orders ORDER BY id;",
+					Expected: []sql.Row{{2}, {5}, {nil}},
+				},
+				{
+					Query:    "SELECT * FROM JSON_TABLE($1::jsonb, '$[*] ? (@.a > $x)' PASSING $2::int AS x COLUMNS (a INT)) AS jt;",
+					BindVars: []any{`[{"a":1},{"a":2},{"a":3}]`, 1},
+					Expected: []sql.Row{{2}, {3}},
+				},
+				{
+					Query:    "SELECT o.id, jt.qty FROM orders o, JSON_TABLE(o.doc, '$.items[*] ? (@.qty >= $m)' PASSING $1::int AS m COLUMNS (qty INT)) AS jt ORDER BY 1, 2;",
+					BindVars: []any{2},
+					Expected: []sql.Row{{1, 2}, {2, 5}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a INT)) AS jt WHERE a = 1 ORDER BY a DESC LIMIT 1;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":1}]', '$[*]' COLUMNS (a INT)) AS jt JOIN JSON_TABLE('[{"b":1}]', '$[*]' COLUMNS (b INT)) AS jt2 ON jt.a = jt2.b;`,
+					Expected: []sql.Row{{1, 1}},
+				},
+				{
+					Query:    `SELECT pg_typeof(a), pg_typeof(b), pg_typeof(c), pg_typeof(n) FROM JSON_TABLE('[{"a":1}]', '$[*]' COLUMNS (a INT, b JSONB PATH '$.a', c TEXT EXISTS PATH '$.a', n FOR ORDINALITY)) AS jt;`,
+					Expected: []sql.Row{{"integer", "jsonb", "text", "integer"}},
+				},
+			},
+		},
+		{
+			Name: "JSON_TABLE column types and nested behaviors",
+			SetUpScript: []string{
+				"CREATE TYPE pair AS (x INT, y TEXT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"n":"1.234","v":"abc","ts":"2020-01-02 03:04:05","d":"2020-01-02"}]'::jsonb, '$[*]' COLUMNS (n NUMERIC(5,2), v VARCHAR(5), ts TIMESTAMP, d DATE, i2 SMALLINT PATH '$.n' DEFAULT 7 ON ERROR, f FLOAT8 PATH '$.n')) AS jt;`,
+					Expected: []sql.Row{{Numeric("1.23"), "abc", "2020-01-02 03:04:05", "2020-01-02", 7, 1.234}},
+				},
+				{
+					Query:    `SELECT a, b::text, c::text FROM JSON_TABLE('[1]'::bytea FORMAT JSON ENCODING UTF8, '$[*]' COLUMNS (a INT PATH '$', b BYTEA FORMAT JSON PATH '$', c BYTEA PATH '$')) AS jt;`,
+					Expected: []sql.Row{{1, `\x31`, `\x31`}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('{"é":"ü"}'::jsonb, '$' COLUMNS ("é" TEXT)) AS jt;`,
+					Expected: []sql.Row{{"ü"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"k":{"a":1}},{"k":2}]'::jsonb, '$[*]' COLUMNS (kv TEXT PATH '$.k.keyvalue().key', sz INT PATH '$.k.size()', t TEXT PATH '$.k.type()', dbl FLOAT8 PATH '$.k.double()')) AS jt;`,
+					Expected: []sql.Row{{"a", 1, "object", nil}, {nil, 1, "number", 2.0}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $.a' DEFAULT -1 ON ERROR, f INT PATH '$.a' DEFAULT -2 ON EMPTY)) AS jt;`,
+					Expected: []sql.Row{{-1, -2}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":{"x":1,"y":"q"}}]'::jsonb, '$[*]' COLUMNS (a pair[] PATH '$[*].a' WITH WRAPPER, b TEXT PATH '$.a.y')) AS jt;`,
+					Expected: []sql.Row{{`{"(1,q)"}`, "q"}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":[1,2],"b":[3]}]'::jsonb, '$[*]' COLUMNS (NESTED PATH '$.a[*]' COLUMNS (a INT PATH '$', ae BOOL EXISTS PATH '$ ? (@ > 1)', aj JSONB PATH '$' WITH WRAPPER), NESTED PATH '$.b[*]' COLUMNS (b INT PATH '$' DEFAULT 0 ON ERROR))) AS jt;`,
+					Expected: []sql.Row{{1, "f", "[1]", nil}, {2, "t", "[2]", nil}, {nil, nil, nil, 3}},
+				},
+				{
+					Query:    `SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' PASSING 2 AS lim COLUMNS (NESTED PATH '$.a[*] ? (@ < $lim)' COLUMNS (a INT PATH '$'))) AS jt;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (NESTED PATH '$.a[*]' COLUMNS (a INT PATH 'strict $.x' ERROR ON ERROR))) AS jt;`,
+					ExpectedErr:     "jsonpath member accessor can only be applied to an object",
+					ExpectedErrCode: "2203A",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":{"k":1}}]'::jsonb, '$[*]' COLUMNS (a INT[] ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "expected JSON array",
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":[[1],2]}]'::jsonb, '$[*]' COLUMNS (a INT[] ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "expected JSON array",
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":3}]'::jsonb, '$[*]' COLUMNS (a pair ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "cannot call populate_composite on a scalar",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[{"a":[1]}]'::jsonb, '$[*]' COLUMNS (a pair ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "cannot call populate_composite on an array",
+					ExpectedErrCode: "22023",
+				},
+			},
+		},
+		{
+			Name: "JSON_TABLE path error codes",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $.a' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath member accessor can only be applied to an object",
+					ExpectedErrCode: "2203A",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $.*' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath wildcard member accessor can only be applied to an object",
+					ExpectedErrCode: "2203C",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $[0]' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath array accessor can only be applied to an array",
+					ExpectedErrCode: "22039",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[[1]]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $[5]' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath array subscript is out of bounds",
+					ExpectedErrCode: "22033",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('["a"]'::jsonb, '$[*]' COLUMNS (e INT PATH '-$' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "operand of unary jsonpath operator - is not a numeric value",
+					ExpectedErrCode: "2203B",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('["a"]'::jsonb, '$[*]' COLUMNS (e INT PATH '$ + 1' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "left operand of jsonpath operator + is not a single numeric value",
+					ExpectedErrCode: "22038",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('["a"]'::jsonb, '$[*]' COLUMNS (e INT PATH '$.abs()' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath item method .abs() can only be applied to a numeric value",
+					ExpectedErrCode: "22036",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $.size()' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath item method .size() can only be applied to an array",
+					ExpectedErrCode: "22039",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e JSONB PATH '$.keyvalue()' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath item method .keyvalue() can only be applied to an object",
+					ExpectedErrCode: "2203C",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e TEXT PATH '$.datetime()' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath item method .datetime() can only be applied to a string",
+					ExpectedErrCode: "22031",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('["x"]'::jsonb, '$[*]' COLUMNS (e TEXT PATH '$.datetime()' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     `datetime format is not recognized: "x"`,
+					ExpectedErrCode: "22031",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('["x"]'::jsonb, '$[*]' COLUMNS (e FLOAT8 PATH '$.double()' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     `argument "x" of jsonpath item method .double() is invalid for type double precision`,
+					ExpectedErrCode: "22036",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[[]]'::jsonb, '$[*]' COLUMNS (e FLOAT8 PATH 'strict $.double()' ERROR ON ERROR)) AS jt;`,
+					ExpectedErr:     "jsonpath item method .double() can only be applied to a string or numeric value",
+					ExpectedErrCode: "22036",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, 'strict $.a' COLUMNS (e INT PATH '$') ERROR ON ERROR) AS jt;`,
+					ExpectedErr:     "jsonpath member accessor can only be applied to an object",
+					ExpectedErrCode: "2203A",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '$$' COLUMNS (a INT)) AS jt;`,
+					ExpectedErr:     "jsonpath input",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           `SELECT * FROM JSON_TABLE('[1]'::jsonb, '@' COLUMNS (a INT)) AS jt;`,
+					ExpectedErr:     "@ is not allowed in root expressions",
+					ExpectedErrCode: "42601",
+				},
+			},
+		},
+	})
+}
