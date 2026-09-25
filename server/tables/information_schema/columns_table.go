@@ -317,6 +317,10 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 		udtName = dgType.Name()
 		if t, ok := partypes.OidToType[oid.Oid(id.Cache().ToOID(dgType.ID.AsId()))]; ok {
 			dataType = t.SQLStandardName()
+		} else if dgType.IsArrayType() {
+			dataType = "ARRAY"
+		} else {
+			dataType = udtName
 		}
 	} else {
 		dtdId := strings.Split(strings.Split(colType.String(), " COLLATE")[0], " CHARACTER SET")[0]

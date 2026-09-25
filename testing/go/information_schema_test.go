@@ -296,6 +296,22 @@ func TestInfoSchemaColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "xml columns",
+			SetUpScript: []string{
+				"CREATE TABLE t3337 (id INT PRIMARY KEY, doc pg_catalog.xml, docs xml[]);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT column_name, data_type, udt_schema, udt_name, character_maximum_length FROM information_schema.columns WHERE table_name = 't3337' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"id", "integer", "pg_catalog", "int4", nil},
+						{"doc", "xml", "pg_catalog", "xml", nil},
+						{"docs", "ARRAY", "pg_catalog", "_xml", nil},
+					},
+				},
+			},
+		},
 	})
 }
 

@@ -358,7 +358,7 @@ func quoteString(s string) string {
 	shouldQuote := false
 	for _, r := range s {
 		switch r {
-		case ' ', ',', '{', '}', '\\', '"':
+		case ' ', '\t', '\n', '\r', '\v', '\f', ',', '{', '}', '\\', '"':
 			shouldQuote = true
 		}
 	}

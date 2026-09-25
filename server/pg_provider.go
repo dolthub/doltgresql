@@ -26,6 +26,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/functions"
+	"github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/doltgresql/server/tables"
 )
 
@@ -64,6 +65,9 @@ func (p *DoltgresDatabaseProvider) AllDatabases(ctx *sql.Context) []sql.Database
 func (p *DoltgresDatabaseProvider) TableFunction(ctx *sql.Context, name string) (sql.TableFunction, bool) {
 	if strings.EqualFold(name, "unnest") {
 		return &functions.UnnestTableFunction{}, true
+	}
+	if strings.EqualFold(name, node.XmlTableName) {
+		return &node.XmlTable{}, true
 	}
 	return p.DoltDatabaseProvider.TableFunction(ctx, name)
 }

@@ -570,8 +570,15 @@ func TestPgCast(t *testing.T) {
 			Name: "pg_cast",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT COUNT(*) FROM "pg_catalog"."pg_cast";`,
-					Expected: []sql.Row{{125}},
+					Query: `SELECT castsource::regtype, casttarget::regtype, castcontext FROM "pg_catalog"."pg_cast" WHERE castsource = 'xml'::regtype OR casttarget = 'xml'::regtype ORDER BY castsource::regtype::text, casttarget::regtype::text;`,
+					Expected: []sql.Row{
+						{"character", "xml", "e"},
+						{"character varying", "xml", "e"},
+						{"text", "xml", "e"},
+						{"xml", "character", "a"},
+						{"xml", "character varying", "a"},
+						{"xml", "text", "a"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_cast";`,
@@ -582,8 +589,8 @@ func TestPgCast(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT COUNT(*) FROM PG_catalog.pg_CAST ORDER BY oid;",
-					Expected: []sql.Row{{125}},
+					Query:    "SELECT castsource::regtype, casttarget::regtype, castcontext, castmethod FROM PG_catalog.pg_CAST WHERE castsource = 'int4'::regtype AND casttarget = 'int8'::regtype;",
+					Expected: []sql.Row{{"integer", "bigint", "i", "f"}},
 				},
 			},
 		},
@@ -5584,6 +5591,22 @@ func TestPgType(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_enum_type' order by 1;`,
 					Expected: []sql.Row{{4245115549, "_enum_type", 2200, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 2310414518, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+				},
+			},
+		},
+		{
+			Name: "pg_type xml",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_type" WHERE typname IN ('xml', '_xml') ORDER BY oid;`,
+					Expected: []sql.Row{
+						{142, "xml", 11, 0, -1, "f", "b", "U", "f", "t", ",", 0, "-", 0, 143, "xml_in", "xml_out", "xml_recv", "xml_send", "-", "-", "-", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"},
+						{143, "_xml", 11, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 142, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"},
+					},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid = 'pg_catalog.xml'::regtype;`,
+					Expected: []sql.Row{{142, "xml"}},
 				},
 			},
 		},
