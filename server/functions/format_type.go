@@ -43,23 +43,28 @@ var format_type = framework.Function2{
 		if val1 == nil {
 			return nil, nil
 		}
-		toid := id.Cache().ToOID(val1.(id.Id))
-		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
-			if val2 == nil {
-				return t.SQLStandardName(), nil
-			} else {
-				return t.SQLStandardNameWithTypmod(true, int(val2.(int32))), nil
-			}
-		}
-		typ, err := getDoltgresTypeFromId(ctx, val1.(id.Id))
-		if err != nil {
-			if pgtypes.ErrTypeDoesNotExist.Is(err) {
-				return "???", nil
-			}
-			return nil, err
-		}
-		return formatUserDefinedType(ctx, typ, val2)
+		return FormatType(ctx, val1.(id.Id), val2)
 	},
+}
+
+// FormatType returns the name of the type as shown by format_type, applying the typmod when it is not nil.
+func FormatType(ctx *sql.Context, typID id.Id, typmod any) (string, error) {
+	toid := id.Cache().ToOID(typID)
+	if t, ok := types.OidToType[oid.Oid(toid)]; ok {
+		if typmod == nil {
+			return t.SQLStandardName(), nil
+		} else {
+			return t.SQLStandardNameWithTypmod(true, int(typmod.(int32))), nil
+		}
+	}
+	typ, err := getDoltgresTypeFromId(ctx, typID)
+	if err != nil {
+		if pgtypes.ErrTypeDoesNotExist.Is(err) {
+			return "???", nil
+		}
+		return "", err
+	}
+	return formatUserDefinedType(ctx, typ, typmod)
 }
 
 // formatUserDefinedType renders a catalog type using PostgreSQL's generic type-name and typmod rules.

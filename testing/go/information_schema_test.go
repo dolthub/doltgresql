@@ -312,6 +312,73 @@ func TestInfoSchemaColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "literal column defaults",
+			SetUpScript: []string{
+				"CREATE TABLE t3432 (i0 INTEGER NOT NULL DEFAULT 0, b0 BIGINT NOT NULL DEFAULT 0, s42 SMALLINT NOT NULL DEFAULT 42, d15 DOUBLE PRECISION NOT NULL DEFAULT 1.5, r0 REAL NOT NULL DEFAULT 0.0, bp BIGINT NOT NULL DEFAULT (0), n NUMERIC DEFAULT 1.5, bo BOOLEAN DEFAULT true, f8i DOUBLE PRECISION DEFAULT 3, t TEXT DEFAULT 'abc', v VARCHAR(10) DEFAULT 'x', i5 INTEGER DEFAULT '5', b5 BIGINT DEFAULT '5', d DATE DEFAULT '2020-01-01', bs BOOLEAN DEFAULT 'true', q TEXT DEFAULT 'it''s', bn BIGINT DEFAULT -5, big BIGINT DEFAULT 5000000000, nn NUMERIC DEFAULT -1.5, ni NUMERIC DEFAULT 7, tn TEXT DEFAULT NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 't3432' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"i0", "0"},
+						{"b0", "0"},
+						{"s42", "42"},
+						{"d15", "1.5"},
+						{"r0", "0.0"},
+						{"bp", "0"},
+						{"n", "1.5"},
+						{"bo", "true"},
+						{"f8i", "3"},
+						{"t", "'abc'::text"},
+						{"v", "'x'::character varying"},
+						{"i5", "5"},
+						{"b5", "'5'::bigint"},
+						{"d", "'2020-01-01'::date"},
+						{"bs", "true"},
+						{"q", "'it''s'::text"},
+						{"bn", "'-5'::integer"},
+						{"big", "'5000000000'::bigint"},
+						{"nn", "'-1.5'::numeric"},
+						{"ni", "7"},
+						{"tn", nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "cast column defaults",
+			SetUpScript: []string{
+				"CREATE TABLE t3432_casts (bc0 BIGINT DEFAULT CAST(0 AS BIGINT), bc1 BIGINT DEFAULT 0::bigint, bc2 INTEGER DEFAULT 0::integer, bc3 INTEGER DEFAULT CAST(7 AS BIGINT), tc TEXT DEFAULT 'a'::text, tv VARCHAR(10) DEFAULT CAST('x' AS VARCHAR(10)), nc NUMERIC DEFAULT 1.5::numeric, fc REAL DEFAULT 1.5::real, ec INTEGER DEFAULT (1 + 2)::integer, ng BIGINT DEFAULT (-5)::bigint, nt TEXT DEFAULT (-5)::text, nm NUMERIC(3,1) DEFAULT CAST(1.5 AS NUMERIC(3,1)));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 't3432_casts' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"bc0", "(0)::bigint"},
+						{"bc1", "(0)::bigint"},
+						{"bc2", "0"},
+						{"bc3", "(7)::bigint"},
+						{"tc", "'a'::text"},
+						{"tv", "'x'::character varying(10)"},
+						{"nc", "1.5"},
+						{"fc", "(1.5)::real"},
+						{"ec", "(1 + 2)"},
+						{"ng", "('-5'::integer)::bigint"},
+						{"nt", "('-5'::integer)::text"},
+						{"nm", "1.5::numeric(3,1)"},
+					},
+				},
+				{
+					Query:    "INSERT INTO t3432_casts (bc0) VALUES (DEFAULT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT ng, nt FROM t3432_casts;",
+					Expected: []sql.Row{{-5, "-5"}},
+				},
+			},
+		},
 	})
 }
 
