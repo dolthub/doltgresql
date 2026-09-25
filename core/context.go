@@ -36,15 +36,17 @@ import (
 	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/sessionstate"
 	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
-// contextValues contains a set of cached data passed alongside the context. This data is considered temporary
-// and may be refreshed at any point, including during the middle of a query. Callers should not assume that
-// data stored in contextValues is persisted, and other types of data should not be added to contextValues.
+// contextValues is the single DoltgreSQL payload attached to a Dolt session.
+// identity and resource bookkeeping survive root/cache invalidation; the
+// collection, catalog, runner, and formatting fields are disposable caches.
 type contextValues struct {
-	colls map[string]*databaseCollections
+	identity sessionstate.Identity
+	colls    map[string]*databaseCollections
 
 	pgCatalogCache any
 	runner         sql.StatementRunner
@@ -54,6 +56,52 @@ type contextValues struct {
 
 	transactionEndCallbacks   []func()
 	sessionAdvisoryLockCounts map[string]int
+}
+
+// InitializeIdentityOnSession installs the authenticated principal once on a
+// new session. The caller must resolve the role under the auth lock first.
+func InitializeIdentityOnSession(sess sql.Session, id sessionstate.RoleID, superuser bool) error {
+	if id == 0 {
+		return errors.New("cannot initialize identity with an invalid role ID")
+	}
+	cv, err := getSessionValues(sess)
+	if err != nil {
+		return err
+	}
+	if cv.identity.Initialized() {
+		return errors.New("session identity is already initialized")
+	}
+	cv.identity = sessionstate.NewIdentity(id, superuser)
+	return nil
+}
+
+// IdentityFromSession returns durable typed state. A missing initialization is
+// an error: access never adopts sql.Client.User implicitly.
+func IdentityFromSession(sess sql.Session) (sessionstate.IdentitySnapshot, error) {
+	cv, err := getSessionValues(sess)
+	if err != nil {
+		return sessionstate.IdentitySnapshot{}, err
+	}
+	if !cv.identity.Initialized() {
+		return sessionstate.IdentitySnapshot{}, errors.New("session identity is not initialized")
+	}
+	return cv.identity.Snapshot(), nil
+}
+
+// InitializeIdentity is a context convenience wrapper for SQL entry points.
+func InitializeIdentity(ctx *sql.Context, id sessionstate.RoleID, superuser bool) error {
+	if ctx == nil {
+		return errors.New("context is nil")
+	}
+	return InitializeIdentityOnSession(ctx.Session, id, superuser)
+}
+
+// Identity is a context convenience wrapper for SQL expressions.
+func Identity(ctx *sql.Context) (sessionstate.IdentitySnapshot, error) {
+	if ctx == nil {
+		return sessionstate.IdentitySnapshot{}, errors.New("context is nil")
+	}
+	return IdentityFromSession(ctx.Session)
 }
 
 var _ dsess.DoltgresSessionLifecycle = (*contextValues)(nil)
@@ -140,9 +188,13 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 	if ctx == nil {
 		return nil, errors.New("context is nil")
 	}
-	sess, ok := ctx.Session.(*dsess.DoltSession)
+	return getSessionValues(ctx.Session)
+}
+
+func getSessionValues(session sql.Session) (*contextValues, error) {
+	sess, ok := session.(*dsess.DoltSession)
 	if !ok {
-		return nil, errors.Errorf("context contains a session of type %T, expected a Dolt session", ctx.Session)
+		return nil, errors.Errorf("expected a Dolt session, got %T", session)
 	}
 	if sess.DoltgresSessObj == nil {
 		cv := &contextValues{}

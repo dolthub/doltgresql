@@ -54,6 +54,9 @@ func NewOfflineSessionContext(ctx context.Context, se *engine.SqlEngine) (*sql.C
 	// the default client would be rejected.
 	user, _ := auth.GetSuperUserAndPassword()
 	sctx.Session.SetClient(sql.Client{User: user, Address: "localhost", Capabilities: 0})
+	if err := auth.InitializeSessionIdentity(sctx.Session, user); err != nil {
+		return nil, nil, err
+	}
 	sql.SessionCommandBegin(sctx.Session)
 	cleanup := func() {
 		sql.SessionCommandEnd(sctx.Session)

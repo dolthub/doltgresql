@@ -277,6 +277,12 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 // ComResetConnection implements the Handler interface.
 func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	logrus.WithField("connectionId", c.ConnectionID).Debug("COM_RESET_CONNECTION command received")
+	oldIdentity, err := core.IdentityFromSession(h.sm.GetSession(c))
+	if err != nil {
+		return err
+	}
+	principal := oldIdentity.AuthenticatedRole()
+	principalSuperuser := oldIdentity.AuthenticatedSuperuser()
 
 	// Grab the currently selected database name
 	db := h.sm.GetCurrentDB(c)
@@ -288,8 +294,11 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	ctx := context.Background()
 
 	// Create a new session and set the current database
-	err := h.sm.NewSession(ctx, c)
+	err = h.sm.NewSession(ctx, c)
 	if err != nil {
+		return err
+	}
+	if err = core.InitializeIdentityOnSession(h.sm.GetSession(c), principal, principalSuperuser); err != nil {
 		return err
 	}
 	return h.sm.SetDB(ctx, c, db)

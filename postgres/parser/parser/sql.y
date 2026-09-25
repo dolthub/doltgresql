@@ -13888,7 +13888,7 @@ func_expr_common_subexpr:
   }
 | SESSION_USER
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("current_user")}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("session_user")}
   }
 | USER
   {
