@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/antchfx/xmlquery v1.4.3
-	github.com/antchfx/xpath v1.3.3
+	github.com/antchfx/xpath v1.3.6
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
 	github.com/dolthub/dolt/go v0.40.5-0.20260925142331-cb82917980aa
