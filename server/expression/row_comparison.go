@@ -24,6 +24,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -31,14 +33,17 @@ import (
 // RowComparison represents a comparison between a row constructor and either another row constructor or the rows of a
 // subquery, which compares the rows field by field.
 type RowComparison struct {
-	operator    framework.Operator
-	quantifier  string // Empty, ANY, or ALL
-	left        sql.Expression
-	right       sql.Expression
+	operator   framework.Operator
+	quantifier string // Empty, ANY, or ALL
+	left       sql.Expression
+	right      sql.Expression
+	// leftFields and rightFields hold the pair of field values that is currently being compared.
 	leftFields  []*expression.Literal
 	rightFields []*expression.Literal
-	comparisons []sql.Expression
-	equalities  []sql.Expression
+	// fieldOperators applies the operator to each pair of fields, except that `<=` and `>=` apply `<` and `>`.
+	fieldOperators []sql.Expression
+	// fieldEqualities applies `=` to each pair of fields, which orderings use to find the first pair that differs.
+	fieldEqualities []sql.Expression
 }
 
 var _ vitess.Injectable = (*RowComparison)(nil)
@@ -56,7 +61,7 @@ func (r *RowComparison) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (r *RowComparison) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	if len(r.comparisons) == 0 {
+	if len(r.fieldOperators) == 0 {
 		return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", r)
 	}
 	left, err := r.left.Eval(ctx, row)
@@ -109,7 +114,7 @@ func (r *RowComparison) IsNullable(ctx *sql.Context) bool {
 
 // Resolved implements the sql.Expression interface.
 func (r *RowComparison) Resolved() bool {
-	return r.left != nil && r.left.Resolved() && r.right != nil && r.right.Resolved() && len(r.comparisons) > 0
+	return r.left != nil && r.left.Resolved() && r.right != nil && r.right.Resolved() && len(r.fieldOperators) > 0
 }
 
 // String implements the sql.Expression interface.
@@ -145,9 +150,9 @@ func (r *RowComparison) WithChildren(ctx *sql.Context, children ...sql.Expressio
 		return &newComparison, nil
 	}
 	if len(leftTypes) < len(rightTypes) {
-		return nil, errors.Errorf("subquery has too many columns")
+		return nil, pgerror.New(pgcode.Syntax, "subquery has too many columns")
 	} else if len(leftTypes) > len(rightTypes) {
-		return nil, errors.Errorf("subquery has too few columns")
+		return nil, pgerror.New(pgcode.Syntax, "subquery has too few columns")
 	}
 	fieldOperator := r.operator
 	switch r.operator {
@@ -156,22 +161,21 @@ func (r *RowComparison) WithChildren(ctx *sql.Context, children ...sql.Expressio
 	case framework.Operator_BinaryGreaterOrEqual:
 		fieldOperator = framework.Operator_BinaryGreaterThan
 	}
-	isOrdering := r.operator != framework.Operator_BinaryEqual && r.operator != framework.Operator_BinaryNotEqual
 	newComparison.leftFields = make([]*expression.Literal, len(leftTypes))
 	newComparison.rightFields = make([]*expression.Literal, len(leftTypes))
-	newComparison.comparisons = make([]sql.Expression, len(leftTypes))
-	if isOrdering {
-		newComparison.equalities = make([]sql.Expression, len(leftTypes))
+	newComparison.fieldOperators = make([]sql.Expression, len(leftTypes))
+	if r.isOrdering() {
+		newComparison.fieldEqualities = make([]sql.Expression, len(leftTypes))
 	}
 	for i := range leftTypes {
 		leftField, rightField := expression.NewLiteral(nil, leftTypes[i]), expression.NewLiteral(nil, rightTypes[i])
 		newComparison.leftFields[i], newComparison.rightFields[i] = leftField, rightField
 		var err error
-		if newComparison.comparisons[i], err = newFieldComparison(ctx, fieldOperator, leftField, rightField); err != nil {
+		if newComparison.fieldOperators[i], err = newFieldComparison(ctx, fieldOperator, leftField, rightField); err != nil {
 			return nil, err
 		}
-		if isOrdering {
-			if newComparison.equalities[i], err = newFieldComparison(ctx, framework.Operator_BinaryEqual, leftField, rightField); err != nil {
+		if r.isOrdering() {
+			if newComparison.fieldEqualities[i], err = newFieldComparison(ctx, framework.Operator_BinaryEqual, leftField, rightField); err != nil {
 				return nil, err
 			}
 		}
@@ -202,51 +206,77 @@ func (r *RowComparison) Operator() framework.Operator {
 
 // compareRow compares the field values of two rows, returning NULL when the result depends on a NULL field.
 func (r *RowComparison) compareRow(ctx *sql.Context, left []any, right []any) (any, error) {
-	sawNull := false
-	for i, comparison := range r.comparisons {
+	if r.isOrdering() {
+		return r.compareOrdering(ctx, left, right)
+	}
+	return r.compareEquality(ctx, left, right)
+}
+
+// compareOrdering implements `<`, `<=`, `>`, and `>=` by walking the fields from left to right and skipping each pair
+// that is equal. The first pair that is not equal decides the result with `<` or `>`, while a NULL in that pair makes
+// the result NULL. When every pair is equal, only `<=` and `>=` are true.
+func (r *RowComparison) compareOrdering(ctx *sql.Context, left []any, right []any) (any, error) {
+	for i, fieldOperator := range r.fieldOperators {
 		if left[i] == nil || right[i] == nil {
-			if r.equalities != nil {
-				return nil, nil
-			}
+			return nil, nil
+		}
+		r.leftFields[i].Val = left[i]
+		r.rightFields[i].Val = right[i]
+		equal, err := r.fieldEqualities[i].Eval(ctx, nil)
+		if err != nil || equal == nil {
+			return nil, err
+		}
+		if !equal.(bool) {
+			return fieldOperator.Eval(ctx, nil)
+		}
+	}
+	return r.operator == framework.Operator_BinaryLessOrEqual || r.operator == framework.Operator_BinaryGreaterOrEqual, nil
+}
+
+// compareEquality implements `=` and `<>` by applying the operator to every pair of fields. Any pair that differs
+// decides the result, even when another pair is NULL. Otherwise a NULL pair makes the result NULL, and rows whose pairs
+// are all equal are equal.
+func (r *RowComparison) compareEquality(ctx *sql.Context, left []any, right []any) (any, error) {
+	isEqual := r.operator == framework.Operator_BinaryEqual
+	sawNull := false
+	for i, fieldOperator := range r.fieldOperators {
+		if left[i] == nil || right[i] == nil {
 			sawNull = true
 			continue
 		}
 		r.leftFields[i].Val = left[i]
 		r.rightFields[i].Val = right[i]
-		if r.equalities != nil {
-			equal, err := r.equalities[i].Eval(ctx, nil)
-			if err != nil || equal == nil {
-				return nil, err
-			}
-			if !equal.(bool) {
-				return comparison.Eval(ctx, nil)
-			}
-			continue
-		}
-		result, err := comparison.Eval(ctx, nil)
+		result, err := fieldOperator.Eval(ctx, nil)
 		if err != nil {
 			return nil, err
 		}
 		if result == nil {
 			sawNull = true
-		} else if result.(bool) == (r.operator == framework.Operator_BinaryNotEqual) {
+		} else if result.(bool) != isEqual {
 			return result, nil
 		}
 	}
 	if sawNull {
 		return nil, nil
 	}
+	return isEqual, nil
+}
+
+// isOrdering returns whether the operator is `<`, `<=`, `>`, or `>=`, which order the rows rather than test them for
+// equality.
+func (r *RowComparison) isOrdering() bool {
 	switch r.operator {
-	case framework.Operator_BinaryEqual, framework.Operator_BinaryLessOrEqual, framework.Operator_BinaryGreaterOrEqual:
-		return true, nil
+	case framework.Operator_BinaryLessThan, framework.Operator_BinaryLessOrEqual,
+		framework.Operator_BinaryGreaterThan, framework.Operator_BinaryGreaterOrEqual:
+		return true
 	default:
-		return false, nil
+		return false
 	}
 }
 
 // subqueryRow returns the field values of a row returned by the subquery.
 func (r *RowComparison) subqueryRow(row any) []any {
-	if len(r.comparisons) == 1 {
+	if len(r.fieldOperators) == 1 {
 		return []any{row}
 	}
 	return row.([]any)
@@ -259,8 +289,8 @@ func newFieldComparison(ctx *sql.Context, operator framework.Operator, left sql.
 		return nil, err
 	}
 	binaryOperator := comparison.(*BinaryOperator)
-	if compiledFunc, ok := binaryOperator.compiledFunc.(*framework.CompiledFunction); ok {
-		return binaryOperator, compiledFunc.StashedError()
+	if compiledFunc, ok := binaryOperator.compiledFunc.(*framework.CompiledFunction); ok && compiledFunc.StashedError() != nil {
+		return nil, pgerror.WithCandidateCode(compiledFunc.StashedError(), pgcode.UndefinedFunction)
 	}
 	return binaryOperator, nil
 }

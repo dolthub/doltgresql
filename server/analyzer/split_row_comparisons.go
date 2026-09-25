@@ -23,22 +23,19 @@ import (
 
 	"github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtransform "github.com/dolthub/doltgresql/server/transform"
 )
 
 // SplitRowComparisons splits each comparison between two row constructors in a filter into comparisons between their
 // fields, so that an index on the columns can serve it.
 func SplitRowComparisons(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	return transform.Node(ctx, node, func(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
-		filter, ok := node.(*plan.Filter)
-		if !ok {
+	return pgtransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
+		switch node.(type) {
+		case *plan.Filter, *plan.JoinNode:
+			return transform.OneNodeExpressions(ctx, node, splitRowComparison)
+		default:
 			return node, transform.SameTree, nil
 		}
-		newExpr, same, err := transform.Expr(ctx, filter.Expression, splitRowComparison)
-		if err != nil || same {
-			return node, transform.SameTree, err
-		}
-		newNode, err := filter.WithExpressions(ctx, newExpr)
-		return newNode, transform.NewTree, err
 	})
 }
 
