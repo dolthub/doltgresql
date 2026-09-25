@@ -15,7 +15,6 @@
 package node
 
 import (
-	"context"
 	"io"
 	"strings"
 
@@ -23,7 +22,6 @@ import (
 	"github.com/antchfx/xpath"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
@@ -103,17 +101,21 @@ func (x *XmlTable) NewInstance(ctx *sql.Context, db sql.Database, args []sql.Exp
 	if len(args) != 1 {
 		return nil, sql.ErrInvalidArgumentNumber.New(XmlTableName, 1, len(args))
 	}
-	definition, ok := args[0].(*XmlTableDefinition)
+	var xmlTable *XmlTable
+	definition, ok := args[0].(*TableFunctionDefinition)
+	if ok {
+		xmlTable, ok = definition.table.(*XmlTable)
+	}
 	if !ok {
 		return nil, errors.Errorf("expected an XMLTABLE definition but found `%T`", args[0])
 	}
-	if documentType, ok := definition.table.Document.Type(ctx).(*pgtypes.DoltgresType); ok && documentType.ID != pgtypes.Xml.ID && documentType.ID != pgtypes.Unknown.ID {
+	if documentType, ok := xmlTable.Document.Type(ctx).(*pgtypes.DoltgresType); ok && documentType.ID != pgtypes.Xml.ID && documentType.ID != pgtypes.Unknown.ID {
 		return nil, pgerror.Newf(pgcode.DatatypeMismatch, "argument of XMLTABLE must be type xml, not type %s", documentType.String())
 	}
-	table := *definition.table
+	table := *xmlTable
 	table.database = db
-	table.Columns = make([]XmlTableColumn, len(definition.table.Columns))
-	for i, column := range definition.table.Columns {
+	table.Columns = make([]XmlTableColumn, len(xmlTable.Columns))
+	for i, column := range xmlTable.Columns {
 		if !column.Type.IsResolvedType() {
 			typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
 			if err != nil {
@@ -378,70 +380,4 @@ func (x *XmlTable) evalString(ctx *sql.Context, expr sql.Expression, row sql.Row
 		return nil, err
 	}
 	return &str, nil
-}
-
-// XmlTableDefinition is the sole argument of the xmltable table function, carrying the XmlTable that an XMLTABLE
-// expression converts to so that the planner resolves its expressions.
-type XmlTableDefinition struct {
-	table *XmlTable
-}
-
-var _ sql.Expression = (*XmlTableDefinition)(nil)
-var _ vitess.Injectable = (*XmlTableDefinition)(nil)
-
-// NewXmlTableDefinition returns a new XmlTableDefinition for `table`.
-func NewXmlTableDefinition(table *XmlTable) *XmlTableDefinition {
-	return &XmlTableDefinition{table: table}
-}
-
-// Children implements the interface sql.Expression.
-func (d *XmlTableDefinition) Children() []sql.Expression {
-	return d.table.Expressions()
-}
-
-// Eval implements the interface sql.Expression.
-func (d *XmlTableDefinition) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	return nil, errors.Errorf("XMLTABLE may only appear in a FROM clause")
-}
-
-// IsNullable implements the interface sql.Expression.
-func (d *XmlTableDefinition) IsNullable(ctx *sql.Context) bool {
-	return false
-}
-
-// Resolved implements the interface sql.Expression.
-func (d *XmlTableDefinition) Resolved() bool {
-	return d.table.Resolved()
-}
-
-// String implements the interface sql.Expression.
-func (d *XmlTableDefinition) String() string {
-	return XmlTableName
-}
-
-// Type implements the interface sql.Expression.
-func (d *XmlTableDefinition) Type(ctx *sql.Context) sql.Type {
-	return pgtypes.Unknown
-}
-
-// WithChildren implements the interface sql.Expression.
-func (d *XmlTableDefinition) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
-	table, err := d.table.WithExpressions(ctx, children...)
-	if err != nil {
-		return nil, err
-	}
-	return &XmlTableDefinition{table: table.(*XmlTable)}, nil
-}
-
-// WithResolvedChildren implements the interface vitess.Injectable.
-func (d *XmlTableDefinition) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
-	exprs := make([]sql.Expression, len(children))
-	for i, child := range children {
-		expr, ok := child.(sql.Expression)
-		if !ok {
-			return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", child)
-		}
-		exprs[i] = expr
-	}
-	return d.WithChildren(ctx.(*sql.Context), exprs...)
 }

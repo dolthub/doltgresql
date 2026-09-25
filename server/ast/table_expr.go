@@ -30,6 +30,9 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 		if xmlTable, ok := node.Expr.(*tree.XmlTableExpr); ok {
 			return nodeXmlTable(ctx, node, xmlTable)
 		}
+		if jsonTable, ok := node.Expr.(*tree.JsonTableExpr); ok {
+			return nodeJsonTable(ctx, node, jsonTable)
+		}
 		return nodeAliasedTableExpr(ctx, node)
 	case *tree.JoinTableExpr:
 		left, err := nodeTableExpr(ctx, node.Left)

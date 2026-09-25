@@ -95,7 +95,7 @@ func (l *lexer) Lex(lval *sqlSymType) int {
 	*lval = l.tokens[l.lastPos]
 
 	switch lval.id {
-	case NOT, WITH, AS, GENERATED, BLOCK_COMMENT:
+	case NOT, WITH, WITHOUT, AS, GENERATED, BLOCK_COMMENT:
 		nextID := int32(0)
 		if l.lastPos+1 < len(l.tokens) {
 			nextID = l.tokens[l.lastPos+1].id
@@ -122,6 +122,11 @@ func (l *lexer) Lex(lval *sqlSymType) int {
 			switch nextID {
 			case TIME, ORDINALITY:
 				lval.id = WITH_LA
+			}
+		case WITHOUT:
+			switch nextID {
+			case TIME:
+				lval.id = WITHOUT_LA
 			}
 		case BLOCK_COMMENT:
 			// for all block comments, skip returning them unless followed by the HINT token

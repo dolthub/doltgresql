@@ -86,7 +86,7 @@ func nodeXmlTable(ctx *Context, node *tree.AliasedTableExpr, xmlTable *tree.XmlT
 	tableFuncExpr := &vitess.TableFuncExpr{
 		Name: pgnodes.XmlTableName,
 		Exprs: vitess.SelectExprs{&vitess.AliasedExpr{Expr: vitess.InjectedExpr{
-			Expression: pgnodes.NewXmlTableDefinition(table),
+			Expression: pgnodes.NewTableFunctionDefinition(table),
 			Children:   children,
 		}}},
 		Alias:   vitess.NewTableIdent(string(node.As.Alias)),

@@ -179,7 +179,7 @@ func markImplicitLateralFunctions(tables tree.TableExprs) {
 		case *tree.AliasedTableExpr:
 			if followsFromItem {
 				switch table.Expr.(type) {
-				case *tree.RowsFromExpr, *tree.XmlTableExpr:
+				case *tree.RowsFromExpr, *tree.XmlTableExpr, *tree.JsonTableExpr:
 					table.Lateral = true
 				}
 			}
