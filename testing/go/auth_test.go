@@ -1438,13 +1438,13 @@ func TestDropRoleCleansPersistedAuthorizationReferences(t *testing.T) {
 	if !auth.HasDatabasePrivilege(mixedDatabaseKey, auth.Privilege_SELECT) {
 		t.Error("dropping one grantor removed the surviving grant")
 	}
-	if group, _, _ := auth.IsRoleAMember(dropped.ID(), otherGroup.ID()); group.IsValid() {
+	if auth.HasRoleMembership(dropped.ID(), otherGroup.ID()) {
 		t.Error("dropped role retained membership as member")
 	}
-	if group, _, _ := auth.IsRoleAMember(survivor.ID(), dropped.ID()); group.IsValid() {
+	if auth.HasRoleMembership(survivor.ID(), dropped.ID()) {
 		t.Error("dropped role retained membership as group")
 	}
-	if group, _, _ := auth.IsRoleAMember(survivor.ID(), otherGroup.ID()); group.IsValid() {
+	if auth.HasRoleMembership(survivor.ID(), otherGroup.ID()) {
 		t.Error("dropped role retained membership as grantor")
 	}
 }

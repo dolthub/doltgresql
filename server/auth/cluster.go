@@ -71,6 +71,7 @@ func OverwriteDatabase(data []byte) error {
 			return
 		}
 		globalDatabase = fresh
+		roleNamesDirty = true
 		err = WriteSerializedDatabase(fresh.serialize())
 	})
 	return err
