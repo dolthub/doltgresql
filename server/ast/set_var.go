@@ -25,8 +25,11 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/lex"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/config"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeSetVar handles *tree.SetVar nodes.
@@ -86,35 +89,63 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 		return &vitess.Use{DBName: vitess.NewTableIdent(dbName)}, nil
 	}
 	if node.Namespace == "" && !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
-		return nil, errors.Errorf(`ERROR: unrecognized configuration parameter "%s"`, node.Name)
-	}
-	if node.IsLocal && node.Namespace != "" {
-		// TODO: support transaction-local values for custom (namespaced) parameters, which are session user vars
-		return nil, errors.Errorf("SET LOCAL is not yet supported for customized options")
+		return nil, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, node.Name)
 	}
 	var expr vitess.Expr
 	var err error
+	reset := node.Reset
 	if len(node.Values) == 0 {
 		// sanity check
 		return nil, errors.Errorf(`ERROR: syntax error at or near ";"'`)
-	} else if flattened, ok := flattenIdentifierList(node.Name, node.Values); ok {
-		expr = vitess.NewStrVal([]byte(flattened))
-	} else if len(node.Values) > 1 {
-		vals := make([]string, len(node.Values))
-		for i, val := range node.Values {
-			vals[i] = val.String()
+	} else if len(node.Values) == 1 {
+		if _, isDefault := node.Values[0].(tree.DefaultVal); isDefault {
+			reset = true
+		} else if node.Namespace != "" {
+			expr, err = nodeExpr(ctx, node.Values[0])
+			if err != nil {
+				return nil, err
+			}
 		}
-		expr = &vitess.ColName{
-			Name: vitess.NewColIdent(strings.Join(vals, ", ")),
+	}
+	if !reset && expr == nil {
+		if flattened, ok := flattenIdentifierList(node.Name, node.Values); ok {
+			expr = vitess.NewStrVal([]byte(flattened))
+		} else if len(node.Values) > 1 {
+			vals := make([]string, len(node.Values))
+			for i, val := range node.Values {
+				vals[i] = val.String()
+			}
+			expr = vitess.NewStrVal([]byte(strings.Join(vals, ", ")))
+		} else {
+			expr, err = nodeExpr(ctx, node.Values[0])
+			if err != nil {
+				return nil, err
+			}
 		}
-	} else {
-		expr, err = nodeExpr(ctx, node.Values[0])
-		if err != nil {
-			return nil, err
+	}
+	if node.Namespace != "" || config.IsValidPostgresConfigParameter(node.Name) {
+		name := node.Name
+		if node.Namespace != "" {
+			name = fmt.Sprintf("%s.%s", node.Namespace, node.Name)
 		}
+		// Bare identifiers in SET are setting values, not column references.
+		if col, ok := expr.(*vitess.ColName); ok {
+			expr = vitess.NewStrVal([]byte(col.Name.String()))
+		}
+		set := &pgnodes.SetSetting{Name: name, Local: node.IsLocal, Reset: reset}
+		if reset {
+			return vitess.InjectedStatement{Statement: set}, nil
+		}
+		return vitess.InjectedStatement{Statement: set, Children: []vitess.Expr{expr}}, nil
 	}
 
 	if node.Namespace == "" {
+		if reset {
+			expr, err = nodeExpr(ctx, node.Values[0])
+			if err != nil {
+				return nil, err
+			}
+		}
 		// Postgres's SET has no GLOBAL scope syntax, so system variables that have no session scope (e.g.
 		// Dolt's cluster replication variables) are routed to their declared scope directly, symmetric with
 		// current_setting() reading them from the global scope.
@@ -142,17 +173,8 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 				Expr: expr,
 			}},
 		}, nil
-	} else {
-		return &vitess.Set{
-			Exprs: vitess.SetVarExprs{&vitess.SetVarExpr{
-				Scope: vitess.SetScope_User,
-				Name: &vitess.ColName{
-					Name: vitess.NewColIdent(fmt.Sprintf("%s.%s", node.Namespace, node.Name)),
-				},
-				Expr: expr,
-			}},
-		}, nil
 	}
+	return nil, errors.Errorf("SET target %s is unsupported", node.Name)
 }
 
 // flattenIdentifierList renders the values assigned to a parameter whose value is a comma separated list of

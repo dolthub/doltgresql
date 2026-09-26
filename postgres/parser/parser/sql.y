@@ -6198,13 +6198,17 @@ reset_stmt:
     if name == "role" {
       $$.val = &tree.SetRole{Reset: true}
     } else {
-      $$.val = &tree.SetVar{Name: $2, Values:tree.Exprs{tree.DefaultVal{}}}
+      $$.val = &tree.SetVar{Name: $2, Reset: true, Values:tree.Exprs{tree.DefaultVal{}}}
     }
+  }
+| RESET name '.' name
+  {
+    $$.val = &tree.SetVar{Namespace: $2, Name: $4, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
   }
 // TIME ZONE is special: it is two tokens, but is really the identifier "TIME ZONE".
 | RESET TIME ZONE
   {
-    $$.val = &tree.SetVar{Name: "timezone", Values:tree.Exprs{tree.DefaultVal{}}}
+    $$.val = &tree.SetVar{Name: "timezone", Reset: true, Values:tree.Exprs{tree.DefaultVal{}}}
   }
 | RESET ALL
   {
