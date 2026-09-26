@@ -128,6 +128,11 @@ func TestSetLocal(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SET LOCAL enable_hashjoin = off",
+					ExpectedNotices: []ExpectedNotice{{
+						Severity: "WARNING",
+						Code:     "25P01",
+						Message:  "SET LOCAL can only be used in transaction blocks",
+					}},
 				},
 				{
 					Query:    "SHOW enable_hashjoin",
@@ -228,6 +233,50 @@ func TestSetLocal(t *testing.T) {
 					Query:    "SHOW enable_seqscan",
 					Expected: []sql.Row{{1}},
 				},
+			},
+		},
+	})
+}
+
+func TestSetLocalSimpleQueryWarning(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "standalone SET LOCAL warns and has no lasting effect",
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:    "SET LOCAL enable_hashjoin = off",
+					Expected: []StatementResult{{Tag: "SET"}},
+					ExpectedNotices: []ExpectedNotice{{
+						Severity: "WARNING", Code: "25P01",
+						Message: "SET LOCAL can only be used in transaction blocks",
+					}},
+				},
+				SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"1"}}}}},
+			},
+		},
+		{
+			Name: "SET LOCAL in a multi-statement implicit block does not warn",
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:           "SET LOCAL enable_hashjoin = off; SHOW enable_hashjoin",
+					Expected:        []StatementResult{{Tag: "SET"}, {Tag: "SHOW", Rows: [][]string{{"0"}}}},
+					ExpectedNotices: []ExpectedNotice{},
+				},
+				SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"1"}}}}},
+			},
+		},
+		{
+			Name: "SET LOCAL in an explicit block does not warn",
+			Steps: []FlowStep{
+				SimpleQuery{Query: "BEGIN", Expected: []StatementResult{{Tag: "BEGIN"}}, ExpectedReadyStatus: 'T'},
+				SimpleQuery{
+					Query:               "SET LOCAL enable_hashjoin = off",
+					Expected:            []StatementResult{{Tag: "SET"}},
+					ExpectedReadyStatus: 'T',
+					ExpectedNotices:     []ExpectedNotice{},
+				},
+				SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"0"}}}}, ExpectedReadyStatus: 'T'},
+				SimpleQuery{Query: "ROLLBACK", Expected: []StatementResult{{Tag: "ROLLBACK"}}},
 			},
 		},
 	})
