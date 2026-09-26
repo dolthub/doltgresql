@@ -964,7 +964,12 @@ func (*SetConstraints) StatementTag() string { return "SET CONSTRAINTS" }
 func (*SetRole) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetRole) StatementTag() string { return "SET ROLE" }
+func (n *SetRole) StatementTag() string {
+	if n.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetTransaction) StatementType() StatementType { return Ack }

@@ -103,6 +103,7 @@ type SetRole struct {
 	Name    string
 	None    bool
 	Reset   bool
+	Default bool // SET ROLE DEFAULT, whose command tag is SET
 }
 
 // Format implements the NodeFormatter interface.
@@ -119,8 +120,11 @@ func (node *SetRole) Format(ctx *FmtCtx) {
 		ctx.WriteString(" ROLE")
 		if node.None {
 			ctx.WriteString(" NONE")
+		} else if node.Default {
+			ctx.WriteString(" DEFAULT")
 		} else {
-			ctx.WriteString(node.Name)
+			ctx.WriteByte(' ')
+			ctx.FormatNameP(&node.Name)
 		}
 	}
 }

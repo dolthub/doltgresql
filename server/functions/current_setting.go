@@ -16,10 +16,12 @@ package functions
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -64,6 +66,9 @@ var current_setting_text_bool = framework.Function2{
 // getCurSetting returns value set for given user variable. It returns nil instead of an error
 // if it doesn't exist and missingOk is set to true.
 func getCurSetting(ctx *sql.Context, s string, missingOk bool) (any, error) {
+	if strings.EqualFold(s, "role") {
+		return auth.SelectedRoleSetting(ctx)
+	}
 	_, variable, err := ctx.GetUserVariable(ctx, s)
 	if err != nil {
 		if missingOk {

@@ -23,3 +23,22 @@ func TestSessionUserRoundTrip(t *testing.T) {
 		t.Fatalf("formatted expression cannot be parsed: %v", err)
 	}
 }
+
+func TestSetRoleRoundTrip(t *testing.T) {
+	for _, query := range []string{
+		"SET ROLE reader", "SET SESSION ROLE reader", "SET LOCAL ROLE reader",
+		"SET ROLE NONE", "SET ROLE DEFAULT", "SET LOCAL ROLE DEFAULT", "RESET ROLE",
+		"SET ROLE TO reader", "SET ROLE = reader", "SET ROLE TO DEFAULT",
+	} {
+		t.Run(query, func(t *testing.T) {
+			stmt, err := ParseOne(query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			formatted := tree.AsString(stmt.AST)
+			if _, err := ParseOne(formatted); err != nil {
+				t.Fatalf("%q formatted as %q, which cannot be parsed: %v", query, formatted, err)
+			}
+		})
+	}
+}

@@ -34,6 +34,29 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
+	// The generic SET spelling (SET role TO/=/...) is a parser alias for
+	// SET ROLE. It must use the same permission check and identity journal.
+	if node.Namespace == "" && strings.EqualFold(node.Name, "role") {
+		if len(node.Values) != 1 {
+			return nil, errors.New("SET ROLE requires one role name")
+		}
+		role := &tree.SetRole{IsLocal: node.IsLocal}
+		switch value := node.Values[0].(type) {
+		case tree.DefaultVal:
+			role.Default = true
+		case *tree.UnresolvedName:
+			if value.NumParts != 1 || value.Star {
+				return nil, errors.New("SET ROLE requires one role name")
+			}
+			role.Name = value.Parts[0]
+		case *tree.StrVal:
+			role.Name = value.RawString()
+		default:
+			return nil, errors.New("SET ROLE requires one role name")
+		}
+		role.None = role.Name == "none"
+		return nodeSetRole(ctx, role)
+	}
 	// USE statement alias
 	if node.Name == "database" {
 		// strip off all quotes from the database name
