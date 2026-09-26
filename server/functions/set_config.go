@@ -59,6 +59,12 @@ var set_config_text_text_boolean = framework.Function3{
 			}
 			return auth.SelectedRoleSetting(ctx)
 		}
+		if strings.EqualFold(settingNameStr, "session_authorization") {
+			if err := auth.ApplySessionAuthorization(ctx, newValueStr, strings.EqualFold(newValueStr, "default"), isLocal == true); err != nil {
+				return nil, err
+			}
+			return auth.SessionAuthorizationSetting(ctx)
+		}
 
 		// set_config can set system configuration or user configuration. System configuration settings are in top
 		// level settings, while user configuration settings are namespaced.

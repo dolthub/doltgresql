@@ -6212,7 +6212,7 @@ reset_stmt:
   }
 | RESET SESSION AUTHORIZATION
   {
-    $$.val = &tree.SetSessionAuthorization{}
+    $$.val = &tree.SetSessionAuthorization{Reset: true}
   }
 | RESET error // SHOW HELP: RESET
 
@@ -6497,7 +6497,7 @@ set_special_syntax:
 set_session_authorization:
   SESSION AUTHORIZATION DEFAULT
   {
-    $$.val = &tree.SetSessionAuthorization{}
+    $$.val = &tree.SetSessionAuthorization{Default: true}
   }
 | SESSION AUTHORIZATION non_reserved_word_or_sconst
   {

@@ -28,6 +28,8 @@ type Identity struct {
 	selected               RoleID // zero means NONE: use the session role
 	resetSession           RoleID
 	resetSelected          RoleID
+	executionRole          RoleID
+	executionDepth         int
 }
 
 // IdentitySnapshot is a read-only copy of a session's identity at one point in
@@ -42,6 +44,7 @@ func (s IdentitySnapshot) AuthenticatedSuperuser() bool { return s.identity.Auth
 func (s IdentitySnapshot) SessionRole() RoleID          { return s.identity.SessionRole() }
 func (s IdentitySnapshot) SelectedRole() (RoleID, bool) { return s.identity.SelectedRole() }
 func (s IdentitySnapshot) CurrentRole() RoleID          { return s.identity.CurrentRole() }
+func (s IdentitySnapshot) InScopedExecution() bool      { return s.identity.InScopedExecution() }
 
 func NewIdentity(authenticated RoleID, superuser bool) Identity {
 	return Identity{authenticated: authenticated, authenticatedSuperuser: superuser,
@@ -54,10 +57,27 @@ func (i Identity) AuthenticatedSuperuser() bool { return i.authenticatedSuperuse
 func (i Identity) SessionRole() RoleID          { return i.session }
 func (i Identity) SelectedRole() (RoleID, bool) { return i.selected, i.selected != 0 }
 func (i Identity) CurrentRole() RoleID {
+	if i.executionDepth != 0 {
+		return i.executionRole
+	}
 	if i.selected != 0 {
 		return i.selected
 	}
 	return i.session
+}
+
+// InScopedExecution identifies a future SECURITY DEFINER style override.
+// Identity-changing SQL is prohibited while such an override is active.
+func (i Identity) InScopedExecution() bool { return i.executionDepth != 0 }
+
+// WithExecutionRole is an internal execution boundary. The override is restored
+// on normal return, error, cancellation, or panic. Callers must first resolve
+// and authorize the target role.
+func (i *Identity) WithExecutionRole(target RoleID, run func() error) error {
+	previous, depth := i.executionRole, i.executionDepth
+	i.executionRole, i.executionDepth = target, depth+1
+	defer func() { i.executionRole, i.executionDepth = previous, depth }()
+	return run()
 }
 
 // SelectRole applies a selection after the caller has checked SET permission.

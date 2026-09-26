@@ -69,6 +69,9 @@ func getCurSetting(ctx *sql.Context, s string, missingOk bool) (any, error) {
 	if strings.EqualFold(s, "role") {
 		return auth.SelectedRoleSetting(ctx)
 	}
+	if strings.EqualFold(s, "session_authorization") {
+		return auth.SessionAuthorizationSetting(ctx)
+	}
 	_, variable, err := ctx.GetUserVariable(ctx, s)
 	if err != nil {
 		if missingOk {

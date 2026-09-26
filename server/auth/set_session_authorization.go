@@ -24,23 +24,25 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
-// ApplySetRole is the checked entry point for all supported SET ROLE forms.
-// A selected role never becomes the authority for a subsequent switch.
-func ApplySetRole(ctx *sql.Context, name string, none, reset, local bool) error {
+// ApplySessionAuthorization checks against the authenticated connection, not
+// the currently selected role. The authentication-time superuser entitlement
+// is intentionally preserved when the session role changes.
+func ApplySessionAuthorization(ctx *sql.Context, name string, reset, local bool) error {
 	identity, err := core.Identity(ctx)
 	if err != nil {
 		return err
 	}
 	if identity.InScopedExecution() {
-		return pgerror.New(pgcode.InsufficientPrivilege, "cannot set role within security-definer context")
+		return pgerror.New(pgcode.InsufficientPrivilege, "cannot set session authorization within security-definer context")
 	}
 	var target sessionstate.RoleID
 	LockRead(func() {
-		if _, ok := LookupRoleByID(RoleID(identity.SessionRole())); !ok {
-			err = errors.Errorf("role with ID %d no longer exists", identity.SessionRole())
+		if _, ok := LookupRoleByID(RoleID(identity.AuthenticatedRole())); !ok {
+			err = errors.Errorf("authenticated role with ID %d no longer exists", identity.AuthenticatedRole())
 			return
 		}
-		if none || reset {
+		if reset {
+			target = identity.AuthenticatedRole()
 			return
 		}
 		role, ok := LookupRole(name)
@@ -48,8 +50,8 @@ func ApplySetRole(ctx *sql.Context, name string, none, reset, local bool) error 
 			err = pgerror.Newf(pgcode.UndefinedObject, `role "%s" does not exist`, name)
 			return
 		}
-		if !CanSetRole(RoleID(identity.SessionRole()), role.ID()) {
-			err = pgerror.Newf(pgcode.InsufficientPrivilege, `permission denied to set role "%s"`, name)
+		if !identity.AuthenticatedSuperuser() && RoleID(identity.AuthenticatedRole()) != role.ID() {
+			err = pgerror.New(pgcode.InsufficientPrivilege, "permission denied to set session authorization")
 			return
 		}
 		target = sessionstate.RoleID(role.ID())
@@ -59,26 +61,20 @@ func ApplySetRole(ctx *sql.Context, name string, none, reset, local bool) error 
 	}
 	return core.ApplyAuthorizedIdentityChange(ctx, local, func(next *sessionstate.Identity) error {
 		if reset {
-			next.ResetRole()
+			next.ResetSessionRole()
 		} else {
-			next.SelectRole(target)
+			next.SetSessionRole(target)
 		}
 		return nil
 	})
 }
 
-// SelectedRoleSetting projects the role GUC from typed identity state.
-// NONE is a real selection state, distinct from selecting the session role.
-func SelectedRoleSetting(ctx *sql.Context) (string, error) {
+func SessionAuthorizationSetting(ctx *sql.Context) (string, error) {
 	identity, err := core.Identity(ctx)
 	if err != nil {
 		return "", err
 	}
-	id, selected := identity.SelectedRole()
-	if !selected {
-		return "none", nil
-	}
-	role, err := ResolveRoleID(id)
+	role, err := ResolveRoleID(identity.SessionRole())
 	if err != nil {
 		return "", err
 	}

@@ -33,6 +33,8 @@
 
 package tree
 
+import "github.com/dolthub/doltgresql/postgres/parser/lex"
+
 var _ Statement = &SetVar{}
 
 // SetVar represents a SET or RESET <configuration_param> statement.
@@ -78,16 +80,25 @@ var _ Statement = &SetSessionAuthorization{}
 type SetSessionAuthorization struct {
 	Username string
 	IsLocal  bool
+	Reset    bool
+	Default  bool
 }
 
 // Format implements the NodeFormatter interface.
 func (node *SetSessionAuthorization) Format(ctx *FmtCtx) {
-	if node.Username == "" {
-		// equivalent to RESET SESSION AUTHORIZATION
-		ctx.WriteString("SET SESSION AUTHORIZATION DEFAULT")
+	if node.Reset {
+		ctx.WriteString("RESET SESSION AUTHORIZATION")
 	} else {
-		ctx.WriteString("SET SESSION AUTHORIZATION ")
-		ctx.WriteString(node.Username)
+		ctx.WriteString("SET ")
+		if node.IsLocal {
+			ctx.WriteString("LOCAL ")
+		}
+		ctx.WriteString("SESSION AUTHORIZATION ")
+		if node.Default {
+			ctx.WriteString("DEFAULT")
+		} else {
+			lex.EncodeEscapedSQLIdent(&ctx.Buffer, node.Username)
+		}
 	}
 }
 
