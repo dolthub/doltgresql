@@ -69,6 +69,9 @@ func (p *DoltgresDatabaseProvider) TableFunction(ctx *sql.Context, name string) 
 	if strings.EqualFold(name, node.XmlTableName) {
 		return &node.XmlTable{}, true
 	}
+	if strings.EqualFold(name, node.JsonTableName) {
+		return &node.JsonTable{}, true
+	}
 	return p.DoltDatabaseProvider.TableFunction(ctx, name)
 }
 
