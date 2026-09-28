@@ -182,6 +182,11 @@ func (c *ExplicitCast) String() string {
 	case *BinaryOperator, *UnaryOperator, *Not, *IsNull, *IsNotNull, *IsDistinctFrom, *IsNotDistinctFrom, *InTuple,
 		*InSubquery, *AnyExpr, *expression.Like:
 		sqlChild = "(" + c.sqlChild.String() + ")"
+	case *expression.Literal:
+		sqlChild = c.sqlChild.String()
+		if strings.HasPrefix(sqlChild, "-") {
+			sqlChild = "(" + sqlChild + ")"
+		}
 	default:
 		sqlChild = c.sqlChild.String()
 	}
