@@ -88,6 +88,7 @@ var KeywordsCategories = map[string]string{
 	"complete":                     "U",
 	"compression":                  "U",
 	"concurrently":                 "R",
+	"conditional":                  "U",
 	"configuration":                "U",
 	"configurations":               "U",
 	"configure":                    "U",
@@ -154,6 +155,7 @@ var KeywordsCategories = map[string]string{
 	"each":                         "U",
 	"element":                      "R",
 	"else":                         "R",
+	"empty":                        "U",
 	"enable":                       "U",
 	"encoding":                     "U",
 	"encrypted":                    "U",
@@ -282,6 +284,8 @@ var KeywordsCategories = map[string]string{
 	"jobs":                         "U",
 	"join":                         "T",
 	"json":                         "U",
+	"json_table":                   "C",
+	"keep":                         "U",
 	"key":                          "U",
 	"keys":                         "U",
 	"kms":                          "U",
@@ -354,6 +358,7 @@ var KeywordsCategories = map[string]string{
 	"nan":                          "U",
 	"natural":                      "T",
 	"negator":                      "U",
+	"nested":                       "U",
 	"never":                        "U",
 	"new":                          "U",
 	"next":                         "U",
@@ -389,6 +394,7 @@ var KeywordsCategories = map[string]string{
 	"oid":                          "U",
 	"oids":                         "U",
 	"old":                          "U",
+	"omit":                         "U",
 	"on":                           "R",
 	"only":                         "R",
 	"only_database_stats":          "U",
@@ -418,6 +424,7 @@ var KeywordsCategories = map[string]string{
 	"passedbyvalue":                "U",
 	"passing":                      "U",
 	"password":                     "U",
+	"path":                         "U",
 	"pause":                        "U",
 	"paused":                       "U",
 	"physical":                     "U",
@@ -452,6 +459,7 @@ var KeywordsCategories = map[string]string{
 	"publication":                  "U",
 	"queries":                      "U",
 	"query":                        "U",
+	"quotes":                       "U",
 	"range":                        "U",
 	"ranges":                       "U",
 	"read":                         "U",
@@ -499,6 +507,7 @@ var KeywordsCategories = map[string]string{
 	"running":                      "U",
 	"safe":                         "U",
 	"savepoint":                    "U",
+	"scalar":                       "U",
 	"scatter":                      "U",
 	"schedule":                     "U",
 	"schedules":                    "U",
@@ -605,6 +614,7 @@ var KeywordsCategories = map[string]string{
 	"typmod_out":                   "U",
 	"unbounded":                    "U",
 	"uncommitted":                  "U",
+	"unconditional":                "U",
 	"union":                        "R",
 	"unique":                       "R",
 	"unknown":                      "U",
@@ -752,6 +762,7 @@ var KeywordNames = []string{
 	"complete",
 	"compression",
 	"concurrently",
+	"conditional",
 	"configuration",
 	"configurations",
 	"configure",
@@ -818,6 +829,7 @@ var KeywordNames = []string{
 	"each",
 	"element",
 	"else",
+	"empty",
 	"enable",
 	"encoding",
 	"encrypted",
@@ -946,6 +958,8 @@ var KeywordNames = []string{
 	"jobs",
 	"join",
 	"json",
+	"json_table",
+	"keep",
 	"key",
 	"keys",
 	"kms",
@@ -1018,6 +1032,7 @@ var KeywordNames = []string{
 	"nan",
 	"natural",
 	"negator",
+	"nested",
 	"never",
 	"new",
 	"next",
@@ -1053,6 +1068,7 @@ var KeywordNames = []string{
 	"oid",
 	"oids",
 	"old",
+	"omit",
 	"on",
 	"only",
 	"only_database_stats",
@@ -1082,6 +1098,7 @@ var KeywordNames = []string{
 	"passedbyvalue",
 	"passing",
 	"password",
+	"path",
 	"pause",
 	"paused",
 	"physical",
@@ -1116,6 +1133,7 @@ var KeywordNames = []string{
 	"publication",
 	"queries",
 	"query",
+	"quotes",
 	"range",
 	"ranges",
 	"read",
@@ -1163,6 +1181,7 @@ var KeywordNames = []string{
 	"running",
 	"safe",
 	"savepoint",
+	"scalar",
 	"scatter",
 	"schedule",
 	"schedules",
@@ -1269,6 +1288,7 @@ var KeywordNames = []string{
 	"typmod_out",
 	"unbounded",
 	"uncommitted",
+	"unconditional",
 	"union",
 	"unique",
 	"unknown",
@@ -1506,6 +1526,8 @@ func GetKeywordID(k string) int32 {
 		return COMPRESSION
 	case "concurrently":
 		return CONCURRENTLY
+	case "conditional":
+		return CONDITIONAL
 	case "configuration":
 		return CONFIGURATION
 	case "configurations":
@@ -1638,6 +1660,8 @@ func GetKeywordID(k string) int32 {
 		return ELEMENT
 	case "else":
 		return ELSE
+	case "empty":
+		return EMPTY
 	case "enable":
 		return ENABLE
 	case "encoding":
@@ -1894,6 +1918,10 @@ func GetKeywordID(k string) int32 {
 		return JOIN
 	case "json":
 		return JSON
+	case "json_table":
+		return JSON_TABLE
+	case "keep":
+		return KEEP
 	case "key":
 		return KEY
 	case "keys":
@@ -2038,6 +2066,8 @@ func GetKeywordID(k string) int32 {
 		return NATURAL
 	case "negator":
 		return NEGATOR
+	case "nested":
+		return NESTED
 	case "never":
 		return NEVER
 	case "new":
@@ -2108,6 +2138,8 @@ func GetKeywordID(k string) int32 {
 		return OIDS
 	case "old":
 		return OLD
+	case "omit":
+		return OMIT
 	case "on":
 		return ON
 	case "only":
@@ -2166,6 +2198,8 @@ func GetKeywordID(k string) int32 {
 		return PASSING
 	case "password":
 		return PASSWORD
+	case "path":
+		return PATH
 	case "pause":
 		return PAUSE
 	case "paused":
@@ -2234,6 +2268,8 @@ func GetKeywordID(k string) int32 {
 		return QUERIES
 	case "query":
 		return QUERY
+	case "quotes":
+		return QUOTES
 	case "range":
 		return RANGE
 	case "ranges":
@@ -2328,6 +2364,8 @@ func GetKeywordID(k string) int32 {
 		return SAFE
 	case "savepoint":
 		return SAVEPOINT
+	case "scalar":
+		return SCALAR
 	case "scatter":
 		return SCATTER
 	case "schedule":
@@ -2540,6 +2578,8 @@ func GetKeywordID(k string) int32 {
 		return UNBOUNDED
 	case "uncommitted":
 		return UNCOMMITTED
+	case "unconditional":
+		return UNCONDITIONAL
 	case "union":
 		return UNION
 	case "unique":
