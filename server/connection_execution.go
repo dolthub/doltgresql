@@ -52,6 +52,10 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, simpl
 		switch injectedStmt := stmt.Statement.(type) {
 		case node.DiscardStatement:
 			return true, true, h.discardAll(query)
+		case *node.SetConstraints:
+			if err := h.warnOutsideTransactionBlock(query, simpleQuery); err != nil {
+				return true, true, err
+			}
 		case *node.CopyFrom:
 			if injectedStmt.Stdin {
 				return true, false, h.handleCopyFromStdinQuery(injectedStmt, simpleQuery)
@@ -76,6 +80,18 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 		return err
 	}
 	return h.send(makeCommandComplete(query.StatementTag, rowsAffected))
+}
+
+// warnOutsideTransactionBlock warns that a transaction-block-only command ran outside a transaction block.
+func (h *ConnectionHandler) warnOutsideTransactionBlock(query ConvertedQuery, simpleQuery *simpleQueryExecution) error {
+	if h.state.txState.inExplicitTransactionBlock() || (simpleQuery != nil && h.state.txState == implicitTransactionState) {
+		return nil
+	}
+	return h.send(&pgproto3.NoticeResponse{
+		Severity: string(ErrorResponseSeverity_Warning),
+		Code:     pgcode.NoActiveSQLTransaction.String(),
+		Message:  fmt.Sprintf("%s can only be used in transaction blocks", query.StatementTag),
+	})
 }
 
 // discardAll resets all session-local resources and reports completion.

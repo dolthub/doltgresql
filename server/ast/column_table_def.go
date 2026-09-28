@@ -32,6 +32,9 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 	if node == nil {
 		return nil, nil
 	}
+	if tree.IsDeferrable(node.UniqueDeferrable, node.UniqueInitially) {
+		return nil, errors.Errorf("DEFERRABLE constraints are not yet supported")
+	}
 	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type, false)
 	if err != nil {
 		return nil, err

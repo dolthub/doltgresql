@@ -146,7 +146,7 @@ var _ Statement = &SetConstraints{}
 
 // SetConstraints represents a SET CONSTRAINTS statement.
 type SetConstraints struct {
-	Names    NameList
+	Names    []*UnresolvedObjectName
 	All      bool
 	Deferred bool
 }
@@ -157,7 +157,12 @@ func (node *SetConstraints) Format(ctx *FmtCtx) {
 	if node.All {
 		ctx.WriteString("ALL")
 	} else {
-		ctx.FormatNode(&node.Names)
+		for i := range node.Names {
+			if i > 0 {
+				ctx.WriteString(", ")
+			}
+			ctx.FormatNode(node.Names[i])
+		}
 	}
 	if node.Deferred {
 		ctx.WriteString(" DEFERRED")

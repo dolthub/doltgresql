@@ -112,6 +112,10 @@ func nodeUniqueConstraintTableDef(
 		return nil, errors.Errorf("NULLS NOT DISTINCT is not yet supported")
 	}
 
+	if tree.IsDeferrable(node.Deferrable, node.Initially) {
+		return nil, errors.Errorf("DEFERRABLE constraints are not yet supported")
+	}
+
 	indexFields, err := nodeIndexElemList(ctx, node.Columns)
 	if err != nil {
 		return nil, err

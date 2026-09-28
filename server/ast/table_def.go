@@ -112,6 +112,9 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		}
 		return nil
 	case *tree.UniqueConstraintTableDef:
+		if tree.IsDeferrable(node.Deferrable, node.Initially) {
+			return errors.Errorf("DEFERRABLE constraints are not yet supported")
+		}
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
@@ -151,12 +154,14 @@ func nodeForeignKeyDefinitionFromColumnTableDef(ctx *Context, fromColumn tree.Na
 
 	references := node.References
 	fkConstraintTableDef := &tree.ForeignKeyConstraintTableDef{
-		Name:     references.ConstraintName,
-		FromCols: []tree.Name{fromColumn},
-		Table:    *references.Table,
-		ToCols:   []tree.Name{references.Col},
-		Actions:  references.Actions,
-		Match:    references.Match,
+		Name:       references.ConstraintName,
+		FromCols:   []tree.Name{fromColumn},
+		Table:      *references.Table,
+		ToCols:     []tree.Name{references.Col},
+		Actions:    references.Actions,
+		Match:      references.Match,
+		Deferrable: references.Deferrable,
+		Initially:  references.Initially,
 	}
 
 	return nodeForeignKeyConstraintTableDef(ctx, fkConstraintTableDef, false)
