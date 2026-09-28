@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 
@@ -51,7 +52,7 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, simpl
 	case sqlparser.InjectedStatement:
 		switch injectedStmt := stmt.Statement.(type) {
 		case node.DiscardStatement:
-			return true, true, h.discardAll(query)
+			return true, true, h.discardAll(simpleQuery)
 		case *node.CopyFrom:
 			if injectedStmt.Stdin {
 				return true, false, h.handleCopyFromStdinQuery(injectedStmt, simpleQuery)
@@ -79,8 +80,10 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 }
 
 // discardAll resets all session-local resources and reports completion.
-func (h *ConnectionHandler) discardAll(query ConvertedQuery) error {
-	if h.state.txState != idleTransactionState {
+func (h *ConnectionHandler) discardAll(simpleQuery *simpleQueryExecution) error {
+	// A multi-statement simple Query message is itself an implicit transaction
+	// block, even when DISCARD ALL is its first statement.
+	if h.state.txState != idleTransactionState || (simpleQuery != nil && len(simpleQuery.statements) > 1) {
 		return pgerror.New(pgcode.ActiveSQLTransaction, "DISCARD ALL cannot run inside a transaction block")
 	}
 	if err := h.doltgresHandler.ComResetConnection(h.mysqlConn); err != nil {
@@ -88,6 +91,25 @@ func (h *ConnectionHandler) discardAll(query ConvertedQuery) error {
 	}
 	h.state.resetExtendedQueryObjects()
 	return h.send(&pgproto3.CommandComplete{CommandTag: []byte("DISCARD ALL")})
+}
+
+// warnSetLocalOutsideTransaction reports the PostgreSQL warning for a SET LOCAL
+// command that has no surrounding transaction block. The command still runs so
+// its usual parameter validation and completion semantics are preserved.
+func (h *ConnectionHandler) warnSetLocalOutsideTransaction(query ConvertedQuery, inTransactionBlock bool) error {
+	if inTransactionBlock || !isSetLocal(query) {
+		return nil
+	}
+	return h.send(&pgproto3.NoticeResponse{
+		Severity: "WARNING",
+		Code:     pgcode.NoActiveSQLTransaction.String(),
+		Message:  "SET LOCAL can only be used in transaction blocks",
+	})
+}
+
+func isSetLocal(query ConvertedQuery) bool {
+	set, ok := query.AST.(*sqlparser.Set)
+	return ok && len(set.Exprs) == 1 && set.Exprs[0].Scope == planbuilder.SetScope_TransactionLocal
 }
 
 // spoolRowsCallback returns an engine callback that writes a statement's result messages.

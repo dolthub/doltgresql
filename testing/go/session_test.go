@@ -99,6 +99,49 @@ func TestDiscardAllClearsProtocolPreparedStatements(t *testing.T) {
 	})
 }
 
+func TestDiscardAllInMultiStatementSimpleQuery(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "DISCARD ALL first in an implicit block errors without resetting the session",
+			Steps: []FlowStep{
+				SimpleQuery{Query: "SET search_path = pg_catalog", Expected: []StatementResult{{Tag: "SET"}}},
+				SimpleQuery{
+					Query:           "DISCARD ALL; SELECT 1",
+					ExpectedErr:     "DISCARD ALL cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				SimpleQuery{Query: "SHOW search_path", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"pg_catalog"}}}}},
+			},
+		},
+		{
+			Name: "DISCARD ALL after another statement in an implicit block errors",
+			Steps: []FlowStep{
+				SimpleQuery{Query: "SET search_path = pg_catalog", Expected: []StatementResult{{Tag: "SET"}}},
+				SimpleQuery{
+					Query:           "SELECT 1; DISCARD ALL",
+					Expected:        []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"1"}}}},
+					ExpectedErr:     "DISCARD ALL cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				SimpleQuery{Query: "SHOW search_path", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"pg_catalog"}}}}},
+			},
+		},
+		{
+			Name: "COMMIT followed by DISCARD ALL starts a new implicit block",
+			Steps: []FlowStep{
+				SimpleQuery{Query: "SET search_path = pg_catalog", Expected: []StatementResult{{Tag: "SET"}}},
+				SimpleQuery{
+					Query:           "COMMIT; DISCARD ALL",
+					Expected:        []StatementResult{{Tag: "COMMIT"}},
+					ExpectedErr:     "DISCARD ALL cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				SimpleQuery{Query: "SHOW search_path", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"pg_catalog"}}}}},
+			},
+		},
+	})
+}
+
 // TestBeginIsolationLevel asserts that BEGIN statements accept any transaction isolation level clause.
 func TestBeginIsolationLevel(t *testing.T) {
 	RunScripts(t, []ScriptTest{

@@ -1090,6 +1090,8 @@ type SimpleQuery struct {
 	// ExpectedReadyStatus is the transaction status expected in the trailing ReadyForQuery message: 'I' (idle),
 	// 'T' (in transaction block), or 'E' (in failed transaction block). The zero value defaults to 'I'.
 	ExpectedReadyStatus byte
+	// ExpectedNotices checks NoticeResponse messages when non-nil.
+	ExpectedNotices []ExpectedNotice
 	// CopyInputs supplies one client response for each CopyInResponse in statement order.
 	CopyInputs []CopyInput
 }
@@ -1411,10 +1413,17 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 	errMsg := ""
 	errCode := ""
 	errSeverity := ""
+	var notices []ExpectedNotice
 	nextCopyInput := 0
 	for {
-		msg := r.receiveNext()
+		msg, receiveErr := r.flowConn.Receive(t)
+		require.NoError(t, receiveErr, "step %d: error receiving message from server", r.stepIdx)
 		switch m := msg.(type) {
+		case *pgproto3.NoticeResponse:
+			notices = append(notices, ExpectedNotice{Severity: m.Severity, Code: m.Code, Message: m.Message})
+			continue
+		case *pgproto3.ParameterStatus, *pgproto3.NotificationResponse:
+			continue
 		case *pgproto3.RowDescription:
 			// Marks the start of a row-returning statement's results; the field descriptions themselves aren't
 			// checked by these tests
@@ -1458,6 +1467,14 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 			errCode = m.Code
 			errSeverity = m.Severity
 		case *pgproto3.ReadyForQuery:
+			if s.ExpectedNotices != nil {
+				assert.Len(t, notices, len(s.ExpectedNotices), "step %d: wrong notice count", r.stepIdx)
+				for i := range s.ExpectedNotices {
+					if i < len(notices) {
+						assert.Equal(t, s.ExpectedNotices[i], notices[i], "step %d: wrong notice", r.stepIdx)
+					}
+				}
+			}
 			assert.Equal(t, len(s.CopyInputs), nextCopyInput,
 				"step %d: server requested fewer COPY inputs than the test supplied", r.stepIdx)
 			if s.ExpectedErr != "" {

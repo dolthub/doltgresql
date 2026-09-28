@@ -279,6 +279,9 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 	if handled {
 		return err
 	}
+	if err := h.warnSetLocalOutsideTransaction(query, h.state.txState.inExplicitTransactionBlock()); err != nil {
+		return err
+	}
 
 	rowsAffected := int32(0)
 	callback := h.spoolRowsCallback(query, &rowsAffected, true)
