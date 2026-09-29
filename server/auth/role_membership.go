@@ -17,6 +17,9 @@ package auth
 import (
 	"sort"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -63,13 +66,20 @@ func AddMemberToGroup(member RoleID, group RoleID, withAdminOption bool, granted
 	// We'll perform a sanity check for circular membership. This should be done before this call is made, but since we
 	// make assumptions that circular relationships are forbidden (which could lead to infinite loops otherwise), we
 	// enforce it here too.
-	if groupID, _, _ := IsRoleAMember(group, member); (groupID.IsValid() || member == group) && !globalDatabase.rolesByID[group].IsSuperUser {
+	if isRoleMemberNoSuper(group, member) {
 		panic("missing validation to prevent circular role relationships")
 	}
 	groupMap, ok := globalDatabase.roleMembership.Data[member]
 	if !ok {
 		groupMap = make(map[RoleID]RoleMembershipValue)
 		globalDatabase.roleMembership.Data[member] = groupMap
+	}
+	if previous, exists := groupMap[group]; exists {
+		// Repeating a grant does not remove an existing admin option or change
+		// the original grantor.
+		previous.WithAdminOption = previous.WithAdminOption || withAdminOption
+		groupMap[group] = previous
+		return
 	}
 	groupMap[group] = RoleMembershipValue{
 		Member:          member,
@@ -83,35 +93,131 @@ func AddMemberToGroup(member RoleID, group RoleID, withAdminOption bool, granted
 // whether the member was granted WITH ADMIN OPTION, allowing it to grant membership to the group to other roles. A
 // member does not automatically have ADMIN OPTION on itself, therefore this check must be performed.
 func IsRoleAMember(member RoleID, group RoleID) (groupID RoleID, inheritsPrivileges bool, hasWithAdminOption bool) {
-	// If the member and group are the same, then we only check for SUPERUSER status to allow WITH ADMIN OPTION
-	if member == group {
-		return group, true, globalDatabase.rolesByID[member].IsSuperUser
+	if globalDatabase.rolesByID[member].id == 0 || globalDatabase.rolesByID[group].id == 0 {
+		return 0, false, false
 	}
-	// Postgres does not allow for circular role membership, so we can recursively check without worry:
-	// https://www.postgresql.org/docs/15/catalog-pg-auth-members.html
-	if groupMap, ok := globalDatabase.roleMembership.Data[member]; ok {
-		for _, value := range groupMap {
-			if value.Group == group {
-				return group, globalDatabase.rolesByID[member].InheritPrivileges, value.WithAdminOption
-			}
-			// This recursively walks through memberships
-			if groupID, _, hasWithAdminOption = IsRoleAMember(value.Group, group); groupID.IsValid() {
-				return groupID, globalDatabase.rolesByID[member].InheritPrivileges, hasWithAdminOption
+	if IsSuperUser(member) {
+		return group, true, true
+	}
+	if isRoleMemberNoSuper(member, group) {
+		return group, HasRolePrivileges(member, group), HasRoleAdminOption(member, group)
+	}
+	return 0, false, false
+}
+
+// roleClosure returns reachable roles, including the starting role. Inherited
+// privileges stop at NOINHERIT roles; membership itself does not.
+func roleClosure(member RoleID, inheritsOnly bool) []RoleID {
+	seen := make(map[RoleID]bool)
+	roles := []RoleID{member}
+	seen[member] = true
+	for i := 0; i < len(roles); i++ {
+		for _, group := range GetAllGroupsWithMember(roles[i], inheritsOnly) {
+			if !seen[group] {
+				seen[group] = true
+				roles = append(roles, group)
 			}
 		}
 	}
-	// A SUPERUSER has access to everything, and therefore functions as though it's a member of every group
-	if globalDatabase.rolesByID[member].IsSuperUser {
-		return group, true, true
+	return roles
+}
+
+// isRoleMemberNoSuper tests actual membership, including self, without the
+// superuser shortcut. Cycle validation must use actual edges.
+func isRoleMemberNoSuper(member, group RoleID) bool {
+	for _, role := range roleClosure(member, false) {
+		if role == group {
+			return true
+		}
 	}
-	return 0, false, false
+	return false
+}
+
+// HasRolePrivileges reports whether the member immediately has a role's
+// privileges, traversing only inheritable membership paths. Call under a lock.
+func HasRolePrivileges(member, group RoleID) bool {
+	if IsSuperUser(member) {
+		return true
+	}
+	for _, role := range roleClosure(member, true) {
+		if role == group {
+			return true
+		}
+	}
+	return false
+}
+
+// HasRoleAdminOption implements PG15's admin-option traversal, independent of
+// privilege inheritance. Call under a lock.
+func HasRoleAdminOption(member, group RoleID) bool {
+	if IsSuperUser(member) {
+		return true
+	}
+	for _, role := range roleClosure(member, false) {
+		if membership, ok := globalDatabase.roleMembership.Data[role][group]; ok && membership.WithAdminOption {
+			return true
+		}
+	}
+	return false
+}
+
+// CanAdministerRole permits superusers, CREATEROLE for nonsuperuser targets, or
+// roles with ADMIN OPTION to grant and revoke membership, as in PostgreSQL 15.
+func CanAdministerRole(member, group RoleID) bool {
+	if IsSuperUser(member) {
+		return true
+	}
+	return !IsSuperUser(group) && (globalDatabase.rolesByID[member].CanCreateRoles || HasRoleAdminOption(member, group))
+}
+
+// ValidateMembershipGrants rejects cycles for an entire proposed batch before
+// any edge is installed. Existing state is never modified during validation.
+func ValidateMembershipGrants(grants []RoleMembershipValue) error {
+	edges := make(map[RoleID][]RoleID)
+	for member, groups := range globalDatabase.roleMembership.Data {
+		for group := range groups {
+			edges[member] = append(edges[member], group)
+		}
+	}
+	for _, grant := range grants {
+		edges[grant.Member] = append(edges[grant.Member], grant.Group)
+	}
+	return validateMembershipEdges(edges)
+}
+
+// validateMembershipEdges detects cycles even in malformed persisted state.
+func validateMembershipEdges(edges map[RoleID][]RoleID) error {
+	state := make(map[RoleID]uint8)
+	var visit func(RoleID) bool
+	visit = func(role RoleID) bool {
+		if state[role] == 1 {
+			return false
+		}
+		if state[role] == 2 {
+			return true
+		}
+		state[role] = 1
+		for _, group := range edges[role] {
+			if !visit(group) {
+				return false
+			}
+		}
+		state[role] = 2
+		return true
+	}
+	for role := range edges {
+		if !visit(role) {
+			return pgerror.New(pgcode.InvalidGrantOperation, "role membership would create a cycle")
+		}
+	}
+	return nil
 }
 
 // GetAllGroupsWithMember returns every group that the role is a direct member of. This can also filter by groups that
 // the member has privilege access on.
 func GetAllGroupsWithMember(member RoleID, inheritsPrivilegesOnly bool) []RoleID {
 	memberRole, ok := globalDatabase.rolesByID[member]
-	if !ok || !memberRole.InheritPrivileges {
+	if !ok || (inheritsPrivilegesOnly && !memberRole.InheritPrivileges) {
 		return nil
 	}
 	groupMap := globalDatabase.roleMembership.Data[member]

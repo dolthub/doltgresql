@@ -55,7 +55,10 @@ func ReadSerializedDatabase() ([]byte, error) {
 // not touch the in-memory state; use OverwriteDatabase to replace both.
 func WriteSerializedDatabase(data []byte) error {
 	if fileSystem != nil {
-		return fileSystem.WriteFile(authFileName, data, 0644)
+		if err := fileSystem.WriteFile(authFileName+".tmp", data, 0600); err != nil {
+			return err
+		}
+		return fileSystem.MoveFile(authFileName+".tmp", authFileName)
 	}
 	return nil
 }
@@ -70,8 +73,10 @@ func OverwriteDatabase(data []byte) error {
 		if err = fresh.deserialize(data); err != nil {
 			return
 		}
-		globalDatabase = fresh
 		err = WriteSerializedDatabase(fresh.serialize())
+		if err == nil {
+			globalDatabase = fresh
+		}
 	})
 	return err
 }

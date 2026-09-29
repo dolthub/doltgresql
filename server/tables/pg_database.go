@@ -120,7 +120,11 @@ func (d *PgDatabase) GetTableInsensitive(ctx *sql.Context, tblName string) (sql.
 			}
 		}
 	}
-	return d.Database.GetTableInsensitive(ctx, tblName)
+	tbl, found, err := d.Database.GetTableInsensitive(ctx, tblName)
+	if err != nil || found {
+		return tbl, found, err
+	}
+	return resolveSequenceTable(ctx, d, tblName)
 }
 
 // DropTable overrides sqle.Database.DropTable to prevent dropping virtual pg_catalog tables.
@@ -182,7 +186,11 @@ func (d *PgReadOnlyDatabase) GetTableInsensitive(ctx *sql.Context, tblName strin
 			}
 		}
 	}
-	return d.ReadOnlyDatabase.GetTableInsensitive(ctx, tblName)
+	tbl, found, err := d.ReadOnlyDatabase.GetTableInsensitive(ctx, tblName)
+	if err != nil || found {
+		return tbl, found, err
+	}
+	return resolveSequenceTable(ctx, d, tblName)
 }
 
 // ValidateNewIndexName implements the sql.SchemaObjectNameValidator interface

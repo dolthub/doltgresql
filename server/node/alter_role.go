@@ -70,6 +70,9 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if !role.IsValid() {
 		return nil, errors.Errorf(`role "%s" does not exist`, c.Name)
 	}
+	if role.IsPredefined() {
+		return nil, auth.CheckRoleName(role.Name)
+	}
 
 	if role.IsSuperUser && !userRole.IsSuperUser {
 		// Only superusers can modify other superusers
@@ -166,7 +169,9 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var err error
 	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
-		auth.SetRole(role)
+		if err = auth.SetRole(role); err != nil {
+			return
+		}
 		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {

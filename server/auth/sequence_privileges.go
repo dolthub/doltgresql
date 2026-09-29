@@ -61,7 +61,7 @@ func AddSequencePrivilege(key SequencePrivilegeKey, privilege GrantedPrivilege, 
 
 // HasSequencePrivilege checks whether the user has the given privilege on the associated sequence.
 func HasSequencePrivilege(key SequencePrivilegeKey, privilege Privilege) bool {
-	if IsSuperUser(key.Role) {
+	if IsSuperUser(key.Role) || hasPredefinedPrivilege(key.Role, PrivilegeObject_SEQUENCE, privilege) {
 		return true
 	}
 	// If a sequence name was provided, also check for privileges on all sequences in the schema.

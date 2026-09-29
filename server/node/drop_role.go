@@ -61,6 +61,9 @@ func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		userRole = auth.GetRole(ctx.Client().User)
 		for _, roleName := range c.Names {
 			role := auth.GetRole(roleName)
+			if err = auth.CheckRoleCanBeDropped(role); err != nil {
+				break
+			}
 			if role.IsValid() {
 				roles = append(roles, role)
 			} else if !c.IfExists {
@@ -81,7 +84,9 @@ func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		for _, role := range roles {
-			auth.DropRole(role.Name)
+			if err = auth.DropRole(role.Name); err != nil {
+				return
+			}
 		}
 		err = auth.PersistChanges(ctx, &rsc)
 	})

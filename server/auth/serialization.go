@@ -31,7 +31,7 @@ func PersistChanges(ctx *sql.Context, rsc *doltdb.ReplicationStatusController) e
 		return clusterReplicator.SendToReplicas(ctx, globalDatabase.serialize(), rsc)
 	}
 	if fileSystem != nil {
-		return fileSystem.WriteFile(authFileName, globalDatabase.serialize(), 0644)
+		return WriteSerializedDatabase(globalDatabase.serialize())
 	}
 	return nil
 }
@@ -40,7 +40,7 @@ func PersistChanges(ctx *sql.Context, rsc *doltdb.ReplicationStatusController) e
 func (db *Database) serialize() []byte {
 	writer := utils.NewWriter(16384)
 	// Write the version
-	writer.Uint32(1)
+	writer.Uint32(2)
 	// Write the roles
 	writer.Uint32(uint32(len(db.rolesByID)))
 	for _, role := range db.rolesByID {
@@ -62,25 +62,41 @@ func (db *Database) serialize() []byte {
 }
 
 // deserialize creates a Database from a byte slice.
-func (db *Database) deserialize(data []byte) error {
+func (db *Database) deserialize(data []byte) (err error) {
+	// Reader uses slice indexing. Treat truncated snapshots as a failed load,
+	// rather than crashing a standby or replacing its live authorization state.
+	defer func() {
+		if recover() != nil {
+			err = errors.New("invalid auth database format")
+		}
+	}()
 	if len(data) < 4 {
 		return errors.New("invalid auth database format")
 	}
 	reader := utils.NewReader(data)
 	version := reader.Uint32()
-	var err error
 	switch version {
-	case 0:
-		err = db.deserializeV0(reader)
-	case 1:
-		err = db.deserializeV1(reader)
+	case 0, 1, 2:
+		err = db.deserializeVersion(reader, version)
 	default:
 		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
 	}
 	if err != nil {
 		return err
 	}
+	if !reader.IsEmpty() {
+		return errors.New("invalid trailing data in auth database")
+	}
 	db.removeInvalidRoleReferences()
+	edges := make(map[RoleID][]RoleID)
+	for member, groups := range db.roleMembership.Data {
+		for group := range groups {
+			edges[member] = append(edges[member], group)
+		}
+	}
+	if err := validateMembershipEdges(edges); err != nil {
+		return err
+	}
 	// Advance the role ID counter past every persisted role. Without this, IDs minted after loading serialized
 	// state collide with existing roles, which SetRole then silently replaces.
 	var maxID uint64
@@ -95,7 +111,7 @@ func (db *Database) deserialize(data []byte) error {
 			break
 		}
 	}
-	return nil
+	return db.ensurePredefinedRoles()
 }
 
 // removeInvalidRoleReferences removes authorization records that refer to roles absent from the database.
@@ -158,56 +174,44 @@ func removeInvalidPrivilegeGrants(roles map[RoleID]Role, privileges map[Privileg
 	return len(privileges) == 0
 }
 
-// deserializeV0 creates a Database from a byte slice. Expects a reader that has already read the version.
-func (db *Database) deserializeV0(reader *utils.Reader) error {
+// deserializeVersion reads auth state, retaining older privilege layouts while
+// reading the persisted built-in marker only from version 2 role records.
+func (db *Database) deserializeVersion(reader *utils.Reader, version uint32) error {
 	// Read the roles
 	clear(db.rolesByName)
 	clear(db.rolesByID)
 	roleCount := reader.Uint32()
 	for i := uint32(0); i < roleCount; i++ {
 		r := Role{}
-		r.deserialize(0, reader)
+		r.deserialize(version, reader)
+		if !r.IsValid() {
+			return errors.New("invalid role ID in auth database")
+		}
+		if _, exists := db.rolesByName[r.Name]; exists {
+			return errors.Errorf(`duplicate role name "%s" in auth database`, r.Name)
+		}
+		if _, exists := db.rolesByID[r.id]; exists {
+			return errors.Errorf("duplicate role ID %d in auth database", r.id)
+		}
 		db.rolesByName[r.Name] = r.id
 		db.rolesByID[r.id] = r
 	}
 	// Read the database privileges
-	db.databasePrivileges.deserialize(0, reader)
-	// Read the schema privileges
-	db.schemaPrivileges.deserialize(0, reader)
-	// Read the table privileges
-	db.tablePrivileges.deserialize(0, reader)
-	// Read the sequence privileges
-	db.sequencePrivileges.deserialize(0, reader)
-	// Read the routine privileges
-	db.routinePrivileges.deserialize(0, reader)
-	// Read the role membership
-	db.roleMembership.deserialize(0, reader)
-	return nil
-}
-
-// deserializeV1 creates a Database from a byte slice. Expects a reader that has already read the version.
-func (db *Database) deserializeV1(reader *utils.Reader) error {
-	// Read the roles
-	clear(db.rolesByName)
-	clear(db.rolesByID)
-	roleCount := reader.Uint32()
-	for i := uint32(0); i < roleCount; i++ {
-		r := Role{}
-		r.deserialize(1, reader)
-		db.rolesByName[r.Name] = r.id
-		db.rolesByID[r.id] = r
+	// Only role records changed in version 2.
+	privilegeVersion := version
+	if privilegeVersion > 1 {
+		privilegeVersion = 1
 	}
-	// Read the database privileges
-	db.databasePrivileges.deserialize(1, reader)
+	db.databasePrivileges.deserialize(privilegeVersion, reader)
 	// Read the schema privileges
-	db.schemaPrivileges.deserialize(1, reader)
+	db.schemaPrivileges.deserialize(privilegeVersion, reader)
 	// Read the table privileges
-	db.tablePrivileges.deserialize(1, reader)
+	db.tablePrivileges.deserialize(privilegeVersion, reader)
 	// Read the sequence privileges
-	db.sequencePrivileges.deserialize(1, reader)
+	db.sequencePrivileges.deserialize(privilegeVersion, reader)
 	// Read the routine privileges
-	db.routinePrivileges.deserialize(1, reader)
+	db.routinePrivileges.deserialize(privilegeVersion, reader)
 	// Read the role membership
-	db.roleMembership.deserialize(1, reader)
+	db.roleMembership.deserialize(privilegeVersion, reader)
 	return nil
 }

@@ -852,7 +852,7 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
-			Name: `GRANT/REVOKE USAGE ON SCHEMA`,
+			Name: `schema USAGE does not authorize sequence mutation`,
 			SetUpScript: []string{
 				authTestCreateSuperUser,
 				`CREATE USER user1 PASSWORD 'a';`,
@@ -872,10 +872,10 @@ func TestAuthTests(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "SELECT nextval('genre_id_seq_by_3');",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{{1}},
+					Query:       "SELECT nextval('genre_id_seq_by_3');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `permission denied for sequence`,
 				},
 				{
 					Query:    `REVOKE USAGE ON SCHEMA public FROM user1;`,

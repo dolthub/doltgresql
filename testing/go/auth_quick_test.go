@@ -185,20 +185,20 @@ func TestAuthQuick(t *testing.T) {
 		},
 		{
 			Queries: []string{
-				"GRANT DELETE ON ALL TABLES IN SCHEMA mysch TO tester;",
+				"GRANT SELECT, DELETE ON ALL TABLES IN SCHEMA mysch TO tester;",
 				"DELETE FROM mysch.test WHERE pk >= 0;",
 			},
 		},
 		{
 			Queries: []string{
-				"GRANT DELETE ON mysch.test TO tester;",
+				"GRANT SELECT, DELETE ON mysch.test TO tester;",
 				"DELETE FROM mysch.test WHERE pk >= 0;",
 			},
 		},
 		{
 			Queries: []string{
 				"CREATE USER tester2;",
-				"GRANT DELETE ON ALL TABLES IN SCHEMA mysch TO tester2;",
+				"GRANT SELECT, DELETE ON ALL TABLES IN SCHEMA mysch TO tester2;",
 				"GRANT tester2 TO tester;",
 				"DELETE FROM mysch.test WHERE pk >= 0;",
 			},

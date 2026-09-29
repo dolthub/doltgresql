@@ -60,7 +60,7 @@ func AddSchemaPrivilege(key SchemaPrivilegeKey, privilege GrantedPrivilege, with
 
 // HasSchemaPrivilege checks whether the user has the given privilege on the associated schema.
 func HasSchemaPrivilege(key SchemaPrivilegeKey, privilege Privilege) bool {
-	if IsSuperUser(key.Role) {
+	if IsSuperUser(key.Role) || hasPredefinedPrivilege(key.Role, PrivilegeObject_SCHEMA, privilege) {
 		return true
 	}
 	if schemaPrivilegeValue, ok := globalDatabase.schemaPrivileges.Data[key]; ok {

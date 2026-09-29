@@ -69,6 +69,9 @@ func (c *CreateRole) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	if err := auth.CheckRoleName(c.Name); err != nil {
+		return nil, err
+	}
 	var userRole auth.Role
 	var roleExists bool
 	auth.LockRead(func() {
@@ -129,7 +132,9 @@ func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var err error
 	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
-		auth.SetRole(role)
+		if err = auth.SetRole(role); err != nil {
+			return
+		}
 		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {

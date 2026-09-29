@@ -405,6 +405,8 @@ func TestPgAuthid(t *testing.T) {
 					Expected: []sql.Row{
 						{"authid_role", "f", "t", "t", "f", "f", "f", "f", 10, nil},
 						{"authid_user", "f", "t", "f", "t", "t", "f", "f", -1, nil},
+						{"pg_read_all_data", "f", "t", "f", "f", "f", "f", "f", -1, nil},
+						{"pg_write_all_data", "f", "t", "f", "f", "f", "f", "f", -1, nil},
 						{"postgres", "t", "t", "t", "t", "t", "f", "f", -1, nil},
 						{"public", "f", "t", "f", "f", "f", "f", "f", -1, nil},
 					},
@@ -415,7 +417,7 @@ func TestPgAuthid(t *testing.T) {
 				},
 				{ // Roles without a password store NULL
 					Query:    `SELECT rolname FROM pg_catalog.pg_authid WHERE rolpassword IS NULL ORDER BY rolname;`,
-					Expected: []sql.Row{{"authid_role"}, {"public"}},
+					Expected: []sql.Row{{"authid_role"}, {"pg_read_all_data"}, {"pg_write_all_data"}, {"public"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_authid";`,
@@ -427,7 +429,7 @@ func TestPgAuthid(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT rolname FROM PG_catalog.pg_AUTHID ORDER BY rolname;",
-					Expected: []sql.Row{{"authid_role"}, {"authid_user"}, {"postgres"}, {"public"}},
+					Expected: []sql.Row{{"authid_role"}, {"authid_user"}, {"pg_read_all_data"}, {"pg_write_all_data"}, {"postgres"}, {"public"}},
 				},
 			},
 		},
@@ -1702,7 +1704,7 @@ func TestPgGroup(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{ // Roles that cannot log in are considered groups
 					Query:    `SELECT groname FROM "pg_catalog"."pg_group" ORDER BY groname;`,
-					Expected: []sql.Row{{"group_role"}, {"public"}},
+					Expected: []sql.Row{{"group_role"}, {"pg_read_all_data"}, {"pg_write_all_data"}, {"public"}},
 				},
 				{ // grolist contains the OIDs of the group's members
 					Query:    `SELECT usename FROM pg_catalog.pg_user u JOIN pg_catalog.pg_group g ON g.groname = 'group_role' AND u.usesysid = ANY(g.grolist);`,
@@ -1710,7 +1712,7 @@ func TestPgGroup(t *testing.T) {
 				},
 				{ // grosysid matches the role's oid in pg_authid
 					Query:    `SELECT a.rolname FROM pg_catalog.pg_group g JOIN pg_catalog.pg_authid a ON g.grosysid = a.oid ORDER BY a.rolname;`,
-					Expected: []sql.Row{{"group_role"}, {"public"}},
+					Expected: []sql.Row{{"group_role"}, {"pg_read_all_data"}, {"pg_write_all_data"}, {"public"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_group";`,
@@ -1722,7 +1724,7 @@ func TestPgGroup(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT groname FROM PG_catalog.pg_GROUP ORDER BY groname;",
-					Expected: []sql.Row{{"group_role"}, {"public"}},
+					Expected: []sql.Row{{"group_role"}, {"pg_read_all_data"}, {"pg_write_all_data"}, {"public"}},
 				},
 			},
 		},
@@ -3160,6 +3162,8 @@ func TestPgRoles(t *testing.T) {
 				{ // rolpassword is always masked, unlike pg_authid
 					Query: `SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolconnlimit, rolpassword, rolvaliduntil, rolbypassrls, rolconfig FROM "pg_catalog"."pg_roles" ORDER BY rolname;`,
 					Expected: []sql.Row{
+						{"pg_read_all_data", "f", "t", "f", "f", "f", "f", -1, "********", nil, "f", nil},
+						{"pg_write_all_data", "f", "t", "f", "f", "f", "f", -1, "********", nil, "f", nil},
 						{"postgres", "t", "t", "t", "t", "t", "f", -1, "********", nil, "f", nil},
 						{"public", "f", "t", "f", "f", "f", "f", -1, "********", nil, "f", nil},
 						{"roles_role", "f", "t", "f", "f", "f", "f", -1, "********", nil, "f", nil},
@@ -3180,7 +3184,7 @@ func TestPgRoles(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT rolname FROM PG_catalog.pg_ROLES ORDER BY rolname;",
-					Expected: []sql.Row{{"postgres"}, {"public"}, {"roles_role"}, {"roles_user"}},
+					Expected: []sql.Row{{"pg_read_all_data"}, {"pg_write_all_data"}, {"postgres"}, {"public"}, {"roles_role"}, {"roles_user"}},
 				},
 			},
 		},

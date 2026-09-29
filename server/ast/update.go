@@ -48,14 +48,17 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 
 	tableExprs := vitess.TableExprs{table}
 	if len(node.From) > 0 {
+		ctx.Auth().PushAuthType(auth.AuthType_SELECT)
 		vitessTableExprs := make(vitess.TableExprs, len(node.From))
 		for i, tableExpr := range node.From {
 			vitessTableExpr, err := nodeTableExpr(ctx, tableExpr)
 			if err != nil {
+				ctx.Auth().PopAuthType()
 				return nil, err
 			}
 			vitessTableExprs[i] = vitessTableExpr
 		}
+		ctx.Auth().PopAuthType()
 
 		tableExprs = []vitess.TableExpr{
 			&vitess.JoinTableExpr{
@@ -82,6 +85,7 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 	if err != nil {
 		return nil, err
 	}
+	authorizeMutationReads(table, exprs, where, orderBy, returningExprs)
 	return &vitess.Update{
 		TableExprs: tableExprs,
 		With:       with,

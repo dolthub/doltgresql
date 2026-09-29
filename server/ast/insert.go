@@ -120,6 +120,13 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 			}
 		}
 	}
+	additional := auth.AdditionalTablePrivileges{}
+	if len(onDuplicate) > 0 {
+		additional = append(additional, auth.Privilege_UPDATE)
+	}
+	if mutationReadsTarget(tableName.Name.String(), "", returningExprs, onDuplicate, onDuplicateWhere) {
+		additional = append(additional, auth.Privilege_SELECT)
+	}
 	return &vitess.Insert{
 		Action:           vitess.InsertStr,
 		Ignore:           ignore,
@@ -139,6 +146,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 			AuthType:    auth.AuthType_INSERT,
 			TargetType:  auth.AuthTargetType_TableIdentifiers,
 			TargetNames: []string{tableName.DbQualifier.String(), tableName.SchemaQualifier.String(), tableName.Name.String()},
+			Extra:       additional,
 		},
 	}, nil
 }

@@ -95,10 +95,23 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	if state.err != nil {
 		return state.err
 	}
+	// Resolve unqualified relations through the engine's wrapped catalog before
+	// taking the auth lock. The session provider does not expose virtual tables.
+	tableSchemas := make(map[int]string)
+	if auth.TargetType == AuthTargetType_TableIdentifiers && len(auth.TargetNames)%3 == 0 {
+		for i := 0; i < len(auth.TargetNames); i += 3 {
+			if auth.TargetNames[i+1] == "" {
+				schema, err := h.tableSchema(ctx, auth.TargetNames[i], auth.TargetNames[i+2])
+				if err != nil {
+					return err
+				}
+				tableSchemas[i] = schema
+			}
+		}
+	}
 	globalLock.RLock()
 	defer globalLock.RUnlock()
 
-	checkSchemaForUsage := false
 	var privileges []Privilege
 	switch auth.AuthType {
 	case AuthType_IGNORE:
@@ -138,7 +151,6 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	case AuthType_TRUNCATE:
 		privileges = []Privilege{Privilege_TRUNCATE}
 	case AuthType_USAGE:
-		checkSchemaForUsage = true
 		privileges = []Privilege{Privilege_USAGE}
 	case AuthType_UPDATE:
 		privileges = []Privilege{Privilege_UPDATE}
@@ -148,6 +160,9 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		} else {
 			return errors.Errorf("AuthType not handled: `%s`", auth.AuthType)
 		}
+	}
+	if additional, ok := auth.Extra.(AdditionalTablePrivileges); ok {
+		privileges = append(privileges, additional...)
 	}
 
 	// TODO: implement the rest of these
@@ -194,13 +209,25 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		}
 		for i := 0; i < len(auth.TargetNames); i += 3 {
 			// TODO: handle database
-			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i+1])
+			requestedSchema := auth.TargetNames[i+1]
+			if requestedSchema == "" {
+				requestedSchema = tableSchemas[i]
+			}
+			schemaName, err := core.GetSchemaName(ctx, nil, requestedSchema)
 			if err != nil {
 				// If this fails, then there's an issue with the search path.
 				// This will error later in the process, so we'll pass auth for now.
 				return nil
 			}
-			err = checkPrivilegeOnTable(state, schemaName, auth.TargetNames[i+2], privileges)
+			relationType, resolveErr := core.GetRelationType(ctx, schemaName, auth.TargetNames[i+2])
+			if resolveErr != nil {
+				return resolveErr
+			}
+			if relationType == core.RelationType_Sequence {
+				err = checkPrivilegeOnSequence(state, schemaName, auth.TargetNames[i+2], privileges)
+			} else {
+				err = checkPrivilegeOnTable(state, schemaName, auth.TargetNames[i+2], privileges)
+			}
 			if err != nil {
 				return err
 			}
@@ -229,15 +256,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			}
 			err = checkPrivilegeOnSequence(state, schemaName, auth.TargetNames[i+1], privileges)
 			if err != nil {
-				if checkSchemaForUsage {
-					// there can be schema USAGE privilege for the user/role.
-					err = checkPrivilegeOnSchema(state, schemaName, privileges)
-					if err != nil {
-						return err
-					}
-				} else {
-					return err
-				}
+				return err
 			}
 		}
 	case AuthTargetType_TODO:
@@ -250,6 +269,74 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		}
 	}
 	return nil
+}
+
+// AdditionalTablePrivileges accompanies mutation authorization when a statement
+// also reads target columns or updates an INSERT conflict.
+type AdditionalTablePrivileges []Privilege
+
+// tableSchema resolves the schema of an existing relation along the search path.
+func (h *AuthorizationHandler) tableSchema(ctx *sql.Context, database, table string) (string, error) {
+	if database == "" {
+		database = ctx.GetCurrentDatabase()
+	}
+	db, err := h.cat.Database(ctx, database)
+	if err != nil {
+		return "", err
+	}
+	schemaDB, ok := db.(sql.SchemaDatabase)
+	if !ok {
+		return "", nil
+	}
+	searchPath, err := core.SearchPath(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, name := range searchPath {
+		schema, found, err := schemaDB.GetSchema(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		if !found {
+			continue
+		}
+		_, found, err = schema.GetTableInsensitive(ctx, table)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			return name, nil
+		}
+	}
+	return "", nil
+}
+
+// CheckSequencePrivileges checks schema access independently of the sequence's
+// operation-specific alternatives. Call after resolving the actual sequence and
+// before changing its state, including when executing a previously analyzed plan.
+func CheckSequencePrivileges(ctx *sql.Context, schemaName, sequenceName string, alternatives ...Privilege) error {
+	var err error
+	LockRead(func() {
+		role := GetRole(ctx.Client().User)
+		public := GetRole("public")
+		if !role.IsValid() {
+			err = pgerror.Newf(pgcode.UndefinedObject, `role "%s" does not exist`, role.Name)
+			return
+		}
+		if !HasSchemaPrivilege(SchemaPrivilegeKey{Role: role.ID(), Schema: schemaName}, Privilege_USAGE) &&
+			!HasSchemaPrivilege(SchemaPrivilegeKey{Role: public.ID(), Schema: schemaName}, Privilege_USAGE) {
+			err = pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for schema %s", schemaName)
+			return
+		}
+		for _, privilege := range alternatives {
+			if HasSequencePrivilege(SequencePrivilegeKey{Role: role.ID(), Schema: schemaName, Name: sequenceName}, privilege) ||
+				HasSequencePrivilege(SequencePrivilegeKey{Role: public.ID(), Schema: schemaName, Name: sequenceName}, privilege) {
+				return
+			}
+		}
+		err = pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for sequence %s", sequenceName)
+	})
+	return err
 }
 
 // HandleAuthNode implements the sql.AuthorizationHandler interface.

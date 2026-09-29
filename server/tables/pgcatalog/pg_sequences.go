@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -93,7 +94,7 @@ type pgSequencesRowIter struct {
 var _ sql.RowIter = (*pgSequencesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *pgSequencesRowIter) Next(_ *sql.Context) (sql.Row, error) {
+func (iter *pgSequencesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	if iter.idx >= len(iter.sequences) {
 		return nil, io.EOF
 	}
@@ -102,7 +103,14 @@ func (iter *pgSequencesRowIter) Next(_ *sql.Context) (sql.Row, error) {
 	iter.idx++
 
 	var lastValue interface{}
-	if sequence.HasBeenCalled {
+	canRead := false
+	auth.LockRead(func() {
+		for _, role := range []auth.Role{auth.GetRole(ctx.Client().User), auth.GetRole("public")} {
+			key := auth.SequencePrivilegeKey{Role: role.ID(), Schema: schemaName, Name: sequence.Id.SequenceName()}
+			canRead = canRead || auth.HasSequencePrivilege(key, auth.Privilege_SELECT) || auth.HasSequencePrivilege(key, auth.Privilege_USAGE)
+		}
+	})
+	if sequence.HasBeenCalled && canRead {
 		if sequence.IsAtEnd {
 			lastValue = sequence.Current
 		} else {

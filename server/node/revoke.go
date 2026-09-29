@@ -381,13 +381,14 @@ func (r *Revoke) revokeRole(ctx *sql.Context) error {
 			return errors.Errorf(`role "%s" does not exist`, groupName)
 		}
 	}
+	for _, group := range groups {
+		if !auth.CanAdministerRole(userRole.ID(), group.ID()) {
+			// TODO: grab the actual error message
+			return errors.Errorf(`role "%s" does not have permission to revoke role "%s"`, userRole.Name, group.Name)
+		}
+	}
 	for _, member := range members {
 		for _, group := range groups {
-			memberGroupID, _, withAdminOption := auth.IsRoleAMember(userRole.ID(), group.ID())
-			if !memberGroupID.IsValid() || !withAdminOption {
-				// TODO: grab the actual error message
-				return errors.Errorf(`role "%s" does not have permission to revoke role "%s"`, userRole.Name, group.Name)
-			}
 			auth.RemoveMemberFromGroup(member.ID(), group.ID(), r.GrantOptionFor)
 		}
 	}

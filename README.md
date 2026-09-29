@@ -26,6 +26,28 @@ an issue](https://github.com/dolthub/doltgresql/issues).
 
 Doltgres has a [documentation website](https://doltgres.com/docs) with extensive documentation.
 
+## Predefined data roles
+
+Doltgres supports PostgreSQL 15's `pg_read_all_data` and `pg_write_all_data` roles.
+Grant them to a login role to read or write existing and future tables, views,
+and sequences, with access to their schemas:
+
+```sql
+CREATE USER reporting PASSWORD 'example';
+GRANT pg_read_all_data TO reporting;
+```
+
+`pg_write_all_data` permits inserts, updates, deletes, and sequence advancement.
+Statements that read columns in expressions, predicates, or `RETURNING` also
+require `SELECT`, which can be provided by `pg_read_all_data` or an explicit grant.
+Membership follows `INHERIT` and persists across restarts. Other predefined roles
+and `SET ROLE` remain unsupported.
+
+Upgrading an existing server adds these roles and upgrades the authorization
+file to format 2, retaining the original file as `<auth-file>.v1.bak`. If a
+user-created role already uses either name, startup reports the conflict;
+rename or remove that role with the previous Doltgres version before upgrading.
+
 # Installation
 
 To install Doltgres on Linx or Mac based systems run this command in your terminal:

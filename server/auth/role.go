@@ -34,6 +34,7 @@ type Role struct {
 	Password                  *ScramSha256Password // rolpassword
 	ValidUntil                *time.Time           // rolvaliduntil
 	id                        RoleID
+	predefined                predefinedRoleKind
 }
 
 // RoleID represents a Role's ID. IDs are assigned during load and will be stable throughout the server's current
@@ -69,7 +70,7 @@ func createDefaultRoleWithoutID(name string) Role {
 }
 
 // ID returns this Role's ID value.
-func (r *Role) ID() RoleID {
+func (r Role) ID() RoleID {
 	return r.id
 }
 
@@ -112,12 +113,13 @@ func (r *Role) serialize(writer *utils.Writer) {
 		writer.Bool(false)
 	}
 	writer.Uint64(uint64(r.id))
+	writer.Uint8(uint8(r.predefined))
 }
 
 // deserialize reads the Role from the given reader.
 func (r *Role) deserialize(version uint32, reader *utils.Reader) {
 	switch version {
-	case 0, 1:
+	case 0, 1, 2:
 		r.Name = reader.String()
 		r.IsSuperUser = reader.Bool()
 		r.InheritPrivileges = reader.Bool()
@@ -139,6 +141,9 @@ func (r *Role) deserialize(version uint32, reader *utils.Reader) {
 			r.ValidUntil = &t
 		}
 		r.id = RoleID(reader.Uint64())
+		if version >= 2 {
+			r.predefined = predefinedRoleKind(reader.Uint8())
+		}
 	default:
 		panic("unexpected version in Role")
 	}

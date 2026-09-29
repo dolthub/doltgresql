@@ -62,7 +62,7 @@ func AddTablePrivilege(key TablePrivilegeKey, privilege GrantedPrivilege, withGr
 
 // HasTablePrivilege checks whether the user has the given privilege on the associated table.
 func HasTablePrivilege(key TablePrivilegeKey, privilege Privilege) bool {
-	if IsSuperUser(key.Role) {
+	if IsSuperUser(key.Role) || hasPredefinedPrivilege(key.Role, PrivilegeObject_TABLE, privilege) {
 		return true
 	}
 	// If a table name was provided, then we also want to search for privileges provided to all tables in the schema

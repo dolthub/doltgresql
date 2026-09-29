@@ -379,15 +379,21 @@ func (g *Grant) grantRole(ctx *sql.Context) error {
 			return errors.Errorf(`role "%s" does not exist`, groupName)
 		}
 	}
+	var grants []auth.RoleMembershipValue
 	for _, member := range members {
 		for _, group := range groups {
-			memberGroupID, _, withAdminOption := auth.IsRoleAMember(userRole.ID(), group.ID())
-			if !memberGroupID.IsValid() || !withAdminOption {
+			if !auth.CanAdministerRole(userRole.ID(), group.ID()) {
 				// TODO: grab the actual error message
 				return errors.Errorf(`role "%s" does not have permission to grant role "%s"`, userRole.Name, group.Name)
 			}
-			auth.AddMemberToGroup(member.ID(), group.ID(), g.WithGrantOption, memberGroupID)
+			grants = append(grants, auth.RoleMembershipValue{Member: member.ID(), Group: group.ID(), WithAdminOption: g.WithGrantOption, GrantedBy: userRole.ID()})
 		}
+	}
+	if err := auth.ValidateMembershipGrants(grants); err != nil {
+		return err
+	}
+	for _, grant := range grants {
+		auth.AddMemberToGroup(grant.Member, grant.Group, grant.WithAdminOption, grant.GrantedBy)
 	}
 	return nil
 }

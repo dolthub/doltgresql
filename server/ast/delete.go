@@ -58,6 +58,7 @@ func nodeDelete(ctx *Context, node *tree.Delete) (*vitess.Delete, error) {
 	if err != nil {
 		return nil, err
 	}
+	authorizeMutationReads(table, where, orderBy, returningExprs)
 	return &vitess.Delete{
 		TableExprs: vitess.TableExprs{table},
 		With:       with,

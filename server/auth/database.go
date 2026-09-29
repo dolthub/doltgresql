@@ -15,12 +15,14 @@
 package auth
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 	"sync/atomic"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 )
@@ -75,13 +77,17 @@ func ClearDatabase() {
 }
 
 // DropRole removes the given role from the database. If the role does not exist, then this is a no-op.
-func DropRole(name string) {
+func DropRole(name string) error {
 	if roleID, ok := globalDatabase.rolesByName[name]; ok {
+		if err := CheckRoleCanBeDropped(globalDatabase.rolesByID[roleID]); err != nil {
+			return err
+		}
 		delete(globalDatabase.rolesByName, name)
 		delete(globalDatabase.rolesByID, roleID)
 		globalDatabase.removeRolePrivileges(roleID)
 		globalDatabase.removeRoleMemberships(roleID)
 	}
+	return nil
 }
 
 // removeRolePrivileges removes every privilege granted to or by the given role.
@@ -154,14 +160,21 @@ func GetRole(name string) Role {
 }
 
 // RenameRole renames the role with the old name to the new name. If the role does not exist, then this is a no-op.
-func RenameRole(oldName string, newName string) {
+func RenameRole(oldName string, newName string) error {
+	if err := CheckRoleName(newName); err != nil {
+		return err
+	}
 	if roleID, ok := globalDatabase.rolesByName[oldName]; ok {
+		if globalDatabase.rolesByID[roleID].IsPredefined() {
+			return CheckRoleName(oldName)
+		}
 		delete(globalDatabase.rolesByName, oldName)
 		globalDatabase.rolesByName[newName] = roleID
 		role := globalDatabase.rolesByID[roleID]
 		role.Name = newName
 		globalDatabase.rolesByID[roleID] = role
 	}
+	return nil
 }
 
 // RoleExists returns whether the given role exists.
@@ -172,16 +185,23 @@ func RoleExists(name string) bool {
 
 // SetRole sets the role matching the given name. This will add a role that does not yet exist, and overwrite an
 // existing role.
-func SetRole(role Role) {
+func SetRole(role Role) error {
 	// We want to ignore invalid roles, which should not exist outside specific circumstances (like during login)
 	if role.id == 0 {
-		return
+		return nil
+	}
+	if existingID, ok := globalDatabase.rolesByName[role.Name]; ok && globalDatabase.rolesByID[existingID].IsPredefined() && existingID != role.id {
+		return CheckRoleName(role.Name)
 	}
 	if existingRole, ok := globalDatabase.rolesByID[role.id]; ok {
+		if existingRole.IsPredefined() && existingRole != role {
+			return CheckRoleName(existingRole.Name)
+		}
 		delete(globalDatabase.rolesByName, existingRole.Name)
 	}
 	globalDatabase.rolesByName[role.Name] = role.id
 	globalDatabase.rolesByID[role.ID()] = role
+	return nil
 }
 
 // IsSuperUser returns whether the given role is a SUPERUSER.
@@ -210,6 +230,7 @@ func LockWrite(f func()) {
 func dbInit(dEnv *env.DoltEnv, cfg Config) {
 	globalDatabase = newEmptyDatabase()
 	globalLock = &sync.RWMutex{}
+	fileSystem = nil
 	if dEnv != nil {
 		if _, ok := dEnv.FS.(*filesys.InMemFS); !ok {
 			if cfg != nil && len(cfg.AuthFilePath()) > 0 {
@@ -222,13 +243,23 @@ func dbInit(dEnv *env.DoltEnv, cfg Config) {
 				if err = dbInitCreateAuthDirectory(authFileName); err != nil {
 					panic(err)
 				}
-				if err = fileSystem.WriteFile(authFileName, globalDatabase.serialize(), 0644); err != nil {
+				if err = WriteSerializedDatabase(globalDatabase.serialize()); err != nil {
 					panic(err)
 				}
 			} else if err != nil {
 				panic(err)
 			} else if err = globalDatabase.deserialize(authData); err != nil {
 				panic(err)
+			} else if binary.BigEndian.Uint32(authData) < 2 {
+				// Keep a recovery copy before replacing the legacy auth format.
+				if exists, _ := fileSystem.Exists(authFileName + ".v1.bak"); !exists {
+					if err = fileSystem.WriteFile(authFileName+".v1.bak", authData, 0600); err != nil {
+						panic(err)
+					}
+				}
+				if err = WriteSerializedDatabase(globalDatabase.serialize()); err != nil {
+					panic(err)
+				}
 			}
 		} else {
 			dbInitDefault()
@@ -270,6 +301,15 @@ func dbInitDefault() {
 		panic(err)
 	}
 	SetRole(superUser)
+	// PostgreSQL grants PUBLIC usage of the public and system schemas. Private
+	// schemas still require an explicit grant (or a predefined data role).
+	for _, schema := range []string{"public", "pg_catalog", "information_schema"} {
+		AddSchemaPrivilege(SchemaPrivilegeKey{Role: public.ID(), Schema: schema}, GrantedPrivilege{Privilege: Privilege_USAGE, GrantedBy: superUser.ID()}, false)
+	}
+	AddTablePrivilege(TablePrivilegeKey{Role: public.ID(), Table: doltdb.TableName{Schema: "pg_catalog", Name: "pg_sequences"}}, GrantedPrivilege{Privilege: Privilege_SELECT, GrantedBy: superUser.ID()}, false)
+	if err = globalDatabase.ensurePredefinedRoles(); err != nil {
+		panic(err)
+	}
 }
 
 // dbInitCreateAuthDirectory creates the directory structure pointed to by the auth file if it does not already exist.
