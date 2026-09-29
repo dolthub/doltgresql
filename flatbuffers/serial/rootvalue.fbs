@@ -47,6 +47,8 @@ table RootValue {
   operators:[ubyte]; // Serialized AddressMap.
 
   aggregates:[ubyte]; // Serialized AddressMap.
+
+  publications:[ubyte]; // Serialized AddressMap.
 }
 
 table DatabaseSchema {

@@ -40,6 +40,7 @@ const (
 	RootObjectID_Casts
 	RootObjectID_Operators
 	RootObjectID_Aggregates
+	RootObjectID_Publications
 	RootObjectID_Count // This must always be last since it represents the count
 )
 

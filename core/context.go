@@ -33,6 +33,7 @@ import (
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/operators"
 	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/core/publications"
 	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
@@ -454,6 +455,15 @@ func GetOperatorsCollectionFromContext(ctx *sql.Context, database string) (*oper
 		return nil, err
 	}
 	return coll.(*operators.Collection), nil
+}
+
+// GetPublicationsCollectionFromContext returns the publications collection for the given database.
+func GetPublicationsCollectionFromContext(ctx *sql.Context, database string) (*publications.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Publications)
+	if err != nil {
+		return nil, err
+	}
+	return coll.(*publications.Collection), nil
 }
 
 // GetExtensionsCollectionFromContext returns the extensions collection from the given context. Will always return a
