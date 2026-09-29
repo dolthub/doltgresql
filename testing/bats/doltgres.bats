@@ -428,3 +428,15 @@ query_server_for_user_and_pass() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "test_schema_bats" ]] || false
 }
+
+@test 'doltgres: SET CONSTRAINTS warns only outside a transaction block' {
+    start_sql_server
+
+    run query_server -c "SET CONSTRAINTS ALL IMMEDIATE"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "WARNING:  SET CONSTRAINTS can only be used in transaction blocks" ]] || false
+
+    run query_server -c "SET CONSTRAINTS ALL IMMEDIATE; SELECT 1"
+    [ "$status" -eq 0 ]
+    [[ ! "$output" =~ "WARNING" ]] || false
+}

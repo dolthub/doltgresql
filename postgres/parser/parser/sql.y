@@ -1250,7 +1250,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name aggregate_name partition_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name  opt_collate
 %type <*tree.UnresolvedObjectName> db_object_name_no_keywords simple_db_object_name_no_keywords complex_db_object_name_no_keywords
-%type <[]*tree.UnresolvedObjectName> type_name_list sequence_name_list
+%type <[]*tree.UnresolvedObjectName> type_name_list sequence_name_list constraint_name_list
 %type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name
 %type <[]string> schema_name_list role_spec_list opt_role_list opt_owned_by_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
@@ -6444,13 +6444,13 @@ set_constraints_stmt:
   {
     $$.val = &tree.SetConstraints{All: true, Deferred: false}
   }
-| SET CONSTRAINTS name_list DEFERRED
+| SET CONSTRAINTS constraint_name_list DEFERRED
   {
-    $$.val = &tree.SetConstraints{Names: $3.nameList(), Deferred: true}
+    $$.val = &tree.SetConstraints{Names: $3.unresolvedObjectNames(), Deferred: true}
   }
-| SET CONSTRAINTS name_list IMMEDIATE
+| SET CONSTRAINTS constraint_name_list IMMEDIATE
   {
-    $$.val = &tree.SetConstraints{Names: $3.nameList(), Deferred: false}
+    $$.val = &tree.SetConstraints{Names: $3.unresolvedObjectNames(), Deferred: false}
   }
 
 // %Help: SET SESSION - change a session variable
@@ -8602,12 +8602,20 @@ opt_no_inherit:
 table_constraint:
   CONSTRAINT constraint_name table_constraint_elem opt_deferrable_mode opt_initially
   {
-    $$.val = $3.constraintDef()
-    $$.val.(tree.ConstraintTableDef).SetName(tree.Name($2))
+    def := $3.constraintDef()
+    def.SetName(tree.Name($2))
+    if err := def.SetAttributes($4.deferrableMode(), $5.initiallyMode()); err != nil {
+      return setErr(sqllex, err)
+    }
+    $$.val = def
   }
 | table_constraint_elem opt_deferrable_mode opt_initially
   {
-    $$.val = $1.constraintDef()
+    def := $1.constraintDef()
+    if err := def.SetAttributes($2.deferrableMode(), $3.initiallyMode()); err != nil {
+      return setErr(sqllex, err)
+    }
+    $$.val = def
   }
 
 // table_constraint_elem specifies constraint syntax which is not embedded into a
@@ -15283,6 +15291,16 @@ sequence_name_list:
     $$.val = []*tree.UnresolvedObjectName{$1.unresolvedObjectName()}
   }
 | sequence_name_list ',' sequence_name
+  {
+    $$.val = append($1.unresolvedObjectNames(), $3.unresolvedObjectName())
+  }
+
+constraint_name_list:
+  db_object_name
+  {
+    $$.val = []*tree.UnresolvedObjectName{$1.unresolvedObjectName()}
+  }
+| constraint_name_list ',' db_object_name
   {
     $$.val = append($1.unresolvedObjectNames(), $3.unresolvedObjectName())
   }

@@ -27,6 +27,9 @@ func nodeForeignKeyConstraintTableDef(ctx *Context, node *tree.ForeignKeyConstra
 	if node == nil {
 		return nil, nil
 	}
+	if tree.IsDeferrable(node.Deferrable, node.Initially) {
+		return nil, errors.Errorf("DEFERRABLE constraints are not yet supported")
+	}
 	var matchType vitess.ForeignKeyMatchType
 	switch node.Match {
 	case tree.MatchSimple:

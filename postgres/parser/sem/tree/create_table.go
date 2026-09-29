@@ -361,6 +361,9 @@ func NewColumnTableDef(
 		}
 	}
 	for _, c := range qualifications {
+		if err := c.validateAttributes(); err != nil {
+			return nil, err
+		}
 		switch t := c.Qualification.(type) {
 		case *ColumnDefault:
 			if d.HasDefaultExpr() {
@@ -588,6 +591,21 @@ type NamedColumnQualification struct {
 	Initially     InitiallyMode
 }
 
+// validateAttributes returns Postgres' error for DEFERRABLE or INITIALLY clauses that the qualification cannot take.
+func (node *NamedColumnQualification) validateAttributes() error {
+	switch node.Qualification.(type) {
+	case UniqueConstraint, *ColumnFKConstraint:
+		return validateConstraintAttributes(node.Deferrable, node.Initially)
+	}
+	if node.Deferrable != UnspecifiedDeferrableMode {
+		return pgerror.Newf(pgcode.Syntax, "misplaced %s clause", node.Deferrable)
+	}
+	if node.Initially != UnspecifiedInitiallyMode {
+		return pgerror.Newf(pgcode.Syntax, "misplaced %s clause", node.Initially)
+	}
+	return nil
+}
+
 type InitiallyMode int
 
 // InitiallyMode values.
@@ -596,6 +614,43 @@ const (
 	InitiallyDeferred
 	InitiallyImmediate
 )
+
+// String implements the fmt.Stringer interface.
+func (i InitiallyMode) String() string {
+	switch i {
+	case InitiallyDeferred:
+		return "INITIALLY DEFERRED"
+	case InitiallyImmediate:
+		return "INITIALLY IMMEDIATE"
+	default:
+		return "UNSPECIFIED"
+	}
+}
+
+// IsDeferrable returns whether a constraint's DEFERRABLE and INITIALLY clauses make it deferrable.
+func IsDeferrable(deferrable DeferrableMode, initially InitiallyMode) bool {
+	return deferrable == Deferrable || initially == InitiallyDeferred
+}
+
+// validateConstraintAttributes returns Postgres' error for a constraint declared NOT DEFERRABLE and INITIALLY DEFERRED.
+func validateConstraintAttributes(deferrable DeferrableMode, initially InitiallyMode) error {
+	if deferrable == NotDeferrable && initially == InitiallyDeferred {
+		return pgerror.New(pgcode.Syntax, "constraint declared INITIALLY DEFERRED must be DEFERRABLE")
+	}
+	return nil
+}
+
+// formatConstraintAttributes writes a constraint's DEFERRABLE and INITIALLY clauses.
+func formatConstraintAttributes(ctx *FmtCtx, deferrable DeferrableMode, initially InitiallyMode) {
+	if deferrable != UnspecifiedDeferrableMode {
+		ctx.WriteByte(' ')
+		ctx.WriteString(deferrable.String())
+	}
+	if initially != UnspecifiedInitiallyMode {
+		ctx.WriteByte(' ')
+		ctx.WriteString(initially.String())
+	}
+}
 
 // ColumnQualification represents a constraint on a column.
 type ColumnQualification interface {
@@ -704,6 +759,8 @@ type ConstraintTableDef interface {
 
 	// SetName replaces the name of the definition in-place. Used in the parser.
 	SetName(name Name)
+	// SetAttributes sets the DEFERRABLE and INITIALLY clauses of the definition in-place. Used in the parser.
+	SetAttributes(deferrable DeferrableMode, initially InitiallyMode) error
 }
 
 func (*CheckConstraintTableDef) constraintTableDef()      {}
@@ -722,6 +779,17 @@ type CheckConstraintTableDef struct {
 // SetName implements the ConstraintTableDef interface.
 func (node *CheckConstraintTableDef) SetName(name Name) {
 	node.Name = name
+}
+
+// SetAttributes implements the ConstraintTableDef interface.
+func (node *CheckConstraintTableDef) SetAttributes(deferrable DeferrableMode, initially InitiallyMode) error {
+	if err := validateConstraintAttributes(deferrable, initially); err != nil {
+		return err
+	}
+	if IsDeferrable(deferrable, initially) {
+		return pgerror.New(pgcode.FeatureNotSupported, "CHECK constraints cannot be marked DEFERRABLE")
+	}
+	return nil
 }
 
 // Format implements the NodeFormatter interface.
@@ -745,11 +813,20 @@ type UniqueConstraintTableDef struct {
 	IndexTableDef
 	NullsNotDistinct bool
 	PrimaryKey       bool
+	Deferrable       DeferrableMode
+	Initially        InitiallyMode
 }
 
 // SetName implements the TableDef interface.
 func (node *UniqueConstraintTableDef) SetName(name Name) {
 	node.Name = name
+}
+
+// SetAttributes implements the ConstraintTableDef interface.
+func (node *UniqueConstraintTableDef) SetAttributes(deferrable DeferrableMode, initially InitiallyMode) error {
+	node.Deferrable = deferrable
+	node.Initially = initially
+	return validateConstraintAttributes(deferrable, initially)
 }
 
 // Format implements the NodeFormatter interface.
@@ -768,6 +845,7 @@ func (node *UniqueConstraintTableDef) Format(ctx *FmtCtx) {
 	ctx.FormatNode(&node.Columns)
 	ctx.WriteByte(')')
 	ctx.FormatNode(&node.IndexParams)
+	formatConstraintAttributes(ctx, node.Deferrable, node.Initially)
 }
 
 type ExcludeElement struct {
@@ -778,8 +856,10 @@ type ExcludeElement struct {
 // ExcludeConstraintTableDef represents a FOREIGN KEY constraint in the AST.
 type ExcludeConstraintTableDef struct {
 	IndexTableDef
-	Using     string
-	Predicate Expr
+	Using      string
+	Predicate  Expr
+	Deferrable DeferrableMode
+	Initially  InitiallyMode
 }
 
 // Format implements the NodeFormatter interface.
@@ -802,11 +882,19 @@ func (node *ExcludeConstraintTableDef) Format(ctx *FmtCtx) {
 		ctx.WriteByte(' ')
 		ctx.FormatNode(node.Predicate)
 	}
+	formatConstraintAttributes(ctx, node.Deferrable, node.Initially)
 }
 
 // SetName implements the ConstraintTableDef interface.
 func (node *ExcludeConstraintTableDef) SetName(name Name) {
 	node.Name = name
+}
+
+// SetAttributes implements the ConstraintTableDef interface.
+func (node *ExcludeConstraintTableDef) SetAttributes(deferrable DeferrableMode, initially InitiallyMode) error {
+	node.Deferrable = deferrable
+	node.Initially = initially
+	return validateConstraintAttributes(deferrable, initially)
 }
 
 type RefAction struct {
@@ -891,12 +979,14 @@ func (c CompositeKeyMatchMethod) String() string {
 
 // ForeignKeyConstraintTableDef represents a FOREIGN KEY constraint in the AST.
 type ForeignKeyConstraintTableDef struct {
-	Name     Name
-	FromCols NameList
-	Table    TableName
-	ToCols   NameList
-	Actions  ReferenceActions
-	Match    CompositeKeyMatchMethod
+	Name       Name
+	FromCols   NameList
+	Table      TableName
+	ToCols     NameList
+	Actions    ReferenceActions
+	Match      CompositeKeyMatchMethod
+	Deferrable DeferrableMode
+	Initially  InitiallyMode
 }
 
 // Format implements the NodeFormatter interface.
@@ -924,11 +1014,19 @@ func (node *ForeignKeyConstraintTableDef) Format(ctx *FmtCtx) {
 	}
 
 	ctx.FormatNode(&node.Actions)
+	formatConstraintAttributes(ctx, node.Deferrable, node.Initially)
 }
 
 // SetName implements the ConstraintTableDef interface.
 func (node *ForeignKeyConstraintTableDef) SetName(name Name) {
 	node.Name = name
+}
+
+// SetAttributes implements the ConstraintTableDef interface.
+func (node *ForeignKeyConstraintTableDef) SetAttributes(deferrable DeferrableMode, initially InitiallyMode) error {
+	node.Deferrable = deferrable
+	node.Initially = initially
+	return validateConstraintAttributes(deferrable, initially)
 }
 
 // PartitionByType is an enum of each type of partitioning (LIST/RANGE).

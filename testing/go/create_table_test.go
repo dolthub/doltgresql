@@ -638,6 +638,154 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "DEFERRABLE constraints",
+			SetUpScript: []string{
+				"CREATE TABLE p (id INTEGER PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE TABLE a1 (x INTEGER REFERENCES p(id) DEFERRABLE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE a2 (x INTEGER REFERENCES p(id) INITIALLY DEFERRED);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE a3 (x INTEGER REFERENCES p(id) DEFERRABLE INITIALLY IMMEDIATE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query: "CREATE TABLE a4 (x INTEGER REFERENCES p(id) NOT DEFERRABLE INITIALLY IMMEDIATE);",
+				},
+				{
+					Query:           "CREATE TABLE a5 (x INTEGER REFERENCES p(id) NOT DEFERRABLE INITIALLY DEFERRED);",
+					ExpectedErr:     "constraint declared INITIALLY DEFERRED must be DEFERRABLE",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:       "CREATE TABLE a6 (x INTEGER UNIQUE DEFERRABLE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE a7 (x INTEGER PRIMARY KEY DEFERRABLE INITIALLY IMMEDIATE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query: "CREATE TABLE a8 (x INTEGER UNIQUE NOT DEFERRABLE INITIALLY IMMEDIATE);",
+				},
+				{
+					Query:           "CREATE TABLE a9 (x INTEGER CHECK (x > 0) DEFERRABLE);",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a10 (x INTEGER NOT NULL DEFERRABLE);",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a11 (x INTEGER DEFAULT 1 DEFERRABLE);",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a12 (x INTEGER NULL NOT DEFERRABLE);",
+					ExpectedErr:     "misplaced NOT DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a13 (x INTEGER CHECK (x > 0) INITIALLY IMMEDIATE);",
+					ExpectedErr:     "misplaced INITIALLY IMMEDIATE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a14 (x INTEGER CHECK (x > 0) INITIALLY DEFERRED);",
+					ExpectedErr:     "misplaced INITIALLY DEFERRED clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a15 (x INTEGER GENERATED ALWAYS AS (1) STORED DEFERRABLE);",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:       "CREATE TABLE b1 (x INTEGER, FOREIGN KEY (x) REFERENCES p(id) DEFERRABLE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE b2 (x INTEGER, CONSTRAINT b2u UNIQUE (x) INITIALLY DEFERRED);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query: "CREATE TABLE b3 (x INTEGER, PRIMARY KEY (x) NOT DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE b4 (x INTEGER, FOREIGN KEY (x) REFERENCES p(id) INITIALLY IMMEDIATE);",
+				},
+				{
+					Query:           "CREATE TABLE b5 (x INTEGER, UNIQUE (x) NOT DEFERRABLE INITIALLY DEFERRED);",
+					ExpectedErr:     "constraint declared INITIALLY DEFERRED must be DEFERRABLE",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE b6 (x INTEGER, CHECK (x > 0) DEFERRABLE);",
+					ExpectedErr:     "CHECK constraints cannot be marked DEFERRABLE",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "CREATE TABLE b7 (x INTEGER, CHECK (x > 0) INITIALLY DEFERRED);",
+					ExpectedErr:     "CHECK constraints cannot be marked DEFERRABLE",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "CREATE TABLE b8 (x INTEGER, CHECK (x > 0) NOT DEFERRABLE INITIALLY DEFERRED);",
+					ExpectedErr:     "constraint declared INITIALLY DEFERRED must be DEFERRABLE",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query: "CREATE TABLE b9 (x INTEGER, CHECK (x > 0) NOT DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE b10 (x INTEGER, CHECK (x > 0) INITIALLY IMMEDIATE);",
+				},
+			},
+		},
+		{
+			Name: "DEFERRABLE constraints are stored",
+			Skip: true, // DEFERRABLE is not yet supported
+			SetUpScript: []string{
+				"CREATE TABLE p (id INTEGER PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE a1 (x INTEGER REFERENCES p(id) DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE a2 (x INTEGER REFERENCES p(id) INITIALLY DEFERRED);",
+				},
+				{
+					Query: "CREATE TABLE a3 (x INTEGER REFERENCES p(id) DEFERRABLE INITIALLY IMMEDIATE);",
+				},
+				{
+					Query: "CREATE TABLE a6 (x INTEGER UNIQUE DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE a7 (x INTEGER PRIMARY KEY DEFERRABLE INITIALLY IMMEDIATE);",
+				},
+				{
+					Query: "CREATE TABLE b1 (x INTEGER, FOREIGN KEY (x) REFERENCES p(id) DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE b2 (x INTEGER, CONSTRAINT b2u UNIQUE (x) INITIALLY DEFERRED);",
+				},
+				{
+					Query:    "SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND condeferrable ORDER BY conname;",
+					Expected: []sql.Row{{"a1_x_fkey", "t", "f"}, {"a2_x_fkey", "t", "t"}, {"a3_x_fkey", "t", "f"}, {"a6_x_key", "t", "f"}, {"a7_pkey", "t", "f"}, {"b1_x_fkey", "t", "f"}, {"b2u", "t", "t"}},
+				},
+			},
+		},
 	})
 }
 

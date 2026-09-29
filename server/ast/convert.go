@@ -241,6 +241,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeSelect(ctx, stmt)
 	case *tree.SelectClause:
 		return nodeSelectClause(ctx, stmt)
+	case *tree.SetConstraints:
+		return nodeSetConstraints(ctx, stmt)
 	case *tree.SetSessionAuthorization:
 		return nodeSetSessionAuthorization(ctx, stmt)
 	case *tree.SetSessionCharacteristics:

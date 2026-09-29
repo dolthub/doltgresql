@@ -1892,5 +1892,99 @@ ORDER BY schema_name, table_name;`,
 				},
 			},
 		},
+		{
+			Name: "DEFERRABLE constraints",
+			SetUpScript: []string{
+				"CREATE TABLE p (id INTEGER PRIMARY KEY);",
+				"CREATE TABLE c (x INTEGER);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER TABLE c ADD CONSTRAINT c_fk FOREIGN KEY (x) REFERENCES p(id) DEFERRABLE;",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "ALTER TABLE c ADD CONSTRAINT c_u UNIQUE (x) DEFERRABLE;",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "ALTER TABLE c ADD CONSTRAINT c_pk PRIMARY KEY (x) INITIALLY DEFERRED;",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:           "ALTER TABLE c ADD CONSTRAINT c_chk CHECK (x > 0) DEFERRABLE;",
+					ExpectedErr:     "CHECK constraints cannot be marked DEFERRABLE",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:       "ALTER TABLE c ADD COLUMN y INTEGER REFERENCES p(id) DEFERRABLE;",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "ALTER TABLE c ADD COLUMN z INTEGER UNIQUE DEFERRABLE;",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:           "ALTER TABLE c ADD COLUMN w INTEGER CHECK (w > 0) DEFERRABLE;",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query: "ALTER TABLE c ADD CONSTRAINT c_fk2 FOREIGN KEY (x) REFERENCES p(id) NOT DEFERRABLE;",
+				},
+			},
+		},
+		{
+			Name: "DEFERRABLE constraints are stored",
+			Skip: true, // DEFERRABLE is not yet supported
+			SetUpScript: []string{
+				"CREATE TABLE p (id INTEGER PRIMARY KEY);",
+				"CREATE TABLE c (x INTEGER);",
+				"CREATE TABLE c2 (x INTEGER);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE c ADD CONSTRAINT c_fk FOREIGN KEY (x) REFERENCES p(id) DEFERRABLE;",
+				},
+				{
+					Query: "ALTER TABLE c ADD CONSTRAINT c_u UNIQUE (x) DEFERRABLE;",
+				},
+				{
+					Query: "ALTER TABLE c ADD COLUMN y INTEGER REFERENCES p(id) DEFERRABLE;",
+				},
+				{
+					Query: "ALTER TABLE c ADD COLUMN z INTEGER UNIQUE DEFERRABLE;",
+				},
+				{
+					Query: "ALTER TABLE c2 ADD CONSTRAINT c2_pk PRIMARY KEY (x) INITIALLY DEFERRED;",
+				},
+				{
+					Query: "ALTER TABLE c ADD CONSTRAINT c_fk2 FOREIGN KEY (x) REFERENCES p(id) NOT DEFERRABLE;",
+				},
+				{
+					Query: "ALTER TABLE c ALTER CONSTRAINT c_fk2 DEFERRABLE INITIALLY DEFERRED;",
+				},
+				{
+					Query:    "SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE conname = 'c_fk2';",
+					Expected: []sql.Row{{"c_fk2", "t", "t"}},
+				},
+				{
+					Query: "ALTER TABLE c ALTER CONSTRAINT c_fk2 NOT DEFERRABLE;",
+				},
+				{
+					Query:    "SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE conname = 'c_fk2';",
+					Expected: []sql.Row{{"c_fk2", "f", "f"}},
+				},
+				{
+					Query:           "ALTER TABLE c ALTER CONSTRAINT c_u DEFERRABLE;",
+					ExpectedErr:     "constraint \"c_u\" of relation \"c\" is not a foreign key constraint",
+					ExpectedErrCode: "42809",
+				},
+				{
+					Query:    "SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND condeferrable ORDER BY conname;",
+					Expected: []sql.Row{{"c2_pk", "t", "t"}, {"c_fk", "t", "f"}, {"c_u", "t", "f"}, {"c_y_fkey", "t", "f"}, {"c_z_key", "t", "f"}},
+				},
+			},
+		},
 	})
 }

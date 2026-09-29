@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,19 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package output
+package ast
 
-import "testing"
+import (
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-func TestSetConstraints(t *testing.T) {
-	tests := []QueryParses{
-		Converts("SET CONSTRAINTS ALL DEFERRED"),
-		Converts("SET CONSTRAINTS name DEFERRED"),
-		Converts("SET CONSTRAINTS name , name DEFERRED"),
-		Converts("SET CONSTRAINTS ALL IMMEDIATE"),
-		Converts("SET CONSTRAINTS name IMMEDIATE"),
-		Converts("SET CONSTRAINTS name , name IMMEDIATE"),
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
+)
+
+// nodeSetConstraints handles *tree.SetConstraints nodes.
+func nodeSetConstraints(ctx *Context, node *tree.SetConstraints) (vitess.Statement, error) {
+	if node == nil {
+		return nil, nil
 	}
-	RunTests(t, tests)
-	// RewriteTests(t, tests, "set_constraints_test.go")
+	return vitess.InjectedStatement{
+		Statement: &pgnodes.SetConstraints{
+			Names:    node.Names,
+			Deferred: node.Deferred,
+		},
+	}, nil
 }
