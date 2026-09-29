@@ -327,6 +327,54 @@ func (u *sqlSymUnion) tblExpr() tree.TableExpr {
 func (u *sqlSymUnion) tblExprs() tree.TableExprs {
     return u.val.(tree.TableExprs)
 }
+func (u *sqlSymUnion) xmlAttribute() tree.XmlAttribute {
+    return u.val.(tree.XmlAttribute)
+}
+func (u *sqlSymUnion) xmlAttributes() []tree.XmlAttribute {
+    return u.val.([]tree.XmlAttribute)
+}
+func (u *sqlSymUnion) xmlRootStandalone() tree.XmlRootStandalone {
+    return u.val.(tree.XmlRootStandalone)
+}
+func (u *sqlSymUnion) xmlNamespace() tree.XmlNamespace {
+    return u.val.(tree.XmlNamespace)
+}
+func (u *sqlSymUnion) xmlNamespaces() []tree.XmlNamespace {
+    return u.val.([]tree.XmlNamespace)
+}
+func (u *sqlSymUnion) xmlTableColumn() tree.XmlTableColumn {
+    return u.val.(tree.XmlTableColumn)
+}
+func (u *sqlSymUnion) xmlTableColumns() []tree.XmlTableColumn {
+    return u.val.([]tree.XmlTableColumn)
+}
+func (u *sqlSymUnion) jsonFormat() *tree.JsonFormat {
+    return u.val.(*tree.JsonFormat)
+}
+func (u *sqlSymUnion) jsonValueExpr() tree.JsonValueExpr {
+    return u.val.(tree.JsonValueExpr)
+}
+func (u *sqlSymUnion) jsonArguments() []tree.JsonArgument {
+    return u.val.([]tree.JsonArgument)
+}
+func (u *sqlSymUnion) jsonBehavior() *tree.JsonBehavior {
+    return u.val.(*tree.JsonBehavior)
+}
+func (u *sqlSymUnion) jsonBehaviors() [2]*tree.JsonBehavior {
+    return u.val.([2]*tree.JsonBehavior)
+}
+func (u *sqlSymUnion) jsonWrapper() tree.JsonWrapper {
+    return u.val.(tree.JsonWrapper)
+}
+func (u *sqlSymUnion) jsonQuotes() tree.JsonQuotes {
+    return u.val.(tree.JsonQuotes)
+}
+func (u *sqlSymUnion) jsonTableColumn() tree.JsonTableColumn {
+    return u.val.(tree.JsonTableColumn)
+}
+func (u *sqlSymUnion) jsonTableColumns() []tree.JsonTableColumn {
+    return u.val.([]tree.JsonTableColumn)
+}
 func (u *sqlSymUnion) from() tree.From {
     return u.val.(tree.From)
 }
@@ -755,7 +803,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
 %token <str> BLOCK_COMMENT HINT
 %token <str> COMMIT COMMITTED COMMUTATOR COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
-%token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
+%token <str> CONDITIONAL CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTENT CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COST CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
@@ -763,9 +811,9 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESCRIBE DESERIALFUNC DESTINATION
-%token <str> DETACH DETACHED DICTIONARY DISABLE DISABLE_PAGE_SKIPPING DISCARD DISTINCT DO DOMAIN DOUBLE DROP
+%token <str> DETACH DETACHED DICTIONARY DISABLE DISABLE_PAGE_SKIPPING DISCARD DISTINCT DO DOCUMENT DOMAIN DOUBLE DROP
 
-%token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE ENCRYPTED END ENUM ENUMS ESCAPE EVENT
+%token <str> EACH ELEMENT ELSE EMPTY ENABLE ENCODING ENCRYPTION_PASSPHRASE ENCRYPTED END ENUM ENUMS ESCAPE EVENT
 %token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
 %token <str> EXPERIMENTAL_AUDIT EXPIRATION EXPLAIN EXPORT EXPRESSION
@@ -788,9 +836,9 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> INNER INOUT INSERT INSTEAD INT INTEGER INTERNALLENGTH
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
-%token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS
+%token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS JSON_TABLE
 
-%token <str> KEY KEYS KMS KV
+%token <str> KEEP KEY KEYS KMS KV
 
 %token <str> LANGUAGE LARGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
 %token <str> LEADING LEAKPROOF LEASE LEAST LEFT LEFTARG LESS LEVEL LIKE LIMIT
@@ -802,19 +850,19 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM MULTIPOINT MULTIPOINTM
 %token <str> MULTIPOINTZ MULTIPOINTZM MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
 
-%token <str> NAN NAME NAMES NATURAL NEGATOR NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
+%token <str> NAN NAME NAMES NATURAL NEGATOR NESTED NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
 %token <str> NOBYPASSRLS NOCREATEDB NOCREATELOGIN NOCREATEROLE NOINHERIT NOLOGIN NOMODIFYCLUSTERSETTING NOREPLICATION NOSUPERUSER NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC YES
 
-%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY ONLY_DATABASE_STATS OPT OPTION OPTIONS OR
+%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD OMIT ON ONLY ONLY_DATABASE_STATS OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OUTPUT OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
-%token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSWORD PAUSE PAUSED PHYSICAL
+%token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSING PASSWORD PATH PAUSE PAUSED PHYSICAL
 %token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLICY POLYGON POLYGONM POLYGONZ POLYGONZM
 %token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
 %token <str> PROCEDURAL PROCEDURE PROCEDURES PROCESS_MAIN PROCESS_TOAST PUBLIC PUBLICATION
 
-%token <str> QUERIES QUERY
+%token <str> QUERIES QUERY QUOTES
 
 %token <str> RANGE RANGES READ READ_ONLY READ_WRITE REAL RECEIVE RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
@@ -822,12 +870,12 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT RIGHTARG
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
-%token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY
+%token <str> SAFE SAVEPOINT SCALAR SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY
 %token <str> SECURITY_BARRIER SECURITY_INVOKER SEED SELECT SEND
 %token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETOF SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
 %token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_LOCKED SKIP_DATABASE_STATS SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
-%token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STDOUT STRATEGY STRICT STRING
+%token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE STANDALONE START STATEMENT STATISTICS STATUS STDIN STDOUT STRATEGY STRICT STRING STRIP
 %token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS
 %token <str> SUPERUSER SUPPORT SYMMETRIC SYNTAX SYSID SYSTEM
 
@@ -836,15 +884,15 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> TRANSACTION TRANSACTIONS TRANSFORM TREAT TRIGGER TRIM TRUE
 %token <str> TRUNCATE TRUSTED TYPE TYPES TYPMOD_IN TYPMOD_OUT
 
-%token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSAFE UNSPLIT
+%token <str> UNBOUNDED UNCOMMITTED UNCONDITIONAL UNION UNIQUE UNKNOWN UNLOGGED UNSAFE UNSPLIT
 %token <str> UPDATE UPSERT UNTIL USAGE USE USER USERS USING UUID
 
 %token <str> VACUUM VALID VALIDATE VALIDATOR VALUE VALUES VERBOSE
 %token <str> VARBIT VARCHAR VARIABLE VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
 
-%token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
+%token <str> WHEN WHERE WHITESPACE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
 
-%token <str> XML
+%token <str> XML XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST XMLNAMESPACES XMLPARSE XMLPI XMLROOT XMLSERIALIZE XMLTABLE
 
 %token <str> YAML YEAR
 
@@ -856,11 +904,11 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 //
 // NOT_LA exists so that productions such as NOT LIKE can be given the same
 // precedence as LIKE; otherwise they'd effectively have the same precedence as
-// NOT, at least with respect to their left-hand subexpression. WITH_LA is
-// needed to make the grammar LALR(1). GENERATED_ALWAYS is needed to support
+// NOT, at least with respect to their left-hand subexpression. WITH_LA and
+// WITHOUT_LA are needed to make the grammar LALR(1). GENERATED_ALWAYS is needed to support
 // the Postgres syntax for computed columns along with our family related
 // extensions (CREATE FAMILY/CREATE FAMILY family_name).
-%token NOT_LA WITH_LA AS_LA GENERATED_ALWAYS
+%token NOT_LA WITH_LA WITHOUT_LA AS_LA GENERATED_ALWAYS
 
 %union {
   id    int32
@@ -1281,6 +1329,31 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %type <tree.Exprs> extract_list
 %type <tree.Exprs> overlay_list
+%type <bool> document_or_content
+%type <empty> xml_whitespace_option xml_passing_mech
+%type <tree.Expr> xmlexists_argument
+%type <tree.XmlAttribute> xml_attribute_el
+%type <[]tree.XmlAttribute> xml_attributes xml_attribute_list
+%type <tree.XmlNamespace> xml_namespace_el
+%type <[]tree.XmlNamespace> xml_namespace_list
+%type <tree.XmlTableColumn> xmltable_column_el xmltable_column_option_el
+%type <[]tree.XmlTableColumn> xmltable_column_list xmltable_column_option_list
+%type <tree.TableExpr> xmltable
+%type <tree.TableExpr> json_table
+%type <*tree.JsonFormat> json_format_clause json_format_clause_opt
+%type <tree.JsonValueExpr> json_value_expr
+%type <[]tree.JsonArgument> json_arguments json_passing_clause_opt
+%type <*tree.JsonBehavior> json_behavior json_on_error_clause_opt
+%type <[2]*tree.JsonBehavior> json_behavior_clause_opt
+%type <tree.JsonWrapper> json_wrapper_behavior
+%type <tree.JsonQuotes> json_quotes_clause_opt
+%type <tree.JsonTableColumn> json_table_column_definition
+%type <[]tree.JsonTableColumn> json_table_column_definition_list
+%type <str> json_table_path_name_opt
+%type <tree.Expr> json_table_column_path_clause_opt
+%type <empty> json_table_nested_path_opt json_quotes_on_scalar_string_opt json_error
+%type <tree.Expr> xml_root_version
+%type <tree.XmlRootStandalone> opt_xml_root_standalone
 %type <tree.Exprs> position_list
 %type <tree.Exprs> substr_list
 %type <tree.Exprs> trim_list
@@ -1475,8 +1548,8 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 // cause UNBOUNDED to be treated differently from other unreserved keywords
 // anywhere else in the grammar, but it's definitely risky. We can blame any
 // funny behavior of UNBOUNDED on the SQL standard, though.
-%nonassoc  UNBOUNDED         // ideally should have same precedence as IDENT
-%nonassoc  IDENT NULL PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
+%nonassoc  UNBOUNDED NESTED  // ideally should have same precedence as IDENT
+%nonassoc  IDENT NULL PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP PATH
 %left      CONCAT FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH REMOVE_PATH  // multi-character ops
 %left      L1_DISTANCE L2_DISTANCE COSINE_DISTANCE NEG_INNER_PRODUCT JACCARD_DISTANCE HAMMING_DISTANCE
 %left      '|'
@@ -11668,6 +11741,22 @@ numeric_table_ref table_ref_options
       As: $4.aliasClause(),
     }
   }
+| xmltable opt_alias_clause
+  {
+    $$.val = &tree.AliasedTableExpr{Expr: $1.tblExpr(), As: $2.aliasClause()}
+  }
+| LATERAL xmltable opt_alias_clause
+  {
+    $$.val = &tree.AliasedTableExpr{Expr: $2.tblExpr(), Lateral: true, As: $3.aliasClause()}
+  }
+| json_table opt_alias_clause
+  {
+    $$.val = &tree.AliasedTableExpr{Expr: $1.tblExpr(), As: $2.aliasClause()}
+  }
+| LATERAL json_table opt_alias_clause
+  {
+    $$.val = &tree.AliasedTableExpr{Expr: $2.tblExpr(), Lateral: true, As: $3.aliasClause()}
+  }
 // The following syntax is a CockroachDB extension:
 //     SELECT ... FROM [ EXPLAIN .... ] WHERE ...
 //     SELECT ... FROM [ SHOW .... ] WHERE ...
@@ -11751,6 +11840,411 @@ numeric_table_ref:
       Columns: $3.tableRefCols(),
       As:      $4.aliasClause(),
     }
+  }
+
+xmltable:
+  XMLTABLE '(' c_expr xmlexists_argument COLUMNS xmltable_column_list ')'
+  {
+    $$.val = &tree.XmlTableExpr{RowPath: $3.expr(), Document: $4.expr(), Columns: $6.xmlTableColumns()}
+  }
+| XMLTABLE '(' XMLNAMESPACES '(' xml_namespace_list ')' ',' c_expr xmlexists_argument COLUMNS xmltable_column_list ')'
+  {
+    $$.val = &tree.XmlTableExpr{Namespaces: $5.xmlNamespaces(), RowPath: $8.expr(), Document: $9.expr(), Columns: $11.xmlTableColumns()}
+  }
+
+xml_namespace_list:
+  xml_namespace_el
+  {
+    $$.val = []tree.XmlNamespace{$1.xmlNamespace()}
+  }
+| xml_namespace_list ',' xml_namespace_el
+  {
+    $$.val = append($1.xmlNamespaces(), $3.xmlNamespace())
+  }
+
+xml_namespace_el:
+  b_expr AS unrestricted_name
+  {
+    $$.val = tree.XmlNamespace{URI: $1.expr(), Prefix: tree.Name($3)}
+  }
+| DEFAULT b_expr
+  {
+    $$.val = tree.XmlNamespace{URI: $2.expr()}
+  }
+
+xmlexists_argument:
+  PASSING c_expr
+  {
+    $$.val = $2.expr()
+  }
+| PASSING c_expr xml_passing_mech
+  {
+    $$.val = $2.expr()
+  }
+| PASSING xml_passing_mech c_expr
+  {
+    $$.val = $3.expr()
+  }
+| PASSING xml_passing_mech c_expr xml_passing_mech
+  {
+    $$.val = $3.expr()
+  }
+
+xml_passing_mech:
+  BY REF {}
+| BY VALUE {}
+
+xmltable_column_list:
+  xmltable_column_el
+  {
+    $$.val = []tree.XmlTableColumn{$1.xmlTableColumn()}
+  }
+| xmltable_column_list ',' xmltable_column_el
+  {
+    $$.val = append($1.xmlTableColumns(), $3.xmlTableColumn())
+  }
+
+xmltable_column_el:
+  name typename
+  {
+    $$.val = tree.XmlTableColumn{Name: tree.Name($1), Type: $2.typeReference()}
+  }
+| name typename xmltable_column_option_list
+  {
+    column := tree.XmlTableColumn{Name: tree.Name($1), Type: $2.typeReference()}
+    nullabilitySeen := false
+    for _, option := range $3.xmlTableColumns() {
+      switch {
+      case option.Path != nil:
+        if column.Path != nil {
+          return setErr(sqllex, fmt.Errorf("only one PATH value per column is allowed"))
+        }
+        column.Path = option.Path
+      case option.Default != nil:
+        if column.Default != nil {
+          return setErr(sqllex, fmt.Errorf("only one DEFAULT value is allowed"))
+        }
+        column.Default = option.Default
+      default:
+        if nullabilitySeen {
+          return setErr(sqllex, fmt.Errorf("conflicting or redundant NULL / NOT NULL declarations for column \"%s\"", column.Name))
+        }
+        column.NotNull = option.NotNull
+        nullabilitySeen = true
+      }
+    }
+    $$.val = column
+  }
+| name FOR ORDINALITY
+  {
+    $$.val = tree.XmlTableColumn{Name: tree.Name($1), ForOrdinality: true}
+  }
+
+xmltable_column_option_list:
+  xmltable_column_option_el
+  {
+    $$.val = []tree.XmlTableColumn{$1.xmlTableColumn()}
+  }
+| xmltable_column_option_list xmltable_column_option_el
+  {
+    $$.val = append($1.xmlTableColumns(), $2.xmlTableColumn())
+  }
+
+// Each option is returned as a column with only the field it sets, and xmltable_column_el merges them.
+xmltable_column_option_el:
+  IDENT b_expr
+  {
+    return setErr(sqllex, fmt.Errorf("unrecognized column option \"%s\"", $1))
+  }
+| PATH b_expr
+  {
+    $$.val = tree.XmlTableColumn{Path: $2.expr()}
+  }
+| DEFAULT b_expr
+  {
+    $$.val = tree.XmlTableColumn{Default: $2.expr()}
+  }
+| NOT NULL
+  {
+    $$.val = tree.XmlTableColumn{NotNull: true}
+  }
+| NULL
+  {
+    $$.val = tree.XmlTableColumn{}
+  }
+
+json_table:
+  JSON_TABLE '(' json_value_expr ',' a_expr json_table_path_name_opt json_passing_clause_opt COLUMNS '(' json_table_column_definition_list ')' json_on_error_clause_opt ')'
+  {
+    $$.val = &tree.JsonTableExpr{
+      Context: $3.jsonValueExpr(),
+      Path: $5.expr(),
+      PathName: tree.Name($6),
+      Passing: $7.jsonArguments(),
+      Columns: $10.jsonTableColumns(),
+      OnError: $12.jsonBehavior(),
+    }
+  }
+
+json_value_expr:
+  a_expr json_format_clause_opt
+  {
+    $$.val = tree.JsonValueExpr{Expr: $1.expr(), JsonFormat: $2.jsonFormat()}
+  }
+
+json_format_clause:
+  FORMAT JSON ENCODING name
+  {
+    $$.val = &tree.JsonFormat{Encoding: tree.Name($4)}
+  }
+| FORMAT JSON
+  {
+    $$.val = &tree.JsonFormat{}
+  }
+
+json_format_clause_opt:
+  json_format_clause
+| /* EMPTY */
+  {
+    $$.val = (*tree.JsonFormat)(nil)
+  }
+
+json_table_path_name_opt:
+  AS name
+  {
+    $$ = $2
+  }
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+json_passing_clause_opt:
+  PASSING json_arguments
+  {
+    $$.val = $2.jsonArguments()
+  }
+| /* EMPTY */
+  {
+    $$.val = []tree.JsonArgument(nil)
+  }
+
+json_arguments:
+  json_value_expr AS unrestricted_name
+  {
+    $$.val = []tree.JsonArgument{{Value: $1.jsonValueExpr(), Name: tree.Name($3)}}
+  }
+| json_arguments ',' json_value_expr AS unrestricted_name
+  {
+    $$.val = append($1.jsonArguments(), tree.JsonArgument{Value: $3.jsonValueExpr(), Name: tree.Name($5)})
+  }
+
+json_table_column_definition_list:
+  json_table_column_definition
+  {
+    $$.val = []tree.JsonTableColumn{$1.jsonTableColumn()}
+  }
+| json_table_column_definition_list ',' json_table_column_definition
+  {
+    $$.val = append($1.jsonTableColumns(), $3.jsonTableColumn())
+  }
+
+json_table_column_definition:
+  name FOR ORDINALITY
+  {
+    $$.val = tree.JsonTableColumn{Kind: tree.JsonTableColumnForOrdinality, Name: tree.Name($1)}
+  }
+| name typename json_table_column_path_clause_opt json_wrapper_behavior json_quotes_clause_opt json_behavior_clause_opt
+  {
+    $$.val = tree.JsonTableColumn{
+      Kind: tree.JsonTableColumnRegular,
+      Name: tree.Name($1),
+      Type: $2.typeReference(),
+      Path: $3.expr(),
+      Wrapper: $4.jsonWrapper(),
+      Quotes: $5.jsonQuotes(),
+      OnEmpty: $6.jsonBehaviors()[0],
+      OnError: $6.jsonBehaviors()[1],
+    }
+  }
+| name typename json_format_clause json_table_column_path_clause_opt json_wrapper_behavior json_quotes_clause_opt json_behavior_clause_opt
+  {
+    $$.val = tree.JsonTableColumn{
+      Kind: tree.JsonTableColumnRegular,
+      Name: tree.Name($1),
+      Type: $2.typeReference(),
+      JsonFormat: $3.jsonFormat(),
+      Path: $4.expr(),
+      Wrapper: $5.jsonWrapper(),
+      Quotes: $6.jsonQuotes(),
+      OnEmpty: $7.jsonBehaviors()[0],
+      OnError: $7.jsonBehaviors()[1],
+    }
+  }
+| name typename EXISTS json_table_column_path_clause_opt json_on_error_clause_opt
+  {
+    $$.val = tree.JsonTableColumn{
+      Kind: tree.JsonTableColumnExists,
+      Name: tree.Name($1),
+      Type: $2.typeReference(),
+      Path: $4.expr(),
+      OnError: $5.jsonBehavior(),
+    }
+  }
+| NESTED json_table_nested_path_opt SCONST json_table_path_name_opt COLUMNS '(' json_table_column_definition_list ')'
+  {
+    $$.val = tree.JsonTableColumn{
+      Kind: tree.JsonTableColumnNested,
+      Name: tree.Name($4),
+      Path: tree.NewStrVal($3),
+      Columns: $7.jsonTableColumns(),
+    }
+  }
+
+json_table_nested_path_opt:
+  PATH {}
+| /* EMPTY */ {}
+
+json_table_column_path_clause_opt:
+  PATH SCONST
+  {
+    $$.val = tree.NewStrVal($2)
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.Expr(nil)
+  }
+
+json_wrapper_behavior:
+  WITHOUT WRAPPER
+  {
+    $$.val = tree.JsonWrapperNone
+  }
+| WITHOUT ARRAY WRAPPER
+  {
+    $$.val = tree.JsonWrapperNone
+  }
+| WITH WRAPPER
+  {
+    $$.val = tree.JsonWrapperUnconditional
+  }
+| WITH ARRAY WRAPPER
+  {
+    $$.val = tree.JsonWrapperUnconditional
+  }
+| WITH CONDITIONAL ARRAY WRAPPER
+  {
+    $$.val = tree.JsonWrapperConditional
+  }
+| WITH UNCONDITIONAL ARRAY WRAPPER
+  {
+    $$.val = tree.JsonWrapperUnconditional
+  }
+| WITH CONDITIONAL WRAPPER
+  {
+    $$.val = tree.JsonWrapperConditional
+  }
+| WITH UNCONDITIONAL WRAPPER
+  {
+    $$.val = tree.JsonWrapperUnconditional
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.JsonWrapperUnspecified
+  }
+
+json_quotes_clause_opt:
+  KEEP QUOTES json_quotes_on_scalar_string_opt
+  {
+    $$.val = tree.JsonQuotesKeep
+  }
+| OMIT QUOTES json_quotes_on_scalar_string_opt
+  {
+    $$.val = tree.JsonQuotesOmit
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.JsonQuotesUnspecified
+  }
+
+json_quotes_on_scalar_string_opt:
+  ON SCALAR STRING {}
+| /* EMPTY */ {}
+
+// ERROR is the lexer's error token, so the ERROR keyword is matched as an identifier.
+json_error:
+  IDENT
+  {
+    if $1 != "error" {
+      sqllex.Error("syntax error")
+      return 1
+    }
+  }
+
+json_behavior:
+  DEFAULT a_expr
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorDefault, Default: $2.expr()}
+  }
+| json_error
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorError}
+  }
+| NULL
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorNull}
+  }
+| TRUE
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorTrue}
+  }
+| FALSE
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorFalse}
+  }
+| UNKNOWN
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorUnknown}
+  }
+| EMPTY ARRAY
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorEmptyArray}
+  }
+| EMPTY OBJECT
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorEmptyObject}
+  }
+| EMPTY
+  {
+    $$.val = &tree.JsonBehavior{Type: tree.JsonBehaviorEmptyArray}
+  }
+
+json_behavior_clause_opt:
+  json_behavior ON EMPTY
+  {
+    $$.val = [2]*tree.JsonBehavior{$1.jsonBehavior(), nil}
+  }
+| json_behavior ON json_error
+  {
+    $$.val = [2]*tree.JsonBehavior{nil, $1.jsonBehavior()}
+  }
+| json_behavior ON EMPTY json_behavior ON json_error
+  {
+    $$.val = [2]*tree.JsonBehavior{$1.jsonBehavior(), $4.jsonBehavior()}
+  }
+| /* EMPTY */
+  {
+    $$.val = [2]*tree.JsonBehavior{}
+  }
+
+json_on_error_clause_opt:
+  json_behavior ON json_error
+  {
+    $$.val = $1.jsonBehavior()
+  }
+| /* EMPTY */
+  {
+    $$.val = (*tree.JsonBehavior)(nil)
   }
 
 func_table:
@@ -12546,7 +13040,7 @@ const_datetime:
 
 opt_timezone:
   WITH_LA TIME ZONE { $$.val = true; }
-| WITHOUT TIME ZONE { $$.val = false; }
+| WITHOUT_LA TIME ZONE { $$.val = false; }
 | /*EMPTY*/         { $$.val = false; }
 
 interval_type:
@@ -13007,6 +13501,14 @@ a_expr:
 | a_expr TEXTSEARCHMATCH a_expr
   {
     $$.val = &tree.ComparisonExpr{Operator: tree.TextSearchMatch, Left: $1.expr(), Right: $3.expr()}
+  }
+| a_expr IS DOCUMENT %prec IS
+  {
+    $$.val = &tree.XmlIsDocument{Expr: $1.expr()}
+  }
+| a_expr IS NOT DOCUMENT %prec IS
+  {
+    $$.val = &tree.NotExpr{Expr: &tree.XmlIsDocument{Expr: $1.expr()}}
   }
 | a_expr IS NAN %prec IS
   {
@@ -13864,6 +14366,54 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | LEAST '(' error { return helpWithFunctionByName(sqllex, $1) }
+| XMLCONCAT '(' expr_list ')'
+  {
+    $$.val = &tree.XmlConcat{Exprs: $3.exprs()}
+  }
+| XMLELEMENT '(' NAME unrestricted_name ')'
+  {
+    $$.val = &tree.XmlElement{Name: tree.Name($4)}
+  }
+| XMLELEMENT '(' NAME unrestricted_name ',' xml_attributes ')'
+  {
+    $$.val = &tree.XmlElement{Name: tree.Name($4), Attributes: $6.xmlAttributes()}
+  }
+| XMLELEMENT '(' NAME unrestricted_name ',' expr_list ')'
+  {
+    $$.val = &tree.XmlElement{Name: tree.Name($4), Content: $6.exprs()}
+  }
+| XMLELEMENT '(' NAME unrestricted_name ',' xml_attributes ',' expr_list ')'
+  {
+    $$.val = &tree.XmlElement{Name: tree.Name($4), Attributes: $6.xmlAttributes(), Content: $8.exprs()}
+  }
+| XMLPARSE '(' document_or_content a_expr xml_whitespace_option ')'
+  {
+    $$.val = &tree.XmlParse{Document: $3.bool(), Expr: $4.expr()}
+  }
+| XMLEXISTS '(' c_expr xmlexists_argument ')'
+  {
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("xmlexists"), Exprs: tree.Exprs{$3.expr(), $4.expr()}}
+  }
+| XMLFOREST '(' xml_attribute_list ')'
+  {
+    $$.val = &tree.XmlForest{Elements: $3.xmlAttributes()}
+  }
+| XMLPI '(' NAME unrestricted_name ')'
+  {
+    $$.val = &tree.XmlPi{Name: tree.Name($4)}
+  }
+| XMLPI '(' NAME unrestricted_name ',' a_expr ')'
+  {
+    $$.val = &tree.XmlPi{Name: tree.Name($4), Content: $6.expr()}
+  }
+| XMLROOT '(' a_expr ',' xml_root_version opt_xml_root_standalone ')'
+  {
+    $$.val = &tree.XmlRoot{Xml: $3.expr(), Version: $5.expr(), Standalone: $6.xmlRootStandalone()}
+  }
+| XMLSERIALIZE '(' document_or_content a_expr AS simple_typename ')'
+  {
+    $$.val = &tree.XmlSerialize{Document: $3.bool(), Expr: $4.expr(), Type: $6.typeReference()}
+  }
 
 
 // Aggregate decoration clauses
@@ -14346,6 +14896,76 @@ overlay_placing:
   PLACING a_expr
   {
     $$.val = $2.expr()
+  }
+
+xml_root_version:
+  VERSION a_expr
+  {
+    $$.val = $2.expr()
+  }
+| VERSION NO VALUE
+  {
+    $$.val = tree.Expr(nil)
+  }
+
+opt_xml_root_standalone:
+  ',' STANDALONE YES
+  {
+    $$.val = tree.XmlRootStandaloneYes
+  }
+| ',' STANDALONE NO
+  {
+    $$.val = tree.XmlRootStandaloneNo
+  }
+| ',' STANDALONE NO VALUE
+  {
+    $$.val = tree.XmlRootStandaloneNoValue
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.XmlRootStandaloneOmitted
+  }
+
+document_or_content:
+  DOCUMENT
+  {
+    $$.val = true
+  }
+| CONTENT
+  {
+    $$.val = false
+  }
+
+// Whitespace handling is accepted for compatibility, but PostgreSQL ignores it as well.
+xml_whitespace_option:
+  PRESERVE WHITESPACE {}
+| STRIP WHITESPACE {}
+| /* EMPTY */ {}
+
+xml_attributes:
+  XMLATTRIBUTES '(' xml_attribute_list ')'
+  {
+    $$.val = $3.xmlAttributes()
+  }
+
+xml_attribute_list:
+  xml_attribute_el
+  {
+    $$.val = []tree.XmlAttribute{$1.xmlAttribute()}
+  }
+| xml_attribute_list ',' xml_attribute_el
+  {
+    $$.val = append($1.xmlAttributes(), $3.xmlAttribute())
+  }
+
+xml_attribute_el:
+  a_expr AS unrestricted_name
+  {
+    $$.val = tree.XmlAttribute{Expr: $1.expr(), Name: tree.Name($3)}
+  }
+| a_expr
+  {
+    $$.val = tree.XmlAttribute{Expr: $1.expr()}
   }
 
 // position_list uses b_expr not a_expr to avoid conflict with general IN
@@ -15148,12 +15768,14 @@ unreserved_keyword:
 | COMPACT
 | COMPLETE
 | COMPRESSION
+| CONDITIONAL
 | CONFIGURATION
 | CONFIGURATIONS
 | CONFIGURE
 | CONFLICT
 | CONNECTION
 | CONSTRAINTS
+| CONTENT
 | CONTROLCHANGEFEED
 | CONTROLJOB
 | CONVERSION
@@ -15187,10 +15809,12 @@ unreserved_keyword:
 | DISABLE
 | DISABLE_PAGE_SKIPPING
 | DISCARD
+| DOCUMENT
 | DOMAIN
 | DOUBLE
 | DROP
 | EACH
+| EMPTY
 | ENABLE
 | ENCODING
 | ENCRYPTED
@@ -15280,6 +15904,7 @@ unreserved_keyword:
 | JOB
 | JOBS
 | JSON
+| KEEP
 | KEY
 | KEYS
 | KMS
@@ -15343,6 +15968,7 @@ unreserved_keyword:
 | NAMES
 | NAN
 | NEGATOR
+| NESTED
 | NEVER
 | NEW
 | NEXT
@@ -15370,6 +15996,7 @@ unreserved_keyword:
 | OID
 | OIDS
 | OLD
+| OMIT
 | ONLY_DATABASE_STATS
 | OPERATOR
 | OPT
@@ -15389,7 +16016,9 @@ unreserved_keyword:
 | PARTITION
 | PARTITIONS
 | PASSEDBYVALUE
+| PASSING
 | PASSWORD
+| PATH
 | PAUSE
 | PAUSED
 | PHYSICAL
@@ -15418,6 +16047,7 @@ unreserved_keyword:
 | PUBLICATION
 | QUERIES
 | QUERY
+| QUOTES
 | RANGE
 | RANGES
 | READ
@@ -15460,6 +16090,7 @@ unreserved_keyword:
 | RUNNING
 | SAFE
 | SAVEPOINT
+| SCALAR
 | SCATTER
 | SCHEDULE
 | SCHEDULES
@@ -15501,6 +16132,7 @@ unreserved_keyword:
 | SQL
 | SSPACE
 | STABLE
+| STANDALONE
 | START
 | STATEMENT
 | STATISTICS
@@ -15512,6 +16144,7 @@ unreserved_keyword:
 | STORED
 | STRATEGY
 | STRICT
+| STRIP
 | STYPE
 | SUBSCRIPT
 | SUBSCRIPTION
@@ -15544,6 +16177,7 @@ unreserved_keyword:
 | TYPMOD_OUT
 | UNBOUNDED
 | UNCOMMITTED
+| UNCONDITIONAL
 | UNKNOWN
 | UNLOGGED
 | UNSAFE
@@ -15564,6 +16198,7 @@ unreserved_keyword:
 | VERSION
 | VIEW
 | VIEWACTIVITY
+| WHITESPACE
 | WITHIN
 | WITHOUT
 | WRITE
@@ -15614,6 +16249,7 @@ col_name_keyword:
 | INTEGER
 | INTERVAL
 | ISERROR
+| JSON_TABLE
 | LEAST
 | NULLIF
 | NUMERIC
@@ -15641,6 +16277,17 @@ col_name_keyword:
 | VIRTUAL
 | VOLATILE
 | WORK
+| XMLATTRIBUTES
+| XMLCONCAT
+| XMLELEMENT
+| XMLEXISTS
+| XMLFOREST
+| XMLNAMESPACES
+| XMLPARSE
+| XMLPI
+| XMLROOT
+| XMLSERIALIZE
+| XMLTABLE
 
 // type_func_name_keyword contains both the standard set of
 // type_func_name_keyword's along with the set of CRDB extensions.

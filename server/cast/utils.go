@@ -21,6 +21,8 @@ import (
 
 	cerrors "github.com/cockroachdb/errors"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -43,7 +45,7 @@ func handleStringCast(input string, targetType *pgtypes.DoltgresType) (string, e
 		length := uint32(maxChars)
 		str, runeLength := truncateString(input, length)
 		if runeLength > length {
-			return input, cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String()))
+			return input, pgerror.WithCandidateCode(cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String())), pgcode.StringDataRightTruncation)
 		}
 		return strings.TrimRight(str, " "), nil
 	case pgtypes.InternalChar.ID:
@@ -60,7 +62,7 @@ func handleStringCast(input string, targetType *pgtypes.DoltgresType) (string, e
 		length := uint32(pgtypes.GetCharLengthFromTypmod(tm))
 		str, runeLength := truncateString(input, length)
 		if runeLength > length {
-			return input, cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String()))
+			return input, pgerror.WithCandidateCode(cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String())), pgcode.StringDataRightTruncation)
 		} else {
 			return str, nil
 		}

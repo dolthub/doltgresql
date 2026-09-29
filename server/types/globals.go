@@ -197,7 +197,7 @@ func init() {
 		toInternal("_varbit"):          VarBitArray,
 		toInternal("_varchar"):         VarCharArray,
 		toInternal("_xid"):             XidArray,
-		toInternal("_xml"):             Unknown,
+		toInternal("_xml"):             XmlArray,
 		toInternal("abstime"):          Unknown,
 		toInternal("aclitem"):          Unknown,
 		toInternal("any"):              Any,
@@ -294,7 +294,7 @@ func init() {
 		toInternal("varchar"):          VarChar,
 		toInternal("void"):             Void,
 		toInternal("xid"):              Xid,
-		toInternal("xml"):              Unknown,
+		toInternal("xml"):              Xml,
 	}
 	for _, t := range GetAllBuitInTypes() {
 		NameToInternalID[t.Name()] = t.ID

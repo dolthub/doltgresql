@@ -96,8 +96,9 @@ type plpgSQL_if_elsif struct {
 
 // plpgSQL_rec exists to match the expected JSON format.
 type plpgSQL_rec struct {
-	RefName     string `json:"refname"`
-	DatumNumber int32  `json:"dno"`
+	RefName     string      `json:"refname"`
+	DatumNumber int32       `json:"dno"`
+	Default     default_val `json:"default_val"`
 }
 
 // plpgSQL_recfield exists to match the expected JSON format.

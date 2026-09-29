@@ -4,13 +4,15 @@ go 1.26.2
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
+	github.com/antchfx/xmlquery v1.4.3
+	github.com/antchfx/xpath v1.3.3
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20260923122322-71f8500b3aad
+	github.com/dolthub/dolt/go v0.40.5-0.20260925142331-cb82917980aa
 	github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20260921092145-13a83f1e6133
-	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
+	github.com/dolthub/go-mysql-server v0.20.1-0.20260925041219-1d3dd0fb68f0
+	github.com/dolthub/pg_query_go/v6 v6.0.0-20260922094746-ae7577e21dfe
 	github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166
 	github.com/dolthub/vitess v0.0.0-20260916192104-15c5c4158b37
 	github.com/fatih/color v1.13.0
@@ -35,6 +37,7 @@ require (
 	github.com/shopspring/decimal v1.4.0
 	github.com/sirupsen/logrus v1.8.3
 	github.com/stretchr/testify v1.11.1
+	github.com/theory/sqljson v0.4.0
 	github.com/twpayne/go-geom v1.3.6
 	github.com/xdg-go/scram v1.2.0
 	github.com/xdg-go/stringprep v1.0.4
@@ -125,6 +128,7 @@ require (
 	github.com/gocraft/dbr/v2 v2.7.2 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-github/v57 v57.0.0 // indirect
@@ -172,6 +176,7 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.25.12 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
+	github.com/smasher164/xid v0.1.2 // indirect
 	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.7.0 // indirect

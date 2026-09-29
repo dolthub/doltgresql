@@ -17,6 +17,7 @@ package expression
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -50,7 +51,11 @@ func (t *RecordExpr) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (t *RecordExpr) String() string {
-	return "RECORD EXPR"
+	fields := make([]string, len(t.exprs))
+	for i, expr := range t.exprs {
+		fields[i] = expr.String()
+	}
+	return "ROW(" + strings.Join(fields, ", ") + ")"
 }
 
 // Type implements the sql.Expression interface.

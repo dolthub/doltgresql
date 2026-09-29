@@ -88,6 +88,7 @@ var KeywordsCategories = map[string]string{
 	"complete":                     "U",
 	"compression":                  "U",
 	"concurrently":                 "R",
+	"conditional":                  "U",
 	"configuration":                "U",
 	"configurations":               "U",
 	"configure":                    "U",
@@ -96,6 +97,7 @@ var KeywordsCategories = map[string]string{
 	"connection":                   "U",
 	"constraint":                   "R",
 	"constraints":                  "U",
+	"content":                      "U",
 	"controlchangefeed":            "U",
 	"controljob":                   "U",
 	"conversion":                   "U",
@@ -146,12 +148,14 @@ var KeywordsCategories = map[string]string{
 	"discard":                      "U",
 	"distinct":                     "R",
 	"do":                           "R",
+	"document":                     "U",
 	"domain":                       "U",
 	"double":                       "U",
 	"drop":                         "U",
 	"each":                         "U",
 	"element":                      "R",
 	"else":                         "R",
+	"empty":                        "U",
 	"enable":                       "U",
 	"encoding":                     "U",
 	"encrypted":                    "U",
@@ -280,6 +284,8 @@ var KeywordsCategories = map[string]string{
 	"jobs":                         "U",
 	"join":                         "T",
 	"json":                         "U",
+	"json_table":                   "C",
+	"keep":                         "U",
 	"key":                          "U",
 	"keys":                         "U",
 	"kms":                          "U",
@@ -352,6 +358,7 @@ var KeywordsCategories = map[string]string{
 	"nan":                          "U",
 	"natural":                      "T",
 	"negator":                      "U",
+	"nested":                       "U",
 	"never":                        "U",
 	"new":                          "U",
 	"next":                         "U",
@@ -387,6 +394,7 @@ var KeywordsCategories = map[string]string{
 	"oid":                          "U",
 	"oids":                         "U",
 	"old":                          "U",
+	"omit":                         "U",
 	"on":                           "R",
 	"only":                         "R",
 	"only_database_stats":          "U",
@@ -414,7 +422,9 @@ var KeywordsCategories = map[string]string{
 	"partition":                    "U",
 	"partitions":                   "U",
 	"passedbyvalue":                "U",
+	"passing":                      "U",
 	"password":                     "U",
+	"path":                         "U",
 	"pause":                        "U",
 	"paused":                       "U",
 	"physical":                     "U",
@@ -449,6 +459,7 @@ var KeywordsCategories = map[string]string{
 	"publication":                  "U",
 	"queries":                      "U",
 	"query":                        "U",
+	"quotes":                       "U",
 	"range":                        "U",
 	"ranges":                       "U",
 	"read":                         "U",
@@ -496,6 +507,7 @@ var KeywordsCategories = map[string]string{
 	"running":                      "U",
 	"safe":                         "U",
 	"savepoint":                    "U",
+	"scalar":                       "U",
 	"scatter":                      "U",
 	"schedule":                     "U",
 	"schedules":                    "U",
@@ -543,6 +555,7 @@ var KeywordsCategories = map[string]string{
 	"sql":                          "U",
 	"sspace":                       "U",
 	"stable":                       "U",
+	"standalone":                   "U",
 	"start":                        "U",
 	"statement":                    "U",
 	"statistics":                   "U",
@@ -555,6 +568,7 @@ var KeywordsCategories = map[string]string{
 	"strategy":                     "U",
 	"strict":                       "U",
 	"string":                       "C",
+	"strip":                        "U",
 	"stype":                        "U",
 	"subscript":                    "U",
 	"subscription":                 "U",
@@ -600,6 +614,7 @@ var KeywordsCategories = map[string]string{
 	"typmod_out":                   "U",
 	"unbounded":                    "U",
 	"uncommitted":                  "U",
+	"unconditional":                "U",
 	"union":                        "R",
 	"unique":                       "R",
 	"unknown":                      "U",
@@ -633,6 +648,7 @@ var KeywordsCategories = map[string]string{
 	"volatile":                     "C",
 	"when":                         "R",
 	"where":                        "R",
+	"whitespace":                   "U",
 	"window":                       "R",
 	"with":                         "R",
 	"within":                       "U",
@@ -641,6 +657,17 @@ var KeywordsCategories = map[string]string{
 	"wrapper":                      "R",
 	"write":                        "U",
 	"xml":                          "U",
+	"xmlattributes":                "C",
+	"xmlconcat":                    "C",
+	"xmlelement":                   "C",
+	"xmlexists":                    "C",
+	"xmlforest":                    "C",
+	"xmlnamespaces":                "C",
+	"xmlparse":                     "C",
+	"xmlpi":                        "C",
+	"xmlroot":                      "C",
+	"xmlserialize":                 "C",
+	"xmltable":                     "C",
 	"yaml":                         "U",
 	"year":                         "U",
 	"yes":                          "U",
@@ -735,6 +762,7 @@ var KeywordNames = []string{
 	"complete",
 	"compression",
 	"concurrently",
+	"conditional",
 	"configuration",
 	"configurations",
 	"configure",
@@ -743,6 +771,7 @@ var KeywordNames = []string{
 	"connection",
 	"constraint",
 	"constraints",
+	"content",
 	"controlchangefeed",
 	"controljob",
 	"conversion",
@@ -793,12 +822,14 @@ var KeywordNames = []string{
 	"discard",
 	"distinct",
 	"do",
+	"document",
 	"domain",
 	"double",
 	"drop",
 	"each",
 	"element",
 	"else",
+	"empty",
 	"enable",
 	"encoding",
 	"encrypted",
@@ -927,6 +958,8 @@ var KeywordNames = []string{
 	"jobs",
 	"join",
 	"json",
+	"json_table",
+	"keep",
 	"key",
 	"keys",
 	"kms",
@@ -999,6 +1032,7 @@ var KeywordNames = []string{
 	"nan",
 	"natural",
 	"negator",
+	"nested",
 	"never",
 	"new",
 	"next",
@@ -1034,6 +1068,7 @@ var KeywordNames = []string{
 	"oid",
 	"oids",
 	"old",
+	"omit",
 	"on",
 	"only",
 	"only_database_stats",
@@ -1061,7 +1096,9 @@ var KeywordNames = []string{
 	"partition",
 	"partitions",
 	"passedbyvalue",
+	"passing",
 	"password",
+	"path",
 	"pause",
 	"paused",
 	"physical",
@@ -1096,6 +1133,7 @@ var KeywordNames = []string{
 	"publication",
 	"queries",
 	"query",
+	"quotes",
 	"range",
 	"ranges",
 	"read",
@@ -1143,6 +1181,7 @@ var KeywordNames = []string{
 	"running",
 	"safe",
 	"savepoint",
+	"scalar",
 	"scatter",
 	"schedule",
 	"schedules",
@@ -1190,6 +1229,7 @@ var KeywordNames = []string{
 	"sql",
 	"sspace",
 	"stable",
+	"standalone",
 	"start",
 	"statement",
 	"statistics",
@@ -1202,6 +1242,7 @@ var KeywordNames = []string{
 	"strategy",
 	"strict",
 	"string",
+	"strip",
 	"stype",
 	"subscript",
 	"subscription",
@@ -1247,6 +1288,7 @@ var KeywordNames = []string{
 	"typmod_out",
 	"unbounded",
 	"uncommitted",
+	"unconditional",
 	"union",
 	"unique",
 	"unknown",
@@ -1280,6 +1322,7 @@ var KeywordNames = []string{
 	"volatile",
 	"when",
 	"where",
+	"whitespace",
 	"window",
 	"with",
 	"within",
@@ -1288,6 +1331,17 @@ var KeywordNames = []string{
 	"wrapper",
 	"write",
 	"xml",
+	"xmlattributes",
+	"xmlconcat",
+	"xmlelement",
+	"xmlexists",
+	"xmlforest",
+	"xmlnamespaces",
+	"xmlparse",
+	"xmlpi",
+	"xmlroot",
+	"xmlserialize",
+	"xmltable",
 	"yaml",
 	"year",
 	"yes",
@@ -1472,6 +1526,8 @@ func GetKeywordID(k string) int32 {
 		return COMPRESSION
 	case "concurrently":
 		return CONCURRENTLY
+	case "conditional":
+		return CONDITIONAL
 	case "configuration":
 		return CONFIGURATION
 	case "configurations":
@@ -1488,6 +1544,8 @@ func GetKeywordID(k string) int32 {
 		return CONSTRAINT
 	case "constraints":
 		return CONSTRAINTS
+	case "content":
+		return CONTENT
 	case "controlchangefeed":
 		return CONTROLCHANGEFEED
 	case "controljob":
@@ -1588,6 +1646,8 @@ func GetKeywordID(k string) int32 {
 		return DISTINCT
 	case "do":
 		return DO
+	case "document":
+		return DOCUMENT
 	case "domain":
 		return DOMAIN
 	case "double":
@@ -1600,6 +1660,8 @@ func GetKeywordID(k string) int32 {
 		return ELEMENT
 	case "else":
 		return ELSE
+	case "empty":
+		return EMPTY
 	case "enable":
 		return ENABLE
 	case "encoding":
@@ -1856,6 +1918,10 @@ func GetKeywordID(k string) int32 {
 		return JOIN
 	case "json":
 		return JSON
+	case "json_table":
+		return JSON_TABLE
+	case "keep":
+		return KEEP
 	case "key":
 		return KEY
 	case "keys":
@@ -2000,6 +2066,8 @@ func GetKeywordID(k string) int32 {
 		return NATURAL
 	case "negator":
 		return NEGATOR
+	case "nested":
+		return NESTED
 	case "never":
 		return NEVER
 	case "new":
@@ -2070,6 +2138,8 @@ func GetKeywordID(k string) int32 {
 		return OIDS
 	case "old":
 		return OLD
+	case "omit":
+		return OMIT
 	case "on":
 		return ON
 	case "only":
@@ -2124,8 +2194,12 @@ func GetKeywordID(k string) int32 {
 		return PARTITIONS
 	case "passedbyvalue":
 		return PASSEDBYVALUE
+	case "passing":
+		return PASSING
 	case "password":
 		return PASSWORD
+	case "path":
+		return PATH
 	case "pause":
 		return PAUSE
 	case "paused":
@@ -2194,6 +2268,8 @@ func GetKeywordID(k string) int32 {
 		return QUERIES
 	case "query":
 		return QUERY
+	case "quotes":
+		return QUOTES
 	case "range":
 		return RANGE
 	case "ranges":
@@ -2288,6 +2364,8 @@ func GetKeywordID(k string) int32 {
 		return SAFE
 	case "savepoint":
 		return SAVEPOINT
+	case "scalar":
+		return SCALAR
 	case "scatter":
 		return SCATTER
 	case "schedule":
@@ -2382,6 +2460,8 @@ func GetKeywordID(k string) int32 {
 		return SSPACE
 	case "stable":
 		return STABLE
+	case "standalone":
+		return STANDALONE
 	case "start":
 		return START
 	case "statement":
@@ -2406,6 +2486,8 @@ func GetKeywordID(k string) int32 {
 		return STRICT
 	case "string":
 		return STRING
+	case "strip":
+		return STRIP
 	case "stype":
 		return STYPE
 	case "subscript":
@@ -2496,6 +2578,8 @@ func GetKeywordID(k string) int32 {
 		return UNBOUNDED
 	case "uncommitted":
 		return UNCOMMITTED
+	case "unconditional":
+		return UNCONDITIONAL
 	case "union":
 		return UNION
 	case "unique":
@@ -2562,6 +2646,8 @@ func GetKeywordID(k string) int32 {
 		return WHEN
 	case "where":
 		return WHERE
+	case "whitespace":
+		return WHITESPACE
 	case "window":
 		return WINDOW
 	case "with":
@@ -2578,6 +2664,28 @@ func GetKeywordID(k string) int32 {
 		return WRITE
 	case "xml":
 		return XML
+	case "xmlattributes":
+		return XMLATTRIBUTES
+	case "xmlconcat":
+		return XMLCONCAT
+	case "xmlelement":
+		return XMLELEMENT
+	case "xmlexists":
+		return XMLEXISTS
+	case "xmlforest":
+		return XMLFOREST
+	case "xmlnamespaces":
+		return XMLNAMESPACES
+	case "xmlparse":
+		return XMLPARSE
+	case "xmlpi":
+		return XMLPI
+	case "xmlroot":
+		return XMLROOT
+	case "xmlserialize":
+		return XMLSERIALIZE
+	case "xmltable":
+		return XMLTABLE
 	case "yaml":
 		return YAML
 	case "year":

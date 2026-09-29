@@ -26,6 +26,197 @@ import (
 func TestPlpgsqlRecordInto(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "RECORD declaration default",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD := ROW(1, 'a');
+BEGIN RETURN r::text; END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_record_default();`,
+					Expected: []sql.Row{{"(1,a)"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default from NEW",
+			SetUpScript: []string{
+				`CREATE TABLE src (id int, note text);`,
+				`CREATE TABLE res (id int, note text);`,
+				`CREATE FUNCTION trg_record_default() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE whole RECORD := NEW;
+BEGIN
+	INSERT INTO res VALUES (whole.id, whole.note);
+	RETURN NEW;
+END; $$;`,
+				`CREATE TRIGGER t_record_default AFTER INSERT ON src FOR EACH ROW EXECUTE FUNCTION trg_record_default();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO src VALUES (1, 'a');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id, note FROM res;`,
+					Expected: []sql.Row{{1, "a"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default referencing an earlier variable",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default_local() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE n int := 7; r RECORD := ROW(n, 'a');
+BEGIN RETURN r::text; END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_record_default_local();`,
+					Expected: []sql.Row{{"(7,a)"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default referencing parameters",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default_param(n int, s text) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD := ROW(n * 2, s);
+BEGIN RETURN r::text || '|' || r.f1 || '|' || r.f2; END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// The default is evaluated anew on each call.
+					Query:    `SELECT f_record_default_param(1, 'x'), f_record_default_param(2, 'y');`,
+					Expected: []sql.Row{{"(2,x)|2|x", "(4,y)|4|y"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default referencing an outer block's variable",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default_outer() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE n int := 7;
+BEGIN
+	DECLARE r RECORD := ROW(n, 'a');
+	BEGIN RETURN r::text; END;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_record_default_outer();`,
+					Expected: []sql.Row{{"(7,a)"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default referencing a shadowing variable",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default_shadow() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE n int := 1;
+BEGIN
+	DECLARE n int := 2; r RECORD := ROW(n);
+	BEGIN RETURN r::text; END;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_record_default_shadow();`,
+					Expected: []sql.Row{{"(2)"}},
+				},
+			},
+		},
+		{
+			Name: "variable declaration default referencing an earlier RECORD",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_variable_default_record() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD := ROW(1, 'a'); t text := r::text; m int := r.f1 + 1;
+BEGIN RETURN t || '|' || m; END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_variable_default_record();`,
+					Expected: []sql.Row{{"(1,a)|2"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default from an earlier RECORD",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default_record() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE a RECORD := ROW(1, 'x'::text); b RECORD := a;
+BEGIN RETURN b::text || '|' || b.f2; END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_record_default_record();`,
+					Expected: []sql.Row{{"(1,x)|x"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD and variable declaration defaults interleaved",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default_chain() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE n int := 1; r RECORD := ROW(n); m int := n + 1; s RECORD := ROW(n, m);
+BEGIN RETURN r::text || s::text; END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT f_record_default_chain();`,
+					Expected: []sql.Row{{"(1)(1,2)"}},
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default referencing a later variable",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_record_default_later() RETURNS text LANGUAGE plpgsql AS $$
+DECLARE r RECORD := ROW(n); n int := 1;
+BEGIN RETURN r::text; END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// PostgreSQL: column "n" does not exist
+					Query:       `SELECT f_record_default_later();`,
+					ExpectedErr: `column "n"`,
+				},
+			},
+		},
+		{
+			Name: "RECORD declaration default from NEW and a variable",
+			SetUpScript: []string{
+				`CREATE TABLE src (id int, note text);`,
+				`CREATE TABLE res (id int, note text);`,
+				`CREATE FUNCTION trg_record_default_var() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE bump int := 100; r RECORD := ROW(NEW.id + bump, NEW.note || '!');
+BEGIN
+	INSERT INTO res VALUES (r.f1, r.f2);
+	RETURN NEW;
+END; $$;`,
+				`CREATE TRIGGER t_record_default_var AFTER INSERT ON src FOR EACH ROW EXECUTE FUNCTION trg_record_default_var();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO src VALUES (1, 'a');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id, note FROM res;`,
+					Expected: []sql.Row{{101, "a!"}},
+				},
+			},
+		},
+		{
 			Name: "SELECT INTO a RECORD variable",
 			SetUpScript: []string{
 				`CREATE TABLE k (id int, name text, amt numeric);`,

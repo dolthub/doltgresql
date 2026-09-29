@@ -341,6 +341,15 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 			}
 			expr.Typ = newType
 			return expr, transform.NewTree, nil
+		case *pgexprs.XmlSerialize:
+			if expr.TargetType.IsResolvedType() {
+				return expr, transform.SameTree, nil
+			}
+			newType, err := resolveType(ctx, db, expr.TargetType)
+			if err != nil {
+				return nil, transform.NewTree, err
+			}
+			return expr.WithType(newType), transform.NewTree, nil
 		default:
 			// TODO: add expressions that use unresolved types like domain
 			return expr, transform.SameTree, nil

@@ -27,7 +27,23 @@ import (
 // initVarChar handles all casts that are built-in. This comprises only the source types.
 func initVarChar(builtInCasts map[id.Cast]casts.Cast) {
 	varcharAssignment(builtInCasts)
+	varcharExplicit(builtInCasts)
 	varcharImplicit(builtInCasts)
+}
+
+// varcharExplicit registers all explicit casts. This comprises only the source types.
+func varcharExplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.VarChar,
+		ToType:   pgtypes.Xml,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
+		},
+	})
 }
 
 // varcharAssignment registers all assignment casts. This comprises only the source types.

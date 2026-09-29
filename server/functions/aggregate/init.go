@@ -20,4 +20,5 @@ func Init() {
 	initNumericAggs()
 	initAvgAggs()
 	initVarianceAggs()
+	initXmlAggs()
 }

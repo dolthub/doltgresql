@@ -15,9 +15,11 @@
 package information_schema
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/information_schema"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -26,6 +28,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	partypes "github.com/dolthub/doltgresql/postgres/parser/types"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -128,7 +132,7 @@ func columnsRowIter(ctx *sql.Context, catalog sql.Catalog, allColsWithDefaultVal
 // are used to define all row values. These include the current ordinal
 // position, so this column will get the next position number, sql.Column
 // object, database name, and table name.
-func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName, schName, tblName string) sql.Row {
+func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName, schName, tblName string) (sql.Row, error) {
 	var (
 		ordinalPos  = int32(curOrdPos + 1)
 		nullable    = "NO"
@@ -149,6 +153,13 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 	datetimePrecision := getDatetimePrecision(col.Type)
 
 	columnDefault := information_schema.GetColumnDefault(ctx, col.Default)
+	if columnDefault != nil && col.Default.IsLiteral() {
+		columnType, _ := col.Type.(*pgtypes.DoltgresType)
+		var err error
+		if columnDefault, err = postgresDefaultString(ctx, col.Default.Expr, columnType); err != nil {
+			return nil, err
+		}
+	}
 	var generationExpression any
 	if col.Generated != nil {
 		if unresolved, isUnresolved := col.Generated.Expr.(*sql.UnresolvedColumnDefault); isUnresolved {
@@ -203,7 +214,7 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 		isGenerated,           // is_generated
 		generationExpression,  // generation_expression
 		"YES",                 // is_updatable
-	}
+	}, nil
 }
 
 // getRowsFromTable returns array of rows for all accessible columns of the given table.
@@ -215,7 +226,10 @@ func getRowsFromTable(ctx *sql.Context, db information_schema.DbWithNames, t sql
 		if col.HiddenSystem {
 			continue
 		}
-		r := getRowFromColumn(ctx, i, col, db.CatalogName, db.SchemaName, tblName)
+		r, err := getRowFromColumn(ctx, i, col, db.CatalogName, db.SchemaName, tblName)
+		if err != nil {
+			return nil, err
+		}
 		if r != nil {
 			rows = append(rows, r)
 		}
@@ -317,6 +331,10 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 		udtName = dgType.Name()
 		if t, ok := partypes.OidToType[oid.Oid(id.Cache().ToOID(dgType.ID.AsId()))]; ok {
 			dataType = t.SQLStandardName()
+		} else if dgType.IsArrayType() {
+			dataType = "ARRAY"
+		} else {
+			dataType = udtName
 		}
 	} else {
 		dtdId := strings.Split(strings.Split(colType.String(), " COLLATE")[0], " CHARACTER SET")[0]
@@ -405,4 +423,85 @@ func getDatetimePrecision(colType sql.Type) interface{} {
 		}
 	}
 	return nil
+}
+
+// postgresDefaultString returns the text that Postgres shows for a default built from constants and casts, where a string
+// constant takes on the type of `columnType`. Any other expression returns its own text.
+func postgresDefaultString(ctx *sql.Context, expr sql.Expression, columnType *pgtypes.DoltgresType) (string, error) {
+	switch expr := expr.(type) {
+	case *expression.Literal:
+		literalType, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
+		if !ok {
+			break
+		}
+		if columnType != nil && literalType.ID == pgtypes.Unknown.ID {
+			return postgresDefaultString(ctx, pgexprs.NewExplicitCast(expr, columnType.WithAttTypMod(-1)), nil)
+		}
+		return postgresConstantString(ctx, expr.Value(), literalType, true)
+	case *pgexprs.ExplicitCast:
+		castType := expr.Type(ctx).(*pgtypes.DoltgresType)
+		childType, ok := expr.Child().Type(ctx).(*pgtypes.DoltgresType)
+		if !ok {
+			break
+		}
+		if childType.Equals(castType) {
+			return postgresDefaultString(ctx, expr.Child(), nil)
+		}
+		literal, isLiteral := expr.Child().(*expression.Literal)
+		var childText string
+		var err error
+		if isLiteral && childType.ID == pgtypes.Unknown.ID {
+			var val any
+			if val, err = expr.Eval(ctx, nil); err != nil {
+				return "", err
+			}
+			if castType.GetAttTypMod() < 0 {
+				return postgresConstantString(ctx, val, castType, true)
+			}
+			childText, err = postgresConstantString(ctx, val, castType, false)
+		} else if isLiteral && childType.ID == castType.ID {
+			childText, err = postgresConstantString(ctx, literal.Value(), childType, false)
+		} else {
+			childText, err = postgresDefaultString(ctx, expr.Child(), nil)
+			childText = "(" + childText + ")"
+		}
+		if err != nil {
+			return "", err
+		}
+		typeName, err := functions.FormatType(ctx, castType.ID.AsId(), castType.GetAttTypMod())
+		if err != nil {
+			return "", err
+		}
+		return childText + "::" + typeName, nil
+	}
+	return expr.String(), nil
+}
+
+// postgresConstantString returns the text that Postgres shows for a constant of the given type. When `labeled` is true, the
+// type name follows any constant that would otherwise read back as a different type.
+func postgresConstantString(ctx *sql.Context, val any, typ *pgtypes.DoltgresType, labeled bool) (string, error) {
+	var text string
+	if val == nil {
+		text = "NULL"
+	} else if typ.ID == pgtypes.Bool.ID {
+		return strconv.FormatBool(val.(bool)), nil
+	} else {
+		output, err := typ.IoOutput(ctx, val)
+		if err != nil {
+			return "", err
+		}
+		if (typ.ID == pgtypes.Int32.ID && !strings.HasPrefix(output, "-")) ||
+			(typ.ID == pgtypes.Numeric.ID && output[0] >= '0' && output[0] <= '9' && strings.ContainsAny(output, ".eE")) {
+			return output, nil
+		}
+		text = "'" + strings.ReplaceAll(output, "'", "''") + "'"
+	}
+	if !labeled || typ.ID == pgtypes.Unknown.ID {
+		return text, nil
+	}
+	typeName, err := functions.FormatType(ctx, typ.ID.AsId(), typ.GetAttTypMod())
+	if err != nil {
+		return "", err
+	}
+	return text + "::" + typeName, nil
 }
