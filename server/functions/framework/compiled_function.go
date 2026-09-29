@@ -1150,9 +1150,11 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 	// We can use the first polymorphic non-unknown type that we find, since we can morph it into any type that we need.
 	// We've verified that all polymorphic types are compatible in a previous step, so this is safe to do.
 	var firstPolymorphicType *pgtypes.DoltgresType
+	var firstPolymorphicParameter *pgtypes.DoltgresType
 	for i, functionInterfaceType := range functionInterfaceTypes {
 		if functionInterfaceType.IsPolymorphicType() && originalTypes[i].ID != pgtypes.Unknown.ID {
 			firstPolymorphicType = originalTypes[i]
+			firstPolymorphicParameter = functionInterfaceType
 			break
 		}
 	}
@@ -1169,7 +1171,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		// "...anynonarray and anyenum do not represent separate type variables; they are the same type as anyelement..."
 		// The implication of this being that anyelement will always return the base type even for array types,
 		// just like anynonarray would.
-		if firstPolymorphicType.IsArrayType() {
+		if firstPolymorphicType.IsArrayType() || firstPolymorphicType.IsVectorType() && firstPolymorphicParameter == pgtypes.AnyArray {
 			return firstPolymorphicType.ArrayBaseType()
 		} else {
 			return firstPolymorphicType
@@ -1216,11 +1218,8 @@ func (*CompiledFunction) specificFuncImpl() {}
 // getTypeIfRowType returns the underlying type if it's Row Type;
 // otherwise, it returns the type that is passed.
 func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) *pgtypes.DoltgresType {
-	if isSRF {
-		// TODO: need support for used defined types
-		if typ, ok := pgtypes.IDToBuiltInDoltgresType[t.Elem.ID]; ok {
-			return typ
-		}
+	if isSRF && t.ID == pgtypes.Row.ID {
+		return t.Elem
 	}
 	return t
 }

@@ -23,6 +23,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -30,6 +32,9 @@ import (
 type Subscript struct {
 	Child   sql.Expression
 	Indexes []sql.Expression
+	// Slice uses lower/upper pairs in Indexes. Omitted distinguishes an omitted bound from SQL NULL.
+	Slice   bool
+	Omitted []bool
 }
 
 var _ vitess.Injectable = (*Subscript)(nil)
@@ -43,81 +48,119 @@ func NewSubscript(child sql.Expression, indexes ...sql.Expression) *Subscript {
 	}
 }
 
-// Resolved implements the sql.Expression interface.
+// Resolved implements sql.Expression.
 func (s Subscript) Resolved() bool {
 	for _, index := range s.Indexes {
 		if !index.Resolved() {
 			return false
 		}
 	}
+
 	return s.Child.Resolved()
 }
 
-// String implements the sql.Expression interface.
+// String implements sql.Expression.
 func (s Subscript) String() string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprint(s.Child))
-	for _, index := range s.Indexes {
-		sb.WriteString(fmt.Sprintf("[%s]", index))
+	for i, index := range s.Indexes {
+		if !s.Slice {
+			sb.WriteString(fmt.Sprintf("[%s]", index))
+			continue
+		}
+
+		if i%2 == 0 {
+			sb.WriteByte('[')
+		} else {
+			sb.WriteByte(':')
+		}
+
+		if !s.Omitted[i] {
+			sb.WriteString(fmt.Sprint(index))
+		}
+
+		if i%2 == 1 {
+			sb.WriteByte(']')
+		}
 	}
+
 	return sb.String()
 }
 
-// Type implements the sql.Expression interface.
+// Type implements sql.Expression.
 func (s Subscript) Type(ctx *sql.Context) sql.Type {
-
 	dt, ok := s.childType(ctx)
 	if !ok {
 		return types.Unknown
-		//panic(fmt.Sprintf("unexpected type %T for subscript", s.Child.Type(ctx)))
 	}
+
 	// can be either array type or vector type, so use its base type if it exists
+	if s.Slice {
+		return dt
+	}
+
 	return dt.BaseType()
 }
 
-// IsNullable implements the sql.Expression interface.
+// IsNullable implements sql.Expression.
 func (s Subscript) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
-// Eval implements the sql.Expression interface.
+// Eval implements sql.Expression.
 func (s Subscript) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
+	if dt, ok := s.childType(ctx); s.Slice && (!ok || !dt.IsArrayCategory()) {
+		return nil, pgerror.New(pgcode.DatatypeMismatch, "subscripted object is not an array")
+	}
+
 	childVal, err := s.Child.Eval(ctx, row)
 	if err != nil {
 		return nil, err
 	}
+
 	if childVal == nil {
 		return nil, nil
+	}
+
+	if s.Slice {
+		return s.evalSlice(ctx, row, childVal)
 	}
 
 	scalarElements := false
 	if dt, ok := s.childType(ctx); ok {
 		scalarElements = dt.BaseType().IsArrayCategory()
 	}
+
 	for i, indexExpr := range s.Indexes {
 		indexVal, err := indexExpr.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
+
 		if indexVal == nil {
 			return nil, nil
 		}
+
 		array, ok := childVal.([]any)
 		if !ok {
 			if i == 0 {
 				return nil, fmt.Errorf("unsupported type %T for subscript", childVal)
 			}
+
 			return nil, nil
 		}
+
 		if i > 0 && scalarElements {
 			return nil, nil
 		}
+
 		index, ok := indexVal.(int32)
 		if !ok {
 			converted, _, err := types.Int32.Convert(ctx, indexVal)
 			if err != nil {
 				return nil, err
 			}
+
 			index = converted.(int32)
 		}
 
@@ -125,11 +168,14 @@ func (s Subscript) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		if index < 1 || int(index) > len(array) {
 			return nil, nil
 		}
+
 		childVal = array[index-1]
 	}
+
 	if _, isSubArray := childVal.([]any); isSubArray && !scalarElements {
 		return nil, nil
 	}
+
 	return childVal, nil
 }
 
@@ -139,19 +185,21 @@ func (s Subscript) childType(ctx *sql.Context) (*types.DoltgresType, bool) {
 	if ok && dt.TypType == types.TypeType_Domain {
 		dt = dt.DomainUnderlyingBaseType()
 	}
+
 	return dt, ok
 }
 
-// Children implements the sql.Expression interface.
+// Children implements sql.Expression.
 func (s Subscript) Children() []sql.Expression {
 	return append([]sql.Expression{s.Child}, s.Indexes...)
 }
 
-// WithChildren implements the sql.Expression interface.
+// WithChildren implements sql.Expression.
 func (s Subscript) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) < 2 {
 		return nil, fmt.Errorf("expected at least 2 children, got %d", len(children))
 	}
+
 	// The subscript index is always int4, regardless of the array's element type, so an untyped bind variable
 	// (e.g. `arr[$1]`) can be resolved to int4 immediately.
 	for _, index := range children[1:] {
@@ -161,10 +209,14 @@ func (s Subscript) WithChildren(ctx *sql.Context, children ...sql.Expression) (s
 			}
 		}
 	}
-	return NewSubscript(children[0], children[1:]...), nil
+
+	result := NewSubscript(children[0], children[1:]...)
+	result.Slice = s.Slice
+	result.Omitted = s.Omitted
+	return result, nil
 }
 
-// WithResolvedChildren implements the vitess.Injectable interface.
+// WithResolvedChildren implements vitess.Injectable.
 func (s Subscript) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	expressions := make([]sql.Expression, len(children))
 	for i, child := range children {
@@ -173,5 +225,83 @@ func (s Subscript) WithResolvedChildren(ctx context.Context, children []any) (an
 			return nil, fmt.Errorf("expected child to be an expression but has type `%T`", child)
 		}
 	}
+
 	return s.WithChildren(ctx.(*sql.Context), expressions...)
+}
+
+// evalSlice returns a slice clipped to stored bounds with lower bounds normalized to one, or an empty array for disjoint ranges.
+func (s Subscript) evalSlice(ctx *sql.Context, row sql.Row, value any) (any, error) {
+	dt, ok := s.childType(ctx)
+	if !ok {
+		return nil, fmt.Errorf("unsupported type %T for subscript", value)
+	}
+
+	vals := value.([]any)
+	dims := types.ArrayDims(vals, dt.BaseType())
+	lower := make([]int, len(dims))
+	upper := make([]int, len(dims))
+	for i, d := range dims {
+		lower[i] = 1
+		upper[i] = int(d)
+	}
+
+	empty := len(dims) == 0 || len(s.Indexes)/2 > len(dims)
+	for i, expr := range s.Indexes {
+		if s.Omitted[i] {
+			continue
+		}
+
+		v, err := expr.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+
+		if v == nil {
+			return nil, nil
+		}
+
+		v, _, err = types.Int32.Convert(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+
+		axis := i / 2
+		if axis >= len(dims) {
+			continue
+		}
+
+		bound := int(v.(int32))
+		if i%2 == 0 {
+			lower[axis] = max(1, bound)
+		} else {
+			upper[axis] = min(int(dims[axis]), bound)
+		}
+	}
+
+	for i := range dims {
+		if lower[i] > upper[i] {
+			empty = true
+		}
+	}
+
+	if empty {
+		return []any{}, nil
+	}
+
+	return sliceArray(vals, lower, upper), nil
+}
+
+// sliceArray returns a copy of a rectangular region with inclusive, one-based bounds.
+func sliceArray(vals []any, lower, upper []int) []any {
+	result := make([]any, upper[0]-lower[0]+1)
+	for i := range result {
+		v := vals[lower[0]-1+i]
+		if len(lower) > 1 {
+			v = sliceArray(v.([]any), lower[1:], upper[1:])
+		}
+
+		result[i] = v
+	}
+
+	return result
 }

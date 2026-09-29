@@ -16,6 +16,9 @@ package binary
 
 // Init initializes all binary operators in this package.
 func Init() {
+	initArrayOverlap()
+	initArrayContained()
+	initArrayContains()
 	initBinaryBitAnd()
 	initBinaryBitOr()
 	initBinaryBitXor()

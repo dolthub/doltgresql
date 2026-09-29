@@ -58,7 +58,8 @@ const (
 	Operator_BinaryHammingDistance                     // <~>
 	Operator_UnaryPlus                                 // +
 	Operator_UnaryMinus                                // -
-	// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
+	Operator_BinaryArrayOverlap                        // &&
+// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
 )
 
 // unaryFunction represents the signature for a unary function.
@@ -195,6 +196,8 @@ func (o Operator) String() string {
 		return "#>"
 	case Operator_BinaryJSONExtractPathText:
 		return "#>>"
+	case Operator_BinaryArrayOverlap:
+		return "&&"
 	case Operator_BinaryJSONContainsRight:
 		return "@>"
 	case Operator_BinaryJSONContainsLeft:
@@ -284,6 +287,8 @@ func GetOperatorFromString(op string) (Operator, error) {
 		return Operator_BinaryJSONExtractPathJson, nil
 	case "#>>":
 		return Operator_BinaryJSONExtractPathText, nil
+	case "&&":
+		return Operator_BinaryArrayOverlap, nil
 	case "@>":
 		return Operator_BinaryJSONContainsRight, nil
 	case "<@":

@@ -2496,7 +2496,11 @@ $$ LANGUAGE plpgsql;`,
             RETURN 'done';
         END;
         $$;`,
-					ExpectedErr: "FOREACH with SLICE is not yet supported",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT foreach_slice();`,
+					Expected: []sql.Row{{"done"}},
 				},
 			},
 		},

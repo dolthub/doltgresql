@@ -37,7 +37,7 @@ type UnnestTableFunction struct {
 var _ sql.TableFunction = (*UnnestTableFunction)(nil)
 var _ sql.ExecSourceRel = (*UnnestTableFunction)(nil)
 
-// NewInstance implements the interface sql.TableFunction.
+// NewInstance implements sql.TableFunction.
 func (u *UnnestTableFunction) NewInstance(ctx *sql.Context, database sql.Database, args []sql.Expression) (sql.Node, error) {
 	if len(args) == 1 {
 		unnest := sql.FunctionN{Name: u.Name(), Fn: func(ctx *sql.Context, args ...sql.Expression) (sql.Expression, error) {
@@ -46,94 +46,105 @@ func (u *UnnestTableFunction) NewInstance(ctx *sql.Context, database sql.Databas
 		}}
 		return dtablefunctions.NewTableFunctionWrapper(unnest).NewInstance(ctx, database, args)
 	}
+
 	return (&UnnestTableFunction{database: database}).WithExpressions(ctx, args...)
 }
 
-// Name implements the interface sql.TableFunction.
+// Name implements sql.TableFunction.
 func (u *UnnestTableFunction) Name() string {
 	return "unnest"
 }
 
-// Database implements the interface sql.Databaser.
+// Database implements sql.Databaser.
 func (u *UnnestTableFunction) Database() sql.Database {
 	return u.database
 }
 
-// WithDatabase implements the interface sql.Databaser.
+// WithDatabase implements sql.Databaser.
 func (u *UnnestTableFunction) WithDatabase(database sql.Database) (sql.Node, error) {
 	nu := *u
 	nu.database = database
 	return &nu, nil
 }
 
-// Expressions implements the interface sql.Expressioner.
+// Expressions implements sql.Expressioner.
 func (u *UnnestTableFunction) Expressions() []sql.Expression {
 	return u.arrays
 }
 
-// WithExpressions implements the interface sql.Expressioner.
+// WithExpressions implements sql.Expressioner.
 func (u *UnnestTableFunction) WithExpressions(ctx *sql.Context, exprs ...sql.Expression) (sql.Node, error) {
 	for _, expr := range exprs {
 		typ, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
 		if !ok {
 			typ = pgtypes.FromGmsType(expr.Type(ctx))
 		}
-		if !typ.IsArrayType() {
+
+		if !typ.IsArrayType() && !typ.IsVectorType() {
 			return nil, framework.ErrFunctionDoesNotExist.New(fmt.Sprintf("pg_catalog.unnest(%s)", typ))
 		}
 	}
+
 	nu := *u
 	nu.arrays = exprs
 	return &nu, nil
 }
 
-// Schema implements the interface sql.Node.
+// Schema implements sql.Node.
 func (u *UnnestTableFunction) Schema(ctx *sql.Context) sql.Schema {
 	schema := make(sql.Schema, len(u.arrays))
 	for i, array := range u.arrays {
-		schema[i] = &sql.Column{Name: u.Name(), Type: array.Type(ctx).(*pgtypes.DoltgresType).ArrayBaseType(), Nullable: true}
+		schema[i] = &sql.Column{
+			Name:     u.Name(),
+			Type:     array.Type(ctx).(*pgtypes.DoltgresType).ArrayBaseType(),
+			Nullable: true,
+		}
 	}
+
 	return schema
 }
 
-// Children implements the interface sql.Node.
+// Children implements sql.Node.
 func (u *UnnestTableFunction) Children() []sql.Node {
 	return nil
 }
 
-// WithChildren implements the interface sql.Node.
+// WithChildren implements sql.Node.
 func (u *UnnestTableFunction) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, errors.Errorf("unexpected children")
 	}
+
 	return u, nil
 }
 
-// Resolved implements the interface sql.Resolvable.
+// Resolved implements sql.Resolvable.
 func (u *UnnestTableFunction) Resolved() bool {
 	for _, array := range u.arrays {
 		if !array.Resolved() {
 			return false
 		}
 	}
+
 	return true
 }
 
-// IsReadOnly implements the interface sql.Node.
+// IsReadOnly implements sql.Node.
 func (u *UnnestTableFunction) IsReadOnly() bool {
 	return true
 }
 
-// String implements the interface fmt.Stringer.
+// String implements fmt.Stringer.
 func (u *UnnestTableFunction) String() string {
 	arrays := make([]string, len(u.arrays))
 	for i, array := range u.arrays {
 		arrays[i] = array.String()
 	}
+
 	return fmt.Sprintf("unnest(%s)", strings.Join(arrays, ", "))
 }
 
-// RowIter implements the interface sql.ExecSourceRel.
+// RowIter implements sql.ExecSourceRel.
 func (u *UnnestTableFunction) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIter, error) {
 	arrays := make([][]any, len(u.arrays))
 	rowCount := 0
@@ -142,7 +153,12 @@ func (u *UnnestTableFunction) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIte
 		if err != nil {
 			return nil, err
 		}
+
 		arrays[i], _ = val.([]any)
+		if typ, ok := array.Type(ctx).(*pgtypes.DoltgresType); ok && val != nil {
+			arrays[i] = pgtypes.FlattenArray(arrays[i], typ.ArrayBaseType())
+		}
+
 		rowCount = max(rowCount, len(arrays[i]))
 	}
 
@@ -153,12 +169,14 @@ func (u *UnnestTableFunction) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIte
 		if i >= rowCount {
 			return nil, io.EOF
 		}
+
 		result := make(sql.Row, len(arrays))
 		for j, array := range arrays {
 			if i < len(array) {
 				result[j] = array[i]
 			}
 		}
+
 		return result, nil
 	}), nil
 }
