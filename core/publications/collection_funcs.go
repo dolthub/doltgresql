@@ -61,6 +61,9 @@ func (*Collection) ResolveNameFromObjects(ctx context.Context, name doltdb.Table
 			tempCollection.accessCache[obj.ID] = obj
 		}
 	}
+	// Conflict tables are resolved through a SQL schema, but their contained
+	// publication definitions have a database-wide namespace.
+	name.Schema = ""
 	return tempCollection.ResolveName(ctx, name)
 }
 
