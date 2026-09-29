@@ -153,6 +153,12 @@ func GetRole(name string) Role {
 	return globalDatabase.rolesByID[roleID]
 }
 
+// GetRoleByID returns the role with the given persistent internal role ID. The returned
+// role is invalid if it no longer exists. Callers must protect the lookup with LockRead.
+func GetRoleByID(roleID RoleID) Role {
+	return globalDatabase.rolesByID[roleID]
+}
+
 // RenameRole renames the role with the old name to the new name. If the role does not exist, then this is a no-op.
 func RenameRole(oldName string, newName string) {
 	if roleID, ok := globalDatabase.rolesByName[oldName]; ok {

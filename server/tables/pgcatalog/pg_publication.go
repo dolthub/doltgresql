@@ -15,7 +15,11 @@
 package pgcatalog
 
 import (
-	"io"
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/publications"
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/server/auth"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -43,9 +47,31 @@ func (p PgPublicationHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPublicationHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// pg_publication is currently empty, since CREATE PUBLICATION (logical replication publishing) is not supported.
-	// TODO: fill this in when publications are supported
-	return emptyRowIter()
+	collection, err := core.GetPublicationsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []sql.Row
+	err = collection.IterAll(ctx, func(object objinterface.RootObject) (bool, error) {
+		publication := object.(publications.Publication)
+		ownerID := id.Null
+		auth.LockRead(func() {
+			owner := auth.GetRoleByID(auth.RoleID(publication.OwnerRoleID))
+			if owner.IsValid() {
+				ownerID = roleOid(owner.Name)
+			}
+		})
+		rows = append(rows, sql.Row{
+			publication.ID.AsId(), publication.ID.Name(), ownerID, publication.AllTables,
+			publication.PublishInsert, publication.PublishUpdate, publication.PublishDelete,
+			publication.PublishTruncate, publication.PublishViaRoot,
+		})
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sql.RowsToRowIter(rows...), nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -67,20 +93,4 @@ var pgPublicationSchema = sql.Schema{
 	{Name: "pubdelete", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgPublicationName},
 	{Name: "pubtruncate", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgPublicationName},
 	{Name: "pubviaroot", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgPublicationName},
-}
-
-// pgPublicationRowIter is the sql.RowIter for the pg_publication table.
-type pgPublicationRowIter struct {
-}
-
-var _ sql.RowIter = (*pgPublicationRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgPublicationRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgPublicationRowIter) Close(ctx *sql.Context) error {
-	return nil
 }
