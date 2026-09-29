@@ -18,18 +18,18 @@ import "testing"
 
 func TestDropPublication(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("DROP PUBLICATION name"),
-		Unimplemented("DROP PUBLICATION IF EXISTS name"),
-		Unimplemented("DROP PUBLICATION name , name"),
-		Unimplemented("DROP PUBLICATION IF EXISTS name , name"),
-		Unimplemented("DROP PUBLICATION name CASCADE"),
-		Unimplemented("DROP PUBLICATION IF EXISTS name CASCADE"),
-		Unimplemented("DROP PUBLICATION name , name CASCADE"),
-		Unimplemented("DROP PUBLICATION IF EXISTS name , name CASCADE"),
-		Unimplemented("DROP PUBLICATION name RESTRICT"),
-		Unimplemented("DROP PUBLICATION IF EXISTS name RESTRICT"),
-		Unimplemented("DROP PUBLICATION name , name RESTRICT"),
-		Unimplemented("DROP PUBLICATION IF EXISTS name , name RESTRICT"),
+		Converts("DROP PUBLICATION name"),
+		Converts("DROP PUBLICATION IF EXISTS name"),
+		Converts("DROP PUBLICATION name , name"),
+		Converts("DROP PUBLICATION IF EXISTS name , name"),
+		Converts("DROP PUBLICATION name CASCADE"),
+		Converts("DROP PUBLICATION IF EXISTS name CASCADE"),
+		Converts("DROP PUBLICATION name , name CASCADE"),
+		Converts("DROP PUBLICATION IF EXISTS name , name CASCADE"),
+		Converts("DROP PUBLICATION name RESTRICT"),
+		Converts("DROP PUBLICATION IF EXISTS name RESTRICT"),
+		Converts("DROP PUBLICATION name , name RESTRICT"),
+		Converts("DROP PUBLICATION IF EXISTS name , name RESTRICT"),
 	}
 	RunTests(t, tests)
 }

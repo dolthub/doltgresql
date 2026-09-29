@@ -31,6 +31,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/operators"
 	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/core/publications"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/triggers"
@@ -52,6 +53,7 @@ var (
 		&casts.Collection{},
 		&operators.Collection{},
 		&aggregates.Collection{},
+		&publications.Collection{},
 	}
 )
 

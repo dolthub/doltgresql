@@ -15,7 +15,10 @@
 package pgcatalog
 
 import (
-	"io"
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/publications"
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/server/functions"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -43,9 +46,46 @@ func (p PgPublicationTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPublicationTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// pg_publication_tables is currently empty, since CREATE PUBLICATION (logical replication publishing) is not supported.
-	// TODO: fill this in when publications are supported
-	return emptyRowIter()
+	collection, err := core.GetPublicationsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var allTablesPublications []string
+	err = collection.IterAll(ctx, func(object objinterface.RootObject) (bool, error) {
+		publication := object.(publications.Publication)
+		if publication.AllTables {
+			allTablesPublications = append(allTablesPublications, publication.ID.Name())
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	var rows []sql.Row
+	if len(allTablesPublications) > 0 {
+		// Resolve the current set of eligible tables on every query. FOR ALL TABLES
+		// includes tables and columns added after the publication was created.
+		err = functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (bool, error) {
+				if !functions.IsPublishableTable(schema, table) {
+					return true, nil
+				}
+				columns := table.Item.Schema(ctx)
+				names := make([]any, len(columns))
+				for i, column := range columns {
+					names[i] = column.Name
+				}
+				for _, name := range allTablesPublications {
+					rows = append(rows, sql.Row{name, schema.Item.SchemaName(), table.Item.Name(), names, nil})
+				}
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return sql.RowsToRowIter(rows...), nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -63,20 +103,4 @@ var pgPublicationTablesSchema = sql.Schema{
 	{Name: "tablename", Type: pgtypes.Name, Default: nil, Nullable: true, Source: PgPublicationTablesName},
 	{Name: "attnames", Type: pgtypes.NameArray, Default: nil, Nullable: true, Source: PgPublicationTablesName},
 	{Name: "rowfilter", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPublicationTablesName},
-}
-
-// pgPublicationTablesRowIter is the sql.RowIter for the pg_publication_tables table.
-type pgPublicationTablesRowIter struct {
-}
-
-var _ sql.RowIter = (*pgPublicationTablesRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgPublicationTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgPublicationTablesRowIter) Close(ctx *sql.Context) error {
-	return nil
 }

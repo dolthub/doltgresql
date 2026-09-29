@@ -30,6 +30,8 @@ import (
     "github.com/dolthub/doltgresql/postgres/parser/roachpb"
     "github.com/dolthub/doltgresql/postgres/parser/lex"
     "github.com/dolthub/doltgresql/postgres/parser/privilege"
+    "github.com/dolthub/doltgresql/postgres/parser/pgcode"
+    "github.com/dolthub/doltgresql/postgres/parser/pgerror"
     "github.com/dolthub/doltgresql/postgres/parser/roleoption"
     "github.com/dolthub/doltgresql/postgres/parser/sem/tree"
     "github.com/dolthub/doltgresql/postgres/parser/types"
@@ -1007,6 +1009,11 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> create_index_stmt
 %type <tree.Statement> create_role_stmt
 %type <tree.Statement> create_schedule_for_backup_stmt
+%type <tree.Statement> create_publication_stmt drop_publication_stmt
+%type <bool> opt_publication_all_tables
+%type <[]tree.KVOption> opt_publication_options publication_options
+%type <tree.KVOption> publication_option
+%type <tree.Expr> publication_option_value
 %type <tree.Statement> create_extension_stmt
 %type <tree.Statement> create_function_stmt
 %type <tree.Statement> create_language_stmt
@@ -4279,6 +4286,7 @@ create_stmt:
 | create_schedule_for_backup_stmt   // EXTEND WITH HELP: CREATE SCHEDULE FOR BACKUP
 | create_function_stmt // EXTEND WITH HELP: CREATE FUNCTION
 | create_procedure_stmt // EXTEND WITH HELP: CREATE PROCEDURE
+| create_publication_stmt // EXTEND WITH HELP: CREATE PUBLICATION
 | create_extension_stmt // EXTEND WITH HELP: CREATE EXTENSION
 | create_language_stmt  // EXTEND WITH HELP: CREATE LANGUAGE
 | create_aggregate_stmt // EXTEND WITH HELP: CREATE AGGREGATE
@@ -4293,7 +4301,7 @@ create_unsupported:
 | CREATE FOREIGN TABLE error { return unimplemented(sqllex, "create foreign table") }
 | CREATE OPERATOR CLASS error { return unimplemented(sqllex, "create operator class") }
 | CREATE OPERATOR FAMILY error { return unimplemented(sqllex, "create operator family") }
-| CREATE PUBLICATION error { return unimplemented(sqllex, "create publication") }
+
 | CREATE opt_or_replace RULE error { return unimplemented(sqllex, "create rule") }
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
@@ -4615,6 +4623,43 @@ opt_handler_validator:
   {
     $$.val = $2.unresolvedObjectName()
   }
+
+// %Help: CREATE PUBLICATION - define a publication
+// %Category: DDL
+// %Text:
+// CREATE PUBLICATION <name> [FOR ALL TABLES] [WITH (<parameter> [= <value>] [, ...])]
+// %SeeAlso: DROP PUBLICATION
+create_publication_stmt:
+  CREATE PUBLICATION name opt_publication_all_tables opt_publication_options
+  { $$.val = &tree.CreatePublication{Name: tree.Name($3), AllTables: $4.bool(), Options: $5.kvOptions()} }
+| CREATE PUBLICATION name FOR TABLE error
+  { return setErr(sqllex, pgerror.New(pgcode.FeatureNotSupported, "CREATE PUBLICATION FOR TABLE is not yet supported")) }
+| CREATE PUBLICATION name FOR TABLES error
+  { return setErr(sqllex, pgerror.New(pgcode.FeatureNotSupported, "CREATE PUBLICATION FOR TABLES IN SCHEMA is not yet supported")) }
+
+opt_publication_all_tables:
+  /* EMPTY */ { $$.val = false }
+| FOR ALL TABLES { $$.val = true }
+
+opt_publication_options:
+  /* EMPTY */ { $$.val = []tree.KVOption(nil) }
+| WITH '(' publication_options ')' { $$.val = $3.kvOptions() }
+
+publication_options:
+  publication_option { $$.val = []tree.KVOption{$1.kvOption()} }
+| publication_options ',' publication_option { $$.val = append($1.kvOptions(), $3.kvOption()) }
+
+publication_option:
+  name { $$.val = tree.KVOption{Key: tree.Name($1)} }
+| name '=' publication_option_value { $$.val = tree.KVOption{Key: tree.Name($1), Value: $3.expr()} }
+
+publication_option_value:
+  non_reserved_word_or_sconst { $$.val = tree.NewStrVal($1) }
+| TRUE { $$.val = tree.DBoolTrue }
+| FALSE { $$.val = tree.DBoolFalse }
+| ON { $$.val = tree.NewStrVal("on") }
+| signed_iconst { $$.val = $1.numVal() }
+| FCONST { $$.val = $1.numVal() }
 
 create_extension_stmt:
   CREATE EXTENSION name opt_with opt_schema opt_version opt_cascade
@@ -5012,7 +5057,7 @@ drop_unsupported:
 | DROP FOREIGN DATA error { return unimplemented(sqllex, "drop fdw") }
 | DROP OPERATOR CLASS error { return unimplemented(sqllex, "drop operator class") }
 | DROP OPERATOR FAMILY error { return unimplemented(sqllex, "drop operator family") }
-| DROP PUBLICATION error { return unimplemented(sqllex, "drop publication") }
+
 | DROP RULE error { return unimplemented(sqllex, "drop rule") }
 | DROP SERVER error { return unimplemented(sqllex, "drop server") }
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
@@ -5088,6 +5133,17 @@ drop_language_stmt:
   {
     $$.val = &tree.DropLanguage{Name: tree.Name($6), Procedural: $2.bool(), IfExists: true, DropBehavior: $7.dropBehavior()}
   }
+
+// %Help: DROP PUBLICATION - remove publications
+// %Category: DDL
+// %Text:
+// DROP PUBLICATION [IF EXISTS] <name> [, ...] [CASCADE | RESTRICT]
+// %SeeAlso: CREATE PUBLICATION
+drop_publication_stmt:
+  DROP PUBLICATION name_list opt_drop_behavior
+  { $$.val = &tree.DropPublication{Names: $3.nameList(), DropBehavior: $4.dropBehavior()} }
+| DROP PUBLICATION IF EXISTS name_list opt_drop_behavior
+  { $$.val = &tree.DropPublication{Names: $5.nameList(), IfExists: true, DropBehavior: $6.dropBehavior()} }
 
 drop_extension_stmt:
   DROP EXTENSION name_list opt_drop_behavior
@@ -5344,6 +5400,7 @@ drop_stmt:
 | drop_function_stmt  // EXTEND WITH HELP: DROP FUNCTION
 | drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
 | drop_domain_stmt    // EXTEND WITH HELP: DROP DOMAIN
+| drop_publication_stmt // EXTEND WITH HELP: DROP PUBLICATION
 | drop_extension_stmt // EXTEND WITH HELP: DROP EXTENSION
 | drop_language_stmt  // EXTEND WITH HELP: DROP LANGUAGE
 | drop_aggregate_stmt // EXTEND WITH HELP: DROP AGGREGATE

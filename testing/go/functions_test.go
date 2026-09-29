@@ -3916,10 +3916,10 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: users and roles are not supported yet
+					// Unknown role OIDs use PostgreSQL's diagnostic name.
 					Query: `SELECT pg_get_userbyid(22)`,
 					Expected: []sql.Row{
-						{"postgres"},
+						{"unknown (OID=22)"},
 					},
 				},
 			},

@@ -15,8 +15,12 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -34,7 +38,20 @@ var pg_get_userbyid_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: roles are not supported yet
-		return "postgres", nil
+		internalID := val.(id.Id)
+		// TODO: replace the id.Null owner placeholders in older catalog handlers.
+		if internalID == id.Null {
+			return "postgres", nil
+		}
+		var role auth.Role
+		auth.LockRead(func() {
+			if internalID.Section() == id.Section_User {
+				role = auth.GetRole(internalID.Segment(0))
+			}
+		})
+		if role.IsValid() {
+			return role.Name, nil
+		}
+		return fmt.Sprintf("unknown (OID=%d)", id.Cache().ToOID(internalID)), nil
 	},
 }
