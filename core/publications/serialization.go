@@ -72,7 +72,7 @@ func DeserializePublication(ctx context.Context, data []byte) (Publication, erro
 	publication.PublishTruncate = reader.Bool()
 	publication.PublishViaRoot = reader.Bool()
 	if !reader.IsEmpty() {
-		return Publication{}, errors.Errorf("publicationra data found while deserializing a publication")
+		return Publication{}, errors.New("extra data found while deserializing a publication")
 	}
 	// Return the deserialized object
 	return publication, nil
