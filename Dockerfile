@@ -8,8 +8,8 @@ RUN apt-get update -y && \
     curl tini ca-certificates postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
-# We use bookworm since the icu dependency ver. between the base and golang images is the same 
-FROM golang:1.25-trixie AS build-from-source
+# Use the same Debian release in the base and Go images for compatible ICU dependencies.
+FROM golang:1.26.2-trixie AS build-from-source
 ENV DEBIAN_FRONTEND=noninteractive
 ARG DOLTGRES_VERSION="latest"
 
@@ -17,7 +17,7 @@ RUN mkdir -p /tmp/doltgresql/
 COPY . /tmp/doltgresql/
 WORKDIR /tmp/doltgresql/
 
-RUN if [ "$DOLTGRES_VERSION" = "source" ]; then \
+RUN set -e; if [ "$DOLTGRES_VERSION" = "source" ]; then \
     go mod download; \
     ./postgres/parser/build.sh; \
     ./scripts/build_binaries.sh "linux-amd64"; \
