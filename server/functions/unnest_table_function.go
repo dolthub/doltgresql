@@ -37,7 +37,7 @@ type UnnestTableFunction struct {
 var _ sql.TableFunction = (*UnnestTableFunction)(nil)
 var _ sql.ExecSourceRel = (*UnnestTableFunction)(nil)
 
-// NewInstance returns a scalar-function wrapper or a table function for the supplied array arguments.
+// NewInstance implements sql.TableFunction.
 func (u *UnnestTableFunction) NewInstance(ctx *sql.Context, database sql.Database, args []sql.Expression) (sql.Node, error) {
 	if len(args) == 1 {
 		unnest := sql.FunctionN{Name: u.Name(), Fn: func(ctx *sql.Context, args ...sql.Expression) (sql.Expression, error) {
@@ -50,29 +50,29 @@ func (u *UnnestTableFunction) NewInstance(ctx *sql.Context, database sql.Databas
 	return (&UnnestTableFunction{database: database}).WithExpressions(ctx, args...)
 }
 
-// Name returns the SQL function name.
+// Name implements sql.TableFunction.
 func (u *UnnestTableFunction) Name() string {
 	return "unnest"
 }
 
-// Database returns the database used to resolve this function.
+// Database implements sql.Databaser.
 func (u *UnnestTableFunction) Database() sql.Database {
 	return u.database
 }
 
-// WithDatabase returns a copy that resolves against the supplied database.
+// WithDatabase implements sql.Databaser.
 func (u *UnnestTableFunction) WithDatabase(database sql.Database) (sql.Node, error) {
 	nu := *u
 	nu.database = database
 	return &nu, nil
 }
 
-// Expressions returns the input array expressions.
+// Expressions implements sql.Expressioner.
 func (u *UnnestTableFunction) Expressions() []sql.Expression {
 	return u.arrays
 }
 
-// WithExpressions returns a copy with array or vector arguments, or an error for unsupported argument types.
+// WithExpressions implements sql.Expressioner.
 func (u *UnnestTableFunction) WithExpressions(ctx *sql.Context, exprs ...sql.Expression) (sql.Node, error) {
 	for _, expr := range exprs {
 		typ, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
@@ -90,7 +90,7 @@ func (u *UnnestTableFunction) WithExpressions(ctx *sql.Context, exprs ...sql.Exp
 	return &nu, nil
 }
 
-// Schema returns one nullable element column per input array.
+// Schema implements sql.Node.
 func (u *UnnestTableFunction) Schema(ctx *sql.Context) sql.Schema {
 	schema := make(sql.Schema, len(u.arrays))
 	for i, array := range u.arrays {
@@ -104,12 +104,12 @@ func (u *UnnestTableFunction) Schema(ctx *sql.Context) sql.Schema {
 	return schema
 }
 
-// Children returns no relational children because inputs are expressions.
+// Children implements sql.Node.
 func (u *UnnestTableFunction) Children() []sql.Node {
 	return nil
 }
 
-// WithChildren returns this function if no relational children are supplied, or an error otherwise.
+// WithChildren implements sql.Node.
 func (u *UnnestTableFunction) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, errors.Errorf("unexpected children")
@@ -118,7 +118,7 @@ func (u *UnnestTableFunction) WithChildren(ctx *sql.Context, children ...sql.Nod
 	return u, nil
 }
 
-// Resolved reports whether every input array expression is resolved.
+// Resolved implements sql.Resolvable.
 func (u *UnnestTableFunction) Resolved() bool {
 	for _, array := range u.arrays {
 		if !array.Resolved() {
@@ -129,12 +129,12 @@ func (u *UnnestTableFunction) Resolved() bool {
 	return true
 }
 
-// IsReadOnly returns true because unnest does not modify its inputs.
+// IsReadOnly implements sql.Node.
 func (u *UnnestTableFunction) IsReadOnly() bool {
 	return true
 }
 
-// String returns the SQL representation of the function call.
+// String implements fmt.Stringer.
 func (u *UnnestTableFunction) String() string {
 	arrays := make([]string, len(u.arrays))
 	for i, array := range u.arrays {
@@ -144,7 +144,7 @@ func (u *UnnestTableFunction) String() string {
 	return fmt.Sprintf("unnest(%s)", strings.Join(arrays, ", "))
 }
 
-// RowIter returns an iterator that flattens arrays in storage order and pads shorter inputs with NULL.
+// RowIter implements sql.ExecSourceRel.
 func (u *UnnestTableFunction) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIter, error) {
 	arrays := make([][]any, len(u.arrays))
 	rowCount := 0

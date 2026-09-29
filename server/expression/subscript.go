@@ -48,7 +48,7 @@ func NewSubscript(child sql.Expression, indexes ...sql.Expression) *Subscript {
 	}
 }
 
-// Resolved reports whether the array and all index expressions are resolved.
+// Resolved implements sql.Expression.
 func (s Subscript) Resolved() bool {
 	for _, index := range s.Indexes {
 		if !index.Resolved() {
@@ -59,7 +59,7 @@ func (s Subscript) Resolved() bool {
 	return s.Child.Resolved()
 }
 
-// String returns the SQL representation of the element or slice access.
+// String implements sql.Expression.
 func (s Subscript) String() string {
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprint(s.Child))
@@ -87,7 +87,7 @@ func (s Subscript) String() string {
 	return sb.String()
 }
 
-// Type returns the element type for an index or the array type for a slice.
+// Type implements sql.Expression.
 func (s Subscript) Type(ctx *sql.Context) sql.Type {
 	dt, ok := s.childType(ctx)
 	if !ok {
@@ -102,12 +102,12 @@ func (s Subscript) Type(ctx *sql.Context) sql.Type {
 	return dt.BaseType()
 }
 
-// IsNullable returns true because null or out-of-range subscripts can yield NULL.
+// IsNullable implements sql.Expression.
 func (s Subscript) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
-// Eval returns the selected element or slice, or an error for invalid inputs.
+// Eval implements sql.Expression.
 func (s Subscript) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	if dt, ok := s.childType(ctx); s.Slice && (!ok || !dt.IsArrayCategory()) {
 		return nil, pgerror.New(pgcode.DatatypeMismatch, "subscripted object is not an array")
@@ -189,12 +189,12 @@ func (s Subscript) childType(ctx *sql.Context) (*types.DoltgresType, bool) {
 	return dt, ok
 }
 
-// Children returns the array expression followed by its index expressions.
+// Children implements sql.Expression.
 func (s Subscript) Children() []sql.Expression {
 	return append([]sql.Expression{s.Child}, s.Indexes...)
 }
 
-// WithChildren returns a copy with replacement children and preserves slice metadata.
+// WithChildren implements sql.Expression.
 func (s Subscript) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) < 2 {
 		return nil, fmt.Errorf("expected at least 2 children, got %d", len(children))
@@ -216,7 +216,7 @@ func (s Subscript) WithChildren(ctx *sql.Context, children ...sql.Expression) (s
 	return result, nil
 }
 
-// WithResolvedChildren returns a copy with resolved expression children, or an error for invalid children.
+// WithResolvedChildren implements vitess.Injectable.
 func (s Subscript) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	expressions := make([]sql.Expression, len(children))
 	for i, child := range children {

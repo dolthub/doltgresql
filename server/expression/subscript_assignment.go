@@ -32,27 +32,27 @@ type SubscriptAssignment struct {
 	Value sql.Expression
 }
 
-// Type returns the array type preserved by the assignment.
+// Type implements sql.Expression.
 func (s SubscriptAssignment) Type(ctx *sql.Context) sql.Type {
 	return s.Child.Type(ctx)
 }
 
-// Resolved reports whether the array, indexes, and replacement are resolved.
+// Resolved implements sql.Expression.
 func (s SubscriptAssignment) Resolved() bool {
 	return s.Subscript.Resolved() && s.Value.Resolved()
 }
 
-// String returns the SQL representation of the subscript assignment.
+// String implements sql.Expression.
 func (s SubscriptAssignment) String() string {
 	return fmt.Sprintf("%s = %s", s.Subscript.String(), s.Value)
 }
 
-// Children returns the array, index expressions, and replacement in evaluation order.
+// Children implements sql.Expression.
 func (s SubscriptAssignment) Children() []sql.Expression {
 	return append(s.Subscript.Children(), s.Value)
 }
 
-// WithChildren returns a copy with replacement children, or an error for invalid children.
+// WithChildren implements sql.Expression.
 func (s SubscriptAssignment) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) < 3 {
 		return nil, sql.ErrInvalidChildrenNumber.New(s, len(children), 3)
@@ -69,7 +69,7 @@ func (s SubscriptAssignment) WithChildren(ctx *sql.Context, children ...sql.Expr
 	}, nil
 }
 
-// WithResolvedChildren returns a copy with resolved expression children, or an error for invalid children.
+// WithResolvedChildren implements vitess.Injectable.
 func (s SubscriptAssignment) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	exprs := make([]sql.Expression, len(children))
 	for i, c := range children {
@@ -83,7 +83,7 @@ func (s SubscriptAssignment) WithResolvedChildren(ctx context.Context, children 
 	return s.WithChildren(ctx.(*sql.Context), exprs...)
 }
 
-// Eval returns a new array with the requested elements replaced, or an error for invalid assignments.
+// Eval implements sql.Expression.
 func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	value, err := s.Child.Eval(ctx, row)
 	if err != nil {
