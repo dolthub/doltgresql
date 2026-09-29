@@ -21,8 +21,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArrayReplace registers the array_replace function with the function framework.
 func initArrayReplace() { framework.RegisterFunction(array_replace) }
 
+// array_replace returns an array with matching elements replaced while preserving its dimensions.
 var array_replace = framework.Function3{
 	Name:       "array_replace",
 	Return:     pgtypes.AnyArray,
@@ -31,6 +33,7 @@ var array_replace = framework.Function3{
 		if val == nil {
 			return nil, nil
 		}
+
 		vals := val.([]any)
 		base := t[0].ArrayBaseType()
 		dims := pgtypes.ArrayDims(vals, base)
@@ -43,13 +46,16 @@ var array_replace = framework.Function3{
 				if err != nil {
 					return nil, err
 				}
+
 				equal = cmp == 0
 			}
+
 			result[i] = v
 			if equal {
 				result[i] = replacement
 			}
 		}
+
 		return pgtypes.InflateArray(result, dims), nil
 	},
 }

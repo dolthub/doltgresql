@@ -16,20 +16,31 @@ package _go
 
 import "testing"
 
+// TestScalarSubscripts checks that slicing and assigning scalar values return datatype errors.
 func TestScalarSubscripts(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
 		Name:        "reject scalar subscripts",
 		SetUpScript: []string{"CREATE TABLE t_scalar (n int);", "INSERT INTO t_scalar VALUES (42);"},
 		Assertions: []ScriptTestAssertion{
-			{Query: "SELECT (42)[1:2];", ExpectedErr: "not an array", ExpectedErrCode: "42804"},
+			{Query: "SELECT (42)[1:2];", ExpectedErr: "subscript", ExpectedErrCode: "42804"},
 			{
 				Query:           "SELECT (NULL::int)[1:2];",
-				ExpectedErr:     "not an array",
+				ExpectedErr:     "subscript",
 				ExpectedErrCode: "42804",
 			},
 			{
 				Query:           "UPDATE t_scalar SET n[1]=7;",
-				ExpectedErr:     "not an array",
+				ExpectedErr:     "subscript",
+				ExpectedErrCode: "42804",
+			},
+			{
+				Query:           "SELECT n[1:2] FROM t_scalar;",
+				ExpectedErr:     "subscript",
+				ExpectedErrCode: "42804",
+			},
+			{
+				Query:           "SELECT ((SELECT n FROM t_scalar))[1:2];",
+				ExpectedErr:     "subscript",
 				ExpectedErrCode: "42804",
 			},
 		},

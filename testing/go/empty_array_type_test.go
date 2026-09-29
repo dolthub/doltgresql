@@ -20,9 +20,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestEmptyArrayType checks explicit element typing for empty and nested array constructors.
 func TestEmptyArrayType(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "empty array element types",
+		Name:        "empty array element types",
+		SetUpScript: []string{"CREATE TABLE empty_inputs (id int PRIMARY KEY,a int[]);", "INSERT INTO empty_inputs VALUES (1,ARRAY[]::int[]),(2,ARRAY[1]);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:           "SELECT ARRAY[];",
@@ -39,6 +41,18 @@ func TestEmptyArrayType(t *testing.T) {
 				Expected: []sql.Row{{"{}", "integer[]", "{}"}},
 			},
 			{Query: "SELECT ARRAY[ARRAY[]::int[]];", Expected: []sql.Row{{"{}"}}},
+			{
+				Query:    "SELECT (SELECT ARRAY[]::text[]),ARRAY[ARRAY[]::text[],ARRAY[]::text[]];",
+				Expected: []sql.Row{{"{}", "{}"}},
+			},
+			{
+				Query:    "SELECT id,ARRAY[a] FROM empty_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{}"}, {2, "{{1}}"}},
+			},
+			{
+				Query:    "SELECT pg_typeof(ARRAY[[NULL,NULL],[1,NULL]]::int[]),ARRAY[[NULL,NULL],[1,NULL]]::int[];",
+				Expected: []sql.Row{{"integer[]", "{{NULL,NULL},{1,NULL}}"}},
+			},
 		},
 	}})
 }

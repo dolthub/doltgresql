@@ -23,11 +23,13 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArrayFill registers the array_fill overloads with the function framework.
 func initArrayFill() {
 	framework.RegisterFunction(array_fill_two)
 	framework.RegisterFunction(array_fill_three)
 }
 
+// array_fill_two returns an array filled with one value using default lower bounds.
 var array_fill_two = framework.Function2{
 	Name:       "array_fill",
 	Return:     pgtypes.AnyArray,
@@ -36,6 +38,8 @@ var array_fill_two = framework.Function2{
 		return fillArray(val, dims, nil, false)
 	},
 }
+
+// array_fill_three returns an array filled with one value after validating explicit lower bounds.
 var array_fill_three = framework.Function3{
 	Name:       "array_fill",
 	Return:     pgtypes.AnyArray,
@@ -45,53 +49,64 @@ var array_fill_three = framework.Function3{
 	},
 }
 
-// fillArray validates the dimensions before allocating the rectangular result. Non-default lower
-// bounds cannot yet be persisted by the array representation.
+// fillArray returns a rectangular array filled with val, or an error for invalid dimensions or unsupported bounds.
 func fillArray(val, dimensions, lowerBounds any, explicitBounds bool) (any, error) {
 	if dimensions == nil || explicitBounds && lowerBounds == nil {
 		return nil, pgerror.New(pgcode.NullValueNotAllowed, "dimension array or low bound array cannot be null")
 	}
+
 	dimsInput := dimensions.([]any)
 	if len(pgtypes.ArrayDims(dimsInput, pgtypes.Int32)) > 1 {
 		return nil, pgerror.New(pgcode.ArraySubscript, "wrong number of array subscripts")
 	}
+
 	if len(dimsInput) > 6 {
 		return nil, pgerror.Newf(pgcode.ProgramLimitExceeded, "number of array dimensions (%d) exceeds the maximum allowed (6)", len(dimsInput))
 	}
+
 	dims := make([]int32, len(dimsInput))
 	for i, d := range dimsInput {
 		if d == nil {
 			return nil, pgerror.New(pgcode.NullValueNotAllowed, "dimension values cannot be null")
 		}
+
 		dims[i] = d.(int32)
 	}
+
 	if explicitBounds {
 		bounds := lowerBounds.([]any)
 		if len(pgtypes.ArrayDims(bounds, pgtypes.Int32)) > 1 || len(bounds) != len(dims) {
 			return nil, pgerror.New(pgcode.ArraySubscript, "wrong number of array subscripts")
 		}
+
 		for _, b := range bounds {
 			if b == nil {
 				return nil, pgerror.New(pgcode.NullValueNotAllowed, "lower bound values cannot be null")
 			}
+
 			if b.(int32) != 1 {
 				return nil, pgerror.New(pgcode.FeatureNotSupported, "non-default array lower bounds are not yet supported")
 			}
 		}
 	}
+
 	count := int64(1)
 	if len(dims) == 0 {
 		count = 0
 	}
+
 	for _, d := range dims {
 		if d < 0 || count*int64(d) > 134217727 {
 			return nil, pgerror.New(pgcode.ProgramLimitExceeded, "array size exceeds the maximum allowed (134217727)")
 		}
+
 		count *= int64(d)
 	}
+
 	result := make([]any, int(count))
 	for i := range result {
 		result[i] = val
 	}
+
 	return pgtypes.InflateArray(result, dims), nil
 }

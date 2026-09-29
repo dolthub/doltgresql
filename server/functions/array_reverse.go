@@ -21,8 +21,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArrayReverse registers the array_reverse function with the function framework.
 func initArrayReverse() { framework.RegisterFunction(array_reverse) }
 
+// array_reverse returns an array with its first dimension reversed.
 var array_reverse = framework.Function1{
 	Name:       "array_reverse",
 	Return:     pgtypes.AnyArray,
@@ -34,6 +36,7 @@ var array_reverse = framework.Function1{
 		for i, v := range vals {
 			result[len(vals)-1-i] = v
 		}
+
 		return result, nil
 	},
 }

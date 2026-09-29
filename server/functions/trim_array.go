@@ -23,8 +23,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initTrimArray registers the trim_array function with the function framework.
 func initTrimArray() { framework.RegisterFunction(trim_array) }
 
+// trim_array returns an array with the requested number of entries removed from its first dimension.
 var trim_array = framework.Function2{
 	Name:       "trim_array",
 	Return:     pgtypes.AnyArray,
@@ -36,6 +38,7 @@ var trim_array = framework.Function2{
 		if n < 0 || int64(n) > int64(len(vals)) {
 			return nil, pgerror.Newf(pgcode.ArraySubscript, "number of elements to trim must be between 0 and %d", len(vals))
 		}
+
 		result := make([]any, len(vals)-int(n))
 		copy(result, vals)
 		return result, nil

@@ -21,8 +21,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArrayLower registers the array_lower function with the function framework.
 func initArrayLower() { framework.RegisterFunction(array_lower) }
 
+// array_lower returns the lower bound of an existing array dimension, or NULL for an invalid dimension.
 var array_lower = framework.Function2{
 	Name:       "array_lower",
 	Return:     pgtypes.Int32,
@@ -34,9 +36,11 @@ var array_lower = framework.Function2{
 		if dim < 1 || int(dim) > len(dims) {
 			return nil, nil
 		}
+
 		if t[0].IsVectorType() {
 			return int32(0), nil
 		}
+
 		return int32(1), nil
 	},
 }

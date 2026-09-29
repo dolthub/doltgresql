@@ -1117,13 +1117,13 @@ func nodeRowIn(ctx *Context, operator tree.ComparisonOperator, left *tree.Tuple,
 	return expr, nil
 }
 
-// subscriptExpr translates array indexes, including PostgreSQL's rule that any slice
-// turns all other indexes into slices with an implicit lower bound of one.
+// subscriptExpr returns an injected subscript expression, converting mixed indexes and slices to slice bounds.
 func subscriptExpr(ctx *Context, child vitess.Expr, indexes tree.ArraySubscripts) (vitess.Expr, error) {
 	slice := false
 	for _, index := range indexes {
 		slice = slice || index.Slice
 	}
+
 	expr := &pgexprs.Subscript{Slice: slice}
 	children := vitess.Exprs{child}
 	for _, index := range indexes {
@@ -1134,38 +1134,45 @@ func subscriptExpr(ctx *Context, child vitess.Expr, indexes tree.ArraySubscripts
 				bounds = []tree.Expr{tree.NewNumVal(constant.MakeInt64(1), "1", false), index.Begin}
 			}
 		}
+
 		for _, bound := range bounds {
 			expr.Omitted = append(expr.Omitted, bound == nil)
 			if bound == nil {
 				children = append(children, &vitess.NullVal{})
 				continue
 			}
+
 			converted, err := nodeExpr(ctx, bound)
 			if err != nil {
 				return nil, err
 			}
+
 			children = append(children, converted)
 		}
 	}
+
 	return vitess.InjectedExpr{Expression: expr, Children: children}, nil
 }
 
-// nodeArrayExpr carries an explicit array cast into nested constructors so an empty
-// constructor has an element type. Without such context PostgreSQL rejects ARRAY[].
+// nodeArrayExpr returns an array constructor with explicit element types propagated into nested empty arrays.
 func nodeArrayExpr(ctx *Context, node *tree.Array, coercedType *pgtypes.DoltgresType) (vitess.Expr, error) {
 	if coercedType == nil && node.HasResolvedType() {
 		_, resolved, err := nodeResolvableTypeReference(ctx, node.ResolvedType(), false)
 		if err != nil {
 			return nil, err
 		}
+
 		if !resolved.IsArrayType() {
 			return nil, errors.Errorf("array has invalid resolved type")
 		}
+
 		coercedType = resolved
 	}
+
 	if len(node.Exprs) == 0 && coercedType == nil {
 		return nil, errors.WithHint(pgerror.New(pgcode.IndeterminateDatatype, "cannot determine type of empty array"), "Explicitly cast to the desired type, for example ARRAY[]::integer[].")
 	}
+
 	children := make(vitess.Exprs, len(node.Exprs))
 	for i, child := range node.Exprs {
 		var err error
@@ -1174,14 +1181,17 @@ func nodeArrayExpr(ctx *Context, node *tree.Array, coercedType *pgtypes.Doltgres
 		} else {
 			children[i], err = nodeExpr(ctx, child)
 		}
+
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	array, err := pgexprs.NewArray(coercedType)
 	if err != nil {
 		return nil, err
 	}
+
 	return vitess.InjectedExpr{Expression: array, Children: children}, nil
 }
 

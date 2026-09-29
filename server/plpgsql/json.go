@@ -647,7 +647,11 @@ func (stmt *plpgSQL_stmt_foreach_a) Convert(datums datumNames) (block Block, err
 	if stmt.Slice > 0 {
 		checks := []Statement{
 			If{Condition: fmt.Sprintf("CAST(pg_typeof(%s) AS TEXT) LIKE '%%[]'", QuoteIdentifier(varName)), GotoOffset: 2},
-			Raise{Level: NoticeLevelException.String(), Message: "FOREACH ... SLICE loop variable must be of an array type", SqlState: pgcode.DatatypeMismatch.String()},
+			Raise{
+				Level:    NoticeLevelException.String(),
+				Message:  "FOREACH ... SLICE loop variable must be of an array type",
+				SqlState: pgcode.DatatypeMismatch.String(),
+			},
 		}
 		body := append([]Statement{}, block.Body[:5]...)
 		body = append(body, checks...)

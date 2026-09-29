@@ -21,10 +21,12 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArrayContains registers the array containment operator with the function framework.
 func initArrayContains() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryJSONContainsRight, arraycontains)
 }
 
+// arraycontains returns whether the left array contains every right-hand element, with null elements never matching.
 var arraycontains = framework.Function2{
 	Name:       "arraycontains",
 	Return:     pgtypes.Bool,
@@ -46,18 +48,22 @@ func arrayContains(ctx *sql.Context, base *pgtypes.DoltgresType, left, right []a
 			if l == nil || r == nil {
 				continue
 			}
+
 			cmp, err := base.Compare(ctx, l, r)
 			if err != nil {
 				return false, err
 			}
+
 			if cmp == 0 {
 				found = true
 				break
 			}
 		}
+
 		if !found {
 			return false, nil
 		}
 	}
+
 	return true, nil
 }

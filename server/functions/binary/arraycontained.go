@@ -21,10 +21,12 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArrayContained registers the contained-by array operator with the function framework.
 func initArrayContained() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryJSONContainsLeft, arraycontained)
 }
 
+// arraycontained returns whether the left array is contained in the right array.
 var arraycontained = framework.Function2{
 	Name:       "arraycontained",
 	Return:     pgtypes.Bool,

@@ -21,8 +21,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initCardinality registers the cardinality function with the function framework.
 func initCardinality() { framework.RegisterFunction(cardinality_anyarray) }
 
+// cardinality_anyarray returns the number of scalar elements across all array dimensions.
 var cardinality_anyarray = framework.Function1{
 	Name:       "cardinality",
 	Return:     pgtypes.Int32,
@@ -33,10 +35,12 @@ var cardinality_anyarray = framework.Function1{
 		if len(dims) == 0 {
 			return int32(0), nil
 		}
+
 		count := int32(1)
 		for _, dim := range dims {
 			count *= dim
 		}
+
 		return count, nil
 	},
 }

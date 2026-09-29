@@ -23,12 +23,14 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArraySort registers the array_sort overloads with the function framework.
 func initArraySort() {
 	framework.RegisterFunction(array_sort_one)
 	framework.RegisterFunction(array_sort_two)
 	framework.RegisterFunction(array_sort_three)
 }
 
+// array_sort_one returns an array sorted ascending with nulls last.
 var array_sort_one = framework.Function1{
 	Name:       "array_sort",
 	Return:     pgtypes.AnyArray,
@@ -38,6 +40,8 @@ var array_sort_one = framework.Function1{
 		return sortArray(ctx, t[0].ArrayBaseType(), val, false, false)
 	},
 }
+
+// array_sort_two returns an array sorted in the requested direction with matching default null placement.
 var array_sort_two = framework.Function2{
 	Name:       "array_sort",
 	Return:     pgtypes.AnyArray,
@@ -47,6 +51,8 @@ var array_sort_two = framework.Function2{
 		return sortArray(ctx, t[0].ArrayBaseType(), val, desc.(bool), desc.(bool))
 	},
 }
+
+// array_sort_three returns an array sorted with explicit direction and null placement.
 var array_sort_three = framework.Function3{
 	Name:       "array_sort",
 	Return:     pgtypes.AnyArray,
@@ -57,7 +63,7 @@ var array_sort_three = framework.Function3{
 	},
 }
 
-// sortArray sorts a copy of the first axis, leaving the input and inner axes unchanged.
+// sortArray returns a sorted copy of the first axis, leaving the input and inner axes unchanged.
 func sortArray(ctx *sql.Context, base *pgtypes.DoltgresType, val any, descending, nullsFirst bool) (any, error) {
 	vals := val.([]any)
 	result := append([]any{}, vals...)
@@ -67,40 +73,49 @@ func sortArray(ctx *sql.Context, base *pgtypes.DoltgresType, val any, descending
 		if compareErr != nil {
 			return false
 		}
+
 		a, b := result[i], result[j]
 		if a == nil || b == nil {
 			return a == nil && b != nil && nullsFirst || a != nil && b == nil && !nullsFirst
 		}
+
 		cmp, err := compareArraySortValues(ctx, base, a, b, len(dims) > 1)
 		if err != nil {
 			compareErr = err
 			return false
 		}
+
 		if descending {
 			return cmp > 0
 		}
+
 		return cmp < 0
 	})
 	if compareErr != nil {
 		return nil, compareErr
 	}
+
 	return result, nil
 }
 
-// Within a row, null elements sort after non-null elements, as in PostgreSQL array comparisons.
+// compareArraySortValues returns the element or lexicographic array comparison, with null elements sorting last.
 func compareArraySortValues(ctx *sql.Context, base *pgtypes.DoltgresType, a, b any, nested bool) (int, error) {
 	if a == nil {
 		if b == nil {
 			return 0, nil
 		}
+
 		return 1, nil
 	}
+
 	if b == nil {
 		return -1, nil
 	}
+
 	if !nested {
 		return base.Compare(ctx, a, b)
 	}
+
 	av := pgtypes.FlattenArray(a.([]any), base)
 	bv := pgtypes.FlattenArray(b.([]any), base)
 	for i := range av {
@@ -109,5 +124,6 @@ func compareArraySortValues(ctx *sql.Context, base *pgtypes.DoltgresType, a, b a
 			return cmp, err
 		}
 	}
+
 	return 0, nil
 }

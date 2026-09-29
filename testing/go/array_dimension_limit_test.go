@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestArrayDimensionLimit checks the maximum array rank for literals and constructors.
 func TestArrayDimensionLimit(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
 		Name: "array dimension limits",
@@ -32,6 +33,15 @@ func TestArrayDimensionLimit(t *testing.T) {
 			},
 			{
 				Query:           "SELECT '{{{{{{{1}}}}}}}'::int[];",
+				ExpectedErr:     "exceeds the maximum allowed (6)",
+				ExpectedErrCode: "54000",
+			},
+			{
+				Query:    "SELECT array_ndims(ARRAY[(SELECT ARRAY[[[[[1]]]]])]);",
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:           "SELECT ARRAY[(SELECT ARRAY[[[[[[1]]]]]])];",
 				ExpectedErr:     "exceeds the maximum allowed (6)",
 				ExpectedErrCode: "54000",
 			},

@@ -2799,22 +2799,38 @@ func TestArrayFunctions(t *testing.T) {
 	})
 }
 
+// TestCardinality checks array element counts for literals, table columns, and subqueries.
 func TestCardinality(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "cardinality",
+		Name:        "cardinality",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT cardinality(ARRAY[[1,NULL],[3,4]]), cardinality(ARRAY[]::int[]), cardinality(NULL::int[]);",
 				Expected: []sql.Row{{4, 0, nil}},
 			},
 			{Query: "SELECT cardinality(ARRAY[[[1,2]],[[3,4]]]);", Expected: []sql.Row{{4}}},
+			{
+				Query:    "SELECT id, cardinality(a) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, 4}, {2, 0}, {3, nil}},
+			},
+			{
+				Query:    "SELECT cardinality((SELECT a FROM array_inputs WHERE id=1));",
+				Expected: []sql.Row{{4}},
+			},
+			{
+				Query:    "SELECT cardinality(ARRAY[[[[[[NULL::int]]]]]]);",
+				Expected: []sql.Row{{1}},
+			},
 		},
 	}})
 }
 
+// TestArrayLower checks array lower bounds for literals, table columns, and subqueries.
 func TestArrayLower(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "array_lower",
+		Name:        "array_lower",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT array_lower(ARRAY[[1,2],[3,4]],1),array_lower(ARRAY[[1,2],[3,4]],2),array_lower(ARRAY[1],2);",
@@ -2824,13 +2840,23 @@ func TestArrayLower(t *testing.T) {
 				Query:    "SELECT array_lower(ARRAY[]::int[],1),array_lower(NULL::int[],1),array_lower(ARRAY[1],0),array_lower('1 2'::int2vector,1);",
 				Expected: []sql.Row{{nil, nil, nil, 0}},
 			},
+			{
+				Query:    "SELECT id, array_lower(a,1) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, 1}, {2, nil}, {3, nil}},
+			},
+			{
+				Query:    "SELECT array_lower((SELECT a FROM array_inputs WHERE id=1),NULL), array_lower(ARRAY[1],-1), array_lower('1 2'::oidvector,1);",
+				Expected: []sql.Row{{nil, nil, 0}},
+			},
 		},
 	}})
 }
 
+// TestArrayFill checks array filling and invalid dimension errors for literals, table columns, and subqueries.
 func TestArrayFill(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "array_fill",
+		Name:        "array_fill",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT array_fill(7,ARRAY[2,3]),array_fill(NULL::int,ARRAY[2,2]),array_fill('x'::varchar,ARRAY[2],ARRAY[1]);",
@@ -2870,13 +2896,43 @@ func TestArrayFill(t *testing.T) {
 				ExpectedErr:     "array",
 				ExpectedErrCode: "54000",
 			},
+			{
+				Query:    "SELECT id, array_fill(id,ARRAY[cardinality(a)]) FROM array_inputs WHERE id<3 ORDER BY id;",
+				Expected: []sql.Row{{1, "{1,1,1,1}"}, {2, "{}"}},
+			},
+			{
+				Query:    "SELECT array_fill((SELECT id FROM array_inputs WHERE id=1),(SELECT ARRAY[2,1]),(SELECT ARRAY[1,1]));",
+				Expected: []sql.Row{{"{{1},{1}}"}},
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2],NULL::int[]);",
+				ExpectedErr:     "cannot be null",
+				ExpectedErrCode: "22004",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2],ARRAY[NULL]::int[]);",
+				ExpectedErr:     "cannot be null",
+				ExpectedErrCode: "22004",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2,2],ARRAY[1]);",
+				ExpectedErr:     "wrong number of array subscripts",
+				ExpectedErrCode: "2202E",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[-1]);",
+				ExpectedErr:     "array size exceeds",
+				ExpectedErrCode: "54000",
+			},
 		},
 	}})
 }
 
+// TestArrayRemove checks removal of matching array elements for literals, table columns, and subqueries.
 func TestArrayRemove(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "array_remove",
+		Name:        "array_remove",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT array_remove(ARRAY[1,2,1,NULL],1), array_remove(ARRAY[1,NULL,2],NULL), array_remove(NULL::int[],1);",
@@ -2891,13 +2947,27 @@ func TestArrayRemove(t *testing.T) {
 				ExpectedErr:     "removing elements",
 				ExpectedErrCode: "0A000",
 			},
+			{
+				Query:    "SELECT id, array_remove(a,3) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{NULL,1}"}, {2, "{}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT array_remove((SELECT a FROM array_inputs WHERE id=1),(SELECT NULL::int));",
+				Expected: []sql.Row{{"{3,1,3}"}},
+			},
+			{
+				Query:    "SELECT array_remove(ARRAY['NaN'::numeric,1,'NaN'::numeric],'NaN'::numeric),array_remove(ARRAY['a','b'],'z');",
+				Expected: []sql.Row{{"{1}", "{a,b}"}},
+			},
 		},
 	}})
 }
 
+// TestArrayReplace checks replacement of matching array elements for literals, table columns, and subqueries.
 func TestArrayReplace(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "array_replace",
+		Name:        "array_replace",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT array_replace(ARRAY[[1,NULL],[1,4]],1,9), array_replace(ARRAY[[1,NULL],[1,4]],NULL,0);",
@@ -2907,13 +2977,27 @@ func TestArrayReplace(t *testing.T) {
 				Query:    "SELECT array_replace(ARRAY['a','b'],'a',NULL), array_replace(NULL::int[],1,2), array_replace(ARRAY[]::int[],1,2);",
 				Expected: []sql.Row{{"{NULL,b}", nil, "{}"}},
 			},
+			{
+				Query:    "SELECT id, array_replace(a,3,NULL) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{NULL,NULL,1,NULL}"}, {2, "{}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT array_replace((SELECT a FROM array_inputs WHERE id=1),(SELECT NULL::int),(SELECT 2));",
+				Expected: []sql.Row{{"{3,2,1,3}"}},
+			},
+			{
+				Query:    "SELECT array_replace(ARRAY[NULL,NULL]::int[],NULL,NULL),array_replace(ARRAY[1,2],9,0);",
+				Expected: []sql.Row{{"{NULL,NULL}", "{1,2}"}},
+			},
 		},
 	}})
 }
 
+// TestTrimArray checks trimming of the first array dimension for literals, table columns, and subqueries.
 func TestTrimArray(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "trim_array",
+		Name:        "trim_array",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT trim_array(ARRAY[[1,2],[3,4],[5,6]],1), trim_array(ARRAY[1,2],2), trim_array(NULL::int[],1);",
@@ -2933,13 +3017,27 @@ func TestTrimArray(t *testing.T) {
 				ExpectedErr:     "number of elements",
 				ExpectedErrCode: "2202E",
 			},
+			{
+				Query:    "SELECT id, trim_array(a,0) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{3,NULL,1,3}"}, {2, "{}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT trim_array((SELECT a FROM array_inputs WHERE id=1),(SELECT 2));",
+				Expected: []sql.Row{{"{3,NULL}"}},
+			},
+			{
+				Query:    "SELECT trim_array(ARRAY[1],NULL),trim_array(ARRAY[[1,2],[3,4]],2);",
+				Expected: []sql.Row{{nil, "{}"}},
+			},
 		},
 	}})
 }
 
+// TestArrayReverse checks reversal of the first array dimension for literals, table columns, and subqueries.
 func TestArrayReverse(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "array_reverse",
+		Name:        "array_reverse",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT array_reverse(ARRAY[[2,4],[3,1],[1,9]]), array_reverse(ARRAY[1,NULL,2]);",
@@ -2949,13 +3047,27 @@ func TestArrayReverse(t *testing.T) {
 				Query:    "SELECT array_reverse(ARRAY[]::int[]),array_reverse(NULL::int[]);",
 				Expected: []sql.Row{{"{}", nil}},
 			},
+			{
+				Query:    "SELECT id, array_reverse(a) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{3,1,NULL,3}"}, {2, "{}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT array_reverse((SELECT a FROM array_inputs WHERE id=1));",
+				Expected: []sql.Row{{"{3,1,NULL,3}"}},
+			},
+			{
+				Query:    "SELECT array_reverse(ARRAY[NULL]::int[]),array_reverse(ARRAY[[[1,2]],[[3,4]]]);",
+				Expected: []sql.Row{{"{NULL}", "{{{3,4}},{{1,2}}}"}},
+			},
 		},
 	}})
 }
 
+// TestArraySort checks array ordering and null placement for literals, table columns, and subqueries.
 func TestArraySort(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "array_sort",
+		Name:        "array_sort",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT array_sort(ARRAY[[2,4],[3,1],[1,9]]), array_sort(ARRAY[3,NULL,1,2]);",
@@ -2973,13 +3085,27 @@ func TestArraySort(t *testing.T) {
 				Query:    "SELECT array_sort(ARRAY['z','a','m']),array_sort(ARRAY[1],NULL);",
 				Expected: []sql.Row{{"{a,m,z}", nil}},
 			},
+			{
+				Query:    "SELECT id, array_sort(a),array_sort(a,true),array_sort(a,true,false) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{1,3,3,NULL}", "{NULL,3,3,1}", "{3,3,1,NULL}"}, {2, "{}", "{}", "{}"}, {3, nil, nil, nil}},
+			},
+			{
+				Query:    "SELECT array_sort((SELECT a FROM array_inputs WHERE id=1)),array_sort((SELECT a FROM array_inputs WHERE id=1),false),array_sort((SELECT a FROM array_inputs WHERE id=1),false,true);",
+				Expected: []sql.Row{{"{1,3,3,NULL}", "{1,3,3,NULL}", "{NULL,1,3,3}"}},
+			},
+			{
+				Query:    "SELECT array_sort(ARRAY[[1,NULL],[1,NULL],[1,2]],true,false),array_sort(ARRAY[1],false,NULL),array_sort(ARRAY[NULL,NULL]::int[]);",
+				Expected: []sql.Row{{"{{1,NULL},{1,NULL},{1,2}}", nil, "{NULL,NULL}"}},
+			},
 		},
 	}})
 }
 
+// TestArrayContains checks array containment for literals, table columns, and subqueries.
 func TestArrayContains(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "arraycontains",
+		Name:        "arraycontains",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT ARRAY[[1,2],[3,4]] @> ARRAY[4,1],ARRAY[1] @> ARRAY[1,1],ARRAY[NULL]::int[] @> ARRAY[NULL]::int[];",
@@ -2989,25 +3115,45 @@ func TestArrayContains(t *testing.T) {
 				Query:    "SELECT ARRAY['red','blue']::varchar[] @> ARRAY['red']::varchar[],ARRAY[1] @> ARRAY[]::int[],NULL::int[] @> ARRAY[1];",
 				Expected: []sql.Row{{"t", "t", nil}},
 			},
-		},
-	}})
-}
-
-func TestArrayContained(t *testing.T) {
-	RunScripts(t, []ScriptTest{{
-		Name: "arraycontained",
-		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SELECT ARRAY[4,1] <@ ARRAY[[1,2],[3,4]],ARRAY[5] <@ ARRAY[1,2],ARRAY[]::int[] <@ ARRAY[1];",
-				Expected: []sql.Row{{"t", "f", "t"}},
+				Query:    "SELECT id, a @> ARRAY[3,3], a @> ARRAY[]::int[] FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "t", "t"}, {2, "f", "t"}, {3, nil, nil}},
+			},
+			{
+				Query:    "SELECT (SELECT a FROM array_inputs WHERE id=1) @> (SELECT ARRAY[NULL]::int[]), ARRAY[]::int[] @> ARRAY[]::int[];",
+				Expected: []sql.Row{{"f", "t"}},
 			},
 		},
 	}})
 }
 
+// TestArrayContained checks reversed array containment for literals, table columns, and subqueries.
+func TestArrayContained(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "arraycontained",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[4,1] <@ ARRAY[[1,2],[3,4]],ARRAY[5] <@ ARRAY[1,2],ARRAY[]::int[] <@ ARRAY[1];",
+				Expected: []sql.Row{{"t", "f", "t"}},
+			},
+			{
+				Query:    "SELECT id, a <@ ARRAY[1,3], ARRAY[]::int[] <@ a FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "f", "t"}, {2, "t", "t"}, {3, nil, nil}},
+			},
+			{
+				Query:    "SELECT (SELECT ARRAY[3,3]) <@ (SELECT a FROM array_inputs WHERE id=1), ARRAY[NULL]::int[] <@ ARRAY[NULL]::int[];",
+				Expected: []sql.Row{{"t", "f"}},
+			},
+		},
+	}})
+}
+
+// TestArrayOverlap checks shared array elements for literals, table columns, and subqueries.
 func TestArrayOverlap(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "arrayoverlap",
+		Name:        "arrayoverlap",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT ARRAY[[1,2],[3,4]] && ARRAY[4,9],ARRAY[1,2] && ARRAY[9],ARRAY[NULL]::int[] && ARRAY[NULL]::int[];",
@@ -3017,13 +3163,23 @@ func TestArrayOverlap(t *testing.T) {
 				Query:    "SELECT ARRAY[]::int[] && ARRAY[1],NULL::int[] && ARRAY[1],ARRAY['a']::varchar[] && ARRAY['b','a']::varchar[];",
 				Expected: []sql.Row{{"f", nil, "t"}},
 			},
+			{
+				Query:    "SELECT id, a && ARRAY[1], a && ARRAY[NULL]::int[] FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "t", "f"}, {2, "f", "f"}, {3, nil, nil}},
+			},
+			{
+				Query:    "SELECT (SELECT a FROM array_inputs WHERE id=1) && (SELECT ARRAY[9]), ARRAY[]::int[] && ARRAY[]::int[];",
+				Expected: []sql.Row{{"f", "f"}},
+			},
 		},
 	}})
 }
 
+// TestUnnestMultidimensionalArguments checks flattening and padding of array arguments for literals, table columns, and subqueries.
 func TestUnnestMultidimensionalArguments(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "multi-array unnest flattens each input",
+		Name:        "multi-array unnest flattens each input",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
 		Assertions: []ScriptTestAssertion{
 			{Query: "SELECT unnest('1 2'::int2vector);", Expected: []sql.Row{{1}, {2}}},
 
@@ -3034,6 +3190,94 @@ func TestUnnestMultidimensionalArguments(t *testing.T) {
 			{
 				Query:    "SELECT * FROM unnest(NULL::int[],ARRAY[[1,2],[3,4]]) AS u(a,b);",
 				Expected: []sql.Row{{nil, 1}, {nil, 2}, {nil, 3}, {nil, 4}},
+			},
+			{
+				Query:    "SELECT id, unnest(a) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, 3}, {1, nil}, {1, 1}, {1, 3}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT a FROM array_inputs WHERE id=1),(SELECT ARRAY[9,8])) AS u(a,b);",
+				Expected: []sql.Row{{3, 9}, {nil, 8}, {1, nil}, {3, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[]::int[],NULL::int[]) AS u(a,b);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[[1,2]],[[3,4]]],ARRAY[9,8,7]) WITH ORDINALITY AS u(a,b,n);",
+				Expected: []sql.Row{{1, 9, 1}, {2, 8, 2}, {3, 7, 3}, {4, nil, 4}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[NULL,NULL],[NULL,NULL]]::int[],ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 9}, {nil, nil}, {nil, nil}, {nil, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2]],ARRAY[[3],[4],[5]]) AS u(a,b);",
+				Expected: []sql.Row{{1, 3}, {2, 4}, {nil, 5}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2]],ARRAY[]::text[],ARRAY[true,false,true]) AS u(a,b,c);",
+				Expected: []sql.Row{{1, nil, "t"}, {2, nil, "f"}, {nil, nil, "t"}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[[[[[1,2]]]]]],ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{1, 9}, {2, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2]],NULL::int[]) WITH ORDINALITY AS u(a,b,n);",
+				Expected: []sql.Row{{1, nil, 1}, {2, nil, 2}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[]::int[],ARRAY[[1,2]]) WITH ORDINALITY AS u(a,b,n);",
+				Expected: []sql.Row{{nil, 1, 1}, {nil, 2, 2}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,1],[1,1]],ARRAY[2,2]) AS u(a,b);",
+				Expected: []sql.Row{{1, 2}, {1, 2}, {1, nil}, {1, nil}},
+			},
+			{
+				Query:    "SELECT id,u.v,u.label,u.n FROM array_inputs,unnest(a,ARRAY[9,8]) WITH ORDINALITY AS u(v,label,n) ORDER BY id,n;",
+				Expected: []sql.Row{{1, 3, 9, 1}, {1, nil, 8, 2}, {1, 1, nil, 3}, {1, 3, nil, 4}, {2, nil, 9, 1}, {2, nil, 8, 2}, {3, nil, 9, 1}, {3, nil, 8, 2}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT a FROM array_inputs WHERE id=2),ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 9}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT a FROM array_inputs WHERE id=3),ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 9}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT a FROM array_inputs WHERE id=99),ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 9}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT ARRAY[[1,2],[3,4]]),(SELECT ARRAY[NULL,9]::int[])) AS u(a,b);",
+				Expected: []sql.Row{{1, nil}, {2, 9}, {3, nil}, {4, nil}},
+			},
+			{
+				Query:    "SELECT unnest((SELECT a FROM array_inputs WHERE id=1));",
+				Expected: []sql.Row{{3}, {nil}, {1}, {3}},
+			},
+			{
+				Query:    "SELECT unnest(ARRAY[[NULL,NULL],[1,NULL]]::int[]);",
+				Expected: []sql.Row{{nil}, {nil}, {1}, {nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[NULL]::int[],ARRAY[NULL]::text[]) WITH ORDINALITY AS u(a,b,n);",
+				Expected: []sql.Row{{nil, nil, 1}},
+			},
+			{
+				Query:    "SELECT * FROM unnest('1 2'::oidvector,ARRAY['a']::text[]) AS u(a,b);",
+				Expected: []sql.Row{{1, "a"}, {2, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest('1 2'::int2vector,ARRAY[9,8,7]) AS u(a,b);",
+				Expected: []sql.Row{{1, 9}, {2, 8}, {nil, 7}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[['a',NULL],['b','c']]::text[],ARRAY[[true,false]]) AS u(a,b);",
+				Expected: []sql.Row{{"a", "t"}, {nil, "f"}, {"b", nil}, {"c", nil}},
 			},
 		},
 	}})

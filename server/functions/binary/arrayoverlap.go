@@ -21,10 +21,12 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArrayOverlap registers the array overlap operator with the function framework.
 func initArrayOverlap() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryArrayOverlap, arrayoverlap)
 }
 
+// arrayoverlap returns whether the arrays share at least one non-null element.
 var arrayoverlap = framework.Function2{
 	Name:       "arrayoverlap",
 	Return:     pgtypes.Bool,
@@ -39,15 +41,18 @@ var arrayoverlap = framework.Function2{
 				if l == nil || r == nil {
 					continue
 				}
+
 				cmp, err := base.Compare(ctx, l, r)
 				if err != nil {
 					return nil, err
 				}
+
 				if cmp == 0 {
 					return true, nil
 				}
 			}
 		}
+
 		return false, nil
 	},
 }

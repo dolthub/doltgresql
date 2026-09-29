@@ -20,9 +20,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestArraySlices checks clipped array slices from literals, table columns, and subqueries.
 func TestArraySlices(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
-		Name: "array slices",
+		Name:        "array slices",
+		SetUpScript: []string{"CREATE TABLE slice_inputs (id int PRIMARY KEY,a int[],lo int,hi int);", "INSERT INTO slice_inputs VALUES (1,ARRAY[1,2,3],2,9),(2,ARRAY[]::int[],1,2),(3,NULL,1,2);"},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT (ARRAY[[1,2,3],[4,5,6]])[2:2][2:3], (ARRAY[[1,2,3],[4,5,6]])[:][2:2];",
@@ -43,6 +45,18 @@ func TestArraySlices(t *testing.T) {
 			{
 				Query:    "SELECT (ARRAY[1,2,3])[-2:2], (ARRAY[1,2,3])[3:1], (ARRAY[]::int[])[:];",
 				Expected: []sql.Row{{"{1,2}", "{}", "{}"}},
+			},
+			{
+				Query:    "SELECT id,a[lo:hi],a[lo:NULL] FROM slice_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{2,3}", nil}, {2, "{}", nil}, {3, nil, nil}},
+			},
+			{
+				Query:    "SELECT ((SELECT a FROM slice_inputs WHERE id=1))[(SELECT 2):(SELECT 9)];",
+				Expected: []sql.Row{{"{2,3}"}},
+			},
+			{
+				Query:    "SELECT (ARRAY[1,2])[1:2][1:1],(ARRAY[[1,2],[3,4]])[1:1];",
+				Expected: []sql.Row{{"{}", "{{1,2}}"}},
 			},
 		},
 	}})

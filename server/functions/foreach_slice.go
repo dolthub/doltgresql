@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import (
 // initForeachSlice registers the internal iterator used by PL/pgSQL FOREACH SLICE.
 func initForeachSlice() { framework.RegisterFunction(foreach_slice) }
 
+// foreach_slice returns an iterator over complete subarrays of the requested rank.
 var foreach_slice = framework.Function2{
 	Name:       "__doltgres_foreach_slice",
 	Return:     pgtypes.RowTypeWithReturnType(pgtypes.AnyArray),
@@ -41,6 +42,7 @@ var foreach_slice = framework.Function2{
 		if n < 0 || n > len(dims) {
 			return nil, pgerror.Newf(pgcode.ArraySubscript, "slice dimension (%d) is out of the valid range 0..%d", n, len(dims))
 		}
+
 		// Collect references to complete subarrays; the iteration never modifies them.
 		var rows []any
 		var collect func([]any, int)
@@ -49,19 +51,23 @@ var foreach_slice = framework.Function2{
 				rows = append(rows, a)
 				return
 			}
+
 			for _, v := range a {
 				collect(v.([]any), depth-1)
 			}
 		}
+
 		if n == 0 {
 			return nil, pgerror.New(pgcode.InvalidParameterValue, "slice dimension must be greater than zero")
 		}
+
 		collect(vals, len(dims)-n)
 		i := 0
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 			if i >= len(rows) {
 				return nil, io.EOF
 			}
+
 			row := sql.Row{rows[i]}
 			i++
 			return row, nil

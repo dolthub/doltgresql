@@ -23,8 +23,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initArrayRemove registers the array_remove function with the function framework.
 func initArrayRemove() { framework.RegisterFunction(array_remove) }
 
+// array_remove returns a one-dimensional array with all matching elements removed.
 var array_remove = framework.Function2{
 	Name:       "array_remove",
 	Return:     pgtypes.AnyArray,
@@ -33,11 +35,13 @@ var array_remove = framework.Function2{
 		if val == nil {
 			return nil, nil
 		}
+
 		vals := val.([]any)
 		base := t[0].ArrayBaseType()
 		if len(pgtypes.ArrayDims(vals, base)) > 1 {
 			return nil, pgerror.New(pgcode.FeatureNotSupported, "removing elements from multidimensional arrays is not supported")
 		}
+
 		result := make([]any, 0, len(vals))
 		for _, v := range vals {
 			equal := v == nil && search == nil
@@ -46,12 +50,15 @@ var array_remove = framework.Function2{
 				if err != nil {
 					return nil, err
 				}
+
 				equal = cmp == 0
 			}
+
 			if !equal {
 				result = append(result, v)
 			}
 		}
+
 		return result, nil
 	},
 }
