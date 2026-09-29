@@ -113,6 +113,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeCreateDatabase(ctx, stmt)
 	case *tree.CreateDomain:
 		return nodeCreateDomain(ctx, stmt)
+	case *tree.CreatePublication:
+		return nodeCreatePublication(ctx, stmt)
 	case *tree.CreateExtension:
 		return nodeCreateExtension(ctx, stmt)
 	case *tree.CreateFunction:
@@ -157,6 +159,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeDropDatabase(ctx, stmt)
 	case *tree.DropDomain:
 		return nodeDropDomain(ctx, stmt)
+	case *tree.DropPublication:
+		return nodeDropPublication(ctx, stmt)
 	case *tree.DropExtension:
 		return nodeDropExtension(ctx, stmt)
 	case *tree.DropFunction:
