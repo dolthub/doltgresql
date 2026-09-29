@@ -272,22 +272,22 @@ func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObj
 				}, nil
 			} else {
 				return conflicts.Conflict{
-					ID:           theirs.GetID(),
-					FromHash:     rightHash.String(),
-					RootObjectID: theirs.GetRootObjectID(),
-					Ours:         nil,
-					Theirs:       theirs,
-					Ancestor:     ancestor,
-				}, &merge.MergeStats{
-					Operation:            merge.TableModified,
-					Adds:                 0,
-					Deletes:              0,
-					Modifications:        0,
-					DataConflicts:        0,
-					SchemaConflicts:      0,
-					RootObjectConflicts:  1,
-					ConstraintViolations: 0,
-				}, nil
+						ID:           theirs.GetID(),
+						FromHash:     rightHash.String(),
+						RootObjectID: theirs.GetRootObjectID(),
+						Ours:         nil,
+						Theirs:       theirs,
+						Ancestor:     ancestor,
+					}, &merge.MergeStats{
+						Operation:            merge.TableModified,
+						Adds:                 0,
+						Deletes:              0,
+						Modifications:        0,
+						DataConflicts:        0,
+						SchemaConflicts:      0,
+						RootObjectConflicts:  1,
+						ConstraintViolations: 0,
+					}, nil
 			}
 		case mro.TheirRootObj != nil && mro.AncestorRootObj == nil:
 			return mro.TheirRootObj, &merge.MergeStats{
@@ -355,22 +355,22 @@ func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObj
 				}, nil
 			} else {
 				return conflicts.Conflict{
-					ID:           ours.GetID(),
-					FromHash:     rightHash.String(),
-					RootObjectID: ours.GetRootObjectID(),
-					Ours:         ours,
-					Theirs:       nil,
-					Ancestor:     ancestor,
-				}, &merge.MergeStats{
-					Operation:            merge.TableModified,
-					Adds:                 0,
-					Deletes:              0,
-					Modifications:        0,
-					DataConflicts:        0,
-					SchemaConflicts:      0,
-					RootObjectConflicts:  1,
-					ConstraintViolations: 0,
-				}, nil
+						ID:           ours.GetID(),
+						FromHash:     rightHash.String(),
+						RootObjectID: ours.GetRootObjectID(),
+						Ours:         ours,
+						Theirs:       nil,
+						Ancestor:     ancestor,
+					}, &merge.MergeStats{
+						Operation:            merge.TableModified,
+						Adds:                 0,
+						Deletes:              0,
+						Modifications:        0,
+						DataConflicts:        0,
+						SchemaConflicts:      0,
+						RootObjectConflicts:  1,
+						ConstraintViolations: 0,
+					}, nil
 			}
 		case mro.AncestorRootObj == nil:
 			return mro.OurRootObj, &merge.MergeStats{
