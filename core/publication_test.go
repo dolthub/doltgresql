@@ -56,6 +56,9 @@ func TestPublicationPersistence(t *testing.T) {
 	_, objectID, err := reloaded.ResolveName(ctx, p.Name())
 	require.NoError(t, err)
 	require.Equal(t, p.ID.AsId(), objectID)
+	_, qualifiedID, err := reloaded.ResolveName(ctx, doltdb.TableName{Schema: "public", Name: p.Name().Name})
+	require.NoError(t, err)
+	require.Equal(t, p.ID.AsId(), qualifiedID, "search-path qualification must not prevent publication staging")
 	// Dropping validates the whole list before making any change.
 	require.Error(t, reloaded.DropPublication(ctx, p.ID, id.NewPublication("missing")))
 	require.True(t, reloaded.HasPublication(ctx, p.ID))

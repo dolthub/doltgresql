@@ -120,7 +120,9 @@ func (pgp *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (
 
 // TableNameToID implements the interface objinterface.Collection.
 func (*Collection) TableNameToID(name doltdb.TableName) id.Id {
-	if name.Schema != "" || !strings.HasPrefix(name.Name, "publication ") {
+	// Dolt staging qualifies names through the search path. The synthetic
+	// publication spelling remains database-wide regardless of that schema.
+	if !strings.HasPrefix(name.Name, "publication ") {
 		return id.Null
 	}
 	publicationName, err := strconv.Unquote(strings.TrimPrefix(name.Name, "publication "))
