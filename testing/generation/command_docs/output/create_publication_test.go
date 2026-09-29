@@ -18,6 +18,10 @@ import "testing"
 
 func TestCreatePublication(t *testing.T) {
 	tests := []QueryParses{
+		Converts("CREATE PUBLICATION name"),
+		Converts("CREATE PUBLICATION name FOR ALL TABLES"),
+		Converts("CREATE PUBLICATION name WITH (publish = 'insert, update')"),
+		Converts("CREATE PUBLICATION name FOR ALL TABLES WITH (publish_via_partition_root = true)"),
 		Unimplemented("CREATE PUBLICATION name FOR TABLE ONLY table_name ( column_name , column_name ) , TABLE table_name"),
 		Unimplemented("CREATE PUBLICATION name FOR TABLE table_name * ( column_name ) WHERE ( expression ) , TABLE table_name *"),
 		Unimplemented("CREATE PUBLICATION name FOR TABLE table_name * ( column_name , column_name ) WHERE ( expression ) , TABLE ONLY table_name WHERE ( expression )"),
