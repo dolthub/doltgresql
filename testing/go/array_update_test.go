@@ -90,6 +90,10 @@ func TestArraySubscriptUpdate(t *testing.T) {
 					Expected: []sql.Row{{"{9,10,3,NULL,NULL,99}"}},
 				},
 				{
+					Query:    "UPDATE t SET a[2:1]=NULL WHERE id=2 RETURNING a;",
+					Expected: []sql.Row{{"{9,10,3,NULL,NULL,99}"}},
+				},
+				{
 					Query:    "UPDATE t SET a[1:1][1:1]=ARRAY[NULL,99]::int[] WHERE id=1 RETURNING a;",
 					Expected: []sql.Row{{"{{NULL,2,3},{4,5,6}}"}},
 				},
@@ -109,6 +113,31 @@ func TestArraySubscriptUpdate(t *testing.T) {
 				{
 					Query:    "SELECT a FROM t WHERE id=2;",
 					Expected: []sql.Row{{"{9,8,3,NULL,NULL,99}"}},
+				},
+			},
+		},
+		{
+			Name: "empty array assignments require explicit bounds",
+			SetUpScript: []string{
+				"CREATE TABLE t (a int[]);",
+				"INSERT INTO t VALUES (ARRAY[]::int[]);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "UPDATE t SET a[:]=ARRAY[1];",
+					ExpectedErr:     "array slice subscript must provide both boundaries",
+					ExpectedErrCode: "2202E",
+				},
+				{
+					Query:    "SELECT a FROM t;",
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					Query: "UPDATE t SET a[1:1]=NULL;",
+				},
+				{
+					Query:    "SELECT a FROM t;",
+					Expected: []sql.Row{{"{}"}},
 				},
 			},
 		},

@@ -85,6 +85,7 @@ func (s SubscriptAssignment) WithResolvedChildren(ctx context.Context, children 
 
 // Eval implements sql.Expression.
 func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
+	// Evaluate the original array first, then cast the replacement to its element or slice type.
 	value, err := s.Child.Eval(ctx, row)
 	if err != nil {
 		return nil, err
@@ -95,17 +96,7 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, pgerror.New(pgcode.DatatypeMismatch, "subscripted object is not an array")
 	}
 
-	target := dt.BaseType()
-	if s.Slice {
-		target = dt
-	}
-
-	sourceType, ok := s.Value.Type(ctx).(*types.DoltgresType)
-	if !ok {
-		return nil, pgerror.New(pgcode.DatatypeMismatch, "invalid array assignment type")
-	}
-
-	replacement, err := NewAssignmentCast(s.Value, sourceType, target).Eval(ctx, row)
+	replacement, err := s.evalReplacement(ctx, row, dt)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +106,60 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		vals = value.([]any)
 	}
 
-	dims := types.ArrayDims(vals, dt.BaseType())
+	// Determine the array rank and evaluate inclusive bounds, filling omitted slice bounds
+	// from the existing dimensions; empty arrays require explicit bounds.
+	dims, err := s.assignmentDimensions(vals, dt.BaseType())
+	if err != nil {
+		return nil, err
+	}
+
+	lower, upper, err := s.evalAssignmentBounds(ctx, row, dims, len(vals) == 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// A NULL slice replacement leaves the array unchanged, but its subscript expressions
+	// must still be evaluated and checked for NULL before taking this shortcut.
+	if s.Slice && replacement == nil {
+		return value, nil
+	}
+
+	// Range checks apply only when the assignment writes values.
+	if err = validateArrayAssignmentBounds(dims, lower, upper, len(vals) == 0); err != nil {
+		return nil, err
+	}
+
+	// Flatten the replacement in storage order; scalar assignments consume one value,
+	// including NULL, while slice assignments consume the requested rectangular region.
+	var replacements []any
+	if s.Slice {
+		replacements = types.FlattenArray(replacement.([]any), dt.BaseType())
+	} else {
+		replacements = []any{replacement}
+	}
+
+	// Build a fresh result so neither successful nor failed assignments mutate the stored array.
+	return replaceArrayRegion(vals, replacements, dt.BaseType(), dims, lower, upper)
+}
+
+// evalReplacement returns the replacement cast to the array or element type, or an evaluation or cast error.
+func (s SubscriptAssignment) evalReplacement(ctx *sql.Context, row sql.Row, arrayType *types.DoltgresType) (any, error) {
+	target := arrayType.BaseType()
+	if s.Slice {
+		target = arrayType
+	}
+
+	sourceType, ok := s.Value.Type(ctx).(*types.DoltgresType)
+	if !ok {
+		return nil, pgerror.New(pgcode.DatatypeMismatch, "invalid array assignment type")
+	}
+
+	return NewAssignmentCast(s.Value, sourceType, target).Eval(ctx, row)
+}
+
+// assignmentDimensions returns validated dimensions, using zero-sized axes when the assignment creates an array.
+func (s SubscriptAssignment) assignmentDimensions(vals []any, baseType *types.DoltgresType) ([]int32, error) {
+	dims := types.ArrayDims(vals, baseType)
 	rank := len(s.Indexes)
 	if s.Slice {
 		rank /= 2
@@ -133,6 +177,12 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		dims = make([]int32, rank)
 	}
 
+	return dims, nil
+}
+
+// evalAssignmentBounds returns inclusive lower and upper bounds, or an error for invalid subscript expressions.
+func (s SubscriptAssignment) evalAssignmentBounds(ctx *sql.Context, row sql.Row, dims []int32, empty bool) ([]int, []int, error) {
+	// Unspecified axes and omitted slice bounds initially cover the whole existing dimension.
 	lower := make([]int, len(dims))
 	upper := make([]int, len(dims))
 	for i, d := range dims {
@@ -142,8 +192,8 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 	for i, expr := range s.Indexes {
 		if s.Slice && s.Omitted[i] {
-			if len(vals) == 0 {
-				return nil, pgerror.New(pgcode.ArraySubscript, "array slice subscript must provide both boundaries")
+			if empty {
+				return nil, nil, pgerror.New(pgcode.ArraySubscript, "array slice subscript must provide both boundaries")
 			}
 
 			continue
@@ -151,16 +201,16 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 		v, err := expr.Eval(ctx, row)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		if v == nil {
-			return nil, pgerror.New(pgcode.NullValueNotAllowed, "array subscript in assignment must not be null")
+			return nil, nil, pgerror.New(pgcode.NullValueNotAllowed, "array subscript in assignment must not be null")
 		}
 
 		v, _, err = types.Int32.Convert(ctx, v)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		n := int(v.(int32))
@@ -176,57 +226,72 @@ func (s SubscriptAssignment) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 	}
 
-	if s.Slice && replacement == nil {
-		return value, nil
-	}
+	return lower, upper, nil
+}
 
+// validateArrayAssignmentBounds returns an error for reversed ranges, multidimensional growth, or unsupported lower bounds.
+func validateArrayAssignmentBounds(dims []int32, lower, upper []int, empty bool) error {
 	for i := range dims {
 		if lower[i] > upper[i] {
-			return nil, pgerror.New(pgcode.ArraySubscript, "upper bound cannot be less than lower bound")
+			return pgerror.New(pgcode.ArraySubscript, "upper bound cannot be less than lower bound")
 		}
 
-		if len(vals) > 0 && len(dims) > 1 && (lower[i] < 1 || upper[i] > int(dims[i])) {
-			return nil, pgerror.New(pgcode.ArraySubscript, "array subscript out of range")
+		if !empty && len(dims) > 1 && (lower[i] < 1 || upper[i] > int(dims[i])) {
+			return pgerror.New(pgcode.ArraySubscript, "array subscript out of range")
 		}
 
-		if lower[i] < 1 || len(vals) == 0 && lower[i] != 1 {
-			return nil, pgerror.New(pgcode.FeatureNotSupported, "non-default array lower bounds are not yet supported")
+		if lower[i] < 1 || empty && lower[i] != 1 {
+			return pgerror.New(pgcode.FeatureNotSupported, "non-default array lower bounds are not yet supported")
 		}
 	}
 
-	var replacements []any
-	if s.Slice {
-		replacements = types.FlattenArray(replacement.([]any), dt.BaseType())
-	} else {
-		replacements = []any{replacement}
-	}
+	return nil
+}
 
+// arrayAssignmentSize returns the result dimensions and element count, or an error for insufficient replacement values or excessive size.
+func arrayAssignmentSize(dims []int32, lower, upper []int, replacementCount int) ([]int32, int, error) {
+	// The source must cover the entire assigned region; excess replacement elements are ignored.
 	count := int64(1)
 	for i := range dims {
 		count *= int64(upper[i] - lower[i] + 1)
 		if count > 134217727 {
-			return nil, pgerror.New(pgcode.ProgramLimitExceeded, "array size exceeds the maximum allowed (134217727)")
+			return nil, 0, pgerror.New(pgcode.ProgramLimitExceeded, "array size exceeds the maximum allowed (134217727)")
 		}
 	}
 
-	if int64(len(replacements)) < count {
-		return nil, pgerror.New(pgcode.ArraySubscript, "source array too small")
+	if int64(replacementCount) < count {
+		return nil, 0, pgerror.New(pgcode.ArraySubscript, "source array too small")
 	}
 
+	// Bounds were validated before sizing, so only one-dimensional or empty arrays can grow.
+	resultDims := make([]int32, len(dims))
 	for i := range dims {
-		dims[i] = max(dims[i], int32(upper[i]))
+		resultDims[i] = max(dims[i], int32(upper[i]))
 	}
 
 	total := int64(1)
-	for _, d := range dims {
+	for _, d := range resultDims {
 		total *= int64(d)
 		if total > 134217727 {
-			return nil, pgerror.New(pgcode.ProgramLimitExceeded, "array size exceeds the maximum allowed (134217727)")
+			return nil, 0, pgerror.New(pgcode.ProgramLimitExceeded, "array size exceeds the maximum allowed (134217727)")
 		}
 	}
 
-	flat := make([]any, int(total))
-	copy(flat, types.FlattenArray(vals, dt.BaseType()))
+	return resultDims, int(total), nil
+}
+
+// replaceArrayRegion returns a new array with the selected region replaced, or an error if the result cannot be sized safely.
+func replaceArrayRegion(vals, replacements []any, baseType *types.DoltgresType, dims []int32, lower, upper []int) ([]any, error) {
+	dims, total, err := arrayAssignmentSize(dims, lower, upper, len(replacements))
+	if err != nil {
+		return nil, err
+	}
+
+	// Copy existing values into a new buffer, leaving any gap from one-dimensional growth as NULL.
+	flat := make([]any, total)
+	copy(flat, types.FlattenArray(vals, baseType))
+
+	// Convert each flat offset to one-based coordinates, replacing only values inside every bound.
 	offset := 0
 	for i := range flat {
 		index := i
