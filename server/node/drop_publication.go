@@ -84,18 +84,18 @@ func (d *DropPublication) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 		if seen[publicationID] {
 			continue
 		}
-		seen[publicationID] = true
 		publication, err := collection.GetPublication(ctx, publicationID)
 		if err != nil {
 			return nil, err
 		}
 		if !publication.ID.IsValid() {
 			if d.IfExists {
-				dsess.DSessFromSess(ctx.Session).Notice(&pgproto3.NoticeResponse{Severity: "NOTICE", Code: pgcode.UndefinedObject.String(), Message: fmt.Sprintf(`publication "%s" does not exist, skipping`, name)})
+				dsess.DSessFromSess(ctx.Session).Notice(&pgproto3.NoticeResponse{Severity: "NOTICE", Code: pgcode.SuccessfulCompletion.String(), Message: fmt.Sprintf(`publication "%s" does not exist, skipping`, name)})
 				continue
 			}
 			return nil, pgerror.Newf(pgcode.UndefinedObject, `publication "%s" does not exist`, name)
 		}
+		seen[publicationID] = true
 		var canDrop bool
 		auth.LockRead(func() {
 			role := auth.GetRole(ctx.Client().User)

@@ -27,6 +27,10 @@ func TestPublicationDDL(t *testing.T) {
 			{Query: `DROP PUBLICATION p,p,"Quoted Name",flags CASCADE`, ExpectedTag: "DROP PUBLICATION"},
 			{Query: `DROP PUBLICATION p`, ExpectedErr: `publication "p" does not exist`, ExpectedErrCode: "42704"},
 			{Query: `DROP PUBLICATION IF EXISTS p RESTRICT`, ExpectedTag: "DROP PUBLICATION", ExpectedNotices: []ExpectedNotice{{Severity: "NOTICE", Message: `publication "p" does not exist, skipping`}}},
+			{Query: `DROP PUBLICATION IF EXISTS p,p`, ExpectedTag: "DROP PUBLICATION", ExpectedNotices: []ExpectedNotice{
+				{Severity: "NOTICE", Message: `publication "p" does not exist, skipping`},
+				{Severity: "NOTICE", Message: `publication "p" does not exist, skipping`},
+			}},
 		}},
 		{Name: "invalid options do not create publications", Assertions: []ScriptTestAssertion{
 			{Query: `CREATE PUBLICATION p WITH (publish)`, ExpectedErr: "publish requires a parameter", ExpectedErrCode: "42601"},
