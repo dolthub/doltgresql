@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
@@ -63,6 +64,7 @@ type AuthorizationHandler struct {
 }
 
 var _ sql.AuthorizationHandler = (*AuthorizationHandler)(nil)
+var _ sql.ResolvedTableAuthorizationHandler = (*AuthorizationHandler)(nil)
 
 // NewQueryState implements the sql.AuthorizationHandler interface.
 func (h *AuthorizationHandler) NewQueryState(ctx *sql.Context) sql.AuthorizationQueryState {
@@ -167,7 +169,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			}
 			for _, privilege := range privileges {
 				if !HasDatabasePrivilege(roleDatabaseKey, privilege) && !HasDatabasePrivilege(publicDatabaseKey, privilege) {
-					return errors.Errorf("permission denied for database %s", database)
+					return pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for database %s", database)
 				}
 			}
 		}
@@ -188,9 +190,13 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 				return err
 			}
 		}
-	case AuthTargetType_TableIdentifiers:
+	case AuthTargetType_TableIdentifiers, AuthTargetType_ViewIdentifiers:
 		if len(auth.TargetNames)%3 != 0 {
 			return errors.Errorf("table identifiers has an unsupported count: %d", len(auth.TargetNames))
+		}
+		relationKind := "table"
+		if auth.TargetType == AuthTargetType_ViewIdentifiers {
+			relationKind = "view"
 		}
 		for i := 0; i < len(auth.TargetNames); i += 3 {
 			// TODO: handle database
@@ -200,7 +206,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 				// This will error later in the process, so we'll pass auth for now.
 				return nil
 			}
-			err = checkPrivilegeOnTable(state, schemaName, auth.TargetNames[i+2], privileges)
+			err = checkPrivilegeOnTable(state, relationKind, schemaName, auth.TargetNames[i+2], privileges)
 			if err != nil {
 				return err
 			}
@@ -304,6 +310,26 @@ func (h *AuthorizationHandler) CheckTable(ctx *sql.Context, aqs sql.Authorizatio
 	return nil
 }
 
+// HandleResolvedTableAuth implements the sql.ResolvedTableAuthorizationHandler interface.
+func (h *AuthorizationHandler) HandleResolvedTableAuth(ctx *sql.Context, aqs sql.AuthorizationQueryState, auth vitess.AuthInformation, node sql.Node) error {
+	if auth.TargetType == AuthTargetType_TableIdentifiers {
+		switch node := node.(type) {
+		case *plan.ResolvedTable:
+			schemaName := auth.TargetNames[1]
+			if schemaTable, ok := node.UnderlyingTable().(sql.DatabaseSchemaTable); ok {
+				schemaName = schemaTable.DatabaseSchema().SchemaName()
+			} else if node.Database().Name() == sql.InformationSchemaDatabaseName {
+				schemaName = sql.InformationSchemaDatabaseName
+			}
+			auth.TargetNames = []string{auth.TargetNames[0], schemaName, auth.TargetNames[2]}
+		case *plan.SubqueryAlias:
+			// This case will always resolve to a view
+			auth.TargetType = AuthTargetType_ViewIdentifiers
+		}
+	}
+	return h.HandleAuth(ctx, aqs, auth)
+}
+
 // dbName uses the current database from the context if a database is not specified, otherwise it returns the given
 // database name.
 func (h *AuthorizationHandler) dbName(ctx *sql.Context, dbName string) string {
@@ -327,14 +353,14 @@ func checkPrivilegeOnSchema(state AuthorizationQueryState, schemaName string, pr
 	}
 	for _, privilege := range privileges {
 		if !HasSchemaPrivilege(roleSchemaKey, privilege) && !HasSchemaPrivilege(publicSchemaKey, privilege) {
-			return errors.Errorf("permission denied for schema %s", schemaName)
+			return pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for schema %s", schemaName)
 		}
 	}
 	return nil
 }
 
-// checkPrivilegeOnTable checks privileges for given table provided with schema name.
-func checkPrivilegeOnTable(state AuthorizationQueryState, schemaName, tableName string, privileges []Privilege) error {
+// checkPrivilegeOnTable checks privileges for given table or view provided with schema name.
+func checkPrivilegeOnTable(state AuthorizationQueryState, relationKind, schemaName, tableName string, privileges []Privilege) error {
 	roleTableKey := TablePrivilegeKey{
 		Role:  state.role.ID(),
 		Table: doltdb.TableName{Name: tableName, Schema: schemaName},
@@ -345,10 +371,45 @@ func checkPrivilegeOnTable(state AuthorizationQueryState, schemaName, tableName 
 	}
 	for _, privilege := range privileges {
 		if !HasTablePrivilege(roleTableKey, privilege) && !HasTablePrivilege(publicTableKey, privilege) {
-			return errors.Errorf("permission denied for table %s", tableName)
+			if privilege == Privilege_SELECT && isPublicCatalogTable(schemaName, tableName) {
+				//TODO: catalogs are granted to PUBLIC by default, so deny them once REVOKE ... FROM PUBLIC is supported
+				continue
+			}
+			return pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for %s %s", relationKind, tableName)
 		}
 	}
 	return nil
+}
+
+// restrictedCatalogTables are the pg_catalog relations that Postgres does not grant SELECT on to PUBLIC.
+var restrictedCatalogTables = map[string]struct{}{
+	"pg_authid":                    {},
+	"pg_backend_memory_contexts":   {},
+	"pg_config":                    {},
+	"pg_file_settings":             {},
+	"pg_hba_file_rules":            {},
+	"pg_ident_file_mappings":       {},
+	"pg_largeobject":               {},
+	"pg_replication_origin_status": {},
+	"pg_shadow":                    {},
+	"pg_shmem_allocations":         {},
+	"pg_statistic":                 {},
+	"pg_statistic_ext_data":        {},
+	"pg_subscription":              {},
+	"pg_user_mapping":              {},
+}
+
+// isPublicCatalogTable returns whether the given relation is a system catalog that every role may read.
+func isPublicCatalogTable(schemaName string, tableName string) bool {
+	switch schemaName {
+	case "pg_catalog":
+		_, restricted := restrictedCatalogTables[tableName]
+		return !restricted
+	case "information_schema":
+		return true
+	default:
+		return false
+	}
 }
 
 // checkPrivilegeOnSequence checks privileges for given sequence provided with schema name.
@@ -365,7 +426,7 @@ func checkPrivilegeOnSequence(state AuthorizationQueryState, schemaName, seqName
 	}
 	for _, privilege := range privileges {
 		if !HasSequencePrivilege(roleSequenceKey, privilege) && !HasSequencePrivilege(publicSequenceKey, privilege) {
-			return errors.Errorf("permission denied for sequence %s", seqName)
+			return pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for sequence %s", seqName)
 		}
 	}
 	return nil
@@ -402,7 +463,7 @@ func checkPrivilegeOnRoutine(ctx *sql.Context, state AuthorizationQueryState, sc
 				//TODO: built-in routines are granted to PUBLIC by default, so deny them once REVOKE ... FROM PUBLIC is supported
 				return nil
 			}
-			return errors.Errorf("permission denied for routine %s", routineName)
+			return pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for routine %s", routineName)
 		}
 	}
 	return nil
