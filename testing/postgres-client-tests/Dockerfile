@@ -6,7 +6,7 @@ RUN apk add --no-cache build-base
 
 # --- Build doltgres binary ---
 FROM golang_cgo AS doltgres_build
-RUN apk add --no-cache icu-dev icu-static
+RUN apk add --no-cache icu-dev icu-static git
 RUN apk update && apk add --no-cache bash
 WORKDIR /root/building
 COPY go.mod doltgresql/
