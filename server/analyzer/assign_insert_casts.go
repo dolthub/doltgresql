@@ -124,23 +124,17 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	}
 
 	// handle on conflict clause if present
-	if insertInto.OnDupExprs.HasUpdates() {
-		newDupExprs, err := assignUpdateFieldCasts(ctx, insertInto.OnDupExprs.AllExpressions())
+	if insertInto.OnDupExpressions().HasUpdates() {
+		newDupExprs, err := assignUpdateFieldCasts(ctx, insertInto.OnDupExpressions().AllExpressions())
 		if err != nil {
 			return nil, false, err
 		}
-		exprs := append(newDupExprs, insertInto.Checks().ToExpressions()...)
-		if insertInto.OnDupWhere != nil {
-			exprs = append(exprs, insertInto.OnDupWhere)
-		}
-		exprs = append(exprs, insertInto.Returning...)
-		// TODO: this relies on a particular implementation detail InsertInto.WithExpressions
-		newInsertInto, err := insertInto.WithExpressions(ctx, exprs...)
+		newInsertInto, err := insertInto.WithOnDupExpressions(ctx, newDupExprs...)
 		if err != nil {
 			return nil, false, err
 		}
 
-		insertInto = newInsertInto.(*plan.InsertInto)
+		insertInto = newInsertInto
 	}
 
 	return insertInto, transform.NewTree, nil
