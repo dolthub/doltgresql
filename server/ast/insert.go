@@ -132,9 +132,6 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 		OnDup:            onDuplicate,
 		OnDupValuesAlias: "excluded",
 		OnDupWhere:       onDuplicateWhere,
-		// TODO: Apply PostgreSQL's single-row count to unconditional conflict updates once
-		//       enginetests support dialect-specific affected-row expectations.
-		CountOnDuplicateUpdateAsOneRow: node.OnConflict != nil && node.OnConflict.Where != nil,
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_INSERT,
 			TargetType:  auth.AuthTargetType_TableIdentifiers,

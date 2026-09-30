@@ -514,6 +514,10 @@ func TestScripts(t *testing.T) {
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
 		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
 		"update join with update trigger",                         // update join syntax not supported (also catches with-trigger variants by substring)
+
+		// This GMS script expects MySQL's count of two for a changed duplicate-key update.
+		"insert into t values (1, 10) on duplicate key update b = 10",
+
 		"WITH RECURSIVE\n" +
 			"    rt (foo) AS (\n" +
 			"        SELECT 1 as foo\n" +
