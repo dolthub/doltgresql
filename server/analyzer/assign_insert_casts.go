@@ -123,18 +123,32 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		insertInto = insertInto.WithSource(plan.NewProject(ctx, projections, insertInto.Source))
 	}
 
-	// handle on conflict clause if present
-	if insertInto.OnDupExpressions().HasUpdates() {
-		newDupExprs, err := assignUpdateFieldCasts(ctx, insertInto.OnDupExpressions().AllExpressions())
-		if err != nil {
-			return nil, false, err
-		}
-		newInsertInto, err := insertInto.WithOnDupExpressions(ctx, newDupExprs...)
+	// Duplicate assignments are cast by their owning source node.
+	if insertInto.OnDup != nil {
+		branch, _, err := transform.NodeWithCtx(ctx, insertInto.OnDup, func(ctx *sql.Context, c transform.Context) bool {
+			_, trigger := c.Parent.(*plan.TriggerExecutor)
+			return !trigger || c.ChildNum != 1
+		}, func(ctx *sql.Context, c transform.Context) (sql.Node, transform.TreeIdentity, error) {
+			source, ok := c.Node.(*plan.OnDuplicateKeyUpdateSource)
+			if !ok {
+				return c.Node, transform.SameTree, nil
+			}
+
+			expressions, err := assignUpdateFieldCasts(ctx, source.Expressions())
+			if err != nil {
+				return nil, transform.SameTree, err
+			}
+
+			node, err := source.WithExpressions(ctx, expressions...)
+			return node, transform.NewTree, err
+		})
 		if err != nil {
 			return nil, false, err
 		}
 
-		insertInto = newInsertInto
+		rewritten := *insertInto
+		rewritten.OnDup = branch
+		insertInto = &rewritten
 	}
 
 	return insertInto, transform.NewTree, nil
