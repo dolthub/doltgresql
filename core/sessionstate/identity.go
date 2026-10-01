@@ -34,25 +34,49 @@ type Identity struct {
 // time. Callers must read the session again to observe a later role change.
 type IdentitySnapshot struct{ identity Identity }
 
+// Snapshot returns a read-only copy of the current identity.
 func (i Identity) Snapshot() IdentitySnapshot { return IdentitySnapshot{identity: i} }
 
-func (s IdentitySnapshot) Initialized() bool            { return s.identity.Initialized() }
-func (s IdentitySnapshot) AuthenticatedRole() RoleID    { return s.identity.AuthenticatedRole() }
-func (s IdentitySnapshot) AuthenticatedSuperuser() bool { return s.identity.AuthenticatedSuperuser() }
-func (s IdentitySnapshot) SessionRole() RoleID          { return s.identity.SessionRole() }
-func (s IdentitySnapshot) SelectedRole() (RoleID, bool) { return s.identity.SelectedRole() }
-func (s IdentitySnapshot) CurrentRole() RoleID          { return s.identity.CurrentRole() }
+// Initialized reports whether the session has an authenticated role.
+func (s IdentitySnapshot) Initialized() bool { return s.identity.Initialized() }
 
+// AuthenticatedRole returns the connection principal.
+func (s IdentitySnapshot) AuthenticatedRole() RoleID { return s.identity.AuthenticatedRole() }
+
+// AuthenticatedSuperuser returns the connection's original superuser status.
+func (s IdentitySnapshot) AuthenticatedSuperuser() bool { return s.identity.AuthenticatedSuperuser() }
+
+// SessionRole returns the role selected for the SQL session.
+func (s IdentitySnapshot) SessionRole() RoleID { return s.identity.SessionRole() }
+
+// SelectedRole returns the explicit SET ROLE selection, if any.
+func (s IdentitySnapshot) SelectedRole() (RoleID, bool) { return s.identity.SelectedRole() }
+
+// CurrentRole returns the role used for authorization.
+func (s IdentitySnapshot) CurrentRole() RoleID { return s.identity.CurrentRole() }
+
+// NewIdentity initializes a session with its authenticated role.
 func NewIdentity(authenticated RoleID, superuser bool) Identity {
 	return Identity{authenticated: authenticated, authenticatedSuperuser: superuser,
 		session: authenticated, resetSession: authenticated}
 }
 
-func (i Identity) Initialized() bool            { return i.authenticated != 0 }
-func (i Identity) AuthenticatedRole() RoleID    { return i.authenticated }
+// Initialized reports whether this identity has an authenticated role.
+func (i Identity) Initialized() bool { return i.authenticated != 0 }
+
+// AuthenticatedRole returns the connection principal.
+func (i Identity) AuthenticatedRole() RoleID { return i.authenticated }
+
+// AuthenticatedSuperuser returns the connection's original superuser status.
 func (i Identity) AuthenticatedSuperuser() bool { return i.authenticatedSuperuser }
-func (i Identity) SessionRole() RoleID          { return i.session }
+
+// SessionRole returns the role selected for the SQL session.
+func (i Identity) SessionRole() RoleID { return i.session }
+
+// SelectedRole returns the explicit SET ROLE selection, if any.
 func (i Identity) SelectedRole() (RoleID, bool) { return i.selected, i.selected != 0 }
+
+// CurrentRole returns the role used for authorization.
 func (i Identity) CurrentRole() RoleID {
 	if i.selected != 0 {
 		return i.selected

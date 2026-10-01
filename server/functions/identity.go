@@ -24,6 +24,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// initIdentity registers PostgreSQL identity expressions against session state.
 func initIdentity() {
 	for _, name := range []string{"current_user", "current_role", "user", "session_user"} {
 		name := name
@@ -36,6 +37,7 @@ func initIdentity() {
 	}
 }
 
+// identityName resolves the role selected by an identity expression.
 func identityName(ctx *sql.Context, name string) (string, error) {
 	identity, err := core.Identity(ctx)
 	if err != nil {
