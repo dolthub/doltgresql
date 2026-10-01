@@ -150,6 +150,10 @@ ON CONFLICT (id) do update set c1 = $4`,
 					ExpectedTag: "INSERT 0 1",
 				},
 				{
+					Query:       "INSERT INTO conditional_upsert VALUES (1, 6, 'advanced') ON CONFLICT (id) DO UPDATE SET version = 6, note = 'advanced' WHERE conditional_upsert.version <= 6",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
 					Query:       "INSERT INTO conditional_upsert VALUES (1, 4, 'stale') ON CONFLICT (id) DO UPDATE SET version = 4, note = 'stale' WHERE conditional_upsert.version < 4",
 					ExpectedTag: "INSERT 0 0",
 				},
