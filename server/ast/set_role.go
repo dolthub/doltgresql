@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/doltgresql/server/node"
 )
 
+// nodeSetRole converts a parsed SET ROLE statement to an executable node.
 func nodeSetRole(_ *Context, stmt *tree.SetRole) (vitess.Statement, error) {
 	if stmt == nil {
 		return nil, nil
