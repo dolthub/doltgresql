@@ -1,3 +1,17 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package _go
 
 import (
@@ -7,6 +21,20 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
 )
+
+// TestApplicationSettingsFormatting checks PostgreSQL text values and the
+// error returned when SQL tries to change a read-only parameter.
+func TestApplicationSettingsFormatting(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "PostgreSQL boolean and read-only settings",
+		Assertions: []ScriptTestAssertion{
+			{Query: "SELECT current_setting('row_security')", Expected: []sql.Row{{"on"}}},
+			{Query: "SET row_security = off"},
+			{Query: "SELECT current_setting('row_security')", Expected: []sql.Row{{"off"}}},
+			{Query: "SET archive_mode = on", ExpectedErr: "cannot be changed now"},
+		},
+	}})
+}
 
 func TestApplicationSettingsWire(t *testing.T) {
 	ctx, conn, controller := CreateServer(t, "postgres")
