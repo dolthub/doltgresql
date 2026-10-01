@@ -20,6 +20,111 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestUpdateAffectedRows verifies PostgreSQL counts for unchanged updates and conflict updates.
+func TestUpdateAffectedRows(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "UPDATE and ON CONFLICT command counts",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 20)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t SET a = a WHERE id = 1", ExpectedTag: "UPDATE 1"},
+				{Query: "UPDATE t SET a = 10", ExpectedTag: "UPDATE 2"},
+				{Query: "UPDATE t SET a = 10 WHERE id = 999", ExpectedTag: "UPDATE 0"},
+				{Query: "UPDATE t SET a = $1 WHERE id = $2", BindVars: []any{10, 1}, ExpectedTag: "UPDATE 1"},
+				{Query: "UPDATE t SET a = a WHERE id = 1 RETURNING id, a", Expected: []sql.Row{{1, 10}}},
+				{Query: "UPDATE t SET a = a WHERE id = 1 RETURNING id, a", ExpectedTag: "UPDATE 1"},
+				{Query: "INSERT INTO t VALUES (1, 10) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a", ExpectedTag: "INSERT 0 1"},
+				{Query: "INSERT INTO t VALUES (1, 11) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a", ExpectedTag: "INSERT 0 1"},
+				{Query: "INSERT INTO t VALUES (1, 12) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a WHERE false", ExpectedTag: "INSERT 0 0"},
+			},
+		},
+		{
+			Name: "mixed insert and conflict update counts",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "INSERT INTO t VALUES (1, 10), (2, 22), (3, 33), (4, 40) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a WHERE t.id <> 3", ExpectedTag: "INSERT 0 3"},
+				{Query: "SELECT id, a FROM t ORDER BY id", Expected: []sql.Row{{1, 10}, {2, 22}, {3, 30}, {4, 40}}},
+			},
+		},
+		{
+			Name: "PL/pgSQL FOUND after unchanged UPDATE",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `CREATE FUNCTION update_found(target_id INT) RETURNS boolean LANGUAGE plpgsql AS $$
+BEGIN UPDATE t SET a = a WHERE id = target_id; RETURN FOUND; END; $$;`},
+				{Query: "SELECT update_found(1)", Expected: []sql.Row{{"t"}}},
+				{Query: "SELECT update_found(999)", Expected: []sql.Row{{"f"}}},
+			},
+		},
+		{
+			Name: "NULL and transaction counts without a primary key",
+			SetUpScript: []string{
+				"CREATE TABLE t (a INT)",
+				"INSERT INTO t VALUES (NULL), (1)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "BEGIN"},
+				{Query: "UPDATE t SET a = NULL WHERE a IS NULL", ExpectedTag: "UPDATE 1"},
+				{Query: "UPDATE t SET a = a", ExpectedTag: "UPDATE 2"},
+				{Query: "COMMIT"},
+			},
+		},
+		{
+			Name: "BEFORE UPDATE trigger skips a row",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10)",
+				`CREATE FUNCTION skip_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RETURN NULL; END; $$;`,
+				"CREATE TRIGGER skip_update BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION skip_update()",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t SET a = a WHERE id = 1", ExpectedTag: "UPDATE 0"},
+				{Query: "UPDATE t SET a = a WHERE id = 1 RETURNING id", Expected: []sql.Row{}},
+				{Query: "UPDATE t SET a = a WHERE id = 1 RETURNING id", ExpectedTag: "UPDATE 0"},
+			},
+		},
+		{
+			Name: "BEFORE UPDATE trigger skips one of several rows",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)",
+				`CREATE FUNCTION skip_one() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN IF OLD.id = 1 THEN RETURN NULL; END IF; RETURN NEW; END; $$;`,
+				"CREATE TRIGGER skip_one BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION skip_one()",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t SET a = CASE WHEN id = 3 THEN 31 ELSE a END", ExpectedTag: "UPDATE 2"},
+				{Query: "SELECT id, a FROM t ORDER BY id", Expected: []sql.Row{{1, 10}, {2, 20}, {3, 31}}},
+			},
+		},
+		{
+			Name: "UPDATE FROM counts and RETURNING",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"CREATE TABLE u (id INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 20)",
+				"INSERT INTO u VALUES (1), (1), (2)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t SET a = t.a FROM u WHERE t.id = u.id", ExpectedTag: "UPDATE 2"},
+				{Query: "UPDATE t SET a = 10 FROM u WHERE t.id = u.id", ExpectedTag: "UPDATE 2"},
+				{Query: "UPDATE t SET a = t.a FROM u WHERE t.id = u.id RETURNING t.id, t.a", Expected: []sql.Row{{1, 10}, {2, 10}}},
+				{Query: "UPDATE t SET a = t.a FROM u WHERE t.id = u.id RETURNING t.id, t.a", ExpectedTag: "UPDATE 2"},
+			},
+		},
+	})
+}
+
 func TestUpdate(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

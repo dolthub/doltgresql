@@ -311,18 +311,12 @@ func TestSpatialQueries(t *testing.T) {
 
 func TestReplaceInto(t *testing.T) {
 	// REPLACE INTO is rewritten to INSERT ... ON CONFLICT DO UPDATE in the
-	// converter. Two classes of test still fail:
-	//   - VALUES form with no column list (e.g. `REPLACE INTO t VALUES (...)`):
-	//     the converter needs the column list to build the SET clause and bails.
-	//   - Replacing a row with identical values: postgres/MySQL ON DUPLICATE KEY
-	//     UPDATE reports 0 rows affected when the update is a no-op, but MySQL
-	//     REPLACE INTO reports 2 (DELETE + INSERT). These are real semantic
-	//     differences; we'd need to override the rowcount to make them match.
+	// converter. The VALUES form without a column list still fails because the
+	// converter needs the column list to build the SET clause.
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"REPLACE INTO mytable VALUES (1, 'first row')",      // no-column REPLACE; bails to raw syntax
 		"REPLACE INTO mytable VALUES (1, 'new row same i')", // no-column REPLACE; bails to raw syntax
 		"REPLACE INTO mytable VALUES (999, 'x')",            // no-column REPLACE; bails to raw syntax
-		"REPLACE INTO mytable SET i = 1, s = 'first row'",   // no-op update reports 0 rows, expected 2
 	})
 	defer h.Close()
 	enginetest.TestReplaceInto(t, h)
