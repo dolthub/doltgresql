@@ -589,6 +589,12 @@ func translateMysqlShowCreateTable(s string) string {
 
 func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
 	ctx := context.Background()
+	upperQuery := strings.ToUpper(strings.TrimSpace(q))
+	// GMS engine tests expect MySQL row counts for UPDATE, REPLACE, and duplicate-key INSERT.
+	// Doltgres tests outside this suite assert PostgreSQL UPDATE and ON CONFLICT counts.
+	ignoreAffectedRows := strings.HasPrefix(upperQuery, "UPDATE ") ||
+		strings.HasPrefix(upperQuery, "REPLACE ") ||
+		strings.Contains(upperQuery, "ON DUPLICATE KEY UPDATE")
 	for i, row := range expected {
 		for j := range sch {
 			field := row[j]
@@ -622,6 +628,12 @@ func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schem
 		// OK results from GMS manifest as a nil schema in postgres, only accessible via command tags
 		if isNilOrEmptySchema && len(expected[i]) == 1 {
 			if okResult, isOkResult := expected[i][0].(gmstypes.OkResult); isOkResult {
+				// The shared tests expect MySQL counts; PostgreSQL command counts are tested separately.
+				if ignoreAffectedRows && i < len(actual) && len(actual[i]) == 1 {
+					if actualResult, ok := actual[i][0].(gmstypes.OkResult); ok {
+						okResult.RowsAffected = actualResult.RowsAffected
+					}
+				}
 				// we can't verify the custom text fields of things like update results, so we strip out that info
 				expected[i][0] = gmstypes.NewOkResult(int(okResult.RowsAffected))
 				// there are other Postgres queries that lack a row count
