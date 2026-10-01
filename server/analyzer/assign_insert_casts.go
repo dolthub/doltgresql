@@ -125,7 +125,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 
 	// Duplicate assignments are cast by their owning source node.
 	if insertInto.OnDup != nil {
-		branch, _, err := transform.NodeWithCtx(ctx, insertInto.OnDup, func(ctx *sql.Context, c transform.Context) bool {
+		path, _, err := transform.NodeWithCtx(ctx, insertInto.OnDup, func(ctx *sql.Context, c transform.Context) bool {
 			_, trigger := c.Parent.(*plan.TriggerExecutor)
 			return !trigger || c.ChildNum != 1
 		}, func(ctx *sql.Context, c transform.Context) (sql.Node, transform.TreeIdentity, error) {
@@ -147,7 +147,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		}
 
 		rewritten := *insertInto
-		rewritten.OnDup = branch
+		rewritten.OnDup = path
 		insertInto = &rewritten
 	}
 
