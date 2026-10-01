@@ -35,9 +35,13 @@ type journalSavepoint struct {
 	at   int
 }
 
+// NewJournal starts a journal with the supplied session value.
 func NewJournal[T any](value T) Journal[T] { return Journal[T]{current: value} }
 
-func (j *Journal[T]) Current() *T         { return &j.current }
+// Current returns the effective value at the current scope.
+func (j *Journal[T]) Current() *T { return &j.current }
+
+// InTransaction reports whether a transaction scope is active.
 func (j *Journal[T]) InTransaction() bool { return j.inTx }
 
 // Begin snapshots the session value. A duplicate start leaves the active
@@ -70,6 +74,7 @@ func (j *Journal[T]) SetLocal(value T) {
 	j.current = value
 }
 
+// Commit retains session changes and discards local changes.
 func (j *Journal[T]) Commit() {
 	if !j.inTx {
 		return
@@ -78,6 +83,7 @@ func (j *Journal[T]) Commit() {
 	j.end()
 }
 
+// Rollback restores the value from before the transaction.
 func (j *Journal[T]) Rollback() {
 	if !j.inTx {
 		return
@@ -94,6 +100,7 @@ func (j *Journal[T]) end() {
 	j.base = zero
 }
 
+// Savepoint records the current change position under a name.
 func (j *Journal[T]) Savepoint(name string) {
 	if j.inTx {
 		j.savepoints = append(j.savepoints, journalSavepoint{name: name, at: len(j.changes)})
