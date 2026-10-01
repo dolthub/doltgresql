@@ -493,8 +493,8 @@ func TestConvert(t *testing.T) {
 	enginetest.TestConvertPrepared(t, h)
 }
 
-func TestScripts(t *testing.T) {
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+func newScriptTestHarness(t *testing.T) denginetest.DoltEnginetestHarness {
+	return newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"can't create table with same name as existing view",      // Doltgres needs to return a different error message
 		"descending index columns",                                // MySQL index prefix syntax (c(10) DESC)
 		"descending index lookups and ordering",                   // MySQL NULLs-first ascending order
@@ -562,8 +562,78 @@ func TestScripts(t *testing.T) {
 		"varchar primary key",                                                 // literal values longer than the key length returns incorrect results for some queries
 		"can't create view with same name as existing table",                  // different error message
 	})
+}
+
+func TestAggregationScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestScripts(t, h)
+	enginetest.TestAggregationScripts(t, h)
+}
+
+func TestConversionsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestConversionsScripts(t, h)
+}
+
+func TestEnumsAndSetsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestEnumsAndSetsScripts(t, h)
+}
+
+func TestExpressionsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestExpressionsScripts(t, h)
+}
+
+func TestIndexesScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestIndexesScripts(t, h)
+}
+
+func TestIntegersScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestIntegersScripts(t, h)
+}
+
+func TestJoinsAndSubqueriesScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestJoinsAndSubqueriesScripts(t, h)
+}
+
+func TestSchemaScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestSchemaScripts(t, h)
+}
+
+func TestSessionScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestSessionScripts(t, h)
+}
+
+func TestStringsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestStringsScripts(t, h)
+}
+
+func TestTemporalScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestTemporalScripts(t, h)
+}
+
+func TestWritesScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestWritesScripts(t, h)
 }
 
 func TestJoinOps(t *testing.T) {
