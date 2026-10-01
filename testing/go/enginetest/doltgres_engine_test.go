@@ -576,6 +576,24 @@ func TestConversionsScripts(t *testing.T) {
 	enginetest.TestConversionsScripts(t, h)
 }
 
+func TestNumericScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestNumericScripts(t, h)
+}
+
+func TestOrderingScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestOrderingScripts(t, h)
+}
+
+func TestSetOperationsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestSetOperationsScripts(t, h)
+}
+
 func TestEnumsAndSetsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
