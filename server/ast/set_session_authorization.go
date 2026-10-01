@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/doltgresql/server/node"
 )
 
+// nodeSetSessionAuthorization handles *tree.SetSessionAuthorization nodes.
 func nodeSetSessionAuthorization(_ *Context, stmt *tree.SetSessionAuthorization) (vitess.Statement, error) {
 	if stmt == nil {
 		return nil, nil

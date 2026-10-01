@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/doltgresql/server/auth"
 )
 
+// SetSessionAuthorization changes the session role after an authorization check.
 type SetSessionAuthorization struct {
 	Name  string
 	Local bool

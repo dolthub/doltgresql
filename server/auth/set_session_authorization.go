@@ -69,6 +69,7 @@ func ApplySessionAuthorization(ctx *sql.Context, name string, reset, local bool)
 	})
 }
 
+// SessionAuthorizationSetting returns the current session role name.
 func SessionAuthorizationSetting(ctx *sql.Context) (string, error) {
 	identity, err := core.Identity(ctx)
 	if err != nil {
