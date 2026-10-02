@@ -570,28 +570,58 @@ func TestAggregationScripts(t *testing.T) {
 	enginetest.TestAggregationScripts(t, h)
 }
 
+func TestAlterTableScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestAlterTableScripts(t, h)
+}
+
+func TestAutoIncrementScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestAutoIncrementScripts(t, h)
+}
+
+func TestCharsetCollationScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestCharsetCollationScripts(t, h)
+}
+
+func TestColumnDefaultsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestColumnDefaultsScripts(t, h)
+}
+
 func TestConversionsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
 	enginetest.TestConversionsScripts(t, h)
 }
 
-func TestNumericScripts(t *testing.T) {
+func TestDatabaseDefinitionsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestNumericScripts(t, h)
+	enginetest.TestDatabaseDefinitionsScripts(t, h)
 }
 
-func TestOrderingScripts(t *testing.T) {
+func TestDeleteScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestOrderingScripts(t, h)
+	enginetest.TestDeleteScripts(t, h)
 }
 
-func TestSetOperationsScripts(t *testing.T) {
+func TestDescendingIndexesScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestSetOperationsScripts(t, h)
+	enginetest.TestDescendingIndexesScripts(t, h)
+}
+
+func TestDropTableScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestDropTableScripts(t, h)
 }
 
 func TestEnumsAndSetsScripts(t *testing.T) {
@@ -606,40 +636,124 @@ func TestExpressionsScripts(t *testing.T) {
 	enginetest.TestExpressionsScripts(t, h)
 }
 
-func TestIndexesScripts(t *testing.T) {
+func TestForeignKeyResolutionScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestIndexesScripts(t, h)
+	enginetest.TestForeignKeyResolutionScripts(t, h)
 }
 
-func TestIntegersScripts(t *testing.T) {
+func TestForeignKeyTypesScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestIntegersScripts(t, h)
+	enginetest.TestForeignKeyTypesScripts(t, h)
 }
 
-func TestJoinsAndSubqueriesScripts(t *testing.T) {
+func TestIndexKeyTypesScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestJoinsAndSubqueriesScripts(t, h)
+	enginetest.TestIndexKeyTypesScripts(t, h)
 }
 
-func TestSchemaScripts(t *testing.T) {
+func TestIndexRegressionScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestSchemaScripts(t, h)
+	enginetest.TestIndexRegressionScripts(t, h)
 }
 
-func TestSessionScripts(t *testing.T) {
+func TestInsertIgnoreRegressionScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestSessionScripts(t, h)
+	enginetest.TestInsertIgnoreRegressionScripts(t, h)
 }
 
-func TestStringsScripts(t *testing.T) {
+func TestInsertRegressionScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestStringsScripts(t, h)
+	enginetest.TestInsertRegressionScripts(t, h)
+}
+
+func TestJSONFunctionsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestJSONFunctionsScripts(t, h)
+}
+
+func TestJoinsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestJoinsScripts(t, h)
+}
+
+func TestNameResolutionScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestNameResolutionScripts(t, h)
+}
+
+func TestNumericScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestNumericScripts(t, h)
+}
+
+func TestOrderingScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestOrderingScripts(t, h)
+}
+
+func TestPrimaryKeysScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestPrimaryKeysScripts(t, h)
+}
+
+func TestProceduresScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestProceduresScripts(t, h)
+}
+
+func TestSessionResultsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestSessionResultsScripts(t, h)
+}
+
+func TestSetOperationsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestSetOperationsScripts(t, h)
+}
+
+func TestStatisticsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestStatisticsScripts(t, h)
+}
+
+func TestStringFunctionsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestStringFunctionsScripts(t, h)
+}
+
+func TestStringMatchingScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestStringMatchingScripts(t, h)
+}
+
+func TestSubqueriesScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestSubqueriesScripts(t, h)
+}
+
+func TestTableDefinitionsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestTableDefinitionsScripts(t, h)
 }
 
 func TestTemporalScripts(t *testing.T) {
@@ -648,10 +762,46 @@ func TestTemporalScripts(t *testing.T) {
 	enginetest.TestTemporalScripts(t, h)
 }
 
-func TestWritesScripts(t *testing.T) {
+func TestTransactionsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
-	enginetest.TestWritesScripts(t, h)
+	enginetest.TestTransactionsScripts(t, h)
+}
+
+func TestTupleComparisonsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestTupleComparisonsScripts(t, h)
+}
+
+func TestUUIDScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestUUIDScripts(t, h)
+}
+
+func TestUpdateJoinsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestUpdateJoinsScripts(t, h)
+}
+
+func TestUpdateRegressionScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestUpdateRegressionScripts(t, h)
+}
+
+func TestVariablesScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestVariablesScripts(t, h)
+}
+
+func TestViewsScripts(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	enginetest.TestViewsScripts(t, h)
 }
 
 func TestJoinOps(t *testing.T) {
