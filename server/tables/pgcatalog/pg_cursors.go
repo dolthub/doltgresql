@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,11 +44,16 @@ func (p PgCursorsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgCursorsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// pg_cursors is currently empty, since Doltgres does not expose introspection of open cursors.
-	// Cursors are only used internally by the PL/pgSQL interpreter (server/plpgsql) during function
-	// execution, and there is no session-level registry of open cursors to report here.
-	// TODO: fill this in when session-level cursors (DECLARE ... CURSOR) are supported
-	return emptyRowIter()
+	cursors, err := core.GetCursors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	//TODO: include the portals created by the extended query protocol's Bind message, which Postgres also lists
+	rows := make([]sql.Row, 0, len(cursors))
+	for _, cursor := range cursors {
+		rows = append(rows, sql.Row{cursor.Name, cursor.Statement, cursor.IsHoldable, false, cursor.IsScrollable, cursor.CreationTime})
+	}
+	return sql.RowsToRowIter(rows...), nil
 }
 
 // PkSchema implements the interface tables.Handler.

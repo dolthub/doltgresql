@@ -443,6 +443,17 @@ func (*CannedOptPlan) StatementType() StatementType { return Rows }
 func (*CannedOptPlan) StatementTag() string { return "PREPARE AS OPT PLAN" }
 
 // StatementType implements the Statement interface.
+func (*CloseCursor) StatementType() StatementType { return Ack }
+
+// StatementTag returns a short string identifying the type of statement.
+func (n *CloseCursor) StatementTag() string {
+	if n.Name == "" {
+		return "CLOSE CURSOR ALL"
+	}
+	return "CLOSE CURSOR"
+}
+
+// StatementType implements the Statement interface.
 func (*Comment) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -631,6 +642,12 @@ func (n *Deallocate) StatementTag() string {
 }
 
 // StatementType implements the Statement interface.
+func (*DeclareCursor) StatementType() StatementType { return Ack }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DeclareCursor) StatementTag() string { return "DECLARE CURSOR" }
+
+// StatementType implements the Statement interface.
 func (*Discard) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -773,6 +790,22 @@ func (*Export) cclOnlyStatement() {}
 
 // StatementTag returns a short string identifying the type of statement.
 func (*Export) StatementTag() string { return "EXPORT" }
+
+// StatementType implements the Statement interface.
+func (n *FetchCursor) StatementType() StatementType {
+	if n.IsMove {
+		return RowsAffected
+	}
+	return Rows
+}
+
+// StatementTag returns a short string identifying the type of statement.
+func (n *FetchCursor) StatementTag() string {
+	if n.IsMove {
+		return "MOVE"
+	}
+	return "FETCH"
+}
 
 // StatementType implements the Statement interface.
 func (*Grant) StatementType() StatementType { return DDL }
@@ -1251,6 +1284,7 @@ func (n *ControlJobsForSchedules) String() string   { return AsString(n) }
 func (n *CancelQueries) String() string             { return AsString(n) }
 func (n *CancelSessions) String() string            { return AsString(n) }
 func (n *CannedOptPlan) String() string             { return AsString(n) }
+func (n *CloseCursor) String() string               { return AsString(n) }
 func (n *Comment) String() string                   { return AsString(n) }
 func (n *CommitTransaction) String() string         { return AsString(n) }
 func (n *CopyFrom) String() string                  { return AsString(n) }
@@ -1276,6 +1310,7 @@ func (n *CreateSequence) String() string            { return AsString(n) }
 func (n *CreateStats) String() string               { return AsString(n) }
 func (n *CreateView) String() string                { return AsString(n) }
 func (n *Deallocate) String() string                { return AsString(n) }
+func (n *DeclareCursor) String() string             { return AsString(n) }
 func (n *Delete) String() string                    { return AsString(n) }
 func (n *DropAggregate) String() string             { return AsString(n) }
 func (n *DropCast) String() string                  { return AsString(n) }
@@ -1298,6 +1333,7 @@ func (n *Execute) String() string                   { return AsString(n) }
 func (n *Explain) String() string                   { return AsString(n) }
 func (n *ExplainAnalyzeDebug) String() string       { return AsString(n) }
 func (n *Export) String() string                    { return AsString(n) }
+func (n *FetchCursor) String() string               { return AsString(n) }
 func (n *Grant) String() string                     { return AsString(n) }
 func (n *GrantRole) String() string                 { return AsString(n) }
 func (n *Insert) String() string                    { return AsString(n) }
