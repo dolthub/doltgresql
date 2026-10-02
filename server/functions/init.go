@@ -123,6 +123,7 @@ func Init() {
 	initCurrentSchema()
 	initCurrentSetting()
 	initCurrentSchemas()
+	initIdentity()
 	initDegrees()
 	initDiv()
 	initDoltProcedures()
