@@ -377,9 +377,13 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 
 	transform.InspectExpressionsWithNode(ctx, queryPlan, extractBindVars)
 
-	// Insert nodes are special, as their source expressions are not returned by Expressions().
+	// Insert source and duplicate-update expressions belong to disjoint child nodes.
 	if insert, ok := queryPlan.(*plan.InsertInto); ok {
 		transform.InspectExpressionsWithNode(ctx, insert.Source, extractBindVars)
+		if insert.OnDup != nil {
+			transform.InspectExpressionsWithNode(ctx, insert.OnDup, extractBindVars)
+		}
+
 		bindInsertSelect(ctx, insert, types)
 	}
 
