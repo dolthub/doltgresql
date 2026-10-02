@@ -89,6 +89,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeCancelSessions(ctx, stmt)
 	case *tree.CannedOptPlan:
 		return nodeCannedOptPlan(ctx, stmt)
+	case *tree.CloseCursor:
+		return nodeCloseCursor(ctx, stmt)
 	case *tree.Comment:
 		return nodeComment(ctx, stmt)
 	case *tree.CommitTransaction:
@@ -143,6 +145,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeCreateView(ctx, stmt)
 	case *tree.Deallocate:
 		return nodeDeallocate(ctx, stmt)
+	case *tree.DeclareCursor:
+		return nodeDeclareCursor(ctx, stmt)
 	case *tree.Delete:
 		return nodeDelete(ctx, stmt)
 	case *tree.Discard:
@@ -189,6 +193,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeExplainAnalyzeDebug(ctx, stmt)
 	case *tree.Export:
 		return nodeExport(ctx, stmt)
+	case *tree.FetchCursor:
+		return nodeFetchCursor(ctx, stmt)
 	case *tree.Grant:
 		return nodeGrant(ctx, stmt)
 	case *tree.GrantRole:

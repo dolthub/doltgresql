@@ -87,6 +87,7 @@ func (h *ConnectionHandler) handleTransactionStatement(query ConvertedQuery) (bo
 		if h.state.txState == failedTransactionState {
 			h.state.txState = idleTransactionState
 			h.clearTransactionLocalVars()
+			h.closeTransactionCursors(false)
 			if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
 				return true, err
 			}
@@ -95,10 +96,19 @@ func (h *ConnectionHandler) handleTransactionStatement(query ConvertedQuery) (bo
 		// COMMIT ends either kind of active block; the engine still executes the statement itself.
 		h.state.txState = idleTransactionState
 		h.clearTransactionLocalVars()
+		if err := h.materializeHoldableCursors(); err != nil {
+			h.closeTransactionCursors(false)
+			if rollbackErr := h.runEngineTransactionControl("ROLLBACK"); rollbackErr != nil {
+				logrus.Warnf("error rolling back transaction after failed commit: %s", rollbackErr)
+			}
+			return true, err
+		}
+		h.closeTransactionCursors(true)
 		return false, nil
 	case *sqlparser.Rollback:
 		h.state.txState = idleTransactionState
 		h.clearTransactionLocalVars()
+		h.closeTransactionCursors(false)
 		return false, nil
 	case *sqlparser.Savepoint:
 		if !h.state.txState.inExplicitTransactionBlock() {
@@ -142,12 +152,15 @@ func (h *ConnectionHandler) startImplicitTransaction(query ConvertedQuery) error
 }
 
 // commitImplicitTransaction commits the active implicit transaction, rolling it back if the commit fails.
-func (h *ConnectionHandler) commitImplicitTransaction() error {
+func (h *ConnectionHandler) commitImplicitTransaction() (err error) {
 	if h.state.txState != implicitTransactionState {
 		return nil
 	}
 	h.state.txState = idleTransactionState
 	h.clearTransactionLocalVars()
+	defer func() {
+		h.closeTransactionCursors(err == nil)
+	}()
 	if h.restoredAutoCommitWithoutTransaction() {
 		return nil
 	}
@@ -167,6 +180,7 @@ func (h *ConnectionHandler) rollbackImplicitTransaction() {
 	}
 	h.state.txState = idleTransactionState
 	h.clearTransactionLocalVars()
+	h.closeTransactionCursors(false)
 	if h.restoredAutoCommitWithoutTransaction() {
 		return
 	}

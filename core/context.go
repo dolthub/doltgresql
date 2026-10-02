@@ -54,6 +54,7 @@ type contextValues struct {
 
 	transactionEndCallbacks   []func()
 	sessionAdvisoryLockCounts map[string]int
+	cursors                   map[string]*Cursor
 }
 
 var _ dsess.DoltgresSessionLifecycle = (*contextValues)(nil)
