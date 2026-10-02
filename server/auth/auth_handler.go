@@ -309,6 +309,17 @@ func tableSchemaOnSearchPath(ctx *sql.Context, databaseName, tableName string) (
 		if found {
 			return schema.SchemaName(), nil
 		}
+		// Views are stored separately from tables. An unqualified view still
+		// needs its privilege check before the statement reaches the executor.
+		if viewDB, ok := schema.(sql.ViewDatabase); ok {
+			_, found, err = viewDB.GetViewDefinition(ctx, tableName)
+			if err != nil {
+				return "", err
+			}
+			if found {
+				return schema.SchemaName(), nil
+			}
+		}
 	}
 	return "", nil
 }
