@@ -1355,6 +1355,136 @@ func TestFunctionsOID(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "to_regprocedure",
+			SetUpScript: []string{
+				`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE SCHEMA s;`,
+				`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+				`CREATE TABLE t1 (pk INT PRIMARY KEY);`,
+				`CREATE TRIGGER trg AFTER INSERT ON t1 FOR EACH ROW EXECUTE FUNCTION tf();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT to_regprocedure('tf()');`,
+					ExpectedColNames: []string{"to_regprocedure"},
+					Expected:         []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('pg_catalog.now()');`,
+					Expected: []sql.Row{{"now()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('"tf"()');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('public.tf()');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure(' tf ( ) ');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2(int, text)');`,
+					Expected: []sql.Row{{"f2(integer,text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2( integer , text ) ');`,
+					Expected: []sql.Row{{"f2(integer,text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2(int4, varchar)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f3(text)');`,
+					Expected: []sql.Row{{"f3(text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f3(bool)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('s.sf(int)');`,
+					Expected: []sql.Row{{"s.sf(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('sf(int)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('p1(int)');`,
+					Expected: []sql.Row{{"p1(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('abs(float8)');`,
+					Expected: []sql.Row{{"abs(double precision)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('nosuch()');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('nosuchschema.sf(int)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(to_regprocedure('tf()'));`,
+					Expected: []sql.Row{{"regprocedure"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('revision_change()') IS NULL;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 1 FROM pg_trigger t WHERE t.tgname = 'trg' AND t.tgfoid = to_regprocedure('"tf"()');`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:           `SELECT to_regprocedure('tf');`,
+					ExpectedErr:     `expected a left parenthesis`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int,text');`,
+					ExpectedErr:     `expected a right parenthesis`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int,)');`,
+					ExpectedErr:     `expected a type name`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int))');`,
+					ExpectedErr:     `improper type name`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('abs(nosuchtype)');`,
+					ExpectedErr:     `type "nosuchtype" does not exist`,
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:    `SET search_path = s;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT to_regprocedure('s.sf(int)');`,
+					Expected: []sql.Row{{"sf(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('public.f2(int,text)');`,
+					Expected: []sql.Row{{"public.f2(integer,text)"}},
+				},
+			},
+		},
 	})
 }
 
