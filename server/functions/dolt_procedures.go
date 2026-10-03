@@ -314,7 +314,7 @@ func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedur
 
 	var userRole auth.Role
 	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
+		userRole, _ = auth.CurrentRoleLocked(ctx)
 	})
 
 	if !userRole.IsValid() || !userRole.IsSuperUser {

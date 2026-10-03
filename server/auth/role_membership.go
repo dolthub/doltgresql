@@ -31,6 +31,142 @@ type RoleMembershipValue struct {
 	Group           RoleID
 	WithAdminOption bool
 	GrantedBy       RoleID
+	// Legacy grants derive SET and INHERIT from PostgreSQL 15 role attributes.
+	// Explicit options require a versioned auth-file migration in a later phase.
+}
+
+// MembershipGrant is the logical view of a membership. Nil option pointers
+// identify a PostgreSQL 15 legacy grant: INHERIT comes from role attributes,
+// and SET is allowed through structural membership. Explicit options need an
+// auth-file format migration before they can be written.
+type MembershipGrant struct {
+	Member        RoleID
+	GrantedRole   RoleID
+	Grantor       RoleID
+	AdminOption   bool
+	InheritOption *bool
+	SetOption     *bool
+}
+
+// MembershipGrants returns the grants for a member without exposing the
+// current pair-keyed storage. The caller must hold the auth lock.
+func MembershipGrants(member RoleID) []MembershipGrant {
+	values := globalDatabase.roleMembership.Data[member]
+	grants := make([]MembershipGrant, 0, len(values))
+	for _, value := range values {
+		grants = append(grants, MembershipGrant{
+			Member: value.Member, GrantedRole: value.Group,
+			Grantor: value.GrantedBy, AdminOption: value.WithAdminOption,
+		})
+	}
+	sort.Slice(grants, func(i, j int) bool { return grants[i].GrantedRole < grants[j].GrantedRole })
+	return grants
+}
+
+// HasRoleMembership checks only stored membership edges. It does not grant
+// virtual membership to superusers or apply INHERIT, SET, or ADMIN rules.
+// The caller must hold the auth lock.
+func HasRoleMembership(member, group RoleID) bool {
+	if _, ok := LookupRoleByID(member); !ok {
+		return false
+	}
+	if _, ok := LookupRoleByID(group); !ok {
+		return false
+	}
+	return membershipPath(member, group, false)
+}
+
+// CanSetRole answers whether a session role may select a target. PostgreSQL 15
+// permits SET through membership even when the member is NOINHERIT.
+// The caller must hold the auth lock.
+func CanSetRole(sessionRole, targetRole RoleID) bool {
+	if _, ok := LookupRoleByID(targetRole); !ok {
+		return false
+	}
+	actor, ok := LookupRoleByID(sessionRole)
+	if !ok {
+		return false
+	}
+	return actor.IsSuperUser || membershipPath(sessionRole, targetRole, false)
+}
+
+// InheritsPrivileges follows only paths whose member role has INHERIT. Role
+// attributes, including SUPERUSER and BYPASSRLS, are never inherited here.
+// The caller must hold the auth lock.
+func InheritsPrivileges(effectiveRole, targetRole RoleID) bool {
+	if _, ok := LookupRoleByID(targetRole); !ok {
+		return false
+	}
+	if _, ok := LookupRoleByID(effectiveRole); !ok {
+		return false
+	}
+	return membershipPath(effectiveRole, targetRole, true)
+}
+
+// CanAdministerRole requires an ADMIN grant on the target, reached from the
+// actor through inherited memberships. It is distinct from SET authority.
+// The caller must hold the auth lock.
+func CanAdministerRole(actorRole, targetRole RoleID) bool {
+	if _, ok := LookupRoleByID(targetRole); !ok {
+		return false
+	}
+	actor, ok := LookupRoleByID(actorRole)
+	if !ok {
+		return false
+	}
+	if actor.IsSuperUser {
+		return true
+	}
+	seen := make(map[RoleID]bool)
+	var walk func(RoleID) bool
+	walk = func(member RoleID) bool {
+		if seen[member] {
+			return false
+		}
+		seen[member] = true
+		role, ok := LookupRoleByID(member)
+		if !ok {
+			return false
+		}
+		if grant, ok := globalDatabase.roleMembership.Data[member][targetRole]; ok && grant.WithAdminOption {
+			return true
+		}
+		if !role.InheritPrivileges {
+			return false
+		}
+		for group := range globalDatabase.roleMembership.Data[member] {
+			if walk(group) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(actorRole)
+}
+
+func membershipPath(member, target RoleID, inheritOnly bool) bool {
+	seen := make(map[RoleID]bool)
+	var walk func(RoleID) bool
+	walk = func(current RoleID) bool {
+		if current == target {
+			return true
+		}
+		if seen[current] {
+			return false
+		}
+		seen[current] = true
+		role, ok := LookupRoleByID(current)
+		if !ok || (inheritOnly && !role.InheritPrivileges) {
+			return false
+		}
+		for group := range globalDatabase.roleMembership.Data[current] {
+			if walk(group) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(member)
 }
 
 // NewRoleMembership returns a new *RoleMembership.
@@ -63,7 +199,7 @@ func AddMemberToGroup(member RoleID, group RoleID, withAdminOption bool, granted
 	// We'll perform a sanity check for circular membership. This should be done before this call is made, but since we
 	// make assumptions that circular relationships are forbidden (which could lead to infinite loops otherwise), we
 	// enforce it here too.
-	if groupID, _, _ := IsRoleAMember(group, member); (groupID.IsValid() || member == group) && !globalDatabase.rolesByID[group].IsSuperUser {
+	if HasRoleMembership(group, member) {
 		panic("missing validation to prevent circular role relationships")
 	}
 	groupMap, ok := globalDatabase.roleMembership.Data[member]
@@ -79,44 +215,18 @@ func AddMemberToGroup(member RoleID, group RoleID, withAdminOption bool, granted
 	}
 }
 
-// IsRoleAMember returns whether the given role is a member of the group by returning the group's ID. Also returns
-// whether the member was granted WITH ADMIN OPTION, allowing it to grant membership to the group to other roles. A
-// member does not automatically have ADMIN OPTION on itself, therefore this check must be performed.
-func IsRoleAMember(member RoleID, group RoleID) (groupID RoleID, inheritsPrivileges bool, hasWithAdminOption bool) {
-	// If the member and group are the same, then we only check for SUPERUSER status to allow WITH ADMIN OPTION
-	if member == group {
-		return group, true, globalDatabase.rolesByID[member].IsSuperUser
-	}
-	// Postgres does not allow for circular role membership, so we can recursively check without worry:
-	// https://www.postgresql.org/docs/15/catalog-pg-auth-members.html
-	if groupMap, ok := globalDatabase.roleMembership.Data[member]; ok {
-		for _, value := range groupMap {
-			if value.Group == group {
-				return group, globalDatabase.rolesByID[member].InheritPrivileges, value.WithAdminOption
-			}
-			// This recursively walks through memberships
-			if groupID, _, hasWithAdminOption = IsRoleAMember(value.Group, group); groupID.IsValid() {
-				return groupID, globalDatabase.rolesByID[member].InheritPrivileges, hasWithAdminOption
-			}
-		}
-	}
-	// A SUPERUSER has access to everything, and therefore functions as though it's a member of every group
-	if globalDatabase.rolesByID[member].IsSuperUser {
-		return group, true, true
-	}
-	return 0, false, false
-}
-
 // GetAllGroupsWithMember returns every group that the role is a direct member of. This can also filter by groups that
 // the member has privilege access on.
 func GetAllGroupsWithMember(member RoleID, inheritsPrivilegesOnly bool) []RoleID {
-	memberRole, ok := globalDatabase.rolesByID[member]
-	if !ok || !memberRole.InheritPrivileges {
+	if _, ok := LookupRoleByID(member); !ok {
 		return nil
 	}
 	groupMap := globalDatabase.roleMembership.Data[member]
 	groups := make([]RoleID, 0, len(groupMap))
 	for groupID := range groupMap {
+		if inheritsPrivilegesOnly && !InheritsPrivileges(member, groupID) {
+			continue
+		}
 		groups = append(groups, groupID)
 	}
 	return groups

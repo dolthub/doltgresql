@@ -31,6 +31,8 @@ var authFileName = "auth.db"
 var (
 	globalDatabase Database
 	globalLock     *sync.RWMutex
+	roleNameView   atomic.Value // immutable map[RoleID]string for lock-free principal projection
+	roleNamesDirty bool
 	userIDCounter  atomic.Uint64
 	fileSystem     filesys.Filesys
 )
@@ -72,6 +74,28 @@ func ClearDatabase() {
 	clear(globalDatabase.routinePrivileges.Data)
 	clear(globalDatabase.roleMembership.Data)
 	dbInitDefault()
+	publishRoleNames()
+}
+
+// RoleNameForSession resolves the current name of a stable role ID without
+// taking the auth lock. Dolt's search-path expansion may run inside auth
+// checks, where taking the same lock again would deadlock.
+func RoleNameForSession(id RoleID) (string, bool) {
+	view, ok := roleNameView.Load().(map[RoleID]string)
+	if !ok {
+		return "", false
+	}
+	name, ok := view[id]
+	return name, ok
+}
+
+func publishRoleNames() {
+	view := make(map[RoleID]string, len(globalDatabase.rolesByID))
+	for id, role := range globalDatabase.rolesByID {
+		view[id] = role.Name
+	}
+	roleNameView.Store(view)
+	roleNamesDirty = false
 }
 
 // DropRole removes the given role from the database. If the role does not exist, then this is a no-op.
@@ -81,6 +105,7 @@ func DropRole(name string) {
 		delete(globalDatabase.rolesByID, roleID)
 		globalDatabase.removeRolePrivileges(roleID)
 		globalDatabase.removeRoleMemberships(roleID)
+		roleNamesDirty = true
 	}
 }
 
@@ -179,6 +204,7 @@ func RenameRole(oldName string, newName string) {
 		role := globalDatabase.rolesByID[roleID]
 		role.Name = newName
 		globalDatabase.rolesByID[roleID] = role
+		roleNamesDirty = true
 	}
 }
 
@@ -200,6 +226,7 @@ func SetRole(role Role) {
 	}
 	globalDatabase.rolesByName[role.Name] = role.id
 	globalDatabase.rolesByID[role.ID()] = role
+	roleNamesDirty = true
 }
 
 // IsSuperUser returns whether the given role is a SUPERUSER.
@@ -219,7 +246,12 @@ func LockRead(f func()) {
 // automatically released once the function finishes.
 func LockWrite(f func()) {
 	globalLock.Lock()
-	defer globalLock.Unlock()
+	defer func() {
+		if roleNamesDirty {
+			publishRoleNames()
+		}
+		globalLock.Unlock()
+	}()
 	f()
 }
 
@@ -254,6 +286,7 @@ func dbInit(dEnv *env.DoltEnv, cfg Config) {
 	} else {
 		dbInitDefault()
 	}
+	publishRoleNames()
 }
 
 // newEmptyDatabase returns a Database with all of its collections initialized and empty.

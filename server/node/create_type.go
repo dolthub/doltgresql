@@ -87,12 +87,12 @@ func (c *CreateType) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	var userRole auth.Role
+	var roleErr error
 	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
+		_, roleErr = auth.CurrentRoleLocked(ctx)
 	})
-	if !userRole.IsValid() {
-		return nil, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	if roleErr != nil {
+		return nil, roleErr
 	}
 
 	schema, err := core.GetSchemaName(ctx, nil, c.SchemaName)

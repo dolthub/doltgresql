@@ -61,16 +61,20 @@ func AddSequencePrivilege(key SequencePrivilegeKey, privilege GrantedPrivilege, 
 
 // HasSequencePrivilege checks whether the user has the given privilege on the associated sequence.
 func HasSequencePrivilege(key SequencePrivilegeKey, privilege Privilege) bool {
-	if IsSuperUser(key.Role) {
+	return hasSequencePrivilege(key, privilege, true)
+}
+
+func hasSequencePrivilege(key SequencePrivilegeKey, privilege Privilege, allowSuperuser bool) bool {
+	if allowSuperuser && IsSuperUser(key.Role) {
 		return true
 	}
 	// If a sequence name was provided, also check for privileges on all sequences in the schema.
 	if len(key.Name) > 0 {
-		if HasSequencePrivilege(SequencePrivilegeKey{
+		if hasSequencePrivilege(SequencePrivilegeKey{
 			Role:   key.Role,
 			Schema: key.Schema,
 			Name:   "",
-		}, privilege) {
+		}, privilege, false) {
 			return true
 		}
 	}
@@ -80,11 +84,11 @@ func HasSequencePrivilege(key SequencePrivilegeKey, privilege Privilege) bool {
 		}
 	}
 	for _, group := range GetAllGroupsWithMember(key.Role, true) {
-		if HasSequencePrivilege(SequencePrivilegeKey{
+		if hasSequencePrivilege(SequencePrivilegeKey{
 			Role:   group,
 			Schema: key.Schema,
 			Name:   key.Name,
-		}, privilege) {
+		}, privilege, false) {
 			return true
 		}
 	}
@@ -94,16 +98,20 @@ func HasSequencePrivilege(key SequencePrivilegeKey, privilege Privilege) bool {
 // HasSequencePrivilegeGrantOption checks whether the user has WITH GRANT OPTION for the given privilege on the
 // associated sequence. Returns the role that has WITH GRANT OPTION, or an invalid role if not available.
 func HasSequencePrivilegeGrantOption(key SequencePrivilegeKey, privilege Privilege) RoleID {
-	if IsSuperUser(key.Role) {
+	return hasSequencePrivilegeGrantOption(key, privilege, true)
+}
+
+func hasSequencePrivilegeGrantOption(key SequencePrivilegeKey, privilege Privilege, allowSuperuser bool) RoleID {
+	if allowSuperuser && IsSuperUser(key.Role) {
 		return key.Role
 	}
 	// If a sequence name was provided, also check for grant option on all sequences in the schema.
 	if len(key.Name) > 0 {
-		if returnedID := HasSequencePrivilegeGrantOption(SequencePrivilegeKey{
+		if returnedID := hasSequencePrivilegeGrantOption(SequencePrivilegeKey{
 			Role:   key.Role,
 			Schema: key.Schema,
 			Name:   "",
-		}, privilege); returnedID.IsValid() {
+		}, privilege, false); returnedID.IsValid() {
 			return returnedID
 		}
 	}
@@ -117,11 +125,11 @@ func HasSequencePrivilegeGrantOption(key SequencePrivilegeKey, privilege Privile
 		}
 	}
 	for _, group := range GetAllGroupsWithMember(key.Role, true) {
-		if returnedID := HasSequencePrivilegeGrantOption(SequencePrivilegeKey{
+		if returnedID := hasSequencePrivilegeGrantOption(SequencePrivilegeKey{
 			Role:   group,
 			Schema: key.Schema,
 			Name:   key.Name,
-		}, privilege); returnedID.IsValid() {
+		}, privilege, false); returnedID.IsValid() {
 			return returnedID
 		}
 	}

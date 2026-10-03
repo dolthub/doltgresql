@@ -31,9 +31,10 @@ import (
 
 // AuthorizationQueryState contains any cached state for a query.
 type AuthorizationQueryState struct {
-	role   Role
-	public Role
-	err    error
+	role    Role
+	public  Role
+	err     error
+	roleErr error // deferred until a statement actually needs authorization
 }
 
 var _ sql.AuthorizationQueryState = AuthorizationQueryState{}
@@ -41,6 +42,13 @@ var _ sql.AuthorizationQueryState = AuthorizationQueryState{}
 // Error implements the sql.AuthorizationQueryState interface.
 func (state AuthorizationQueryState) Error() error {
 	return state.err
+}
+
+func (state AuthorizationQueryState) authorizationError() error {
+	if state.err != nil {
+		return state.err
+	}
+	return state.roleErr
 }
 
 // AuthorizationQueryStateImpl implements the sql.AuthorizationQueryState interface.
@@ -70,9 +78,8 @@ var _ sql.ResolvedTableAuthorizationHandler = (*AuthorizationHandler)(nil)
 func (h *AuthorizationHandler) NewQueryState(ctx *sql.Context) sql.AuthorizationQueryState {
 	state := AuthorizationQueryState{}
 	LockRead(func() {
-		state.role = GetRole(ctx.Client().User)
-		if !state.role.IsValid() {
-			state.err = errors.Errorf(`role "%s" does not exist`, state.role.Name)
+		state.role, state.roleErr = CurrentRoleLocked(ctx)
+		if state.roleErr != nil {
 			return
 		}
 		state.public = GetRole("public")
@@ -90,12 +97,15 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	if len(auth.AuthType) == 0 && len(auth.TargetType) == 0 {
 		return nil
 	}
+	if auth.AuthType == AuthType_IGNORE {
+		return nil
+	}
 	if aqs == nil {
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	globalLock.RLock()
 	defer globalLock.RUnlock()
@@ -103,9 +113,6 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	checkSchemaForUsage := false
 	var privileges []Privilege
 	switch auth.AuthType {
-	case AuthType_IGNORE:
-		// This means that authorization is being handled elsewhere (such as a child or parent), and should be ignored here
-		return nil
 	case AuthType_CREATE:
 		privileges = []Privilege{Privilege_CREATE}
 	case AuthType_CREATEDATABASE:
@@ -199,11 +206,20 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			relationKind = "view"
 		}
 		for i := 0; i < len(auth.TargetNames); i += 3 {
-			// TODO: handle database
-			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i+1])
+			schemaName := auth.TargetNames[i+1]
+			var err error
+			if schemaName == "" {
+				// An unqualified table can be in a later search-path schema.
+				// The first existing schema is not necessarily the table's schema.
+				schemaName, err = tableSchemaOnSearchPath(ctx, auth.TargetNames[i], auth.TargetNames[i+2])
+			}
 			if err != nil {
 				// If this fails, then there's an issue with the search path.
 				// This will error later in the process, so we'll pass auth for now.
+				return nil
+			}
+			if schemaName == "" {
+				// Leave missing relations to the normal table resolver.
 				return nil
 			}
 			err = checkPrivilegeOnTable(state, relationKind, schemaName, auth.TargetNames[i+2], privileges)
@@ -258,14 +274,64 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	return nil
 }
 
+// tableSchemaOnSearchPath mirrors table lookup for authorization. It must
+// inspect each schema, since search_path's first schema may lack the table.
+func tableSchemaOnSearchPath(ctx *sql.Context, databaseName, tableName string) (string, error) {
+	if doltdb.HasDoltPrefix(tableName) {
+		// Dolt system tables retain their existing SQL privilege namespace;
+		// branch-control permissions are checked by their own table handlers.
+		return core.GetSchemaName(ctx, nil, "")
+	}
+	db, err := core.GetSqlDatabaseFromContext(ctx, databaseName)
+	if err != nil || db == nil {
+		return "", err
+	}
+	schemaDB, ok := db.(sql.SchemaDatabase)
+	if !ok {
+		return core.GetSchemaName(ctx, nil, "")
+	}
+	path, err := core.SearchPath(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, candidate := range path {
+		schema, exists, err := schemaDB.GetSchema(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			continue
+		}
+		_, found, err := schema.GetTableInsensitive(ctx, tableName)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			return schema.SchemaName(), nil
+		}
+		// Views are stored separately from tables. An unqualified view still
+		// needs its privilege check before the statement reaches the executor.
+		if viewDB, ok := schema.(sql.ViewDatabase); ok {
+			_, found, err = viewDB.GetViewDefinition(ctx, tableName)
+			if err != nil {
+				return "", err
+			}
+			if found {
+				return schema.SchemaName(), nil
+			}
+		}
+	}
+	return "", nil
+}
+
 // HandleAuthNode implements the sql.AuthorizationHandler interface.
 func (h *AuthorizationHandler) HandleAuthNode(ctx *sql.Context, aqs sql.AuthorizationQueryState, node sql.AuthorizationCheckerNode) error {
 	if aqs == nil {
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	// TODO: implement this
 	return nil
@@ -277,8 +343,8 @@ func (h *AuthorizationHandler) CheckDatabase(ctx *sql.Context, aqs sql.Authoriza
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	// TODO: implement this
 	return nil
@@ -290,8 +356,8 @@ func (h *AuthorizationHandler) CheckSchema(ctx *sql.Context, aqs sql.Authorizati
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	// TODO: implement this
 	return nil
@@ -303,8 +369,8 @@ func (h *AuthorizationHandler) CheckTable(ctx *sql.Context, aqs sql.Authorizatio
 		aqs = h.NewQueryState(ctx)
 	}
 	state := aqs.(AuthorizationQueryState)
-	if state.err != nil {
-		return state.err
+	if err := state.authorizationError(); err != nil {
+		return err
 	}
 	// TODO: implement this
 	return nil
