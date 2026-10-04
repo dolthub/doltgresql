@@ -205,7 +205,6 @@ type DoltgresConfig struct {
 	// TODO: Rename to UserVars_
 	Vars            []DoltgresUserSessionVars  `yaml:"user_session_vars,omitempty" minver:"0.7.4"`
 	SystemVariables map[string]interface{}     `yaml:"system_variables,omitempty" minver:"0.7.4"`
-	Jwks            []doltservercfg.JwksConfig `yaml:"jwks,omitempty" minver:"0.7.4"`
 	GoldenMysqlConn *string                    `yaml:"golden_mysql_conn,omitempty" minver:"0.7.4"`
 
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
@@ -500,14 +499,6 @@ func (cfg *DoltgresConfig) MetricsTLSCA() string {
 	return *cfg.MetricsConfig.TlsCa
 }
 
-func (cfg *DoltgresConfig) MetricsJwksConfig() *doltservercfg.JwksConfig {
-	return nil
-}
-
-func (cfg *DoltgresConfig) MetricsJWTRequiredForLocalhost() bool {
-	return false
-}
-
 func (cfg *DoltgresConfig) PrivilegeFilePath() string {
 	if cfg.PrivilegeFile == nil {
 		return ""
@@ -549,10 +540,6 @@ func (cfg *DoltgresConfig) SystemVars() map[string]interface{} {
 	}
 
 	return cfg.SystemVariables
-}
-
-func (cfg *DoltgresConfig) JwksConfig() []doltservercfg.JwksConfig {
-	return cfg.Jwks
 }
 
 func (cfg *DoltgresConfig) AllowCleartextPasswords() bool {
