@@ -461,6 +461,27 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #3499",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 'statement_timeout=1000' ~ 'statement_timeout';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'statement_timeout=1000' ~ ANY(ARRAY['statement_timeout']::text[]);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'other_setting=1' ~ ANY(ARRAY['statement_timeout']::text[]);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 1 = ANY(ARRAY[1, 2, 3]);`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
 	})
 }
 
