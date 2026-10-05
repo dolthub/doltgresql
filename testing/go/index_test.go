@@ -1898,6 +1898,51 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ALTER INDEX RENAME TO on indexes used by foreign keys",
+			SetUpScript: []string{
+				"CREATE TABLE zi_parent (id INT PRIMARY KEY, u INT);",
+				"CREATE UNIQUE INDEX zi_parent_u_idx ON zi_parent (u);",
+				"CREATE TABLE zi_child (id INT PRIMARY KEY, a INT NOT NULL, b INT);",
+				"CREATE INDEX zi_child_a_idx ON zi_child (a);",
+				"CREATE INDEX zi_child_b_idx ON zi_child (b);",
+				"ALTER TABLE zi_child ADD CONSTRAINT zi_child_a_fk FOREIGN KEY (a) REFERENCES zi_parent(id);",
+				"ALTER TABLE zi_child ADD CONSTRAINT zi_child_b_fk FOREIGN KEY (b) REFERENCES zi_parent(u);",
+				"INSERT INTO zi_parent VALUES (1, 10);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER INDEX zi_child_a_idx RENAME TO zi_child_a_idx_new;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER INDEX zi_parent_u_idx RENAME TO zi_parent_u_idx_new;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            "SELECT dolt_commit('-Am', 'renamed indexes');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "INSERT INTO zi_child VALUES (1, 1, 10);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           "INSERT INTO zi_child VALUES (2, 2, 10);",
+					ExpectedErr:     "Foreign key violation",
+					ExpectedErrCode: "23503",
+				},
+				{
+					Query:           "INSERT INTO zi_child VALUES (3, 1, 20);",
+					ExpectedErr:     "Foreign key violation",
+					ExpectedErrCode: "23503",
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename IN ('zi_parent', 'zi_child') ORDER BY indexname;",
+					Expected: []sql.Row{{"zi_child_a_idx_new"}, {"zi_child_b_idx"}, {"zi_child_pkey"}, {"zi_parent_pkey"}, {"zi_parent_u_idx_new"}},
+				},
+			},
+		},
 	})
 }
 
