@@ -23,6 +23,9 @@ testing/go/regression/out
 # ignore sysbench
 scripts/mini_sysbench
 
+# ignore Rust build output
+/target
+
 # ignore doltgres db created
 doltgres
 auth.db
