@@ -6839,6 +6839,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1241754361, "dolt_tags_dolt_tags_name_idx_key", 2200, "i"},
 						{2969045375, "commits_from", 1634633383, "i"},
 						{1819666711, "commits_to", 1634633383, "i"},
+						{3962040469, "dolt_blame_t1", 1634633383, "v"},
 						{1763579892, "dolt_branches", 1634633383, "r"},
 						{3929519011, "dolt_branches_dolt_branches_name_idx_key", 1634633383, "i"},
 						{1212681264, "dolt_column_diff", 1634633383, "r"},
