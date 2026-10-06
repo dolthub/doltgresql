@@ -18,7 +18,9 @@
 
 pub mod create;
 pub mod database;
+mod gorand;
 mod graph;
 mod rows;
+pub mod tags;
 
 pub use graph::{address_map, dump_graph};
