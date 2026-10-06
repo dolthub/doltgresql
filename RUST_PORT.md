@@ -117,7 +117,9 @@ captured and re-verified.
 1. Storage read path: hashes, NBS table files, journal, archives, manifest, flatbuffers messages, prolly
    trees, commit graph. Verified by dumping Go-written repositories identically.
 2. Storage write path, byte-identical: same chunks and hashes as Go for the same operations.
-3. Wire protocol, parser, catalog, and a minimal engine, enough for the smoke tests.
+3. Wire protocol, parser, catalog, and a minimal engine, enough for the smoke tests. The parser is `pg_query`
+   (libpg_query, Postgres' own grammar, currently 17.7), and the engine is our own row engine built for OLTP over
+   prolly trees. Syntax newer than Postgres 15 is accepted; a statement fails only when what it needs is unsupported.
 4. Breadth: types, functions, operators, DDL, DML, pg_catalog, PL/pgSQL, triggers, sequences, auth.
 5. Version control: branches, commits, merge, conflicts, diff, remotes, backups, GC, cluster replication.
 6. Operational features, logical replication, admin tool, and performance work against sysbench.
