@@ -17,7 +17,7 @@
 pub mod compare;
 pub mod files;
 pub mod format;
-pub mod gostd;
+pub use harness::gostd;
 pub mod json;
 pub mod messages;
 pub mod pgx;

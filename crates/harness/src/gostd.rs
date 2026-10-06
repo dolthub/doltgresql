@@ -114,7 +114,12 @@ fn special_text(value: f64) -> Option<String> {
 
 /// format_f6_64 matches fmt's `%f` for a float64.
 pub fn format_f6_64(value: f64) -> String {
-    special_text(value).unwrap_or_else(|| format!("{value:.6}"))
+    format_f64(value, 6)
+}
+
+/// format_f64 matches fmt's `%.Nf` for a float64.
+pub fn format_f64(value: f64, precision: usize) -> String {
+    special_text(value).unwrap_or_else(|| format!("{value:.precision$}"))
 }
 
 /// format_f6_32 matches fmt's `%f` for a float32.
