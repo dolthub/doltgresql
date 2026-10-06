@@ -39,6 +39,24 @@ pub fn read_at(file: &File, offset: u64, len: usize) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
+/// write_at writes all of the bytes at the offset without moving the file's cursor.
+pub fn write_at(file: &File, offset: u64, bytes: &[u8]) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt;
+        file.write_all_at(bytes, offset)?;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileExt;
+        let mut done = 0;
+        while done < bytes.len() {
+            done += file.seek_write(&bytes[done..], offset + done as u64)?;
+        }
+    }
+    Ok(())
+}
+
 /// be_u32 reads a big-endian u32 at the offset of the bytes.
 pub fn be_u32(bytes: &[u8], offset: usize) -> u32 {
     u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap())

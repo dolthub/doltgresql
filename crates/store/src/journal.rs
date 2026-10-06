@@ -22,16 +22,18 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use crate::chunk::{CHECKSUM_LEN, Chunk, crc};
-use crate::error::{Result, corrupt};
+use crate::error::{Error, Result, corrupt};
 use crate::file::{be_u32, read_at};
 use crate::hash::Hash;
 
 /// JOURNAL_FILE is the journal's file name, which is also its name in the manifest.
 pub const JOURNAL_FILE: &str = "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv";
 /// MAX_RECORD_LEN is the largest record the journal writer can write.
-const MAX_RECORD_LEN: u32 = 5 * 1024 * 1024;
+pub(crate) const MAX_RECORD_LEN: u32 = 5 * 1024 * 1024;
 /// ROOT_RECORD_LEN is the length of a root hash record.
-const ROOT_RECORD_LEN: usize = 4 + 2 + (1 + Hash::LEN) + (1 + 8) + CHECKSUM_LEN;
+pub(crate) const ROOT_RECORD_LEN: usize = 4 + 2 + (1 + Hash::LEN) + (1 + 8) + CHECKSUM_LEN;
+/// PAYLOAD_OFFSET is the offset of a chunk record's payload within the record.
+pub(crate) const PAYLOAD_OFFSET: usize = 4 + 2 + (1 + Hash::LEN) + 1;
 
 /// Record tags and kinds.
 const KIND_TAG: u8 = 1;
@@ -97,9 +99,36 @@ fn parse(record: &[u8]) -> Result<Record<'_>> {
     Ok(parsed)
 }
 
+/// record_len_at returns the length of the record at the offset when a whole, valid record is there, as Dolt's
+/// journal reader requires before it stops reading.
+pub(crate) fn record_len_at(bytes: &[u8], at: usize) -> Option<usize> {
+    let len = be_u32(bytes, at);
+    (len != 0 && len <= MAX_RECORD_LEN && at + len as usize <= bytes.len() && valid(&bytes[at..]))
+        .then_some(len as usize)
+}
+
+/// parse_record decodes a valid chunk or root hash record, returning it with the offset of its payload.
+pub(crate) fn parse_record(raw: &[u8]) -> Result<(JournalRecord<'_>, usize)> {
+    let record = parse(raw)?;
+    match record.kind {
+        ROOT_KIND => Ok((JournalRecord::Root { hash: record.address, timestamp: record.timestamp }, 0)),
+        CHUNK_KIND => Ok((JournalRecord::Chunk { hash: record.address, record: record.payload }, record.payload_at)),
+        kind => Err(corrupt(format!("unknown journal record kind ({kind})"))),
+    }
+}
+
+/// data_loss_error returns the error for valid records that follow an invalid one at the offset.
+pub(crate) fn data_loss_error(path: &Path, at: usize) -> Error {
+    corrupt(format!(
+        "possible data loss detected in journal file {} at offset {at}: corrupted journal\nplease run 'dolt fsck' to \
+         assess the damage and attempt repairs",
+        path.display()
+    ))
+}
+
 /// possible_data_loss reports whether valid records follow a point where reading stopped: a root hash record followed
 /// by any other record means the journal lost data that a writer synced.
-fn possible_data_loss(rest: &[u8]) -> bool {
+pub(crate) fn possible_data_loss(rest: &[u8]) -> bool {
     let mut first_root = false;
     let mut at = 0;
     while at + ROOT_RECORD_LEN <= rest.len() {
@@ -140,32 +169,20 @@ impl Journal {
         let mut order = Vec::new();
         let mut root = Hash::default();
         let mut at = 0;
-        let mut recovered = false;
         while at + 4 <= bytes.len() {
-            let len = be_u32(&bytes, at);
-            if len == 0 || len > MAX_RECORD_LEN || at + len as usize > bytes.len() || !valid(&bytes[at..]) {
-                recovered = true;
-                break;
-            }
-            let record = parse(&bytes[at..at + len as usize])?;
-            match record.kind {
-                ROOT_KIND => root = record.address,
-                CHUNK_KIND => {
-                    let offset = (at + record.payload_at) as u64;
-                    if chunks.insert(record.address, (offset, record.payload.len() as u32)).is_none() {
-                        order.push(record.address);
+            let Some(len) = record_len_at(&bytes, at) else { break };
+            match parse_record(&bytes[at..at + len])? {
+                (JournalRecord::Root { hash, .. }, _) => root = hash,
+                (JournalRecord::Chunk { hash, record }, payload_at) => {
+                    if chunks.insert(hash, ((at + payload_at) as u64, record.len() as u32)).is_none() {
+                        order.push(hash);
                     }
                 }
-                _ => {}
             }
-            at += len as usize;
+            at += len;
         }
-        if recovered && possible_data_loss(&bytes[at..]) {
-            return Err(corrupt(format!(
-                "possible data loss detected in journal file {} at offset {at}: corrupted journal\nplease run 'dolt \
-                 fsck' to assess the damage and attempt repairs",
-                path.display()
-            )));
+        if at < bytes.len() && possible_data_loss(&bytes[at..]) {
+            return Err(data_loss_error(path, at));
         }
         Ok(Journal { file: File::open(path)?, chunks, order, root })
     }
@@ -247,18 +264,10 @@ pub fn read_records(bytes: &[u8]) -> Result<Vec<(JournalRecord<'_>, &[u8])>> {
     let mut records = Vec::new();
     let mut at = 0;
     while at + 4 <= bytes.len() {
-        let len = be_u32(bytes, at);
-        if len == 0 || len > MAX_RECORD_LEN || at + len as usize > bytes.len() || !valid(&bytes[at..]) {
-            break;
-        }
-        let raw = &bytes[at..at + len as usize];
-        let record = parse(raw)?;
-        records.push(match record.kind {
-            ROOT_KIND => (JournalRecord::Root { hash: record.address, timestamp: record.timestamp }, raw),
-            CHUNK_KIND => (JournalRecord::Chunk { hash: record.address, record: record.payload }, raw),
-            kind => return Err(corrupt(format!("unknown journal record kind: {kind}"))),
-        });
-        at += len as usize;
+        let Some(len) = record_len_at(bytes, at) else { break };
+        let raw = &bytes[at..at + len];
+        records.push((parse_record(raw)?.0, raw));
+        at += len;
     }
     Ok(records)
 }

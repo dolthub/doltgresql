@@ -18,8 +18,8 @@
 use std::path::{Path, PathBuf};
 
 use store::{
-    Chunk, GenerationalStore, Hash, JOURNAL_FILE, JournalRecord, MANIFEST_FILE, Manifest, TableReader, TableWriter,
-    lock_hash, read_records,
+    Chunk, GenerationalStore, Hash, JOURNAL_FILE, JOURNAL_INDEX_FILE, JournalRecord, JournalWriter, MANIFEST_FILE,
+    Manifest, TableReader, TableWriter, lock_hash, read_records,
 };
 
 /// fixture returns the directory of a fixture's database, the one directory in it that holds a `.dolt` directory.
@@ -247,4 +247,132 @@ fn journal_records_encode_to_the_bytes_go_wrote() {
     }
     assert!(checked > 1000 && roots > 10, "only {checked} records and {roots} roots were checked");
     assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn journal_writer_writes_the_journals_go_wrote() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("journal_writer");
+    let (mut checked, mut failures) = (0, Vec::new());
+    for entry in std::fs::read_dir(&fixtures).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = path.file_name().unwrap().to_str().unwrap().to_string();
+        let journal = fixture(&name).join(".dolt/noms").join(JOURNAL_FILE);
+        let Ok(bytes) = std::fs::read(&journal) else { continue };
+        let dir = scratch.join(&name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let records = read_records(&bytes).unwrap();
+        let (mut writer, root) = JournalWriter::open(&dir).unwrap();
+        assert!(root.is_empty());
+        let mut last_root = Hash::default();
+        for (record, _) in &records {
+            match *record {
+                JournalRecord::Chunk { hash, record } => writer.write_chunk(hash, record).unwrap(),
+                JournalRecord::Root { hash, timestamp } => {
+                    writer.commit_root_at(hash, timestamp).unwrap();
+                    last_root = hash;
+                }
+            }
+        }
+        writer.close().unwrap();
+        checked += 1;
+        let written = std::fs::read(dir.join(JOURNAL_FILE)).unwrap();
+        let valid_len: usize = records.iter().map(|(_, raw)| raw.len()).sum();
+        if written != bytes[..valid_len] {
+            failures.push(format!("{name}: the journal differs"));
+            continue;
+        }
+        // Reopening reads the root and every chunk back, through the index file and the journal.
+        let (writer, root) = JournalWriter::open(&dir).unwrap();
+        assert_eq!(root, last_root, "{name}");
+        for (record, _) in &records {
+            if let JournalRecord::Chunk { hash, record } = *record {
+                assert_eq!(writer.get(&hash).unwrap(), Some(Chunk::from_record(hash, record).unwrap()), "{name}");
+            }
+        }
+        writer.close().unwrap();
+    }
+    assert!(checked > 5, "only {checked} journals were checked");
+    assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
+}
+
+/// write_indexed_journal writes a store whose journal holds enough chunks over several commits to end index batches,
+/// with a manifest naming the journal, and returns its chunks and last root.
+fn write_indexed_journal(dir: &Path) -> (Vec<Chunk>, Hash) {
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::create_dir_all(dir.join("oldgen")).unwrap();
+    let (mut writer, _) = JournalWriter::open(dir).unwrap();
+    let mut chunks = Vec::new();
+    let mut root = Hash::default();
+    for commit in 0..5u32 {
+        for i in 0..9000u32 {
+            let chunk = Chunk::new(format!("chunk {commit} {i}").into_bytes());
+            writer.write_chunk(chunk.hash, &chunk.to_record()).unwrap();
+            chunks.push(chunk);
+        }
+        root = chunks.last().unwrap().hash;
+        writer.commit_root_at(root, 1_700_000_000 + commit as u64).unwrap();
+    }
+    writer.close().unwrap();
+    let specs = vec![store::TableSpec { name: Hash::parse(JOURNAL_FILE).unwrap(), chunk_count: chunks.len() as u32 }];
+    let manifest = Manifest {
+        version: "5".to_string(),
+        format: "__DOLT__".to_string(),
+        lock: lock_hash(&root, &specs, &[], b""),
+        root,
+        gc_gen: Hash::default(),
+        specs,
+    };
+    std::fs::write(dir.join(MANIFEST_FILE), manifest.format()).unwrap();
+    (chunks, root)
+}
+
+#[test]
+fn journal_writer_indexes_large_journals() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("indexed_journal");
+    let (chunks, root) = write_indexed_journal(&dir);
+    let index = std::fs::read(dir.join(JOURNAL_INDEX_FILE)).unwrap();
+    // Each lookup is 29 bytes and each meta record 41, and the second and fourth commits end batches.
+    assert_eq!(index.len(), chunks.len() * 29 + 2 * 41);
+    let (writer, reopened_root) = JournalWriter::open(&dir).unwrap();
+    assert_eq!(reopened_root, root);
+    for chunk in &chunks {
+        assert_eq!(writer.get(&chunk.hash).unwrap().as_ref(), Some(chunk));
+    }
+    writer.close().unwrap();
+    assert_eq!(std::fs::read(dir.join(JOURNAL_INDEX_FILE)).unwrap(), index, "reopening changed the index");
+}
+
+#[test]
+#[ignore = "needs the Go store oracle that testing/go/regression/out/build_store_fixtures.sh builds"]
+fn go_reads_journals_and_indexes_rust_wrote() {
+    let oracle = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/storeoracle");
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("indexed_journal_for_go");
+    write_indexed_journal(&dir);
+    let index = std::fs::read(dir.join(JOURNAL_INDEX_FILE)).unwrap();
+    let expected = store::dump(&dir).unwrap();
+    let output = std::process::Command::new(&oracle).arg(&dir).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    // Go reports the chunks it found through the index by the first 16 bytes of their addresses, so the chunks are
+    // compared by generation, size, and the hash of their data.
+    let chunks = |dump: &str| {
+        let mut lines: Vec<String> = dump
+            .lines()
+            .map(|line| match line.split(' ').collect::<Vec<_>>()[..] {
+                [generation, _, size, data] => format!("{generation} {size} {data}"),
+                _ => line.to_string(),
+            })
+            .collect();
+        lines.sort();
+        lines
+    };
+    let actual = String::from_utf8(output.stdout).unwrap();
+    assert!(chunks(&actual) == chunks(&expected), "Go reads other chunks than Rust");
+    // Go truncates an index it rejects, so its index starts with Rust's when it accepted it.
+    let after = std::fs::read(dir.join(JOURNAL_INDEX_FILE)).unwrap();
+    assert!(after.starts_with(&index), "Go rewrote the index ({} bytes, then {})", index.len(), after.len());
 }
