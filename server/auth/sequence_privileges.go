@@ -15,6 +15,11 @@
 package auth
 
 import (
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -62,6 +67,31 @@ func AddSequencePrivilege(key SequencePrivilegeKey, privilege GrantedPrivilege, 
 // HasSequencePrivilege checks whether the user has the given privilege on the associated sequence.
 func HasSequencePrivilege(key SequencePrivilegeKey, privilege Privilege) bool {
 	return hasSequencePrivilege(key, privilege, true)
+}
+
+// CheckAnySequencePrivilege checks the effective role and PUBLIC for any of the
+// given privileges on the resolved sequence. Call this before changing sequence
+// state so prepared statements and dynamic sequence names use current privileges.
+func CheckAnySequencePrivilege(ctx *sql.Context, schemaName, seqName string, privileges ...Privilege) error {
+	globalLock.RLock()
+	defer globalLock.RUnlock()
+
+	role, err := CurrentRoleLocked(ctx)
+	if err != nil {
+		return err
+	}
+	public, ok := LookupRole("public")
+	if !ok {
+		return errors.Errorf(`role "public" does not exist`)
+	}
+	roleKey := SequencePrivilegeKey{Role: role.ID(), Schema: schemaName, Name: seqName}
+	publicKey := SequencePrivilegeKey{Role: public.ID(), Schema: schemaName, Name: seqName}
+	for _, privilege := range privileges {
+		if HasSequencePrivilege(roleKey, privilege) || HasSequencePrivilege(publicKey, privilege) {
+			return nil
+		}
+	}
+	return pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for sequence %s", seqName)
 }
 
 func hasSequencePrivilege(key SequencePrivilegeKey, privilege Privilege, allowSuperuser bool) bool {

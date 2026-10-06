@@ -872,10 +872,12 @@ func TestAuthTests(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "SELECT nextval('genre_id_seq_by_3');",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{{1}},
+					// Schema USAGE does not grant privileges on the sequence itself.
+					Query:           "SELECT nextval('genre_id_seq_by_3');",
+					Username:        `user1`,
+					Password:        `a`,
+					ExpectedErr:     "permission denied for sequence genre_id_seq_by_3",
+					ExpectedErrCode: "42501",
 				},
 				{
 					Query:    `REVOKE USAGE ON SCHEMA public FROM user1;`,

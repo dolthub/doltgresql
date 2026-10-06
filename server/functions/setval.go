@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -106,6 +107,10 @@ var setval_text_int64_boolean = framework.Function3{
 				return 0, errors.Errorf(`sequence "%s" does not exist`, relationName)
 			}
 			seqId = id.NewSequence(sequenceName.Schema, sequenceName.Name)
+		}
+
+		if err := auth.CheckAnySequencePrivilege(ctx, sequenceName.Schema, sequenceName.Name, auth.Privilege_UPDATE); err != nil {
+			return nil, err
 		}
 
 		sequenceTracker, err := dsess.GetSequenceTracker(ctx, db.GetGlobalState(), sequences.SequenceTrackerKey)

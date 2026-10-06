@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -66,6 +67,16 @@ func nextval(ctx *sql.Context, ait *sequences.SequenceTracker, relationName stri
 		}
 	}
 	sequenceId := id.NewSequence(sequenceName.Schema, sequenceName.Name)
+	sequence, err := collection.GetSequence(ctx, sequenceId)
+	if err != nil {
+		return 0, err
+	}
+	if sequence == nil {
+		return 0, errors.Errorf(`sequence "%s" does not exist`, relationName)
+	}
+	if err := auth.CheckAnySequencePrivilege(ctx, sequenceName.Schema, sequenceName.Name, auth.Privilege_USAGE, auth.Privilege_UPDATE); err != nil {
+		return 0, err
+	}
 
 	next, err := ait.Next(ctx, sequenceName, nil)
 	if err != nil {

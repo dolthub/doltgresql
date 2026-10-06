@@ -110,7 +110,6 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	globalLock.RLock()
 	defer globalLock.RUnlock()
 
-	checkSchemaForUsage := false
 	var privileges []Privilege
 	switch auth.AuthType {
 	case AuthType_CREATE:
@@ -147,7 +146,6 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	case AuthType_TRUNCATE:
 		privileges = []Privilege{Privilege_TRUNCATE}
 	case AuthType_USAGE:
-		checkSchemaForUsage = true
 		privileges = []Privilege{Privilege_USAGE}
 	case AuthType_UPDATE:
 		privileges = []Privilege{Privilege_UPDATE}
@@ -251,15 +249,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			}
 			err = checkPrivilegeOnSequence(state, schemaName, auth.TargetNames[i+1], privileges)
 			if err != nil {
-				if checkSchemaForUsage {
-					// there can be schema USAGE privilege for the user/role.
-					err = checkPrivilegeOnSchema(state, schemaName, privileges)
-					if err != nil {
-						return err
-					}
-				} else {
-					return err
-				}
+				return err
 			}
 		}
 	case AuthTargetType_TODO:
