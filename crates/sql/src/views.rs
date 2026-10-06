@@ -164,8 +164,9 @@ impl Ctx<'_> {
         Ok(())
     }
 
-    /// create_view runs CREATE [OR REPLACE] VIEW, checking its query first.
-    pub fn create_view(&mut self, stmt: &ViewStmt) -> Result<Outcome> {
+    /// create_view runs CREATE [OR REPLACE] VIEW, checking its query first, and stores the statement's text as Go
+    /// does.
+    pub fn create_view(&mut self, stmt: &ViewStmt, text: &str) -> Result<Outcome> {
         let relation = stmt.view.as_ref().ok_or_else(|| PgError::internal("CREATE VIEW without a name"))?;
         if relation.relpersistence == "t" {
             return Err(PgError::unsupported("temporary views"));
@@ -220,8 +221,7 @@ impl Ctx<'_> {
                 }
             }
         }
-        let fragment = NodeRef::ViewStmt(stmt).deparse().map_err(PgError::internal)?;
-        self.put_view(&schema, &name, Some(&fragment))?;
+        self.put_view(&schema, &name, Some(text))?;
         self.own(crate::auth::Object::Table(schema.clone(), name.clone()))?;
         Ok(Outcome::command("CREATE VIEW"))
     }
@@ -281,10 +281,7 @@ impl Ctx<'_> {
                             });
                         }
                     }
-                    if !drop.missing_ok {
-                        return Err(PgError::new(code::UNDEFINED_TABLE, format!("view \"{shown}\" does not exist")));
-                    }
-                    self.session.notice(PgError::notice("00000", format!("view \"{shown}\" does not exist, skipping")));
+                    self.missing_relation("view", &schema, &shown, drop.missing_ok, code::UNDEFINED_TABLE)?;
                 }
             }
         }

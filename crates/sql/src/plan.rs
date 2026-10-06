@@ -693,10 +693,26 @@ impl<'b, 'a> Planner<'b, 'a> {
                             self.ctx.session.role = role;
                             return planned;
                         }
-                        match crate::dolt::tables::lookup(&relation.schemaname, &relation.relname) {
-                            Some(system) => return Ok(self.plan_system(system, relation)),
-                            None => return Err(err),
+                        let schema = match relation.schemaname.as_str() {
+                            "" if self.ctx.session.search_path().iter().any(|s| s == "dolt") => "dolt",
+                            schema => schema,
+                        };
+                        if let Some(system) = crate::dolt::tables::lookup(schema, &relation.relname)
+                            .or_else(|| crate::dolt::tables::lookup(&relation.schemaname, &relation.relname))
+                        {
+                            return Ok(self.plan_system(system, relation));
                         }
+                        if let Some(view) =
+                            crate::dolt::diff::blame_view(self.ctx, &relation.schemaname, &relation.relname)?
+                        {
+                            return self.plan_view(&view, relation);
+                        }
+                        return match crate::dolt::diff::lookup(self.ctx, &relation.schemaname, &relation.relname)? {
+                            Some(table) => {
+                                Ok(self.plan_system(crate::dolt::tables::SystemTable::User(Box::new(table)), relation))
+                            }
+                            None => Err(err),
+                        };
                     }
                 };
                 if !table.name.starts_with("dolt_") {
@@ -820,8 +836,8 @@ impl<'b, 'a> Planner<'b, 'a> {
             .enumerate()
             .map(|(i, (column, ty))| ScopeColumn {
                 table: name.clone(),
-                name: renames.get(i).map_or(column.to_string(), |r| r.to_string()),
-                ty: typ(ty),
+                name: renames.get(i).map_or(column, |r| r.to_string()),
+                ty,
                 hidden: false,
                 origin: (0, 0),
             })
@@ -868,6 +884,14 @@ impl<'b, 'a> Planner<'b, 'a> {
         }
         let call = &calls[0];
         let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
+        if name == "dolt_diff" {
+            let args = call.args.iter().map(|arg| self.ctx.constant_text(arg)).collect::<Result<Vec<_>>>()?;
+            let mut table = crate::dolt::diff::diff_function(self.ctx, &args)?;
+            table.ordinality = function.ordinality;
+            let relation =
+                pg_query::protobuf::RangeVar { relname: name, alias: function.alias.clone(), ..Default::default() };
+            return Ok(self.plan_system(crate::dolt::tables::SystemTable::User(Box::new(table)), &relation));
+        }
         let mut binder = self.binder(Scope::default());
         binder.set_functions = Some(Vec::new());
         let (expr, ty) = binder.bind(&Node { node: Some(NodeEnum::FuncCall(Box::new(call.clone()))) })?;
@@ -2039,8 +2063,18 @@ fn conjuncts(predicate: Expr, out: &mut Vec<Expr>) {
 }
 
 /// push_down filters a plan's rows by a predicate, applying the conditions that only read the left input of an inner
-/// lateral join to that input, so that the lateral side never runs for rows they reject, as Postgres plans it.
+/// lateral join to that input, so that the lateral side never runs for rows they reject, as Postgres plans it, and
+/// giving a commit diff table the commits its conditions name.
 fn push_down(plan: Plan, predicate: Expr) -> Plan {
+    if let Plan::System(crate::dolt::tables::SystemTable::User(mut table)) = plan {
+        let mut all = Vec::new();
+        conjuncts(predicate.clone(), &mut all);
+        table.take_commits(&all);
+        return Plan::Filter {
+            input: Box::new(Plan::System(crate::dolt::tables::SystemTable::User(table))),
+            predicate,
+        };
+    }
     let Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral: true } = plan else {
         return Plan::Filter { input: Box::new(plan), predicate };
     };

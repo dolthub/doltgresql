@@ -97,16 +97,16 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.branches",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: branches", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.branches\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM branches",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: branches", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"branches\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -142,10 +142,10 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "CREATE SCHEMA dolt",
-                    expected: Expected::Error(Diagnostic { code: "42P06", message: "can't create schema dolt; schema exists", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P06", message: "schema \"dolt\" already exists", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -315,31 +315,46 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the Go server fails on its blame view, so this expectation shows the commit that last changed the row.
                 ScriptTestAssertion {
                     query: "SELECT id, committer FROM dolt_blame_test",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"at or near "`": syntax error"#, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("committer", TEXT)],
+                        rows: &[
+                            &[T("1"), T("John Doe")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the Go server fails on its blame view, so this expectation shows the commit that last changed the row.
                 ScriptTestAssertion {
                     query: "SELECT id, committer FROM public.dolt_blame_test",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"at or near "`": syntax error"#, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("committer", TEXT)],
+                        rows: &[
+                            &[T("1"), T("John Doe")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the Go server fails on its blame view, so this expectation shows the commit that last changed the row.
                 ScriptTestAssertion {
                     query: "SELECT dolt_blame_test.id FROM public.dolt_blame_test",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"at or near "`": syntax error"#, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM other.dolt_blame_test",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_blame_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"other.dolt_blame_test\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -378,18 +393,28 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the Go server fails on its blame view, so this expectation shows the commit that last changed the row.
                 ScriptTestAssertion {
                     query: "SELECT id FROM newschema.dolt_blame_test_sch",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"at or near "`": syntax error"#, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("11")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the Go server fails on its blame view, so this expectation shows the commit that last changed the row.
                 ScriptTestAssertion {
                     query: "SELECT id, committer FROM public.dolt_blame_test",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"at or near "`": syntax error"#, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("committer", TEXT)],
+                        rows: &[
+                            &[T("1"), T("John Doe")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
             ],
@@ -450,16 +475,16 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.column_diff",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: column_diff", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.column_diff\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM column_diff",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: column_diff", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"column_diff\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -632,16 +657,16 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.commit_ancestors",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: commit_ancestors", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.commit_ancestors\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM commit_ancestors",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: commit_ancestors", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"commit_ancestors\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -795,16 +820,16 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM other.dolt_commit_diff_test",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_commit_diff_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"other.dolt_commit_diff_test\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.dolt_commit_diff_none",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_commit_diff_none", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.dolt_commit_diff_none\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -862,10 +887,10 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT from_id, to_id, diff_type FROM dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_commit_diff_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_commit_diff_test\" does not exist", position: 39, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -874,16 +899,16 @@ fn test_user_space_dolt_tables() {
                     expected: Expected::Error(Diagnostic { code: "XX000", message: "invalid ancestor spec", ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT to_id FROM public.dolt_commit_diff_test_sch WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_commit_diff_test_sch", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.dolt_commit_diff_test_sch\" does not exist", position: 19, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT to_id, diff_type FROM newschema.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_commit_diff_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"newschema.dolt_commit_diff_test\" does not exist", position: 30, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -997,16 +1022,16 @@ fn test_user_space_dolt_tables() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.commits",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: commits", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.commits\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM commits",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: commits", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"commits\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -3455,16 +3480,16 @@ This guide enables agents to leverage Dolt's unique version control capabilities
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.diff",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: diff", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.diff\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM diff",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: diff", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"diff\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -3652,22 +3677,22 @@ This guide enables agents to leverage Dolt's unique version control capabilities
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM other.dolt_diff_test",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_diff_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"other.dolt_diff_test\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.dolt_diff_none",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_diff_none", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.dolt_diff_none\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM dolt_diff_none",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_diff_none", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_diff_none\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -3725,10 +3750,10 @@ This guide enables agents to leverage Dolt's unique version control capabilities
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT from_id, to_id, diff_type FROM dolt_diff_test WHERE to_commit=HASHOF('HEAD')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_diff_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_diff_test\" does not exist", position: 39, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -3743,16 +3768,16 @@ This guide enables agents to leverage Dolt's unique version control capabilities
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT to_id FROM public.dolt_diff_test_sch WHERE to_commit=HASHOF('HEAD^1')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_diff_test_sch", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.dolt_diff_test_sch\" does not exist", position: 19, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT to_id FROM newschema.dolt_diff_test WHERE to_commit=HASHOF('HEAD')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_diff_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"newschema.dolt_diff_test\" does not exist", position: 19, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -4058,16 +4083,16 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM other.dolt_history_test",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_history_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"other.dolt_history_test\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.dolt_history_none",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_history_none", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.dolt_history_none\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -4125,10 +4150,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT id, committer FROM dolt_history_test",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_history_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_history_test\" does not exist", position: 27, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -4144,16 +4169,16 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT id FROM public.dolt_history_test_sch",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_history_test_sch", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.dolt_history_test_sch\" does not exist", position: 16, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT id, committer FROM newschema.dolt_history_test",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_history_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"newschema.dolt_history_test\" does not exist", position: 27, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -4304,10 +4329,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT name FROM other.dolt_ignore",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_ignore", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"other.dolt_ignore\" does not exist", position: 18, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -4570,16 +4595,16 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.log",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: log", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.log\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM log",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: log", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"log\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -4723,16 +4748,16 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.merge_status",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: merge_status", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.merge_status\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM merge_status",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: merge_status", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"merge_status\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -4948,16 +4973,16 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.status",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: status", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.status\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM status",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: status", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"status\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5123,16 +5148,16 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.tags",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: tags", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.tags\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM tags",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: tags", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"tags\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -5171,10 +5196,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "CREATE SCHEMA dolt",
-                    expected: Expected::Error(Diagnostic { code: "42P06", message: "can't create schema dolt; schema exists", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P06", message: "schema \"dolt\" already exists", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -5291,10 +5316,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT name FROM other.dolt_procedures",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_procedures", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"other.dolt_procedures\" does not exist", position: 18, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5443,23 +5468,23 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "select dolt_rebase.commit_message from dolt_rebase order by rebase_order;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_rebase", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_rebase\" does not exist", position: 40, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.rebase",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: rebase", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.rebase\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM rebase",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: rebase", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"rebase\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -5500,10 +5525,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "CREATE SCHEMA dolt",
-                    expected: Expected::Error(Diagnostic { code: "42P06", message: "can't create schema dolt; schema exists", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P06", message: "schema \"dolt\" already exists", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -5666,16 +5691,16 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "select * from dolt_rebase;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_rebase", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_rebase\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "select * from dolt.rebase;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: rebase", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt.rebase\" does not exist", position: 15, ..E }),
                     ..A
                 },
             ],
@@ -5724,16 +5749,16 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.remote_branches",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: remote_branches", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.remote_branches\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM remote_branches",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: remote_branches", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"remote_branches\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6250,25 +6275,25 @@ WHERE to_commit = dolt_hashof('HEAD')
                 "create view myView as select 2 + 2",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the Go server shows the stored JSON wrapped in its own type, so this expectation shows the JSON as stored.
                 ScriptTestAssertion {
                     query: "SELECT * FROM dolt_schemas",
                     expected: Expected::Rows {
                         columns: &[Column("type", TEXT), Column("name", TEXT), Column("fragment", TEXT), Column("extra", JSON), Column("sql_mode", TEXT)],
                         rows: &[
-                            &[T("view"), T("myview"), T("create view myView as select 2 + 2"), T(r#"{"Bytes":"eyJDcmVhdGVkQXQiOjB9"}"#), T("ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION")],
+                            &[T("view"), T("myview"), T("create view myView as select 2 + 2"), T(r#"{"CreatedAt":0}"#), T("ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION")],
                         ],
                         tag: "SELECT 1",
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the Go server shows the stored JSON wrapped in its own type, so this expectation shows the JSON as stored.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.dolt_schemas",
                     expected: Expected::Rows {
                         columns: &[Column("type", TEXT), Column("name", TEXT), Column("fragment", TEXT), Column("extra", JSON), Column("sql_mode", TEXT)],
                         rows: &[
-                            &[T("view"), T("myview"), T("create view myView as select 2 + 2"), T(r#"{"Bytes":"eyJDcmVhdGVkQXQiOjB9"}"#), T("ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION")],
+                            &[T("view"), T("myview"), T("create view myView as select 2 + 2"), T(r#"{"CreatedAt":0}"#), T("ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -6286,11 +6311,11 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.myview",
                     expected: Expected::Rows {
-                        columns: &[Column("2 + 2", INT4)],
+                        columns: &[Column("?column?", INT4)],
                         rows: &[
                             &[T("4")],
                         ],
@@ -6298,10 +6323,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT name FROM other.dolt_schemas",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_schemas", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"other.dolt_schemas\" does not exist", position: 18, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -6374,17 +6399,17 @@ WHERE to_commit = dolt_hashof('HEAD')
                     expected: Expected::Tag("SET"),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM myview",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: myview", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"myview\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.myview",
                     expected: Expected::Rows {
-                        columns: &[Column("2 + 2", INT4)],
+                        columns: &[Column("?column?", INT4)],
                         rows: &[
                             &[T("4")],
                         ],
@@ -6397,13 +6422,13 @@ WHERE to_commit = dolt_hashof('HEAD')
                     expected: Expected::Tag("CREATE VIEW"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the Go server shows the stored JSON wrapped in its own type, so this expectation shows the JSON as stored.
                 ScriptTestAssertion {
                     query: "SELECT * FROM newschema.dolt_schemas",
                     expected: Expected::Rows {
                         columns: &[Column("type", TEXT), Column("name", TEXT), Column("fragment", TEXT), Column("extra", JSON), Column("sql_mode", TEXT)],
                         rows: &[
-                            &[T("view"), T("testview"), T("CREATE VIEW testView AS SELECT 1 + 1"), T(r#"{"Bytes":"eyJDcmVhdGVkQXQiOjB9"}"#), T("ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION")],
+                            &[T("view"), T("testview"), T("CREATE VIEW testView AS SELECT 1 + 1"), T(r#"{"CreatedAt":0}"#), T("ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -6432,6 +6457,7 @@ WHERE to_commit = dolt_hashof('HEAD')
                         ],
                         tag: "SELECT 2",
                     },
+                    skip: Some("Postgres lists its system views in information_schema.views too"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -6468,10 +6494,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "DROP VIEW myView",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "the view postgres.myview does not exist", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "view \"myview\" does not exist", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6595,10 +6621,11 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' notice.
                 ScriptTestAssertion {
                     query: "DROP VIEW IF EXISTS noexist.testView",
                     expected: Expected::Tag("DROP VIEW"),
+                    notices: &[Diagnostic { code: "00000", message: r#"schema "noexist" does not exist, skipping"#, ..N }],
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6675,10 +6702,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM other.dolt_workspace_test",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_workspace_test", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"other.dolt_workspace_test\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

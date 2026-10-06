@@ -15,6 +15,7 @@
 //! Dolt's version control: its procedures, system tables, and commit graph.
 
 pub mod args;
+pub mod diff;
 pub mod history;
 pub mod procedures;
 pub mod tables;

@@ -6768,10 +6768,10 @@ fn test_dolt_commit() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * from t;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: t", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"t\" does not exist", position: 15, ..E }),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -41131,10 +41131,10 @@ fn test_history_system_table() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "select count(*) from dolt_history_t;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_history_t", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_history_t\" does not exist", position: 22, ..E }),
                     flow: Flow::Simple,
                     ..A
                 },

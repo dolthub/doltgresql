@@ -62,6 +62,22 @@ pub const FUNCTIONS: &[Function] = &[
         variadic: true,
         implementation: crate::dolt::tables::dolt_log,
     },
+    Function {
+        name: "dolt_diff_summary",
+        args: &[TEXT],
+        ret: RECORD,
+        strict: false,
+        variadic: true,
+        implementation: crate::dolt::diff::dolt_diff_summary,
+    },
+    Function {
+        name: "dolt_diff_stat",
+        args: &[TEXT],
+        ret: RECORD,
+        strict: false,
+        variadic: true,
+        implementation: crate::dolt::diff::dolt_diff_stat,
+    },
 ];
 
 /// f declares a strict function with fixed parameters.
@@ -129,6 +145,33 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
             ("author", TEXT),
             ("author_email", TEXT),
             ("author_date", crate::oid::TIMESTAMP),
+        ],
+    ),
+    (
+        "dolt_diff_summary",
+        &[
+            ("from_table_name", TEXT),
+            ("to_table_name", TEXT),
+            ("diff_type", TEXT),
+            ("data_change", BOOL),
+            ("schema_change", BOOL),
+        ],
+    ),
+    (
+        "dolt_diff_stat",
+        &[
+            ("table_name", TEXT),
+            ("rows_unmodified", INT8),
+            ("rows_added", INT8),
+            ("rows_deleted", INT8),
+            ("rows_modified", INT8),
+            ("cells_added", INT8),
+            ("cells_deleted", INT8),
+            ("cells_modified", INT8),
+            ("old_row_count", INT8),
+            ("new_row_count", INT8),
+            ("old_cell_count", INT8),
+            ("new_cell_count", INT8),
         ],
     ),
 ];

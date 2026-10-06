@@ -664,6 +664,31 @@ impl Ctx<'_> {
         }
     }
 
+    /// missing_relation reports a relation that DROP did not find, as an error or as a notice that IF EXISTS skips
+    /// it, naming the schema instead when the relation's schema does not exist, as Postgres does.
+    pub(crate) fn missing_relation(
+        &mut self,
+        kind: &str,
+        schema: &str,
+        shown: &str,
+        missing_ok: bool,
+        error_code: &'static str,
+    ) -> Result<()> {
+        let schema_missing = !schema.is_empty()
+            && !matches!(schema, "pg_catalog" | "information_schema" | "dolt")
+            && !self.txn.root.schemas.iter().any(|s| s == schema.as_bytes());
+        let (error_code, message) = if schema_missing {
+            (code::INVALID_SCHEMA_NAME, format!("schema \"{schema}\" does not exist"))
+        } else {
+            (error_code, format!("{kind} \"{shown}\" does not exist"))
+        };
+        if !missing_ok {
+            return Err(PgError::new(error_code, message));
+        }
+        self.session.notice(PgError::notice("00000", format!("{message}, skipping")));
+        Ok(())
+    }
+
     /// drop_tables runs DROP TABLE, resolving every table first so that a missing one drops none.
     fn drop_tables(&mut self, drop: &DropStmt) -> Result<Outcome> {
         let mut doomed = Vec::new();
@@ -691,11 +716,7 @@ impl Ctx<'_> {
                             ..PgError::new(code::WRONG_OBJECT_TYPE, format!("\"{shown}\" is not a table"))
                         });
                     }
-                    if !drop.missing_ok {
-                        return Err(PgError::new(code::UNDEFINED_TABLE, format!("table \"{shown}\" does not exist")));
-                    }
-                    self.session
-                        .notice(PgError::notice("00000", format!("table \"{shown}\" does not exist, skipping")));
+                    self.missing_relation("table", &schema, &shown, drop.missing_ok, code::UNDEFINED_TABLE)?;
                 }
             }
         }
@@ -1006,11 +1027,7 @@ impl Ctx<'_> {
                 }
                 None => {
                     let shown = if schema.is_empty() { name } else { format!("{schema}.{name}") };
-                    if !drop.missing_ok {
-                        return Err(PgError::new(code::UNDEFINED_OBJECT, format!("index \"{shown}\" does not exist")));
-                    }
-                    self.session
-                        .notice(PgError::notice("00000", format!("index \"{shown}\" does not exist, skipping")));
+                    self.missing_relation("index", &schema, &shown, drop.missing_ok, code::UNDEFINED_OBJECT)?;
                 }
             }
         }

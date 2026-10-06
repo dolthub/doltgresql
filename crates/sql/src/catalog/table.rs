@@ -118,12 +118,8 @@ fn column_type(sql_type: &[u8]) -> Result<ColumnType> {
         return Ok(match base {
             "text" | "tinytext" | "mediumtext" | "longtext" => ColumnType { oid: crate::oid::TEXT, modifier: -1 },
             "json" => ColumnType { oid: crate::oid::JSON, modifier: -1 },
-            _ => match base.strip_prefix("varchar(").and_then(|n| n.strip_suffix(')')) {
-                Some(n) => {
-                    ColumnType { oid: crate::oid::VARCHAR, modifier: n.parse::<i32>().map_err(|_| unsupported())? + 4 }
-                }
-                None => return Err(unsupported()),
-            },
+            _ if base.starts_with("varchar(") => ColumnType { oid: crate::oid::TEXT, modifier: -1 },
+            _ => return Err(unsupported()),
         });
     };
     let bytes: Vec<u8> = hex

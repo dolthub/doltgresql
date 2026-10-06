@@ -2224,31 +2224,31 @@ fn test_dolt_diff() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_DIFF('main', 'original', 'f_trigger()');",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: f_trigger()", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"f_trigger()\" does not exist", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_DIFF('main', 'original', 'f_default()');",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: f_default()", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"f_default()\" does not exist", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_DIFF('main', 'original', 't_trigger.trig_trigger');",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: t_trigger.trig_trigger", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"t_trigger.trig_trigger\" does not exist", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_DIFF('main', 'original', 't_serial_pk_seq');",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: t_serial_pk_seq", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"t_serial_pk_seq\" does not exist", ..E }),
                     flow: Flow::Query,
                     ..A
                 },

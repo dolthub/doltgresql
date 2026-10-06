@@ -730,6 +730,10 @@ impl Session {
                 let mut parameters = Vec::new();
                 return self.with_ctx(&mut parameters, params, |ctx| ctx.create_trigger(create, &extras.text));
             }
+            NodeEnum::ViewStmt(stmt) => {
+                let mut parameters = Vec::new();
+                return self.with_ctx(&mut parameters, params, |ctx| ctx.create_view(stmt, &extras.text));
+            }
             NodeEnum::VariableSetStmt(set) if matches!(set.name.as_str(), "role" | "session_authorization") => {
                 return self.set_role(set);
             }
@@ -972,7 +976,6 @@ impl Ctx<'_> {
             NodeEnum::CreateSeqStmt(stmt) => self.create_sequence(stmt),
             NodeEnum::AlterTableStmt(stmt) => self.alter_table(stmt),
             NodeEnum::RenameStmt(stmt) => self.rename(stmt),
-            NodeEnum::ViewStmt(stmt) => self.create_view(stmt),
             NodeEnum::AlterRoleStmt(stmt) => self.alter_role(stmt),
             NodeEnum::DropRoleStmt(stmt) => self.drop_role(stmt),
             NodeEnum::GrantStmt(stmt) => self.grant(stmt),

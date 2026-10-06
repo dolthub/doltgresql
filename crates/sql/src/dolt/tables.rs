@@ -19,10 +19,13 @@ use std::collections::{BTreeMap, HashMap};
 use doltdb::root::Root;
 use store::Hash;
 
+use crate::catalog::ColumnType;
 use crate::dolt::args::{Kind, Parser, error};
+use crate::dolt::diff::UserTable;
 use crate::dolt::history::{self, CommitInfo};
 use crate::dolt::procedures::table_map;
 use crate::error::Result;
+use crate::expr::typ;
 use crate::numeric::Numeric;
 use crate::oid::{BOOL, INT4, NUMERIC, TEXT, TIMESTAMP};
 use crate::query::Ctx;
@@ -33,7 +36,7 @@ use crate::types::Value;
 const JSON: u32 = 114;
 
 /// SystemTable is one of Dolt's system tables.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SystemTable {
     Log,
     Branches,
@@ -47,6 +50,10 @@ pub enum SystemTable {
     Conflicts,
     ConstraintViolations,
     SchemaConflicts,
+    Diff,
+    ColumnDiff,
+    /// A system table over a user table.
+    User(Box<UserTable>),
 }
 
 /// TABLES are the system tables by their names in the `dolt` schema.
@@ -63,13 +70,15 @@ const TABLES: &[(&str, SystemTable)] = &[
     ("conflicts", SystemTable::Conflicts),
     ("constraint_violations", SystemTable::ConstraintViolations),
     ("schema_conflicts", SystemTable::SchemaConflicts),
+    ("diff", SystemTable::Diff),
+    ("column_diff", SystemTable::ColumnDiff),
 ];
 
 /// lookup returns the system table that a schema and name refer to: a name in the `dolt` schema, or the name with a
 /// `dolt_` prefix elsewhere.
 pub fn lookup(schema: &str, name: &str) -> Option<SystemTable> {
     let short = if schema == "dolt" { name } else { name.strip_prefix("dolt_")? };
-    TABLES.iter().find(|(n, _)| *n == short).map(|(_, t)| *t)
+    TABLES.iter().find(|(n, _)| *n == short).map(|(_, t)| t.clone())
 }
 
 /// BRANCH_COLUMNS are the columns of the branches table.
@@ -90,8 +99,8 @@ const BRANCH_COLUMNS: &[(&str, u32)] = &[
 
 impl SystemTable {
     /// columns returns the table's column names and types.
-    pub fn columns(self) -> Vec<(&'static str, u32)> {
-        match self {
+    pub fn columns(&self) -> Vec<(String, ColumnType)> {
+        let columns = match self {
             SystemTable::Log => vec![
                 ("commit_hash", TEXT),
                 ("committer", TEXT),
@@ -147,11 +156,39 @@ impl SystemTable {
                 ("their_schema", TEXT),
                 ("description", TEXT),
             ],
-        }
+            SystemTable::Diff => vec![
+                ("commit_hash", TEXT),
+                ("table_name", TEXT),
+                ("committer", TEXT),
+                ("email", TEXT),
+                ("date", TIMESTAMP),
+                ("message", TEXT),
+                ("data_change", BOOL),
+                ("schema_change", BOOL),
+                ("author", TEXT),
+                ("author_email", TEXT),
+                ("author_date", TIMESTAMP),
+            ],
+            SystemTable::ColumnDiff => vec![
+                ("commit_hash", TEXT),
+                ("table_name", TEXT),
+                ("column_name", TEXT),
+                ("committer", TEXT),
+                ("email", TEXT),
+                ("date", TIMESTAMP),
+                ("message", TEXT),
+                ("diff_type", TEXT),
+                ("author", TEXT),
+                ("author_email", TEXT),
+                ("author_date", TIMESTAMP),
+            ],
+            SystemTable::User(table) => return table.columns(),
+        };
+        columns.into_iter().map(|(name, oid)| (name.to_string(), typ(oid))).collect()
     }
 
     /// rows returns the table's rows.
-    pub fn rows(self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+    pub fn rows(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
         match self {
             SystemTable::Log => log_rows(ctx, &[ctx.txn.head]),
             SystemTable::Branches => branch_rows(ctx, "refs/heads/", true),
@@ -165,6 +202,9 @@ impl SystemTable {
             | SystemTable::Conflicts
             | SystemTable::ConstraintViolations
             | SystemTable::SchemaConflicts => Ok(Vec::new()),
+            SystemTable::Diff => crate::dolt::diff::unscoped_rows(ctx),
+            SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),
+            SystemTable::User(table) => table.rows(ctx),
         }
     }
 }
@@ -453,18 +493,8 @@ fn table_deltas(
     names.dedup();
     names
         .into_iter()
-        .filter_map(|key| delta_status(from.get(key), to.get(key)).map(|s| (format!("{}.{}", key.0, key.1), s)))
+        .filter_map(|key| delta_status(from.get(key), to.get(key)).map(|s| (crate::dolt::diff::full_name(key), s)))
         .collect()
-}
-
-/// object_map returns a root's sequences by schema and name, which the status shows alongside tables.
-fn object_map(ctx: &mut Ctx<'_>, root: &Root) -> Result<BTreeMap<(String, String), Hash>> {
-    let mut objects = BTreeMap::new();
-    for (key, address) in root.objects(ctx.db, crate::sequences::COLLECTION)? {
-        let mut parts = crate::catalog::id::segments(&key).into_iter();
-        objects.insert((parts.next().unwrap_or_default(), parts.next().unwrap_or_default()), address);
-    }
-    Ok(objects)
 }
 
 /// schema_deltas returns the schemas added to or dropped from a root.
@@ -484,9 +514,9 @@ fn status_rows(ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
     let staged_tables = table_map(ctx.db, &staged)?;
     let working_tables = table_map(ctx.db, &working)?;
     let mut rows = Vec::new();
-    let head_objects = object_map(ctx, &head)?;
-    let staged_objects = object_map(ctx, &staged)?;
-    let working_objects = object_map(ctx, &working)?;
+    let head_objects = crate::dolt::diff::object_map(ctx.db, &head)?;
+    let staged_objects = crate::dolt::diff::object_map(ctx.db, &staged)?;
+    let working_objects = crate::dolt::diff::object_map(ctx.db, &working)?;
     let mut staged_deltas = table_deltas(&head_tables, &staged_tables);
     staged_deltas.extend(table_deltas(&head_objects, &staged_objects));
     staged_deltas.sort();

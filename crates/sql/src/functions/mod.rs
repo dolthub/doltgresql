@@ -115,6 +115,8 @@ const SET_RETURNING: &[&str] = &[
     "regexp_matches",
     "regexp_split_to_table",
     "dolt_log",
+    "dolt_diff_summary",
+    "dolt_diff_stat",
     "jsonb_object_keys",
     "json_object_keys",
     "jsonb_array_elements",

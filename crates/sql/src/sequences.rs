@@ -449,15 +449,15 @@ impl Ctx<'_> {
                     self.require_owner(&crate::auth::Object::Sequence(schema, sequence_name))?;
                     doomed.push(sequence)
                 }
-                None if drop.missing_ok => self.session.notice(PgError::notice(
-                    "00000",
-                    format!("sequence \"{}\" does not exist, skipping", parts.join(".")),
-                )),
                 None => {
-                    return Err(PgError::new(
+                    let schema = if parts.len() > 1 { parts[parts.len() - 2] } else { "" };
+                    self.missing_relation(
+                        "sequence",
+                        schema,
+                        &parts.join("."),
+                        drop.missing_ok,
                         code::UNDEFINED_TABLE,
-                        format!("sequence \"{}\" does not exist", parts.join(".")),
-                    ));
+                    )?;
                 }
             }
         }
