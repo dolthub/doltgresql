@@ -64,6 +64,7 @@ pub mod code {
     pub const INVALID_ARGUMENT_FOR_NTH_VALUE: &str = "22016";
     pub const INVALID_PRECEDING_OR_FOLLOWING_SIZE: &str = "22013";
     pub const NO_ACTIVE_SQL_TRANSACTION: &str = "25P01";
+    pub const INVALID_SAVEPOINT_SPECIFICATION: &str = "3B001";
     pub const INVALID_SCHEMA_NAME: &str = "3F000";
     pub const SYNTAX_ERROR_OR_ACCESS_RULE: &str = "42000";
     pub const INVALID_COLUMN_REFERENCE: &str = "42P10";

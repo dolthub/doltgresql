@@ -60,6 +60,8 @@ pub enum SystemTable {
     Procedures,
     /// A system table over a user table.
     User(Box<UserTable>),
+    /// The conflicts or constraint violations of a user table.
+    Artifacts(Box<crate::dolt::conflicts::ArtifactTable>),
 }
 
 /// TABLES are the system tables by their names in the `dolt` schema.
@@ -170,8 +172,8 @@ impl SystemTable {
                 ("target", TEXT),
                 ("unmerged_tables", TEXT),
             ],
-            SystemTable::Conflicts => vec![("table", TEXT), ("num_conflicts", NUMERIC)],
-            SystemTable::ConstraintViolations => vec![("table", TEXT), ("num_violations", NUMERIC)],
+            SystemTable::Conflicts => crate::dolt::conflicts::summary_columns(true),
+            SystemTable::ConstraintViolations => crate::dolt::conflicts::summary_columns(false),
             SystemTable::SchemaConflicts => vec![
                 ("table_name", TEXT),
                 ("base_schema", TEXT),
@@ -215,6 +217,7 @@ impl SystemTable {
                 ("sql_mode", TEXT),
             ],
             SystemTable::User(table) => return table.columns(),
+            SystemTable::Artifacts(table) => return table.columns(),
         };
         columns.into_iter().map(|(name, oid)| (name.to_string(), typ(oid))).collect()
     }
@@ -235,16 +238,16 @@ impl SystemTable {
             SystemTable::CommitAncestors => ancestor_rows(ctx),
             SystemTable::Status => status_rows(ctx),
             SystemTable::MergeStatus => merge_status_rows(ctx),
-            SystemTable::Remotes
-            | SystemTable::Conflicts
-            | SystemTable::ConstraintViolations
-            | SystemTable::SchemaConflicts
-            | SystemTable::Ignore
-            | SystemTable::Procedures => Ok(Vec::new()),
+            SystemTable::Remotes | SystemTable::SchemaConflicts | SystemTable::Ignore | SystemTable::Procedures => {
+                Ok(Vec::new())
+            }
             SystemTable::Diff => crate::dolt::diff::unscoped_rows(ctx),
             SystemTable::Docs => crate::dolt::docs::rows(ctx),
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),
             SystemTable::User(table) => table.rows(ctx),
+            SystemTable::Artifacts(table) => table.rows(ctx),
+            SystemTable::Conflicts => crate::dolt::conflicts::summary_rows(ctx, true),
+            SystemTable::ConstraintViolations => crate::dolt::conflicts::summary_rows(ctx, false),
         }
     }
 }
@@ -563,10 +566,43 @@ fn status_rows(ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
     let mut unstaged_deltas = table_deltas(&staged_tables, &working_tables);
     unstaged_deltas.extend(table_deltas(&staged_objects, &working_objects));
     unstaged_deltas.sort();
+    let mut conflicted = Vec::new();
+    let mut violated = Vec::new();
+    for ((schema, name), address) in &working_tables {
+        let table = doltdb::table::Table::decode(&read(ctx.db, address)?)?;
+        if table.artifacts.iter().all(|&b| b == 0) {
+            continue;
+        }
+        let def = crate::catalog::table::TableDef::load(ctx.db, schema, name, *address)?;
+        let found = crate::dolt::artifacts::read(ctx.db, &def)?;
+        let full = crate::dolt::diff::full_name(&(schema.clone(), name.clone()));
+        if found.iter().any(|a| a.kind != crate::dolt::artifacts::CONFLICT) {
+            violated.push(full.clone());
+        }
+        if found.iter().any(|a| a.kind == crate::dolt::artifacts::CONFLICT) {
+            conflicted.push(full);
+        }
+    }
+    for name in &violated {
+        rows.push(vec![text(name.clone()), Value::Bool(false), text("constraint violation")]);
+    }
+    if let Some(merge) = &ctx.txn.merge {
+        for name in &merge.unmergable_tables {
+            rows.push(vec![text(String::from_utf8_lossy(name)), Value::Bool(false), text("schema conflict")]);
+        }
+    }
+    for name in &conflicted {
+        rows.push(vec![text(name.clone()), Value::Bool(false), text("conflict")]);
+    }
     for (name, status) in staged_deltas {
-        rows.push(vec![text(name), Value::Bool(true), text(status)]);
+        if !violated.contains(&name) {
+            rows.push(vec![text(name), Value::Bool(true), text(status)]);
+        }
     }
     for (name, status) in unstaged_deltas {
+        if violated.contains(&name) || only_artifacts_differ(ctx, &name, &staged_tables, &working_tables)? {
+            continue;
+        }
         rows.push(vec![text(name), Value::Bool(false), text(status)]);
     }
     for (name, status) in schema_deltas(&head, &staged) {
@@ -578,22 +614,33 @@ fn status_rows(ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
     Ok(rows)
 }
 
+/// only_artifacts_differ reports whether a table's versions in two roots differ only in their conflicts and
+/// constraint violations, which the status leaves out of its changes.
+fn only_artifacts_differ(
+    ctx: &mut Ctx<'_>,
+    name: &str,
+    from: &BTreeMap<(String, String), Hash>,
+    to: &BTreeMap<(String, String), Hash>,
+) -> Result<bool> {
+    let key = from.keys().chain(to.keys()).find(|k| crate::dolt::diff::full_name(k) == name);
+    let Some(key) = key else { return Ok(false) };
+    let (Some(a), Some(b)) = (from.get(key), to.get(key)) else { return Ok(false) };
+    let mut a = doltdb::table::Table::decode(&read(ctx.db, a)?)?;
+    let b = doltdb::table::Table::decode(&read(ctx.db, b)?)?;
+    a.artifacts = b.artifacts.clone();
+    Ok(a == b)
+}
+
 /// merge_status_rows returns whether a merge is in progress and what it merges.
 fn merge_status_rows(ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+    let unmerged = crate::dolt::conflicts::unmerged_tables(ctx)?;
     Ok(vec![match &ctx.txn.merge {
         Some(merge) => vec![
             Value::Bool(true),
             text(String::from_utf8_lossy(&merge.from_commit_spec).into_owned()),
             text(merge.from_commit.to_string()),
             text(format!("refs/heads/{}", ctx.txn.branch)),
-            text(
-                merge
-                    .unmergable_tables
-                    .iter()
-                    .map(|t| String::from_utf8_lossy(t).into_owned())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            ),
+            text(unmerged.join(", ")),
         ],
         None => vec![Value::Bool(false), Value::Null, Value::Null, Value::Null, Value::Null],
     }])

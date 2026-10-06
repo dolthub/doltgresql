@@ -214,11 +214,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -260,11 +260,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'updated func')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -376,11 +376,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -422,11 +422,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'another func')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -474,11 +474,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'updated table')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -544,11 +544,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -585,11 +585,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -638,11 +638,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],

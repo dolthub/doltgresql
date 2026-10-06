@@ -1026,11 +1026,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-m', 'amend test table')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1134,11 +1134,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-am', 'amend 1 to -1')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1170,11 +1170,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-am', 'amend 2 to -2')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1471,11 +1471,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-m', 'clean state to_rm')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1821,11 +1821,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_bpass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-m', 'amend test table')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1931,11 +1931,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_bpass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-am', 'amend 1 to -1')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1967,11 +1967,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_bpass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-am', 'amend 2 to -2')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2190,11 +2190,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_bpass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-m', 'clean state to_rm')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],

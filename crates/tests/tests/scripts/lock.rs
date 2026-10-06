@@ -747,10 +747,11 @@ fn test_advisory_locks_2() {
                     client: "B",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and DOLT_COMMIT leaves the transaction block open, so this expectation follows Postgres' warning.
                 ScriptTestAssertion {
                     query: "/* client A */ BEGIN",
                     expected: Expected::Tag("BEGIN"),
+                    notices: &[Diagnostic { severity: "WARNING", code: "25001", message: "there is already a transaction in progress", ..N }],
                     flow: Flow::Exec,
                     client: "A",
                     ..A

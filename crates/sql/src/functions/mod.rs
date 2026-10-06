@@ -117,6 +117,7 @@ const SET_RETURNING: &[&str] = &[
     "dolt_log",
     "dolt_diff_summary",
     "dolt_diff_stat",
+    "dolt_preview_merge_conflicts_summary",
     "jsonb_object_keys",
     "json_object_keys",
     "jsonb_array_elements",

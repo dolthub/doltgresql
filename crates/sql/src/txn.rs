@@ -36,6 +36,7 @@ pub type DbHandle = Arc<Mutex<Database>>;
 pub type SequenceTracker = Arc<Mutex<HashMap<Vec<u8>, objects::Sequence>>>;
 
 /// Txn is an open transaction on a branch of a database.
+#[derive(Clone)]
 pub struct Txn {
     pub database: String,
     pub branch: String,

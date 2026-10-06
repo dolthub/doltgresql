@@ -710,6 +710,12 @@ impl<'b, 'a> Planner<'b, 'a> {
                         {
                             return self.plan_view(&view, relation);
                         }
+                        if let Some(table) =
+                            crate::dolt::conflicts::lookup(self.ctx, &relation.schemaname, &relation.relname)?
+                        {
+                            let system = crate::dolt::tables::SystemTable::Artifacts(Box::new(table));
+                            return Ok(self.plan_system(system, relation));
+                        }
                         return match crate::dolt::diff::lookup(self.ctx, &relation.schemaname, &relation.relname)? {
                             Some(table) => {
                                 Ok(self.plan_system(crate::dolt::tables::SystemTable::User(Box::new(table)), relation))
@@ -892,6 +898,13 @@ impl<'b, 'a> Planner<'b, 'a> {
         }
         let call = &calls[0];
         let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
+        if name == "dolt_preview_merge_conflicts" {
+            let args = call.args.iter().map(|arg| self.ctx.constant_text(arg)).collect::<Result<Vec<_>>>()?;
+            let table = crate::dolt::conflicts::preview_function(self.ctx, &args)?;
+            let relation =
+                pg_query::protobuf::RangeVar { relname: name, alias: function.alias.clone(), ..Default::default() };
+            return Ok(self.plan_system(crate::dolt::tables::SystemTable::Artifacts(Box::new(table)), &relation));
+        }
         if name == "dolt_diff" {
             let args = call.args.iter().map(|arg| self.ctx.constant_text(arg)).collect::<Result<Vec<_>>>()?;
             let mut table = crate::dolt::diff::diff_function(self.ctx, &args)?;

@@ -154,6 +154,7 @@ impl Engine {
             txns: Vec::new(),
             pending: None,
             failed: false,
+            savepoints: Vec::new(),
             reported: HashMap::new(),
         };
         session.state.settings.set_raw("session_authorization", Some(user.to_string()), false, false);
@@ -170,8 +171,11 @@ pub struct Session {
     pub state: SessionState,
     /// The open transaction's view of each branch it touched.
     txns: Vec<Txn>,
-    /// Whether a statement failed in the explicit transaction, which then only ends.
+    /// Whether a statement failed in the explicit transaction, which then only ends or rolls back to a savepoint.
     failed: bool,
+    /// The savepoints of the explicit transaction, each with the transaction's state and the settings when it was
+    /// made.
+    savepoints: Vec<(String, Vec<Txn>, crate::settings::Settings)>,
     /// The reported parameters as the client last heard them.
     reported: HashMap<String, String>,
     /// The statements of a simple query that wait for its COPY FROM STDIN to finish, or None when the extended
@@ -275,6 +279,11 @@ impl SessionState {
         names
     }
 
+    /// setting_on reports whether a boolean setting is on.
+    pub fn setting_on(&self, name: &str) -> bool {
+        self.settings.get(name).is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "on" | "true" | "1" | "yes"))
+    }
+
     /// search_path returns the schemas that unqualified names resolve in.
     pub fn search_path(&self) -> Vec<String> {
         let path = self.settings.get("search_path").unwrap_or_default();
@@ -346,6 +355,14 @@ pub fn quote_identifier(name: &str) -> String {
     let keyword =
         pg_query::scan(name).ok().and_then(|scan| scan.tokens.first().map(|t| t.keyword_kind > 1)).unwrap_or(false);
     if simple && !keyword { name.to_string() } else { format!("\"{}\"", name.replace('"', "\"\"")) }
+}
+
+/// transaction_statement returns a transaction statement.
+fn transaction_statement(statement: &Statement) -> Option<&pg_query::protobuf::TransactionStmt> {
+    match statement {
+        Statement::Postgres { node: NodeEnum::TransactionStmt(t), .. } => Some(t),
+        _ => None,
+    }
 }
 
 /// transaction_kind returns the kind of a transaction statement.
@@ -539,12 +556,27 @@ impl Session {
         self.commit()
     }
 
-    /// commit commits and ends the open transaction.
+    /// commit commits and ends the open transaction, refusing a working set with conflicts or constraint violations
+    /// as Dolt does unless the session allows them.
     fn commit(&mut self) -> Result<()> {
         self.state.end_transaction(true);
+        let allow_conflicts = self.state.setting_on("dolt_allow_commit_conflicts");
+        let force = self.state.setting_on("dolt_force_transaction_commit");
+        let autocommit = !self.state.explicit;
         for txn in std::mem::take(&mut self.txns) {
             let handle = txn.handle.clone();
             let mut db = lock(&handle)?;
+            if txn.changed() {
+                let schema_conflicts = txn.merge.as_ref().is_some_and(|m| !m.unmergable_tables.is_empty());
+                crate::dolt::conflicts::commit_check(
+                    &mut db,
+                    &txn.root,
+                    schema_conflicts,
+                    allow_conflicts,
+                    force,
+                    autocommit,
+                )?;
+            }
             txn.commit(&mut db, &self.state.user, &self.state.host)?;
         }
         Ok(())
@@ -611,10 +643,15 @@ impl Session {
             return match kind {
                 Some(TransactionStmtKind::TransStmtCommit | TransactionStmtKind::TransStmtRollback) => {
                     self.txns.clear();
+                    self.savepoints.clear();
                     self.state.explicit = false;
                     self.failed = false;
                     self.state.end_transaction(false);
                     Ok(Outcome::command("ROLLBACK"))
+                }
+                Some(TransactionStmtKind::TransStmtRollbackTo) => {
+                    let name = transaction_statement(statement).map(|t| t.savepoint_name.clone()).unwrap_or_default();
+                    self.rollback_to(&name)
                 }
                 _ => Err(PgError::new(
                     code::IN_FAILED_SQL_TRANSACTION,
@@ -623,7 +660,8 @@ impl Session {
             };
         }
         if let Some(kind) = kind {
-            return self.transaction(kind);
+            let name = transaction_statement(statement).map(|t| t.savepoint_name.clone()).unwrap_or_default();
+            return self.transaction(kind, &name);
         }
         match statement {
             Statement::Use(target) => {
@@ -641,8 +679,55 @@ impl Session {
         }
     }
 
-    /// transaction runs BEGIN, COMMIT, or ROLLBACK.
-    fn transaction(&mut self, kind: TransactionStmtKind) -> Result<Outcome> {
+    /// savepoint_index returns the position of the newest savepoint of a name, failing when there is none.
+    fn savepoint_index(&self, name: &str) -> Result<usize> {
+        self.savepoints.iter().rposition(|(n, _, _)| n == name).ok_or_else(|| {
+            PgError::new(code::INVALID_SAVEPOINT_SPECIFICATION, format!("savepoint \"{name}\" does not exist"))
+        })
+    }
+
+    /// rollback_to runs ROLLBACK TO SAVEPOINT, which restores the transaction and the settings as the savepoint saw
+    /// them and keeps the savepoint.
+    fn rollback_to(&mut self, name: &str) -> Result<Outcome> {
+        let index = self.savepoint_index(name)?;
+        let (_, txns, settings) = self.savepoints[index].clone();
+        self.savepoints.truncate(index + 1);
+        self.txns = txns;
+        self.state.settings = settings;
+        self.failed = false;
+        Ok(Outcome::command("ROLLBACK"))
+    }
+
+    /// transaction runs BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, or ROLLBACK TO.
+    fn transaction(&mut self, kind: TransactionStmtKind, name: &str) -> Result<Outcome> {
+        let outside = |statement: &str| {
+            PgError::new(code::NO_ACTIVE_SQL_TRANSACTION, format!("{statement} can only be used in transaction blocks"))
+        };
+        match kind {
+            TransactionStmtKind::TransStmtSavepoint => {
+                if !self.state.explicit {
+                    return Err(outside("SAVEPOINT"));
+                }
+                self.savepoints.push((name.to_string(), self.txns.clone(), self.state.settings.clone()));
+                return Ok(Outcome::command("SAVEPOINT"));
+            }
+            TransactionStmtKind::TransStmtRelease => {
+                if !self.state.explicit {
+                    return Err(outside("RELEASE SAVEPOINT"));
+                }
+                let index = self.savepoint_index(name)?;
+                self.savepoints.truncate(index);
+                return Ok(Outcome::command("RELEASE"));
+            }
+            TransactionStmtKind::TransStmtRollbackTo => {
+                if !self.state.explicit {
+                    return Err(outside("ROLLBACK TO SAVEPOINT"));
+                }
+                return self.rollback_to(name);
+            }
+            TransactionStmtKind::TransStmtCommit | TransactionStmtKind::TransStmtRollback => self.savepoints.clear(),
+            _ => {}
+        }
         match kind {
             TransactionStmtKind::TransStmtBegin | TransactionStmtKind::TransStmtStart => {
                 if self.state.explicit {
@@ -966,7 +1051,10 @@ impl Ctx<'_> {
             }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self),
             NodeEnum::UpdateStmt(update) => self.plan_update(update)?.run(self),
-            NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.run(self),
+            NodeEnum::DeleteStmt(delete) => match self.delete_artifacts(delete)? {
+                Some(outcome) => Ok(outcome),
+                None => self.plan_delete(delete)?.run(self),
+            },
             NodeEnum::CreateStmt(create) => self.create_table(create),
             NodeEnum::CreateTableAsStmt(create) => self.create_table_as(create),
             NodeEnum::CreateSchemaStmt(create) => self.create_schema(create),
@@ -976,6 +1064,10 @@ impl Ctx<'_> {
             NodeEnum::CreateSeqStmt(stmt) => self.create_sequence(stmt),
             NodeEnum::AlterTableStmt(stmt) => self.alter_table(stmt),
             NodeEnum::RenameStmt(stmt) => self.rename(stmt),
+            NodeEnum::ViewStmt(stmt) => {
+                let text = pg_query::NodeRef::ViewStmt(stmt).deparse().map_err(PgError::internal)?;
+                self.create_view(stmt, &text)
+            }
             NodeEnum::AlterRoleStmt(stmt) => self.alter_role(stmt),
             NodeEnum::DropRoleStmt(stmt) => self.drop_role(stmt),
             NodeEnum::GrantStmt(stmt) => self.grant(stmt),

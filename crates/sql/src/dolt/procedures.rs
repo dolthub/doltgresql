@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use doltdb::create::{branch_ref, working_set_ref};
 use doltdb::database::{CommitMeta, Database};
 use doltdb::root::Root;
-use serial::write::{Meta, WorkingSetFields, write_tag};
+use serial::write::{MergeStateFields, Meta, WorkingSetFields, write_tag};
 use store::Hash;
 
 use crate::dolt::args::{Kind, Parsed, Parser, error};
@@ -48,6 +48,15 @@ pub const FUNCTIONS: &[Function] = &[
     v("dolt_tag", INT8, dolt_tag),
     v("dolt_reset", INT8, dolt_reset),
     v("dolt_merge", RECORD, dolt_merge),
+    v("dolt_conflicts_resolve", INT8, crate::dolt::conflicts::dolt_conflicts_resolve),
+    Function {
+        name: "dolt_preview_merge_conflicts_summary",
+        args: &[TEXT],
+        ret: RECORD,
+        strict: false,
+        variadic: true,
+        implementation: crate::dolt::conflicts::dolt_preview_merge_conflicts_summary,
+    },
     f("active_branch", &[], TEXT, active_branch),
     f("hashof", &[TEXT], TEXT, hashof),
     f("dolt_hashof", &[TEXT], TEXT, hashof),
@@ -146,6 +155,10 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
             ("author_email", TEXT),
             ("author_date", crate::oid::TIMESTAMP),
         ],
+    ),
+    (
+        "dolt_preview_merge_conflicts_summary",
+        &[("table", TEXT), ("num_data_conflicts", INT8), ("num_schema_conflicts", INT8)],
     ),
     (
         "dolt_diff_summary",
@@ -430,10 +443,7 @@ fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         let parents = merging.map(|m| vec![ctx.txn.head, m]).unwrap_or_default();
         ctx.txn.dolt_commit(ctx.db, &user, &host, parents, meta)?
     };
-    if ctx.session.explicit {
-        ctx.session.explicit = false;
-        ctx.session.end_transaction(true);
-    }
+    ctx.session.advisory.release_all(ctx.session.id, true, false);
     Ok(Value::Text(hash.to_string()))
 }
 
@@ -919,6 +929,7 @@ const MERGE: Parser = Parser {
         ("no-commit", "", Kind::Flag),
         ("no-edit", "", Kind::Flag),
         ("author", "", Kind::Value),
+        ("date", "", Kind::Value),
         ("skip-verification", "", Kind::Flag),
     ],
     max_args: Some(1),
@@ -943,6 +954,11 @@ fn dolt_merge(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             e
         }
     })?;
+    for (a, b) in [("squash", "no-ff"), ("ff-only", "no-ff"), ("ff-only", "squash")] {
+        if parsed.has(a) && parsed.has(b) {
+            return Err(error(format!("error: Flags '--{a}' and '--{b}' cannot be used together")));
+        }
+    }
     if parsed.has("abort") {
         let Some(merge) = ctx.txn.merge.take() else { return Err(error("fatal: There is no merge to abort")) };
         ctx.txn.root = Root::decode(&read(ctx.db, &merge.pre_working_root)?)?;
@@ -953,35 +969,140 @@ fn dolt_merge(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let Some(spec) = parsed.args.first().cloned() else {
         return Err(error("Error: No commit specified"));
     };
+    if parsed.has("commit") && parsed.has("no-commit") {
+        return Err(error("cannot define both 'commit' and 'no-commit' flags at the same time"));
+    }
     if ctx.txn.merge.is_some() {
         return Err(error("merging is not possible because you have not committed an active merge"));
     }
     let theirs = history::resolve(ctx.db, ctx.txn.head, &spec)
         .map_err(|e| if e.message.starts_with("branch not found") { branch_not_found(&spec) } else { e })?;
-    if history::is_ancestor(ctx.db, theirs, ctx.txn.head)? {
-        return Ok(merge_record(
-            &ctx.txn.head.to_string(),
-            false,
-            0,
-            "cannot fast forward from a to b. a is ahead of b already",
-        ));
+    if theirs == ctx.txn.head {
+        return Ok(merge_record("", false, 0, "Everything up-to-date"));
     }
-    let fast_forward = history::is_ancestor(ctx.db, ctx.txn.head, theirs)? && !parsed.has("no-ff");
-    if fast_forward {
-        if ctx.txn.changed() || Hash::of(&ctx.txn.staged.encode()) != ctx.txn.head_root {
-            return Err(error(
-                "error: Your local changes would be overwritten by merge.\nPlease commit your changes before you merge.",
-            ));
+    if history::is_ancestor(ctx.db, theirs, ctx.txn.head)? {
+        return Ok(merge_record("", false, 0, "cannot fast forward from a to b. a is ahead of b already"));
+    }
+    let head_root = Root::decode(&read(ctx.db, &ctx.txn.head_root)?)?;
+    let their_root = Root::decode(&read(ctx.db, &history::load(ctx.db, theirs)?.root)?)?;
+    let working_diffs = local_changes(ctx, &head_root, &their_root)?;
+    let can_fast_forward = history::is_ancestor(ctx.db, ctx.txn.head, theirs)?;
+    if can_fast_forward && !parsed.has("no-ff") {
+        let mut working = their_root.clone();
+        for ((schema, name), address) in &working_diffs {
+            working.put_table(ctx.db, schema, name, *address)?;
         }
-        let root = Root::decode(&read(ctx.db, &history::load(ctx.db, theirs)?.root)?)?;
-        ctx.txn.root = root.clone();
-        ctx.txn.staged = root;
-        move_head(ctx, theirs)?;
-        flush(ctx)?;
+        ctx.txn.root = working;
+        ctx.txn.staged = their_root;
+        if !parsed.has("squash") {
+            move_head(ctx, theirs)?;
+            flush(ctx)?;
+        }
         return Ok(merge_record(&theirs.to_string(), true, 0, "merge successful"));
     }
     if parsed.has("ff-only") {
-        return Err(error("fatal: Not possible to fast-forward, aborting."));
+        return Err(error("fatal: Not possible to fast-forward, aborting"));
     }
-    Err(crate::error::PgError::unsupported("merges that are not fast-forwards"))
+    three_way_merge(ctx, &parsed, &spec, theirs, head_root, their_root, working_diffs)
+}
+
+/// local_changes returns the working set's changes to the tables of the head, which a merge keeps, failing when the
+/// merge changes any of those tables too, as Dolt's MergeWouldStompChanges does.
+fn local_changes(
+    ctx: &mut Ctx<'_>,
+    head_root: &Root,
+    their_root: &Root,
+) -> Result<BTreeMap<(String, String), Option<Hash>>> {
+    let head_tables = table_map(ctx.db, head_root)?;
+    let working_tables = table_map(ctx.db, &ctx.txn.root.clone())?;
+    let their_tables = table_map(ctx.db, their_root)?;
+    let differs = |from: &BTreeMap<(String, String), Hash>, to: &BTreeMap<(String, String), Hash>| {
+        let mut diffs: BTreeMap<(String, String), Option<Hash>> = BTreeMap::new();
+        for (name, hash) in from {
+            match to.get(name) {
+                Some(other) if other != hash => _ = diffs.insert(name.clone(), Some(*other)),
+                None => _ = diffs.insert(name.clone(), None),
+                _ => {}
+            }
+        }
+        for (name, hash) in to.iter().filter(|(n, _)| !from.contains_key(*n)) {
+            diffs.insert(name.clone(), Some(*hash));
+        }
+        diffs
+    };
+    let working_diffs = differs(&head_tables, &working_tables);
+    let merge_diffs = differs(&head_tables, &their_tables);
+    let stomped: Vec<&str> =
+        working_diffs.keys().filter(|n| merge_diffs.contains_key(*n)).map(|n| n.1.as_str()).collect();
+    if !stomped.is_empty() {
+        return Err(error(format!(
+            "error: local changes would be stomped by merge:\n\t{}\n Please commit your changes before you merge.",
+            stomped.join("\n\t")
+        )));
+    }
+    Ok(working_diffs)
+}
+
+/// three_way_merge merges a commit into the session's branch from their merge base, as Dolt's executeMerge does:
+/// it keeps the working set's changes to tables that the merge leaves alone, records the merge in the working set,
+/// and commits the result unless the merge left conflicts or constraint violations, or the caller asked it not to.
+fn three_way_merge(
+    ctx: &mut Ctx<'_>,
+    parsed: &Parsed,
+    spec: &str,
+    theirs: Hash,
+    head_root: Root,
+    their_root: Root,
+    working_diffs: BTreeMap<(String, String), Option<Hash>>,
+) -> Result<Value> {
+    let fast_forward = history::is_ancestor(ctx.db, ctx.txn.head, theirs)?;
+    let outcome = if fast_forward {
+        crate::dolt::merge::Outcome { root: their_root, artifacts: false, schema_conflicts: Vec::new() }
+    } else {
+        let base = history::merge_base(ctx.db, ctx.txn.head, theirs)?.ok_or_else(|| error("no common ancestor"))?;
+        let base_root = Root::decode(&read(ctx.db, &history::load(ctx.db, base)?.root)?)?;
+        let commits = crate::dolt::merge::Commits { ours: ctx.txn.head, theirs, base };
+        let mut outcome = crate::dolt::merge::merge_roots(ctx, &head_root, &their_root, &base_root, commits)?;
+        outcome.artifacts |= crate::dolt::merge::check_foreign_keys(ctx, &mut outcome.root, &base_root, theirs)?;
+        outcome
+    };
+    let staged = outcome.root.clone();
+    let mut working = outcome.root;
+    for ((schema, name), address) in working_diffs {
+        working.put_table(ctx.db, &schema, &name, address)?;
+    }
+    let squash = parsed.has("squash");
+    if !squash || !outcome.schema_conflicts.is_empty() {
+        let pre_working_root = ctx.db.write_value(ctx.txn.root.encode())?;
+        ctx.txn.merge = Some(MergeStateFields {
+            pre_working_root,
+            from_commit: theirs,
+            from_commit_spec: spec.as_bytes().to_vec(),
+            unmergable_tables: outcome.schema_conflicts.iter().map(|n| n.1.as_bytes().to_vec()).collect(),
+            is_cherry_pick: false,
+            is_revert: false,
+            pre_merge_head_commit: Some(ctx.txn.head),
+            pending_commit_hashes: Vec::new(),
+        });
+    }
+    ctx.txn.root = working;
+    if outcome.artifacts {
+        return Ok(merge_record("", false, 1, "conflicts found"));
+    }
+    ctx.txn.staged = staged;
+    if parsed.has("no-commit") {
+        return Ok(merge_record("", false, 0, "merge successful"));
+    }
+    let message = match parsed.value("message") {
+        Some(message) => message.to_string(),
+        None => format!("Merge branch '{spec}' into {}", ctx.txn.branch),
+    };
+    let mut args = vec![Value::Text("-m".into()), Value::Text(message)];
+    for option in ["author", "date"] {
+        if let Some(value) = parsed.value(option) {
+            args.extend([Value::Text(format!("--{option}")), Value::Text(value.to_string())]);
+        }
+    }
+    let hash = dolt_commit(ctx, &args)?;
+    Ok(merge_record(&hash.output().unwrap_or_default(), false, 0, "merge successful"))
 }
