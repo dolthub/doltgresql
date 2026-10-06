@@ -32,6 +32,7 @@ pub use error::{Error, Result};
 pub use hash::Hash;
 pub use manifest::{Manifest, TableSpec};
 pub use store::{BlockStore, GenerationalStore};
+pub use table::{TableReader, TableWriter};
 
 /// ChunkReader reads chunks by address.
 pub trait ChunkReader {

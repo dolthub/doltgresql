@@ -17,7 +17,7 @@
 
 use std::path::{Path, PathBuf};
 
-use store::{Chunk, GenerationalStore, Hash};
+use store::{Chunk, GenerationalStore, Hash, TableReader, TableWriter};
 
 /// fixture returns the directory of a fixture's database, the one directory in it that holds a `.dolt` directory.
 fn fixture(name: &str) -> PathBuf {
@@ -148,5 +148,47 @@ fn snappy_compresses_every_chunk_as_go_did() {
         }
     }
     assert!(checked > 1000, "only {checked} records were checked");
+    assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn table_writer_rewrites_every_table_file_go_wrote() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let (mut checked, mut failures) = (0, Vec::new());
+    for entry in std::fs::read_dir(&fixtures).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.is_dir() {
+            continue;
+        }
+        let noms = fixture(path.file_name().unwrap().to_str().unwrap()).join(".dolt/noms");
+        for dir in [noms.clone(), noms.join("oldgen")] {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for file in entries {
+                let file = file.unwrap().path();
+                let name = file.file_name().unwrap().to_str().unwrap().to_string();
+                if name.len() != 32 || name.chars().all(|c| c == 'v') || Hash::parse(&name).is_none() {
+                    continue;
+                }
+                let bytes = std::fs::read(&file).unwrap();
+                if bytes.ends_with(b"DOLTARC") {
+                    continue;
+                }
+                let table = TableReader::open(&file).unwrap();
+                let mut writer = TableWriter::new();
+                table
+                    .for_each_record(&mut |hash, record| {
+                        writer.add_record(hash, record, Chunk::from_record(hash, record)?.data.len() as u64);
+                        Ok(())
+                    })
+                    .unwrap();
+                let (written_name, written) = writer.finish();
+                checked += 1;
+                if written_name.to_string() != name || written != bytes {
+                    failures.push(format!("{}: written as {written_name}", file.display()));
+                }
+            }
+        }
+    }
+    assert!(checked >= 4, "only {checked} table files were checked");
     assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
 }

@@ -182,3 +182,58 @@ impl TableReader {
         Ok(())
     }
 }
+
+/// TableWriter builds a table file in memory from chunks in the order they are added, as Dolt's tableWriter does.
+#[derive(Default)]
+pub struct TableWriter {
+    buf: Vec<u8>,
+    /// The address, ordinal, and record length of each chunk, in ordinal order.
+    records: Vec<(Hash, u32, u32)>,
+    uncompressed: u64,
+}
+
+impl TableWriter {
+    pub fn new() -> TableWriter {
+        TableWriter::default()
+    }
+
+    /// add_chunk compresses the chunk and adds its record.
+    pub fn add_chunk(&mut self, chunk: &Chunk) {
+        assert!(!chunk.data.is_empty(), "NBS blocks cannot be zero length");
+        self.add_record(chunk.hash, &chunk.to_record(), chunk.data.len() as u64);
+    }
+
+    /// add_record adds a compressed chunk record whose chunk has the uncompressed length.
+    pub fn add_record(&mut self, hash: Hash, record: &[u8], uncompressed_len: u64) {
+        self.buf.extend_from_slice(record);
+        self.records.push((hash, self.records.len() as u32, record.len() as u32));
+        self.uncompressed += uncompressed_len;
+    }
+
+    pub fn count(&self) -> usize {
+        self.records.len()
+    }
+
+    /// finish writes the index and footer, returning the table's name, the SHA-512 of its suffixes, and its bytes.
+    pub fn finish(mut self) -> (Hash, Vec<u8>) {
+        // Chunks with equal prefixes keep the order they were added in, where Go's unstable sort may swap them.
+        let mut sorted = self.records.clone();
+        sorted.sort_by_key(|(hash, _, _)| hash.prefix());
+        for (hash, ordinal, _) in &sorted {
+            self.buf.extend_from_slice(&hash.prefix().to_be_bytes());
+            self.buf.extend_from_slice(&ordinal.to_be_bytes());
+        }
+        for (_, _, len) in &self.records {
+            self.buf.extend_from_slice(&len.to_be_bytes());
+        }
+        let suffixes_at = self.buf.len();
+        for (hash, _, _) in &self.records {
+            self.buf.extend_from_slice(hash.suffix());
+        }
+        let name = Hash::of(&self.buf[suffixes_at..]);
+        self.buf.extend_from_slice(&(self.records.len() as u32).to_be_bytes());
+        self.buf.extend_from_slice(&self.uncompressed.to_be_bytes());
+        self.buf.extend_from_slice(MAGIC);
+        (name, self.buf)
+    }
+}
