@@ -19,3 +19,5 @@
 
 pub mod decode;
 pub mod pgx;
+pub mod script;
+pub mod server;
