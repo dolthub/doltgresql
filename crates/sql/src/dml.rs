@@ -24,7 +24,7 @@ use prolly::{Tuple, get};
 
 use crate::cast::cast_value;
 use crate::catalog::table::TableDef;
-use crate::error::{PgError, Result, code};
+use crate::error::{ErrorObjects, PgError, Result, code};
 use crate::expr::{Binder, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
 use crate::plan::{Plan, Planner};
 use crate::query::{Ctx, scan};
@@ -40,10 +40,20 @@ enum InsertSource {
     Select(Box<Plan>),
 }
 
+/// RowRules are what a written row must go through: its columns' defaults and its table's check constraints.
+#[derive(Clone, Debug)]
+pub struct RowRules {
+    /// Each column's default, over no row.
+    defaults: Vec<Option<Expr>>,
+    /// Each check constraint's name and condition, over the row.
+    checks: Vec<(String, Expr)>,
+}
+
 /// InsertPlan is a planned INSERT.
 #[derive(Clone, Debug)]
 pub struct InsertPlan {
     table: TableDef,
+    rules: RowRules,
     /// The table column that each source value goes to.
     targets: Vec<usize>,
     source: InsertSource,
@@ -53,6 +63,7 @@ pub struct InsertPlan {
 #[derive(Clone, Debug)]
 pub struct UpdatePlan {
     table: TableDef,
+    rules: RowRules,
     filter: Option<Expr>,
     /// The new value of each assigned column, over the old row.
     assignments: Vec<(usize, Expr)>,
@@ -82,12 +93,18 @@ fn row_text(values: &[Value]) -> String {
     values.iter().map(|v| v.output().unwrap_or_else(|| "null".into())).collect::<Vec<_>>().join(", ")
 }
 
-/// check_not_null fails as Postgres does when a row has NULL in a NOT NULL column.
-fn check_not_null(table: &TableDef, row: &[Value]) -> Result<()> {
+/// check_row fails as Postgres does when a row has NULL in a NOT NULL column or fails a check constraint.
+fn check_row(ctx: &mut Ctx<'_>, table: &TableDef, rules: &RowRules, row: &[Value]) -> Result<()> {
     for (column, value) in table.columns.iter().zip(row) {
         if !column.nullable && value.is_null() {
             return Err(PgError {
                 detail: Some(format!("Failing row contains ({}).", row_text(row))),
+                objects: Some(Box::new(ErrorObjects {
+                    schema: Some(table.schema.clone()),
+                    table: Some(table.name.clone()),
+                    column: Some(column.name.clone()),
+                    ..ErrorObjects::default()
+                })),
                 ..PgError::new(
                     code::NOT_NULL_VIOLATION,
                     format!(
@@ -98,7 +115,39 @@ fn check_not_null(table: &TableDef, row: &[Value]) -> Result<()> {
             });
         }
     }
+    for (name, condition) in &rules.checks {
+        if condition.eval(ctx, row)? == Value::Bool(false) {
+            return Err(PgError {
+                detail: Some(format!("Failing row contains ({}).", row_text(row))),
+                objects: Some(Box::new(ErrorObjects {
+                    schema: Some(table.schema.clone()),
+                    table: Some(table.name.clone()),
+                    constraint: Some(name.clone()),
+                    ..ErrorObjects::default()
+                })),
+                ..PgError::new(
+                    code::CHECK_VIOLATION,
+                    format!("new row for relation \"{}\" violates check constraint \"{name}\"", table.name),
+                )
+            });
+        }
+    }
     Ok(())
+}
+
+/// parse_expression parses the SQL text of a stored expression.
+pub fn parse_expression(text: &str) -> Result<pg_query::Node> {
+    let result = pg_query::parse(&format!("SELECT {text}")).map_err(PgError::internal)?;
+    let statement = result.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node);
+    let Some(NodeEnum::SelectStmt(select)) = statement else {
+        return Err(PgError::internal(format!("a stored expression that is not one: {text}")));
+    };
+    match select.target_list.into_iter().next().and_then(|t| t.node) {
+        Some(NodeEnum::ResTarget(target)) => {
+            target.val.map(|v| *v).ok_or_else(|| PgError::internal("an empty expression"))
+        }
+        _ => Err(PgError::internal(format!("a stored expression that is not one: {text}"))),
+    }
 }
 
 /// duplicate_key returns Postgres' error for a row whose primary key already exists.
@@ -107,6 +156,12 @@ fn duplicate_key(table: &TableDef, row: &[Value]) -> PgError {
     let values: Vec<Value> = table.key_columns.iter().map(|&i| row[i].clone()).collect();
     PgError {
         detail: Some(format!("Key ({})=({}) already exists.", names.join(", "), row_text(&values))),
+        objects: Some(Box::new(ErrorObjects {
+            schema: Some(table.schema.clone()),
+            table: Some(table.name.clone()),
+            constraint: Some(format!("{}_pkey", table.name)),
+            ..ErrorObjects::default()
+        })),
         ..PgError::new(
             code::UNIQUE_VIOLATION,
             format!("duplicate key value violates unique constraint \"{}_pkey\"", table.name),
@@ -210,6 +265,27 @@ fn with_cardinality(value: &[u8], cardinality: u64) -> Vec<u8> {
 }
 
 impl Ctx<'_> {
+    /// row_rules binds a table's column defaults and check constraints.
+    pub fn row_rules(&mut self, table: &TableDef) -> Result<RowRules> {
+        let mut defaults = Vec::with_capacity(table.columns.len());
+        for column in &table.columns {
+            if column.default.is_empty() {
+                defaults.push(None);
+                continue;
+            }
+            let node = parse_expression(&column.default)?;
+            let bound = Binder::new(self, Scope::default()).bind(&node)?;
+            defaults.push(Some(assign(bound, column.ty, &column.name, -1)?.0));
+        }
+        let mut checks = Vec::with_capacity(table.checks.len());
+        for check in &table.checks {
+            let node = parse_expression(&check.expression)?;
+            let bound = Binder::new(self, table_scope(table, None)).bind(&node)?;
+            checks.push((check.name.clone(), coerce(bound, typ(oid::BOOL), false, -1)?.0));
+        }
+        Ok(RowRules { defaults, checks })
+    }
+
     /// plan_insert plans an INSERT.
     pub fn plan_insert(&mut self, insert: &InsertStmt) -> Result<InsertPlan> {
         if insert.on_conflict_clause.is_some() || !insert.returning_list.is_empty() || insert.with_clause.is_some() {
@@ -267,7 +343,7 @@ impl Ctx<'_> {
                 for (item, &target) in list.items.iter().zip(&targets) {
                     let column = &table.columns[target];
                     if matches!(item.node.as_ref(), Some(NodeEnum::SetToDefault(_))) {
-                        row.push(Expr::Const(Value::Null));
+                        row.push(Expr::Default(target));
                         continue;
                     }
                     let bound = binder.bind(item)?;
@@ -282,7 +358,8 @@ impl Ctx<'_> {
             }
             InsertSource::Values(rows)
         };
-        Ok(InsertPlan { table, targets, source })
+        let rules = self.row_rules(&table)?;
+        Ok(InsertPlan { table, rules, targets, source })
     }
 
     /// plan_update plans an UPDATE.
@@ -311,7 +388,7 @@ impl Ctx<'_> {
             let value = target.val.as_deref().ok_or_else(|| PgError::internal("an assignment without a value"))?;
             let column = &table.columns[i];
             let expr = if matches!(value.node.as_ref(), Some(NodeEnum::SetToDefault(_))) {
-                Expr::Const(Value::Null)
+                Expr::Default(i)
             } else {
                 let bound = binder.bind(value)?;
                 assign(bound, column.ty, &column.name, arg_location(value))?.0
@@ -321,7 +398,8 @@ impl Ctx<'_> {
             }
             assignments.push((i, expr));
         }
-        Ok(UpdatePlan { table, filter, assignments })
+        let rules = self.row_rules(&table)?;
+        Ok(UpdatePlan { table, rules, filter, assignments })
     }
 
     /// plan_delete plans a DELETE.
@@ -348,24 +426,65 @@ impl InsertPlan {
         match &self.source {
             InsertSource::Values(rows) => {
                 for row in rows {
-                    sources.push(row.iter().map(|e| e.eval(ctx, &[])).collect::<Result<Vec<_>>>()?);
+                    let mut values = Vec::with_capacity(row.len());
+                    for expr in row {
+                        values.push(match expr {
+                            Expr::Default(i) => default_value(ctx, &self.rules, *i)?,
+                            expr => expr.eval(ctx, &[])?,
+                        });
+                    }
+                    sources.push(values);
                 }
             }
             InsertSource::Select(plan) => sources = plan.run(ctx)?,
         }
-        let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
-        let mut edits = Edits::new(&self.table);
+        let mut rows = Vec::with_capacity(sources.len());
         for source in &sources {
-            let mut row = vec![Value::Null; self.table.columns.len()];
-            for (value, &target) in source.iter().zip(&self.targets) {
-                row[target] = cast_value(value.clone(), self.table.columns[target].ty, false)?;
+            let mut row = Vec::with_capacity(self.table.columns.len());
+            for i in 0..self.table.columns.len() {
+                row.push(match self.targets.iter().position(|&t| t == i) {
+                    Some(j) if j < source.len() => cast_value(source[j].clone(), self.table.columns[i].ty, false)?,
+                    _ => default_value(ctx, &self.rules, i)?,
+                });
             }
-            check_not_null(&self.table, &row)?;
-            edits.insert(db, &row)?;
+            rows.push(row);
         }
-        edits.apply(db, txn)?;
+        insert_checked_rows(ctx, &self.table, &self.rules, rows)?;
         Ok(Outcome::command(format!("INSERT 0 {}", sources.len())))
     }
+}
+
+/// default_value evaluates a column's default, which is NULL without one.
+fn default_value(ctx: &mut Ctx<'_>, rules: &RowRules, column: usize) -> Result<Value> {
+    match &rules.defaults[column] {
+        Some(expr) => expr.eval(ctx, &[]),
+        None => Ok(Value::Null),
+    }
+}
+
+/// insert_checked_rows checks and inserts rows in the table's column order.
+fn insert_checked_rows(ctx: &mut Ctx<'_>, table: &TableDef, rules: &RowRules, rows: Vec<Vec<Value>>) -> Result<()> {
+    for row in &rows {
+        check_row(ctx, table, rules, row)?;
+    }
+    let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
+    let mut edits = Edits::new(table);
+    for row in &rows {
+        edits.insert(db, row)?;
+    }
+    edits.apply(db, txn)
+}
+
+/// insert_rows converts rows to a table's column types and inserts them, for CREATE TABLE AS.
+pub fn insert_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: Vec<Vec<Value>>) -> Result<()> {
+    let rules = ctx.row_rules(table)?;
+    let rows = rows
+        .into_iter()
+        .map(|row| {
+            row.into_iter().zip(&table.columns).map(|(v, c)| cast_value(v, c.ty, false)).collect::<Result<Vec<_>>>()
+        })
+        .collect::<Result<Vec<_>>>()?;
+    insert_checked_rows(ctx, table, &rules, rows)
 }
 
 impl UpdatePlan {
@@ -380,9 +499,12 @@ impl UpdatePlan {
             }
             let mut new_row = row.clone();
             for (i, expr) in &self.assignments {
-                new_row[*i] = expr.eval(ctx, &row)?;
+                new_row[*i] = match expr {
+                    Expr::Default(c) => default_value(ctx, &self.rules, *c)?,
+                    expr => expr.eval(ctx, &row)?,
+                };
             }
-            check_not_null(&self.table, &new_row)?;
+            check_row(ctx, &self.table, &self.rules, &new_row)?;
             changes.push((row, new_row));
         }
         let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);

@@ -40,6 +40,9 @@ pub mod code {
     pub const INVALID_TABLE_DEFINITION: &str = "42P16";
     pub const NOT_NULL_VIOLATION: &str = "23502";
     pub const UNIQUE_VIOLATION: &str = "23505";
+    pub const CHECK_VIOLATION: &str = "23514";
+    pub const DEPENDENT_OBJECTS_STILL_EXIST: &str = "2BP01";
+    pub const DUPLICATE_SCHEMA: &str = "42P06";
     pub const ACTIVE_SQL_TRANSACTION: &str = "25001";
     pub const IN_FAILED_SQL_TRANSACTION: &str = "25P02";
     pub const NO_ACTIVE_SQL_TRANSACTION: &str = "25P01";
@@ -78,12 +81,34 @@ pub struct PgError {
     pub hint: Option<String>,
     /// The 1-based character position in the query that the error refers to.
     pub position: Option<u32>,
+    /// The context and objects of the error, which few errors have.
+    pub objects: Option<Box<ErrorObjects>>,
+}
+
+/// ErrorObjects are an error's context and the objects it is about.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ErrorObjects {
+    /// The context the error happened in, such as the PL/pgSQL statement running.
+    pub where_: Option<String>,
+    pub schema: Option<String>,
+    pub table: Option<String>,
+    pub column: Option<String>,
+    pub data_type: Option<String>,
+    pub constraint: Option<String>,
 }
 
 impl PgError {
     /// new returns an ERROR with the code and message.
     pub fn new(code: &'static str, message: impl Into<String>) -> PgError {
-        PgError { severity: "ERROR", code, message: message.into(), detail: None, hint: None, position: None }
+        PgError {
+            severity: "ERROR",
+            code,
+            message: message.into(),
+            detail: None,
+            hint: None,
+            position: None,
+            objects: None,
+        }
     }
 
     /// notice returns a NOTICE, which reports something without failing the statement.

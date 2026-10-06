@@ -640,6 +640,10 @@ impl Ctx<'_> {
             NodeEnum::UpdateStmt(update) => self.plan_update(update)?.run(self),
             NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.run(self),
             NodeEnum::CreateStmt(create) => self.create_table(create),
+            NodeEnum::CreateTableAsStmt(create) => self.create_table_as(create),
+            NodeEnum::CreateSchemaStmt(create) => self.create_schema(create),
+            NodeEnum::DropStmt(drop) => self.drop(drop),
+            NodeEnum::TruncateStmt(truncate) => self.truncate(truncate),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

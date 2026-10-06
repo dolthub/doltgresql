@@ -52,6 +52,7 @@ impl From<std::io::Error> for ConnError {
 
 /// error_fields converts an engine error to the fields of an ErrorResponse.
 fn error_fields(err: &PgError) -> ErrorFields {
+    let objects = err.objects.as_deref().cloned().unwrap_or_default();
     ErrorFields {
         severity: err.severity.to_string(),
         severity_unlocalized: err.severity.to_string(),
@@ -60,6 +61,12 @@ fn error_fields(err: &PgError) -> ErrorFields {
         detail: err.detail.clone().unwrap_or_default(),
         hint: err.hint.clone().unwrap_or_default(),
         position: err.position.map_or(0, |p| p as i32),
+        where_: objects.where_.clone().unwrap_or_default(),
+        schema_name: objects.schema.clone().unwrap_or_default(),
+        table_name: objects.table.clone().unwrap_or_default(),
+        column_name: objects.column.clone().unwrap_or_default(),
+        data_type_name: objects.data_type.clone().unwrap_or_default(),
+        constraint_name: objects.constraint.clone().unwrap_or_default(),
         ..ErrorFields::default()
     }
 }

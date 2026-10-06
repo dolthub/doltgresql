@@ -20,12 +20,13 @@ use doltdb::database::Database;
 use prolly::val::{compare_field, encoding};
 use store::Hash;
 
+use crate::catalog::ColumnType;
 use crate::error::{PgError, Result};
 use crate::numeric::Numeric;
 use crate::types::Value;
 
-/// encode_field returns a value as a tuple field of the encoding, or None for NULL.
-pub fn encode_field(value: &Value, field_encoding: u8) -> Result<Option<Vec<u8>>> {
+/// encode_field returns a value of the type as a tuple field of the encoding, or None for NULL.
+pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result<Option<Vec<u8>>> {
     Ok(Some(match (value, field_encoding) {
         (Value::Null, _) => return Ok(None),
         (Value::Int2(i), encoding::INT16) => i.to_le_bytes().to_vec(),
@@ -40,14 +41,15 @@ pub fn encode_field(value: &Value, field_encoding: u8) -> Result<Option<Vec<u8>>
             field
         }
         (Value::Text(s), encoding::STRING_ADAPTIVE) => inline(s.as_bytes()),
+        (Value::Bool(b), encoding::EXTENDED) if ty.oid == crate::oid::BOOL => vec![*b as u8],
         (value, field_encoding) => {
             return Err(PgError::unsupported(format!("storing {value:?} with encoding {field_encoding}")));
         }
     }))
 }
 
-/// decode_field reads a value from a tuple field of the encoding, where None is NULL.
-pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8) -> Result<Value> {
+/// decode_field reads a value of the type from a tuple field of the encoding, where None is NULL.
+pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty: ColumnType) -> Result<Value> {
     let Some(field) = field else { return Ok(Value::Null) };
     let resolved;
     let field = if is_adaptive(field_encoding) {
@@ -69,6 +71,7 @@ pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8) -> 
             Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?)
         }
         encoding::STRING_ADAPTIVE => Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?),
+        encoding::EXTENDED if ty.oid == crate::oid::BOOL => Value::Bool(field.first().is_some_and(|&b| b != 0)),
         _ => return Err(PgError::unsupported(format!("reading fields of encoding {field_encoding}"))),
     })
 }

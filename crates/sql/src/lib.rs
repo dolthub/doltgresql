@@ -20,7 +20,7 @@
 pub mod cast;
 pub mod catalog;
 mod ddl;
-mod dml;
+pub mod dml;
 mod engine;
 pub mod error;
 pub mod expr;

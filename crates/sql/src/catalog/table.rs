@@ -45,12 +45,20 @@ pub struct ColumnDef {
     pub default: String,
 }
 
+/// Check is a check constraint: its name and its expression's SQL text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Check {
+    pub name: String,
+    pub expression: String,
+}
+
 /// TableDef is a table: its columns, which of them form the primary key, and its storage.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TableDef {
     pub schema: String,
     pub name: String,
     pub columns: Vec<ColumnDef>,
+    pub checks: Vec<Check>,
     /// The columns of the primary key in key order, empty for a keyless table.
     pub key_columns: Vec<usize>,
     /// The columns stored in the value tuple, in order.
@@ -96,9 +104,27 @@ impl TableDef {
             })
             .collect::<Result<Vec<_>>>()?;
         let clustered = message.clustered_index()?;
-        let key_columns = clustered.key_columns.iter().map(|&i| i as usize).collect();
-        let value_columns = clustered.value_columns.iter().map(|&i| i as usize).collect();
-        Ok(TableDef { schema: schema.to_string(), name: name.to_string(), columns, key_columns, value_columns, table })
+        // A keyless table's index also holds its hidden hash and cardinality columns, which come after the others.
+        let visible = |i: &u16| (*i as usize) < columns.len();
+        let key_columns = clustered.key_columns.iter().filter(|i| visible(i)).map(|&i| i as usize).collect();
+        let value_columns = clustered.value_columns.iter().filter(|i| visible(i)).map(|&i| i as usize).collect();
+        let checks = message
+            .checks()?
+            .into_iter()
+            .map(|c| Check {
+                name: String::from_utf8_lossy(c.name).into_owned(),
+                expression: String::from_utf8_lossy(c.expression).into_owned(),
+            })
+            .collect();
+        Ok(TableDef {
+            schema: schema.to_string(),
+            name: name.to_string(),
+            columns,
+            checks,
+            key_columns,
+            value_columns,
+            table,
+        })
     }
 
     /// keyless reports whether the table has no primary key.
@@ -108,7 +134,7 @@ impl TableDef {
 
     /// schema_message writes the table's Dolt schema.
     pub fn schema_message(&self) -> Result<Vec<u8>> {
-        schema_message(&self.columns, &self.key_columns, &self.value_columns)
+        schema_message(&self.columns, &self.key_columns, &self.value_columns, &self.checks)
     }
 
     /// key_encodings returns the field encodings of the primary index's keys.
@@ -142,7 +168,7 @@ impl TableDef {
     /// encode_row returns a row's key and value tuples. A keyless row's value starts with its cardinality, and its key
     /// is a hash of the rest of the value, as Dolt's keyless tables store them.
     pub fn encode_row(&self, db: &mut Database, row: &[Value]) -> Result<(Vec<u8>, Vec<u8>)> {
-        let field = |i: usize| encode_field(&row[i], self.columns[i].encoding);
+        let field = |i: usize| encode_field(&row[i], self.columns[i].encoding, self.columns[i].ty);
         let mut values: Vec<Option<Vec<u8>>> = Vec::with_capacity(self.value_columns.len() + 1);
         if self.keyless() {
             values.push(Some(1u64.to_le_bytes().to_vec()));
@@ -165,7 +191,7 @@ impl TableDef {
         let mut row = vec![Value::Null; self.columns.len()];
         let (key, value) = (Tuple(key), Tuple(value));
         for (field, &i) in self.key_columns.iter().enumerate() {
-            row[i] = decode_field(db, key.field(field)?, self.columns[i].encoding)?;
+            row[i] = decode_field(db, key.field(field)?, self.columns[i].encoding, self.columns[i].ty)?;
         }
         let mut cardinality = 1;
         let offset = if self.keyless() {
@@ -176,14 +202,20 @@ impl TableDef {
             0
         };
         for (field, &i) in self.value_columns.iter().enumerate() {
-            row[i] = decode_field(db, value.field(field + offset)?, self.columns[i].encoding)?;
+            row[i] = decode_field(db, value.field(field + offset)?, self.columns[i].encoding, self.columns[i].ty)?;
         }
         Ok((row, cardinality))
     }
 }
 
-/// schema_message writes a Dolt schema of the columns, with the key and value columns of its primary index.
-pub fn schema_message(columns: &[ColumnDef], key_columns: &[usize], value_columns: &[usize]) -> Result<Vec<u8>> {
+/// schema_message writes a Dolt schema of the columns, with the key and value columns of its primary index and its
+/// check constraints.
+pub fn schema_message(
+    columns: &[ColumnDef],
+    key_columns: &[usize],
+    value_columns: &[usize],
+    checks: &[Check],
+) -> Result<Vec<u8>> {
     let types: Vec<Vec<u8>> =
         columns.iter().map(|c| c.ty.serialized().map(String::into_bytes)).collect::<Result<_>>()?;
     let fields = columns
@@ -202,18 +234,34 @@ pub fn schema_message(columns: &[ColumnDef], key_columns: &[usize], value_column
             nullable: c.nullable,
             generated: false,
             is_virtual: false,
-            adaptive_encoding: false,
+            adaptive_encoding: crate::storage::is_adaptive(c.encoding),
             hidden: false,
             hidden_system: false,
         })
         .collect();
+    let keyless = key_columns.is_empty();
+    // A keyless table's hidden hash and cardinality columns follow the others.
+    let (key_columns, value_columns): (Vec<u16>, Vec<u16>) = if keyless {
+        let n = columns.len() as u16;
+        (vec![n], std::iter::once(n + 1).chain(value_columns.iter().map(|&i| i as u16)).collect())
+    } else {
+        (key_columns.iter().map(|&i| i as u16).collect(), value_columns.iter().map(|&i| i as u16).collect())
+    };
     Ok(write_schema(&SchemaFields {
         columns: fields,
-        keyless: key_columns.is_empty(),
-        key_columns: key_columns.iter().map(|&i| i as u16).collect(),
-        value_columns: value_columns.iter().map(|&i| i as u16).collect(),
+        keyless,
+        key_columns,
+        value_columns,
         indexes: Vec::new(),
-        checks: Vec::new(),
+        checks: checks
+            .iter()
+            .map(|c| serial::write::CheckFields {
+                name: c.name.as_bytes(),
+                expression: c.expression.as_bytes(),
+                enforced: true,
+                is_not_valid: false,
+            })
+            .collect(),
         collation: COLLATION,
         comment: b"",
         target_row_size: DEFAULT_TARGET_ROW_SIZE,

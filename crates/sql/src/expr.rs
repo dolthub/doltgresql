@@ -117,6 +117,8 @@ pub enum Expr {
     AnySubquery(Box<Expr>, Box<Plan>, bool),
     /// The subquery value a comparison of AnySubquery tests.
     SubqueryValue,
+    /// The default of a column of the table being written, by position.
+    Default(usize),
 }
 
 /// Bound is a bound expression with its type.
@@ -1104,6 +1106,7 @@ impl Expr {
                 ctx.outer[level].get(*i).cloned().unwrap_or(Value::Null)
             }
             Expr::InputColumn(_) | Expr::AggRef(_) => return Err(PgError::internal("an ungrouped expression")),
+            Expr::Default(_) => return Err(PgError::internal("a default outside a written row")),
             Expr::SubqueryValue => ctx.subquery_value.clone(),
             Expr::Coalesce(args) => {
                 for arg in args {

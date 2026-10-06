@@ -518,8 +518,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 let (l, lt) = find(&left_scope, "left")?;
                 let (r, rt) = find(&right_scope, "right")?;
                 let mut binder = self.binder(scope.clone());
-                let (test, _) =
-                    binder.compare("=", (Expr::Column(l), lt), (Expr::Column(width + r), rt), -1)?;
+                let (test, _) = binder.compare("=", (Expr::Column(l), lt), (Expr::Column(width + r), rt), -1)?;
                 condition = Some(match condition {
                     Some(c) => Expr::And(Box::new(c), Box::new(test)),
                     None => test,
