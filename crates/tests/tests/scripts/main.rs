@@ -54,8 +54,10 @@ mod create_view;
 mod delete;
 #[path = "do.rs"]
 mod do_statement;
+mod dolt_backup;
 mod dolt_functions;
 mod dolt_procedures_record;
+mod dolt_remote;
 mod dolt_tables;
 mod doltgres_engine;
 mod domain;

@@ -187,6 +187,40 @@ fn plan_facts(go: &Value, query: &str) -> Option<Vec<String>> {
     Some(code)
 }
 
+/// Varying is how an error differs between two captures of the same statement.
+enum Varying {
+    /// The captures agree.
+    No,
+    /// The messages differ after this common prefix of whole lines, which the expectation checks instead.
+    Prefix(String),
+    /// The captures differ in a way no expectation can check, for this reason.
+    Unusable(String),
+}
+
+/// varying_error compares the errors of two captures of a statement, where a Go panic is never an outcome to expect.
+fn varying_error(observation: Option<&Value>, second: Option<&Value>) -> Varying {
+    let (Some(observation), Some(second)) = (observation, second) else { return Varying::No };
+    let message =
+        |o: &Value| o.get("error").filter(|e| !e.is_null()).and_then(|e| e["message"].as_str()).map(str::to_string);
+    match (message(observation), message(second)) {
+        (first, other) if first == other => Varying::No,
+        (Some(first), Some(other)) => {
+            if first.contains("goroutine ") {
+                return Varying::Unusable(
+                    "the Go server panics, with a stack trace that differs between runs".to_string(),
+                );
+            }
+            let common =
+                first.char_indices().zip(other.chars()).find(|((_, a), b)| a != b).map_or(first.len(), |((i, _), _)| i);
+            match first[..common].rfind('\n') {
+                Some(end) if end > 0 => Varying::Prefix(first[..=end].to_string()),
+                _ => Varying::Unusable("the server's error message differs between runs".to_string()),
+            }
+        }
+        _ => Varying::Unusable("the server errors on only one of two runs".to_string()),
+    }
+}
+
 /// generate_assertion renders one assertion from its Go definition and chosen observation.
 fn generate_assertion(
     go: &Value,
@@ -215,9 +249,27 @@ fn generate_assertion(
     let mut note = None;
     let mut source = source;
     let blocking_or_close = converted.expected_blocking || converted.close_client;
+    let varying = match varying_error(observation, second) {
+        Varying::No => None,
+        Varying::Prefix(prefix) => {
+            let mut stable = observation.unwrap().clone();
+            stable["error"]["message"] = Value::String(prefix);
+            stable["error"]["message_contains"] = Value::Bool(true);
+            Some(Ok(stable))
+        }
+        Varying::Unusable(reason) => Some(Err(reason)),
+    };
+    let observation = match &varying {
+        Some(Ok(stable)) => Some(stable),
+        _ => observation,
+    };
     let mut kind = Expected::Ok;
     match observation {
         _ if blocking_or_close => {}
+        _ if matches!(varying, Some(Err(_))) => {
+            note = varying.as_ref().and_then(|v| v.as_ref().err().cloned());
+            source = Source::Unavailable;
+        }
         Some(observation) if observation["client_error"].is_null() => {
             let (code, expected_kind) = expectation(observation, second);
             kind = expected_kind;

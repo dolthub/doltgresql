@@ -270,6 +270,7 @@ name = "doltgres-tests"
 version = "0.1.0"
 dependencies = [
  "harness",
+ "rcgen",
 ]
 
 [[package]]

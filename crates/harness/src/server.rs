@@ -79,17 +79,38 @@ pub struct Server {
     child: Child,
     directory: PathBuf,
     stop: Option<Command>,
+    pg_isready: Option<PathBuf>,
 }
 
 impl Server {
     /// start starts a fresh server of the target kind. The extra configuration is YAML appended to a doltgres
     /// config file, and is ignored for Postgres.
     pub fn start(target: &Target, extra_config: &str) -> Result<Server, String> {
+        Server::start_with(target, extra_config, &[])
+    }
+
+    /// start_tls starts a fresh server of the target kind that also accepts TLS, using the PEM certificate chain and
+    /// private key files.
+    pub fn start_tls(target: &Target, cert: &Path, key: &Path) -> Result<Server, String> {
+        let config = format!("  tls_cert: {}\n  tls_key: {}\n", cert.display(), key.display());
+        let settings = [
+            "ssl=on".to_string(),
+            format!("ssl_cert_file={}", cert.display()),
+            format!("ssl_key_file={}", key.display()),
+        ];
+        Server::start_with(target, &config, &settings)
+    }
+
+    /// start_with starts a fresh server with YAML appended to a doltgres config file, or with these settings for
+    /// Postgres.
+    fn start_with(target: &Target, extra_config: &str, postgres_settings: &[String]) -> Result<Server, String> {
         let directory = fresh_directory()?;
         let port = free_port()?;
         let result = match target {
             Target::Doltgres { binary } => start_doltgres(binary, &directory, port, extra_config),
-            Target::Postgres { bin_dir, template } => start_postgres(bin_dir, template, &directory, port),
+            Target::Postgres { bin_dir, template } => {
+                start_postgres(bin_dir, template, &directory, port, postgres_settings)
+            }
         };
         let (child, stop) = match result {
             Ok(started) => started,
@@ -98,16 +119,21 @@ impl Server {
                 return Err(err);
             }
         };
-        let mut server = Server { port, child, directory, stop };
+        let pg_isready = match target {
+            Target::Postgres { bin_dir, .. } => Some(bin_dir.join("pg_isready")),
+            Target::Doltgres { .. } => None,
+        };
+        let mut server = Server { port, child, directory, stop, pg_isready };
         server.wait_until_listening()?;
         Ok(server)
     }
 
-    /// wait_until_listening waits until the server accepts TCP connections.
+    /// wait_until_listening waits until the server accepts TCP connections, and for Postgres until it has also
+    /// finished starting up.
     fn wait_until_listening(&mut self) -> Result<(), String> {
         let deadline = Instant::now() + STARTUP_TIMEOUT;
         loop {
-            if TcpStream::connect(("127.0.0.1", self.port)).is_ok() {
+            if TcpStream::connect(("127.0.0.1", self.port)).is_ok() && self.is_ready() {
                 return Ok(());
             }
             if let Ok(Some(status)) = self.child.try_wait() {
@@ -118,6 +144,15 @@ impl Server {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    /// is_ready reports whether pg_isready finds the server accepting connections, which is always true for doltgres.
+    fn is_ready(&self) -> bool {
+        let Some(pg_isready) = &self.pg_isready else { return true };
+        Command::new(pg_isready)
+            .args(["-q", "-h", "127.0.0.1", "-p", &self.port.to_string()])
+            .status()
+            .is_ok_and(|status| status.success())
     }
 
     /// log_tail returns the end of the server's log.
@@ -182,17 +217,23 @@ fn start_doltgres(
     Ok((child, None))
 }
 
-/// start_postgres copies the template into a new data directory and starts a postmaster on the port.
+/// start_postgres copies the template into a new data directory and starts a postmaster on the port with the extra
+/// settings.
 fn start_postgres(
     bin_dir: &Path,
     template: &Path,
     directory: &Path,
     port: u16,
+    settings: &[String],
 ) -> Result<(Child, Option<Command>), String> {
     let data_dir = directory.join("data");
     copy_dir(template, &data_dir).map_err(|err| format!("cannot copy {}: {err}", template.display()))?;
     let log = std::fs::File::create(directory.join("server.log")).map_err(|err| err.to_string())?;
-    let child = Command::new(bin_dir.join("postgres"))
+    let mut command = Command::new(bin_dir.join("postgres"));
+    for setting in settings {
+        command.arg("-c").arg(setting);
+    }
+    let child = command
         .arg("-D")
         .arg(&data_dir)
         .arg("-p")

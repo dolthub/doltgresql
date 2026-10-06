@@ -179,6 +179,9 @@ pub fn diagnostic(fields: &Value) -> String {
     put("message", "message");
     put("detail", "detail");
     put("hint", "hint");
+    if fields["message_contains"].as_bool() == Some(true) {
+        parts.push("message_contains: true".to_string());
+    }
     if let Some(position) = fields.get("position").and_then(Value::as_i64) {
         parts.push(format!("position: {position}"));
     }

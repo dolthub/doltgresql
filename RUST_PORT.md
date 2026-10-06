@@ -58,8 +58,8 @@ text.
 
 - `testing/generation` (syntax-only).
 - Go unit tests of internal APIs in `server/`, `core/`, `utils/`, `postgres/`, `servercfg/`, and
-  `testing/dataloader`. Their observable requirements (legacy formats, serialization) are covered by
-  compatibility testing.
+  `testing/dataloader`, and `TestDropRoleCleansPersistedAuthorizationReferences`, which calls the auth package
+  directly. Their observable requirements (legacy formats, serialization) are covered by compatibility testing.
 - Enginetest sets with MySQL semantics.
 
 ### Operational scope (all in)
@@ -131,10 +131,14 @@ Done:
 - `harness`: pgx-equivalent client, binary decoder (cross-checked against Postgres' own output), script runner,
   wire conversation runner, plan facts, server launcher, recording and structured failure output.
 - `goport` (temporary): dumps the Go tests, captures them against Postgres and the Go server, and generates Rust.
-- `crates/tests`: 2,233 scripts and 198 wire conversations ported. Expectations come from Postgres 15 for 11,823
-  assertions, from Postgres 17 for JSON_TABLE, and from the Go server for 1,891 Dolt-dependent ones (marked
+- `crates/tests`: 2,292 scripts and 198 wire conversations ported. Expectations come from Postgres 15 for 11,823
+  assertions, from Postgres 17 for JSON_TABLE, and from the Go server for 2,023 Dolt-dependent ones (marked
   `// Doltgres-specific`). 105 EXPLAIN assertions are plan facts. Values that vary between two Postgres runs are
-  `Any`, and the server port is `{PORT}`.
+  `Any`, and a Go error message that varies between runs is matched by its common leading lines. The server port is
+  `{PORT}`, and each script's temporary directory is `{TEMPDIR}`.
+- Hand ports (`crates/tests/tests/*.rs` beside `scripts/`): SSL, the missing-database connection and the invalid
+  startup timezone pass on Postgres 15 and the Go binary. The Dolt backup and remote suites (59 scripts) go through
+  goport, with their temporary directories as `{TEMPDIR}` and `{NEWDIR:name}`, and pass on the Go binary.
 - Round trip: every Postgres-sourced assertion passes against a real Postgres 15.
 - Client traffic: the Rust suite sends the same frontend messages as the pgx recordings of the Go suite for 2,022
   scripts. The 21 that differ are deliberate input changes and testdata paths.
@@ -162,10 +166,8 @@ Done:
 
 Remaining:
 
-- Hand ports: missing-database connection, invalid startup timezone, SSL, dropped-role grant cleanup across a
-  restart (needs restart support), Dolt backup and remote suites.
-- 29 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too), and 7 EXPLAIN
-  assertions that expect Postgres plan text.
+- 36 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too; in 7 the Go
+  server panics), and 7 EXPLAIN assertions that expect Postgres plan text.
 - A full sqllogictest corpus run with both runners.
 
 ## Baseline artifacts

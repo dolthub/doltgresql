@@ -16,6 +16,7 @@ path = "tests/scripts/main.rs"
 
 [dev-dependencies]
 harness = { path = "../harness" }
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
 
 [lints]
 workspace = true

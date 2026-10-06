@@ -374,6 +374,9 @@ impl Session {
         config.recorder = recorder.clone();
         let mut default = Conn::connect(config).map_err(|err| err.to_string())?;
         default.ping().map_err(|err| format!("ping: {err}"))?;
+        let temp_dir = server.directory().join("tmp");
+        std::fs::create_dir_all(&temp_dir).map_err(|err| err.to_string())?;
+        SCRIPT_TEMP_DIR.with(|dir| *dir.borrow_mut() = Some(temp_dir));
         Ok(Session {
             target: target.clone(),
             server,
@@ -594,6 +597,11 @@ pub fn effective_flow(assertion: &ScriptTestAssertion) -> Flow {
     }
 }
 
+/// run_assertion runs an assertion on the connection, returning its problems.
+pub fn run_assertion(conn: &mut Conn, assertion: &ScriptTestAssertion) -> Vec<String> {
+    check(assertion, &execute(conn, assertion))
+}
+
 /// execute sends an assertion's statement on the connection and observes the outcome.
 fn execute(conn: &mut Conn, assertion: &ScriptTestAssertion) -> Observation {
     let query = expand(assertion.query);
@@ -677,13 +685,38 @@ fn execute(conn: &mut Conn, assertion: &ScriptTestAssertion) -> Observation {
 /// that make the server read a file.
 pub const TESTDATA_TOKEN: &str = "{TESTDATA}";
 
-/// expand replaces TESTDATA_TOKEN with the absolute path of the testdata directory.
+/// TEMPDIR_TOKEN stands for the temporary directory of the running script, which is new for each script.
+pub const TEMPDIR_TOKEN: &str = "{TEMPDIR}";
+
+/// NEWDIR_PREFIX starts a `{NEWDIR:name}` token, which stands for a directory of that name in the script's temporary
+/// directory, created when the token is first expanded.
+pub const NEWDIR_PREFIX: &str = "{NEWDIR:";
+
+thread_local! {
+    /// SCRIPT_TEMP_DIR is the temporary directory of the session that this thread last started.
+    static SCRIPT_TEMP_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// expand replaces TESTDATA_TOKEN with the absolute path of the testdata directory, and TEMPDIR_TOKEN and NEWDIR
+/// tokens with paths in the running script's temporary directory.
 pub fn expand(text: &str) -> std::borrow::Cow<'_, str> {
-    if !text.contains(TESTDATA_TOKEN) {
+    if !text.contains(TESTDATA_TOKEN) && !text.contains(TEMPDIR_TOKEN) && !text.contains(NEWDIR_PREFIX) {
         return std::borrow::Cow::Borrowed(text);
     }
     let dir = std::fs::canonicalize(testdata_dir()).unwrap_or_else(|_| testdata_dir());
-    std::borrow::Cow::Owned(text.replace(TESTDATA_TOKEN, &dir.to_string_lossy()))
+    let mut out = text.replace(TESTDATA_TOKEN, &dir.to_string_lossy());
+    if out.contains(TEMPDIR_TOKEN) || out.contains(NEWDIR_PREFIX) {
+        let temp_dir =
+            SCRIPT_TEMP_DIR.with(|dir| dir.borrow().clone()).expect("a temporary directory outside a script");
+        while let Some(start) = out.find(NEWDIR_PREFIX) {
+            let Some(length) = out[start..].find('}') else { break };
+            let path = temp_dir.join(&out[start + NEWDIR_PREFIX.len()..start + length]);
+            let _ = std::fs::create_dir_all(&path);
+            out.replace_range(start..start + length + 1, &path.to_string_lossy());
+        }
+        out = out.replace(TEMPDIR_TOKEN, &temp_dir.to_string_lossy());
+    }
+    std::borrow::Cow::Owned(out)
 }
 
 /// render renders a result value as text.
