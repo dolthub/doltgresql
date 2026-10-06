@@ -29,34 +29,66 @@ pub enum Value {
     Int2(i16),
     Int4(i32),
     Int8(i64),
+    Float4(f32),
+    Float8(f64),
     /// A string of the text types, and the value of an untyped literal.
     Text(String),
 }
 
+/// format_float formats a float as Postgres does with the default extra_float_digits: the shortest digits that read
+/// back exactly, in exponential notation when the exponent is below -4 or at least `max_exponent`.
+fn format_float(shortest_exponential: String, max_exponent: i32) -> String {
+    match shortest_exponential.as_str() {
+        "NaN" => return "NaN".into(),
+        "inf" => return "Infinity".into(),
+        "-inf" => return "-Infinity".into(),
+        _ => {}
+    }
+    let (mantissa, exponent) = shortest_exponential.split_once('e').unwrap_or((&shortest_exponential, "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let (sign, mantissa) = mantissa.strip_prefix('-').map_or(("", mantissa), |m| ("-", m));
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    if exponent < -4 || exponent >= max_exponent {
+        let rest = if digits.len() > 1 { format!(".{}", &digits[1..]) } else { String::new() };
+        let exponent_sign = if exponent < 0 { '-' } else { '+' };
+        return format!("{sign}{}{rest}e{exponent_sign}{:02}", &digits[..1], exponent.abs());
+    }
+    if exponent < 0 {
+        return format!("{sign}0.{}{digits}", "0".repeat((-exponent - 1) as usize));
+    }
+    let point = exponent as usize + 1;
+    if digits.len() <= point {
+        format!("{sign}{digits}{}", "0".repeat(point - digits.len()))
+    } else {
+        format!("{sign}{}.{}", &digits[..point], &digits[point..])
+    }
+}
+
 impl Value {
+    /// is_null reports whether the value is NULL.
+    pub fn is_null(&self) -> bool {
+        matches!(self, Value::Null)
+    }
+
     /// encode returns the value in the format for a column of the type, or None for NULL.
     pub fn encode(&self, type_oid: u32, format: i16) -> Option<Vec<u8>> {
         if format == BINARY_FORMAT {
             return self.send(type_oid);
         }
-        self.output()
+        self.output().map(String::into_bytes)
     }
 
     /// output returns the value's text format, or None for NULL.
-    pub fn output(&self) -> Option<Vec<u8>> {
+    pub fn output(&self) -> Option<String> {
         Some(match self {
             Value::Null => return None,
-            Value::Bool(b) => {
-                if *b {
-                    b"t".to_vec()
-                } else {
-                    b"f".to_vec()
-                }
-            }
-            Value::Int2(i) => i.to_string().into_bytes(),
-            Value::Int4(i) => i.to_string().into_bytes(),
-            Value::Int8(i) => i.to_string().into_bytes(),
-            Value::Text(s) => s.clone().into_bytes(),
+            Value::Bool(b) => if *b { "t" } else { "f" }.to_string(),
+            Value::Int2(i) => i.to_string(),
+            Value::Int4(i) => i.to_string(),
+            Value::Int8(i) => i.to_string(),
+            Value::Float4(f) => format_float(format!("{f:e}"), 6),
+            Value::Float8(f) => format_float(format!("{f:e}"), 15),
+            Value::Text(s) => s.clone(),
         })
     }
 
@@ -68,7 +100,9 @@ impl Value {
             Value::Int2(i) => i.to_be_bytes().to_vec(),
             Value::Int4(i) => i.to_be_bytes().to_vec(),
             Value::Int8(i) => i.to_be_bytes().to_vec(),
-            Value::Text(_) if type_oid == oid::UNKNOWN => return self.output(),
+            Value::Float4(f) => f.to_be_bytes().to_vec(),
+            Value::Float8(f) => f.to_be_bytes().to_vec(),
+            Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) => s.clone().into_bytes(),
         })
     }
@@ -84,6 +118,8 @@ impl Value {
                 oid::INT2 => Ok(Value::Int2(i16::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::INT4 => Ok(Value::Int4(i32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::INT8 => Ok(Value::Int8(i64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
+                oid::FLOAT4 => Ok(Value::Float4(f32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
+                oid::FLOAT8 => Ok(Value::Float8(f64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::TEXT | oid::UNKNOWN | 0 => {
                     Ok(Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?))
                 }
@@ -95,7 +131,29 @@ impl Value {
         })?;
         match type_oid {
             oid::TEXT | oid::UNKNOWN | 0 => Ok(Value::Text(text.to_string())),
-            _ => Err(PgError::unsupported(format!("text parameters of type {type_oid}"))),
+            _ => crate::cast::input(text, type_oid),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn floats_print_as_postgres_does() {
+        let float8 = |f: f64| Value::Float8(f).output().unwrap();
+        assert_eq!(float8(1.0), "1");
+        assert_eq!(float8(1.5), "1.5");
+        assert_eq!(float8(0.0001), "0.0001");
+        assert_eq!(float8(0.00001), "1e-05");
+        assert_eq!(float8(123456789012345.0), "123456789012345");
+        assert_eq!(float8(1e15), "1e+15");
+        assert_eq!(float8(-2.5e-7), "-2.5e-07");
+        assert_eq!(float8(0.1 + 0.2), "0.30000000000000004");
+        assert_eq!(float8(f64::INFINITY), "Infinity");
+        assert_eq!(float8(-0.0), "-0");
+        assert_eq!(Value::Float4(1.25).output().unwrap(), "1.25");
+        assert_eq!(Value::Float4(1234567.0).output().unwrap(), "1.234567e+06");
     }
 }

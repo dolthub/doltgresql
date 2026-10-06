@@ -1316,8 +1316,12 @@ name = "sql"
 version = "0.1.0"
 dependencies = [
  "doltdb",
+ "objects",
  "pg_query",
+ "prolly",
+ "serial",
  "store",
+ "xxhash-rust",
 ]
 
 [[package]]

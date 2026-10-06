@@ -8,8 +8,12 @@ license.workspace = true
 
 [dependencies]
 doltdb = { path = "../doltdb" }
+objects = { path = "../objects" }
 pg_query = "6"
+prolly = { path = "../prolly" }
+serial = { path = "../serial" }
 store = { path = "../store" }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [lints]
 workspace = true

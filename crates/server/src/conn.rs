@@ -260,24 +260,27 @@ impl Conn {
                     extended.statements.remove("");
                     extended.portals.remove("");
                     let (outcomes, error) = session.execute(&query);
+                    self.queue_notices(session);
                     for outcome in outcomes {
                         self.queue_outcome(outcome, None);
                     }
                     if let Some(err) = error {
                         self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                     }
-                    self.queue(BackendMessage::ReadyForQuery { tx_status: b'I' });
+                    self.queue(BackendMessage::ReadyForQuery { tx_status: session.tx_status() });
                     self.flush()?;
                 }
                 FrontendMessage::Sync => {
                     extended.failed = false;
-                    self.queue(BackendMessage::ReadyForQuery { tx_status: b'I' });
+                    self.queue(BackendMessage::ReadyForQuery { tx_status: session.tx_status() });
                     self.flush()?;
                 }
                 FrontendMessage::Flush => self.flush()?,
                 FrontendMessage::Terminate => return Ok(()),
                 message => {
-                    if let Err(err) = self.extended_message(session, &mut extended, message) {
+                    let result = self.extended_message(session, &mut extended, message);
+                    self.queue_notices(session);
+                    if let Err(err) = result {
                         self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                         extended.failed = true;
                     }
@@ -362,6 +365,13 @@ impl Conn {
             other => return Err(PgError::unsupported(format!("the {} message", message_name(&other)))),
         }
         Ok(())
+    }
+
+    /// queue_notices queues the notices the session raised.
+    fn queue_notices(&mut self, session: &mut Session) {
+        for notice in session.take_notices() {
+            self.queue(BackendMessage::NoticeResponse(error_fields(&notice)));
+        }
     }
 
     /// queue_description queues the RowDescription of the columns in the formats, or NoData without columns.

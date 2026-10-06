@@ -24,6 +24,32 @@ pub mod code {
     pub const INVALID_PARAMETER_VALUE: &str = "22023";
     pub const INVALID_CATALOG_NAME: &str = "3D000";
     pub const DUPLICATE_DATABASE: &str = "42P04";
+    pub const UNDEFINED_OBJECT: &str = "42704";
+    pub const INVALID_TEXT_REPRESENTATION: &str = "22P02";
+    pub const NUMERIC_VALUE_OUT_OF_RANGE: &str = "22003";
+    pub const DIVISION_BY_ZERO: &str = "22012";
+    pub const STRING_DATA_RIGHT_TRUNCATION: &str = "22001";
+    pub const AMBIGUOUS_COLUMN: &str = "42702";
+    pub const UNDEFINED_TABLE: &str = "42P01";
+    pub const UNDEFINED_COLUMN: &str = "42703";
+    pub const UNDEFINED_FUNCTION: &str = "42883";
+    pub const DATATYPE_MISMATCH: &str = "42804";
+    pub const CANNOT_COERCE: &str = "42846";
+    pub const DUPLICATE_TABLE: &str = "42P07";
+    pub const DUPLICATE_COLUMN: &str = "42701";
+    pub const INVALID_TABLE_DEFINITION: &str = "42P16";
+    pub const NOT_NULL_VIOLATION: &str = "23502";
+    pub const UNIQUE_VIOLATION: &str = "23505";
+    pub const ACTIVE_SQL_TRANSACTION: &str = "25001";
+    pub const IN_FAILED_SQL_TRANSACTION: &str = "25P02";
+    pub const NO_ACTIVE_SQL_TRANSACTION: &str = "25P01";
+    pub const INVALID_SCHEMA_NAME: &str = "3F000";
+    pub const SYNTAX_ERROR_OR_ACCESS_RULE: &str = "42000";
+    pub const INVALID_COLUMN_REFERENCE: &str = "42P10";
+    pub const GROUPING_ERROR: &str = "42803";
+    pub const INVALID_ROW_COUNT_IN_LIMIT_CLAUSE: &str = "2201W";
+    pub const INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE: &str = "2201X";
+    pub const SERIALIZATION_FAILURE: &str = "40001";
     pub const INVALID_BINARY_REPRESENTATION: &str = "22P03";
     pub const CHARACTER_NOT_IN_REPERTOIRE: &str = "22021";
     pub const PROTOCOL_VIOLATION: &str = "08P01";
@@ -35,7 +61,7 @@ pub mod code {
 /// PgError is an error to report to the client.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PgError {
-    /// ERROR, FATAL, or PANIC.
+    /// ERROR, FATAL, or PANIC, or NOTICE or WARNING for a notice.
     pub severity: &'static str,
     pub code: &'static str,
     pub message: String,
@@ -49,6 +75,11 @@ impl PgError {
     /// new returns an ERROR with the code and message.
     pub fn new(code: &'static str, message: impl Into<String>) -> PgError {
         PgError { severity: "ERROR", code, message: message.into(), detail: None, hint: None, position: None }
+    }
+
+    /// notice returns a NOTICE, which reports something without failing the statement.
+    pub fn notice(code: &'static str, message: impl Into<String>) -> PgError {
+        PgError { severity: "NOTICE", ..PgError::new(code, message) }
     }
 
     /// fatal returns a FATAL error, which ends the connection.

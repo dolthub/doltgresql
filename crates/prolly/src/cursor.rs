@@ -62,6 +62,22 @@ fn search(node: &Node, key: &[u8], compare: &Compare<'_>) -> Result<isize> {
     Ok(i as isize)
 }
 
+/// get returns the value of a key in the tree at the root, if the tree has the key.
+pub fn get(store: &mut dyn NodeStore, root: Arc<Node>, key: &[u8], compare: &Compare<'_>) -> Result<Option<Vec<u8>>> {
+    if root.count() == 0 {
+        return Ok(None);
+    }
+    let cursor = Cursor::at_key(store, root, key, compare)?;
+    if !cursor.valid(0) {
+        return Ok(None);
+    }
+    let (node, idx) = cursor.item(0);
+    if compare(node.key(idx)?, key) != Ordering::Equal {
+        return Ok(None);
+    }
+    Ok(Some(node.value(idx)?.to_vec()))
+}
+
 impl Cursor {
     /// at_key returns a cursor at the first key not less than the key, as Dolt's newCursorAtKey does.
     pub(crate) fn at_key(
