@@ -363,6 +363,11 @@ impl JournalWriter {
         Chunk::from_record(*hash, &record).map(Some)
     }
 
+    /// count returns the number of chunks the journal holds, as its spec in the manifest counts them.
+    pub fn count(&self) -> usize {
+        self.novel.len() + self.cached.len()
+    }
+
     /// uncompressed_size returns the total uncompressed size of the chunks read or written since opening.
     pub fn uncompressed_size(&self) -> u64 {
         self.uncompressed

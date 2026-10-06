@@ -28,14 +28,24 @@ const ARCHIVE_SUFFIX: &str = ".darc";
 const OLDGEN_DIR: &str = "oldgen";
 
 /// Source is a file holding chunks.
-enum Source {
+pub(crate) enum Source {
     Table(TableReader),
     Archive(ArchiveReader),
     Journal(Journal),
 }
 
 impl Source {
-    fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
+    /// open_file opens the table file or archive with the name in a noms directory.
+    pub(crate) fn open_file(dir: &Path, name: &Hash) -> Result<Source> {
+        let archive = dir.join(format!("{name}{ARCHIVE_SUFFIX}"));
+        if archive.exists() {
+            Ok(Source::Archive(ArchiveReader::open(&archive)?))
+        } else {
+            Ok(Source::Table(TableReader::open(&dir.join(name.to_string()))?))
+        }
+    }
+
+    pub(crate) fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
         match self {
             Source::Table(table) => table.get(hash),
             Source::Archive(archive) => archive.get(hash),
@@ -43,7 +53,7 @@ impl Source {
         }
     }
 
-    fn has(&self, hash: &Hash) -> bool {
+    pub(crate) fn has(&self, hash: &Hash) -> bool {
         match self {
             Source::Table(table) => table.has(hash),
             Source::Archive(archive) => archive.has(hash),
@@ -83,10 +93,8 @@ impl BlockStore {
                 journal_root = journal.root;
                 has_journal = true;
                 sources.push(Source::Journal(journal));
-            } else if dir.join(format!("{name}{ARCHIVE_SUFFIX}")).exists() {
-                sources.push(Source::Archive(ArchiveReader::open(&dir.join(format!("{name}{ARCHIVE_SUFFIX}")))?));
             } else {
-                sources.push(Source::Table(TableReader::open(&dir.join(&name))?));
+                sources.push(Source::open_file(dir, &spec.name)?);
             }
         }
         if !has_journal && Journal::path(dir).exists() {
