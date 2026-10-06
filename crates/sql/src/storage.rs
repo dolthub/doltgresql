@@ -42,7 +42,7 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
             field.push(0);
             field
         }
-        (Value::Text(s), encoding::STRING_ADAPTIVE) => inline(s.as_bytes()),
+        (Value::Text(s), encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE) => inline(s.as_bytes()),
         (value, encoding::EXTENDED) => serialize_value(value, ty)?,
         (value, encoding::EXTENDED_ADAPTIVE) => inline(&serialize_value(value, ty)?),
         (value, field_encoding) => {
@@ -73,7 +73,9 @@ pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty:
             let bytes = field.strip_suffix(&[0]).ok_or_else(corrupt)?;
             Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?)
         }
-        encoding::STRING_ADAPTIVE => Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?),
+        encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE => {
+            Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?)
+        }
         encoding::EXTENDED | encoding::EXTENDED_ADAPTIVE => deserialize_value(field, ty)?,
         _ => return Err(PgError::unsupported(format!("reading fields of encoding {field_encoding}"))),
     })

@@ -582,6 +582,16 @@ pub fn write_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: &[Vec<Value>]) -> R
     edits.apply(db, txn)
 }
 
+/// delete_rows deletes rows read from a table.
+pub fn delete_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: &[Vec<Value>]) -> Result<()> {
+    let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
+    let mut edits = Edits::new(table);
+    for row in rows {
+        edits.delete(db, row)?;
+    }
+    edits.apply(db, txn)
+}
+
 /// insert_rows converts rows to a table's column types and inserts them, for CREATE TABLE AS.
 pub fn insert_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: Vec<Vec<Value>>) -> Result<()> {
     let rules = ctx.row_rules(table)?;

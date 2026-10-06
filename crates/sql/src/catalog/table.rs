@@ -86,10 +86,24 @@ pub struct TableDef {
     pub table: Table,
 }
 
-/// column_type reads a column type from its form in a Dolt schema.
+/// column_type reads a column type from its form in a Dolt schema: a Doltgres type, or one of the MySQL types of
+/// Dolt's own tables, such as dolt_schemas.
 fn column_type(sql_type: &[u8]) -> Result<ColumnType> {
     let unsupported = || PgError::unsupported(format!("the column type {}", String::from_utf8_lossy(sql_type)));
-    let hex = sql_type.strip_prefix(b"extended_").ok_or_else(unsupported)?;
+    let Some(hex) = sql_type.strip_prefix(b"extended_") else {
+        let text = String::from_utf8_lossy(sql_type);
+        let base = text.split_whitespace().next().unwrap_or_default();
+        return Ok(match base {
+            "text" | "tinytext" | "mediumtext" | "longtext" => ColumnType { oid: crate::oid::TEXT, modifier: -1 },
+            "json" => ColumnType { oid: crate::oid::JSON, modifier: -1 },
+            _ => match base.strip_prefix("varchar(").and_then(|n| n.strip_suffix(')')) {
+                Some(n) => {
+                    ColumnType { oid: crate::oid::VARCHAR, modifier: n.parse::<i32>().map_err(|_| unsupported())? + 4 }
+                }
+                None => return Err(unsupported()),
+            },
+        });
+    };
     let bytes: Vec<u8> = hex
         .chunks(2)
         .map(|pair| std::str::from_utf8(pair).ok().and_then(|p| u8::from_str_radix(p, 16).ok()))

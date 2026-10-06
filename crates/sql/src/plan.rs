@@ -396,10 +396,15 @@ impl<'b, 'a> Planner<'b, 'a> {
             Some(NodeEnum::RangeVar(relation)) => {
                 let table = match self.ctx.resolve_table(relation) {
                     Ok(table) => table,
-                    Err(err) => match crate::dolt::tables::lookup(&relation.schemaname, &relation.relname) {
-                        Some(system) => return Ok(self.plan_system(system, relation)),
-                        None => return Err(err),
-                    },
+                    Err(err) => {
+                        if let Some((_, fragment)) = self.ctx.find_view(&relation.schemaname, &relation.relname)? {
+                            return self.plan_view(&fragment, relation);
+                        }
+                        match crate::dolt::tables::lookup(&relation.schemaname, &relation.relname) {
+                            Some(system) => return Ok(self.plan_system(system, relation)),
+                            None => return Err(err),
+                        }
+                    }
                 };
                 let alias = relation.alias.as_ref();
                 let name = alias.map_or(table.name.clone(), |a| a.aliasname.clone());
@@ -425,6 +430,32 @@ impl<'b, 'a> Planner<'b, 'a> {
             Some(NodeEnum::RangeFunction(function)) => self.plan_range_function(function),
             _ => Err(PgError::unsupported("this FROM item")),
         }
+    }
+
+    /// plan_view plans a view's query in place of the view, naming its columns after the view's column names.
+    fn plan_view(&mut self, fragment: &str, relation: &pg_query::protobuf::RangeVar) -> Result<(Plan, Scope)> {
+        let (select, aliases) = crate::views::view_query(fragment)?;
+        let query = Planner { ctx: self.ctx, outer: Vec::new() }.plan_query(&select)?;
+        let alias = relation.alias.as_ref();
+        let table = alias.map_or(relation.relname.clone(), |a| a.aliasname.clone());
+        let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+        let columns = query
+            .columns
+            .iter()
+            .zip(&query.types)
+            .enumerate()
+            .map(|(i, (c, &ty))| ScopeColumn {
+                table: table.clone(),
+                name: renames
+                    .get(i)
+                    .map(|r| r.to_string())
+                    .or_else(|| aliases.get(i).cloned())
+                    .unwrap_or_else(|| c.name.clone()),
+                ty,
+                hidden: false,
+            })
+            .collect();
+        Ok((query.plan, Scope { columns }))
     }
 
     /// plan_system plans a scan of one of Dolt's system tables.

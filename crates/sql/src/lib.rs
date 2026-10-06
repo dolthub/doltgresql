@@ -38,6 +38,7 @@ pub mod settings;
 pub mod storage;
 pub mod txn;
 pub mod types;
+pub mod views;
 
 pub use engine::{Engine, Session};
 pub use error::{PgError, Result, code};
@@ -62,6 +63,7 @@ pub mod oid {
     pub const INT4: u32 = 23;
     pub const TEXT: u32 = 25;
     pub const TEXT_ARRAY: u32 = 1009;
+    pub const JSON: u32 = 114;
     pub const FLOAT4: u32 = 700;
     pub const FLOAT8: u32 = 701;
     pub const UNKNOWN: u32 = 705;

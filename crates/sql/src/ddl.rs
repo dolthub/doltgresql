@@ -426,6 +426,7 @@ impl Ctx<'_> {
             ObjectType::ObjectSchema => self.drop_schemas(drop, cascade),
             ObjectType::ObjectIndex => self.drop_indexes(drop),
             ObjectType::ObjectSequence => self.drop_sequences(drop),
+            ObjectType::ObjectView => self.drop_views(drop),
             other => Err(PgError::unsupported(format!("DROP {other:?}"))),
         }
     }
@@ -447,7 +448,13 @@ impl Ctx<'_> {
             match found {
                 Some(s) => doomed.push((s, name)),
                 None => {
-                    let shown = if schema.is_empty() { name } else { format!("{schema}.{name}") };
+                    let shown = if schema.is_empty() { name.clone() } else { format!("{schema}.{name}") };
+                    if self.find_view(&schema, &name)?.is_some() {
+                        return Err(PgError {
+                            hint: Some("Use DROP VIEW to remove a view.".into()),
+                            ..PgError::new(code::WRONG_OBJECT_TYPE, format!("\"{shown}\" is not a table"))
+                        });
+                    }
                     if !drop.missing_ok {
                         return Err(PgError::new(code::UNDEFINED_TABLE, format!("table \"{shown}\" does not exist")));
                     }
@@ -455,6 +462,9 @@ impl Ctx<'_> {
                         .notice(PgError::notice("00000", format!("table \"{shown}\" does not exist, skipping")));
                 }
             }
+        }
+        for (schema, name) in &doomed {
+            self.drop_dependents(schema, name, "table", drop.behavior)?;
         }
         for (schema, name) in doomed {
             self.txn.root.put_table(self.db, &schema, &name, None)?;
@@ -544,8 +554,8 @@ impl Ctx<'_> {
 }
 
 impl Ctx<'_> {
-    /// relation_names returns the names of the tables, indexes, and sequences in a schema, which new relations must
-    /// avoid.
+    /// relation_names returns the names of the tables, indexes, sequences, and views in a schema, which new relations
+    /// must avoid.
     pub(crate) fn relation_names(&mut self, schema: &str) -> Result<Vec<String>> {
         let mut names = Vec::new();
         let prefix = doltdb::root::table_key(schema, "");
@@ -565,6 +575,7 @@ impl Ctx<'_> {
                 names.push(name);
             }
         }
+        names.extend(self.views(schema)?.into_iter().map(|(name, _)| name));
         Ok(names)
     }
 

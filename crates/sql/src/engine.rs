@@ -684,6 +684,7 @@ impl Ctx<'_> {
             NodeEnum::CreateSeqStmt(stmt) => self.create_sequence(stmt),
             NodeEnum::AlterTableStmt(stmt) => self.alter_table(stmt),
             NodeEnum::RenameStmt(stmt) => self.rename(stmt),
+            NodeEnum::ViewStmt(stmt) => self.create_view(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }
