@@ -19,8 +19,12 @@
 
 mod blob;
 mod node;
+mod serialize;
 mod tuple;
 
 pub use blob::read_blob;
 pub use node::{ItemVisitor, Node, walk_leaves};
+pub use serialize::{
+    ProllyNode, serialize_address_map, serialize_blob, serialize_commit_closure, serialize_prolly_node,
+};
 pub use tuple::Tuple;

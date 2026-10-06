@@ -17,9 +17,11 @@
 //! Dolt's serialized messages. A message is a flatbuffer after a 4-byte prefix of the kind byte and a big-endian
 //! 24-bit size, with a 4-byte file identifier after the flatbuffer's root offset naming its type.
 
+mod builder;
 pub mod fb;
 mod messages;
 
+pub use builder::Builder;
 pub use fb::{Result, Table, Vector};
 pub use messages::*;
 
