@@ -12,15 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Databases written by the Go server, each with `oracle.txt` holding what Dolt's chunk store read from it.
+//! Databases written by the Go server, by older Doltgres releases, and by Dolt releases that wrote older archive
+//! formats, each with `oracle.txt` holding what the current Dolt chunk store read from it.
 
 use std::path::{Path, PathBuf};
 
 use store::Hash;
 
-/// fixture returns the directory of a fixture database.
+/// fixture returns the directory of a fixture's database, the one directory in it that holds a `.dolt` directory.
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name).join("postgres")
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name);
+    std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.join(".dolt").is_dir())
+        .unwrap_or_else(|| panic!("no database in {}", dir.display()))
 }
 
 /// check_fixture checks that the store reads the root and chunks that Dolt read.
@@ -69,6 +75,36 @@ fn reads_many_tables_and_branches() {
 #[test]
 fn reads_stashes_and_rebase_state() {
     check_fixture("states");
+}
+
+#[test]
+fn reads_table_files_from_doltgres_0_50() {
+    check_fixture("doltgres-v0.50.0-gc");
+}
+
+#[test]
+fn reads_a_journal_from_doltgres_0_56() {
+    check_fixture("doltgres-v0.56.0");
+}
+
+#[test]
+fn reads_archives_from_doltgres_0_57() {
+    check_fixture("doltgres-v0.57.0-gc");
+}
+
+#[test]
+fn reads_a_journal_from_doltgres_1_0() {
+    check_fixture("doltgres-v1.0.0");
+}
+
+#[test]
+fn reads_version_1_archives() {
+    check_fixture("dolt-v1.45.0-archive-v1");
+}
+
+#[test]
+fn reads_version_2_archives() {
+    check_fixture("dolt-v1.51.0-archive-v2");
 }
 
 #[test]

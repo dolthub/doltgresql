@@ -18,9 +18,14 @@ use std::path::{Path, PathBuf};
 
 use store::GenerationalStore;
 
-/// fixture returns the directory of a fixture database.
+/// fixture returns the directory of a fixture's database, the one directory in it that holds a `.dolt` directory.
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../store/tests/fixtures").join(name).join("postgres")
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../store/tests/fixtures").join(name);
+    std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.join(".dolt").is_dir())
+        .unwrap_or_else(|| panic!("no database in {}", dir.display()))
 }
 
 /// check_fixture checks that the object graph matches the one Dolt and Doltgres read.
@@ -70,4 +75,24 @@ fn reads_multi_level_address_maps() {
 #[test]
 fn reads_stashes_and_rebase_state() {
     check_fixture("states");
+}
+
+#[test]
+fn reads_doltgres_0_50() {
+    check_fixture("doltgres-v0.50.0-gc");
+}
+
+#[test]
+fn reads_doltgres_0_56() {
+    check_fixture("doltgres-v0.56.0");
+}
+
+#[test]
+fn reads_doltgres_0_57() {
+    check_fixture("doltgres-v0.57.0-gc");
+}
+
+#[test]
+fn reads_doltgres_1_0() {
+    check_fixture("doltgres-v1.0.0");
 }
