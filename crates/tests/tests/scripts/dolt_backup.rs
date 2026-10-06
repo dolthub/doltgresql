@@ -838,7 +838,7 @@ fn test_dolt_backup_18() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "insert into items values (3, 99, 'mystery');",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `items_cat_id_fkey`, table: `items`, referenced table: `categories`, key: `[99]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "items" violates foreign key constraint "items_cat_id_fkey""#, detail: r#"Key (cat_id)=(99) is not present in table "categories"."#, schema: "public", table: "items", constraint: "items_cat_id_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

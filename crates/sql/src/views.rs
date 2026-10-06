@@ -250,7 +250,7 @@ impl Ctx<'_> {
             }
         }
         for (schema, name) in &doomed {
-            self.drop_dependents(schema, name, "view", drop.behavior)?;
+            self.drop_dependents(schema, name, "view", drop.behavior, &[])?;
         }
         for (schema, name) in doomed {
             self.put_view(&schema, &name, None)?;
@@ -269,9 +269,16 @@ impl Ctx<'_> {
         Ok(dependents)
     }
 
-    /// drop_dependents fails as Postgres does when views depend on a relation being dropped without CASCADE, and
-    /// drops them, and the views that depend on them, with it otherwise.
-    pub fn drop_dependents(&mut self, schema: &str, relation: &str, kind: &str, behavior: i32) -> Result<()> {
+    /// drop_dependents fails as Postgres does when views or the given foreign keys depend on a relation being dropped
+    /// without CASCADE, and drops the views, and the views that depend on them, with it otherwise.
+    pub fn drop_dependents(
+        &mut self,
+        schema: &str,
+        relation: &str,
+        kind: &str,
+        behavior: i32,
+        constraints: &[(String, String)],
+    ) -> Result<()> {
         let mut found: Vec<(String, String, &str)> = Vec::new();
         let mut pending = vec![(relation.to_string(), kind)];
         while let Some((name, kind)) = pending.pop() {
@@ -282,12 +289,15 @@ impl Ctx<'_> {
                 }
             }
         }
-        if found.is_empty() {
+        if found.is_empty() && constraints.is_empty() {
             return Ok(());
         }
         if DropBehavior::try_from(behavior) != Ok(DropBehavior::DropCascade) {
-            let detail: Vec<String> =
-                found.iter().map(|(v, on, kind)| format!("view {v} depends on {kind} {on}")).collect();
+            let detail: Vec<String> = constraints
+                .iter()
+                .map(|(c, t)| format!("constraint {c} on table {t} depends on {kind} {relation}"))
+                .chain(found.iter().map(|(v, on, kind)| format!("view {v} depends on {kind} {on}")))
+                .collect();
             return Err(PgError {
                 detail: Some(detail.join("\n")),
                 hint: Some("Use DROP ... CASCADE to drop the dependent objects too.".into()),
@@ -297,18 +307,27 @@ impl Ctx<'_> {
                 )
             });
         }
-        let detail: Vec<String> = found.iter().map(|(v, ..)| format!("drop cascades to view {v}")).collect();
-        if detail.len() == 1 {
-            self.session.notice(PgError::notice("00000", detail[0].clone()));
-        } else {
-            self.session.notice(PgError {
-                detail: Some(detail.join("\n")),
-                ..PgError::notice("00000", format!("drop cascades to {} other objects", detail.len()))
-            });
-        }
+        let detail: Vec<String> = constraints
+            .iter()
+            .map(|(c, t)| format!("drop cascades to constraint {c} on table {t}"))
+            .chain(found.iter().map(|(v, ..)| format!("drop cascades to view {v}")))
+            .collect();
+        self.notice_cascades(detail);
         for (view, ..) in found {
             self.put_view(schema, &view, None)?;
         }
         Ok(())
+    }
+
+    /// notice_cascades sends Postgres' notice for the objects a drop cascades to, one per line.
+    pub(crate) fn notice_cascades(&mut self, lines: Vec<String>) {
+        if lines.len() == 1 {
+            self.session.notice(PgError::notice("00000", lines[0].clone()));
+        } else {
+            self.session.notice(PgError {
+                detail: Some(lines.join("\n")),
+                ..PgError::notice("00000", format!("drop cascades to {} other objects", lines.len()))
+            });
+        }
     }
 }

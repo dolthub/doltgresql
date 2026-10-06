@@ -23,9 +23,11 @@ use pg_query::protobuf::{DeleteStmt, InsertStmt, UpdateStmt};
 use prolly::{NodeStore, Tuple, get};
 
 use crate::cast::cast_value;
+use crate::catalog::ColumnType;
 use crate::catalog::table::{IndexDef, TableDef};
 use crate::error::{ErrorObjects, PgError, Result, code};
 use crate::expr::{Binder, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
+use crate::foreign::Change;
 use crate::plan::{Plan, Planner};
 use crate::query::{Ctx, scan};
 use crate::txn::Txn;
@@ -470,7 +472,11 @@ impl Ctx<'_> {
             }
             let node = parse_expression(&column.default)?;
             let bound = Binder::new(self, Scope::default()).bind(&node)?;
-            defaults.push(Some(assign(bound, column.ty, &column.name, -1)?.0));
+            let expr = assign(bound, ColumnType { modifier: -1, ..column.ty }, &column.name, -1)?.0;
+            defaults.push(Some(match column.ty.modifier {
+                -1 => expr,
+                _ => Expr::Cast(Box::new(expr), column.ty, false),
+            }));
         }
         let mut checks = Vec::with_capacity(table.checks.len());
         for check in &table.checks {
@@ -822,18 +828,22 @@ impl InsertPlan {
         }
         let Some(on_conflict) = &self.on_conflict else {
             insert_checked_rows(ctx, &self.table, &self.rules, rows.clone())?;
+            let changes: Vec<Change> = rows.iter().map(|r| (None, Some(r.clone()))).collect();
+            ctx.enforce_foreign_keys(&self.table, &changes)?;
             let tag = format!("INSERT 0 {}", rows.len());
             return outcome(ctx, &self.returning, &rows, tag);
         };
         let table = &self.table;
         let mut edits = Edits::new(table);
         let mut written = Vec::new();
+        let mut changes: Vec<Change> = Vec::new();
         let mut touched: Vec<Vec<u8>> = Vec::new();
         for row in rows {
             check_row(ctx, table, &self.rules, &row)?;
             let Some(existing) = edits.conflicting_row(ctx.db, &row, &on_conflict.target)? else {
                 edits.insert(ctx.db, &row)?;
                 touched.push(table.encode_row(ctx.db, &row)?.0);
+                changes.push((None, Some(row.clone())));
                 written.push(row);
                 continue;
             };
@@ -869,16 +879,18 @@ impl InsertPlan {
             edits.delete(ctx.db, &existing)?;
             edits.insert(ctx.db, &new_row)?;
             touched.push(table.encode_row(ctx.db, &new_row)?.0);
+            changes.push((Some(existing), Some(new_row.clone())));
             written.push(new_row);
         }
         edits.apply(ctx.db, ctx.txn)?;
+        ctx.enforce_foreign_keys(table, &changes)?;
         let tag = format!("INSERT 0 {}", written.len());
         outcome(ctx, &self.returning, &written, tag)
     }
 }
 
 /// default_value evaluates a column's default, which is NULL without one.
-fn default_value(ctx: &mut Ctx<'_>, rules: &RowRules, column: usize) -> Result<Value> {
+pub(crate) fn default_value(ctx: &mut Ctx<'_>, rules: &RowRules, column: usize) -> Result<Value> {
     match &rules.defaults[column] {
         Some(expr) => expr.eval(ctx, &[]),
         None => Ok(Value::Null),
@@ -915,6 +927,29 @@ pub fn delete_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: &[Vec<Value>]) -> 
     let mut edits = Edits::new(table);
     for row in rows {
         edits.delete(db, row)?;
+    }
+    edits.apply(db, txn)
+}
+
+/// apply_changes checks and writes the changes that a foreign key's action makes to a referencing table.
+pub(crate) fn apply_changes(ctx: &mut Ctx<'_>, table: &TableDef, changes: &[Change]) -> Result<()> {
+    let rules = ctx.row_rules(table)?;
+    for (_, new) in changes {
+        if let Some(row) = new {
+            check_row(ctx, table, &rules, row)?;
+        }
+    }
+    let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
+    let mut edits = Edits::new(table);
+    for (old, _) in changes {
+        if let Some(row) = old {
+            edits.delete(db, row)?;
+        }
+    }
+    for (_, new) in changes {
+        if let Some(row) = new {
+            edits.insert(db, row)?;
+        }
     }
     edits.apply(db, txn)
 }
@@ -991,6 +1026,9 @@ impl UpdatePlan {
             edits.insert(ctx.db, new_row)?;
         }
         edits.apply(ctx.db, ctx.txn)?;
+        let edited: Vec<Change> =
+            changes.iter().map(|(row, new_row, _)| (Some(row.clone()), Some(new_row.clone()))).collect();
+        ctx.enforce_foreign_keys(&self.table, &edited)?;
         let written: Vec<Vec<Value>> = changes
             .into_iter()
             .map(|(_, mut new_row, from_row)| {
@@ -1012,6 +1050,8 @@ impl DeletePlan {
             edits.delete(ctx.db, row)?;
         }
         edits.apply(ctx.db, ctx.txn)?;
+        let changes: Vec<Change> = doomed.iter().map(|(row, _)| (Some(row.clone()), None)).collect();
+        ctx.enforce_foreign_keys(&self.table, &changes)?;
         let deleted: Vec<Vec<Value>> = doomed
             .into_iter()
             .map(|(mut row, using_row)| {

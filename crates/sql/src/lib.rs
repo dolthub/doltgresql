@@ -28,6 +28,7 @@ pub mod dolt;
 mod engine;
 pub mod error;
 pub mod expr;
+mod foreign;
 pub mod functions;
 pub mod json;
 pub mod numeric;

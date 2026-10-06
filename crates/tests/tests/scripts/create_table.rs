@@ -1237,3 +1237,124 @@ fn test_create_table_inherit() {
         },
     ]);
 }
+
+#[test]
+fn test_column_default_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "expressions that defaults cannot be",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t1 (a INT, b INT DEFAULT (a));",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use column reference in DEFAULT expression", position: 40, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t2 (a INT, b INT DEFAULT 'x'::text);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "b" is of type integer but default expression is of type text"#, hint: "You will need to rewrite or cast the expression.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t3 (a INT, b INT DEFAULT sum(1));",
+                    expected: Expected::Error(Diagnostic { code: "42803", message: "aggregate functions are not allowed in DEFAULT expressions", position: 39, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t4 (a INT, b INT DEFAULT row_number() OVER ());",
+                    expected: Expected::Error(Diagnostic { code: "42P20", message: "window functions are not allowed in DEFAULT expressions", position: 39, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t5 (a INT, b INT DEFAULT (SELECT 1));",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use subquery in DEFAULT expression", position: 39, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t6 (a INT, b TEXT DEFAULT 5);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t7 (a INT, b INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t7 ALTER COLUMN b SET DEFAULT (a);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use column reference in DEFAULT expression", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t7 ALTER COLUMN b SET DEFAULT t7.a;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use column reference in DEFAULT expression", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t7 ALTER COLUMN b SET DEFAULT 'x'::text;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "b" is of type integer but default expression is of type text"#, hint: "You will need to rewrite or cast the expression.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t7 ALTER COLUMN b SET DEFAULT 'x';",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "x""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t7 ALTER COLUMN b SET DEFAULT generate_series(1, 2);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "set-returning functions are not allowed in DEFAULT expressions", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t7 ADD COLUMN c INT DEFAULT a;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use column reference in DEFAULT expression", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t8 (a INT, b INT DEFAULT 'x');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "x""#, position: 39, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t9 (a INT DEFAULT 1 + 1, b INT DEFAULT now()::date - '2020-01-01'::date, c VARCHAR(2) DEFAULT 'abc');",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t9 (a) VALUES (1);",
+                    expected: Expected::Error(Diagnostic { code: "22001", message: "value too long for type character varying(2)", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t9 (a, c) VALUES (1, 'ab');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, c FROM t9;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("c", VARCHAR)],
+                        rows: &[
+                            &[T("1"), T("ab")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

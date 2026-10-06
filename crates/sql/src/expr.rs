@@ -188,6 +188,9 @@ pub struct Binder<'b, 'a> {
     pub clause: &'static str,
     /// The set-returning function calls of the select list, or None where they aren't allowed.
     pub set_functions: Option<Vec<Expr>>,
+    /// Whether the expression is part of a definition named by `clause`, such as a default, where subqueries and
+    /// aggregates aren't allowed.
+    pub definition: bool,
 }
 
 impl<'b, 'a> Binder<'b, 'a> {
@@ -207,6 +210,7 @@ impl<'b, 'a> Binder<'b, 'a> {
             named_windows: Vec::new(),
             clause: "this context",
             set_functions: None,
+            definition: false,
         }
     }
 
@@ -471,6 +475,15 @@ impl<'b, 'a> Binder<'b, 'a> {
                 _ => {}
             }
         }
+        if self.definition && self.scopes.iter().all(|s| s.columns.is_empty()) {
+            return Err(PgError {
+                position: position(column.location),
+                ..PgError::new(
+                    code::FEATURE_NOT_SUPPORTED,
+                    format!("cannot use column reference in {}", singular(self.clause)),
+                )
+            });
+        }
         if let Some(table) = table
             && !self.scopes.iter().any(|s| s.columns.iter().any(|c| c.table == table))
         {
@@ -566,6 +579,12 @@ impl<'b, 'a> Binder<'b, 'a> {
 impl<'b, 'a> Binder<'b, 'a> {
     /// aggregate_call binds a call of an aggregate in a grouped query, whose arguments are over the input rows.
     fn aggregate_call(&mut self, name: &str, call: &pg_query::protobuf::FuncCall) -> Result<Bound> {
+        if self.definition {
+            return Err(PgError {
+                position: position(call.location),
+                ..PgError::new(code::GROUPING_ERROR, format!("aggregate functions are not allowed in {}", self.clause))
+            });
+        }
         let Some(mut aggregates) = self.aggregates.take() else {
             return Err(PgError {
                 position: position(call.location),
@@ -773,6 +792,12 @@ impl<'b, 'a> Binder<'b, 'a> {
     /// sublink binds a subquery expression.
     fn sublink(&mut self, link: &pg_query::protobuf::SubLink) -> Result<Bound> {
         use pg_query::protobuf::SubLinkType as T;
+        if self.definition {
+            return Err(PgError {
+                position: position(link.location),
+                ..PgError::new(code::FEATURE_NOT_SUPPORTED, format!("cannot use subquery in {}", singular(self.clause)))
+            });
+        }
         let Some(NodeEnum::SelectStmt(select)) = link.subselect.as_deref().and_then(|n| n.node.as_ref()) else {
             return Err(PgError::internal("a subquery without a SELECT"));
         };
@@ -1365,7 +1390,7 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
 }
 
 /// implicitly_converts reports whether Postgres converts a value of one type to the other without being asked.
-fn implicitly_converts(from: u32, to: u32) -> bool {
+pub(crate) fn implicitly_converts(from: u32, to: u32) -> bool {
     if is_array_type(from) && is_array_type(to) {
         return implicitly_converts(element_type(from), element_type(to));
     }
@@ -1376,8 +1401,13 @@ fn implicitly_converts(from: u32, to: u32) -> bool {
         || implicit_datetime(from, to)
 }
 
+/// singular returns the singular of a plural clause name, as Postgres' errors name a definition.
+fn singular(clause: &str) -> &str {
+    clause.strip_suffix('s').unwrap_or(clause)
+}
+
 /// assignable reports whether a value of one type converts to the other on assignment.
-fn assignable(from: u32, to: u32) -> bool {
+pub(crate) fn assignable(from: u32, to: u32) -> bool {
     if is_array_type(from) && is_array_type(to) {
         return assignable(element_type(from), element_type(to));
     }

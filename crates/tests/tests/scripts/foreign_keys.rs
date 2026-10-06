@@ -654,7 +654,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO test_info VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `test_info_test_pk_fkey`, table: `test_info`, referenced table: `test`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "test_info" violates foreign key constraint "test_info_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "test"."#, schema: "public", table: "test_info", constraint: "test_info_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -730,7 +730,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "public", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -813,7 +813,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -896,7 +896,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -978,7 +978,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child.child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -1027,7 +1027,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -1076,7 +1076,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -1124,7 +1124,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child.child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -1162,7 +1162,7 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child.child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `fk1`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "fk1""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "fk1", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -1200,19 +1200,19 @@ fn test_foreign_keys() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child.child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "alter table child.child DROP constraint child_ibfk_1",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"Constraint "child_ibfk_1" does not exist"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"constraint "child_ibfk_1" of relation "child" does not exist"#, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO child.child VALUES (3, 'three', 3)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `child_test_pk_fkey`, table: `child`, referenced table: `parent`, key: `[3]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "child" violates foreign key constraint "child_test_pk_fkey""#, detail: r#"Key (test_pk)=(3) is not present in table "parent"."#, schema: "child", table: "child", constraint: "child_test_pk_fkey", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -2777,7 +2777,7 @@ Type: Foreign Key Constraint Violation
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO fkbug_child VALUES (2, 2);",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `fkbug_child_a_id_fk`, table: `fkbug_child`, referenced table: `fkbug_parent`, key: `[2]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "fkbug_child" violates foreign key constraint "fkbug_child_a_id_fk""#, detail: r#"Key (a_id)=(2) is not present in table "fkbug_parent"."#, schema: "public", table: "fkbug_child", constraint: "fkbug_child_a_id_fk", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2854,6 +2854,622 @@ Type: Foreign Key Constraint Violation
                         ],
                         tag: "SELECT 1",
                     },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_foreign_key_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "referential actions on single-column keys",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE p (id INT PRIMARY KEY, code TEXT UNIQUE, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c (cid INT PRIMARY KEY, pid INT REFERENCES p, pcode TEXT, FOREIGN KEY (pcode) REFERENCES p (code) ON DELETE CASCADE ON UPDATE CASCADE);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO p VALUES (1, 'a', 10), (2, 'b', 20), (3, 'c', 30);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c VALUES (1, 1, 'a'), (2, 2, 'b');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c VALUES (3, 5, NULL);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "c" violates foreign key constraint "c_pid_fkey""#, detail: r#"Key (pid)=(5) is not present in table "p"."#, schema: "public", table: "c", constraint: "c_pid_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c VALUES (3, NULL, 'z');",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "c" violates foreign key constraint "c_pcode_fkey""#, detail: r#"Key (pcode)=(z) is not present in table "p"."#, schema: "public", table: "c", constraint: "c_pcode_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c VALUES (3, NULL, NULL);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM p WHERE id = 1;",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "p" violates foreign key constraint "c_pid_fkey" on table "c""#, detail: r#"Key (id)=(1) is still referenced from table "c"."#, schema: "public", table: "c", constraint: "c_pid_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE p SET id = 10 WHERE id = 2;",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "p" violates foreign key constraint "c_pid_fkey" on table "c""#, detail: r#"Key (id)=(2) is still referenced from table "c"."#, schema: "public", table: "c", constraint: "c_pid_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM p WHERE id = 3;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE p SET code = 'bb' WHERE code = 'b';",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM c ORDER BY cid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("cid", INT4), Column("pid", INT4), Column("pcode", TEXT)],
+                        rows: &[
+                            &[T("1"), T("1"), T("a")],
+                            &[T("2"), T("2"), T("bb")],
+                            &[T("3"), Null, Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM p WHERE code = 'bb';",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "p" violates foreign key constraint "c_pid_fkey" on table "c""#, detail: r#"Key (id)=(2) is still referenced from table "c"."#, schema: "public", table: "c", constraint: "c_pid_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM c ORDER BY cid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("cid", INT4), Column("pid", INT4), Column("pcode", TEXT)],
+                        rows: &[
+                            &[T("1"), T("1"), T("a")],
+                            &[T("2"), T("2"), T("bb")],
+                            &[T("3"), Null, Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE d (x INT REFERENCES p (v));",
+                    expected: Expected::Error(Diagnostic { code: "42830", message: r#"there is no unique constraint matching given keys for referenced table "p""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE d (x TEXT REFERENCES p);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "d_x_fkey" cannot be implemented"#, detail: r#"Key columns "x" and "id" are of incompatible types: text and integer."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE d (x INT, y INT, FOREIGN KEY (x, y) REFERENCES p);",
+                    expected: Expected::Error(Diagnostic { code: "42830", message: "number of referencing and referenced columns for foreign key disagree", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE p;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop table p because other objects depend on it", detail: r#"constraint c_pid_fkey on table c depends on table p
+constraint c_pcode_fkey on table c depends on table p"#, hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "TRUNCATE p;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot truncate a table referenced in a foreign key constraint", detail: r#"Table "c" references "p"."#, hint: r#"Truncate table "c" at the same time, or use TRUNCATE ... CASCADE."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE p CASCADE;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to 2 other objects", detail: r#"drop cascades to constraint c_pid_fkey on table c
+drop cascades to constraint c_pcode_fkey on table c"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c VALUES (9, 99, 'q');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "self-referencing keys, NOT VALID, and SET DEFAULT",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE s (id INT PRIMARY KEY, parent INT REFERENCES s ON DELETE SET NULL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO s VALUES (1, NULL), (2, 1), (3, 2);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM s WHERE id = 1;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM s ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("parent", INT4)],
+                        rows: &[
+                            &[T("2"), Null],
+                            &[T("3"), T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO s VALUES (4, 9);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "s" violates foreign key constraint "s_parent_fkey""#, detail: r#"Key (parent)=(9) is not present in table "s"."#, schema: "public", table: "s", constraint: "s_parent_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE e (id INT PRIMARY KEY, pid INT DEFAULT 1);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO e VALUES (1, 1), (2, 7);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE e ADD CONSTRAINT e_fk FOREIGN KEY (pid) REFERENCES s;",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "e" violates foreign key constraint "e_fk""#, detail: r#"Key (pid)=(1) is not present in table "s"."#, schema: "public", table: "e", constraint: "e_fk", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE e ADD CONSTRAINT e_fk FOREIGN KEY (pid) REFERENCES s NOT VALID;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO e VALUES (3, 8);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "e" violates foreign key constraint "e_fk""#, detail: r#"Key (pid)=(8) is not present in table "s"."#, schema: "public", table: "e", constraint: "e_fk", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE e DROP CONSTRAINT e_fk;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO e VALUES (3, 8);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM e;",
+                    expected: Expected::Tag("DELETE 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO s VALUES (1, NULL);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE e ADD FOREIGN KEY (pid) REFERENCES s ON DELETE SET DEFAULT;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO e VALUES (1, 2), (2, 3);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM s WHERE id = 2;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM e ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("pid", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), T("3")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM s ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("parent", INT4)],
+                        rows: &[
+                            &[T("1"), Null],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE s DROP CONSTRAINT s_pkey;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop constraint s_pkey on table s because other objects depend on it", detail: r#"constraint s_parent_fkey on table s depends on index s_pkey
+constraint e_pid_fkey on table e depends on index s_pkey"#, hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE s DROP CONSTRAINT s_pkey CASCADE;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to 2 other objects", detail: r#"drop cascades to constraint s_parent_fkey on table s
+drop cascades to constraint e_pid_fkey on table e"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO e VALUES (9, 99);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "MATCH FULL, RESTRICT, and renames",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE m (a INT, b INT, UNIQUE (a, b));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE mc (a INT, b INT, FOREIGN KEY (a, b) REFERENCES m (a, b) MATCH FULL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mc VALUES (1, NULL);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "mc" violates foreign key constraint "mc_a_b_fkey""#, detail: "MATCH FULL does not allow mixing of null and nonnull key values.", schema: "public", table: "mc", constraint: "mc_a_b_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mc VALUES (NULL, NULL);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE r (id INT PRIMARY KEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE rc (rid INT REFERENCES r ON DELETE RESTRICT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO r VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO rc VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM r;",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "r" violates foreign key constraint "rc_rid_fkey" on table "rc""#, detail: r#"Key (id)=(1) is still referenced from table "rc"."#, schema: "public", table: "rc", constraint: "rc_rid_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE rc RENAME COLUMN rid TO r_id;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE r RENAME TO r2;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM r2;",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "r2" violates foreign key constraint "rc_rid_fkey" on table "rc""#, detail: r#"Key (id)=(1) is still referenced from table "rc"."#, schema: "public", table: "rc", constraint: "rc_rid_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO rc VALUES (5);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "rc" violates foreign key constraint "rc_rid_fkey""#, detail: r#"Key (r_id)=(5) is not present in table "r2"."#, schema: "public", table: "rc", constraint: "rc_rid_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE rc RENAME CONSTRAINT rc_rid_fkey TO rc_fk;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO rc VALUES (5);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "rc" violates foreign key constraint "rc_fk""#, detail: r#"Key (r_id)=(5) is not present in table "r2"."#, schema: "public", table: "rc", constraint: "rc_fk", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE r2;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop table r2 because other objects depend on it", detail: "constraint rc_fk on table rc depends on table r2", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE rc, r2;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "dropping indexes that foreign keys use",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE q (id INT PRIMARY KEY, u INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE UNIQUE INDEX q_u ON q (u);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE qc (a INT, b INT REFERENCES q (u));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX qc_b ON qc (b);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP INDEX qc_b;",
+                    expected: Expected::Tag("DROP INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP INDEX q_u;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop index q_u because other objects depend on it", detail: "constraint qc_b_fkey on table qc depends on index q_u", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP INDEX q_u CASCADE;",
+                    expected: Expected::Tag("DROP INDEX"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to constraint qc_b_fkey on table qc", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO qc VALUES (1, 77);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "keys of types that convert to each other",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tp (i2 INT2 PRIMARY KEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tc (i4 INT4 REFERENCES tp);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tp VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tc VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tc VALUES (65536);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "tc" violates foreign key constraint "tc_i4_fkey""#, detail: r#"Key (i4)=(65536) is not present in table "tp"."#, schema: "public", table: "tc", constraint: "tc_i4_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM tp;",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "tp" violates foreign key constraint "tc_i4_fkey" on table "tc""#, detail: r#"Key (i2)=(1) is still referenced from table "tc"."#, schema: "public", table: "tc", constraint: "tc_i4_fkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "dropping columns that foreign keys use",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE p (id INT PRIMARY KEY, u INT UNIQUE, a INT, b INT, UNIQUE (a, b));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c (id INT PRIMARY KEY, pid INT REFERENCES p (id), uid INT REFERENCES p (u), x INT, y INT, FOREIGN KEY (x, y) REFERENCES p (a, b));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE p DROP COLUMN a;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop column a of table p because other objects depend on it", detail: "constraint c_x_y_fkey on table c depends on column a of table p", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE p DROP COLUMN id;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop column id of table p because other objects depend on it", detail: "constraint c_pid_fkey on table c depends on column id of table p", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE p DROP COLUMN u CASCADE;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to constraint c_uid_fkey on table c", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE c DROP COLUMN x;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c VALUES (2, NULL, 5, 7);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE s (id INT PRIMARY KEY, parent INT REFERENCES s (id));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE s DROP COLUMN id;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop column id of table s because other objects depend on it", detail: "constraint s_parent_fkey on table s depends on column id of table s", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE s DROP COLUMN parent;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE s DROP COLUMN id;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO s VALUES (1);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "INSERT has more expressions than target columns", position: 23, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM s;",
+                    expected: Expected::Tag("SELECT 0"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "dropping a column that several foreign keys use",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE p (id INT PRIMARY KEY, u INT UNIQUE);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c (id INT PRIMARY KEY, uid INT REFERENCES p (u));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c2 (id INT PRIMARY KEY, uid INT CONSTRAINT c2_fk REFERENCES p (u));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE p DROP COLUMN u;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop column u of table p because other objects depend on it", detail: r#"constraint c_uid_fkey on table c depends on column u of table p
+constraint c2_fk on table c2 depends on column u of table p"#, hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE p DROP COLUMN u CASCADE;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to 2 other objects", detail: r#"drop cascades to constraint c_uid_fkey on table c
+drop cascades to constraint c2_fk on table c2"#, ..N }],
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "several foreign keys that a row violates",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE p (a INT UNIQUE, b INT UNIQUE);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c (a INT, b INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE c ADD CONSTRAINT fk_b FOREIGN KEY (b) REFERENCES p (b);",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE c ADD CONSTRAINT fk_a FOREIGN KEY (a) REFERENCES p (a);",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c VALUES (1, 1);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "c" violates foreign key constraint "fk_b""#, detail: r#"Key (b)=(1) is not present in table "p"."#, schema: "public", table: "c", constraint: "fk_b", ..E }),
+                    flow: Flow::Query,
                     ..A
                 },
             ],

@@ -874,7 +874,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                         targets.push((Expr::Column(i), sc.ty, sc.name.clone(), c.location));
                     }
                 }
-                if table.is_none() && scope.columns.is_empty() {
+                if table.is_none() && select.from_clause.is_empty() {
                     return Err(PgError {
                         position: position(c.location),
                         ..PgError::new(code::SYNTAX_ERROR, "SELECT * with no tables specified is not valid")

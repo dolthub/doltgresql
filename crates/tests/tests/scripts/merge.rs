@@ -234,7 +234,7 @@ fn test_merge() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO t2 VALUES (100, 200)",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: "cannot add or update a child row - Foreign key violation on fk: `t2_b_fkey`, table: `t2`, referenced table: `t1`, key: `[200]`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "t2" violates foreign key constraint "t2_b_fkey""#, detail: r#"Key (b)=(200) is not present in table "t1"."#, schema: "public", table: "t2", constraint: "t2_b_fkey", ..E }),
                     ..A
                 },
             ],

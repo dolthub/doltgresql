@@ -24,10 +24,11 @@ use pg_query::{Node, NodeEnum};
 use store::Hash;
 
 use crate::Outcome;
+use crate::cast::type_display;
 use crate::catalog::ColumnType;
 use crate::catalog::table::{Check, ColumnDef, IndexDef, TableDef, schema_message};
 use crate::error::{PgError, Result, code};
-use crate::expr::{node_name, position, resolve_type_name};
+use crate::expr::{Binder, Scope, arg_location, assign, assignable, node_name, position, resolve_type_name};
 use crate::plan::Planner;
 use crate::query::Ctx;
 
@@ -65,6 +66,10 @@ pub(crate) struct TableParts {
     pub uniques: Vec<(String, Vec<usize>)>,
     /// Each serial or identity column with its sequence's data type and options.
     pub generated: Vec<(usize, &'static str, Vec<Node>)>,
+    /// Each foreign key with its referencing columns.
+    pub foreign: Vec<(Vec<usize>, pg_query::protobuf::Constraint)>,
+    /// Each column default's column and expression.
+    pub defaults: Vec<(usize, Node)>,
 }
 
 impl TableParts {
@@ -109,12 +114,14 @@ impl TableParts {
                 ConstrType::ConstrDefault => {
                     let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty DEFAULT"))?;
                     column.default = expression_text(expr)?;
+                    self.defaults.push((index, expr.clone()));
                 }
                 ConstrType::ConstrCheck => {
                     let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty CHECK"))?;
                     self.checks.push((constraint.conname.clone(), expr.clone()));
                 }
                 ConstrType::ConstrUnique => self.uniques.push((constraint.conname.clone(), vec![index])),
+                ConstrType::ConstrForeign => self.foreign.push((vec![index], (**constraint).clone())),
                 ConstrType::ConstrIdentity => {
                     let data_type = match ty.oid {
                         crate::oid::INT2 => "int2",
@@ -178,6 +185,19 @@ impl TableParts {
                 let keys = self.key_columns(constraint)?;
                 self.uniques.push((constraint.conname.clone(), keys));
             }
+            ConstrType::ConstrForeign => {
+                let mut keys = Vec::new();
+                for key in constraint.fk_attrs.iter().filter_map(node_name) {
+                    keys.push(self.columns.iter().position(|c| c.name == key).ok_or_else(|| PgError {
+                        position: position(constraint.location),
+                        ..PgError::new(
+                            code::UNDEFINED_COLUMN,
+                            format!("column \"{key}\" referenced in foreign key constraint does not exist"),
+                        )
+                    })?);
+                }
+                self.foreign.push((keys, constraint.clone()));
+            }
             other => return Err(PgError::unsupported(format!("the table constraint {other:?}"))),
         }
         Ok(())
@@ -227,6 +247,30 @@ fn object_names(names: &[Node]) -> (String, String) {
 }
 
 impl Ctx<'_> {
+    /// check_default fails as Postgres does for an expression that a column's default can't be.
+    pub(crate) fn check_default(&mut self, expr: &Node, column: &ColumnDef) -> Result<()> {
+        let mut binder = Binder::new(self, Scope::default());
+        binder.clause = "DEFAULT expressions";
+        binder.definition = true;
+        let bound = binder.bind(expr)?;
+        if !assignable(bound.1.oid, column.ty.oid) {
+            return Err(PgError {
+                hint: Some("You will need to rewrite or cast the expression.".into()),
+                ..PgError::new(
+                    code::DATATYPE_MISMATCH,
+                    format!(
+                        "column \"{}\" is of type {} but default expression is of type {}",
+                        column.name,
+                        type_display(column.ty.oid),
+                        type_display(bound.1.oid)
+                    ),
+                )
+            });
+        }
+        let ty = ColumnType { modifier: -1, ..column.ty };
+        assign(bound, ty, &column.name, arg_location(expr)).map(|_| ())
+    }
+
     /// create_table runs CREATE TABLE.
     pub fn create_table(&mut self, create: &CreateStmt) -> Result<Outcome> {
         let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
@@ -248,7 +292,11 @@ impl Ctx<'_> {
                 _ => return Err(PgError::unsupported("this table element")),
             }
         }
-        let TableParts { mut columns, primary_key, checks: pending_checks, uniques, generated } = parts;
+        let TableParts { mut columns, primary_key, checks: pending_checks, uniques, generated, foreign, defaults } =
+            parts;
+        for (column, expr) in &defaults {
+            self.check_default(expr, &columns[*column])?;
+        }
         for &i in &primary_key {
             columns[i].primary_key = true;
             columns[i].nullable = false;
@@ -293,6 +341,11 @@ impl Ctx<'_> {
             indexes.push(new_index(index_name, keys, true));
         }
         self.write_new_table(&schema, name, columns, primary_key, checks, indexes)?;
+        for (keys, constraint) in foreign {
+            let table =
+                self.txn.table(self.db, &schema, name)?.ok_or_else(|| PgError::internal("a new table vanished"))?;
+            self.add_foreign_key(&table, &keys, &constraint)?;
+        }
         Ok(Outcome::command("CREATE TABLE"))
     }
 
@@ -464,7 +517,7 @@ impl Ctx<'_> {
             }
         }
         for (schema, name) in &doomed {
-            self.drop_dependents(schema, name, "table", drop.behavior)?;
+            self.drop_table_foreign_keys(schema, name, drop.behavior, &doomed)?;
         }
         for (schema, name) in doomed {
             self.txn.root.put_table(self.db, &schema, &name, None)?;
@@ -539,6 +592,7 @@ impl Ctx<'_> {
             let Some(NodeEnum::RangeVar(relation)) = relation.node.as_ref() else { continue };
             tables.push(self.resolve_table(relation)?);
         }
+        self.check_truncate(&tables)?;
         for table in tables {
             let mut stored = table.table.clone();
             stored.primary_index = empty_rows();
@@ -563,7 +617,7 @@ impl Ctx<'_> {
             let Some(name) = key.strip_prefix(prefix.as_slice()) else { continue };
             let name = String::from_utf8_lossy(name).into_owned();
             let table = TableDef::load(self.db, schema, &name, address)?;
-            names.extend(table.indexes.iter().map(|i| i.name.clone()));
+            names.extend(table.indexes.iter().filter(|i| !i.system).map(|i| i.name.clone()));
             if !table.key_columns.is_empty() {
                 names.push(format!("{name}_pkey"));
             }
@@ -594,6 +648,7 @@ impl Ctx<'_> {
                 names.push(format!("{name}_pkey"));
             }
         }
+        names.extend(self.foreign_keys()?.into_iter().filter(|fk| fk.child_schema == schema).map(|fk| fk.name));
         Ok(names)
     }
 
@@ -649,7 +704,13 @@ impl Ctx<'_> {
             return Err(PgError::new(code::DUPLICATE_TABLE, message));
         }
         let index = IndexDef { descending, nulls_last, op_classes, ..new_index(name, columns, stmt.unique) };
-        let mut table = table;
+        self.build_index(table, index)?;
+        Ok(Outcome::command("CREATE INDEX"))
+    }
+
+    /// build_index adds an index to a table and fills it from the table's rows, failing for duplicates in a unique
+    /// index as Postgres does.
+    pub(crate) fn build_index(&mut self, mut table: TableDef, index: IndexDef) -> Result<()> {
         table.indexes.push(index.clone());
         let mut keys = Vec::new();
         for row in crate::query::scan(self.db, &table)? {
@@ -692,7 +753,7 @@ impl Ctx<'_> {
         stored.schema = self.db.write_value(table.schema_message()?)?;
         let address = stored.write(self.db)?;
         self.txn.root.put_table(self.db, &table.schema, &table.name, Some(address))?;
-        Ok(Outcome::command("CREATE INDEX"))
+        Ok(())
     }
 
     /// drop_indexes runs DROP INDEX.
@@ -708,7 +769,7 @@ impl Ctx<'_> {
                 for (key, address) in self.txn.root.tables(self.db)? {
                     let Some(table) = key.strip_prefix(prefix.as_slice()) else { continue };
                     let table = TableDef::load(self.db, &s, &String::from_utf8_lossy(table), address)?;
-                    if table.indexes.iter().any(|i| i.name == name) {
+                    if table.indexes.iter().any(|i| i.name == name && !i.system) {
                         found = Some(table);
                         break 'search;
                     }
@@ -726,18 +787,20 @@ impl Ctx<'_> {
                 }
             }
         }
+        let cascade = DropBehavior::try_from(drop.behavior) == Ok(DropBehavior::DropCascade);
         for (table, name) in doomed {
-            let table = match self.txn.table(self.db, &table.schema, &table.name)? {
+            let mut table = match self.txn.table(self.db, &table.schema, &table.name)? {
                 Some(table) => table,
                 None => continue,
             };
-            let mut table = table;
+            self.drop_referencing_foreign_keys(&mut table, &name, &format!("index {name}"), cascade)?;
             table.indexes.retain(|i| i.name != name);
             let mut stored = table.table.clone();
             stored.put_index(self.db, &name, None)?;
             stored.schema = self.db.write_value(table.schema_message()?)?;
             let address = stored.write(self.db)?;
             self.txn.root.put_table(self.db, &table.schema, &table.name, Some(address))?;
+            self.replace_child_index(&table.schema, &table.name, &name)?;
         }
         Ok(Outcome::command("DROP INDEX"))
     }
@@ -756,6 +819,7 @@ pub(crate) fn new_index(name: String, columns: Vec<usize>, unique: bool) -> Inde
         comment: String::new(),
         predicate: String::new(),
         root: Hash::of(&empty_rows()),
+        system: false,
     }
 }
 

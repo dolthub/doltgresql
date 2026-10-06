@@ -69,6 +69,8 @@ pub struct IndexDef {
     pub predicate: String,
     /// The address of the index's root node.
     pub root: Hash,
+    /// Whether Dolt made the index itself, as it does for a foreign key's columns.
+    pub system: bool,
 }
 
 /// TableDef is a table: its columns, which of them form the primary key, and its storage.
@@ -169,6 +171,7 @@ impl TableDef {
                         .collect(),
                     comment: lossy(index.comment),
                     predicate: lossy(index.predicate),
+                    system: index.system_defined,
                     name,
                     root,
                 })
@@ -381,15 +384,15 @@ pub fn schema_message(
                 index_columns: index.columns.iter().map(|&i| i as u16).collect(),
                 key_columns: keys,
                 prefix_lengths: Vec::new(),
-                descending: index.descending.clone(),
-                nulls_last: index.nulls_last.clone(),
+                descending: if index.system { Vec::new() } else { index.descending.clone() },
+                nulls_last: if index.system { Vec::new() } else { index.nulls_last.clone() },
                 op_classes: if index.op_classes.iter().all(String::is_empty) {
                     Vec::new()
                 } else {
                     index.op_classes.iter().map(String::as_bytes).collect()
                 },
                 unique: index.unique,
-                system_defined: false,
+                system_defined: index.system,
                 spatial: false,
                 fulltext: None,
                 vector_distance: None,

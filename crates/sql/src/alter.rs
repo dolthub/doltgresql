@@ -16,7 +16,9 @@
 
 use doltdb::table::{Table, empty_rows};
 use doltdb::tags::{EXTENDED_KIND, auto_generate_tag};
-use pg_query::protobuf::{AlterTableCmd, AlterTableStmt, AlterTableType, ConstrType, ObjectType, RenameStmt};
+use pg_query::protobuf::{
+    AlterTableCmd, AlterTableStmt, AlterTableType, ConstrType, DropBehavior, ObjectType, RenameStmt,
+};
 use pg_query::{Node, NodeEnum};
 use store::Hash;
 
@@ -29,12 +31,20 @@ use crate::expr::{Binder, Expr, Scope, assign, coerce, resolve_type_name};
 use crate::query::{Ctx, scan};
 use crate::types::Value;
 
-/// Alteration is a table being altered: its definition, its rows once a change needs them, and whether its rows
-/// must be rebuilt.
-struct Alteration {
+/// Alteration is a table being altered: its definition, its rows once a change needs them, whether its rows must be
+/// rebuilt, and the foreign keys to add once it is written.
+pub(crate) struct Alteration {
     table: TableDef,
     rows: Option<Vec<Vec<Value>>>,
     rebuild: bool,
+    foreign: Vec<pg_query::protobuf::Constraint>,
+}
+
+impl Alteration {
+    /// new starts altering a table.
+    pub(crate) fn new(table: TableDef) -> Alteration {
+        Alteration { table, rows: None, rebuild: false, foreign: Vec::new() }
+    }
 }
 
 /// table_objects returns the schema and table that an error about a table names.
@@ -99,12 +109,30 @@ impl Ctx<'_> {
             }
             Err(err) => return Err(PgError { position: None, ..err }),
         };
-        let mut alteration = Alteration { table, rows: None, rebuild: false };
+        let mut alteration = Alteration::new(table);
         for cmd in &stmt.cmds {
             let Some(NodeEnum::AlterTableCmd(cmd)) = cmd.node.as_ref() else { continue };
             self.alter_command(&mut alteration, cmd)?;
         }
+        let foreign = std::mem::take(&mut alteration.foreign);
+        let (schema, name) = (alteration.table.schema.clone(), alteration.table.name.clone());
         self.finish_alteration(alteration)?;
+        for constraint in foreign {
+            let table = self
+                .txn
+                .table(self.db, &schema, &name)?
+                .ok_or_else(|| PgError::internal("an altered table vanished"))?;
+            let mut keys = Vec::new();
+            for key in constraint.fk_attrs.iter().filter_map(crate::expr::node_name) {
+                keys.push(table.columns.iter().position(|c| c.name == key).ok_or_else(|| {
+                    PgError::new(
+                        code::UNDEFINED_COLUMN,
+                        format!("column \"{key}\" referenced in foreign key constraint does not exist"),
+                    )
+                })?);
+            }
+            self.add_foreign_key(&table, &keys, &constraint)?;
+        }
         Ok(Outcome::command("ALTER TABLE"))
     }
 
@@ -125,7 +153,11 @@ impl Ctx<'_> {
             AlterTableType::AtColumnDefault => {
                 let i = self.column_index(&alteration.table, &cmd.name)?;
                 alteration.table.columns[i].default = match cmd.def.as_deref() {
-                    Some(expr) => expression_text(expr)?,
+                    Some(expr) => {
+                        let column = alteration.table.columns[i].clone();
+                        self.check_default(expr, &column).map_err(|err| PgError { position: None, ..err })?;
+                        expression_text(expr)?
+                    }
                     None => String::new(),
                 };
                 Ok(())
@@ -163,7 +195,10 @@ impl Ctx<'_> {
                 };
                 self.add_constraint(alteration, constraint)
             }
-            AlterTableType::AtDropConstraint => self.drop_constraint(alteration, &cmd.name, cmd.missing_ok),
+            AlterTableType::AtDropConstraint => {
+                let cascade = DropBehavior::try_from(cmd.behavior) == Ok(DropBehavior::DropCascade);
+                self.drop_constraint(alteration, &cmd.name, cmd.missing_ok, cascade)
+            }
             AlterTableType::AtChangeOwner
             | AlterTableType::AtEnableTrig
             | AlterTableType::AtDisableTrig
@@ -203,6 +238,9 @@ impl Ctx<'_> {
         parts.add_column(&name, def)?;
         let index = parts.columns.len() - 1;
         let mut column = parts.columns.pop().expect("a column was just added");
+        for (_, expr) in &parts.defaults {
+            self.check_default(expr, &column).map_err(|err| PgError { position: None, ..err })?;
+        }
         let mut tags = self.txn.all_tags(self.db)?;
         tags.extend(alteration.table.columns.iter().map(|c| c.tag));
         let kinds = vec![EXTENDED_KIND; alteration.table.columns.len()];
@@ -278,6 +316,8 @@ impl Ctx<'_> {
             }
             return Err(column_missing(&alteration.table, &cmd.name));
         };
+        let cascade = DropBehavior::try_from(cmd.behavior) == Ok(DropBehavior::DropCascade);
+        self.drop_column_foreign_keys(&mut alteration.table, &cmd.name, cascade)?;
         self.rows(alteration)?;
         let table = &mut alteration.table;
         if table.key_columns.contains(&i) {
@@ -372,6 +412,10 @@ impl Ctx<'_> {
                 for (name, keys) in parts.uniques {
                     self.add_unique(alteration, &name, keys)?;
                 }
+                Ok(())
+            }
+            ConstrType::ConstrForeign => {
+                alteration.foreign.push(constraint.clone());
                 Ok(())
             }
             other => Err(PgError::unsupported(format!("ADD CONSTRAINT {other:?}"))),
@@ -484,13 +528,32 @@ impl Ctx<'_> {
         Ok(())
     }
 
-    /// drop_constraint runs DROP CONSTRAINT on a check, unique, or primary key constraint.
-    fn drop_constraint(&mut self, alteration: &mut Alteration, name: &str, missing_ok: bool) -> Result<()> {
+    /// drop_constraint runs DROP CONSTRAINT on a check, unique, primary key, or foreign key constraint.
+    fn drop_constraint(
+        &mut self,
+        alteration: &mut Alteration,
+        name: &str,
+        missing_ok: bool,
+        cascade: bool,
+    ) -> Result<()> {
+        if self.drop_foreign_key(&mut alteration.table, name)? {
+            return Ok(());
+        }
         let table = &mut alteration.table;
         if let Some(i) = table.checks.iter().position(|c| c.name == name) {
             table.checks.remove(i);
             return Ok(());
         }
+        let referenced = if table.key_columns.is_empty() || name != format!("{}_pkey", table.name) {
+            table.indexes.iter().find(|ix| ix.unique && ix.name == name).map(|ix| ix.name.clone())
+        } else {
+            Some(String::new())
+        };
+        if let Some(index) = referenced {
+            let object = format!("constraint {name} on table {}", alteration.table.name);
+            self.drop_referencing_foreign_keys(&mut alteration.table, &index, &object, cascade)?;
+        }
+        let table = &mut alteration.table;
         if let Some(i) = table.indexes.iter().position(|ix| ix.unique && ix.name == name) {
             table.indexes.remove(i);
             alteration.rebuild = true;
@@ -516,7 +579,7 @@ impl Ctx<'_> {
     }
 
     /// finish_alteration writes the altered table: its schema alone, or a rebuilt table with its rows.
-    fn finish_alteration(&mut self, mut alteration: Alteration) -> Result<()> {
+    pub(crate) fn finish_alteration(&mut self, mut alteration: Alteration) -> Result<()> {
         let (schema, name) = (alteration.table.schema.clone(), alteration.table.name.clone());
         let message = alteration.table.schema_message()?;
         if !alteration.rebuild {
@@ -570,7 +633,7 @@ impl Ctx<'_> {
             }
             Err(err) => return Err(err),
         };
-        let mut alteration = Alteration { table, rows: None, rebuild: false };
+        let mut alteration = Alteration::new(table);
         match kind {
             ObjectType::ObjectTable => {
                 let (schema, old) = (alteration.table.schema.clone(), alteration.table.name.clone());
@@ -580,10 +643,12 @@ impl Ctx<'_> {
                         format!("relation \"{}\" already exists", stmt.newname),
                     ));
                 }
+                let fks = self.foreign_keys()?;
                 let address = self.txn.root.table(self.db, &schema, &old)?;
                 self.txn.root.put_table(self.db, &schema, &old, None)?;
                 self.txn.root.put_table(self.db, &schema, &stmt.newname, address)?;
                 self.move_owned_sequences(&schema, &old, &stmt.newname, None)?;
+                self.rename_in_foreign_keys(fks, &schema, &old, &stmt.newname)?;
                 return Ok(Outcome::command(tag));
             }
             ObjectType::ObjectColumn => {
@@ -600,8 +665,15 @@ impl Ctx<'_> {
                 }
                 let (schema, name) = (alteration.table.schema.clone(), alteration.table.name.clone());
                 self.move_owned_sequences(&schema, &name, &name, Some((&stmt.subname, &stmt.newname)))?;
+                let fks = self.foreign_keys()?;
+                self.finish_alteration(alteration)?;
+                self.rename_in_foreign_keys(fks, &schema, &name, &name)?;
+                return Ok(Outcome::command(tag));
             }
             ObjectType::ObjectTabconstraint => {
+                if self.rename_foreign_key(&alteration.table, &stmt.subname, &stmt.newname)? {
+                    return Ok(Outcome::command(tag));
+                }
                 let table = &mut alteration.table;
                 if let Some(check) = table.checks.iter_mut().find(|c| c.name == stmt.subname) {
                     check.name = stmt.newname.clone();
@@ -640,7 +712,7 @@ impl Ctx<'_> {
                 table.indexes[index].name = new.to_string();
                 table.table.put_index(self.db, &relation.relname, None)?;
                 table.table.put_index(self.db, new, Some(root))?;
-                return self.finish_alteration(Alteration { table, rows: None, rebuild: false });
+                return self.finish_alteration(Alteration::new(table));
             }
         }
         if missing_ok {

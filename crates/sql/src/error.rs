@@ -86,6 +86,8 @@ pub mod code {
     pub const INVALID_SQL_STATEMENT_NAME: &str = "26000";
     pub const INVALID_CURSOR_NAME: &str = "34000";
     pub const DUPLICATE_PREPARED_STATEMENT: &str = "42P05";
+    pub const FOREIGN_KEY_VIOLATION: &str = "23503";
+    pub const INVALID_FOREIGN_KEY: &str = "42830";
 }
 
 /// PgError is an error to report to the client.
