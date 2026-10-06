@@ -42,7 +42,8 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
             field.push(0);
             field
         }
-        (Value::Text(s), encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE) => inline(s.as_bytes()),
+        (Value::Text(s) | Value::Json(s), encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE) => inline(s.as_bytes()),
+        (Value::Jsonb(json), encoding::JSON_ADAPTIVE) => inline(json.compact().as_bytes()),
         (value, encoding::EXTENDED) => serialize_value(value, ty)?,
         (value, encoding::EXTENDED_ADAPTIVE) => inline(&serialize_value(value, ty)?),
         (value, field_encoding) => {
@@ -72,6 +73,13 @@ pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty:
         encoding::STRING => {
             let bytes = field.strip_suffix(&[0]).ok_or_else(corrupt)?;
             Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?)
+        }
+        encoding::JSON_ADAPTIVE if ty.oid == crate::oid::JSONB => {
+            let text = std::str::from_utf8(field).map_err(|_| corrupt())?;
+            Value::Jsonb(Box::new(crate::json::parse(text, true)?))
+        }
+        encoding::JSON_ADAPTIVE if ty.oid == crate::oid::JSON => {
+            Value::Json(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?)
         }
         encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE => {
             Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?)
@@ -134,6 +142,12 @@ pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
             let element = ColumnType { oid: a.element, modifier: ty.modifier };
             crate::array::serialize(a, &|v| serialize_value(v, element))?
         }
+        Value::Json(text) => text.as_bytes().to_vec(),
+        Value::Jsonb(json) => {
+            let mut out = Vec::new();
+            serialize_json(json, &mut out)?;
+            out
+        }
         other => return Err(PgError::unsupported(format!("storing {other:?}"))),
     })
 }
@@ -150,6 +164,11 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
         return Ok(Value::Array(Box::new(array)));
     }
     Ok(match ty.oid {
+        oid::JSON => Value::Json(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?),
+        oid::JSONB => {
+            let mut position = 0;
+            Value::Jsonb(Box::new(deserialize_json(field, &mut position).ok_or_else(corrupt)?))
+        }
         oid::BOOL => Value::Bool(field.first().is_some_and(|&b| b != 0)),
         oid::INT2 => Value::Int2((u16::from_be_bytes(field.try_into().map_err(|_| corrupt())?) ^ (1 << 15)) as i16),
         oid::INT4 => Value::Int4(read_offset_i32(field).ok_or_else(corrupt)?),
@@ -203,6 +222,143 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
             Value::Interval(dt::Interval { months, days, micros: nanos / 1000 })
         }
         other => return Err(PgError::unsupported(format!("reading stored values of type {other}"))),
+    })
+}
+
+/// write_uvarint writes an unsigned varint.
+fn write_uvarint(out: &mut Vec<u8>, mut value: u64) {
+    while value >= 0x80 {
+        out.push(value as u8 | 0x80);
+        value >>= 7;
+    }
+    out.push(value as u8);
+}
+
+/// read_uvarint reads an unsigned varint.
+fn read_uvarint(data: &[u8], position: &mut usize) -> Option<u64> {
+    let (mut value, mut shift) = (0u64, 0);
+    loop {
+        let byte = *data.get(*position)?;
+        *position += 1;
+        value |= ((byte & 0x7f) as u64) << shift;
+        if byte < 0x80 {
+            return Some(value);
+        }
+        shift += 7;
+    }
+}
+
+/// serialize_json writes a jsonb value as Doltgres' JsonValueSerialize does, with strings keeping the escapes of
+/// backslashes, newlines, tabs, and carriage returns as Go's JSON documents do.
+fn serialize_json(json: &crate::json::Json, out: &mut Vec<u8>) -> Result<()> {
+    use crate::json::Json;
+    let string = |out: &mut Vec<u8>, s: &str| {
+        write_uvarint(out, s.len() as u64);
+        out.extend_from_slice(s.as_bytes());
+    };
+    match json {
+        Json::Object(items) => {
+            out.push(0);
+            write_uvarint(out, items.len() as u64);
+            for (key, value) in items {
+                string(out, key);
+                serialize_json(value, out)?;
+            }
+        }
+        Json::Array(values) => {
+            out.push(1);
+            write_uvarint(out, values.len() as u64);
+            for value in values {
+                serialize_json(value, out)?;
+            }
+        }
+        Json::String(s) => {
+            out.push(2);
+            let escaped = s.replace('\\', "\\\\").replace('\n', "\\n").replace('\t', "\\t").replace('\r', "\\r");
+            string(out, &escaped);
+        }
+        Json::Number(n) => {
+            out.push(3);
+            let bytes = numeric_gob(n)?;
+            write_uvarint(out, bytes.len() as u64);
+            out.extend_from_slice(&bytes);
+        }
+        Json::Bool(b) => {
+            out.push(4);
+            out.push(*b as u8);
+        }
+        Json::Null => out.push(5),
+    }
+    Ok(())
+}
+
+/// unescape_go reverses the escapes that Go's JSON documents keep in strings, reading left to right.
+fn unescape_go(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('\\') => out.push('\\'),
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('r') => out.push('\r'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
+/// deserialize_json reads what serialize_json writes.
+fn deserialize_json(data: &[u8], position: &mut usize) -> Option<crate::json::Json> {
+    use crate::json::Json;
+    let string = |position: &mut usize| -> Option<String> {
+        let len = read_uvarint(data, position)? as usize;
+        let s = String::from_utf8(data.get(*position..*position + len)?.to_vec()).ok()?;
+        *position += len;
+        Some(s)
+    };
+    let kind = *data.get(*position)?;
+    *position += 1;
+    Some(match kind {
+        0 => {
+            let count = read_uvarint(data, position)?;
+            let mut items = Vec::new();
+            for _ in 0..count {
+                let key = string(position)?;
+                items.push((key, deserialize_json(data, position)?));
+            }
+            crate::json::normalize(Json::Object(items))
+        }
+        1 => {
+            let count = read_uvarint(data, position)?;
+            let mut values = Vec::new();
+            for _ in 0..count {
+                values.push(deserialize_json(data, position)?);
+            }
+            Json::Array(values)
+        }
+        2 => Json::String(unescape_go(&string(position)?)),
+        3 => {
+            let len = read_uvarint(data, position)? as usize;
+            let n = numeric_from_gob(data.get(*position..*position + len)?)?;
+            *position += len;
+            Json::Number(n)
+        }
+        4 => {
+            let b = *data.get(*position)? != 0;
+            *position += 1;
+            Json::Bool(b)
+        }
+        5 => Json::Null,
+        _ => return None,
     })
 }
 

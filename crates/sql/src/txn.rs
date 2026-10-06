@@ -83,7 +83,8 @@ impl Txn {
     /// begin starts a transaction on the branch, reading its working set.
     pub fn begin(handle: DbHandle, sequences: SequenceTracker, database: &str, branch: &str) -> Result<Txn> {
         let mut db = handle.lock().map_err(|_| PgError::internal("a database lock was poisoned"))?;
-        let not_found = || PgError::new(code::INVALID_CATALOG_NAME, format!("database not found: {database}/{branch}"));
+        let not_found =
+            || PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{database}/{branch}\" does not exist"));
         let head = db.head(&branch_ref(branch))?.ok_or_else(not_found)?;
         let commit = read(&db, &head)?;
         let head_root = Commit::new(Message(&commit))?.root()?;

@@ -15,8 +15,10 @@
 //! Built-in functions, and choosing among a function's overloads as Postgres does.
 
 pub mod aggregate;
+pub use json::OUT_COLUMNS as JSON_OUT_COLUMNS;
 mod array;
 pub mod datetime;
+pub mod json;
 mod math;
 mod pattern;
 mod series;
@@ -76,6 +78,7 @@ fn registry() -> &'static Registry {
             datetime::FUNCTIONS,
             array::FUNCTIONS,
             pattern::FUNCTIONS,
+            json::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
             crate::sequences::FUNCTIONS,
         ]
@@ -96,8 +99,24 @@ pub fn function(index: usize) -> &'static Function {
 }
 
 /// SET_RETURNING are the functions that return rows.
-const SET_RETURNING: &[&str] =
-    &["generate_series", "generate_subscripts", "unnest", "regexp_matches", "regexp_split_to_table", "dolt_log"];
+const SET_RETURNING: &[&str] = &[
+    "generate_series",
+    "generate_subscripts",
+    "unnest",
+    "regexp_matches",
+    "regexp_split_to_table",
+    "dolt_log",
+    "jsonb_object_keys",
+    "json_object_keys",
+    "jsonb_array_elements",
+    "json_array_elements",
+    "jsonb_array_elements_text",
+    "json_array_elements_text",
+    "jsonb_each",
+    "json_each",
+    "jsonb_each_text",
+    "json_each_text",
+];
 
 /// returns_set reports whether a function returns rows.
 pub fn returns_set(name: &str) -> bool {

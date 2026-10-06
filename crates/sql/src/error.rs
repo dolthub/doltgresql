@@ -51,6 +51,7 @@ pub mod code {
     pub const INVALID_NAME: &str = "42602";
     pub const WINDOWING_ERROR: &str = "42P20";
     pub const INVALID_ESCAPE_SEQUENCE: &str = "22025";
+    pub const UNTRANSLATABLE_CHARACTER: &str = "22P05";
     pub const INVALID_REGULAR_EXPRESSION: &str = "2201B";
     pub const INVALID_ARGUMENT_FOR_NTILE: &str = "22014";
     pub const INVALID_ARGUMENT_FOR_NTH_VALUE: &str = "22016";

@@ -29,6 +29,7 @@ mod engine;
 pub mod error;
 pub mod expr;
 pub mod functions;
+pub mod json;
 pub mod numeric;
 pub mod parse;
 pub mod plan;
@@ -65,6 +66,7 @@ pub mod oid {
     pub const TEXT: u32 = 25;
     pub const TEXT_ARRAY: u32 = 1009;
     pub const JSON: u32 = 114;
+    pub const JSONB: u32 = 3802;
     pub const FLOAT4: u32 = 700;
     pub const FLOAT8: u32 = 701;
     pub const UNKNOWN: u32 = 705;

@@ -49,6 +49,9 @@ pub enum Value {
     Array(Box<Array>),
     /// A row value, whose fields print as Postgres prints records.
     Record(Vec<Value>),
+    /// A json value: its text exactly as written.
+    Json(String),
+    Jsonb(Box<crate::json::Json>),
     /// A string of the text types, and the value of an untyped literal.
     Text(String),
     /// The rows of a set-returning function, which never reach a client.
@@ -120,6 +123,8 @@ impl Value {
             Value::Interval(iv) => datetime::with_format(|f| datetime::format_interval(iv, f.interval_style)),
             Value::Array(a) => array::format(a, &|v| v.output().unwrap_or_default()),
             Value::Record(fields) => format_record(fields),
+            Value::Json(text) => text.clone(),
+            Value::Jsonb(json) => json.to_text(),
             Value::Text(s) => s.clone(),
             Value::Set(_) => return None,
         })
@@ -147,7 +152,8 @@ impl Value {
                 let element = a.element;
                 array::send(a, &|v| v.send(element))
             }
-            Value::Record(_) => return self.output().map(String::into_bytes),
+            Value::Record(_) | Value::Json(_) => return self.output().map(String::into_bytes),
+            Value::Jsonb(json) => [&[1u8][..], json.to_text().as_bytes()].concat(),
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) => s.clone().into_bytes(),
             Value::Set(_) => return None,
@@ -167,6 +173,12 @@ impl Value {
         if format == BINARY_FORMAT {
             return match type_oid {
                 oid::BOOL => Ok(Value::Bool(*bytes.first().ok_or_else(invalid)? != 0)),
+                oid::JSONB => match bytes.split_first() {
+                    Some((1, text)) => {
+                        crate::cast::input(std::str::from_utf8(text).map_err(|_| invalid())?, oid::JSONB)
+                    }
+                    _ => Err(PgError::new(code::INVALID_BINARY_REPRESENTATION, "unsupported jsonb version number")),
+                },
                 oid::INT2 => Ok(Value::Int2(i16::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::INT4 => Ok(Value::Int4(i32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::INT8 => Ok(Value::Int8(i64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),

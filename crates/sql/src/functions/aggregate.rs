@@ -44,6 +44,10 @@ pub enum Kind {
     StddevPop,
     StddevSamp,
     ArrayAgg,
+    JsonAgg,
+    JsonbAgg,
+    JsonObjectAgg,
+    JsonbObjectAgg,
 }
 
 /// Aggregate is one overload of an aggregate function.
@@ -96,6 +100,10 @@ pub const AGGREGATES: &[Aggregate] = &[
     a("stddev", &[FLOAT8], FLOAT8, Kind::StddevSamp),
     a("array_agg", &[ANYNONARRAY], ANYARRAY, Kind::ArrayAgg),
     a("array_agg", &[ANYARRAY], ANYARRAY, Kind::ArrayAgg),
+    a("json_agg", &[ANYELEMENT], crate::oid::JSON, Kind::JsonAgg),
+    a("jsonb_agg", &[ANYELEMENT], crate::oid::JSONB, Kind::JsonbAgg),
+    a("json_object_agg", &[super::ANY, super::ANY], crate::oid::JSON, Kind::JsonObjectAgg),
+    a("jsonb_object_agg", &[super::ANY, super::ANY], crate::oid::JSONB, Kind::JsonbObjectAgg),
 ];
 
 /// exists reports whether an aggregate of the name exists.
@@ -268,6 +276,9 @@ impl Accumulator {
                 }
                 return Ok(Value::Text(out));
             }
+            Kind::JsonAgg | Kind::JsonbAgg | Kind::JsonObjectAgg | Kind::JsonbObjectAgg => {
+                return json_aggregate(aggregate.kind, args);
+            }
             Kind::ArrayAgg => {
                 let values: Vec<Value> = args.into_iter().filter_map(|r| r.into_iter().next()).collect();
                 if values.is_empty() {
@@ -299,9 +310,61 @@ impl Accumulator {
             Kind::VarPop | Kind::VarSamp | Kind::StddevPop | Kind::StddevSamp => {
                 variance(&values, aggregate.kind, call.ret)
             }
-            Kind::CountStar | Kind::StringAgg | Kind::ArrayAgg => unreachable!("handled above"),
+            Kind::CountStar
+            | Kind::StringAgg
+            | Kind::ArrayAgg
+            | Kind::JsonAgg
+            | Kind::JsonbAgg
+            | Kind::JsonObjectAgg
+            | Kind::JsonbObjectAgg => unreachable!("handled above"),
         }
     }
+}
+
+/// json_aggregate builds json_agg, jsonb_agg, json_object_agg, or jsonb_object_agg's result, which is NULL without
+/// rows.
+fn json_aggregate(kind: Kind, rows: Vec<Vec<Value>>) -> Result<Value> {
+    use crate::functions::json::{datum_json_text, datum_to_json};
+    use crate::json::{Json, escape, normalize};
+    if rows.is_empty() {
+        return Ok(Value::Null);
+    }
+    Ok(match kind {
+        Kind::JsonAgg => {
+            let parts = rows.iter().map(|r| datum_json_text(&r[0])).collect::<Result<Vec<_>>>()?;
+            Value::Json(format!("[{}]", parts.join(", ")))
+        }
+        Kind::JsonbAgg => {
+            let values = rows.iter().map(|r| datum_to_json(&r[0])).collect::<Result<Vec<_>>>()?;
+            Value::Jsonb(Box::new(normalize(Json::Array(values))))
+        }
+        _ => {
+            let mut items = Vec::new();
+            for row in &rows {
+                let key = row[0]
+                    .output()
+                    .ok_or_else(|| PgError::new(code::NULL_VALUE_NOT_ALLOWED, "field name must not be null"))?;
+                items.push((key, row[1].clone()));
+            }
+            if kind == Kind::JsonbObjectAgg {
+                let items =
+                    items.into_iter().map(|(k, v)| datum_to_json(&v).map(|j| (k, j))).collect::<Result<Vec<_>>>()?;
+                Value::Jsonb(Box::new(normalize(Json::Object(items))))
+            } else {
+                let mut out = String::from("{ ");
+                for (i, (key, value)) in items.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    escape(&mut out, key);
+                    out.push_str(" : ");
+                    out.push_str(&datum_json_text(value)?);
+                }
+                out.push_str(" }");
+                Value::Json(out)
+            }
+        }
+    })
 }
 
 /// array_agg_arrays stacks arrays of matching dimensions into an array with one more dimension.

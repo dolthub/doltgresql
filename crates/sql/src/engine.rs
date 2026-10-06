@@ -267,7 +267,7 @@ impl Session {
 
     /// switch makes a database, or a branch of one written as `database/branch`, the session's database.
     fn switch(&mut self, target: &str) -> Result<()> {
-        let not_found = || PgError::new(code::INVALID_CATALOG_NAME, format!("database not found: {target}"));
+        let not_found = || PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{target}\" does not exist"));
         let (database, branch) = match target.split_once('/') {
             Some((database, branch)) => (database, branch),
             None => (target, DEFAULT_BRANCH),
@@ -497,7 +497,10 @@ impl Session {
             ));
         }
         if name.contains(['/', '\\']) || name.is_empty() {
-            return Err(PgError::internal(format!("Incorrect database name '{name}'")));
+            return Err(PgError {
+                detail: Some("Database names cannot be empty or contain \"/\" or \"\\\", which name branches.".into()),
+                ..PgError::new(code::INVALID_NAME, format!("invalid database name \"{name}\""))
+            });
         }
         if self.engine.database_exists(name) {
             if if_not_exists {

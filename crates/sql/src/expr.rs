@@ -827,6 +827,25 @@ impl<'b, 'a> Binder<'b, 'a> {
                 format!("operator does not exist: {} {op} {}", type_display(lt), type_display(rt)),
             )
         };
+        if [lt, rt].iter().any(|t| matches!(*t, oid::JSON | oid::JSONB)) {
+            if functions::exists(op)
+                && let Ok(resolved) = functions::resolve(op, &[lt, rt], location)
+            {
+                let mut args = Vec::with_capacity(2);
+                for (bound, &target) in [left, right].into_iter().zip(&resolved.arg_types) {
+                    if let Expr::Param(i) = bound.0
+                        && self.ctx.parameters[i] == 0
+                    {
+                        self.ctx.parameters[i] = target;
+                    }
+                    args.push(coerce(bound, typ(target), false, location)?.0);
+                }
+                return Ok((Expr::Func(resolved.index, args), typ(resolved.ret)));
+            }
+            if lt == oid::JSON || rt == oid::JSON || !matches!(op, "=" | "<>" | "!=" | "<" | "<=" | ">" | ">=") {
+                return Err(missing());
+            }
+        }
         if let Some(function) = pattern_function(op) {
             let types = [lt, rt].map(|t| if t == oid::UNKNOWN { oid::TEXT } else { t });
             if !types.iter().all(|&t| is_string(t)) {
@@ -1514,6 +1533,7 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
             .then(lz.cmp(rz)),
         (Value::Interval(l), Value::Interval(r)) => l.cmp_key().cmp(&r.cmp_key()),
         (Value::Array(l), Value::Array(r)) => crate::array::compare(l, r),
+        (Value::Jsonb(l), Value::Jsonb(r)) => crate::json::compare(l, r),
         (l, r) => match (as_i64(l), as_i64(r)) {
             (Some(l), Some(r)) => l.cmp(&r),
             _ => Ordering::Equal,

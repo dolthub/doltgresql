@@ -47,6 +47,22 @@ pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
     .into()
 }
 
+/// jsonb_scalar converts a jsonb number or boolean to a numeric or boolean type, as Postgres' jsonb casts do.
+fn jsonb_scalar(json: &crate::json::Json, to: ColumnType) -> Result<Value> {
+    use crate::json::Json;
+    match (json, to.oid) {
+        (Json::Bool(b), oid::BOOL) => Ok(Value::Bool(*b)),
+        (Json::Number(n), target) if target != oid::BOOL => cast_value(Value::Numeric(n.clone()), to, true),
+        _ => {
+            let kind = if matches!(json, Json::Number(_)) { "numeric" } else { json.type_name() };
+            Err(PgError::new(
+                code::INVALID_PARAMETER_VALUE,
+                format!("cannot cast jsonb {kind} to type {}", type_display(to.oid)),
+            ))
+        }
+    }
+}
+
 /// invalid_syntax returns Postgres' error for text that is not a value of the type.
 pub fn invalid_syntax(type_oid: u32, text: &str) -> PgError {
     PgError::new(
@@ -154,6 +170,11 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
         return Ok(Value::Array(Box::new(parsed)));
     }
     Ok(match type_oid {
+        oid::JSON => {
+            crate::json::parse(text, false)?;
+            Value::Json(text.to_string())
+        }
+        oid::JSONB => Value::Jsonb(Box::new(crate::json::parse(text, true)?)),
         oid::BOOL => Value::Bool(parse_bool(text)?),
         oid::INT2 => Value::Int2(parse_integer(text, type_oid, i16::MIN as i128, i16::MAX as i128)? as i16),
         oid::INT4 => Value::Int4(parse_integer(text, type_oid, i32::MIN as i128, i32::MAX as i128)? as i32),
@@ -370,7 +391,23 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
             other => Err(cannot_cast(&other, to.oid)),
         };
     }
+    if let Value::Jsonb(json) = &value
+        && matches!(to.oid, oid::INT2 | oid::INT4 | oid::INT8 | oid::FLOAT4 | oid::FLOAT8 | oid::NUMERIC | oid::BOOL)
+    {
+        return jsonb_scalar(json, to);
+    }
     Ok(match to.oid {
+        oid::JSON => match value {
+            Value::Json(text) => Value::Json(text),
+            Value::Jsonb(json) => Value::Json(json.to_text()),
+            Value::Text(text) => input(&text, to.oid)?,
+            other => return Err(cannot_cast(&other, to.oid)),
+        },
+        oid::JSONB => match value {
+            Value::Jsonb(json) => Value::Jsonb(json),
+            Value::Json(text) | Value::Text(text) => input(&text, to.oid)?,
+            other => return Err(cannot_cast(&other, to.oid)),
+        },
         oid::INT2 | oid::INT4 | oid::INT8 => to_integer(value, to.oid)?,
         oid::FLOAT4 | oid::FLOAT8 => {
             let f = match value {

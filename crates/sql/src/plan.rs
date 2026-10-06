@@ -698,7 +698,11 @@ impl<'b, 'a> Planner<'b, 'a> {
             .first()
             .map(|r| r.to_string())
             .unwrap_or_else(|| alias.map_or(name.clone(), |a| a.aliasname.clone()));
-        let out_columns = crate::dolt::procedures::OUT_COLUMNS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c);
+        let out_columns = crate::dolt::procedures::OUT_COLUMNS
+            .iter()
+            .chain(crate::functions::JSON_OUT_COLUMNS)
+            .find(|(n, _)| *n == name)
+            .map(|(_, c)| *c);
         let mut columns = match out_columns {
             Some(out) => out
                 .iter()
