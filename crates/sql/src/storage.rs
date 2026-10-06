@@ -47,6 +47,7 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
         }
         (Value::Jsonb(json), encoding::JSON_ADAPTIVE) => inline(json.compact().as_bytes()),
         (Value::Bytea(bytes), encoding::BYTES_ADAPTIVE) => inline(bytes),
+        (Value::Oid(o), encoding::UINT32) => o.to_le_bytes().to_vec(),
         (value, encoding::EXTENDED) => serialize_value(value, ty)?,
         (value, encoding::EXTENDED_ADAPTIVE) => inline(&serialize_value(value, ty)?),
         (value, field_encoding) => {
@@ -91,6 +92,7 @@ pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty:
             Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?)
         }
         encoding::BYTES_ADAPTIVE => Value::Bytea(field.to_vec()),
+        encoding::UINT32 => Value::Oid(u32::from_le_bytes(field.try_into().map_err(|_| corrupt())?)),
         encoding::EXTENDED | encoding::EXTENDED_ADAPTIVE => deserialize_value(field, ty)?,
         _ => return Err(PgError::unsupported(format!("reading fields of encoding {field_encoding}"))),
     })
@@ -128,6 +130,9 @@ pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
         }
         Value::Uuid(uuid) => uuid.to_vec(),
         Value::Base(base) => base.data.clone(),
+        Value::Oid(o) if matches!(ty.oid, crate::oid::XID | crate::oid::CID) => o.to_be_bytes().to_vec(),
+        Value::Oid(o) => oid_id(*o),
+        Value::Reg(reg) => oid_id(reg.oid),
         Value::Date(d) => {
             let ts = match *d {
                 dt::DATE_NOBEGIN => dt::TIMESTAMP_NOBEGIN,
@@ -227,6 +232,19 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
             }
         }
         oid::UUID => Value::Uuid(field.try_into().map_err(|_| corrupt())?),
+        oid::XID | oid::CID => Value::Oid(u32::from_be_bytes(field.try_into().map_err(|_| corrupt())?)),
+        oid::OID => Value::Oid(id_oid(field)),
+        ty if crate::cast::is_reg_type(ty) => {
+            let oid = id_oid(field);
+            let segments = crate::catalog::id::segments(field);
+            let name = match ty {
+                oid::REGTYPE => crate::cast::type_display(oid).to_string(),
+                oid::REGNAMESPACE | oid::REGROLE => segments.first().cloned().unwrap_or_else(|| oid.to_string()),
+                oid::REGCLASS => segments.last().cloned().unwrap_or_else(|| oid.to_string()),
+                _ => segments.get(1).cloned().unwrap_or_else(|| oid.to_string()),
+            };
+            Value::Reg(Box::new(crate::types::Reg { type_oid: ty, oid, name }))
+        }
         oid::DATE | oid::TIMESTAMP | oid::TIMESTAMPTZ => {
             let (seconds, nanos) = dt::go_time::unmarshal(field).ok_or_else(corrupt)?;
             let ts = dt::timestamp_from_go(seconds, nanos);
@@ -632,4 +650,20 @@ pub fn compare_key_field(field_encoding: u8, ty: ColumnType, left: Option<&[u8]>
         }
         (e, l, r) => compare_field(e, l, r),
     }
+}
+
+/// oid_id returns the internal ID that Doltgres stores for an OID: the ID of the object it names when one is known,
+/// and otherwise a raw OID ID, as Go's oidin makes it.
+fn oid_id(oid: u32) -> Vec<u8> {
+    use crate::catalog::{id, oids};
+    oids::id(oid).unwrap_or_else(|| id::new(id::SECTION_OID, &[&oid.to_string()]))
+}
+
+/// id_oid returns the OID of a stored internal ID.
+fn id_oid(stored: &[u8]) -> u32 {
+    use crate::catalog::{id, oids};
+    if stored.first() == Some(&id::SECTION_OID) {
+        return id::segments(stored).first().and_then(|s| s.parse().ok()).unwrap_or(0);
+    }
+    oids::oid(stored)
 }

@@ -24,6 +24,8 @@ pub const SECTION_FUNCTION: u8 = 15;
 pub const SECTION_INDEX: u8 = 17;
 /// SECTION_NAMESPACE is the ID section of schemas.
 pub const SECTION_NAMESPACE: u8 = 18;
+/// SECTION_OID is the ID section of raw OIDs that name no known object.
+pub const SECTION_OID: u8 = 19;
 /// SECTION_PROCEDURE is the ID section of procedures.
 pub const SECTION_PROCEDURE: u8 = 24;
 /// SECTION_SEQUENCE is the ID section of sequences.

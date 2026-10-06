@@ -1093,18 +1093,32 @@ impl<'b, 'a> Planner<'b, 'a> {
             let Some(NodeEnum::SortBy(sort)) = sort.node.as_ref() else { continue };
             let node = sort.node.as_deref().ok_or_else(|| PgError::internal("ORDER BY without a key"))?;
             let (descending, nulls_first) = sort_order(sort);
-            let expr = if let Some((n, location)) = ordinal(node) {
+            let (expr, ty) = if let Some((n, location)) = ordinal(node) {
                 output_ordinal_named(&names, n, location)?;
-                targets[n - 1].0.clone()
+                (targets[n - 1].0.clone(), targets[n - 1].1)
             } else if let Some(NodeEnum::ColumnRef(c)) = node.node.as_ref()
                 && c.fields.len() == 1
                 && let Some(name) = node_name(&c.fields[0])
                 && names.iter().filter(|n| *n == name).count() == 1
             {
-                targets[names.iter().position(|n| n == name).unwrap()].0.clone()
+                let target = &targets[names.iter().position(|n| n == name).unwrap()];
+                (target.0.clone(), target.1)
             } else {
-                binder.bind(node)?.0
+                binder.bind(node)?
             };
+            if matches!(ty.oid, oid::XID | oid::CID | oid::XML) {
+                return Err(PgError {
+                    position: position(crate::expr::arg_location(node)),
+                    hint: Some("Use an explicit ordering operator or modify the query.".into()),
+                    ..PgError::new(
+                        code::UNDEFINED_FUNCTION,
+                        format!(
+                            "could not identify an ordering operator for type {}",
+                            crate::cast::type_display(ty.oid)
+                        ),
+                    )
+                });
+            }
             sorts.push((expr, descending, nulls_first));
         }
         let windows = binder.windows.take();

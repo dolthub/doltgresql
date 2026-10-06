@@ -1048,6 +1048,21 @@ impl<'b, 'a> Binder<'b, 'a> {
         ))
     }
 
+    /// reg_literal reads an untyped literal as a value of a reg type when that is the type it is assigned to, which
+    /// looks the name up in the catalog.
+    pub fn reg_literal(&mut self, bound: Bound, target: ColumnType, location: i32) -> Result<Bound> {
+        match (&bound.0, bound.1.oid) {
+            (Expr::Const(value), oid::UNKNOWN) if crate::cast::is_reg_type(target.oid) => {
+                let value = self
+                    .ctx
+                    .reg_value(value.clone(), target.oid)
+                    .map_err(|err| PgError { position: position(location), ..err })?;
+                Ok((Expr::Const(value), target))
+            }
+            _ => Ok(bound),
+        }
+    }
+
     /// typed_arg binds an argument of a construct that must be of a type, converting an untyped literal and any value
     /// that converts implicitly.
     pub fn typed_arg(&mut self, node: &Node, wanted: ColumnType, construct: &str) -> Result<Expr> {
@@ -1432,6 +1447,14 @@ impl<'b, 'a> Binder<'b, 'a> {
             let left = coerce(left, typ(oid::TEXT), true, location)?.0;
             let right = coerce(right, typ(oid::TEXT), true, location)?.0;
             return Ok((Expr::Concat(Box::new(left), Box::new(right)), typ(oid::TEXT)));
+        }
+        let integer = |t: u32| matches!(t, oid::INT2 | oid::INT4 | oid::INT8);
+        if matches!(op, "=" | "<>" | "!=") && ((lt == oid::XID && integer(rt)) || (integer(lt) && rt == oid::XID)) {
+            let xid = |(expr, ty): Bound| {
+                if ty.oid == oid::XID { expr } else { Expr::Cast(Box::new(expr), typ(oid::XID), true) }
+            };
+            let cmp = if op == "=" { CmpOp::Eq } else { CmpOp::Ne };
+            return Ok((Expr::Compare(cmp, Box::new(xid(left)), Box::new(xid(right))), typ(oid::BOOL)));
         }
         // An untyped operand takes the other operand's type, and two untyped operands are text.
         let domain = match (lt == oid::UNKNOWN, rt == oid::UNKNOWN) {
@@ -1984,10 +2007,14 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         return Ok(bound);
     }
     let xml_only_textual = (from.oid == oid::XML) != (to.oid == oid::XML) && !textual;
+    let transaction_id = (matches!(to.oid, oid::XID | oid::CID) || matches!(from.oid, oid::XID | oid::CID))
+        && from.oid != to.oid
+        && !textual;
     let allowed = explicit
         && (is_array_type(from.oid) == is_array_type(to.oid) || textual)
         && (!(opaque(from.oid) || opaque(to.oid)) || textual || (bits_or_ints(from.oid) && bits_or_ints(to.oid)))
         && !xml_only_textual
+        && !transaction_id
         || implicitly_converts(from.oid, to.oid);
     if !allowed {
         return Err(PgError {

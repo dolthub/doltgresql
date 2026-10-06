@@ -254,6 +254,30 @@ fn parse_oid(text: &str, type_oid: u32) -> Result<u32> {
     Ok(value as i64 as u32)
 }
 
+/// strtoul reads an unsigned integer as C's strtoul does with base 0: decimal, octal after `0`, or hexadecimal after
+/// `0x`, stopping at the first other character and negating a negative value modulo 2^64, as xidin reads it.
+fn strtoul(text: &str) -> u64 {
+    let trimmed = text.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    let (negative, digits) = match trimmed.as_bytes().first() {
+        Some(b'-') => (true, &trimmed[1..]),
+        Some(b'+') => (false, &trimmed[1..]),
+        _ => (false, trimmed),
+    };
+    let (radix, digits) = if let Some(hex) = digits.strip_prefix("0x").or_else(|| digits.strip_prefix("0X")) {
+        (16, hex)
+    } else if digits.starts_with('0') {
+        (8, digits)
+    } else {
+        (10, digits)
+    };
+    let mut value: u64 = 0;
+    for c in digits.chars() {
+        let Some(d) = c.to_digit(radix) else { break };
+        value = value.checked_mul(radix as u64).and_then(|v| v.checked_add(d as u64)).unwrap_or(u64::MAX);
+    }
+    if negative { value.wrapping_neg() } else { value }
+}
+
 /// char_value returns the value of the "char" type for text: its first byte, written as an octal escape when it is not
 /// ASCII.
 fn char_value(text: &str) -> Value {
@@ -312,7 +336,8 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
                 .map(Value::TimestampTz)?
         }
         oid::INTERVAL => Value::Interval(crate::datetime::parse_interval(text)?),
-        oid::OID | oid::XID | oid::CID => Value::Oid(parse_oid(text, type_oid)?),
+        oid::XID | oid::CID => Value::Oid(strtoul(text) as u32),
+        oid::OID => Value::Oid(parse_oid(text, type_oid)?),
         oid::CHAR => char_value(text),
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN => Value::Text(text.to_string()),
         oid::BYTEA => Value::Bytea(crate::binary::parse_bytea(text)?),
@@ -792,6 +817,10 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
             };
             Value::Bit(crate::binary::fit_bits(bits, to, explicit)?)
         }
+        target if is_reg_type(target) => match value {
+            Value::Reg(reg) if reg.type_oid == target => Value::Reg(reg),
+            _ => return Err(PgError::unsupported(format!("casts to {}", type_display(to.oid)))),
+        },
         _ => return Err(PgError::unsupported(format!("casts to {}", type_display(to.oid)))),
     })
 }

@@ -608,6 +608,7 @@ impl Ctx<'_> {
                     {
                         binder.ctx.parameters[i] = column.ty.oid;
                     }
+                    let bound = binder.reg_literal(bound, column.ty, arg_location(item))?;
                     row.push(assign(bound, column.ty, &column.name, arg_location(item))?.0);
                 }
                 rows.push(row);
@@ -852,6 +853,7 @@ fn bind_assignments(
             {
                 binder.ctx.parameters[p] = column.ty.oid;
             }
+            let bound = binder.reg_literal(bound, column.ty, arg_location(value))?;
             assign(bound, column.ty, &column.name, arg_location(value))?.0
         };
         assignments.push((i, expr));
