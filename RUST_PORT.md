@@ -185,13 +185,43 @@ Done (read path):
 - `doltdb`: a reader of the whole object graph from the refs down to row tuples, with out-of-band values resolved.
 - Verification: Go oracles that use Dolt's and Doltgres' own readers (kept locally in `testing/go/regression/out`)
   print the chunks and the object graph, including row digests, of fixture databases. The Rust readers match them
-  exactly on 14 fixtures: databases from the current Go server covering every message type, multi-level maps, merges
-  with table and root object conflicts, stashes, and rebases; databases from Doltgres 0.50, 0.56, 0.57, and 1.0; and
+  exactly on 16 fixtures: databases from the current Go server covering every message type, multi-level maps, merges
+  with table and root object conflicts, stashes, rebases, constraints and index options, and blobs at each level
+  boundary; databases from Doltgres 0.50, 0.56, 0.57, and 1.0; and
   version 1 and 2 archives written by Dolt. Doltgres 0.18 databases are out of scope, since the Go server cannot read
   them, and 0.52 to 0.56 lose chunks in their own GC.
 
 Remaining: decoding values by type (with Phase 4), statistics, auth and branch control files, vector index nodes, and
 a run against a large database.
+
+## Phase 2 status
+
+Done (write path), each checked against every chunk of the Go-written fixtures:
+
+- `serial`: a port of Dolt's flatbuffers builder, and writers of store roots, commits, tags, working sets, stashes,
+  tables, schemas, foreign keys, and Doltgres root values in Go's build order. Every message rewrites identically,
+  including the layouts that Go's in-place edits leave behind (a root object field added after the others, an
+  auto-increment value set to zero).
+- `prolly`: serializers of every tree node kind; the chunker, which rebuilds every tree node from its leaf items; and
+  the blob builder, which rebuilds every blob, including the single-child roots Go builds when a blob fills its
+  levels exactly.
+- `objects`: serializers of every root object, which write current versions as Go does.
+- `store`: chunk records (the Rust `snap` crate compresses every chunk exactly as `golang/snappy` did), table files
+  (every one rewrites identically, name included), and journal records (every one re-encodes identically). libzstd
+  is pinned to 1.5.6, the version Dolt's gozstd bundles.
+
+Findings:
+
+- Go fuses multiply-adds into FMA instructions on arm64 but not on amd64, so Dolt's `math.Expm1`, which decides
+  where nodes end, rounds differently on the two for 25 of the 16,385 possible inputs. A boundary decision flips only
+  when a key's hash falls within an ulp of the threshold, so this is very rare, but the same data can chunk
+  differently on the two architectures. The Rust chunker fuses exactly where Go does on each architecture, checked
+  exhaustively against Go on both (amd64 under Rosetta).
+- Table file indexes sort records by prefix with Go's unstable sort, so two chunks whose 8-byte prefixes collide can
+  land in either order. The Rust writer keeps them in insertion order.
+
+Remaining: the journal writer and its index file, manifest writing, the writable generational store, GC, archive
+writing (chunk grouping and dictionary training), statistics, and mutating trees in place.
 
 ## Baseline artifacts
 
