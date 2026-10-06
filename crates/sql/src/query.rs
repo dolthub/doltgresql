@@ -24,22 +24,23 @@ use prolly::walk_leaves;
 
 use crate::catalog::builtin_type;
 use crate::catalog::table::TableDef;
+use crate::engine::SessionState;
 use crate::error::{PgError, Result, code};
 use crate::expr::{Binder, Expr, Scope, ScopeColumn, coerce, compare_values, figure_name, node_name, position, typ};
 use crate::txn::Txn;
 use crate::types::Value;
 use crate::{Column, oid};
 
-/// Ctx is what planning a statement reads: the database and the transaction's working root.
+/// Ctx is what planning and running a statement reads and changes: the database, the transaction's working root, the
+/// session, and the statement's parameters.
 pub struct Ctx<'a> {
     pub db: &'a mut Database,
     pub txn: &'a mut Txn,
+    pub session: &'a mut SessionState,
     /// The types of the statement's parameters, where 0 is a type not yet known.
     pub parameters: &'a mut Vec<u32>,
-    /// The notices the statement raised.
-    pub notices: &'a mut Vec<PgError>,
-    /// The schemas that unqualified names resolve in.
-    pub search_path: Vec<String>,
+    /// The values of the statement's parameters, empty while only planning.
+    pub params: &'a [Value],
 }
 
 /// SortKey is an ORDER BY key over the input row.
@@ -78,7 +79,7 @@ impl Ctx<'_> {
     /// resolve_table loads the table that a range variable names.
     pub fn resolve_table(&mut self, relation: &RangeVar) -> Result<TableDef> {
         let schemas: Vec<String> =
-            if relation.schemaname.is_empty() { self.search_path.clone() } else { vec![relation.schemaname.clone()] };
+            if relation.schemaname.is_empty() { self.session.search_path() } else { vec![relation.schemaname.clone()] };
         for schema in &schemas {
             if let Some(table) = self.txn.table(self.db, schema, &relation.relname)? {
                 return Ok(table);
@@ -98,19 +99,19 @@ impl Ctx<'_> {
     /// creation_schema returns the schema that an unqualified new object goes in: the first schema of the search
     /// path that exists.
     pub fn creation_schema(&self) -> Result<String> {
-        self.search_path
-            .iter()
+        self.session
+            .search_path()
+            .into_iter()
             .find(|s| self.txn.root.schemas.iter().any(|existing| existing == s.as_bytes()))
-            .cloned()
             .ok_or_else(|| PgError::new(code::INVALID_SCHEMA_NAME, "no schema has been selected to create in"))
     }
 
     /// constant_text evaluates an expression without columns and returns its text.
-    pub fn constant_text(&mut self, node: &Node, params: &[Value]) -> Result<String> {
+    pub fn constant_text(&mut self, node: &Node) -> Result<String> {
         let scope = Scope::default();
         let mut binder = Binder { scope: &scope, parameters: self.parameters };
         let (expr, _) = binder.bind(node)?;
-        Ok(expr.eval(&[], params)?.output().unwrap_or_default())
+        Ok(expr.eval(self, &[])?.output().unwrap_or_default())
     }
 
     /// plan_select plans a SELECT.
@@ -244,9 +245,9 @@ pub fn scan(db: &mut Database, table: &TableDef) -> Result<Vec<Vec<Value>>> {
 }
 
 /// limit_value evaluates a LIMIT or OFFSET, failing as Postgres does when it is negative.
-fn limit_value(expr: &Option<Expr>, params: &[Value], what: &str, error_code: &'static str) -> Result<Option<i64>> {
+fn limit_value(expr: &Option<Expr>, ctx: &mut Ctx<'_>, what: &str, error_code: &'static str) -> Result<Option<i64>> {
     let Some(expr) = expr else { return Ok(None) };
-    match expr.eval(&[], params)? {
+    match expr.eval(ctx, &[])? {
         Value::Int8(n) if n < 0 => Err(PgError::new(error_code, format!("{what} must not be negative"))),
         Value::Int8(n) => Ok(Some(n)),
         _ => Ok(None),
@@ -255,20 +256,20 @@ fn limit_value(expr: &Option<Expr>, params: &[Value], what: &str, error_code: &'
 
 impl SelectPlan {
     /// run runs the plan and returns its rows.
-    pub fn run(&self, db: &mut Database, params: &[Value]) -> Result<Vec<Vec<Value>>> {
+    pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
         let input = match &self.from {
-            Some(table) => scan(db, table)?,
+            Some(table) => scan(ctx.db, table)?,
             None => vec![Vec::new()],
         };
         let mut rows: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
         for row in input {
             if let Some(filter) = &self.filter
-                && !filter.is_true(&row, params)?
+                && !filter.is_true(ctx, &row)?
             {
                 continue;
             }
-            let keys = self.order.iter().map(|k| k.expr.eval(&row, params)).collect::<Result<Vec<_>>>()?;
-            let output = self.targets.iter().map(|t| t.eval(&row, params)).collect::<Result<Vec<_>>>()?;
+            let keys = self.order.iter().map(|k| k.expr.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
+            let output = self.targets.iter().map(|t| t.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
             rows.push((keys, output));
         }
         if !self.order.is_empty() {
@@ -302,8 +303,8 @@ impl SelectPlan {
                 Ordering::Equal
             });
         }
-        let offset = limit_value(&self.offset, params, "OFFSET", code::INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE)?;
-        let limit = limit_value(&self.limit, params, "LIMIT", code::INVALID_ROW_COUNT_IN_LIMIT_CLAUSE)?;
+        let offset = limit_value(&self.offset, ctx, "OFFSET", code::INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE)?;
+        let limit = limit_value(&self.limit, ctx, "LIMIT", code::INVALID_ROW_COUNT_IN_LIMIT_CLAUSE)?;
         let rows = rows.into_iter().map(|(_, output)| output).skip(offset.unwrap_or(0) as usize);
         Ok(match limit {
             Some(limit) => rows.take(limit as usize).collect(),

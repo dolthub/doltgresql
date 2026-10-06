@@ -24,6 +24,7 @@ mod dml;
 mod engine;
 pub mod error;
 pub mod expr;
+pub mod functions;
 pub mod numeric;
 pub mod parse;
 pub mod query;

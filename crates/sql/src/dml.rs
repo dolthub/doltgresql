@@ -338,14 +338,17 @@ impl Ctx<'_> {
 
 impl InsertPlan {
     /// run inserts the rows.
-    pub fn run(&self, db: &mut Database, txn: &mut Txn, params: &[Value]) -> Result<Outcome> {
-        let sources: Vec<Vec<Value>> = match &self.source {
-            InsertSource::Values(rows) => rows
-                .iter()
-                .map(|row| row.iter().map(|e| e.eval(&[], params)).collect::<Result<Vec<_>>>())
-                .collect::<Result<_>>()?,
-            InsertSource::Select(plan) => plan.run(db, params)?,
-        };
+    pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Outcome> {
+        let mut sources: Vec<Vec<Value>> = Vec::new();
+        match &self.source {
+            InsertSource::Values(rows) => {
+                for row in rows {
+                    sources.push(row.iter().map(|e| e.eval(ctx, &[])).collect::<Result<Vec<_>>>()?);
+                }
+            }
+            InsertSource::Select(plan) => sources = plan.run(ctx)?,
+        }
+        let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
         let mut edits = Edits::new(&self.table);
         for source in &sources {
             let mut row = vec![Value::Null; self.table.columns.len()];
@@ -362,20 +365,25 @@ impl InsertPlan {
 
 impl UpdatePlan {
     /// run updates the matching rows.
-    pub fn run(&self, db: &mut Database, txn: &mut Txn, params: &[Value]) -> Result<Outcome> {
-        let mut edits = Edits::new(&self.table);
-        let mut new_rows = Vec::new();
-        for row in scan(db, &self.table)? {
+    pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Outcome> {
+        let mut changes = Vec::new();
+        for row in scan(ctx.db, &self.table)? {
             if let Some(filter) = &self.filter
-                && !filter.is_true(&row, params)?
+                && !filter.is_true(ctx, &row)?
             {
                 continue;
             }
             let mut new_row = row.clone();
             for (i, expr) in &self.assignments {
-                new_row[*i] = expr.eval(&row, params)?;
+                new_row[*i] = expr.eval(ctx, &row)?;
             }
             check_not_null(&self.table, &new_row)?;
+            changes.push((row, new_row));
+        }
+        let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
+        let mut edits = Edits::new(&self.table);
+        let mut new_rows = Vec::new();
+        for (row, new_row) in changes {
             edits.delete(db, &row)?;
             new_rows.push(new_row);
         }
@@ -390,17 +398,21 @@ impl UpdatePlan {
 
 impl DeletePlan {
     /// run deletes the matching rows.
-    pub fn run(&self, db: &mut Database, txn: &mut Txn, params: &[Value]) -> Result<Outcome> {
-        let mut edits = Edits::new(&self.table);
-        let mut count = 0;
-        for row in scan(db, &self.table)? {
+    pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Outcome> {
+        let mut doomed = Vec::new();
+        for row in scan(ctx.db, &self.table)? {
             if let Some(filter) = &self.filter
-                && !filter.is_true(&row, params)?
+                && !filter.is_true(ctx, &row)?
             {
                 continue;
             }
-            edits.delete(db, &row)?;
-            count += 1;
+            doomed.push(row);
+        }
+        let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
+        let mut edits = Edits::new(&self.table);
+        let count = doomed.len();
+        for row in &doomed {
+            edits.delete(db, row)?;
         }
         edits.apply(db, txn)?;
         Ok(Outcome::command(format!("DELETE {count}")))

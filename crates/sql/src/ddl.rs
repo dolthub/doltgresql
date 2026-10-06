@@ -46,7 +46,7 @@ impl Ctx<'_> {
         if self.txn.root.table(self.db, schema, name)?.is_some() {
             let message = format!("relation \"{name}\" already exists");
             if create.if_not_exists {
-                self.notices.push(PgError::notice(code::DUPLICATE_TABLE, format!("{message}, skipping")));
+                self.session.notice(PgError::notice(code::DUPLICATE_TABLE, format!("{message}, skipping")));
                 return Ok(Outcome::command("CREATE TABLE"));
             }
             return Err(PgError::new(code::DUPLICATE_TABLE, message));

@@ -97,16 +97,18 @@ impl Engine {
     pub fn session(&self, user: &str, host: &str, database: &str, startup: &[(String, String)]) -> Result<Session> {
         let mut session = Session {
             engine: self.clone(),
-            user: user.to_string(),
-            host: host.to_string(),
-            database: String::new(),
-            branch: DEFAULT_BRANCH.to_string(),
-            display: String::new(),
+            state: SessionState {
+                user: user.to_string(),
+                host: host.to_string(),
+                database: String::new(),
+                branch: DEFAULT_BRANCH.to_string(),
+                display: String::new(),
+                notices: Vec::new(),
+                settings: Settings::new(startup).map_err(|err| PgError { severity: "FATAL", ..err })?,
+                explicit: false,
+            },
             txn: None,
-            explicit: false,
             failed: false,
-            notices: Vec::new(),
-            settings: Settings::new(startup).map_err(|err| PgError { severity: "FATAL", ..err })?,
             reported: HashMap::new(),
         };
         session.switch(database).map_err(|_| {
@@ -119,22 +121,51 @@ impl Engine {
 /// Session runs statements for one connection.
 pub struct Session {
     engine: Engine,
+    pub state: SessionState,
+    txn: Option<Txn>,
+    /// Whether a statement failed in the explicit transaction, which then only ends.
+    failed: bool,
+    /// The reported parameters as the client last heard them.
+    reported: HashMap<String, String>,
+}
+
+/// SessionState is the part of a session that statements and functions can read and change.
+pub struct SessionState {
     pub user: String,
     /// The address the client connected from.
     pub host: String,
-    database: String,
-    branch: String,
+    pub database: String,
+    pub branch: String,
     /// The current database as the session named it, which includes the branch when one was named.
-    display: String,
-    txn: Option<Txn>,
-    /// Whether the open transaction began with BEGIN.
-    explicit: bool,
-    /// Whether a statement failed in the explicit transaction, which then only ends.
-    failed: bool,
-    notices: Vec<PgError>,
+    pub display: String,
+    pub notices: Vec<PgError>,
     pub settings: Settings,
-    /// The reported parameters as the client last heard them.
-    reported: HashMap<String, String>,
+    /// Whether the open transaction began with BEGIN.
+    pub explicit: bool,
+}
+
+impl SessionState {
+    /// search_path returns the schemas that unqualified names resolve in.
+    pub fn search_path(&self) -> Vec<String> {
+        let path = self.settings.get("search_path").unwrap_or_default();
+        path.split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                let s = if s.starts_with('"') && s.ends_with('"') && s.len() > 1 {
+                    s[1..s.len() - 1].replace("\"\"", "\"")
+                } else {
+                    s.to_ascii_lowercase()
+                };
+                if s == "$user" { self.user.clone() } else { s }
+            })
+            .collect()
+    }
+
+    /// notice records a notice for the client.
+    pub fn notice(&mut self, notice: PgError) {
+        self.notices.push(notice);
+    }
 }
 
 /// REPORTED_PARAMETERS are the parameters whose values the server reports to the client with ParameterStatus.
@@ -174,12 +205,12 @@ fn transaction_kind(statement: &Statement) -> Option<TransactionStmtKind> {
 impl Session {
     /// current_database returns the session's database as it was named, with any branch.
     pub fn current_database(&self) -> &str {
-        &self.display
+        &self.state.display
     }
 
     /// tx_status returns the transaction status that ReadyForQuery reports: idle, in a transaction, or failed.
     pub fn tx_status(&self) -> u8 {
-        match (self.explicit, self.failed) {
+        match (self.state.explicit, self.failed) {
             (true, true) => b'E',
             (true, false) => b'T',
             _ => b'I',
@@ -192,10 +223,10 @@ impl Session {
         let mut changes = Vec::new();
         for name in REPORTED_PARAMETERS {
             let value = match name {
-                "session_authorization" => self.user.clone(),
+                "session_authorization" => self.state.user.clone(),
                 "server_version" => crate::SERVER_VERSION.to_string(),
                 "is_superuser" => "on".to_string(),
-                _ => self.settings.show(name).unwrap_or_default(),
+                _ => self.state.settings.show(name).unwrap_or_default(),
             };
             if self.reported.get(name) != Some(&value) {
                 self.reported.insert(name.to_string(), value.clone());
@@ -205,26 +236,9 @@ impl Session {
         changes
     }
 
-    /// search_path returns the schemas that unqualified names resolve in.
-    fn search_path(&self) -> Vec<String> {
-        let path = self.settings.get("search_path").unwrap_or_default();
-        path.split(',')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                let s = if s.starts_with('"') && s.ends_with('"') && s.len() > 1 {
-                    s[1..s.len() - 1].replace("\"\"", "\"")
-                } else {
-                    s.to_ascii_lowercase()
-                };
-                if s == "$user" { self.user.clone() } else { s }
-            })
-            .collect()
-    }
-
     /// take_notices returns the notices raised since the last call.
     pub fn take_notices(&mut self) -> Vec<PgError> {
-        std::mem::take(&mut self.notices)
+        std::mem::take(&mut self.state.notices)
     }
 
     /// switch makes a database, or a branch of one written as `database/branch`, the session's database.
@@ -241,9 +255,9 @@ impl Session {
         if lock(&handle)?.head(&doltdb::create::branch_ref(branch))?.is_none() {
             return Err(not_found());
         }
-        self.database = database.to_string();
-        self.branch = branch.to_string();
-        self.display = target.to_string();
+        self.state.database = database.to_string();
+        self.state.branch = branch.to_string();
+        self.state.display = target.to_string();
         Ok(())
     }
 
@@ -284,8 +298,8 @@ impl Session {
         } else if let Some(Statement::Postgres { node, .. }) = &statement
             && describable(node)
         {
-            columns = self.with_ctx(&mut parameters, |ctx| ctx.describe(node))?;
-            if !self.explicit {
+            columns = self.with_ctx(&mut parameters, &[], |ctx| ctx.describe(node))?;
+            if !self.state.explicit {
                 self.txn = None;
             }
         }
@@ -306,18 +320,18 @@ impl Session {
 
     /// fail ends an implicit transaction, or marks an explicit one failed, after an error.
     fn fail(&mut self, err: PgError) -> PgError {
-        if self.explicit {
+        if self.state.explicit {
             self.failed = true;
         } else {
             self.txn = None;
-            self.settings.end_transaction(false);
+            self.state.settings.end_transaction(false);
         }
         err
     }
 
     /// end_implicit commits the transaction when it is implicit.
     fn end_implicit(&mut self) -> Result<()> {
-        if self.explicit {
+        if self.state.explicit {
             return Ok(());
         }
         self.commit()
@@ -325,24 +339,28 @@ impl Session {
 
     /// commit commits and ends the open transaction.
     fn commit(&mut self) -> Result<()> {
-        self.settings.end_transaction(true);
+        self.state.settings.end_transaction(true);
         let Some(txn) = self.txn.take() else { return Ok(()) };
         let handle = txn.handle.clone();
         let mut db = lock(&handle)?;
-        txn.commit(&mut db, &self.user, &self.host)
+        txn.commit(&mut db, &self.state.user, &self.state.host)
     }
 
     /// with_ctx runs a function with the planning context of the open transaction, beginning one when needed.
-    fn with_ctx<T>(&mut self, parameters: &mut Vec<u32>, f: impl FnOnce(&mut Ctx<'_>) -> Result<T>) -> Result<T> {
+    fn with_ctx<T>(
+        &mut self,
+        parameters: &mut Vec<u32>,
+        params: &[Value],
+        f: impl FnOnce(&mut Ctx<'_>) -> Result<T>,
+    ) -> Result<T> {
         if self.txn.is_none() {
-            let handle = self.engine.database(&self.database)?;
-            self.txn = Some(Txn::begin(handle, &self.database, &self.branch)?);
+            let handle = self.engine.database(&self.state.database)?;
+            self.txn = Some(Txn::begin(handle, &self.state.database, &self.state.branch)?);
         }
-        let search_path = self.search_path();
         let txn = self.txn.as_mut().expect("an open transaction");
         let handle = txn.handle.clone();
         let mut db = lock(&handle)?;
-        let mut ctx = Ctx { db: &mut db, txn, parameters, notices: &mut self.notices, search_path };
+        let mut ctx = Ctx { db: &mut db, txn, session: &mut self.state, parameters, params };
         f(&mut ctx)
     }
 
@@ -353,9 +371,9 @@ impl Session {
             return match kind {
                 Some(TransactionStmtKind::TransStmtCommit | TransactionStmtKind::TransStmtRollback) => {
                     self.txn = None;
-                    self.explicit = false;
+                    self.state.explicit = false;
                     self.failed = false;
-                    self.settings.end_transaction(false);
+                    self.state.settings.end_transaction(false);
                     Ok(Outcome::command("ROLLBACK"))
                 }
                 _ => Err(PgError::new(
@@ -375,8 +393,8 @@ impl Session {
             }
             Statement::SetExpression { name, local, value } => {
                 let mut parameters = Vec::new();
-                let value = self.with_ctx(&mut parameters, |ctx| ctx.constant_text(value, params))?;
-                self.settings.set(name, Some(&value), *local, self.explicit)?;
+                let value = self.with_ctx(&mut parameters, params, |ctx| ctx.constant_text(value))?;
+                self.state.settings.set(name, Some(&value), *local, self.state.explicit)?;
                 Ok(Outcome::command("SET"))
             }
             Statement::Postgres { node, extras } => self.postgres(node, extras, params),
@@ -387,36 +405,36 @@ impl Session {
     fn transaction(&mut self, kind: TransactionStmtKind) -> Result<Outcome> {
         match kind {
             TransactionStmtKind::TransStmtBegin | TransactionStmtKind::TransStmtStart => {
-                if self.explicit {
-                    self.notices.push(PgError {
+                if self.state.explicit {
+                    self.state.notices.push(PgError {
                         severity: "WARNING",
                         ..PgError::new(code::ACTIVE_SQL_TRANSACTION, "there is already a transaction in progress")
                     });
                 }
-                self.explicit = true;
+                self.state.explicit = true;
                 Ok(Outcome::command("BEGIN"))
             }
             TransactionStmtKind::TransStmtCommit => {
-                if !self.explicit {
-                    self.notices.push(PgError {
+                if !self.state.explicit {
+                    self.state.notices.push(PgError {
                         severity: "WARNING",
                         ..PgError::new(code::NO_ACTIVE_SQL_TRANSACTION, "there is no transaction in progress")
                     });
                 }
-                self.explicit = false;
+                self.state.explicit = false;
                 self.commit()?;
                 Ok(Outcome::command("COMMIT"))
             }
             TransactionStmtKind::TransStmtRollback => {
-                if !self.explicit {
-                    self.notices.push(PgError {
+                if !self.state.explicit {
+                    self.state.notices.push(PgError {
                         severity: "WARNING",
                         ..PgError::new(code::NO_ACTIVE_SQL_TRANSACTION, "there is no transaction in progress")
                     });
                 }
-                self.explicit = false;
+                self.state.explicit = false;
                 self.txn = None;
-                self.settings.end_transaction(false);
+                self.state.settings.end_transaction(false);
                 Ok(Outcome::command("ROLLBACK"))
             }
             other => Err(PgError::unsupported(format!("the transaction statement {other:?}"))),
@@ -425,7 +443,7 @@ impl Session {
 
     /// create_database runs CREATE DATABASE, which only Doltgres allows with IF NOT EXISTS.
     fn create_database(&mut self, name: &str, if_not_exists: bool) -> Result<Outcome> {
-        if self.explicit {
+        if self.state.explicit {
             return Err(PgError::new(
                 code::ACTIVE_SQL_TRANSACTION,
                 "CREATE DATABASE cannot run inside a transaction block",
@@ -441,7 +459,7 @@ impl Session {
             return Err(PgError::new(code::DUPLICATE_DATABASE, format!("database \"{name}\" already exists")));
         }
         let dir = self.engine.shared.data_dir.join(name);
-        doltdb::create::create_database(&dir, DEFAULT_BRANCH, &self.user, &self.host, &create_times())?;
+        doltdb::create::create_database(&dir, DEFAULT_BRANCH, &self.state.user, &self.state.host, &create_times())?;
         Ok(Outcome::command("CREATE DATABASE"))
     }
 
@@ -454,7 +472,7 @@ impl Session {
             _ => {}
         }
         let mut parameters = Vec::new();
-        self.with_ctx(&mut parameters, |ctx| ctx.run(node, params))
+        self.with_ctx(&mut parameters, params, |ctx| ctx.run(node))
     }
 }
 
@@ -462,7 +480,7 @@ impl Session {
     /// set runs SET and RESET.
     fn set(&mut self, set: &VariableSetStmt) -> Result<Outcome> {
         let kind = VariableSetKind::try_from(set.kind).unwrap_or(VariableSetKind::Undefined);
-        let in_transaction = self.explicit;
+        let in_transaction = self.state.explicit;
         let reset =
             matches!(kind, VariableSetKind::VarReset | VariableSetKind::VarResetAll | VariableSetKind::VarSetDefault);
         let tag =
@@ -472,7 +490,7 @@ impl Session {
         let transactional =
             matches!(set.name.as_str(), "transaction_isolation" | "transaction_read_only" | "transaction_deferrable");
         if transactional && !in_transaction && kind != VariableSetKind::VarResetAll {
-            self.notices.push(PgError {
+            self.state.notices.push(PgError {
                 severity: "WARNING",
                 ..PgError::new(
                     code::NO_ACTIVE_SQL_TRANSACTION,
@@ -485,12 +503,12 @@ impl Session {
         match kind {
             VariableSetKind::VarSetValue => {
                 let value = set_value(&set.name, &set.args)?;
-                self.settings.set(&set.name, Some(&value), local, in_transaction)?;
+                self.state.settings.set(&set.name, Some(&value), local, in_transaction)?;
             }
             VariableSetKind::VarSetDefault | VariableSetKind::VarReset => {
-                self.settings.set(&set.name, None, local, in_transaction)?;
+                self.state.settings.set(&set.name, None, local, in_transaction)?;
             }
-            VariableSetKind::VarResetAll => self.settings.reset_all(in_transaction),
+            VariableSetKind::VarResetAll => self.state.settings.reset_all(in_transaction),
             VariableSetKind::VarSetMulti => {}
             _ => return Err(PgError::unsupported("this SET")),
         }
@@ -502,7 +520,7 @@ impl Session {
         if name == "all" {
             let mut rows = Vec::new();
             for definition in crate::settings::all_settings() {
-                let value = self.settings.show(&definition.name)?;
+                let value = self.state.settings.show(&definition.name)?;
                 rows.push(vec![
                     Value::Text(definition.name.clone()),
                     Value::Text(value),
@@ -513,9 +531,9 @@ impl Session {
             return Ok(Outcome::Rows { columns: show_columns(name), rows, tag });
         }
         let value = match name {
-            "session_authorization" => self.user.clone(),
+            "session_authorization" => self.state.user.clone(),
             "server_version" => crate::SERVER_VERSION.to_string(),
-            _ => self.settings.show(name)?,
+            _ => self.state.settings.show(name)?,
         };
         Ok(Outcome::Rows { columns: show_columns(name), rows: vec![vec![Value::Text(value)]], tag: "SHOW".into() })
     }
@@ -601,17 +619,17 @@ impl Ctx<'_> {
     }
 
     /// run plans and runs a statement.
-    fn run(&mut self, node: &NodeEnum, params: &[Value]) -> Result<Outcome> {
+    fn run(&mut self, node: &NodeEnum) -> Result<Outcome> {
         match node {
             NodeEnum::SelectStmt(select) => {
                 let plan = self.plan_select(select)?;
-                let rows = plan.run(self.db, params)?;
+                let rows = plan.run(self)?;
                 let tag = format!("SELECT {}", rows.len());
                 Ok(Outcome::Rows { columns: plan.columns, rows, tag })
             }
-            NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self.db, self.txn, params),
-            NodeEnum::UpdateStmt(update) => self.plan_update(update)?.run(self.db, self.txn, params),
-            NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.run(self.db, self.txn, params),
+            NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self),
+            NodeEnum::UpdateStmt(update) => self.plan_update(update)?.run(self),
+            NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.run(self),
             NodeEnum::CreateStmt(create) => self.create_table(create),
             _ => Err(PgError::unsupported("this statement")),
         }

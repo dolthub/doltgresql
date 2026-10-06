@@ -323,6 +323,16 @@ impl Numeric {
         })
     }
 
+    /// div_exact returns the value divided by 10 to the power, keeping every digit.
+    pub fn div_exact(&self, power: u32) -> Numeric {
+        match self {
+            Numeric::Finite { negative, coefficient, scale } => {
+                Numeric::Finite { negative: *negative, coefficient: coefficient.clone(), scale: scale + power }
+            }
+            other => other.clone(),
+        }
+    }
+
     /// div_at returns the finite quotient rounded half away from zero to the scale.
     fn div_at(&self, other: &Numeric, scale: u32) -> Numeric {
         let (

@@ -17,14 +17,16 @@
 use std::cmp::Ordering;
 
 use pg_query::protobuf::a_const::Val;
-use pg_query::protobuf::{AExprKind, BoolExprType, NullTestType};
+use pg_query::protobuf::{AExprKind, BoolExprType, NullTestType, SqlValueFunctionOp};
 use pg_query::{Node, NodeEnum};
 
 use crate::cast::{cast_value, type_display};
 use crate::catalog::{ColumnType, resolve_type};
 use crate::error::{PgError, Result, code};
+use crate::functions;
 use crate::numeric::Numeric;
 use crate::oid;
+use crate::query::Ctx;
 use crate::types::Value;
 
 /// ScopeColumn is a column that expressions can refer to, from the table it belongs to.
@@ -83,6 +85,8 @@ pub enum Expr {
     Not(Box<Expr>),
     /// IS NULL, or IS NOT NULL when negated.
     IsNull(Box<Expr>, bool),
+    /// A call of the built-in function at the index.
+    Func(usize, Vec<Expr>),
 }
 
 /// Bound is a bound expression with its type.
@@ -195,6 +199,19 @@ impl Binder<'_> {
                 };
                 Ok((expr, typ(oid::BOOL)))
             }
+            NodeEnum::FuncCall(call) => self.func_call(call),
+            NodeEnum::SqlvalueFunction(f) => {
+                let name = match SqlValueFunctionOp::try_from(f.op) {
+                    Ok(SqlValueFunctionOp::SvfopCurrentUser | SqlValueFunctionOp::SvfopCurrentRole) => "current_user",
+                    Ok(SqlValueFunctionOp::SvfopUser) => "current_user",
+                    Ok(SqlValueFunctionOp::SvfopSessionUser) => "session_user",
+                    Ok(SqlValueFunctionOp::SvfopCurrentCatalog) => "current_database",
+                    Ok(SqlValueFunctionOp::SvfopCurrentSchema) => "current_schema",
+                    _ => return Err(PgError::unsupported("this SQL value function")),
+                };
+                let resolved = functions::resolve(name, &[], f.location)?;
+                Ok((Expr::Func(resolved.index, Vec::new()), typ(resolved.ret)))
+            }
             NodeEnum::NullTest(test) => {
                 let arg = test.arg.as_deref().ok_or_else(|| PgError::internal("no null test argument"))?;
                 let (expr, _) = self.bind(arg)?;
@@ -244,6 +261,46 @@ impl Binder<'_> {
                 })
             }
         }
+    }
+}
+
+impl Binder<'_> {
+    /// func_call binds a call of a built-in function.
+    fn func_call(&mut self, call: &pg_query::protobuf::FuncCall) -> Result<Bound> {
+        let names: Vec<&str> = call.funcname.iter().filter_map(node_name).collect();
+        let name = match names.as_slice() {
+            [name] => *name,
+            ["pg_catalog", name] => *name,
+            _ => {
+                return Err(PgError {
+                    position: position(call.location),
+                    ..PgError::new(code::UNDEFINED_FUNCTION, format!("function {}() does not exist", names.join(".")))
+                });
+            }
+        };
+        if call.agg_star || call.agg_distinct || call.over.is_some() || call.agg_filter.is_some() {
+            return Err(PgError::unsupported("aggregate and window functions"));
+        }
+        let mut bound = Vec::with_capacity(call.args.len());
+        for arg in &call.args {
+            bound.push(self.bind(arg)?);
+        }
+        let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
+        let resolved = functions::resolve(name, &types, call.location)?;
+        let mut args = Vec::with_capacity(bound.len());
+        for (((expr, ty), &target), node) in bound.into_iter().zip(&resolved.arg_types).zip(&call.args) {
+            if let Expr::Param(i) = expr
+                && self.parameters[i] == 0
+            {
+                self.parameters[i] = target;
+            }
+            if target == functions::ANY {
+                args.push(expr);
+            } else {
+                args.push(coerce((expr, ty), typ(target), false, arg_location(node))?.0);
+            }
+        }
+        Ok((Expr::Func(resolved.index, args), typ(resolved.ret)))
     }
 }
 
@@ -557,6 +614,23 @@ pub fn figure_name(node: &Node) -> String {
                 .unwrap_or_else(|| "?column?".into()),
         },
         Some(NodeEnum::CaseExpr(_)) => "case".into(),
+        Some(NodeEnum::SqlvalueFunction(f)) => match SqlValueFunctionOp::try_from(f.op) {
+            Ok(SqlValueFunctionOp::SvfopCurrentUser) => "current_user",
+            Ok(SqlValueFunctionOp::SvfopCurrentRole) => "current_role",
+            Ok(SqlValueFunctionOp::SvfopUser) => "user",
+            Ok(SqlValueFunctionOp::SvfopSessionUser) => "session_user",
+            Ok(SqlValueFunctionOp::SvfopCurrentCatalog) => "current_catalog",
+            Ok(SqlValueFunctionOp::SvfopCurrentSchema) => "current_schema",
+            Ok(SqlValueFunctionOp::SvfopCurrentDate) => "current_date",
+            Ok(SqlValueFunctionOp::SvfopCurrentTime | SqlValueFunctionOp::SvfopCurrentTimeN) => "current_time",
+            Ok(SqlValueFunctionOp::SvfopCurrentTimestamp | SqlValueFunctionOp::SvfopCurrentTimestampN) => {
+                "current_timestamp"
+            }
+            Ok(SqlValueFunctionOp::SvfopLocaltime | SqlValueFunctionOp::SvfopLocaltimeN) => "localtime",
+            Ok(SqlValueFunctionOp::SvfopLocaltimestamp | SqlValueFunctionOp::SvfopLocaltimestampN) => "localtimestamp",
+            _ => "?column?",
+        }
+        .into(),
         Some(NodeEnum::AArrayExpr(_)) => "array".into(),
         _ => "?column?".into(),
     }
@@ -616,14 +690,14 @@ fn float_result(value: f64, inputs_finite: bool) -> Result<f64> {
 }
 
 impl Expr {
-    /// eval evaluates the expression over a row with the statement's parameters.
-    pub fn eval(&self, row: &[Value], params: &[Value]) -> Result<Value> {
+    /// eval evaluates the expression over a row.
+    pub fn eval(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Result<Value> {
         Ok(match self {
             Expr::Const(value) => value.clone(),
             Expr::Column(i) => row[*i].clone(),
-            Expr::Param(i) => params.get(*i).cloned().unwrap_or(Value::Null),
+            Expr::Param(i) => ctx.params.get(*i).cloned().unwrap_or(Value::Null),
             Expr::Cast(expr, ty, explicit) => {
-                let value = expr.eval(row, params)?;
+                let value = expr.eval(ctx, row)?;
                 match value {
                     Value::Text(text) if !matches!(ty.oid, oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME) => {
                         cast_value(crate::cast::input(&text, ty.oid)?, *ty, *explicit)?
@@ -632,13 +706,13 @@ impl Expr {
                 }
             }
             Expr::Arith(op, left, right, ty) => {
-                let (left, right) = (left.eval(row, params)?, right.eval(row, params)?);
+                let (left, right) = (left.eval(ctx, row)?, right.eval(ctx, row)?);
                 if left.is_null() || right.is_null() {
                     return Ok(Value::Null);
                 }
                 arith(*op, &left, &right, *ty)?
             }
-            Expr::Neg(expr, ty) => match expr.eval(row, params)? {
+            Expr::Neg(expr, ty) => match expr.eval(ctx, row)? {
                 Value::Null => Value::Null,
                 Value::Numeric(n) => Value::Numeric(n.negate()),
                 Value::Float4(f) => Value::Float4(-f),
@@ -646,7 +720,7 @@ impl Expr {
                 value => int_result(as_i64(&value).and_then(i64::checked_neg), *ty)?,
             },
             Expr::Compare(op, left, right) => {
-                let (left, right) = (left.eval(row, params)?, right.eval(row, params)?);
+                let (left, right) = (left.eval(ctx, row)?, right.eval(ctx, row)?);
                 if left.is_null() || right.is_null() {
                     return Ok(Value::Null);
                 }
@@ -660,37 +734,41 @@ impl Expr {
                     CmpOp::Ge => ordering != Ordering::Less,
                 })
             }
-            Expr::Concat(left, right) => match (left.eval(row, params)?, right.eval(row, params)?) {
+            Expr::Concat(left, right) => match (left.eval(ctx, row)?, right.eval(ctx, row)?) {
                 (Value::Null, _) | (_, Value::Null) => Value::Null,
                 (l, r) => Value::Text(format!("{}{}", l.output().unwrap_or_default(), r.output().unwrap_or_default())),
             },
-            Expr::And(left, right) => match left.eval(row, params)? {
+            Expr::And(left, right) => match left.eval(ctx, row)? {
                 Value::Bool(false) => Value::Bool(false),
-                l => match (l, right.eval(row, params)?) {
+                l => match (l, right.eval(ctx, row)?) {
                     (_, Value::Bool(false)) => Value::Bool(false),
                     (Value::Bool(true), Value::Bool(true)) => Value::Bool(true),
                     _ => Value::Null,
                 },
             },
-            Expr::Or(left, right) => match left.eval(row, params)? {
+            Expr::Or(left, right) => match left.eval(ctx, row)? {
                 Value::Bool(true) => Value::Bool(true),
-                l => match (l, right.eval(row, params)?) {
+                l => match (l, right.eval(ctx, row)?) {
                     (_, Value::Bool(true)) => Value::Bool(true),
                     (Value::Bool(false), Value::Bool(false)) => Value::Bool(false),
                     _ => Value::Null,
                 },
             },
-            Expr::Not(expr) => match expr.eval(row, params)? {
+            Expr::Not(expr) => match expr.eval(ctx, row)? {
                 Value::Bool(b) => Value::Bool(!b),
                 _ => Value::Null,
             },
-            Expr::IsNull(expr, negated) => Value::Bool(expr.eval(row, params)?.is_null() != *negated),
+            Expr::IsNull(expr, negated) => Value::Bool(expr.eval(ctx, row)?.is_null() != *negated),
+            Expr::Func(index, args) => {
+                let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+                functions::call(ctx, *index, &values)?
+            }
         })
     }
 
     /// is_true evaluates a condition, treating NULL as false.
-    pub fn is_true(&self, row: &[Value], params: &[Value]) -> Result<bool> {
-        Ok(matches!(self.eval(row, params)?, Value::Bool(true)))
+    pub fn is_true(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Result<bool> {
+        Ok(matches!(self.eval(ctx, row)?, Value::Bool(true)))
     }
 }
 

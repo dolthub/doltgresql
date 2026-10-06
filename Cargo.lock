@@ -1404,6 +1404,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "doltdb",
+ "md-5",
  "num-bigint",
  "num-integer",
  "num-traits",

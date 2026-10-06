@@ -10,6 +10,7 @@ license.workspace = true
 chrono = "0.4"
 chrono-tz = "0.10"
 doltdb = { path = "../doltdb" }
+md-5 = "0.10"
 num-bigint = "0.4"
 num-integer = "0.1"
 num-traits = "0.2"
