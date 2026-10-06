@@ -40,10 +40,42 @@ impl Array {
         Array { element, dims, values }
     }
 
-    /// array_type returns the OID of the array type of the elements.
+    /// array_type returns the OID of the array type of the elements, or of the vector type for a vector.
     pub fn array_type(&self) -> u32 {
+        if is_vector_type(self.element) {
+            return self.element;
+        }
         builtin_type(self.element).map_or(0, |t| t.array)
     }
+
+    /// vector returns the array as a value of a vector type, int2vector or oidvector, whose subscripts start at 0 and
+    /// whose element type is the vector type itself.
+    pub fn vector(mut self, vector_type: u32) -> Array {
+        self.element = vector_type;
+        self.dims = if self.values.is_empty() { Vec::new() } else { vec![(self.values.len() as i32, 0)] };
+        self
+    }
+
+    /// element_type returns the type of the elements, which for a vector is the type of its numbers.
+    pub fn element_type(&self) -> u32 {
+        match self.element {
+            crate::oid::INT2VECTOR => crate::oid::INT2,
+            crate::oid::OIDVECTOR => crate::oid::OID,
+            element => element,
+        }
+    }
+}
+
+/// is_vector_type reports whether a type is int2vector or oidvector, the arrays that print as numbers separated by
+/// spaces.
+pub fn is_vector_type(type_oid: u32) -> bool {
+    matches!(type_oid, crate::oid::INT2VECTOR | crate::oid::OIDVECTOR)
+}
+
+/// parse_vector reads the numbers of an int2vector or oidvector, separated by spaces.
+pub fn parse_vector(text: &str, vector_type: u32, element: &dyn Fn(&str) -> Result<Value>) -> Result<Array> {
+    let values = text.split_ascii_whitespace().map(element).collect::<Result<Vec<_>>>()?;
+    Ok(Array::one_dimensional(vector_type, values).vector(vector_type))
 }
 
 /// malformed returns Postgres' error for array text it cannot read.
@@ -413,7 +445,7 @@ pub fn send(array: &Array, element_send: &dyn Fn(&Value) -> Option<Vec<u8>>) -> 
     let mut out = Vec::new();
     out.extend_from_slice(&(array.dims.len() as i32).to_be_bytes());
     out.extend_from_slice(&(array.values.iter().any(Value::is_null) as i32).to_be_bytes());
-    out.extend_from_slice(&array.element.to_be_bytes());
+    out.extend_from_slice(&array.element_type().to_be_bytes());
     for (n, lower) in &array.dims {
         out.extend_from_slice(&n.to_be_bytes());
         out.extend_from_slice(&lower.to_be_bytes());

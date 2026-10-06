@@ -96,6 +96,12 @@ pub enum Plan {
     },
     /// The rows of an XMLTABLE.
     XmlTable(Box<crate::xml::table::XmlTable>),
+    /// The rows of several set-returning calls side by side, padded with NULLs, with a row number when asked, as
+    /// ROWS FROM and unnest of several arrays return them.
+    RowsFrom {
+        calls: Vec<Expr>,
+        ordinality: bool,
+    },
     /// One row per group of the input, with the group keys and then the aggregate results.
     Aggregate {
         input: Box<Plan>,
@@ -856,15 +862,15 @@ impl<'b, 'a> Planner<'b, 'a> {
 
     /// plan_range_function plans a set-returning function in FROM.
     fn plan_range_function(&mut self, function: &RangeFunction) -> Result<(Plan, Scope)> {
-        let [item] = function.functions.as_slice() else { return Err(PgError::unsupported("ROWS FROM")) };
-        let Some(NodeEnum::List(list)) = item.node.as_ref() else { return Err(PgError::unsupported("this function")) };
-        let Some(NodeEnum::FuncCall(call)) = list.items.first().and_then(|n| n.node.as_ref()) else {
-            return Err(PgError::unsupported("this function in FROM"));
-        };
+        let calls = rows_from_calls(function)?;
+        if calls.len() > 1 {
+            return self.plan_rows_from(function, &calls);
+        }
+        let call = &calls[0];
         let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
         let mut binder = self.binder(Scope::default());
         binder.set_functions = Some(Vec::new());
-        let (expr, ty) = binder.bind(&Node { node: Some(NodeEnum::FuncCall(call.clone())) })?;
+        let (expr, ty) = binder.bind(&Node { node: Some(NodeEnum::FuncCall(Box::new(call.clone()))) })?;
         let expr = match expr {
             Expr::SetRef(k) => binder.set_functions.take().unwrap_or_default().swap_remove(k),
             other => other,
@@ -910,6 +916,37 @@ impl<'b, 'a> Planner<'b, 'a> {
             columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false, origin: (0, 0) });
         }
         Ok((Plan::Function { call: expr, ordinality: function.ordinality, width }, Scope { columns }))
+    }
+
+    /// plan_rows_from plans several set-returning calls in FROM, each giving one column.
+    fn plan_rows_from(
+        &mut self,
+        function: &RangeFunction,
+        calls: &[pg_query::protobuf::FuncCall],
+    ) -> Result<(Plan, Scope)> {
+        let alias = function.alias.as_ref();
+        let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+        let table = alias.map_or_else(|| "rows".to_string(), |a| a.aliasname.clone());
+        let mut exprs = Vec::with_capacity(calls.len());
+        let mut columns = Vec::with_capacity(calls.len() + 1);
+        for (i, call) in calls.iter().enumerate() {
+            let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
+            let mut binder = self.binder(Scope::default());
+            binder.set_functions = Some(Vec::new());
+            let (expr, ty) = binder.bind(&Node { node: Some(NodeEnum::FuncCall(Box::new(call.clone()))) })?;
+            let expr = match expr {
+                Expr::SetRef(k) => binder.set_functions.take().unwrap_or_default().swap_remove(k),
+                other => other,
+            };
+            exprs.push(expr);
+            let name = renames.get(i).map_or(name, |r| r.to_string());
+            columns.push(ScopeColumn { table: table.clone(), name, ty, hidden: false, origin: (0, 0) });
+        }
+        if function.ordinality {
+            let name = renames.get(calls.len()).map_or("ordinality".to_string(), |r| r.to_string());
+            columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false, origin: (0, 0) });
+        }
+        Ok((Plan::RowsFrom { calls: exprs, ordinality: function.ordinality }, Scope { columns }))
     }
 
     /// plan_join plans a join with its condition, merging the columns that USING or NATURAL name.
@@ -1644,6 +1681,7 @@ impl Plan {
             Plan::Project { exprs, .. } => exprs.len(),
             Plan::Join { left, right, .. } => left.width() + right.width(),
             Plan::XmlTable(table) => table.columns.len(),
+            Plan::RowsFrom { calls, ordinality } => calls.len() + *ordinality as usize,
             Plan::Aggregate { groups, aggregates, .. } => groups.len() + aggregates.len(),
             Plan::SetOp { left, .. } => left.width(),
         }
@@ -1748,6 +1786,20 @@ impl Plan {
                 out
             }
             Plan::XmlTable(table) => crate::xml::table::rows(ctx, table)?,
+            Plan::RowsFrom { calls, ordinality } => {
+                let columns = calls.iter().map(|c| set_rows(ctx, c, &[])).collect::<Result<Vec<_>>>()?;
+                let count = columns.iter().map(Vec::len).max().unwrap_or(0);
+                (0..count)
+                    .map(|i| {
+                        let mut row: Vec<Value> =
+                            columns.iter().map(|c| c.get(i).cloned().unwrap_or(Value::Null)).collect();
+                        if *ordinality {
+                            row.push(Value::Int8(i as i64 + 1));
+                        }
+                        row
+                    })
+                    .collect()
+            }
             Plan::Join { left, right, kind, condition, lateral: true } => {
                 let right_width = right.width();
                 let mut out = Vec::new();
@@ -2014,4 +2066,29 @@ fn push_down(plan: Plan, predicate: Expr) -> Plan {
         Some(predicate) => Plan::Filter { input: Box::new(join), predicate },
         None => join,
     }
+}
+
+/// rows_from_calls returns the function calls of a FROM function item: each call of ROWS FROM, one unnest call for
+/// each array that unnest of several arrays expands, or the one call.
+fn rows_from_calls(function: &RangeFunction) -> Result<Vec<pg_query::protobuf::FuncCall>> {
+    let mut calls = Vec::new();
+    for item in &function.functions {
+        let Some(NodeEnum::List(list)) = item.node.as_ref() else { return Err(PgError::unsupported("this function")) };
+        let Some(NodeEnum::FuncCall(call)) = list.items.first().and_then(|n| n.node.as_ref()) else {
+            return Err(PgError::unsupported("this function in FROM"));
+        };
+        calls.push((**call).clone());
+    }
+    if let [call] = calls.as_slice()
+        && call.args.len() > 1
+        && call.funcname.iter().filter_map(node_name).next_back() == Some("unnest")
+    {
+        let call = call.clone();
+        return Ok(call
+            .args
+            .iter()
+            .map(|arg| pg_query::protobuf::FuncCall { args: vec![arg.clone()], ..call.clone() })
+            .collect());
+    }
+    Ok(calls)
 }

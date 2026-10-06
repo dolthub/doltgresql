@@ -131,7 +131,13 @@ impl<'t> Rows<'t> {
         let mut row = vec![Value::Null; self.table.columns.len()];
         for (name, value) in fields {
             if let Some(i) = self.table.column(name) {
-                row[i] = value;
+                let type_oid = self.table.columns[i].type_oid;
+                row[i] = match value {
+                    Value::Text(text) if crate::array::is_vector_type(type_oid) => {
+                        crate::cast::input(&text, type_oid).unwrap_or(Value::Text(text))
+                    }
+                    value => value,
+                };
             }
         }
         self.rows.push(row);

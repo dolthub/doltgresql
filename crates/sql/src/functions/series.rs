@@ -17,7 +17,7 @@
 use super::Function;
 use crate::error::{PgError, Result, code};
 use crate::numeric::Numeric;
-use crate::oid::{INT4, INT8, NUMERIC};
+use crate::oid::{INT4, INT8, INTERVAL, NUMERIC, TIMESTAMP, TIMESTAMPTZ};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -34,6 +34,8 @@ pub const FUNCTIONS: &[Function] = &[
     f("generate_series", &[INT8, INT8, INT8], INT8, series_int),
     f("generate_series", &[NUMERIC, NUMERIC], NUMERIC, series_numeric),
     f("generate_series", &[NUMERIC, NUMERIC, NUMERIC], NUMERIC, series_numeric),
+    f("generate_series", &[TIMESTAMP, TIMESTAMP, INTERVAL], TIMESTAMP, series_timestamp),
+    f("generate_series", &[TIMESTAMPTZ, TIMESTAMPTZ, INTERVAL], TIMESTAMPTZ, series_timestamp),
 ];
 
 /// MAX_ROWS limits a generated series, to fail instead of exhausting memory.
@@ -75,6 +77,14 @@ fn series_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     };
     let (start, stop) = (num(&args[0]), num(&args[1]));
     let step = args.get(2).map_or(Numeric::from_i64(1), num);
+    for (value, what) in [(&start, "start value"), (&stop, "stop value"), (&step, "step size")] {
+        let special = match value.to_string().as_str() {
+            "NaN" => "NaN",
+            "Infinity" | "-Infinity" => "infinity",
+            _ => continue,
+        };
+        return Err(PgError::new(code::INVALID_PARAMETER_VALUE, format!("{what} cannot be {special}")));
+    }
     if step.is_zero() {
         return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "step size cannot equal zero"));
     }
@@ -87,6 +97,33 @@ fn series_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "generate_series produced too many rows"));
         }
         i = i.add(&step);
+    }
+    Ok(Value::Set(out))
+}
+
+/// series_timestamp generates timestamps from the start to the stop by the interval step.
+fn series_timestamp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let zoned = matches!(args[0], Value::TimestampTz(_));
+    let (
+        Value::Timestamp(start) | Value::TimestampTz(start),
+        Value::Timestamp(stop) | Value::TimestampTz(stop),
+        Value::Interval(step),
+    ) = (&args[0], &args[1], &args[2])
+    else {
+        return Ok(Value::Set(Vec::new()));
+    };
+    let direction = step.cmp_key().signum();
+    if direction == 0 {
+        return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "step size cannot equal zero"));
+    }
+    let mut out = Vec::new();
+    let mut i = *start;
+    while (direction > 0 && i <= *stop) || (direction < 0 && i >= *stop) {
+        out.push(if zoned { Value::TimestampTz(i) } else { Value::Timestamp(i) });
+        if out.len() > MAX_ROWS {
+            return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "generate_series produced too many rows"));
+        }
+        i = crate::functions::datetime::timestamp_plus_interval(i, *step, zoned)?;
     }
     Ok(Value::Set(out))
 }

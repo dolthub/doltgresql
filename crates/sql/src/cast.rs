@@ -22,7 +22,7 @@ use crate::types::Value;
 
 /// type_display returns the name Postgres uses for a type in error messages.
 pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
-    if crate::array::is_array_type(type_oid) {
+    if crate::array::is_array_type(type_oid) && !crate::array::is_vector_type(type_oid) {
         return format!("{}[]", type_display(crate::expr::element_type(type_oid))).into();
     }
     if builtin_type(type_oid).is_none()
@@ -56,7 +56,7 @@ pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
 /// format_type returns a type's name with its modifier as Postgres' format_type does, where a modifier of None leaves
 /// the SQL standard names of char and bit at their defaults, or None for an unknown type.
 pub fn format_type(type_oid: u32, modifier: Option<i32>) -> Option<String> {
-    if crate::array::is_array_type(type_oid) {
+    if crate::array::is_array_type(type_oid) && !crate::array::is_vector_type(type_oid) {
         return Some(format!("{}[]", format_type(crate::expr::element_type(type_oid), modifier)?));
     }
     let typmod = modifier.filter(|m| *m >= 0);
@@ -296,6 +296,11 @@ fn is_char_value(text: &str) -> bool {
 
 /// input reads a value of the type from its text format.
 pub fn input(text: &str, type_oid: u32) -> Result<Value> {
+    if crate::array::is_vector_type(type_oid) {
+        let element = crate::expr::element_type(type_oid);
+        let parsed = crate::array::parse_vector(text, type_oid, &|item| input(item, element))?;
+        return Ok(Value::Array(Box::new(parsed)));
+    }
     if crate::array::is_array_type(type_oid) {
         let element = crate::expr::element_type(type_oid);
         let parsed = crate::array::parse(text, element, &|item| input(item, element))?;
@@ -691,6 +696,18 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
     if crate::array::is_array_type(to.oid) {
         let element = crate::expr::element_type(to.oid);
         let element_type = ColumnType { oid: element, modifier: to.modifier };
+        if crate::array::is_vector_type(to.oid) {
+            let array = match value {
+                Value::Array(array) => crate::array::Array::one_dimensional(element, array.values),
+                Value::Text(text) => crate::array::parse_vector(&text, to.oid, &|item| {
+                    input(item, element).and_then(|v| cast_value(v, element_type, explicit))
+                })?,
+                other => return Err(cannot_cast(&other, to.oid)),
+            };
+            let values =
+                array.values.into_iter().map(|v| cast_value(v, element_type, explicit)).collect::<Result<_>>()?;
+            return Ok(Value::Array(Box::new(crate::array::Array::one_dimensional(element, values).vector(to.oid))));
+        }
         return match value {
             Value::Array(array) => {
                 let values = array

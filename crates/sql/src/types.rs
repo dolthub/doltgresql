@@ -169,6 +169,9 @@ impl Value {
                 datetime::format_timestamp(*ts, Some((offset, &name)), f)
             }),
             Value::Interval(iv) => datetime::with_format(|f| datetime::format_interval(iv, f.interval_style)),
+            Value::Array(a) if array::is_vector_type(a.element) => {
+                a.values.iter().map(|v| v.output().unwrap_or_default()).collect::<Vec<_>>().join(" ")
+            }
             Value::Array(a) => array::format(a, &|v| v.output().unwrap_or_default()),
             Value::Record(fields) => format_record(fields),
             Value::Json(text) => text.clone(),
@@ -206,7 +209,7 @@ impl Value {
                 [iv.micros.to_be_bytes().as_slice(), &iv.days.to_be_bytes(), &iv.months.to_be_bytes()].concat()
             }
             Value::Array(a) => {
-                let element = a.element;
+                let element = a.element_type();
                 array::send(a, &|v| v.send(element))
             }
             Value::Record(fields) => {

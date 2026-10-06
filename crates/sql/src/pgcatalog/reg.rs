@@ -143,14 +143,14 @@ impl Ctx<'_> {
                 Ok(Reg { type_oid, oid: ty, name: crate::cast::type_display(ty).into_owned() })
             }
             types::REGNAMESPACE => {
-                let name = crate::sequences::parse_qualified_name(text)?.pop().unwrap_or_default();
+                let name = single_name(text)?;
                 let (name, oid) = self.namespaces().into_iter().find(|(n, _)| *n == name).ok_or_else(|| {
                     PgError::new(code::INVALID_SCHEMA_NAME, format!("schema \"{name}\" does not exist"))
                 })?;
                 Ok(Reg { type_oid, oid, name })
             }
             types::REGROLE => {
-                let name = crate::sequences::parse_qualified_name(text)?.pop().unwrap_or_default();
+                let name = single_name(text)?;
                 let (name, oid) =
                     self.roles().into_iter().find(|(n, _)| *n == name).ok_or_else(|| {
                         PgError::new(code::UNDEFINED_OBJECT, format!("role \"{name}\" does not exist"))
@@ -175,6 +175,76 @@ impl Ctx<'_> {
             }
             _ => Err(PgError::unsupported(format!("reading values of type {}", crate::cast::type_display(type_oid)))),
         }
+    }
+
+    /// to_reg returns the reg value of the object that text names, or NULL when there is none, as the to_regclass
+    /// family of functions does.
+    pub fn to_reg(&mut self, text: &str, type_oid: u32) -> Result<Value> {
+        let missing = [
+            code::UNDEFINED_TABLE,
+            code::UNDEFINED_OBJECT,
+            code::INVALID_SCHEMA_NAME,
+            code::UNDEFINED_FUNCTION,
+            code::AMBIGUOUS_FUNCTION,
+        ];
+        if !text.trim().is_empty() && text.trim().bytes().all(|b| b.is_ascii_digit()) {
+            return Ok(Value::Null);
+        }
+        match self.reg_from_name(text.trim(), type_oid) {
+            Ok(reg) => Ok(Value::Reg(Box::new(reg))),
+            Err(err) if missing.contains(&err.code) => Ok(Value::Null),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// is_visible reports whether the object of an OID in a catalog is visible in the search path, as the
+    /// pg_*_is_visible functions do, returning NULL when no such object exists. The objects of catalogs other than
+    /// pg_class, pg_type, and pg_proc all live in pg_catalog.
+    pub fn is_visible(&mut self, oid: u32, catalog: &str) -> Result<Value> {
+        let path = self.effective_search_path();
+        let builtin = |catalog: &str, column: &str| builtin_column(catalog, column).iter().any(|(o, _)| *o == oid);
+        let schema = match catalog {
+            "pg_class" => self.relations()?.into_iter().find(|r| r.oid == oid).map(|r| r.schema),
+            "pg_type" => match builtin_type(oid) {
+                Some(_) => Some("pg_catalog".to_string()),
+                None => self.user_types()?.get(&oid).map(|t| t.schema.clone()),
+            },
+            "pg_proc" if builtin("pg_proc", "proname") => Some("pg_catalog".to_string()),
+            "pg_proc" => self
+                .routines()?
+                .iter()
+                .find(|r| crate::catalog::oids::oid(&r.object.id) == oid)
+                .map(|r| r.schema.clone()),
+            other => lookup("pg_catalog", other)
+                .and_then(|table| table.columns.get(1).map(|c| c.name))
+                .filter(|column| builtin(other, column))
+                .map(|_| "pg_catalog".to_string()),
+        };
+        Ok(schema.map_or(Value::Null, |s| Value::Bool(path.contains(&s))))
+    }
+
+    /// description returns the built-in comment on an object of a catalog, from pg_description, or from
+    /// pg_shdescription for a shared catalog, with a column number for a column's comment.
+    pub fn description(&self, oid: u32, catalog: &str, column: i32) -> Option<String> {
+        let shared = catalog == "pg_database";
+        let description = lookup("pg_catalog", if shared { "pg_shdescription" } else { "pg_description" })?;
+        let class = lookup("pg_catalog", catalog)?.oid;
+        let (objoid, classoid, text) =
+            (description.column("objoid")?, description.column("classoid")?, description.column("description")?);
+        let subid = description.column("objsubid");
+        builtin::rows(description)
+            .into_iter()
+            .find(|row| {
+                row[objoid] == Value::Oid(oid)
+                    && row[classoid] == Value::Oid(class)
+                    && subid.is_none_or(|i| row[i] == Value::Int4(column))
+            })
+            .map(|row| text_of(&row[text]))
+    }
+
+    /// role_of_oid returns the name of the role of an OID.
+    pub fn role_of_oid(&self, oid: u32) -> Option<String> {
+        self.roles().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n)
     }
 
     /// effective_search_path returns the schemas that unqualified names resolve in, with pg_catalog first unless the
@@ -305,4 +375,13 @@ fn parse_type_name(text: &str) -> Result<u32> {
     }
     let type_name = type_name.ok_or_else(undefined)?;
     crate::expr::resolve_type_name(&type_name).map(|t| t.oid).map_err(|_| undefined())
+}
+
+/// single_name reads the one name that regnamespace and regrole take, failing as Postgres does for a qualified name.
+fn single_name(text: &str) -> Result<String> {
+    let mut names = crate::sequences::parse_qualified_name(text)?;
+    if names.len() != 1 {
+        return Err(PgError::new(code::INVALID_NAME, "invalid name syntax"));
+    }
+    Ok(names.pop().unwrap_or_default())
 }

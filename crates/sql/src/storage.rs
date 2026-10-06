@@ -194,6 +194,9 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
         let element = crate::expr::element_type(ty.oid);
         let element_type = ColumnType { oid: element, modifier: ty.modifier };
         let array = crate::array::deserialize(field, element, &|bytes| deserialize_value(bytes, element_type))?;
+        if crate::array::is_vector_type(ty.oid) {
+            return Ok(Value::Array(Box::new(array.vector(ty.oid))));
+        }
         return Ok(Value::Array(Box::new(array)));
     }
     if crate::catalog::builtin_type(ty.oid).is_none()

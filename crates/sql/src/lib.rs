@@ -114,6 +114,8 @@ pub mod oid {
     pub const BIT: u32 = 1560;
     pub const VARBIT: u32 = 1562;
     pub const XML: u32 = 142;
+    pub const INT2VECTOR: u32 = 22;
+    pub const OIDVECTOR: u32 = 30;
     pub const XML_ARRAY: u32 = 143;
 }
 

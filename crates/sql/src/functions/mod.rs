@@ -19,6 +19,7 @@ pub use array::value_type;
 pub use json::OUT_COLUMNS as JSON_OUT_COLUMNS;
 mod array;
 mod binary;
+mod catalog;
 pub mod datetime;
 pub mod json;
 mod math;
@@ -84,6 +85,7 @@ fn registry() -> &'static Registry {
             json::FUNCTIONS,
             binary::FUNCTIONS,
             xml::FUNCTIONS,
+            catalog::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
             crate::sequences::FUNCTIONS,
         ]
