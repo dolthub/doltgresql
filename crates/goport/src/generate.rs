@@ -320,6 +320,20 @@ pub struct Report {
     pub notes: Vec<String>,
     /// Where each assertion's expectation came from, for matching against test failures.
     pub assertion_sources: Vec<Value>,
+    /// The Rust test function, as `module::function`, of the runner call being generated.
+    function: String,
+}
+
+/// KEYWORD_MODULES lists Go test files whose names are Rust keywords, which get a `_statement` module suffix.
+const KEYWORD_MODULES: [&str; 8] = ["do", "type", "match", "use", "where", "loop", "move", "ref"];
+
+/// test_function returns the Rust test function, as `module::function`, of a record's runner call with the given
+/// index among the calls of the same Go test.
+fn test_function(record: &Record, index: usize) -> String {
+    let file = go_file(record);
+    let module = if KEYWORD_MODULES.contains(&file.as_str()) { format!("{file}_statement") } else { file };
+    let suffix = if index == 0 { String::new() } else { format!("_{}", index + 1) };
+    format!("{module}::{}{suffix}", rust::snake_case(record.test.split('/').next().unwrap()))
 }
 
 /// generate_script renders one script.
@@ -394,7 +408,7 @@ fn generate_script(
         let generated = generate_assertion(assertion, transaction, observation, second.as_ref(), source);
         *report.sources.entry(format!("{:?}", generated.source)).or_default() += 1;
         report.assertion_sources.push(serde_json::json!({
-            "test": format!("{}::{}", go_file(record), rust::snake_case(record.test.split('/').next().unwrap())),
+            "test": report.function,
             "script": name,
             "part": format!("assertion {index}"),
             "source": if generated.source == Source::Postgres && pg.is_some_and(|pg| pg["postgres_version"].as_u64() == Some(17)) {
@@ -486,7 +500,7 @@ fn generate_wire_test(
     };
     *report.sources.entry(source.into()).or_default() += 1;
     report.assertion_sources.push(serde_json::json!({
-        "test": format!("{}::{}", go_file(record), rust::snake_case(record.test.split('/').next().unwrap())),
+        "test": report.function,
         "script": name,
         "part": "wire",
         "source": source,
@@ -586,6 +600,9 @@ pub fn generate(
     let mut report = Report::default();
     let mut files: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
     for record in records {
+        let test_name = record.test.split('/').next().unwrap();
+        let calls = files.get(&go_file(record)).and_then(|tests| tests.get(test_name)).map_or(0, Vec::len);
+        report.function = test_function(record, calls);
         if matches!(record.runner.as_str(), "RunWireScripts" | "RunMessageFlowTests" | "RunRecording") {
             let mut call = String::from("run_wire_tests(&[\n");
             for (index, test) in record.tests.iter().enumerate() {
@@ -657,7 +674,7 @@ pub fn generate(
     );
     main.push_str("#![allow(unused_imports)]\n\n");
     for module in &modules {
-        if matches!(module.as_str(), "do" | "type" | "match" | "use" | "where" | "loop" | "move" | "ref") {
+        if KEYWORD_MODULES.contains(&module.as_str()) {
             let _ = writeln!(main, "#[path = \"{module}.rs\"]\nmod {module}_statement;");
         } else {
             let _ = writeln!(main, "mod {module};");
