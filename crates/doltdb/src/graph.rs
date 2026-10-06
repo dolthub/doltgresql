@@ -19,7 +19,7 @@ use serial::{Commit, DoltgresRootValue, Message, StoreRoot, TableMessage, Tag, W
 use store::{ChunkReader, Hash, Result};
 
 /// hex renders bytes as lower-case hex.
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -154,11 +154,21 @@ impl Graph<'_> {
                     hex(table.violations()?.unwrap_or_default()),
                     hex(table.artifacts()?.unwrap_or_default()),
                 ));
+                let mut secondary = Vec::new();
                 if let Some(bytes) = table.secondary_indexes()?.filter(|b| !b.is_empty()) {
-                    for (key, entry) in address_map(self.reader, bytes)? {
-                        self.lines.push(format!("table-index {address} {} {entry}", hex(&key)));
+                    secondary = address_map(self.reader, bytes)?;
+                    for (key, entry) in &secondary {
+                        self.lines.push(format!("table-index {address} {} {entry}", hex(key)));
                     }
                 }
+                crate::rows::describe_table(
+                    self.reader,
+                    address,
+                    table.schema()?,
+                    primary,
+                    &secondary,
+                    &mut self.lines,
+                )?;
             }
             other => self.lines.push(format!("other {address} {other}")),
         }

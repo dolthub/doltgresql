@@ -17,5 +17,6 @@
 //! A Doltgres database's version-controlled data, read from its chunk store.
 
 mod graph;
+mod rows;
 
 pub use graph::{address_map, dump_graph};

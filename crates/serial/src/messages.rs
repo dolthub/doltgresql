@@ -334,6 +334,170 @@ impl<'a> TableMessage<'a> {
     }
 }
 
+/// u16_list reads a [uint16] field.
+fn u16_list(table: &Table<'_>, field: usize) -> Result<Vec<u16>> {
+    match table.vector(field, 2)? {
+        Some(vector) => (0..vector.len()).map(|i| vector.u16(i)).collect(),
+        None => Ok(Vec::new()),
+    }
+}
+
+/// bool_list reads a [bool] field.
+fn bool_list(table: &Table<'_>, field: usize) -> Result<Vec<bool>> {
+    Ok(table.bytes(field)?.unwrap_or_default().iter().map(|&b| b != 0).collect())
+}
+
+/// TableSchema is a table's columns, indexes, and checks.
+pub struct TableSchema<'a>(pub Table<'a>);
+
+/// Column is a column of a table schema.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Column<'a> {
+    pub name: &'a [u8],
+    pub sql_type: &'a [u8],
+    pub default_value: &'a [u8],
+    pub comment: &'a [u8],
+    pub display_order: i16,
+    pub tag: u64,
+    pub encoding: u8,
+    pub primary_key: bool,
+    pub nullable: bool,
+    pub auto_increment: bool,
+    pub hidden: bool,
+    pub generated: bool,
+    pub is_virtual: bool,
+    pub on_update_value: &'a [u8],
+    pub uses_adaptive_encoding: bool,
+    pub hidden_system: bool,
+    pub adaptive_encoding_breaking_change: bool,
+}
+
+/// Index is the clustered index or a secondary index of a table schema.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Index<'a> {
+    pub name: &'a [u8],
+    pub comment: &'a [u8],
+    pub index_columns: Vec<u16>,
+    pub key_columns: Vec<u16>,
+    pub value_columns: Vec<u16>,
+    pub primary_key: bool,
+    pub unique_key: bool,
+    pub system_defined: bool,
+    pub prefix_lengths: Vec<u16>,
+    pub spatial_key: bool,
+    pub fulltext_key: bool,
+    pub vector_key: bool,
+    pub predicate: &'a [u8],
+    pub descending: Vec<bool>,
+    pub nulls_last: Vec<bool>,
+    pub op_classes: Vec<&'a [u8]>,
+}
+
+/// CheckConstraint is a check constraint of a table schema.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CheckConstraint<'a> {
+    pub name: &'a [u8],
+    pub expression: &'a [u8],
+    pub enforced: bool,
+    pub is_not_valid: bool,
+}
+
+impl<'a> TableSchema<'a> {
+    pub fn new(message: Message<'a>) -> Result<TableSchema<'a>> {
+        message.expect(TABLE_SCHEMA).map(TableSchema)
+    }
+
+    pub fn columns(&self) -> Result<Vec<Column<'a>>> {
+        let vector = self.0.vector(0, 4)?.ok_or_else(|| missing("columns"))?;
+        (0..vector.len())
+            .map(|i| {
+                let t = vector.table(i)?;
+                Ok(Column {
+                    name: t.string(0)?.ok_or_else(|| missing("name"))?,
+                    sql_type: t.string(1)?.unwrap_or_default(),
+                    default_value: t.string(2)?.unwrap_or_default(),
+                    comment: t.string(3)?.unwrap_or_default(),
+                    display_order: t.i16(4, 0)?,
+                    tag: t.u64(5, 0)?,
+                    encoding: t.u8(6, 0)?,
+                    primary_key: t.bool(7, false)?,
+                    nullable: t.bool(8, false)?,
+                    auto_increment: t.bool(9, false)?,
+                    hidden: t.bool(10, false)?,
+                    generated: t.bool(11, false)?,
+                    is_virtual: t.bool(12, false)?,
+                    on_update_value: t.string(13)?.unwrap_or_default(),
+                    uses_adaptive_encoding: t.bool(14, false)?,
+                    hidden_system: t.bool(15, false)?,
+                    adaptive_encoding_breaking_change: t.bool(16, false)?,
+                })
+            })
+            .collect()
+    }
+
+    /// index decodes an Index table.
+    fn index(t: Table<'a>) -> Result<Index<'a>> {
+        let op_classes = match t.vector(17, 4)? {
+            Some(vector) => (0..vector.len()).map(|i| vector.string(i)).collect::<Result<Vec<_>>>()?,
+            None => Vec::new(),
+        };
+        Ok(Index {
+            name: t.string(0)?.unwrap_or_default(),
+            comment: t.string(1)?.unwrap_or_default(),
+            index_columns: u16_list(&t, 2)?,
+            key_columns: u16_list(&t, 3)?,
+            value_columns: u16_list(&t, 4)?,
+            primary_key: t.bool(5, false)?,
+            unique_key: t.bool(6, false)?,
+            system_defined: t.bool(7, false)?,
+            prefix_lengths: u16_list(&t, 8)?,
+            spatial_key: t.bool(9, false)?,
+            fulltext_key: t.bool(10, false)?,
+            vector_key: t.bool(12, false)?,
+            predicate: t.string(14)?.unwrap_or_default(),
+            descending: bool_list(&t, 15)?,
+            nulls_last: bool_list(&t, 16)?,
+            op_classes,
+        })
+    }
+
+    pub fn clustered_index(&self) -> Result<Index<'a>> {
+        TableSchema::index(self.0.table(1)?.ok_or_else(|| missing("clustered_index"))?)
+    }
+
+    pub fn secondary_indexes(&self) -> Result<Vec<Index<'a>>> {
+        let Some(vector) = self.0.vector(2, 4)? else { return Ok(Vec::new()) };
+        (0..vector.len()).map(|i| TableSchema::index(vector.table(i)?)).collect()
+    }
+
+    pub fn checks(&self) -> Result<Vec<CheckConstraint<'a>>> {
+        let Some(vector) = self.0.vector(3, 4)? else { return Ok(Vec::new()) };
+        (0..vector.len())
+            .map(|i| {
+                let t = vector.table(i)?;
+                Ok(CheckConstraint {
+                    name: t.string(0)?.unwrap_or_default(),
+                    expression: t.string(1)?.unwrap_or_default(),
+                    enforced: t.bool(2, false)?,
+                    is_not_valid: t.bool(3, false)?,
+                })
+            })
+            .collect()
+    }
+
+    pub fn collation(&self) -> Result<u16> {
+        self.0.u16(4, 0)
+    }
+
+    pub fn comment(&self) -> Result<&'a [u8]> {
+        Ok(self.0.string(6)?.unwrap_or_default())
+    }
+
+    pub fn target_row_size(&self) -> Result<u16> {
+        self.0.u16(7, 2048)
+    }
+}
+
 /// Blob is a node of a blob tree: payload bytes at a leaf, and child addresses with their sizes above.
 pub struct Blob<'a>(pub Table<'a>);
 

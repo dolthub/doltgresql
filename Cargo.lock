@@ -286,6 +286,7 @@ version = "0.1.0"
 dependencies = [
  "prolly",
  "serial",
+ "sha2",
  "store",
 ]
 

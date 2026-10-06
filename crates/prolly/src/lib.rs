@@ -17,6 +17,10 @@
 //! Dolt's prolly trees, which store sorted key-value items in content-addressed nodes. A leaf node holds items, and
 //! an internal node holds the last key of each child with the child's address and item count.
 
+mod blob;
 mod node;
+mod tuple;
 
-pub use node::{Node, walk_leaves};
+pub use blob::read_blob;
+pub use node::{ItemVisitor, Node, walk_leaves};
+pub use tuple::Tuple;
