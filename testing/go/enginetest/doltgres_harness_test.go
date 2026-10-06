@@ -100,6 +100,11 @@ func (d *DoltgresHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHar
 	return h
 }
 
+func (h *DoltgresHarness) SupportsValueRow() bool {
+	// ValueRow tests are not currently supported in the DoltgresHarness
+	return false
+}
+
 // newDoltgresServerHarness creates a new harness for testing Dolt, using an in-memory filesystem and an in-memory blob store.
 func newDoltgresServerHarness(t *testing.T) denginetest.DoltEnginetestHarness {
 	server.ForceTextWireFormat = true // All of our hacks fail when using the binary wire format
