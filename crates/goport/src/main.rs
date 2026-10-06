@@ -63,6 +63,7 @@ fn main() {
             std::fs::write(format!("{}.sources.jsonl", args[8]), sources).unwrap();
             eprintln!("{:#?}", report.sources);
         }
+        Some("record") if args.len() == 4 => record(&args[2], &args[3]),
         Some("collect-cells") if args.len() == 5 => cells::collect(&args[2], &args[3], &args[4]),
         Some("check-cells") if args.len() == 4 => cells::check(&args[2], &args[3]),
         Some("show-recording") if args.len() == 3 => match recordings::read_recording(std::path::Path::new(&args[2])) {
@@ -111,6 +112,7 @@ fn main() {
         }
         _ => {
             eprintln!("usage: goport capture <dump.jsonl> <target> <out.jsonl> [jobs] [test name filter]");
+            eprintln!("       goport record <scripts.sql> <target>");
             eprintln!(
                 "       goport generate <dump.jsonl> <pg capture> <go capture> <second pg capture> <second go capture> <out dir> <report>"
             );
@@ -236,6 +238,48 @@ fn capture(dump_path: &str, target: &str, out_path: &str, jobs: usize, filter: O
         worker.join().unwrap();
     }
     eprintln!("done");
+}
+
+/// record captures plain SQL scripts twice against a target and prints them as Rust script tests. Each script starts
+/// with a `-- name: <name>` line, and its statements end with semicolons at the ends of lines.
+fn record(path: &str, target: &str) {
+    let target = Target::parse(target).unwrap_or_else(|err| panic!("{err}"));
+    let mut scripts: Vec<(String, Vec<String>)> = Vec::new();
+    let mut pending = String::new();
+    for line in std::fs::read_to_string(path).unwrap().lines() {
+        if let Some(name) = line.strip_prefix("-- name: ") {
+            scripts.push((name.to_string(), Vec::new()));
+        } else if !line.starts_with("--") && !line.trim().is_empty() {
+            pending.push_str(if pending.is_empty() { "" } else { "\n" });
+            pending.push_str(line);
+            if line.trim_end().ends_with(';') {
+                scripts
+                    .last_mut()
+                    .expect("a statement before the first script name")
+                    .1
+                    .push(std::mem::take(&mut pending));
+            }
+        }
+    }
+    let mut captures = [Vec::new(), Vec::new()];
+    for (name, statements) in &scripts {
+        let assertions: Vec<_> =
+            statements.iter().map(|q| dump::to_assertion(&json!({ "Query": q }), false).unwrap()).collect();
+        let script = harness::script::ScriptTest {
+            name: Box::leak(name.clone().into_boxed_str()),
+            assertions: Box::leak(assertions.into_boxed_slice()),
+            ..harness::script::S
+        };
+        for capture in &mut captures {
+            let result = capture_script(&target, &script, 1);
+            if let Some(err) = &result.setup_error {
+                eprintln!("{name}: {err}");
+            }
+            capture
+                .push(json!({ "observations": result.observations.iter().map(observation_json).collect::<Vec<_>>() }));
+        }
+    }
+    print!("{}", generate::record(&scripts, &captures[0], &captures[1]));
 }
 
 /// observation_json converts an observation into JSON.

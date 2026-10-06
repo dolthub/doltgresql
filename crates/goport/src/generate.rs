@@ -363,6 +363,25 @@ fn generate_assertion(
     GeneratedAssertion { code, source, note }
 }
 
+/// record renders plain SQL scripts as Rust script tests, with every statement an assertion, taking expectations from
+/// two captures of each script.
+pub fn record(scripts: &[(String, Vec<String>)], first: &[Value], second: &[Value]) -> String {
+    let observations = |capture: &Value| capture["observations"].as_array().cloned().unwrap_or_default();
+    let mut code = String::new();
+    for (((name, statements), first), second) in scripts.iter().zip(first).zip(second) {
+        let (first, second) = (observations(first), observations(second));
+        code.push_str("        ScriptTest {\n");
+        let _ = writeln!(code, "            name: {},", rust::string(name));
+        code.push_str("            assertions: &[\n");
+        for (index, statement) in statements.iter().enumerate() {
+            let go = serde_json::json!({ "Query": statement });
+            code.push_str(&generate_assertion(&go, false, first.get(index), second.get(index), Source::Postgres).code);
+        }
+        code.push_str("            ],\n            ..S\n        },\n");
+    }
+    code
+}
+
 /// Report collects statistics and review notes.
 #[derive(Default)]
 pub struct Report {
