@@ -17,14 +17,15 @@
 use doltdb::table::{Table, empty_rows};
 use doltdb::tags::{EXTENDED_KIND, auto_generate_tag};
 use pg_query::protobuf::{
-    ConstrType, CreateSchemaStmt, CreateStmt, CreateTableAsStmt, DropBehavior, DropStmt, ObjectType, ResTarget,
-    SelectStmt, TruncateStmt,
+    ConstrType, CreateSchemaStmt, CreateStmt, CreateTableAsStmt, DropBehavior, DropStmt, IndexStmt, ObjectType,
+    ResTarget, SelectStmt, SortByDir, SortByNulls, TruncateStmt,
 };
 use pg_query::{Node, NodeEnum};
+use store::Hash;
 
 use crate::Outcome;
 use crate::catalog::ColumnType;
-use crate::catalog::table::{Check, ColumnDef, schema_message};
+use crate::catalog::table::{Check, ColumnDef, IndexDef, TableDef, schema_message};
 use crate::error::{PgError, Result, code};
 use crate::expr::{node_name, position, resolve_type_name};
 use crate::plan::Planner;
@@ -53,12 +54,20 @@ pub fn expression_text(expr: &Node) -> Result<String> {
     Ok(text.strip_prefix("SELECT ").unwrap_or(&text).to_string())
 }
 
-/// unique_name returns the first of `base`, `base1`, `base2`, ... that no existing name takes.
-fn unique_name(base: &str, existing: &[String]) -> String {
-    if !existing.iter().any(|e| e == base) {
-        return base.to_string();
+/// check_column returns the column a check expression references when it references exactly one, which Postgres
+/// names an unnamed check constraint after.
+fn check_column(expr: &Node) -> Option<String> {
+    let node = expr.node.as_ref()?;
+    let mut names: Vec<String> = Vec::new();
+    for (node, ..) in node.nodes() {
+        if let pg_query::NodeRef::ColumnRef(column) = node
+            && let Some(name) = column.fields.iter().filter_map(node_name).next_back()
+            && !names.iter().any(|n| n == name)
+        {
+            names.push(name.to_string());
+        }
     }
-    (1..).map(|i| format!("{base}{i}")).find(|n| !existing.iter().any(|e| e == n)).unwrap_or_default()
+    if names.len() == 1 { names.pop() } else { None }
 }
 
 /// object_names returns the schema and name a qualified object name list names, with the schema empty when it is
@@ -89,8 +98,8 @@ impl Ctx<'_> {
         }
         let mut columns: Vec<ColumnDef> = Vec::new();
         let mut primary_key: Vec<usize> = Vec::new();
-        let mut checks: Vec<Check> = Vec::new();
-        let mut check_names: Vec<String> = Vec::new();
+        let mut pending_checks: Vec<(String, Node)> = Vec::new();
+        let mut uniques: Vec<(String, Vec<usize>)> = Vec::new();
         for element in &create.table_elts {
             match element.node.as_ref() {
                 Some(NodeEnum::ColumnDef(def)) => {
@@ -135,14 +144,9 @@ impl Ctx<'_> {
                                     .raw_expr
                                     .as_deref()
                                     .ok_or_else(|| PgError::internal("an empty CHECK"))?;
-                                let check_name = if constraint.conname.is_empty() {
-                                    unique_name(&format!("{name}_{}_check", def.colname), &check_names)
-                                } else {
-                                    constraint.conname.clone()
-                                };
-                                check_names.push(check_name.clone());
-                                checks.push(Check { name: check_name, expression: expression_text(expr)? });
+                                pending_checks.push((constraint.conname.clone(), expr.clone()));
                             }
+                            ConstrType::ConstrUnique => uniques.push((constraint.conname.clone(), vec![columns.len()])),
                             other => return Err(PgError::unsupported(format!("the column constraint {other:?}"))),
                         }
                     }
@@ -167,13 +171,21 @@ impl Ctx<'_> {
                     }
                     ConstrType::ConstrCheck => {
                         let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty CHECK"))?;
-                        let check_name = if constraint.conname.is_empty() {
-                            unique_name(&format!("{name}_check"), &check_names)
-                        } else {
-                            constraint.conname.clone()
-                        };
-                        check_names.push(check_name.clone());
-                        checks.push(Check { name: check_name, expression: expression_text(expr)? });
+                        pending_checks.push((constraint.conname.clone(), expr.clone()));
+                    }
+                    ConstrType::ConstrUnique => {
+                        let mut keys = Vec::new();
+                        for key in &constraint.keys {
+                            let key = node_name(key).unwrap_or_default();
+                            keys.push(columns.iter().position(|c| c.name == key).ok_or_else(|| PgError {
+                                position: position(constraint.location),
+                                ..PgError::new(
+                                    code::UNDEFINED_COLUMN,
+                                    format!("column \"{key}\" named in key does not exist"),
+                                )
+                            })?);
+                        }
+                        uniques.push((constraint.conname.clone(), keys));
                     }
                     other => return Err(PgError::unsupported(format!("the table constraint {other:?}"))),
                 },
@@ -184,7 +196,40 @@ impl Ctx<'_> {
             columns[i].primary_key = true;
             columns[i].nullable = false;
         }
-        self.write_new_table(&schema, name, columns, primary_key, checks)?;
+        let mut constraints = self.constraint_names(&schema)?;
+        let mut checks: Vec<Check> = Vec::new();
+        for (constraint, expr) in pending_checks {
+            let check_name = if constraint.is_empty() {
+                let column = check_column(&expr);
+                choose_relation_name(name, column.as_deref().unwrap_or(""), "check", &constraints)
+            } else if checks.iter().any(|c| c.name == constraint) {
+                return Err(PgError::new(
+                    code::DUPLICATE_OBJECT,
+                    format!("check constraint \"{constraint}\" already exists"),
+                ));
+            } else {
+                constraint
+            };
+            constraints.push(check_name.clone());
+            checks.push(Check { name: check_name, expression: expression_text(&expr)? });
+        }
+        let mut taken = self.relation_names(&schema)?;
+        taken.push(name.to_string());
+        if !primary_key.is_empty() {
+            taken.push(format!("{name}_pkey"));
+        }
+        let mut indexes = Vec::new();
+        for (constraint, keys) in uniques {
+            let index_name = if constraint.is_empty() {
+                let names: Vec<&str> = keys.iter().map(|&k| columns[k].name.as_str()).collect();
+                choose_relation_name(name, &names.join("_"), "key", &taken)
+            } else {
+                constraint
+            };
+            taken.push(index_name.clone());
+            indexes.push(new_index(index_name, keys, true));
+        }
+        self.write_new_table(&schema, name, columns, primary_key, checks, indexes)?;
         Ok(Outcome::command("CREATE TABLE"))
     }
 
@@ -211,6 +256,7 @@ impl Ctx<'_> {
         mut columns: Vec<ColumnDef>,
         primary_key: Vec<usize>,
         checks: Vec<Check>,
+        indexes: Vec<IndexDef>,
     ) -> Result<()> {
         let mut tags = self.txn.all_tags(self.db)?;
         let mut kinds = Vec::new();
@@ -220,8 +266,15 @@ impl Ctx<'_> {
             kinds.push(EXTENDED_KIND);
         }
         let value_columns: Vec<usize> = (0..columns.len()).filter(|i| !primary_key.contains(i)).collect();
-        let message = schema_message(&columns, &primary_key, &value_columns, &checks)?;
-        let (address, _) = Table::create(self.db, message)?;
+        let message = schema_message(&columns, &primary_key, &value_columns, &checks, &indexes)?;
+        let (mut address, mut table) = Table::create(self.db, message)?;
+        if !indexes.is_empty() {
+            let empty = Hash::of(&empty_rows());
+            for index in &indexes {
+                table.put_index(self.db, &index.name, Some(empty))?;
+            }
+            address = table.write(self.db)?;
+        }
         self.txn.root.put_table(self.db, schema, name, Some(address))?;
         Ok(())
     }
@@ -267,7 +320,7 @@ impl Ctx<'_> {
                 }
             })
             .collect();
-        self.write_new_table(&schema, &name, columns, Vec::new(), Vec::new())?;
+        self.write_new_table(&schema, &name, columns, Vec::new(), Vec::new(), Vec::new())?;
         let rows = if into.skip_data { Vec::new() } else { query.plan.run(self)? };
         let count = rows.len();
         let table =
@@ -308,6 +361,7 @@ impl Ctx<'_> {
         match kind {
             ObjectType::ObjectTable => self.drop_tables(drop),
             ObjectType::ObjectSchema => self.drop_schemas(drop, cascade),
+            ObjectType::ObjectIndex => self.drop_indexes(drop),
             other => Err(PgError::unsupported(format!("DROP {other:?}"))),
         }
     }
@@ -413,11 +467,254 @@ impl Ctx<'_> {
         for table in tables {
             let mut stored = table.table.clone();
             stored.primary_index = empty_rows();
+            let empty = Hash::of(&empty_rows());
+            for index in &table.indexes {
+                stored.put_index(self.db, &index.name, Some(empty))?;
+            }
             let address = stored.write(self.db)?;
             self.txn.root.put_table(self.db, &table.schema, &table.name, Some(address))?;
         }
         Ok(Outcome::command("TRUNCATE TABLE"))
     }
+}
+
+impl Ctx<'_> {
+    /// relation_names returns the names of the tables and indexes in a schema, which new relations must avoid.
+    fn relation_names(&mut self, schema: &str) -> Result<Vec<String>> {
+        let mut names = Vec::new();
+        let prefix = doltdb::root::table_key(schema, "");
+        for (key, address) in self.txn.root.tables(self.db)? {
+            let Some(name) = key.strip_prefix(prefix.as_slice()) else { continue };
+            let name = String::from_utf8_lossy(name).into_owned();
+            let table = TableDef::load(self.db, schema, &name, address)?;
+            names.extend(table.indexes.iter().map(|i| i.name.clone()));
+            if !table.key_columns.is_empty() {
+                names.push(format!("{name}_pkey"));
+            }
+            names.push(name);
+        }
+        Ok(names)
+    }
+
+    /// constraint_names returns the names of the constraints of every table in a schema, which new constraints must
+    /// avoid.
+    fn constraint_names(&mut self, schema: &str) -> Result<Vec<String>> {
+        let mut names = Vec::new();
+        let prefix = doltdb::root::table_key(schema, "");
+        for (key, address) in self.txn.root.tables(self.db)? {
+            let Some(name) = key.strip_prefix(prefix.as_slice()) else { continue };
+            let name = String::from_utf8_lossy(name).into_owned();
+            let table = TableDef::load(self.db, schema, &name, address)?;
+            names.extend(table.checks.iter().map(|c| c.name.clone()));
+            names.extend(table.indexes.iter().filter(|i| i.unique).map(|i| i.name.clone()));
+            if !table.key_columns.is_empty() {
+                names.push(format!("{name}_pkey"));
+            }
+        }
+        Ok(names)
+    }
+
+    /// create_index runs CREATE INDEX, building the index from the table's rows.
+    pub fn create_index(&mut self, stmt: &IndexStmt) -> Result<Outcome> {
+        let relation = stmt.relation.as_ref().ok_or_else(|| PgError::internal("CREATE INDEX without a table"))?;
+        let table = self.resolve_table(relation)?;
+        if !matches!(stmt.access_method.as_str(), "" | "btree" | "hash") {
+            return Err(PgError::unsupported(format!("indexes using {}", stmt.access_method)));
+        }
+        if stmt.where_clause.is_some() {
+            return Err(PgError::unsupported("partial indexes"));
+        }
+        if !stmt.index_including_params.is_empty() {
+            return Err(PgError::unsupported("indexes with INCLUDE"));
+        }
+        let mut columns = Vec::new();
+        let mut descending = Vec::new();
+        let mut nulls_last = Vec::new();
+        let mut op_classes = Vec::new();
+        for param in &stmt.index_params {
+            let Some(NodeEnum::IndexElem(elem)) = param.node.as_ref() else { continue };
+            if elem.expr.is_some() {
+                return Err(PgError::unsupported("indexes on expressions"));
+            }
+            let column = table.columns.iter().position(|c| c.name == elem.name).ok_or_else(|| {
+                PgError::new(code::UNDEFINED_COLUMN, format!("column \"{}\" does not exist", elem.name))
+            })?;
+            let desc = SortByDir::try_from(elem.ordering) == Ok(SortByDir::SortbyDesc);
+            let last = match SortByNulls::try_from(elem.nulls_ordering) {
+                Ok(SortByNulls::SortbyNullsFirst) => false,
+                Ok(SortByNulls::SortbyNullsLast) => true,
+                _ => !desc,
+            };
+            columns.push(column);
+            descending.push(desc);
+            nulls_last.push(last);
+            op_classes.push(elem.opclass.iter().filter_map(node_name).next_back().unwrap_or_default().to_string());
+        }
+        let taken = self.relation_names(&table.schema)?;
+        let name = if stmt.idxname.is_empty() {
+            let names: Vec<&str> = columns.iter().map(|&c| table.columns[c].name.as_str()).collect();
+            choose_relation_name(&table.name, &names.join("_"), "idx", &taken)
+        } else {
+            stmt.idxname.clone()
+        };
+        if taken.contains(&name) {
+            let message = format!("relation \"{name}\" already exists");
+            if stmt.if_not_exists {
+                self.session.notice(PgError::notice(code::DUPLICATE_TABLE, format!("{message}, skipping")));
+                return Ok(Outcome::command("CREATE INDEX"));
+            }
+            return Err(PgError::new(code::DUPLICATE_TABLE, message));
+        }
+        let index = IndexDef { descending, nulls_last, op_classes, ..new_index(name, columns, stmt.unique) };
+        let mut table = table;
+        table.indexes.push(index.clone());
+        let mut keys = Vec::new();
+        for row in crate::query::scan(self.db, &table)? {
+            let (primary, _) = table.encode_row(self.db, &row)?;
+            keys.push((table.index_key(self.db, &index, &row, &primary)?, row));
+        }
+        keys.sort_by(|a, b| table.compare_index_keys(&index, &a.0, &b.0));
+        if index.unique {
+            let width = index.columns.len();
+            for pair in keys.windows(2) {
+                let null = index.columns.iter().any(|&c| pair[0].1[c].is_null());
+                if !null
+                    && table.compare_index_prefix(&index, width, &pair[0].0, &pair[1].0) == std::cmp::Ordering::Equal
+                {
+                    let names: Vec<&str> = index.columns.iter().map(|&c| table.columns[c].name.as_str()).collect();
+                    let values: Vec<String> =
+                        index.columns.iter().map(|&c| pair[0].1[c].output().unwrap_or_default()).collect();
+                    return Err(PgError {
+                        detail: Some(format!("Key ({})=({}) is duplicated.", names.join(", "), values.join(", "))),
+                        objects: Some(Box::new(crate::error::ErrorObjects {
+                            schema: Some(table.schema.clone()),
+                            table: Some(table.name.clone()),
+                            constraint: Some(index.name.clone()),
+                            ..Default::default()
+                        })),
+                        ..PgError::new(
+                            code::UNIQUE_VIOLATION,
+                            format!("could not create unique index \"{}\"", index.name),
+                        )
+                    });
+                }
+            }
+        }
+        let empty = Hash::of(&empty_rows());
+        let mut stored = table.table.clone();
+        stored.put_index(self.db, &index.name, Some(empty))?;
+        let edits = keys.into_iter().map(|(k, _)| (k, Some(prolly::val::build_tuple(&[])))).collect();
+        let compare = |a: &[u8], b: &[u8]| table.compare_index_keys(&index, a, b);
+        stored.edit_index(self.db, &index.name, empty, edits, &compare, &table.index_encodings(&index))?;
+        stored.schema = self.db.write_value(table.schema_message()?)?;
+        let address = stored.write(self.db)?;
+        self.txn.root.put_table(self.db, &table.schema, &table.name, Some(address))?;
+        Ok(Outcome::command("CREATE INDEX"))
+    }
+
+    /// drop_indexes runs DROP INDEX.
+    fn drop_indexes(&mut self, drop: &DropStmt) -> Result<Outcome> {
+        let mut doomed = Vec::new();
+        for object in &drop.objects {
+            let Some(NodeEnum::List(list)) = object.node.as_ref() else { continue };
+            let (schema, name) = object_names(&list.items);
+            let schemas = if schema.is_empty() { self.session.search_path() } else { vec![schema.clone()] };
+            let mut found = None;
+            'search: for s in schemas {
+                let prefix = doltdb::root::table_key(&s, "");
+                for (key, address) in self.txn.root.tables(self.db)? {
+                    let Some(table) = key.strip_prefix(prefix.as_slice()) else { continue };
+                    let table = TableDef::load(self.db, &s, &String::from_utf8_lossy(table), address)?;
+                    if table.indexes.iter().any(|i| i.name == name) {
+                        found = Some(table);
+                        break 'search;
+                    }
+                }
+            }
+            match found {
+                Some(table) => doomed.push((table, name)),
+                None => {
+                    let shown = if schema.is_empty() { name } else { format!("{schema}.{name}") };
+                    if !drop.missing_ok {
+                        return Err(PgError::new(code::UNDEFINED_OBJECT, format!("index \"{shown}\" does not exist")));
+                    }
+                    self.session
+                        .notice(PgError::notice("00000", format!("index \"{shown}\" does not exist, skipping")));
+                }
+            }
+        }
+        for (table, name) in doomed {
+            let table = match self.txn.table(self.db, &table.schema, &table.name)? {
+                Some(table) => table,
+                None => continue,
+            };
+            let mut table = table;
+            table.indexes.retain(|i| i.name != name);
+            let mut stored = table.table.clone();
+            stored.put_index(self.db, &name, None)?;
+            stored.schema = self.db.write_value(table.schema_message()?)?;
+            let address = stored.write(self.db)?;
+            self.txn.root.put_table(self.db, &table.schema, &table.name, Some(address))?;
+        }
+        Ok(Outcome::command("DROP INDEX"))
+    }
+}
+
+/// new_index returns an index of the columns, ascending with NULLs last, whose root the caller sets.
+fn new_index(name: String, columns: Vec<usize>, unique: bool) -> IndexDef {
+    let count = columns.len();
+    IndexDef {
+        name,
+        columns,
+        unique,
+        descending: vec![false; count],
+        nulls_last: vec![true; count],
+        op_classes: vec![String::new(); count],
+        comment: String::new(),
+        predicate: String::new(),
+        root: Hash::of(&empty_rows()),
+    }
+}
+
+/// NAMEDATALEN_MAX is the longest identifier Postgres keeps, in bytes.
+const NAMEDATALEN_MAX: usize = 63;
+
+/// clip returns the longest prefix of a name within a byte length that ends on a character boundary.
+fn clip(name: &str, len: usize) -> &str {
+    let mut end = len.min(name.len());
+    while !name.is_char_boundary(end) {
+        end -= 1;
+    }
+    &name[..end]
+}
+
+/// make_object_name joins two names and a label with underscores, shortening the longer name until the result fits,
+/// as Postgres' makeObjectName does.
+fn make_object_name(name1: &str, name2: &str, label: &str) -> String {
+    let overhead = label.len() + 1 + if name2.is_empty() { 0 } else { 1 };
+    let available = NAMEDATALEN_MAX - overhead;
+    let (mut len1, mut len2) = (name1.len(), name2.len());
+    while len1 + len2 > available {
+        if len1 > len2 {
+            len1 -= 1;
+        } else {
+            len2 -= 1;
+        }
+    }
+    let (part1, part2) = (clip(name1, len1), clip(name2, len2));
+    if part2.is_empty() { format!("{part1}_{label}") } else { format!("{part1}_{part2}_{label}") }
+}
+
+/// choose_relation_name returns a name from two names and a label that no existing relation takes, adding a number
+/// to the label when needed, as Postgres' ChooseRelationName does.
+fn choose_relation_name(name1: &str, name2: &str, label: &str, taken: &[String]) -> String {
+    let mut name = make_object_name(name1, name2, label);
+    let mut pass = 0;
+    while taken.contains(&name) {
+        pass += 1;
+        name = make_object_name(name1, name2, &format!("{label}{pass}"));
+    }
+    name
 }
 
 /// multiple_primary_keys returns Postgres' error for a second primary key.

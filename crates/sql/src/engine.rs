@@ -668,6 +668,7 @@ impl Ctx<'_> {
             NodeEnum::CreateSchemaStmt(create) => self.create_schema(create),
             NodeEnum::DropStmt(drop) => self.drop(drop),
             NodeEnum::TruncateStmt(truncate) => self.truncate(truncate),
+            NodeEnum::IndexStmt(stmt) => self.create_index(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

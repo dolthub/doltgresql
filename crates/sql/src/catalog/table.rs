@@ -52,6 +52,25 @@ pub struct Check {
     pub expression: String,
 }
 
+/// IndexDef is a secondary index of a table.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IndexDef {
+    pub name: String,
+    /// The indexed columns, by position in the table's columns.
+    pub columns: Vec<usize>,
+    pub unique: bool,
+    /// Each indexed column's direction and NULLS placement.
+    pub descending: Vec<bool>,
+    pub nulls_last: Vec<bool>,
+    /// Each indexed column's operator class, empty for the default.
+    pub op_classes: Vec<String>,
+    pub comment: String,
+    /// The SQL text of a partial index's predicate, empty for a full index.
+    pub predicate: String,
+    /// The address of the index's root node.
+    pub root: Hash,
+}
+
 /// TableDef is a table: its columns, which of them form the primary key, and its storage.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TableDef {
@@ -59,6 +78,7 @@ pub struct TableDef {
     pub name: String,
     pub columns: Vec<ColumnDef>,
     pub checks: Vec<Check>,
+    pub indexes: Vec<IndexDef>,
     /// The columns of the primary key in key order, empty for a keyless table.
     pub key_columns: Vec<usize>,
     /// The columns stored in the value tuple, in order.
@@ -116,15 +136,108 @@ impl TableDef {
                 expression: String::from_utf8_lossy(c.expression).into_owned(),
             })
             .collect();
+        let roots = table.indexes(db)?;
+        let lossy = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+        let indexes = message
+            .secondary_indexes()?
+            .into_iter()
+            .map(|index| {
+                let name = lossy(index.name);
+                let root = roots.iter().find(|(n, _)| *n == name).map(|(_, r)| *r).ok_or_else(missing)?;
+                let count = index.index_columns.len();
+                Ok(IndexDef {
+                    columns: index.index_columns.iter().map(|&i| i as usize).collect(),
+                    unique: index.unique_key,
+                    descending: (0..count).map(|i| index.descending.get(i).copied().unwrap_or(false)).collect(),
+                    nulls_last: (0..count).map(|i| index.nulls_last.get(i).copied().unwrap_or(false)).collect(),
+                    op_classes: (0..count)
+                        .map(|i| index.op_classes.get(i).map_or(String::new(), |c| lossy(c)))
+                        .collect(),
+                    comment: lossy(index.comment),
+                    predicate: lossy(index.predicate),
+                    name,
+                    root,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         Ok(TableDef {
             schema: schema.to_string(),
             name: name.to_string(),
             columns,
             checks,
+            indexes,
             key_columns,
             value_columns,
             table,
         })
+    }
+
+    /// index_key_columns returns the columns of an index's keys: the indexed columns, then the primary key columns
+    /// the index lacks, or the hidden row hash of a keyless table, written as the column count.
+    pub fn index_key_columns(&self, index: &IndexDef) -> Vec<usize> {
+        let mut columns = index.columns.clone();
+        if self.keyless() {
+            columns.push(self.columns.len());
+        } else {
+            columns.extend(self.key_columns.iter().filter(|c| !index.columns.contains(c)));
+        }
+        columns
+    }
+
+    /// index_encodings returns the field encodings of an index's keys.
+    pub fn index_encodings(&self, index: &IndexDef) -> Vec<u8> {
+        self.index_key_columns(index)
+            .into_iter()
+            .map(|c| self.columns.get(c).map_or(encoding::HASH128, |c| c.encoding))
+            .collect()
+    }
+
+    /// index_key returns a row's key in an index, given the row's primary key tuple.
+    pub fn index_key(&self, db: &mut Database, index: &IndexDef, row: &[Value], primary: &[u8]) -> Result<Vec<u8>> {
+        let mut fields = Vec::new();
+        for c in self.index_key_columns(index) {
+            fields.push(match self.columns.get(c) {
+                Some(column) => encode_field(&row[c], column.encoding, column.ty)?,
+                None => Tuple(primary).field(0)?.map(<[u8]>::to_vec),
+            });
+        }
+        place_adaptive(db, &mut fields, &self.index_encodings(index), DEFAULT_TARGET_ROW_SIZE as usize)?;
+        Ok(build_tuple(&fields.iter().map(Option::as_deref).collect::<Vec<_>>()))
+    }
+
+    /// compare_index_keys orders two keys of an index with each indexed column's direction and NULLS placement, as
+    /// Dolt's OrderedTupleComparator does.
+    pub fn compare_index_keys(&self, index: &IndexDef, left: &[u8], right: &[u8]) -> Ordering {
+        self.compare_index_prefix(index, self.index_key_columns(index).len(), left, right)
+    }
+
+    /// compare_index_prefix orders the first fields of two keys of an index.
+    pub fn compare_index_prefix(&self, index: &IndexDef, fields: usize, left: &[u8], right: &[u8]) -> Ordering {
+        let (left, right) = (Tuple(left), Tuple(right));
+        for (i, c) in self.index_key_columns(index).into_iter().enumerate().take(fields) {
+            let (l, r) = (left.field(i).ok().flatten(), right.field(i).ok().flatten());
+            let (encoding, ty) = self
+                .columns
+                .get(c)
+                .map_or((encoding::HASH128, ColumnType { oid: 0, modifier: -1 }), |c| (c.encoding, c.ty));
+            let descending = index.descending.get(i).copied().unwrap_or(false);
+            let nulls_last = index.nulls_last.get(i).copied().unwrap_or(false);
+            let ordering = match (l, r) {
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) if nulls_last => Ordering::Greater,
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) if nulls_last => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (Some(_), Some(_)) => {
+                    let ordering = compare_key_field(encoding, ty, l, r);
+                    if descending { ordering.reverse() } else { ordering }
+                }
+            };
+            if ordering != Ordering::Equal {
+                return ordering;
+            }
+        }
+        Ordering::Equal
     }
 
     /// keyless reports whether the table has no primary key.
@@ -134,7 +247,7 @@ impl TableDef {
 
     /// schema_message writes the table's Dolt schema.
     pub fn schema_message(&self) -> Result<Vec<u8>> {
-        schema_message(&self.columns, &self.key_columns, &self.value_columns, &self.checks)
+        schema_message(&self.columns, &self.key_columns, &self.value_columns, &self.checks, &self.indexes)
     }
 
     /// key_encodings returns the field encodings of the primary index's keys.
@@ -149,8 +262,9 @@ impl TableDef {
     pub fn compare_keys(&self, left: &[u8], right: &[u8]) -> Ordering {
         let (left, right) = (Tuple(left), Tuple(right));
         for (i, field_encoding) in self.key_encodings().into_iter().enumerate() {
+            let ty = self.key_columns.get(i).map_or(ColumnType { oid: 0, modifier: -1 }, |&c| self.columns[c].ty);
             let ordering =
-                compare_key_field(field_encoding, left.field(i).ok().flatten(), right.field(i).ok().flatten());
+                compare_key_field(field_encoding, ty, left.field(i).ok().flatten(), right.field(i).ok().flatten());
             if ordering != Ordering::Equal {
                 return ordering;
             }
@@ -208,13 +322,14 @@ impl TableDef {
     }
 }
 
-/// schema_message writes a Dolt schema of the columns, with the key and value columns of its primary index and its
-/// check constraints.
+/// schema_message writes a Dolt schema of the columns, with the key and value columns of its primary index, its check
+/// constraints, and its secondary indexes, whose key columns leave out the row hash that ends a keyless table's keys.
 pub fn schema_message(
     columns: &[ColumnDef],
     key_columns: &[usize],
     value_columns: &[usize],
     checks: &[Check],
+    indexes: &[IndexDef],
 ) -> Result<Vec<u8>> {
     let types: Vec<Vec<u8>> =
         columns.iter().map(|c| c.ty.serialized().map(String::into_bytes)).collect::<Result<_>>()?;
@@ -240,6 +355,33 @@ pub fn schema_message(
         })
         .collect();
     let keyless = key_columns.is_empty();
+    let index_fields = indexes
+        .iter()
+        .map(|index| {
+            let mut keys: Vec<u16> = index.columns.iter().map(|&i| i as u16).collect();
+            keys.extend(key_columns.iter().filter(|c| !index.columns.contains(c)).map(|&i| i as u16));
+            serial::write::IndexFields {
+                name: index.name.as_bytes(),
+                comment: index.comment.as_bytes(),
+                predicate: index.predicate.as_bytes(),
+                index_columns: index.columns.iter().map(|&i| i as u16).collect(),
+                key_columns: keys,
+                prefix_lengths: Vec::new(),
+                descending: index.descending.clone(),
+                nulls_last: index.nulls_last.clone(),
+                op_classes: if index.op_classes.iter().all(String::is_empty) {
+                    Vec::new()
+                } else {
+                    index.op_classes.iter().map(String::as_bytes).collect()
+                },
+                unique: index.unique,
+                system_defined: false,
+                spatial: false,
+                fulltext: None,
+                vector_distance: None,
+            }
+        })
+        .collect();
     // A keyless table's hidden hash and cardinality columns follow the others.
     let (key_columns, value_columns): (Vec<u16>, Vec<u16>) = if keyless {
         let n = columns.len() as u16;
@@ -252,7 +394,7 @@ pub fn schema_message(
         keyless,
         key_columns,
         value_columns,
-        indexes: Vec::new(),
+        indexes: index_fields,
         checks: checks
             .iter()
             .map(|c| serial::write::CheckFields {

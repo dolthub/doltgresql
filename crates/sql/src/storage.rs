@@ -372,14 +372,25 @@ pub fn place_adaptive(
     Ok(())
 }
 
-/// compare_key_field orders two key fields of an encoding, comparing numerics by value and inline adaptive values by
-/// their bytes.
-pub fn compare_key_field(field_encoding: u8, left: Option<&[u8]>, right: Option<&[u8]>) -> Ordering {
+/// compare_key_field orders two key fields of an encoding and type, comparing numerics and Doltgres' extended values
+/// by value and inline adaptive values by their bytes.
+pub fn compare_key_field(field_encoding: u8, ty: ColumnType, left: Option<&[u8]>, right: Option<&[u8]>) -> Ordering {
     match (field_encoding, left, right) {
         (encoding::DECIMAL, Some(l), Some(r)) => match (Numeric::decode(l), Numeric::decode(r)) {
             (Some(l), Some(r)) => l.cmp_numeric(&r),
             _ => l.cmp(r),
         },
+        (encoding::EXTENDED | encoding::EXTENDED_ADAPTIVE, Some(l), Some(r)) => {
+            let value = |b: &[u8]| {
+                let b =
+                    if field_encoding == encoding::EXTENDED_ADAPTIVE && b.first() == Some(&0) { &b[1..] } else { b };
+                deserialize_value(b, ty).ok()
+            };
+            match (value(l), value(r)) {
+                (Some(l), Some(r)) => crate::expr::compare_values(&l, &r),
+                _ => l.cmp(r),
+            }
+        }
         (e, Some(l), Some(r)) if is_adaptive(e) => {
             let strip = |b: &[u8]| if b.first() == Some(&0) { b[1..].to_vec() } else { b.to_vec() };
             strip(l).cmp(&strip(r))

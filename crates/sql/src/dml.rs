@@ -20,10 +20,10 @@ use std::sync::Arc;
 use doltdb::database::Database;
 use pg_query::NodeEnum;
 use pg_query::protobuf::{DeleteStmt, InsertStmt, UpdateStmt};
-use prolly::{Tuple, get};
+use prolly::{NodeStore, Tuple, get};
 
 use crate::cast::cast_value;
-use crate::catalog::table::TableDef;
+use crate::catalog::table::{IndexDef, TableDef};
 use crate::error::{ErrorObjects, PgError, Result, code};
 use crate::expr::{Binder, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
 use crate::plan::{Plan, Planner};
@@ -169,16 +169,88 @@ fn duplicate_key(table: &TableDef, row: &[Value]) -> PgError {
     }
 }
 
-/// Edits collects changes to a table's primary index by key.
+/// unique_violation returns Postgres' error for a row that duplicates another's values in a unique index.
+fn unique_violation(table: &TableDef, index: &IndexDef, row: &[Value]) -> PgError {
+    let names: Vec<&str> = index.columns.iter().map(|&i| table.columns[i].name.as_str()).collect();
+    let values: Vec<Value> = index.columns.iter().map(|&i| row[i].clone()).collect();
+    PgError {
+        detail: Some(format!("Key ({})=({}) already exists.", names.join(", "), row_text(&values))),
+        objects: Some(Box::new(ErrorObjects {
+            schema: Some(table.schema.clone()),
+            table: Some(table.name.clone()),
+            constraint: Some(index.name.clone()),
+            ..ErrorObjects::default()
+        })),
+        ..PgError::new(
+            code::UNIQUE_VIOLATION,
+            format!("duplicate key value violates unique constraint \"{}\"", index.name),
+        )
+    }
+}
+
+/// KeyEdits are changes to an index by key, where None deletes the key.
+type KeyEdits = Vec<(Vec<u8>, Option<Vec<u8>>)>;
+
+/// Edits collects changes to a table's primary index and secondary indexes by key.
 struct Edits<'a> {
     table: &'a TableDef,
     edits: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+    /// Each secondary index's changes, in the order of the table's indexes.
+    index_edits: Vec<KeyEdits>,
 }
 
 impl<'a> Edits<'a> {
     /// new starts collecting changes to the table.
     fn new(table: &'a TableDef) -> Edits<'a> {
-        Edits { table, edits: Vec::new() }
+        Edits { table, edits: Vec::new(), index_edits: vec![Vec::new(); table.indexes.len()] }
+    }
+
+    /// index_taken reports whether another row already has a key's indexed values in a unique index.
+    fn index_taken(&self, db: &mut Database, i: usize, key: &[u8]) -> Result<bool> {
+        let index = &self.table.indexes[i];
+        let width = index.columns.len();
+        let same = |k: &[u8]| self.table.compare_index_prefix(index, width, k, key) == Ordering::Equal;
+        let mut pending: Vec<(&[u8], bool)> = Vec::new();
+        for (k, v) in &self.index_edits[i] {
+            match pending.iter_mut().find(|(p, _)| self.table.compare_index_keys(index, p, k) == Ordering::Equal) {
+                Some(entry) => entry.1 = v.is_some(),
+                None => pending.push((k, v.is_some())),
+            }
+        }
+        if pending.iter().any(|(k, present)| *present && same(k)) {
+            return Ok(true);
+        }
+        let mut taken = false;
+        let root = db.read(&index.root)?;
+        prolly::scan_from(db, root, key, &|a, b| self.table.compare_index_prefix(index, width, a, b), &mut |k, _| {
+            if !same(k) {
+                return Ok(false);
+            }
+            let deleted = pending
+                .iter()
+                .any(|(p, present)| !present && self.table.compare_index_keys(index, p, k) == Ordering::Equal);
+            taken |= !deleted;
+            Ok(!taken)
+        })?;
+        Ok(taken)
+    }
+
+    /// index_row adds a row's keys to the secondary indexes, or removes them, checking unique indexes as it adds.
+    fn index_row(&mut self, db: &mut Database, row: &[Value], primary: &[u8], add: bool) -> Result<()> {
+        for i in 0..self.table.indexes.len() {
+            let index = &self.table.indexes[i];
+            let key = self.table.index_key(db, index, row, primary)?;
+            if add
+                && index.unique
+                && index.columns.iter().all(|&c| !row[c].is_null())
+                && self.index_taken(db, i, &key)?
+            {
+                return Err(unique_violation(self.table, index, row));
+            }
+            let value = add.then(|| prolly::val::build_tuple(&[]));
+            self.index_edits[i].push((key, value));
+        }
+        Ok(())
     }
 
     /// pending returns the value an earlier edit gave a key: None when no edit touched it, and Some(None) when one
@@ -208,6 +280,8 @@ impl<'a> Edits<'a> {
                 return Err(duplicate_key(self.table, row));
             }
             value = with_cardinality(&existing, cardinality(&existing) + 1);
+        } else {
+            self.index_row(db, row, &key, true)?;
         }
         self.edits.push((key, Some(value)));
         Ok(())
@@ -224,6 +298,7 @@ impl<'a> Edits<'a> {
             self.edits.push((key, Some(value)));
             return Ok(());
         }
+        self.index_row(db, row, &key, false)?;
         self.edits.push((key, None));
         Ok(())
     }
@@ -234,6 +309,7 @@ impl<'a> Edits<'a> {
             return Ok(());
         }
         let table = self.table;
+        let index_edits = self.index_edits;
         let mut edits = self.edits;
         // A stable sort keeps the edits of one key in order, and the last of them wins.
         edits.sort_by(|a, b| table.compare_keys(&a.0, &b.0));
@@ -245,7 +321,27 @@ impl<'a> Edits<'a> {
             }
         }
         let mut stored = table.table.clone();
-        stored.edit_rows(db, merged, &|a, b| table.compare_keys(a, b))?;
+        stored.edit_rows(
+            db,
+            merged,
+            &|a, b| table.compare_keys(a, b),
+            (&table.key_encodings(), &table.value_encodings()),
+        )?;
+        for (index, mut edits) in table.indexes.iter().zip(index_edits) {
+            if edits.is_empty() {
+                continue;
+            }
+            let compare = |a: &[u8], b: &[u8]| table.compare_index_keys(index, a, b);
+            edits.sort_by(|a, b| compare(&a.0, &b.0));
+            let mut merged: Vec<(Vec<u8>, Option<Vec<u8>>)> = Vec::with_capacity(edits.len());
+            for edit in edits {
+                match merged.last_mut() {
+                    Some(last) if compare(&last.0, &edit.0) == Ordering::Equal => *last = edit,
+                    _ => merged.push(edit),
+                }
+            }
+            stored.edit_index(db, &index.name, index.root, merged, &compare, &table.index_encodings(index))?;
+        }
         let address = stored.write(db)?;
         txn.root.put_table(db, &table.schema, &table.name, Some(address))?;
         Ok(())

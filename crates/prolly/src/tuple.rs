@@ -37,6 +37,11 @@ impl<'a> Tuple<'a> {
 
     /// field returns the bytes of the field at the index, or None when it is NULL.
     pub fn field(&self, index: usize) -> Result<Option<&'a [u8]>> {
+        Ok(self.field_range(index)?.map(|(start, end)| &self.0[start..end]))
+    }
+
+    /// field_range returns where the field at the index lies in the tuple, or None when it is NULL.
+    pub fn field_range(&self, index: usize) -> Result<Option<(usize, usize)>> {
         let count = self.count()?;
         if index >= count {
             return Ok(None);
@@ -57,7 +62,6 @@ impl<'a> Tuple<'a> {
         if start > end || end > offsets_at {
             return Err(Error::Corrupt("tuple field offsets out of range".to_string()));
         }
-        let field = &self.0[start..end];
-        Ok(if field.is_empty() { None } else { Some(field) })
+        Ok(if start == end { None } else { Some((start, end)) })
     }
 }

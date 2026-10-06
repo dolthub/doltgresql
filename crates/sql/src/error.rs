@@ -25,6 +25,7 @@ pub mod code {
     pub const INVALID_CATALOG_NAME: &str = "3D000";
     pub const DUPLICATE_DATABASE: &str = "42P04";
     pub const UNDEFINED_OBJECT: &str = "42704";
+    pub const DUPLICATE_OBJECT: &str = "42710";
     pub const INVALID_TEXT_REPRESENTATION: &str = "22P02";
     pub const NUMERIC_VALUE_OUT_OF_RANGE: &str = "22003";
     pub const DIVISION_BY_ZERO: &str = "22012";

@@ -34,6 +34,9 @@ pub trait NodeStore {
 /// Compare orders two keys.
 pub type Compare<'a> = dyn Fn(&[u8], &[u8]) -> Ordering + 'a;
 
+/// Visit receives an item and returns whether to continue.
+pub type Visit<'a> = dyn FnMut(&[u8], &[u8]) -> Result<bool> + 'a;
+
 /// Position is a cursor's node and item index at one level, where an index outside the node is out of bounds.
 #[derive(Clone)]
 pub(crate) struct Position {
@@ -76,6 +79,29 @@ pub fn get(store: &mut dyn NodeStore, root: Arc<Node>, key: &[u8], compare: &Com
         return Ok(None);
     }
     Ok(Some(node.value(idx)?.to_vec()))
+}
+
+/// scan_from visits the items of the tree at the root in order, from the first key not less than the start, until the
+/// visitor returns false.
+pub fn scan_from(
+    store: &mut dyn NodeStore,
+    root: Arc<Node>,
+    start: &[u8],
+    compare: &Compare<'_>,
+    visit: &mut Visit<'_>,
+) -> Result<()> {
+    if root.count() == 0 {
+        return Ok(());
+    }
+    let mut cursor = Cursor::at_key(store, root, start, compare)?;
+    while cursor.valid(0) {
+        let (node, idx) = cursor.item(0);
+        if !visit(node.key(idx)?, node.value(idx)?)? {
+            break;
+        }
+        cursor.advance(0, store)?;
+    }
+    Ok(())
 }
 
 impl Cursor {

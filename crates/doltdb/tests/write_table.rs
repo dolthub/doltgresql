@@ -120,7 +120,8 @@ fn creating_a_table_and_inserting_gives_the_graph_go_gave() {
     // INSERT INTO test VALUES (1, 1), (2, 2);
     let int = |i: i64| build_tuple(&[Some(&i.to_le_bytes())]);
     let edits = vec![(int(1), Some(int(1))), (int(2), Some(int(2)))];
-    table.edit_rows(&mut db, edits, &|a, b| compare_tuples(&[encoding::INT64], a, b)).unwrap();
+    let encodings: (&[u8], &[u8]) = (&[encoding::INT64], &[encoding::INT64]);
+    table.edit_rows(&mut db, edits, &|a, b| compare_tuples(&[encoding::INT64], a, b), encodings).unwrap();
     let address = table.write(&mut db).unwrap();
     root.put_table(&mut db, "public", "test", Some(address)).unwrap();
     commit(&mut db, &root, staged, working_set, 1_791_276_330);
