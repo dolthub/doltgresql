@@ -405,6 +405,8 @@ impl Session {
             params,
             outer: Vec::new(),
             subquery_value: Value::Null,
+            ctes: Vec::new(),
+            work_tables: std::collections::HashMap::new(),
         };
         f(&mut ctx)
     }

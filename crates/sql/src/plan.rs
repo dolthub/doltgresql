@@ -117,6 +117,27 @@ pub enum Plan {
         left: Box<Plan>,
         right: Box<Plan>,
     },
+    /// A recursive WITH query: its non-recursive term's rows, then its recursive term's rows over the previous
+    /// round's rows until a round adds none, keeping duplicates when the flag is set.
+    Recursive {
+        work_table: usize,
+        anchor: Box<Plan>,
+        step: Box<Plan>,
+        all: bool,
+    },
+    /// The rows of the previous round of a recursive WITH query.
+    WorkTable(usize),
+}
+
+/// Cte is a WITH query in scope: its name, its columns, and its plan, or the ID of its working table while its
+/// recursive term is being planned.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cte {
+    pub name: String,
+    pub columns: Vec<Column>,
+    pub types: Vec<ColumnType>,
+    pub plan: Option<Plan>,
+    pub work_table: usize,
 }
 
 /// Query is a planned query: its plan and the columns of its rows.
@@ -221,11 +242,117 @@ impl<'b, 'a> Planner<'b, 'a> {
         Binder::with_scopes(self.ctx, scopes)
     }
 
-    /// plan_query plans a SELECT, VALUES, or set operation.
+    /// plan_query plans a SELECT, VALUES, or set operation, with the WITH queries it defines in scope.
     pub fn plan_query(&mut self, select: &SelectStmt) -> Result<Query> {
-        if select.with_clause.is_some() {
-            return Err(PgError::unsupported("WITH"));
+        let Some(with) = select.with_clause.as_ref() else { return self.plan_query_body(select) };
+        let depth = self.ctx.ctes.len();
+        let result = self.plan_with(with).and_then(|_| self.plan_query_body(select));
+        self.ctx.ctes.truncate(depth);
+        result
+    }
+
+    /// plan_with plans the WITH queries of a WITH clause and brings them into scope.
+    fn plan_with(&mut self, with: &pg_query::protobuf::WithClause) -> Result<()> {
+        let depth = self.ctx.ctes.len();
+        for cte in &with.ctes {
+            let Some(NodeEnum::CommonTableExpr(cte)) = cte.node.as_ref() else { continue };
+            if self.ctx.ctes[depth..].iter().any(|c| c.name == cte.ctename) {
+                return Err(PgError {
+                    position: position(cte.location),
+                    ..PgError::new(
+                        code::DUPLICATE_ALIAS,
+                        format!("WITH query name \"{}\" specified more than once", cte.ctename),
+                    )
+                });
+            }
+            let Some(NodeEnum::SelectStmt(query)) = cte.ctequery.as_deref().and_then(|q| q.node.as_ref()) else {
+                return Err(PgError::unsupported("data-modifying statements in WITH"));
+            };
+            let aliases: Vec<String> = cte.aliascolnames.iter().filter_map(node_name).map(str::to_string).collect();
+            let op = SetOperation::try_from(query.op).unwrap_or(SetOperation::SetopNone);
+            let recursive = with.recursive && op == SetOperation::SetopUnion && references(query, &cte.ctename);
+            let planned = if recursive {
+                self.plan_recursive(cte, query, &aliases)?
+            } else {
+                let mut planned = self.plan_query(query)?;
+                rename_columns(&cte.ctename, &mut planned.columns, &aliases, cte.location)?;
+                planned
+            };
+            let work_table = self.ctx.work_tables.len() + self.ctx.ctes.len();
+            self.ctx.ctes.push(Cte {
+                name: cte.ctename.clone(),
+                columns: planned.columns,
+                types: planned.types,
+                plan: Some(planned.plan),
+                work_table,
+            });
         }
+        Ok(())
+    }
+
+    /// plan_recursive plans a recursive WITH query: its non-recursive term, then its recursive term over a working
+    /// table of the non-recursive term's columns.
+    fn plan_recursive(
+        &mut self,
+        cte: &pg_query::protobuf::CommonTableExpr,
+        query: &SelectStmt,
+        aliases: &[String],
+    ) -> Result<Query> {
+        let (Some(left), Some(right)) = (query.larg.as_deref(), query.rarg.as_deref()) else {
+            return Err(PgError::internal("a recursive query without both terms"));
+        };
+        let mut anchor = self.plan_query(left)?;
+        rename_columns(&cte.ctename, &mut anchor.columns, aliases, cte.location)?;
+        let work_table = 1_000_000 + self.ctx.ctes.len();
+        self.ctx.ctes.push(Cte {
+            name: cte.ctename.clone(),
+            columns: anchor.columns.clone(),
+            types: anchor.types.clone(),
+            plan: None,
+            work_table,
+        });
+        let step = self.plan_query(right);
+        self.ctx.ctes.pop();
+        let step = step?;
+        if step.columns.len() != anchor.columns.len() {
+            return Err(PgError {
+                position: position(cte.location),
+                ..PgError::new(code::SYNTAX_ERROR, "each UNION query must have the same number of columns")
+            });
+        }
+        for (i, (a, s)) in anchor.types.iter().zip(&step.types).enumerate() {
+            if a.oid != s.oid {
+                let location = left
+                    .target_list
+                    .get(i)
+                    .and_then(|t| match t.node.as_ref() {
+                        Some(NodeEnum::ResTarget(t)) => t.val.as_deref().map(crate::expr::arg_location),
+                        _ => None,
+                    })
+                    .unwrap_or(cte.location);
+                return Err(PgError {
+                    position: position(location),
+                    hint: Some("Cast the output of the non-recursive term to the correct type.".into()),
+                    ..PgError::new(
+                        code::DATATYPE_MISMATCH,
+                        format!(
+                            "recursive query \"{}\" column {} has type {} in non-recursive term but type {} overall",
+                            cte.ctename,
+                            i + 1,
+                            crate::cast::type_display(a.oid),
+                            crate::cast::type_display(s.oid)
+                        ),
+                    )
+                });
+            }
+        }
+        let plan =
+            Plan::Recursive { work_table, anchor: Box::new(anchor.plan), step: Box::new(step.plan), all: query.all };
+        Ok(Query { plan, columns: anchor.columns, types: anchor.types })
+    }
+
+    /// plan_query_body plans a SELECT, VALUES, or set operation without its WITH clause.
+    fn plan_query_body(&mut self, select: &SelectStmt) -> Result<Query> {
         let op = SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone);
         let (mut query, scope) = match op {
             SetOperation::SetopNone | SetOperation::Undefined if !select.values_lists.is_empty() => {
@@ -394,6 +521,11 @@ impl<'b, 'a> Planner<'b, 'a> {
     fn plan_from_item(&mut self, item: &Node) -> Result<(Plan, Scope)> {
         match item.node.as_ref() {
             Some(NodeEnum::RangeVar(relation)) => {
+                if relation.schemaname.is_empty()
+                    && let Some(cte) = self.ctx.ctes.iter().rev().find(|c| c.name == relation.relname).cloned()
+                {
+                    return Ok(self.plan_cte(cte, relation));
+                }
                 let table = match self.ctx.resolve_table(relation) {
                     Ok(table) => table,
                     Err(err) => {
@@ -430,6 +562,27 @@ impl<'b, 'a> Planner<'b, 'a> {
             Some(NodeEnum::RangeFunction(function)) => self.plan_range_function(function),
             _ => Err(PgError::unsupported("this FROM item")),
         }
+    }
+
+    /// plan_cte plans a reference to a WITH query, or to the working table of the recursive query being planned.
+    fn plan_cte(&mut self, cte: Cte, relation: &pg_query::protobuf::RangeVar) -> (Plan, Scope) {
+        let alias = relation.alias.as_ref();
+        let table = alias.map_or(cte.name.clone(), |a| a.aliasname.clone());
+        let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+        let columns = cte
+            .columns
+            .iter()
+            .zip(&cte.types)
+            .enumerate()
+            .map(|(i, (c, &ty))| ScopeColumn {
+                table: table.clone(),
+                name: renames.get(i).map_or(c.name.clone(), |r| r.to_string()),
+                ty,
+                hidden: false,
+            })
+            .collect();
+        let plan = cte.plan.unwrap_or(Plan::WorkTable(cte.work_table));
+        (plan, Scope { columns })
     }
 
     /// plan_view plans a view's query in place of the view, naming its columns after the view's column names.
@@ -969,6 +1122,41 @@ fn compare_sorted(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
     Ordering::Equal
 }
 
+/// dedupe drops rows that equal an earlier row or a row of the existing rows.
+fn dedupe(rows: Vec<Vec<Value>>, existing: &[Vec<Value>]) -> Vec<Vec<Value>> {
+    let mut seen: std::collections::HashSet<String> = existing.iter().map(|r| row_key(r)).collect();
+    rows.into_iter().filter(|r| seen.insert(row_key(r))).collect()
+}
+
+/// references reports whether a query refers to a relation by an unqualified name.
+fn references(select: &SelectStmt, name: &str) -> bool {
+    NodeEnum::SelectStmt(Box::new(select.clone()))
+        .nodes()
+        .into_iter()
+        .any(|(n, ..)| matches!(n, pg_query::NodeRef::RangeVar(r) if r.schemaname.is_empty() && r.relname == name))
+}
+
+/// rename_columns names a WITH query's columns after its column list, failing when the list is too long.
+fn rename_columns(name: &str, columns: &mut [Column], aliases: &[String], location: i32) -> Result<()> {
+    if aliases.len() > columns.len() {
+        return Err(PgError {
+            position: position(location),
+            ..PgError::new(
+                code::INVALID_COLUMN_REFERENCE,
+                format!(
+                    "WITH query \"{name}\" has {} columns available but {} columns specified",
+                    columns.len(),
+                    aliases.len()
+                ),
+            )
+        });
+    }
+    for (column, alias) in columns.iter_mut().zip(aliases) {
+        column.name = alias.clone();
+    }
+    Ok(())
+}
+
 /// rows_equal reports whether two rows are the same for DISTINCT and set operations, where NULLs are equal.
 pub fn rows_equal(a: &[Value], b: &[Value]) -> bool {
     a.len() == b.len()
@@ -1012,6 +1200,8 @@ impl Plan {
         match self {
             Plan::OneRow => 0,
             Plan::Scan(table) => table.columns.len(),
+            Plan::Recursive { anchor, .. } => anchor.width(),
+            Plan::WorkTable(_) => 0,
             Plan::System(system) => system.columns().len(),
             Plan::Values(rows) => rows.first().map_or(0, Vec::len),
             Plan::Function { ordinality, width, .. } => width + *ordinality as usize,
@@ -1031,6 +1221,29 @@ impl Plan {
         Ok(match self {
             Plan::OneRow => vec![Vec::new()],
             Plan::Scan(table) => scan(ctx.db, table)?,
+            Plan::WorkTable(id) => ctx.work_tables.get(id).cloned().unwrap_or_default(),
+            Plan::Recursive { work_table, anchor, step, all } => {
+                let mut result = anchor.run(ctx)?;
+                if !*all {
+                    result = dedupe(result, &[]);
+                }
+                let mut working = result.clone();
+                while !working.is_empty() {
+                    let previous = ctx.work_tables.insert(*work_table, working);
+                    let rows = step.run(ctx);
+                    match previous {
+                        Some(previous) => ctx.work_tables.insert(*work_table, previous),
+                        None => ctx.work_tables.remove(work_table),
+                    };
+                    let mut rows = rows?;
+                    if !*all {
+                        rows = dedupe(rows, &result);
+                    }
+                    result.extend(rows.iter().cloned());
+                    working = rows;
+                }
+                result
+            }
             Plan::System(system) => system.rows(ctx)?,
             Plan::Values(rows) => {
                 let mut out = Vec::with_capacity(rows.len());

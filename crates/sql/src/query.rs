@@ -44,6 +44,10 @@ pub struct Ctx<'a> {
     pub outer: Vec<Vec<Value>>,
     /// The subquery value that an ANY or ALL comparison is testing.
     pub subquery_value: Value,
+    /// The WITH queries in scope while planning, innermost last.
+    pub ctes: Vec<crate::plan::Cte>,
+    /// The rows of each recursive WITH query's working table while it runs, by its ID.
+    pub work_tables: std::collections::HashMap<usize, Vec<Vec<Value>>>,
 }
 
 /// column returns the description of a result column of the type.
