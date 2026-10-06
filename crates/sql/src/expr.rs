@@ -155,6 +155,8 @@ pub enum Expr {
     DateTime(DateOp, Box<Expr>, Box<Expr>),
     /// A window function call's result, by its position among the select list's window calls.
     WindowRef(usize),
+    /// A set-returning function call's current row, by its position among the select list's set-returning calls.
+    SetRef(usize),
     /// An ARRAY constructor of the element type, whose items are themselves arrays when it is multidimensional.
     Array(u32, Vec<Expr>, bool),
     /// Subscripts of an array, as lower and upper bounds, which select a slice when the flag is set.
@@ -182,6 +184,8 @@ pub struct Binder<'b, 'a> {
     pub named_windows: Vec<pg_query::protobuf::WindowDef>,
     /// The clause being bound, which errors about window functions name.
     pub clause: &'static str,
+    /// The set-returning function calls of the select list, or None where they aren't allowed.
+    pub set_functions: Option<Vec<Expr>>,
 }
 
 impl<'b, 'a> Binder<'b, 'a> {
@@ -200,6 +204,7 @@ impl<'b, 'a> Binder<'b, 'a> {
             windows: None,
             named_windows: Vec::new(),
             clause: "this context",
+            set_functions: None,
         }
     }
 
@@ -529,7 +534,21 @@ impl<'b, 'a> Binder<'b, 'a> {
                 args.push(coerce((expr, ty), typ(target), false, arg_location(node))?.0);
             }
         }
-        Ok((Expr::Func(resolved.index, args), typ(resolved.ret)))
+        let call_expr = Expr::Func(resolved.index, args);
+        if functions::returns_set(name) {
+            let Some(set_functions) = self.set_functions.as_mut() else {
+                return Err(PgError {
+                    position: position(call.location),
+                    ..PgError::new(
+                        code::FEATURE_NOT_SUPPORTED,
+                        format!("set-returning functions are not allowed in {}", self.clause),
+                    )
+                });
+            };
+            set_functions.push(call_expr);
+            return Ok((Expr::SetRef(set_functions.len() - 1), typ(resolved.ret)));
+        }
+        Ok((call_expr, typ(resolved.ret)))
     }
 }
 
@@ -1605,6 +1624,7 @@ impl Expr {
             }
             Expr::InputColumn(_) | Expr::AggRef(_) => return Err(PgError::internal("an ungrouped expression")),
             Expr::WindowRef(_) => return Err(PgError::internal("a window call outside its window")),
+            Expr::SetRef(_) => return Err(PgError::internal("a set-returning call outside its select list")),
             Expr::Default(_) => return Err(PgError::internal("a default outside a written row")),
             Expr::DateTime(op, left, right) => {
                 let (l, r) = (left.eval(ctx, row)?, right.eval(ctx, row)?);

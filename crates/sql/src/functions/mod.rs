@@ -95,6 +95,15 @@ pub fn function(index: usize) -> &'static Function {
     registry().functions[index]
 }
 
+/// SET_RETURNING are the functions that return rows.
+const SET_RETURNING: &[&str] =
+    &["generate_series", "generate_subscripts", "unnest", "regexp_matches", "regexp_split_to_table", "dolt_log"];
+
+/// returns_set reports whether a function returns rows.
+pub fn returns_set(name: &str) -> bool {
+    SET_RETURNING.contains(&name)
+}
+
 /// exists reports whether a function of the name exists.
 pub fn exists(name: &str) -> bool {
     registry().by_name.contains_key(name)

@@ -127,6 +127,11 @@ pub enum Plan {
     },
     /// The rows of the previous round of a recursive WITH query.
     WorkTable(usize),
+    /// For each input row, the rows of its set-returning calls side by side, padded with NULLs, after its values.
+    ProjectSet {
+        input: Box<Plan>,
+        functions: Vec<Expr>,
+    },
     /// The input's rows, each followed by the value of every window call for it.
     Window {
         input: Box<Plan>,
@@ -678,7 +683,12 @@ impl<'b, 'a> Planner<'b, 'a> {
         };
         let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
         let mut binder = self.binder(Scope::default());
+        binder.set_functions = Some(Vec::new());
         let (expr, ty) = binder.bind(&Node { node: Some(NodeEnum::FuncCall(call.clone())) })?;
+        let expr = match expr {
+            Expr::SetRef(k) => binder.set_functions.take().unwrap_or_default().swap_remove(k),
+            other => other,
+        };
         let Expr::Func(index, args) = expr else { return Err(PgError::unsupported("this function in FROM")) };
         let alias = function.alias.as_ref();
         let table = alias.map_or(name.clone(), |a| a.aliasname.clone());
@@ -833,6 +843,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         if windowed {
             binder.windows = Some(Vec::new());
         }
+        binder.set_functions = Some(Vec::new());
         binder.named_windows = crate::window::window_names(&select.window_clause);
         let mut targets: Vec<(Expr, ColumnType, String, i32)> = Vec::new();
         for target in &select.target_list {
@@ -891,6 +902,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             sorts.push((expr, descending, nulls_first));
         }
         let windows = binder.windows.take();
+        let set_functions = binder.set_functions.take().unwrap_or_default();
         let mut having = None;
         if let Some(node) = select.having_clause.as_deref() {
             binder.clause = "HAVING";
@@ -900,6 +912,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         let columns_bound = std::mem::take(&mut binder.columns);
         drop(binder);
         let mut windows = windows;
+        let mut set_functions = set_functions;
         if let Some(aggregates) = aggregates {
             // Group keys may refer to output columns by position or name, or be expressions of the input.
             let mut groups: Vec<Expr> = Vec::new();
@@ -951,6 +964,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             targets = new_targets;
             sorts = sorts.into_iter().map(|(e, d, n)| finish(e).map(|e| (e, d, n))).collect::<Result<_>>()?;
             having = having.map(finish).transpose()?;
+            set_functions = set_functions.into_iter().map(finish).collect::<Result<_>>()?;
             if let Some(windows) = windows.as_mut() {
                 for call in windows.iter_mut() {
                     call.args = call.args.drain(..).map(finish).collect::<Result<_>>()?;
@@ -976,6 +990,13 @@ impl<'b, 'a> Planner<'b, 'a> {
             targets = targets.into_iter().map(|(e, t, n, l)| (place(e), t, n, l)).collect();
             sorts = sorts.into_iter().map(|(e, d, n)| (place(e), d, n)).collect();
             plan = Plan::Window { input: Box::new(plan), calls };
+        }
+        if !set_functions.is_empty() {
+            let input_width = plan.width();
+            let place = |expr: Expr| replace_set_functions(expr, input_width);
+            targets = targets.into_iter().map(|(e, t, n, l)| (place(e), t, n, l)).collect();
+            sorts = sorts.into_iter().map(|(e, d, n)| (place(e), d, n)).collect();
+            plan = Plan::ProjectSet { input: Box::new(plan), functions: set_functions };
         }
         let width = targets.len();
         let types: Vec<ColumnType> = targets.iter().map(|t| t.1).collect();
@@ -1155,6 +1176,14 @@ fn compare_sorted(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
     Ordering::Equal
 }
 
+/// replace_set_functions replaces set-returning call references with the columns a ProjectSet node appends.
+fn replace_set_functions(expr: Expr, input_width: usize) -> Expr {
+    match expr {
+        Expr::SetRef(k) => Expr::Column(input_width + k),
+        other => other.map_children(&mut |child| replace_set_functions(child, input_width)),
+    }
+}
+
 /// replace_windows replaces window call references with the columns that a window node appends after its input's.
 fn replace_windows(expr: Expr, input_width: usize) -> Expr {
     match expr {
@@ -1244,6 +1273,7 @@ impl Plan {
             Plan::Recursive { anchor, .. } => anchor.width(),
             Plan::WorkTable(_) => 0,
             Plan::Window { input, calls } => input.width() + calls.len(),
+            Plan::ProjectSet { input, functions } => input.width() + functions.len(),
             Plan::System(system) => system.columns().len(),
             Plan::Values(rows) => rows.first().map_or(0, Vec::len),
             Plan::Function { ordinality, width, .. } => width + *ordinality as usize,
@@ -1264,6 +1294,26 @@ impl Plan {
             Plan::OneRow => vec![Vec::new()],
             Plan::Scan(table) => scan(ctx.db, table)?,
             Plan::WorkTable(id) => ctx.work_tables.get(id).cloned().unwrap_or_default(),
+            Plan::ProjectSet { input, functions } => {
+                let mut out = Vec::new();
+                for row in input.run(ctx)? {
+                    let mut columns = Vec::with_capacity(functions.len());
+                    for function in functions {
+                        let Expr::Func(index, args) = function else {
+                            return Err(PgError::internal("a set-returning call that is not a function"));
+                        };
+                        let values = args.iter().map(|a| a.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
+                        columns.push(crate::functions::call_set(ctx, *index, &values)?);
+                    }
+                    let count = columns.iter().map(Vec::len).max().unwrap_or(0);
+                    for i in 0..count {
+                        let mut new_row = row.clone();
+                        new_row.extend(columns.iter().map(|c| c.get(i).cloned().unwrap_or(Value::Null)));
+                        out.push(new_row);
+                    }
+                }
+                out
+            }
             Plan::Window { input, calls } => {
                 let mut rows = input.run(ctx)?;
                 for call in calls {
