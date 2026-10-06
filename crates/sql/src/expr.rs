@@ -647,6 +647,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                 }
                 Ok((expr, typ(oid::BOOL)))
             }
+            AExprKind::AexprLike | AExprKind::AexprIlike | AExprKind::AexprSimilar => {
+                let left = self.bind(operand(&e.lexpr)?)?;
+                let right = self.bind(operand(&e.rexpr)?)?;
+                self.binary(&op, left, right, e.location)
+            }
             AExprKind::AexprNullif => {
                 let left = self.bind(operand(&e.lexpr)?)?;
                 let ty = left.1;
@@ -803,6 +808,25 @@ impl<'b, 'a> Binder<'b, 'a> {
                 format!("operator does not exist: {} {op} {}", type_display(lt), type_display(rt)),
             )
         };
+        if let Some(function) = pattern_function(op) {
+            let types = [lt, rt].map(|t| if t == oid::UNKNOWN { oid::TEXT } else { t });
+            if !types.iter().all(|&t| is_string(t)) {
+                return Err(missing());
+            }
+            let resolved = functions::resolve(function, &[oid::TEXT, oid::TEXT], location)?;
+            for bound in [&left, &right] {
+                if let Expr::Param(i) = bound.0
+                    && self.ctx.parameters[i] == 0
+                {
+                    self.ctx.parameters[i] = oid::TEXT;
+                }
+            }
+            let args = vec![
+                coerce(left, typ(oid::TEXT), false, location)?.0,
+                coerce(right, typ(oid::TEXT), false, location)?.0,
+            ];
+            return Ok((Expr::Func(resolved.index, args), typ(oid::BOOL)));
+        }
         if is_array_type(lt) || is_array_type(rt) {
             return self.array_binary(op, left, right, location).and_then(|b| b.ok_or_else(missing));
         }
@@ -1036,6 +1060,21 @@ fn subscript_int(bound: Bound, location: i32) -> Result<Expr> {
         });
     }
     Ok(coerce(bound, typ(oid::INT4), true, location)?.0)
+}
+
+/// pattern_function returns the function behind a LIKE or regular expression operator.
+fn pattern_function(op: &str) -> Option<&'static str> {
+    Some(match op {
+        "~~" => "textlike",
+        "!~~" => "textnlike",
+        "~~*" => "texticlike",
+        "!~~*" => "texticnlike",
+        "~" => "textregexeq",
+        "!~" => "textregexne",
+        "~*" => "texticregexeq",
+        "!~*" => "texticregexne",
+        _ => return None,
+    })
 }
 
 /// implicit_datetime reports whether Postgres converts one date or time type to another without being asked.

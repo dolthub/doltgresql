@@ -18,6 +18,7 @@ pub mod aggregate;
 mod array;
 pub mod datetime;
 mod math;
+mod pattern;
 mod series;
 mod string;
 mod system;
@@ -74,6 +75,7 @@ fn registry() -> &'static Registry {
             series::FUNCTIONS,
             datetime::FUNCTIONS,
             array::FUNCTIONS,
+            pattern::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
             crate::sequences::FUNCTIONS,
         ]

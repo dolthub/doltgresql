@@ -1411,6 +1411,7 @@ dependencies = [
  "objects",
  "pg_query",
  "prolly",
+ "regex",
  "serial",
  "store",
  "xxhash-rust",
