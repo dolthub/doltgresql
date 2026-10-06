@@ -170,6 +170,29 @@ Remaining:
   server panics), and 7 EXPLAIN assertions that expect Postgres plan text.
 - A full sqllogictest corpus run with both runners.
 
+## Phase 1 status
+
+Done (read path):
+
+- `store`: hashes, manifests, NBS table files, the chunk journal (with Go's recovery and data loss rules), archives
+  versions 1 to 3 with zstd dictionaries, and the old and new generations.
+- `serial`: a bounds-checked flatbuffers reader, since `flatc`'s Rust output uses `unsafe`, with views of the store
+  root, commits, tags, working sets with merge and rebase state, Doltgres root values, tables, schemas, foreign keys,
+  stashes, and tree nodes.
+- `prolly`: tree nodes of every kind, leaf walks, tuples, and blob trees.
+- `objects`: Doltgres root objects (sequences, types, functions, triggers, extensions, procedures, casts, operators,
+  aggregates, conflicts) and serialized types, including column types.
+- `doltdb`: a reader of the whole object graph from the refs down to row tuples, with out-of-band values resolved.
+- Verification: Go oracles that use Dolt's and Doltgres' own readers (kept locally in `testing/go/regression/out`)
+  print the chunks and the object graph, including row digests, of fixture databases. The Rust readers match them
+  exactly on 14 fixtures: databases from the current Go server covering every message type, multi-level maps, merges
+  with table and root object conflicts, stashes, and rebases; databases from Doltgres 0.50, 0.56, 0.57, and 1.0; and
+  version 1 and 2 archives written by Dolt. Doltgres 0.18 databases are out of scope, since the Go server cannot read
+  them, and 0.52 to 0.56 lose chunks in their own GC.
+
+Remaining: decoding values by type (with Phase 4), statistics, auth and branch control files, vector index nodes, and
+a run against a large database.
+
 ## Baseline artifacts
 
 - `testing/go/regression/out/results.trackers`: per-statement regression results of the Go baseline.
