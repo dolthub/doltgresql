@@ -415,8 +415,9 @@ impl Session {
 
     /// set_up runs a setup statement on the default connection.
     pub fn set_up(&mut self, query: &str) -> Result<(), String> {
+        let query = if self.target.is_postgres() { postgres_set_up(query) } else { query.to_string() };
         self.default
-            .exec(&expand(query), &[])
+            .exec(&expand(&query), &[])
             .map(|_| ())
             .map_err(|err| format!("error running setup query: {query}: {err}"))
     }
@@ -700,6 +701,23 @@ thread_local! {
     static SCRIPT_TEMP_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
     /// OID_BINDINGS maps each expected OID of the running script to the server's OID that it matched.
     static OID_BINDINGS: std::cell::RefCell<HashMap<u32, String>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// postgres_set_up rewrites Doltgres' `CREATE USER|ROLE IF NOT EXISTS 'name'` into the statement Postgres accepts,
+/// so that scripts whose setup creates roles that way can run against Postgres.
+fn postgres_set_up(query: &str) -> String {
+    let lower = query.to_ascii_lowercase();
+    for prefix in ["create user if not exists ", "create role if not exists "] {
+        if let Some(rest) = lower.strip_prefix(prefix) {
+            let rest = &query[query.len() - rest.len()..];
+            let rest = match rest.strip_prefix('\'') {
+                Some(quoted) => quoted.replacen('\'', "", 1),
+                None => rest.to_string(),
+            };
+            return format!("{}{rest}", &query[..prefix.len() - "if not exists ".len()]);
+        }
+    }
+    query.to_string()
 }
 
 /// expand replaces TESTDATA_TOKEN with the absolute path of the testdata directory, and TEMPDIR_TOKEN and NEWDIR
@@ -991,6 +1009,69 @@ pub fn capture_script(target: &Target, script: &ScriptTest, repetitions: usize) 
 /// The environment variable naming a file that receives one JSON line per failure, for tooling.
 pub const FAILURES_FILE_ENV: &str = "DOLTGRES_FAILURES_FILE";
 
+/// OBSERVATIONS_FILE_ENV names a file that, when set, collects every assertion's observation as a JSON line, from
+/// which expectations can be taken.
+pub const OBSERVATIONS_FILE_ENV: &str = "DOLTGRES_OBSERVATIONS_FILE";
+
+/// fields_json renders error or notice fields as JSON, as goport's captures do, without empty fields.
+fn fields_json(fields: &ErrorFields) -> String {
+    let mut parts = vec![
+        format!("\"severity\":{}", json_string(&fields.severity)),
+        format!("\"code\":{}", json_string(&fields.code)),
+        format!("\"message\":{}", json_string(&fields.message)),
+    ];
+    for (name, text) in [
+        ("detail", &fields.detail),
+        ("hint", &fields.hint),
+        ("schema", &fields.schema_name),
+        ("table", &fields.table_name),
+        ("column", &fields.column_name),
+        ("data_type", &fields.data_type_name),
+        ("constraint", &fields.constraint_name),
+    ] {
+        if !text.is_empty() {
+            parts.push(format!("{}:{}", json_string(name), json_string(text)));
+        }
+    }
+    if fields.position != 0 {
+        parts.push(format!("\"position\":{}", fields.position));
+    }
+    format!("{{{}}}", parts.join(","))
+}
+
+/// record_observation appends an assertion's observation to the observations file, when one is set.
+fn record_observation(script: &str, index: usize, observation: &Observation) {
+    let Some(path) = std::env::var_os(OBSERVATIONS_FILE_ENV) else { return };
+    let test = std::thread::current().name().unwrap_or("unknown").to_string();
+    let columns: Vec<String> =
+        observation.columns.iter().map(|(name, oid)| format!("[{},{oid}]", json_string(name))).collect();
+    let rows: Vec<String> = observation
+        .rows
+        .iter()
+        .map(|row| {
+            let cells: Vec<String> = row.iter().map(|c| c.as_deref().map_or("null".to_string(), json_string)).collect();
+            format!("[{}]", cells.join(","))
+        })
+        .collect();
+    let notices: Vec<String> = observation.notices.iter().map(fields_json).collect();
+    let line = format!(
+        "{{\"test\":{},\"script\":{},\"assertion\":{index},\"observation\":{{\"columns\":[{}],\"rows\":[{}],\"queried\":{},\"tag\":{},\"error\":{},\"client_error\":{},\"notices\":[{}]}}}}\n",
+        json_string(&test),
+        json_string(script),
+        columns.join(","),
+        rows.join(","),
+        observation.queried,
+        json_string(&observation.tag),
+        observation.error.as_ref().map_or("null".to_string(), fields_json),
+        observation.client_error.as_deref().map_or("null".to_string(), json_string),
+        notices.join(",")
+    );
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        use std::io::Write as _;
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
 /// record_failure appends a failure to DOLTGRES_FAILURES_FILE when it is set, naming the running test, the script, and
 /// the part of the script that failed.
 pub(crate) fn record_failure(script: &str, part: &str, query: &str, problems: &str) {
@@ -1064,6 +1145,7 @@ pub fn run_script(target: &Target, script: &ScriptTest, repetitions: usize) -> V
             if observation.skipped {
                 continue;
             }
+            record_observation(script.name, index, &observation);
             let problems = check(assertion, &observation);
             if !problems.is_empty() {
                 record_failure(script.name, &format!("assertion {index}"), assertion.query, &problems.join("\n"));
@@ -1092,5 +1174,20 @@ pub fn run_scripts_repeated(scripts: &[ScriptTest], repetitions: usize) {
     }
     if !failures.is_empty() {
         panic!("{} failures:\n\n{}", failures.len(), failures.join("\n\n"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn doltgres_role_set_up_becomes_postgres() {
+        assert_eq!(
+            postgres_set_up("create user if not exists 'auth_test_super' with superuser password 'p';"),
+            "create user auth_test_super with superuser password 'p';"
+        );
+        assert_eq!(postgres_set_up("CREATE ROLE IF NOT EXISTS r1;"), "CREATE ROLE r1;");
+        assert_eq!(postgres_set_up("CREATE TABLE t (a int);"), "CREATE TABLE t (a int);");
     }
 }

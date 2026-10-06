@@ -64,6 +64,14 @@ fn main() {
             eprintln!("{:#?}", report.sources);
         }
         Some("record") if args.len() == 4 => record(&args[2], &args[3]),
+        Some("render") if args.len() == 3 => {
+            for line in std::fs::read_to_string(&args[2]).unwrap().lines() {
+                let mut value: Value = serde_json::from_str(line).unwrap();
+                let rendered = generate::render(&value["observation"]);
+                value["rendered"] = rendered;
+                println!("{value}");
+            }
+        }
         Some("collect-cells") if args.len() == 5 => cells::collect(&args[2], &args[3], &args[4]),
         Some("check-cells") if args.len() == 4 => cells::check(&args[2], &args[3]),
         Some("show-recording") if args.len() == 3 => match recordings::read_recording(std::path::Path::new(&args[2])) {
@@ -113,6 +121,7 @@ fn main() {
         _ => {
             eprintln!("usage: goport capture <dump.jsonl> <target> <out.jsonl> [jobs] [test name filter]");
             eprintln!("       goport record <scripts.sql> <target>");
+            eprintln!("       goport render <observations.jsonl>");
             eprintln!(
                 "       goport generate <dump.jsonl> <pg capture> <go capture> <second pg capture> <second go capture> <out dir> <report>"
             );

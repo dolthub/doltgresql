@@ -222,7 +222,35 @@ impl Ctx<'_> {
         }
         let fragment = NodeRef::ViewStmt(stmt).deparse().map_err(PgError::internal)?;
         self.put_view(&schema, &name, Some(&fragment))?;
+        self.own(crate::auth::Object::Table(schema.clone(), name.clone()))?;
         Ok(Outcome::command("CREATE VIEW"))
+    }
+
+    /// rename_view renames a view, keeping its privileges.
+    pub fn rename_view(&mut self, schema: &str, old: &str, new: &str, fragment: &str) -> Result<()> {
+        self.require_owner(&crate::auth::Object::Table(schema.to_string(), old.to_string()))
+            .map_err(|err| PgError { message: format!("must be owner of view {old}"), ..err })?;
+        if self.relation_names(schema)?.iter().any(|n| n == new) {
+            return Err(PgError::new(code::DUPLICATE_TABLE, format!("relation \"{new}\" already exists")));
+        }
+        let parsed = pg_query::parse(fragment).map_err(PgError::internal)?;
+        let Some(NodeEnum::ViewStmt(mut view)) =
+            parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
+        else {
+            return Err(PgError::internal(format!("a stored view that is not one: {fragment}")));
+        };
+        if let Some(relation) = view.view.as_mut() {
+            relation.relname = new.to_string();
+        }
+        let renamed = NodeRef::ViewStmt(&view).deparse().map_err(PgError::internal)?;
+        self.put_view(schema, old, None)?;
+        self.put_view(schema, new, Some(&renamed))?;
+        let mut auth = self.auth()?;
+        auth.rename_object(
+            &crate::auth::Object::Table(schema.to_string(), old.to_string()),
+            &crate::auth::Object::Table(schema.to_string(), new.to_string()),
+        );
+        auth.persist()
     }
 
     /// drop_views runs DROP VIEW.
@@ -237,7 +265,11 @@ impl Ctx<'_> {
                 [] => continue,
             };
             match self.find_view(&schema, &name)? {
-                Some((schema, _)) => doomed.push((schema, name)),
+                Some((schema, _)) => {
+                    self.require_owner(&crate::auth::Object::Table(schema.clone(), name.clone()))
+                        .map_err(|err| PgError { message: format!("must be owner of view {name}"), ..err })?;
+                    doomed.push((schema, name))
+                }
                 None => {
                     let shown = parts.join(".");
                     let schemas = if schema.is_empty() { self.session.search_path() } else { vec![schema.clone()] };

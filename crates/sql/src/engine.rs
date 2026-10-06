@@ -44,6 +44,8 @@ struct Shared {
     data_dir: PathBuf,
     /// The superuser, whose name the default database takes.
     superuser: String,
+    /// The roles and privileges.
+    auth: Arc<Mutex<crate::auth::AuthDb>>,
     databases: Mutex<HashMap<String, (DbHandle, SequenceTracker)>>,
 }
 
@@ -65,14 +67,16 @@ fn lock<T>(mutex: &Mutex<T>) -> Result<std::sync::MutexGuard<'_, T>> {
 }
 
 impl Engine {
-    /// open opens the data directory, creating it and the default database, named after the superuser, when they
-    /// do not exist, as the Go server does on its first start.
-    pub fn open(data_dir: &Path, superuser: &str) -> Result<Engine> {
+    /// open opens the data directory and the auth file, creating them, the default database named after the
+    /// superuser, and the superuser's role when they do not exist, as the Go server does on its first start.
+    pub fn open(data_dir: &Path, superuser: &str, password: &str, auth_file: &Path) -> Result<Engine> {
         std::fs::create_dir_all(data_dir.join(".dolt")).map_err(PgError::internal)?;
+        let auth = crate::auth::AuthDb::open(auth_file, superuser, password)?;
         let engine = Engine {
             shared: Arc::new(Shared {
                 data_dir: data_dir.to_path_buf(),
                 superuser: superuser.to_string(),
+                auth: Arc::new(Mutex::new(auth)),
                 databases: Mutex::new(HashMap::new()),
             }),
         };
@@ -81,6 +85,13 @@ impl Engine {
             doltdb::create::create_database(&dir, DEFAULT_BRANCH, superuser, "localhost", &create_times())?;
         }
         Ok(engine)
+    }
+
+    /// login returns the stored password of a role and whether it may log in, or None when the role does not exist.
+    pub fn login(&self, user: &str) -> Option<(Option<crate::auth::Password>, bool)> {
+        let auth = self.shared.auth.lock().ok()?;
+        let role = auth.role(user)?;
+        Some((role.password.clone(), role.login))
     }
 
     /// database_exists reports whether the data directory holds the database.
@@ -123,11 +134,15 @@ impl Engine {
                 last_sequence: None,
                 data_dir: self.shared.data_dir.clone(),
                 superuser: self.shared.superuser.clone(),
+                auth: self.shared.auth.clone(),
+                role: user.to_string(),
+                authenticated: user.to_string(),
             },
             txns: Vec::new(),
             failed: false,
             reported: HashMap::new(),
         };
+        session.state.settings.set_raw("session_authorization", Some(user.to_string()), false, false);
         session.switch(database).map_err(|_| {
             PgError::fatal(code::INVALID_CATALOG_NAME, format!("database \"{database}\" does not exist"))
         })?;
@@ -167,9 +182,24 @@ pub struct SessionState {
     /// The directory that holds the databases.
     pub data_dir: PathBuf,
     pub superuser: String,
+    pub auth: Arc<Mutex<crate::auth::AuthDb>>,
+    /// The current role, which SET ROLE changes from the session user.
+    pub role: String,
+    /// The user that logged in, which SET SESSION AUTHORIZATION checks.
+    pub authenticated: String,
 }
 
 impl SessionState {
+    /// sync_identity sets the session user and the current role from the parameters that SET SESSION AUTHORIZATION
+    /// and SET ROLE change, which transactions can undo.
+    pub fn sync_identity(&mut self) {
+        self.user = self.settings.raw("session_authorization").unwrap_or_else(|| self.authenticated.clone());
+        self.role = match self.settings.raw("role") {
+            Some(role) if role != "none" => role,
+            _ => self.user.clone(),
+        };
+    }
+
     /// database_names returns the names of the databases in the data directory, in name order.
     pub fn database_names(&self) -> Vec<String> {
         let mut names: Vec<String> = std::fs::read_dir(&self.data_dir)
@@ -199,7 +229,19 @@ impl SessionState {
                 };
                 if s == "$user" { self.user.clone() } else { s }
             })
+            .filter(|s| self.can_use_schema(s))
             .collect()
+    }
+
+    /// can_use_schema reports whether the current role may use a schema, which unqualified names skip otherwise.
+    fn can_use_schema(&self, schema: &str) -> bool {
+        if matches!(schema, "pg_catalog" | "information_schema" | "public") {
+            return true;
+        }
+        let Ok(auth) = self.auth.lock() else { return true };
+        let Some(role) = auth.role(&self.role) else { return true };
+        let object = crate::auth::Object::Schema(schema.to_string());
+        role.superuser || auth.holds(role.id, &object, "U") || auth.owner(&object) == Some(role.id)
     }
 
     /// install_format installs the session's DateStyle, IntervalStyle, and time zone for printing values.
@@ -370,6 +412,13 @@ impl Session {
 
     /// fail ends an implicit transaction, or marks an explicit one failed, after an error.
     fn fail(&mut self, err: PgError) -> PgError {
+        let err = self.fail_transaction(err);
+        self.state.sync_identity();
+        err
+    }
+
+    /// fail_transaction ends an implicit transaction, or marks an explicit one failed, after an error.
+    fn fail_transaction(&mut self, err: PgError) -> PgError {
         if self.state.explicit {
             self.failed = true;
         } else {
@@ -405,6 +454,7 @@ impl Session {
         params: &[Value],
         f: impl FnOnce(&mut Ctx<'_>) -> Result<T>,
     ) -> Result<T> {
+        self.state.sync_identity();
         let (database, branch) = (&self.state.database, &self.state.branch);
         let index = match self.txns.iter().position(|t| t.database == *database && t.branch == *branch) {
             Some(index) => index,
@@ -439,6 +489,13 @@ impl Session {
 
     /// run runs one statement with the parameter values.
     fn run(&mut self, statement: &Statement, params: &[Value]) -> Result<Outcome> {
+        let result = self.run_statement(statement, params);
+        self.state.sync_identity();
+        result
+    }
+
+    /// run_statement runs one statement with the parameter values.
+    fn run_statement(&mut self, statement: &Statement, params: &[Value]) -> Result<Outcome> {
         let kind = transaction_kind(statement);
         if self.failed {
             return match kind {
@@ -542,9 +599,33 @@ impl Session {
     /// postgres runs a statement of Postgres' grammar.
     fn postgres(&mut self, node: &NodeEnum, extras: &Extras, params: &[Value]) -> Result<Outcome> {
         match node {
-            NodeEnum::CreatedbStmt(create) => return self.create_database(&create.dbname, extras.if_not_exists),
+            NodeEnum::CreatedbStmt(create) => {
+                let mut parameters = Vec::new();
+                self.with_ctx(&mut parameters, params, |ctx| ctx.require_create_db())?;
+                return self.create_database(&create.dbname, extras.if_not_exists);
+            }
+            NodeEnum::CreateRoleStmt(create) => {
+                let mut parameters = Vec::new();
+                return self.with_ctx(&mut parameters, params, |ctx| ctx.create_role(create, extras.if_not_exists));
+            }
+            NodeEnum::VariableSetStmt(set) if matches!(set.name.as_str(), "role" | "session_authorization") => {
+                return self.set_role(set);
+            }
             NodeEnum::VariableSetStmt(set) => return self.set(set),
             NodeEnum::VariableShowStmt(show) => return self.show(&show.name),
+            NodeEnum::DiscardStmt(_) => {
+                if self.state.explicit {
+                    return Err(PgError::new(
+                        code::ACTIVE_SQL_TRANSACTION,
+                        "DISCARD ALL cannot run inside a transaction block",
+                    ));
+                }
+                self.state.settings.reset_all(false);
+                let user = self.state.authenticated.clone();
+                self.state.settings.set_raw("session_authorization", Some(user), false, false);
+                self.state.settings.set_raw("role", None, false, false);
+                return Ok(Outcome::command("DISCARD ALL"));
+            }
             _ => {}
         }
         let mut parameters = Vec::new();
@@ -553,6 +634,34 @@ impl Session {
 }
 
 impl Session {
+    /// set_role runs SET ROLE, RESET ROLE, SET SESSION AUTHORIZATION, and RESET SESSION AUTHORIZATION.
+    fn set_role(&mut self, set: &VariableSetStmt) -> Result<Outcome> {
+        let kind = VariableSetKind::try_from(set.kind).unwrap_or(VariableSetKind::Undefined);
+        let name = match set.args.first().and_then(|a| a.node.as_ref()) {
+            Some(NodeEnum::AConst(c)) => match &c.val {
+                Some(Val::Sval(s)) => Some(s.sval.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let tag = if kind == VariableSetKind::VarReset { "RESET" } else { "SET" };
+        let mut parameters = Vec::new();
+        let explicit = self.state.explicit;
+        if set.name == "session_authorization" {
+            let user = name.filter(|n| kind == VariableSetKind::VarSetValue && n != "default");
+            let user = user.unwrap_or_else(|| self.state.authenticated.clone());
+            self.with_ctx(&mut parameters, &[], |ctx| ctx.set_session_authorization(&user))?;
+            self.state.settings.set_raw("session_authorization", Some(user), set.is_local, explicit);
+            self.state.settings.set_raw("role", None, set.is_local, explicit);
+        } else {
+            let role = name.filter(|n| kind == VariableSetKind::VarSetValue && n != "none");
+            self.with_ctx(&mut parameters, &[], |ctx| ctx.set_role(role.as_deref()))?;
+            self.state.settings.set_raw("role", role, set.is_local, explicit);
+        }
+        self.state.sync_identity();
+        Ok(Outcome::command(tag))
+    }
+
     /// set runs SET and RESET.
     fn set(&mut self, set: &VariableSetStmt) -> Result<Outcome> {
         let kind = VariableSetKind::try_from(set.kind).unwrap_or(VariableSetKind::Undefined);
@@ -685,6 +794,33 @@ impl Ctx<'_> {
         })
     }
 
+    /// call runs CALL, which fails as Postgres does for a function, since only procedures can be called.
+    fn call(&mut self, stmt: &pg_query::protobuf::CallStmt) -> Result<Outcome> {
+        let call = stmt.funccall.as_ref().ok_or_else(|| PgError::internal("CALL without a call"))?;
+        let name = call.funcname.iter().filter_map(crate::expr::node_name).next_back().unwrap_or_default().to_string();
+        let mut types = Vec::with_capacity(call.args.len());
+        for arg in &call.args {
+            types.push(crate::expr::Binder::new(self, crate::expr::Scope::default()).bind(arg)?.1.oid);
+        }
+        let signature =
+            format!("{name}({})", types.iter().map(|&t| crate::cast::type_display(t)).collect::<Vec<_>>().join(", "));
+        if crate::functions::exists(&name) && crate::functions::resolve(&name, &types, call.location).is_ok() {
+            return Err(PgError {
+                position: crate::expr::position(call.location),
+                hint: Some("To call a function, use SELECT.".into()),
+                ..PgError::new(code::WRONG_OBJECT_TYPE, format!("{signature} is not a procedure"))
+            });
+        }
+        Err(PgError {
+            position: crate::expr::position(call.location),
+            hint: Some(
+                "No procedure matches the given name and argument types. You might need to add explicit type casts."
+                    .into(),
+            ),
+            ..PgError::new(code::UNDEFINED_FUNCTION, format!("procedure {signature} does not exist"))
+        })
+    }
+
     /// run plans and runs a statement.
     fn run(&mut self, node: &NodeEnum) -> Result<Outcome> {
         match node {
@@ -707,6 +843,11 @@ impl Ctx<'_> {
             NodeEnum::AlterTableStmt(stmt) => self.alter_table(stmt),
             NodeEnum::RenameStmt(stmt) => self.rename(stmt),
             NodeEnum::ViewStmt(stmt) => self.create_view(stmt),
+            NodeEnum::AlterRoleStmt(stmt) => self.alter_role(stmt),
+            NodeEnum::DropRoleStmt(stmt) => self.drop_role(stmt),
+            NodeEnum::GrantStmt(stmt) => self.grant(stmt),
+            NodeEnum::GrantRoleStmt(stmt) => self.grant_role(stmt),
+            NodeEnum::CallStmt(stmt) => self.call(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

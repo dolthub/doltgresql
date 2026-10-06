@@ -19,6 +19,12 @@ use std::fmt;
 /// SQLSTATE codes the engine reports.
 pub mod code {
     pub const SYNTAX_ERROR: &str = "42601";
+    pub const INSUFFICIENT_PRIVILEGE: &str = "42501";
+    pub const GENERATED_ALWAYS: &str = "428C9";
+    pub const INVALID_OBJECT_DEFINITION: &str = "42P17";
+    pub const RESERVED_NAME: &str = "42939";
+    pub const OBJECT_IN_USE: &str = "55006";
+    pub const INVALID_GRANT_OPERATION: &str = "0LP01";
     pub const FEATURE_NOT_SUPPORTED: &str = "0A000";
     pub const INTERNAL_ERROR: &str = "XX000";
     pub const INVALID_PARAMETER_VALUE: &str = "22023";

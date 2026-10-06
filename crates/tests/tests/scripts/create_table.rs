@@ -1358,3 +1358,257 @@ fn test_column_default_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_generated_column_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "stored generated columns",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g (a INT PRIMARY KEY, b INT GENERATED ALWAYS AS (a * 2 + 1) STORED, c TEXT DEFAULT 'x', d TEXT GENERATED ALWAYS AS (upper(c)) STORED);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO g (a) VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO g VALUES (2, 5);",
+                    expected: Expected::Error(Diagnostic { code: "428C9", message: r#"cannot insert a non-DEFAULT value into column "b""#, detail: r#"Column "b" is a generated column."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO g VALUES (3, DEFAULT, 'y');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO g (a, b) VALUES (4, 7);",
+                    expected: Expected::Error(Diagnostic { code: "428C9", message: r#"cannot insert a non-DEFAULT value into column "b""#, detail: r#"Column "b" is a generated column."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE g SET b = 9 WHERE a = 1;",
+                    expected: Expected::Error(Diagnostic { code: "428C9", message: r#"column "b" can only be updated to DEFAULT"#, detail: r#"Column "b" is a generated column."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE g SET b = DEFAULT, c = 'z' WHERE a = 1;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM g ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", INT4), Column("c", TEXT), Column("d", TEXT)],
+                        rows: &[
+                            &[T("1"), T("3"), T("z"), T("Z")],
+                            &[T("3"), T("7"), T("y"), T("Y")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE g ADD COLUMN e INT GENERATED ALWAYS AS (a + 100) STORED;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, e FROM g ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("e", INT4)],
+                        rows: &[
+                            &[T("1"), T("101")],
+                            &[T("3"), T("103")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT attname, attgenerated FROM pg_attribute WHERE attrelid = 'g'::regclass AND attnum > 0 ORDER BY attnum;",
+                    expected: Expected::Rows {
+                        columns: &[Column("attname", NAME), Column("attgenerated", CHAR)],
+                        rows: &[
+                            &[T("a"), T("")],
+                            &[T("b"), T("s")],
+                            &[T("c"), T("")],
+                            &[T("d"), T("s")],
+                            &[T("e"), T("s")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT column_name, is_generated FROM information_schema.columns WHERE table_name = 'g' ORDER BY ordinal_position;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column_name", NAME), Column("is_generated", VARCHAR)],
+                        rows: &[
+                            &[T("a"), T("NEVER")],
+                            &[T("b"), T("ALWAYS")],
+                            &[T("c"), T("NEVER")],
+                            &[T("d"), T("ALWAYS")],
+                            &[T("e"), T("ALWAYS")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO g (a, b) VALUES (10, DEFAULT) RETURNING *;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", INT4), Column("c", TEXT), Column("d", TEXT), Column("e", INT4)],
+                        rows: &[
+                            &[T("10"), T("21"), T("x"), T("X"), T("110")],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO g (a) SELECT 20 RETURNING a, b;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", INT4)],
+                        rows: &[
+                            &[T("20"), T("41")],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO g (a, b) SELECT 30, 1;",
+                    expected: Expected::Error(Diagnostic { code: "428C9", message: r#"cannot insert a non-DEFAULT value into column "b""#, detail: r#"Column "b" is a generated column."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "expressions that generated columns cannot have",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g2 (a INT, b INT GENERATED ALWAYS AS (a) STORED DEFAULT 1);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"both default and generation expression specified for column "b" of table "g2""#, position: 62, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g2b (a INT, b INT DEFAULT 1 GENERATED ALWAYS AS (a) STORED);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"both default and generation expression specified for column "b" of table "g2b""#, position: 42, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g3 (a INT, b INT GENERATED ALWAYS AS (b + 1) STORED);",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: r#"cannot use generated column "b" in column generation expression"#, detail: "A generated column cannot reference another generated column.", position: 52, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g4 (a INT, b INT GENERATED ALWAYS AS (a + 1) STORED, c INT GENERATED ALWAYS AS (b + 1) STORED);",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: r#"cannot use generated column "b" in column generation expression"#, detail: "A generated column cannot reference another generated column.", position: 94, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g5 (a INT, b TIMESTAMPTZ GENERATED ALWAYS AS (now()) STORED);",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: "generation expression is not immutable", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g7 (a INT, b INT GENERATED ALWAYS AS (sum(a)) STORED);",
+                    expected: Expected::Error(Diagnostic { code: "42803", message: "aggregate functions are not allowed in column generation expressions", position: 52, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g8 (a INT, b INT GENERATED ALWAYS AS ((SELECT 1)) STORED);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use subquery in column generation expression", position: 52, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_constraint_attribute_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "constraint attributes and DEFAULT VALUES",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE a15 (x INTEGER GENERATED ALWAYS AS (1) STORED DEFERRABLE);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "misplaced DEFERRABLE clause", position: 60, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE a16 (x INTEGER NOT NULL NOT DEFERRABLE);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "misplaced NOT DEFERRABLE clause", position: 38, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE a17 (x INTEGER DEFAULT 1 INITIALLY DEFERRED);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "misplaced INITIALLY DEFERRED clause", position: 39, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE a19 (x INTEGER DEFERRABLE);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "misplaced DEFERRABLE clause", position: 29, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE a20 (x INTEGER UNIQUE INITIALLY DEFERRED NOT DEFERRABLE);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "constraint declared INITIALLY DEFERRED must be DEFERRABLE", position: 55, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE a21 (x INTEGER UNIQUE DEFERRABLE DEFERRABLE);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed", position: 47, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE dv (a INT DEFAULT 1, b INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO dv DEFAULT VALUES;",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO dv DEFAULT VALUES RETURNING *;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", INT4)],
+                        rows: &[
+                            &[T("1"), Null],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

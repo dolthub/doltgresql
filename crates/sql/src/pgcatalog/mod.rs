@@ -94,6 +94,24 @@ pub fn lookup(schema: &str, name: &str) -> Option<&'static CatalogTable> {
     c.by_name.get(&(schema, name)).map(|&i| &c.tables[i])
 }
 
+/// is_immutable reports whether an expression calls only functions that have an immutable form, as pg_proc's
+/// provolatile shows them.
+pub fn is_immutable(expr: &pg_query::Node) -> bool {
+    let Some(proc) = lookup("pg_catalog", "pg_proc") else { return true };
+    let (Some(name), Some(volatility)) = (proc.column("proname"), proc.column("provolatile")) else { return true };
+    let rows = builtin::rows(proc);
+    let wrapped = pg_query::NodeEnum::ResTarget(Box::new(pg_query::protobuf::ResTarget {
+        val: Some(Box::new(expr.clone())),
+        ..Default::default()
+    }));
+    wrapped.nodes().into_iter().all(|(node, ..)| {
+        let pg_query::NodeRef::FuncCall(call) = node else { return true };
+        let Some(function) = call.funcname.iter().filter_map(crate::expr::node_name).next_back() else { return true };
+        let forms: Vec<&Vec<Value>> = rows.iter().filter(|r| r[name] == Value::Text(function.to_string())).collect();
+        forms.is_empty() || forms.iter().any(|r| r[volatility] == Value::Text("i".into()))
+    })
+}
+
 /// Rows collects the rows of a system catalog relation, with each column NULL unless set.
 pub struct Rows<'t> {
     table: &'t CatalogTable,

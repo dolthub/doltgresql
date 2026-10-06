@@ -433,6 +433,11 @@ impl Settings {
 
     /// show returns a parameter's value as SHOW prints it.
     pub fn show(&self, name: &str) -> Result<String> {
+        match name.to_ascii_lowercase().as_str() {
+            "role" => return Ok(self.raw("role").unwrap_or_else(|| "none".into())),
+            "session_authorization" => return Ok(self.raw("session_authorization").unwrap_or_default()),
+            _ => {}
+        }
         let value = self.get(name).ok_or_else(|| unrecognized(name))?;
         Ok(match setting(name) {
             Some(definition) => display(definition, &value),
@@ -478,6 +483,27 @@ impl Settings {
             None if name.contains('.') => value.map(str::to_string),
             None => return Err(unrecognized(name)),
         };
+        let value = match value {
+            None if name.contains('.') && setting(name).is_none() => Some(String::new()),
+            value => value,
+        };
+        self.store(key, value, local, in_transaction);
+        Ok(())
+    }
+
+    /// set_raw sets one of the parameters that SET ROLE and SET SESSION AUTHORIZATION change, which have no
+    /// definitions, or removes it without a value.
+    pub fn set_raw(&mut self, name: &str, value: Option<String>, local: bool, in_transaction: bool) {
+        self.store(name.to_string(), value, local, in_transaction);
+    }
+
+    /// raw returns the value of a parameter as stored, without a default.
+    pub fn raw(&self, name: &str) -> Option<String> {
+        self.values.get(name).cloned()
+    }
+
+    /// store stores a value, remembering the previous one for the transaction to restore.
+    fn store(&mut self, key: String, value: Option<String>, local: bool, in_transaction: bool) {
         let previous = self.values.get(&key).cloned();
         if local {
             if in_transaction {
@@ -487,14 +513,12 @@ impl Settings {
             self.transaction_undo.push((key.clone(), previous));
         }
         if local && !in_transaction {
-            return Ok(());
+            return;
         }
         match value {
             Some(value) => self.values.insert(key, value),
-            None if name.contains('.') && setting(name).is_none() => self.values.insert(key, String::new()),
             None => self.values.remove(&key),
         };
-        Ok(())
     }
 
     /// reset_all resets every parameter the session can change.
@@ -504,7 +528,7 @@ impl Settings {
             if in_transaction {
                 self.transaction_undo.push((key.clone(), self.values.get(&key).cloned()));
             }
-            if key != "timezone" {
+            if !matches!(key.as_str(), "timezone" | "role" | "session_authorization") {
                 self.values.remove(&key);
             }
         }

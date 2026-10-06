@@ -67,7 +67,12 @@ fn syntax_error(err: pg_query::Error, cursor: i32) -> PgError {
         pg_query::Error::Parse(message) => message,
         other => other.to_string(),
     };
-    PgError { position: u32::try_from(cursor).ok().filter(|&p| p > 0), ..PgError::new(code::SYNTAX_ERROR, message) }
+    let code = if message.starts_with("role name \"") && message.ends_with("\" is reserved") {
+        code::RESERVED_NAME
+    } else {
+        code::SYNTAX_ERROR
+    };
+    PgError { position: u32::try_from(cursor).ok().filter(|&p| p > 0), ..PgError::new(code, message) }
 }
 
 /// extended parses a query that has Doltgres-only syntax, returning None when some statement is in neither grammar.

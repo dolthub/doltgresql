@@ -109,6 +109,7 @@ impl Ctx<'_> {
             }
             Err(err) => return Err(PgError { position: None, ..err }),
         };
+        self.require_owner(&crate::auth::Object::Table(table.schema.clone(), table.name.clone()))?;
         let mut alteration = Alteration::new(table);
         for cmd in &stmt.cmds {
             let Some(NodeEnum::AlterTableCmd(cmd)) = cmd.node.as_ref() else { continue };
@@ -241,6 +242,11 @@ impl Ctx<'_> {
         for (_, expr) in &parts.defaults {
             self.check_default(expr, &column).map_err(|err| PgError { position: None, ..err })?;
         }
+        if let Some((_, expr)) = parts.generation.first() {
+            let mut columns = alteration.table.columns.clone();
+            columns.push(column.clone());
+            self.check_generation(expr, &name, &columns, columns.len() - 1)?;
+        }
         let mut tags = self.txn.all_tags(self.db)?;
         tags.extend(alteration.table.columns.iter().map(|c| c.tag));
         let kinds = vec![EXTENDED_KIND; alteration.table.columns.len()];
@@ -260,12 +266,16 @@ impl Ctx<'_> {
         let column = alteration.table.columns[index].clone();
         if !column.default.is_empty() {
             let node = parse_expression(&column.default)?;
-            let bound = Binder::new(self, Scope::default()).bind(&node)?;
+            let mut existing = alteration.table.clone();
+            existing.columns.truncate(index);
+            let scope = if column.generated { table_scope(&existing, None) } else { Scope::default() };
+            let bound = Binder::new(self, scope).bind(&node)?;
             let expr = assign(bound, column.ty, &column.name, -1)?.0;
             let rows = std::mem::take(self.rows(alteration)?);
             let mut filled = Vec::with_capacity(rows.len());
             for mut row in rows {
-                row.push(expr.eval(self, &[])?);
+                let value = expr.eval(self, &row)?;
+                row.push(value);
                 filled.push(row);
             }
             alteration.rows = Some(filled);
@@ -615,6 +625,9 @@ impl Ctx<'_> {
             ObjectType::ObjectSequence => "ALTER SEQUENCE",
             _ => "ALTER TABLE",
         };
+        if kind == ObjectType::ObjectRole {
+            return self.rename_role(&stmt.subname, &stmt.newname);
+        }
         let relation = stmt.relation.as_ref().ok_or_else(|| PgError::unsupported("this RENAME"))?;
         if kind == ObjectType::ObjectIndex {
             return self.rename_index(relation, &stmt.newname, stmt.missing_ok).map(|_| Outcome::command(tag));
@@ -624,6 +637,14 @@ impl Ctx<'_> {
         }
         let table = match self.resolve_table(relation) {
             Ok(table) => table,
+            Err(err)
+                if matches!(kind, ObjectType::ObjectTable | ObjectType::ObjectView)
+                    && self.find_view(&relation.schemaname, &relation.relname)?.is_some() =>
+            {
+                let (schema, fragment) = self.find_view(&relation.schemaname, &relation.relname)?.ok_or(err)?;
+                self.rename_view(&schema, &relation.relname, &stmt.newname, &fragment)?;
+                return Ok(Outcome::command(if kind == ObjectType::ObjectView { "ALTER VIEW" } else { tag }));
+            }
             Err(_) if stmt.missing_ok => {
                 self.session.notice(PgError::notice(
                     "00000",
@@ -649,6 +670,12 @@ impl Ctx<'_> {
                 self.txn.root.put_table(self.db, &schema, &stmt.newname, address)?;
                 self.move_owned_sequences(&schema, &old, &stmt.newname, None)?;
                 self.rename_in_foreign_keys(fks, &schema, &old, &stmt.newname)?;
+                let mut auth = self.auth()?;
+                auth.rename_object(
+                    &crate::auth::Object::Table(schema.clone(), old),
+                    &crate::auth::Object::Table(schema, stmt.newname.clone()),
+                );
+                auth.persist()?;
                 return Ok(Outcome::command(tag));
             }
             ObjectType::ObjectColumn => {

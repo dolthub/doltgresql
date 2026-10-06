@@ -138,6 +138,11 @@ fn vector<T: ToString>(values: impl IntoIterator<Item = T>) -> Value {
     text(values.into_iter().map(|v| v.to_string()).collect::<Vec<_>>().join(" "))
 }
 
+/// role_oid returns the OID of a role, which is 10 for the superuser, as for Postgres' bootstrap superuser.
+pub fn role_oid(name: &str, superuser: &str) -> u32 {
+    if name == superuser { SUPERUSER } else { oids::oid(&id::new(id::SECTION_USER, &[name])) }
+}
+
 /// row_type_oid returns the OID of a table's or view's row type.
 pub fn row_type_oid(schema: &str, name: &str) -> u32 {
     oids::oid(&id::new(id::SECTION_TYPE, &[schema, name]))
@@ -151,6 +156,7 @@ struct Attribute {
     number: i16,
     not_null: bool,
     has_default: bool,
+    generated: bool,
 }
 
 /// SYSTEM_COLUMNS are the system columns of every table, with their numbers and types.
@@ -213,10 +219,8 @@ impl Ctx<'_> {
                 self.pg_namespace(rows);
                 Ok(())
             }
-            "pg_authid" | "pg_roles" | "pg_user" | "pg_shadow" => {
-                self.pg_roles(rows);
-                Ok(())
-            }
+            "pg_authid" | "pg_roles" | "pg_user" | "pg_shadow" => self.pg_roles(rows),
+            "pg_auth_members" | "pg_group" => self.pg_auth_members(rows),
             "pg_type" => self.pg_type(rows),
             "pg_class" => self.pg_class(rows),
             "pg_attribute" => self.pg_attribute(rows),
@@ -320,37 +324,100 @@ impl Ctx<'_> {
         schemas
     }
 
-    /// pg_roles lists the superuser and Postgres' predefined roles.
-    fn pg_roles(&mut self, rows: &mut Rows<'_>) {
-        let superuser = self.session.superuser.clone();
-        let mut roles = vec![(SUPERUSER, superuser, true)];
-        roles.extend(PREDEFINED_ROLES.iter().map(|&(o, n)| (o, n.to_string(), false)));
-        for (role, name, superuser) in roles {
-            let shared = vec![
-                ("oid", oid(role)),
-                ("rolname", text(name.clone())),
-                ("rolsuper", boolean(superuser)),
-                ("rolinherit", boolean(true)),
-                ("rolcreaterole", boolean(superuser)),
-                ("rolcreatedb", boolean(superuser)),
-                ("rolcanlogin", boolean(superuser)),
-                ("rolreplication", boolean(superuser)),
-                ("rolbypassrls", boolean(superuser)),
-                ("rolconnlimit", int4(-1)),
-                ("rolpassword", text("********")),
-                ("usename", text(name)),
-                ("usesysid", oid(role)),
-                ("usecreatedb", boolean(superuser)),
-                ("usesuper", boolean(superuser)),
-                ("userepl", boolean(superuser)),
-                ("usebypassrls", boolean(superuser)),
-                ("passwd", text("********")),
-            ];
-            if !superuser && matches!(rows.table.name, "pg_user" | "pg_shadow") {
+    /// pg_roles lists the roles, with Postgres' predefined roles, as pg_authid, pg_roles, pg_user, or pg_shadow.
+    fn pg_roles(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let auth = self.auth()?.clone();
+        let mut roles: Vec<(u32, crate::auth::Role)> = auth
+            .roles
+            .values()
+            .filter(|r| r.name != crate::auth::PUBLIC)
+            .map(|r| (role_oid(&r.name, &self.session.superuser), r.clone()))
+            .collect();
+        roles.extend(PREDEFINED_ROLES.iter().map(|&(o, n)| (o, crate::auth::Role::new(0, n))));
+        let users = matches!(rows.table.name, "pg_user" | "pg_shadow");
+        for (role_oid, role) in roles {
+            if users && !role.login {
                 continue;
             }
-            rows.push(shared);
+            let secret = role.password.as_ref().map_or(Value::Null, |p| text(p.text()));
+            let masked =
+                if rows.table.name == "pg_user" || rows.table.name == "pg_roles" { text("********") } else { secret };
+            let valid_until = role.valid_until.map_or(Value::Null, |t| Value::TimestampTz(t - 946_684_800_000_000));
+            rows.push(vec![
+                ("oid", oid(role_oid)),
+                ("rolname", text(role.name.clone())),
+                ("rolsuper", boolean(role.superuser)),
+                ("rolinherit", boolean(role.inherit)),
+                ("rolcreaterole", boolean(role.create_role)),
+                ("rolcreatedb", boolean(role.create_db)),
+                ("rolcanlogin", boolean(role.login)),
+                ("rolreplication", boolean(role.replication)),
+                ("rolbypassrls", boolean(role.bypass_rls)),
+                ("rolconnlimit", int4(role.connection_limit)),
+                ("rolpassword", masked.clone()),
+                ("rolvaliduntil", valid_until.clone()),
+                ("usename", text(role.name.clone())),
+                ("usesysid", oid(role_oid)),
+                ("usecreatedb", boolean(role.create_db)),
+                ("usesuper", boolean(role.superuser)),
+                ("userepl", boolean(role.replication)),
+                ("usebypassrls", boolean(role.bypass_rls)),
+                ("passwd", masked),
+                ("valuntil", valid_until),
+            ]);
         }
+        Ok(())
+    }
+
+    /// pg_auth_members lists role memberships, with pg_monitor's, or pg_group the members of each role that cannot log
+    /// in.
+    fn pg_auth_members(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let auth = self.auth()?.clone();
+        let superuser = self.session.superuser.clone();
+        let name_oid = |id: &u64| auth.roles.get(id).map_or(0, |r| role_oid(&r.name, &superuser));
+        if rows.table.name == "pg_group" {
+            for &(role, name) in &PREDEFINED_ROLES {
+                let members: Vec<Value> = if matches!(role, 3374 | 3375 | 3377) { vec![oid(3373)] } else { Vec::new() };
+                rows.push(vec![
+                    ("groname", text(name)),
+                    ("grosysid", oid(role)),
+                    ("grolist", Value::Array(Box::new(Array::one_dimensional(types::OID, members)))),
+                ]);
+            }
+            for role in auth.roles.values().filter(|r| !r.login && r.name != crate::auth::PUBLIC) {
+                let members: Vec<Value> = auth
+                    .memberships
+                    .iter()
+                    .filter(|(_, groups)| groups.contains_key(&role.id))
+                    .map(|(member, _)| oid(name_oid(member)))
+                    .collect();
+                rows.push(vec![
+                    ("groname", text(role.name.clone())),
+                    ("grosysid", oid(role_oid(&role.name, &superuser))),
+                    ("grolist", Value::Array(Box::new(Array::one_dimensional(types::OID, members)))),
+                ]);
+            }
+            return Ok(());
+        }
+        for group in [3374, 3375, 3377] {
+            rows.push(vec![
+                ("roleid", oid(group)),
+                ("member", oid(3373)),
+                ("grantor", oid(SUPERUSER)),
+                ("admin_option", boolean(false)),
+            ]);
+        }
+        for (member, groups) in &auth.memberships {
+            for (group, membership) in groups {
+                rows.push(vec![
+                    ("roleid", oid(name_oid(group))),
+                    ("member", oid(name_oid(member))),
+                    ("grantor", oid(name_oid(&membership.granted_by))),
+                    ("admin_option", boolean(membership.admin)),
+                ]);
+            }
+        }
+        Ok(())
     }
 
     /// pg_type lists the row types of the user tables and views.
@@ -470,6 +537,7 @@ impl Ctx<'_> {
                     number,
                     not_null: true,
                     has_default: false,
+                    generated: false,
                 });
             }
         };
@@ -485,6 +553,7 @@ impl Ctx<'_> {
                     number: i as i16 + 1,
                     not_null: !column.nullable,
                     has_default: !column.default.is_empty(),
+                    generated: column.generated,
                 });
             }
             for index in table_indexes(table) {
@@ -497,6 +566,7 @@ impl Ctx<'_> {
                         number: i as i16 + 1,
                         not_null: false,
                         has_default: false,
+                        generated: false,
                     });
                 }
             }
@@ -513,6 +583,7 @@ impl Ctx<'_> {
                     number: i as i16 + 1,
                     not_null: false,
                     has_default: false,
+                    generated: false,
                 });
             }
         }
@@ -531,6 +602,7 @@ impl Ctx<'_> {
                     number: i as i16 + 1,
                     not_null: true,
                     has_default: false,
+                    generated: false,
                 });
             }
         }
@@ -554,7 +626,7 @@ impl Ctx<'_> {
                 ("atthasdef", boolean(a.has_default)),
                 ("atthasmissing", boolean(false)),
                 ("attidentity", text("")),
-                ("attgenerated", text("")),
+                ("attgenerated", text(if a.generated { "s" } else { "" })),
                 ("attisdropped", boolean(false)),
                 ("attislocal", boolean(true)),
                 ("attinhcount", int4(0)),

@@ -254,7 +254,17 @@ impl Ctx<'_> {
 
     /// roles returns the name and OID of every role.
     fn roles(&self) -> Vec<(String, u32)> {
-        let mut out = vec![(self.session.superuser.clone(), crate::pgcatalog::rows::SUPERUSER)];
+        let superuser = self.session.superuser.clone();
+        let mut out: Vec<(String, u32)> = self
+            .auth()
+            .map(|auth| {
+                auth.roles
+                    .values()
+                    .filter(|r| r.name != crate::auth::PUBLIC)
+                    .map(|r| (r.name.clone(), crate::pgcatalog::rows::role_oid(&r.name, &superuser)))
+                    .collect()
+            })
+            .unwrap_or_default();
         out.extend(crate::pgcatalog::rows::PREDEFINED_ROLES.iter().map(|&(o, n)| (n.to_string(), o)));
         out
     }

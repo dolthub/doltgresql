@@ -395,6 +395,7 @@ impl Ctx<'_> {
             self.set_owner(&mut sequence, &schema, &owned_by)?;
         }
         store(self.db, &mut self.txn.root, &sequence)?;
+        self.own(crate::auth::Object::Sequence(schema, name))?;
         Ok(Outcome::command("CREATE SEQUENCE"))
     }
 
@@ -443,7 +444,11 @@ impl Ctx<'_> {
                 }
             }
             match found {
-                Some(sequence) => doomed.push(sequence),
+                Some(sequence) => {
+                    let (schema, sequence_name) = schema_and_name(&sequence);
+                    self.require_owner(&crate::auth::Object::Sequence(schema, sequence_name))?;
+                    doomed.push(sequence)
+                }
                 None if drop.missing_ok => self.session.notice(PgError::notice(
                     "00000",
                     format!("sequence \"{}\" does not exist, skipping", parts.join(".")),
@@ -545,6 +550,7 @@ impl Ctx<'_> {
         sequence.owner_table = id::new(SECTION_TABLE, &[schema, table]);
         sequence.owner_column = column.as_bytes().to_vec();
         store(self.db, &mut self.txn.root, &sequence)?;
+        self.own(crate::auth::Object::Sequence(schema.to_string(), name.clone()))?;
         Ok(format!("(nextval('{schema}.{name}'))"))
     }
 }
@@ -575,12 +581,16 @@ fn text_arg(value: &Value) -> String {
 /// nextval advances a sequence and returns its value.
 pub fn nextval(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let sequence = ctx.resolve_sequence(&text_arg(&args[0]), -1)?;
+    let (schema, name) = schema_and_name(&sequence);
+    ctx.require_sequence(&schema, &name, &["U", "w"])?;
     Ok(Value::Int8(ctx.next_value(sequence)?))
 }
 
 /// currval returns the value nextval last returned for a sequence in this session.
 pub fn currval(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let sequence = ctx.resolve_sequence(&text_arg(&args[0]), -1)?;
+    let (schema, name) = schema_and_name(&sequence);
+    ctx.require_sequence(&schema, &name, &["U", "r"])?;
     match ctx.session.sequence_values.get(&sequence.id) {
         Some(value) => Ok(Value::Int8(*value)),
         None => Err(PgError::new(
@@ -606,6 +616,8 @@ pub fn lastval(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
 /// setval sets a sequence's value, and whether nextval has handed it out, defaulting to true.
 pub fn setval(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let sequence = ctx.resolve_sequence(&text_arg(&args[0]), -1)?;
+    let (schema, name) = schema_and_name(&sequence);
+    ctx.require_sequence(&schema, &name, &["w"])?;
     let Value::Int8(value) = args[1] else { return Ok(Value::Null) };
     let called = !matches!(args.get(2), Some(Value::Bool(false)));
     let mut sequence = ctx.latest(sequence)?;

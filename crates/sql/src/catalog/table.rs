@@ -41,8 +41,10 @@ pub struct ColumnDef {
     pub encoding: u8,
     pub nullable: bool,
     pub primary_key: bool,
-    /// The default expression as stored, which is empty without one.
+    /// The default expression as stored, which is empty without one, or the expression of a generated column.
     pub default: String,
+    /// Whether the column is generated from its expression, as a stored generated column is.
+    pub generated: bool,
 }
 
 /// Check is a check constraint: its name and its expression's SQL text.
@@ -136,6 +138,7 @@ impl TableDef {
                     nullable: c.nullable,
                     primary_key: c.primary_key,
                     default: String::from_utf8_lossy(c.default_value).into_owned(),
+                    generated: c.generated,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -364,7 +367,7 @@ pub fn schema_message(
             primary_key: c.primary_key,
             auto_increment: false,
             nullable: c.nullable,
-            generated: false,
+            generated: c.generated,
             is_virtual: false,
             adaptive_encoding: crate::storage::is_adaptive(c.encoding),
             hidden: false,

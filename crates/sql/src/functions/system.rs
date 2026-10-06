@@ -64,6 +64,14 @@ pub const FUNCTIONS: &[Function] = &[
         implementation: current_schema,
     },
     Function {
+        name: "current_schemas",
+        args: &[BOOL],
+        ret: 1003,
+        strict: true,
+        variadic: false,
+        implementation: current_schemas,
+    },
+    Function {
         name: "current_user",
         args: &[],
         ret: NAME,
@@ -77,12 +85,27 @@ pub const FUNCTIONS: &[Function] = &[
         ret: NAME,
         strict: true,
         variadic: false,
-        implementation: current_user,
+        implementation: session_user,
     },
 ];
 
-/// current_user returns the session's user.
+/// current_schemas returns the schemas of the search path that exist, with the ones searched implicitly when asked.
+fn current_schemas(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let implicit = args[0] == Value::Bool(true);
+    let path = if implicit { ctx.effective_search_path() } else { ctx.session.search_path() };
+    let existing = ctx.schema_names();
+    let schemas: Vec<Value> =
+        path.into_iter().filter(|s| existing.contains(s) || (implicit && s == "pg_catalog")).map(Value::Text).collect();
+    Ok(Value::Array(Box::new(crate::array::Array::one_dimensional(NAME, schemas))))
+}
+
+/// current_user returns the current role.
 fn current_user(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Text(ctx.session.role.clone()))
+}
+
+/// session_user returns the session's user.
+fn session_user(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     Ok(Value::Text(ctx.session.user.clone()))
 }
 
@@ -109,7 +132,21 @@ fn set_config(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     };
     let local = args[2] == Value::Bool(true);
     let in_transaction = ctx.session.explicit;
-    ctx.session.settings.set(name, value.as_deref(), local, in_transaction)?;
+    match name.to_ascii_lowercase().as_str() {
+        "role" => {
+            let role = value.filter(|v| v != "none");
+            ctx.set_role(role.as_deref())?;
+            ctx.session.settings.set_raw("role", role, local, in_transaction);
+        }
+        "session_authorization" => {
+            let user = value.unwrap_or_default();
+            ctx.set_session_authorization(&user)?;
+            ctx.session.settings.set_raw("session_authorization", Some(user), local, in_transaction);
+            ctx.session.settings.set_raw("role", None, local, in_transaction);
+        }
+        _ => ctx.session.settings.set(name, value.as_deref(), local, in_transaction)?,
+    }
+    ctx.session.sync_identity();
     Ok(Value::Text(ctx.session.settings.show(name)?))
 }
 

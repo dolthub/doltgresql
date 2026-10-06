@@ -382,6 +382,18 @@ pub fn record(scripts: &[(String, Vec<String>)], first: &[Value], second: &[Valu
     code
 }
 
+/// render renders an observation recorded by the harness as the `expected` and `notices` fields of an assertion.
+pub fn render(observation: &Value) -> Value {
+    let (expected, _) = expectation(observation, None);
+    let notices = observation["notices"].as_array().cloned().unwrap_or_default();
+    let notices = if notices.is_empty() {
+        String::new()
+    } else {
+        format!("notices: &[{}],", notices.iter().map(rust::diagnostic).collect::<Vec<_>>().join(", "))
+    };
+    serde_json::json!({ "expected": format!("expected: {expected},"), "notices": notices })
+}
+
 /// Report collects statistics and review notes.
 #[derive(Default)]
 pub struct Report {

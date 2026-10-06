@@ -170,6 +170,9 @@ impl Conn {
         if !self.authenticate(&user)? {
             return Ok(());
         }
+        if self.server.engine.login(&user).is_some_and(|(_, login)| !login) {
+            return self.fatal(PgError::fatal("28000", format!("role \"{user}\" is not permitted to log in")));
+        }
         let database = parameter("database").filter(|d| !d.is_empty()).unwrap_or_else(|| user.clone());
         let host = self.stream.peer_addr().map(|addr| addr.ip().to_string()).unwrap_or_default();
         let mut startup: Vec<(String, String)> = parameters

@@ -35,7 +35,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_backup('sync-url', 'file://{TEMPDIR}/bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_backup(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -43,7 +43,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_backup('add', 'bak1', 'file://{TEMPDIR}/bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_backup(unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -51,7 +51,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('-b', 'test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -59,7 +59,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_branch('new_branch');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_branch(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -75,7 +75,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_add('.');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_add(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -83,7 +83,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-m', 'amend test table');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -91,7 +91,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('main');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -99,7 +99,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_cherry_pick('test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_cherry_pick(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -107,7 +107,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_clean('--dry-run');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_clean(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -115,7 +115,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_clone('file://{TEMPDIR}/bak1', 'cloned_bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_clone(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -131,7 +131,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table')",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit_hash_out(unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -139,7 +139,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('-b', 'conflict');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -155,7 +155,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-am', 'amend 1 to -1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -163,7 +163,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('main');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -179,7 +179,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-am', 'amend 2 to -2');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -195,7 +195,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_merge('conflict');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_merge(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -203,7 +203,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_conflicts_resolve('--theirs', 'test_table');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_conflicts_resolve(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -211,7 +211,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_count_commits('--from=main', '--to=test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_count_commits(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -219,7 +219,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_backup('remove', 'bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_backup(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -227,7 +227,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_remote('add', 'origin', 'file://{TEMPDIR}/bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_remote(unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -235,7 +235,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_fetch('origin', 'main');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_fetch(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -243,7 +243,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_undrop('cloned_bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_undrop(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -251,7 +251,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-am', 'resolve conflicts');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -259,7 +259,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_update_column_tag('test_table', 'v', '123');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_update_column_tag(unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -267,7 +267,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_purge_dropped_databases();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_purge_dropped_databases() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -275,7 +275,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -283,7 +283,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_rebase('-i', 'main');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_rebase(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -291,7 +291,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_rebase('--abort');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_rebase(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -307,7 +307,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_add('to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_add(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -315,7 +315,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-m', 'clean state to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -323,7 +323,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_rm('to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_rm(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -331,7 +331,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_gc('--shallow');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_gc(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -339,7 +339,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_thread_dump();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_thread_dump() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -347,7 +347,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-m', 'rm to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -355,7 +355,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_push('origin', 'test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_push(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -363,7 +363,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_pull('origin', 'test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_pull(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -371,7 +371,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_reset('--soft', 'HEAD~1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_reset(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -379,7 +379,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stash('push', 'to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stash(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -387,7 +387,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_tag(unknown, unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -395,7 +395,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_verify_constraints('--all');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_verify_constraints(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -403,7 +403,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_info('--short');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_info(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -411,7 +411,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_wait();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_wait() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -419,7 +419,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_flush();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_flush() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -427,7 +427,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_gc();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_gc() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -435,7 +435,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_purge();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_purge() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -443,7 +443,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_restart();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_restart() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -451,7 +451,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_once();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_once() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -474,7 +474,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_backup('sync-url', 'file://{TEMPDIR}/bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_backup(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -482,7 +482,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_backup('add', 'bak1', 'file://{TEMPDIR}/bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_backup(unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -506,7 +506,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('-b', 'test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -514,7 +514,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_branch('new_branch');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_branch(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -530,7 +530,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_add('.');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_add(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -538,7 +538,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-m', 'amend test table');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -546,7 +546,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('main');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -554,7 +554,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_cherry_pick('test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_cherry_pick(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -562,7 +562,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_clean('--dry-run');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_clean(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -570,7 +570,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_clone('file://{TEMPDIR}/bak1', 'cloned_bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_clone(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -594,7 +594,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit_hash_out(unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
@@ -602,7 +602,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('-b', 'conflict');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -618,7 +618,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-am', 'amend 1 to -1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -626,7 +626,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('main');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -642,7 +642,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-am', 'amend 2 to -2');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -658,7 +658,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_merge('conflict');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_merge(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -666,7 +666,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_conflicts_resolve('--theirs', 'test_table');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_conflicts_resolve(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -674,7 +674,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_count_commits('--from=main', '--to=test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_count_commits(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -682,7 +682,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_backup('remove', 'bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_backup(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -690,7 +690,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_remote('add', 'origin', 'file://{TEMPDIR}/bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_remote(unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -698,7 +698,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_fetch('origin', 'main');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_fetch(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -706,7 +706,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_undrop('cloned_bak1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_undrop(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -714,7 +714,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-am', 'resolve conflicts');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -722,7 +722,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_update_column_tag('test_table', 'v', '123');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_update_column_tag(unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -746,7 +746,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_purge_dropped_databases();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_purge_dropped_databases() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -754,7 +754,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_checkout('test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_checkout(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -762,7 +762,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_rebase('-i', 'main');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_rebase(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -770,7 +770,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_rebase('--abort');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_rebase(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -786,7 +786,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_add('to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_add(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -794,7 +794,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-m', 'clean state to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -802,7 +802,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_rm('to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_rm(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -810,7 +810,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_gc('--shallow');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_gc(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -818,7 +818,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_thread_dump();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_thread_dump() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -826,7 +826,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_commit('-m', 'rm to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_commit(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -834,7 +834,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_push('origin', 'test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_push(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -842,7 +842,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_pull('origin', 'test');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_pull(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -850,7 +850,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_reset('--soft', 'HEAD~1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_reset(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -858,7 +858,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stash('push', 'to_rm');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stash(unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -866,7 +866,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_tag(unknown, unknown, unknown, unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -874,7 +874,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_verify_constraints('--all');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_verify_constraints(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -882,7 +882,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_info('--short');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_info(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -890,7 +890,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_wait();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_wait() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -898,7 +898,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_flush();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_flush() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -906,7 +906,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_gc();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_gc() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -914,7 +914,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_purge();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_purge() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -922,7 +922,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_restart();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_restart() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -930,7 +930,7 @@ fn test_auth_dolt_procedures() {
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "call dolt_stats_once();",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Dolt stored procedure may only be invoked using SELECT", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "dolt_stats_once() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
                     ..A
@@ -2678,10 +2678,11 @@ fn test_auth_tests() {
                     expected: Expected::Error(Diagnostic { code: "42710", message: r#"role "user1" already exists"#, ..E }),
                     ..A
                 },
+                // Doltgres extension: IF NOT EXISTS skips an existing role, as Postgres skips other existing objects.
                 ScriptTestAssertion {
                     query: "CREATE USER IF NOT EXISTS user1 PASSWORD 'hello3';",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "NOT""#, position: 16, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Tag("CREATE ROLE"),
+                    notices: &[Diagnostic { code: "42710", message: r#"role "user1" already exists, skipping"#, ..N }],
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2699,26 +2700,29 @@ fn test_auth_tests() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE ROLE IF NOT EXISTS user2 PASSWORD 'hi1' LOGIN;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "NOT""#, position: 16, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Tag("CREATE ROLE"),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "CREATE ROLE user2 PASSWORD 'hi2' LOGIN;",
-                    expected: Expected::Tag("CREATE ROLE"),
-                    flow: Flow::Exec,
+                    expected: Expected::Error(Diagnostic { code: "42710", message: r#"role "user2" already exists"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "CREATE ROLE IF NOT EXISTS user2 PASSWORD 'hi3' LOGIN;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "NOT""#, position: 16, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Tag("CREATE ROLE"),
+                    notices: &[Diagnostic { code: "42710", message: r#"role "user2" already exists, skipping"#, ..N }],
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT 3;",
-                    expected: Expected::Error(Diagnostic { severity: "FATAL", code: "28P01", message: r#"password authentication failed for user "user2""#, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     username: "user2",
                     password: "hi1",
                     ..A
@@ -3460,7 +3464,6 @@ privileges for function drop_role_routine()"#, ..E }),
                 "CREATE USER user2 PASSWORD 'b';",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE FUNCTION testfunc3() RETURNS int AS $$ BEGIN RETURN 3; END; $$ LANGUAGE plpgsql",
                     expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
@@ -3468,7 +3471,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE PROCEDURE interpreted_example_3(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
@@ -3476,7 +3478,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE SEQUENCE genre_id_seq_by_3 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
                     expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
@@ -3484,7 +3485,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT CREATE ON SCHEMA public TO user1;",
                     expected: Expected::Tag("GRANT"),
@@ -3492,7 +3492,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE FUNCTION testfunc3() RETURNS int AS $$ BEGIN RETURN 3; END; $$ LANGUAGE plpgsql",
                     expected: Expected::Tag("CREATE FUNCTION"),
@@ -3500,7 +3499,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE PROCEDURE interpreted_example_3(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Tag("CREATE PROCEDURE"),
@@ -3508,7 +3506,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE SEQUENCE genre_id_seq_by_3 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
                     expected: Expected::Tag("CREATE SEQUENCE"),
@@ -3516,16 +3513,20 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_3');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "REVOKE USAGE ON SEQUENCE genre_id_seq_by_3 FROM user1;",
                     expected: Expected::Tag("REVOKE"),
@@ -3533,28 +3534,32 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_3');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "ALTER SEQUENCE genre_id_seq_by_3 OWNER TO auth_test_user;",
-                    expected: Expected::Tag("ALTER SEQUENCE"),
-                    notices: &[Diagnostic { severity: "WARNING", message: "OWNER TO is unsupported and ignored", ..E }],
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "auth_test_user" does not exist"#, ..E }),
+                    flow: Flow::Query,
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_3');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Tag("SELECT 1"),
+                    flow: Flow::Exec,
                     username: "user1",
                     password: "a",
                     ..A
@@ -3570,15 +3575,13 @@ privileges for function drop_role_routine()"#, ..E }),
                 "CREATE USER user2 PASSWORD 'b';",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE TABLE mytable (pk int);",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", position: 14, ..E }),
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT CREATE ON SCHEMA public TO user1;",
                     expected: Expected::Tag("GRANT"),
@@ -3586,7 +3589,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE TABLE mytable (pk int);",
                     expected: Expected::Tag("CREATE TABLE"),
@@ -3594,10 +3596,13 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * from mytable;",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for table mytable", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
                     flow: Flow::Query,
                     username: "user1",
                     password: "a",
@@ -3614,15 +3619,13 @@ privileges for function drop_role_routine()"#, ..E }),
                 "CREATE SEQUENCE genre_id_seq_by_3 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_3');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for sequence genre_id_seq_by_3", ..E }),
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT USAGE ON SCHEMA public TO user1;",
                     expected: Expected::Tag("GRANT"),
@@ -3630,21 +3633,13 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_3');",
-                    expected: Expected::Rows {
-                        columns: &[Column("nextval", INT8)],
-                        rows: &[
-                            &[T("1")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for sequence genre_id_seq_by_3", ..E }),
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "REVOKE USAGE ON SCHEMA public FROM user1;",
                     expected: Expected::Tag("REVOKE"),
@@ -3652,10 +3647,9 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_3');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for sequence genre_id_seq_by_3", ..E }),
                     username: "user1",
                     password: "a",
                     ..A
@@ -3768,15 +3762,14 @@ privileges for function drop_role_routine()"#, ..E }),
                 "GRANT ALL PRIVILEGES ON test TO user1 WITH GRANT OPTION;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CALL interpreted_example_1('12');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for routine interpreted_example_1", ..E }),
+                    expected: Expected::Tag("CALL"),
+                    flow: Flow::Exec,
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT ALL ON PROCEDURE public.interpreted_example_1(input TEXT) TO user1;",
                     expected: Expected::Tag("GRANT"),
@@ -3784,7 +3777,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CALL interpreted_example_1('22');",
                     expected: Expected::Tag("CALL"),
@@ -3792,43 +3784,43 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM test;",
                     expected: Expected::Rows {
                         columns: &[Column("v1", TEXT)],
                         rows: &[
+                            &[T("112")],
                             &[T("122")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 2",
                     },
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CALL interpreted_example_3('32');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for routine interpreted_example_3", ..E }),
+                    expected: Expected::Tag("CALL"),
+                    flow: Flow::Exec,
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM test;",
                     expected: Expected::Rows {
                         columns: &[Column("v1", TEXT)],
                         rows: &[
+                            &[T("112")],
                             &[T("122")],
+                            &[T("332")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 3",
                     },
                     username: "auth_test_super",
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "REVOKE ALL ON PROCEDURE public.interpreted_example_1(input TEXT) FROM user1;",
                     expected: Expected::Tag("REVOKE"),
@@ -3836,23 +3828,25 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CALL interpreted_example_1('42');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for routine interpreted_example_1", ..E }),
+                    expected: Expected::Tag("CALL"),
+                    flow: Flow::Exec,
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM test;",
                     expected: Expected::Rows {
                         columns: &[Column("v1", TEXT)],
                         rows: &[
+                            &[T("112")],
                             &[T("122")],
+                            &[T("332")],
+                            &[T("142")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 4",
                     },
                     username: "auth_test_super",
                     password: "auth_test_spass",
@@ -3870,15 +3864,13 @@ privileges for function drop_role_routine()"#, ..E }),
                 "CREATE SEQUENCE genre_id_seq_by_2 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_2');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for sequence genre_id_seq_by_2", ..E }),
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT USAGE ON SEQUENCE public.genre_id_seq_by_2 TO user1;",
                     expected: Expected::Tag("GRANT"),
@@ -3886,7 +3878,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_2');",
                     expected: Expected::Rows {
@@ -3900,7 +3891,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT SELECT ON SEQUENCE public.genre_id_seq_by_2 TO user2;",
                     expected: Expected::Tag("GRANT"),
@@ -3908,18 +3898,22 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_2');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for sequence genre_id_seq_by_2", ..E }),
                     username: "user2",
                     password: "b",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT is_called FROM genre_id_seq_by_2;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: genre_id_seq_by_2", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("is_called", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     username: "user2",
                     password: "b",
@@ -3936,15 +3930,13 @@ privileges for function drop_role_routine()"#, ..E }),
                 "CREATE SEQUENCE genre_id_seq_by_2 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT nextval('genre_id_seq_by_2');",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for sequence genre_id_seq_by_2", ..E }),
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT CREATE ON SCHEMA public TO user1;",
                     expected: Expected::Tag("GRANT"),
@@ -3952,7 +3944,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "create table test_by_user1 (pk int, v1 INTEGER DEFAULT nextval('genre_id_seq_by_2'));",
                     expected: Expected::Tag("CREATE TABLE"),
@@ -3960,7 +3951,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO user1;",
                     expected: Expected::Tag("GRANT"),
@@ -3968,15 +3958,13 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "insert into test_by_user1(pk) values (3);",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for sequence genre_id_seq_by_2", ..E }),
                     username: "user1",
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM test_by_user1;",
                     expected: Expected::Rows {
@@ -3988,7 +3976,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "GRANT USAGE ON SEQUENCE public.genre_id_seq_by_2 TO user1;",
                     expected: Expected::Tag("GRANT"),
@@ -3996,7 +3983,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "insert into test_by_user1(pk) values (3);",
                     expected: Expected::Tag("INSERT 0 1"),
@@ -4004,7 +3990,6 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM test_by_user1;",
                     expected: Expected::Rows {
@@ -4860,6 +4845,676 @@ privileges for function drop_role_routine()"#, ..E }),
                     },
                     username: "inserter",
                     password: "password",
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_role_and_privilege_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "creating, altering, and dropping roles",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE USER tester PASSWORD 'p';",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE USER tester PASSWORD 'p';",
+                    expected: Expected::Error(Diagnostic { code: "42710", message: r#"role "tester" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE r1 NOLOGIN CREATEDB CONNECTION LIMIT 5;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolconnlimit FROM pg_roles WHERE rolname IN ('tester', 'r1') ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("rolname", NAME), Column("rolsuper", BOOL), Column("rolinherit", BOOL), Column("rolcreaterole", BOOL), Column("rolcreatedb", BOOL), Column("rolcanlogin", BOOL), Column("rolconnlimit", INT4)],
+                        rows: &[
+                            &[T("r1"), T("f"), T("t"), T("f"), T("t"), T("f"), T("5")],
+                            &[T("tester"), T("f"), T("t"), T("f"), T("f"), T("t"), T("-1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER ROLE nope LOGIN;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP ROLE nope;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP ROLE IF EXISTS nope;",
+                    expected: Expected::Tag("DROP ROLE"),
+                    notices: &[Diagnostic { code: "00000", message: r#"role "nope" does not exist, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE public;",
+                    expected: Expected::Error(Diagnostic { code: "42939", message: r#"role name "public" is reserved"#, position: 13, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE pg_x;",
+                    expected: Expected::Error(Diagnostic { code: "42939", message: r#"role name "pg_x" is reserved"#, detail: r#"Role names starting with "pg_" are reserved."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER ROLE r1 RENAME TO r2;",
+                    expected: Expected::Tag("ALTER ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT rolname FROM pg_roles WHERE rolname LIKE 'r_' ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("rolname", NAME)],
+                        rows: &[
+                            &[T("r2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP ROLE r2;",
+                    expected: Expected::Tag("DROP ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE nope;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"role "nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT rolname FROM pg_authid WHERE rolname = 'tester';",
+                    expected: Expected::Rows {
+                        columns: &[Column("rolname", NAME)],
+                        rows: &[
+                            &[T("tester")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP USER tester;",
+                    expected: Expected::Tag("DROP ROLE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "privileges on schemas, tables, and sequences",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE USER tester PASSWORD 'p';",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA mysch;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE mysch.test (pk INT PRIMARY KEY, v1 INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE mysch.seq;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE tester;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_user, session_user;",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_user", NAME), Column("session_user", NAME)],
+                        rows: &[
+                            &[T("tester"), T("postgres")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE z;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DATABASE zz;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create database", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mysch.test;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema mysch", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE mysch.t2 (a INT);",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema mysch", position: 14, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE public.t2 (a INT);",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema public", position: 14, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mysch.test VALUES (1, 1);",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema mysch", position: 13, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "TRUNCATE mysch.test;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema mysch", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT SELECT ON mysch.test TO tester;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE tester;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mysch.test;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema mysch", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT USAGE ON SCHEMA mysch TO tester;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE tester;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mysch.test;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v1", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE mysch.test SET v1 = 2;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for table test", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('mysch.seq');",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for sequence seq", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER ROLE tester SUPERUSER;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "must be superuser to alter superuser roles or change superuser attribute", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "REVOKE SELECT ON mysch.test FROM tester;",
+                    expected: Expected::Tag("REVOKE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "REVOKE ALL ON mysch.test FROM nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "nobody" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT SELECT ON mysch.nope TO tester;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "mysch.nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "REVOKE DROP ON mysch.test FROM tester;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unrecognized privilege type "drop""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT SELECT ON ALL TABLES IN SCHEMA mysch TO tester;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT USAGE ON SEQUENCE mysch.seq TO tester;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE tester;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mysch.test;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v1", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('mysch.seq');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM pg_authid;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for table pg_authid", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP USER tester;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: r#"role "tester" cannot be dropped because some objects depend on it"#, detail: r#"privileges for schema mysch
+privileges for table mysch.test
+privileges for sequence mysch.seq"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "owners of what they create",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE USER owner1 PASSWORD 'p';",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT CREATE ON SCHEMA public TO owner1;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE owner1;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE mine (a INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mine VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mine;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW mine_view AS SELECT a FROM mine;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mine_view;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE USER other1 PASSWORD 'p';",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE other1;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mine;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for table mine", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mine_view;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for view mine_view", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE mine;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "must be owner of table mine", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT SELECT ON mine_view TO other1;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE other1;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM mine_view;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "SET ROLE and SET SESSION AUTHORIZATION",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE ROLE ra;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE rb;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE ra;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_user, session_user, current_setting('role');",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_user", NAME), Column("session_user", NAME), Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("ra"), T("postgres"), T("ra")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET SESSION AUTHORIZATION rb;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_user, session_user, current_setting('role'), current_setting('session_authorization');",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_user", NAME), Column("session_user", NAME), Column("current_setting", TEXT), Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("rb"), T("rb"), T("none"), T("rb")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET SESSION AUTHORIZATION;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_user, session_user, current_setting('role');",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_user", NAME), Column("session_user", NAME), Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("postgres"), T("postgres"), T("none")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET LOCAL ROLE ra;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_user;",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_user", NAME)],
+                        rows: &[
+                            &[T("ra")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_user;",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_user", NAME)],
+                        rows: &[
+                            &[T("postgres")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE ra;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_user, current_setting('role');",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_user", NAME), Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("postgres"), T("none")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE ra;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD ALL;",
+                    expected: Expected::Tag("DISCARD ALL"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_user, current_setting('role');",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_user", NAME), Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("postgres"), T("none")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW role;",
+                    expected: Expected::Rows {
+                        columns: &[Column("role", TEXT)],
+                        rows: &[
+                            &[T("none")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW session_authorization;",
+                    expected: Expected::Rows {
+                        columns: &[Column("session_authorization", TEXT)],
+                        rows: &[
+                            &[T("postgres")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_schemas(true), current_schemas(false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_schemas", NAME_ARRAY), Column("current_schemas", NAME_ARRAY)],
+                        rows: &[
+                            &[T("{pg_catalog,public}"), T("{public}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "CALL of a function",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CALL lower('a');",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "lower(unknown) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL now();",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "now() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL nope('a', 1);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "procedure nope(unknown, integer) does not exist", hint: "No procedure matches the given name and argument types. You might need to add explicit type casts.", position: 6, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL lower('a', 'b');",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "procedure lower(unknown, unknown) does not exist", hint: "No procedure matches the given name and argument types. You might need to add explicit type casts.", position: 6, ..E }),
+                    flow: Flow::Query,
                     ..A
                 },
             ],

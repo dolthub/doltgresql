@@ -24,11 +24,14 @@ use pg_query::{Node, NodeEnum};
 use store::Hash;
 
 use crate::Outcome;
+use crate::auth::Object;
 use crate::cast::type_display;
 use crate::catalog::ColumnType;
 use crate::catalog::table::{Check, ColumnDef, IndexDef, TableDef, schema_message};
 use crate::error::{PgError, Result, code};
-use crate::expr::{Binder, Scope, arg_location, assign, assignable, node_name, position, resolve_type_name};
+use crate::expr::{
+    Binder, Scope, ScopeColumn, arg_location, assign, assignable, node_name, position, resolve_type_name,
+};
 use crate::plan::Planner;
 use crate::query::Ctx;
 
@@ -55,6 +58,70 @@ pub fn expression_text(expr: &Node) -> Result<String> {
     Ok(text.strip_prefix("SELECT ").unwrap_or(&text).to_string())
 }
 
+/// check_constraint_attributes fails as Postgres' grammar does for DEFERRABLE, NOT DEFERRABLE, INITIALLY DEFERRED, and
+/// INITIALLY IMMEDIATE clauses that do not follow a constraint that takes them, or that contradict each other.
+fn check_constraint_attributes(constraints: &[Node]) -> Result<()> {
+    let mut takes_attributes = false;
+    let (mut deferrable, mut initially): (Option<bool>, Option<bool>) = (None, None);
+    for constraint in constraints {
+        let Some(NodeEnum::Constraint(constraint)) = constraint.node.as_ref() else { continue };
+        let kind = constraint_type(constraint);
+        let error = |message: &str| PgError {
+            position: position(constraint.location),
+            ..PgError::new(code::SYNTAX_ERROR, message)
+        };
+        let clause = match kind {
+            ConstrType::ConstrAttrDeferrable => "DEFERRABLE",
+            ConstrType::ConstrAttrNotDeferrable => "NOT DEFERRABLE",
+            ConstrType::ConstrAttrDeferred => "INITIALLY DEFERRED",
+            ConstrType::ConstrAttrImmediate => "INITIALLY IMMEDIATE",
+            other => {
+                takes_attributes = matches!(
+                    other,
+                    ConstrType::ConstrUnique
+                        | ConstrType::ConstrPrimary
+                        | ConstrType::ConstrForeign
+                        | ConstrType::ConstrExclusion
+                );
+                (deferrable, initially) = (None, None);
+                continue;
+            }
+        };
+        if !takes_attributes {
+            return Err(error(&format!("misplaced {clause} clause")));
+        }
+        match kind {
+            ConstrType::ConstrAttrDeferrable | ConstrType::ConstrAttrNotDeferrable => {
+                if deferrable.is_some() {
+                    return Err(error("multiple DEFERRABLE/NOT DEFERRABLE clauses not allowed"));
+                }
+                deferrable = Some(kind == ConstrType::ConstrAttrDeferrable);
+            }
+            _ => {
+                if initially.is_some() {
+                    return Err(error("multiple INITIALLY IMMEDIATE/DEFERRED clauses not allowed"));
+                }
+                initially = Some(kind == ConstrType::ConstrAttrDeferred);
+            }
+        }
+        if deferrable == Some(false) && initially == Some(true) {
+            return Err(error("constraint declared INITIALLY DEFERRED must be DEFERRABLE"));
+        }
+    }
+    Ok(())
+}
+
+/// both_default_and_generated returns Postgres' error for a column with both a default and a generation expression.
+fn both_default_and_generated(column: &str, table: &str, location: i32) -> PgError {
+    PgError {
+        position: position(location),
+        ..PgError::new(
+            code::SYNTAX_ERROR,
+            format!("both default and generation expression specified for column \"{column}\" of table \"{table}\""),
+        )
+    }
+}
+
 /// TableParts are what a table's definition elements add up to, before the checks and indexes are named.
 #[derive(Default)]
 pub(crate) struct TableParts {
@@ -70,6 +137,8 @@ pub(crate) struct TableParts {
     pub foreign: Vec<(Vec<usize>, pg_query::protobuf::Constraint)>,
     /// Each column default's column and expression.
     pub defaults: Vec<(usize, Node)>,
+    /// Each generated column's column and expression.
+    pub generation: Vec<(usize, Node)>,
 }
 
 impl TableParts {
@@ -99,10 +168,16 @@ impl TableParts {
             nullable: true,
             primary_key: false,
             default: String::new(),
+            generated: false,
         };
+        check_constraint_attributes(&def.constraints)?;
         for constraint in &def.constraints {
             let Some(NodeEnum::Constraint(constraint)) = constraint.node.as_ref() else { continue };
             match constraint_type(constraint) {
+                ConstrType::ConstrAttrDeferrable
+                | ConstrType::ConstrAttrNotDeferrable
+                | ConstrType::ConstrAttrImmediate => {}
+                ConstrType::ConstrAttrDeferred => return Err(PgError::unsupported("INITIALLY DEFERRED constraints")),
                 ConstrType::ConstrNotnull => column.nullable = false,
                 ConstrType::ConstrNull => column.nullable = true,
                 ConstrType::ConstrPrimary => {
@@ -111,7 +186,20 @@ impl TableParts {
                     }
                     self.primary_key.push(index);
                 }
+                ConstrType::ConstrGenerated => {
+                    if !column.default.is_empty() {
+                        return Err(both_default_and_generated(&column.name, table, constraint.location));
+                    }
+                    let expr =
+                        constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty generation"))?;
+                    column.default = expression_text(expr)?;
+                    column.generated = true;
+                    self.generation.push((index, expr.clone()));
+                }
                 ConstrType::ConstrDefault => {
+                    if column.generated {
+                        return Err(both_default_and_generated(&column.name, table, constraint.location));
+                    }
                     let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty DEFAULT"))?;
                     column.default = expression_text(expr)?;
                     self.defaults.push((index, expr.clone()));
@@ -247,6 +335,44 @@ fn object_names(names: &[Node]) -> (String, String) {
 }
 
 impl Ctx<'_> {
+    /// check_generation fails as Postgres does for an expression that a generated column can't be generated from:
+    /// one that uses another generated column, a subquery, an aggregate, or a function that is not immutable.
+    pub(crate) fn check_generation(
+        &mut self,
+        expr: &Node,
+        table: &str,
+        columns: &[ColumnDef],
+        column: usize,
+    ) -> Result<()> {
+        let scope = Scope {
+            columns: columns
+                .iter()
+                .map(|c| ScopeColumn { table: table.to_string(), name: c.name.clone(), ty: c.ty, hidden: false })
+                .collect(),
+        };
+        let mut binder = Binder::new(self, scope);
+        binder.clause = "column generation expressions";
+        binder.definition = true;
+        let bound = binder.bind(expr)?;
+        for &(i, location) in &binder.columns {
+            if columns[i].generated {
+                return Err(PgError {
+                    position: position(location),
+                    detail: Some("A generated column cannot reference another generated column.".into()),
+                    ..PgError::new(
+                        code::INVALID_OBJECT_DEFINITION,
+                        format!("cannot use generated column \"{}\" in column generation expression", columns[i].name),
+                    )
+                });
+            }
+        }
+        if !crate::pgcatalog::is_immutable(expr) {
+            return Err(PgError::new(code::INVALID_OBJECT_DEFINITION, "generation expression is not immutable"));
+        }
+        let target = &columns[column];
+        assign(bound, ColumnType { modifier: -1, ..target.ty }, &target.name, arg_location(expr)).map(|_| ())
+    }
+
     /// check_default fails as Postgres does for an expression that a column's default can't be.
     pub(crate) fn check_default(&mut self, expr: &Node, column: &ColumnDef) -> Result<()> {
         let mut binder = Binder::new(self, Scope::default());
@@ -292,10 +418,21 @@ impl Ctx<'_> {
                 _ => return Err(PgError::unsupported("this table element")),
             }
         }
-        let TableParts { mut columns, primary_key, checks: pending_checks, uniques, generated, foreign, defaults } =
-            parts;
+        let TableParts {
+            mut columns,
+            primary_key,
+            checks: pending_checks,
+            uniques,
+            generated,
+            foreign,
+            defaults,
+            generation,
+        } = parts;
         for (column, expr) in &defaults {
             self.check_default(expr, &columns[*column])?;
+        }
+        for (column, expr) in &generation {
+            self.check_generation(expr, name, &columns, *column)?;
         }
         for &i in &primary_key {
             columns[i].primary_key = true;
@@ -351,17 +488,19 @@ impl Ctx<'_> {
 
     /// target_schema returns the schema a new object goes in: the named one, which must exist, or the first existing
     /// schema of the search path.
-    pub(crate) fn target_schema(&self, named: &str, location: i32) -> Result<String> {
-        if named.is_empty() {
-            return self.creation_schema();
-        }
-        if !self.txn.root.schemas.iter().any(|s| s == named.as_bytes()) {
+    pub(crate) fn target_schema(&mut self, named: &str, location: i32) -> Result<String> {
+        let schema = if named.is_empty() {
+            self.creation_schema()?
+        } else if !self.txn.root.schemas.iter().any(|s| s == named.as_bytes()) {
             return Err(PgError {
                 position: position(location),
                 ..PgError::new(code::INVALID_SCHEMA_NAME, format!("schema \"{named}\" does not exist"))
             });
-        }
-        Ok(named.to_string())
+        } else {
+            named.to_string()
+        };
+        self.require(&Object::Schema(schema.clone()), "C", location)?;
+        Ok(schema)
     }
 
     /// write_new_table chooses the columns' tags and writes a new empty table to the working root.
@@ -392,7 +531,7 @@ impl Ctx<'_> {
             address = table.write(self.db)?;
         }
         self.txn.root.put_table(self.db, schema, name, Some(address))?;
-        Ok(())
+        self.own(Object::Table(schema.to_string(), name.to_string()))
     }
 
     /// create_table_as runs CREATE TABLE AS, which makes a keyless table of the query's columns and inserts its rows.
@@ -433,6 +572,7 @@ impl Ctx<'_> {
                     nullable: true,
                     primary_key: false,
                     default: String::new(),
+                    generated: false,
                 }
             })
             .collect();
@@ -465,8 +605,10 @@ impl Ctx<'_> {
         if !create.schema_elts.is_empty() {
             return Err(PgError::unsupported("CREATE SCHEMA with elements"));
         }
-        self.txn.root.schemas.push(name.into_bytes());
+        self.require(&Object::Database(self.session.database.clone()), "C", -1)?;
+        self.txn.root.schemas.push(name.clone().into_bytes());
         self.txn.root.schemas.sort();
+        self.own(Object::Schema(name))?;
         Ok(Outcome::command("CREATE SCHEMA"))
     }
 
@@ -499,7 +641,10 @@ impl Ctx<'_> {
                 }
             }
             match found {
-                Some(s) => doomed.push((s, name)),
+                Some(s) => {
+                    self.require_owner(&Object::Table(s.clone(), name.clone()))?;
+                    doomed.push((s, name))
+                }
                 None => {
                     let shown = if schema.is_empty() { name.clone() } else { format!("{schema}.{name}") };
                     if self.find_view(&schema, &name)?.is_some() {
@@ -521,6 +666,7 @@ impl Ctx<'_> {
         }
         for (schema, name) in doomed {
             self.txn.root.put_table(self.db, &schema, &name, None)?;
+            self.forget_object(&Object::Table(schema.clone(), name.clone()))?;
             self.drop_owned_sequences(&schema, &name)?;
         }
         Ok(Outcome::command("DROP TABLE"))
@@ -538,6 +684,7 @@ impl Ctx<'_> {
                 self.session.notice(PgError::notice("00000", format!("schema \"{name}\" does not exist, skipping")));
                 continue;
             }
+            self.require_owner(&Object::Schema(name.to_string()))?;
             let prefix = doltdb::root::table_key(name, "");
             let tables: Vec<String> = self
                 .txn
@@ -590,7 +737,9 @@ impl Ctx<'_> {
         let mut tables = Vec::new();
         for relation in &truncate.relations {
             let Some(NodeEnum::RangeVar(relation)) = relation.node.as_ref() else { continue };
-            tables.push(self.resolve_table(relation)?);
+            let table = self.resolve_table(relation).map_err(|err| PgError { position: None, ..err })?;
+            self.require(&Object::Table(table.schema.clone(), table.name.clone()), "D", -1)?;
+            tables.push(table);
         }
         self.check_truncate(&tables)?;
         for table in tables {
@@ -656,6 +805,7 @@ impl Ctx<'_> {
     pub fn create_index(&mut self, stmt: &IndexStmt) -> Result<Outcome> {
         let relation = stmt.relation.as_ref().ok_or_else(|| PgError::internal("CREATE INDEX without a table"))?;
         let table = self.resolve_table(relation)?;
+        self.require_owner(&Object::Table(table.schema.clone(), table.name.clone()))?;
         if !matches!(stmt.access_method.as_str(), "" | "btree" | "hash") {
             return Err(PgError::unsupported(format!("indexes using {}", stmt.access_method)));
         }
@@ -776,7 +926,11 @@ impl Ctx<'_> {
                 }
             }
             match found {
-                Some(table) => doomed.push((table, name)),
+                Some(table) => {
+                    self.require_owner(&Object::Table(table.schema.clone(), table.name.clone()))
+                        .map_err(|err| PgError { message: format!("must be owner of index {name}"), ..err })?;
+                    doomed.push((table, name))
+                }
                 None => {
                     let shown = if schema.is_empty() { name } else { format!("{schema}.{name}") };
                     if !drop.missing_ok {

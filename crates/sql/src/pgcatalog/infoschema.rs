@@ -92,8 +92,9 @@ fn lengths(ty: ColumnType) -> Lengths {
     }
 }
 
-/// InfoColumn is a column as information_schema.columns shows it: name, type, nullability, and default.
-type InfoColumn = (String, ColumnType, bool, String);
+/// InfoColumn is a column as information_schema.columns shows it: name, type, nullability, default or generation
+/// expression, and whether it is generated.
+type InfoColumn = (String, ColumnType, bool, String, bool);
 
 /// optional returns an integer, or NULL without one.
 fn optional(value: Option<i32>) -> Value {
@@ -155,7 +156,11 @@ impl Ctx<'_> {
         let snapshot = self.snapshot()?;
         let mut relations: Vec<(String, String, Vec<InfoColumn>)> = Vec::new();
         for table in &snapshot.tables {
-            let columns = table.columns.iter().map(|c| (c.name.clone(), c.ty, c.nullable, c.default.clone())).collect();
+            let columns = table
+                .columns
+                .iter()
+                .map(|c| (c.name.clone(), c.ty, c.nullable, c.default.clone(), c.generated))
+                .collect();
             relations.push((table.schema.clone(), table.name.clone(), columns));
         }
         for view in &snapshot.views {
@@ -163,11 +168,11 @@ impl Ctx<'_> {
             relations.push((
                 view.schema.clone(),
                 view.name.clone(),
-                columns.into_iter().map(|(n, t)| (n, t, true, String::new())).collect(),
+                columns.into_iter().map(|(n, t)| (n, t, true, String::new(), false)).collect(),
             ));
         }
         for (schema, table, columns) in relations {
-            for (i, (name, ty, nullable, default)) in columns.into_iter().enumerate() {
+            for (i, (name, ty, nullable, default, generated)) in columns.into_iter().enumerate() {
                 let l = lengths(ty);
                 let udt = builtin_type(ty.oid).map_or("unknown", |t| t.name);
                 rows.push(vec![
@@ -176,7 +181,10 @@ impl Ctx<'_> {
                     ("table_name", text(table.clone())),
                     ("column_name", text(name)),
                     ("ordinal_position", int4(i as i32 + 1)),
-                    ("column_default", if default.is_empty() { Value::Null } else { text(default) }),
+                    (
+                        "column_default",
+                        if default.is_empty() || generated { Value::Null } else { text(default.clone()) },
+                    ),
                     ("is_nullable", yes_no(nullable)),
                     ("data_type", text(data_type(ty.oid))),
                     ("character_maximum_length", optional(l.character_maximum)),
@@ -192,7 +200,8 @@ impl Ctx<'_> {
                     ("is_self_referencing", yes_no(false)),
                     ("is_identity", yes_no(false)),
                     ("identity_cycle", yes_no(false)),
-                    ("is_generated", text("NEVER")),
+                    ("is_generated", text(if generated { "ALWAYS" } else { "NEVER" })),
+                    ("generation_expression", if generated { text(default) } else { Value::Null }),
                     ("is_updatable", yes_no(true)),
                 ]);
             }

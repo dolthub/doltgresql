@@ -28,6 +28,8 @@ pub const SECTION_SEQUENCE: u8 = 27;
 pub const SECTION_TABLE: u8 = 29;
 /// SECTION_TYPE is the ID section of types.
 pub const SECTION_TYPE: u8 = 35;
+/// SECTION_USER is the ID section of roles.
+pub const SECTION_USER: u8 = 37;
 /// SECTION_VIEW is the ID section of views.
 pub const SECTION_VIEW: u8 = 38;
 

@@ -550,13 +550,20 @@ impl<'b, 'a> Planner<'b, 'a> {
                     return Ok(self.plan_cte(cte, relation));
                 }
                 if let Some(catalog) = self.ctx.catalog_relation(&relation.schemaname, &relation.relname)? {
+                    self.ctx.require_catalog(catalog.name)?;
                     return Ok(self.plan_catalog(catalog, relation));
                 }
                 let table = match self.ctx.resolve_table(relation) {
                     Ok(table) => table,
                     Err(err) => {
-                        if let Some((_, fragment)) = self.ctx.find_view(&relation.schemaname, &relation.relname)? {
-                            return self.plan_view(&fragment, relation);
+                        if let Some((schema, fragment)) = self.ctx.find_view(&relation.schemaname, &relation.relname)? {
+                            self.ctx.require_view(&schema, &relation.relname, "r", relation.location)?;
+                            let object = crate::auth::Object::Table(schema, relation.relname.clone());
+                            let owner = self.ctx.owner_name(&object)?;
+                            let role = std::mem::replace(&mut self.ctx.session.role, owner);
+                            let planned = self.plan_view(&fragment, relation);
+                            self.ctx.session.role = role;
+                            return planned;
                         }
                         match crate::dolt::tables::lookup(&relation.schemaname, &relation.relname) {
                             Some(system) => return Ok(self.plan_system(system, relation)),
@@ -564,6 +571,10 @@ impl<'b, 'a> Planner<'b, 'a> {
                         }
                     }
                 };
+                if !table.name.starts_with("dolt_") {
+                    let object = crate::auth::Object::Table(table.schema.clone(), table.name.clone());
+                    self.ctx.require(&object, "r", relation.location)?;
+                }
                 let alias = relation.alias.as_ref();
                 let name = alias.map_or(table.name.clone(), |a| a.aliasname.clone());
                 let renames: Vec<&str> =

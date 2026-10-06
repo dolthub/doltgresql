@@ -7,19 +7,24 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+base64 = "0.22"
 chrono = "0.4"
 chrono-tz = "0.10"
 crc = "3"
 doltdb = { path = "../doltdb" }
+hmac = "0.12"
 md-5 = "0.10"
 num-bigint = "0.4"
 num-integer = "0.1"
 num-traits = "0.2"
 objects = { path = "../objects" }
+pbkdf2 = "0.12"
 pg_query = "6"
+rand = "0.8"
 regex = "1"
 prolly = { path = "../prolly" }
 serial = { path = "../serial" }
+sha2 = "0.10"
 store = { path = "../store" }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 zstd = "0.13"

@@ -19,6 +19,7 @@
 
 mod alter;
 pub mod array;
+pub mod auth;
 pub mod cast;
 pub mod catalog;
 pub mod datetime;
@@ -36,6 +37,7 @@ pub mod parse;
 mod pgcatalog;
 pub mod plan;
 pub mod query;
+mod roles;
 pub mod sequences;
 pub mod settings;
 pub mod storage;

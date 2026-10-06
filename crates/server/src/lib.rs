@@ -20,7 +20,6 @@ pub mod config;
 mod conn;
 pub mod scram;
 
-use std::collections::HashMap;
 use std::net::TcpListener;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -30,24 +29,30 @@ use sql::Engine;
 pub use config::Config;
 use scram::Verifier;
 
-/// Server is what every connection shares: the engine and the users' password verifiers.
+/// Server is what every connection shares: the engine and the process IDs it hands out.
 pub struct Server {
     pub engine: Engine,
-    users: HashMap<String, Verifier>,
     next_process_id: AtomicU32,
 }
 
 impl Server {
-    /// new opens the configured data directory and sets up the superuser.
+    /// new opens the configured data directory and auth file.
     pub fn new(config: &Config) -> Result<Server, String> {
-        let engine = Engine::open(&config.data_dir, &config.user).map_err(|err| err.to_string())?;
-        let users = HashMap::from([(config.user.clone(), Verifier::new(&config.password))]);
-        Ok(Server { engine, users, next_process_id: AtomicU32::new(1) })
+        let engine = Engine::open(&config.data_dir, &config.user, &config.password, &config.auth_file)
+            .map_err(|err| err.to_string())?;
+        Ok(Server { engine, next_process_id: AtomicU32::new(1) })
     }
 
-    /// verifier returns the user's password verifier.
+    /// verifier returns the password verifier of a role with a password.
     fn verifier(&self, user: &str) -> Option<Verifier> {
-        self.users.get(user).cloned()
+        let (password, _) = self.engine.login(user)?;
+        let password = password?;
+        Some(Verifier {
+            salt: password.salt,
+            iterations: password.iterations,
+            stored_key: password.stored_key.try_into().ok()?,
+            server_key: password.server_key.try_into().ok()?,
+        })
     }
 }
 
