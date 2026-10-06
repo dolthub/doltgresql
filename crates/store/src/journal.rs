@@ -48,6 +48,7 @@ struct Record<'a> {
     payload: &'a [u8],
     /// The offset of the payload within the record.
     payload_at: usize,
+    timestamp: u64,
 }
 
 /// valid reports whether the bytes start with a whole record whose length and checksum are right.
@@ -63,7 +64,7 @@ fn valid(bytes: &[u8]) -> bool {
 
 /// parse decodes a valid record.
 fn parse(record: &[u8]) -> Result<Record<'_>> {
-    let mut parsed = Record { kind: 0, address: Hash::default(), payload: &[], payload_at: 0 };
+    let mut parsed = Record { kind: 0, address: Hash::default(), payload: &[], payload_at: 0, timestamp: 0 };
     let end = record.len() - CHECKSUM_LEN;
     let mut at = 4;
     let short = || corrupt("journal record field overruns the record");
@@ -80,7 +81,11 @@ fn parse(record: &[u8]) -> Result<Record<'_>> {
                 parsed.address = Hash(bytes.try_into().unwrap());
                 at += Hash::LEN;
             }
-            TIMESTAMP_TAG => at += 8,
+            TIMESTAMP_TAG => {
+                let bytes = record.get(at..at + 8).ok_or_else(short)?;
+                parsed.timestamp = u64::from_be_bytes(bytes.try_into().unwrap());
+                at += 8;
+            }
             PAYLOAD_TAG => {
                 parsed.payload = &record[at..end];
                 parsed.payload_at = at;
@@ -200,4 +205,60 @@ impl Journal {
         }
         Ok(())
     }
+}
+
+/// JournalRecord is a record of the journal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum JournalRecord<'a> {
+    /// A chunk, with its compressed chunk record.
+    Chunk { hash: Hash, record: &'a [u8] },
+    /// A root hash, with the Unix time in seconds it was written at.
+    Root { hash: Hash, timestamp: u64 },
+}
+
+impl JournalRecord<'_> {
+    /// encode returns the record's bytes as Dolt's writeChunkRecord and writeRootHashRecord write them.
+    pub fn encode(&self) -> Vec<u8> {
+        let mut out = vec![0; 4];
+        match self {
+            JournalRecord::Chunk { hash, record } => {
+                out.extend_from_slice(&[KIND_TAG, CHUNK_KIND, ADDRESS_TAG]);
+                out.extend_from_slice(&hash.0);
+                out.push(PAYLOAD_TAG);
+                out.extend_from_slice(record);
+            }
+            JournalRecord::Root { hash, timestamp } => {
+                out.extend_from_slice(&[KIND_TAG, ROOT_KIND, TIMESTAMP_TAG]);
+                out.extend_from_slice(&timestamp.to_be_bytes());
+                out.push(ADDRESS_TAG);
+                out.extend_from_slice(&hash.0);
+            }
+        }
+        let len = (out.len() + CHECKSUM_LEN) as u32;
+        out[..4].copy_from_slice(&len.to_be_bytes());
+        let checksum = crc(&out);
+        out.extend_from_slice(&checksum.to_be_bytes());
+        out
+    }
+}
+
+/// read_records returns the valid records at the start of a journal's bytes, each with the bytes it was read from.
+pub fn read_records(bytes: &[u8]) -> Result<Vec<(JournalRecord<'_>, &[u8])>> {
+    let mut records = Vec::new();
+    let mut at = 0;
+    while at + 4 <= bytes.len() {
+        let len = be_u32(bytes, at);
+        if len == 0 || len > MAX_RECORD_LEN || at + len as usize > bytes.len() || !valid(&bytes[at..]) {
+            break;
+        }
+        let raw = &bytes[at..at + len as usize];
+        let record = parse(raw)?;
+        records.push(match record.kind {
+            ROOT_KIND => (JournalRecord::Root { hash: record.address, timestamp: record.timestamp }, raw),
+            CHUNK_KIND => (JournalRecord::Chunk { hash: record.address, record: record.payload }, raw),
+            kind => return Err(corrupt(format!("unknown journal record kind: {kind}"))),
+        });
+        at += len as usize;
+    }
+    Ok(records)
 }

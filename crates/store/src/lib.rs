@@ -30,6 +30,7 @@ mod table;
 pub use chunk::Chunk;
 pub use error::{Error, Result};
 pub use hash::Hash;
+pub use journal::{JOURNAL_FILE, JournalRecord, read_records};
 pub use manifest::{Manifest, TableSpec};
 pub use store::{BlockStore, GenerationalStore};
 pub use table::{TableReader, TableWriter};

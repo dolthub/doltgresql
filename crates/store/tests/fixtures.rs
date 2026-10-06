@@ -17,7 +17,7 @@
 
 use std::path::{Path, PathBuf};
 
-use store::{Chunk, GenerationalStore, Hash, TableReader, TableWriter};
+use store::{Chunk, GenerationalStore, Hash, JOURNAL_FILE, JournalRecord, TableReader, TableWriter, read_records};
 
 /// fixture returns the directory of a fixture's database, the one directory in it that holds a `.dolt` directory.
 fn fixture(name: &str) -> PathBuf {
@@ -190,5 +190,28 @@ fn table_writer_rewrites_every_table_file_go_wrote() {
         }
     }
     assert!(checked >= 4, "only {checked} table files were checked");
+    assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn journal_records_encode_to_the_bytes_go_wrote() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let (mut checked, mut roots, mut failures) = (0, 0, Vec::new());
+    for entry in std::fs::read_dir(&fixtures).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.is_dir() {
+            continue;
+        }
+        let journal = fixture(path.file_name().unwrap().to_str().unwrap()).join(".dolt/noms").join(JOURNAL_FILE);
+        let Ok(bytes) = std::fs::read(&journal) else { continue };
+        for (record, raw) in read_records(&bytes).unwrap() {
+            checked += 1;
+            roots += matches!(record, JournalRecord::Root { .. }) as usize;
+            if record.encode() != raw {
+                failures.push(format!("{}: {record:?}", journal.display()));
+            }
+        }
+    }
+    assert!(checked > 1000 && roots > 10, "only {checked} records and {roots} roots were checked");
     assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
 }
