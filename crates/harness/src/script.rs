@@ -26,6 +26,7 @@ use pgproto::ErrorFields;
 
 use crate::decode::decode_binary;
 use crate::pgx::{self, Arg, Conn, ConnConfig, QueryExecMode, Recorder, Time, formats};
+use crate::plan::PlanFact;
 use crate::server::{Server, Target};
 
 /// How long a blocking assertion must stay unfinished.
@@ -80,7 +81,8 @@ pub struct ScriptTestAssertion {
     pub username: &'static str,
     /// The password of the user.
     pub password: &'static str,
-    /// The named client that runs the statement in a transaction test.
+    /// The named persistent client that runs the statement, which connects as the assertion's user when one is given,
+    /// and otherwise like the default connection.
     pub client: &'static str,
     /// Expects the statement to block until a later assertion on another client unblocks it.
     pub expected_blocking: bool,
@@ -92,6 +94,9 @@ pub struct ScriptTestAssertion {
     pub copy_to_stdout_file: &'static str,
     /// Pipes the output of a COPY TO STDOUT statement into this COPY FROM STDIN statement.
     pub copy_round_trip_stdin_query: &'static str,
+    /// Prepares the statement under this name, as pgx's Prepare does, instead of running it. A later assertion runs
+    /// it by using the name as its query.
+    pub prepare: &'static str,
     /// When any assertion in a test sets this, only those assertions run. It must never be committed.
     pub focus: bool,
     /// Skips the assertion for the given reason.
@@ -113,6 +118,7 @@ pub const A: ScriptTestAssertion = ScriptTestAssertion {
     copy_from_stdin_file: "",
     copy_to_stdout_file: "",
     copy_round_trip_stdin_query: "",
+    prepare: "",
     focus: false,
     skip: None,
 };
@@ -139,6 +145,9 @@ pub enum Expected {
     /// The client fails before the server can answer, with an error containing this text, such as a parameter that
     /// pgx cannot encode.
     ClientError(&'static str),
+    /// The statement is an EXPLAIN whose plan shows these facts. Plans are implementation details, so only the facts are
+    /// checked, and a real Postgres, whose planner chooses differently, skips them.
+    Plan(&'static [PlanFact]),
 }
 
 /// Flow is how an assertion's statement is sent.
@@ -427,11 +436,19 @@ impl Session {
         Ok(&mut self.other.as_mut().unwrap().0)
     }
 
-    /// client returns a transaction test's named client, connecting it with the default connection's
-    /// configuration the first time.
-    fn client(&mut self, name: &str) -> Result<&mut Conn, String> {
+    /// client returns a named client, connecting it the first time: with the default connection's configuration,
+    /// as transaction tests do, or as the given user the way pgx.Connect does.
+    fn client(&mut self, name: &str, username: &str, password: &str) -> Result<&mut Conn, String> {
         if !self.clients.contains_key(name) {
-            let conn = Conn::connect(self.default.config().clone()).map_err(|err| err.to_string())?;
+            let config = if username.is_empty() {
+                self.default.config().clone()
+            } else {
+                let url = format!("postgres://{username}:{password}@127.0.0.1:{}/{}", self.server.port, self.database);
+                let mut config = ConnConfig::parse(&url).map_err(|err| err.to_string())?;
+                config.recorder = self.recorder.clone();
+                config
+            };
+            let conn = Conn::connect(config).map_err(|err| err.to_string())?;
             self.clients.insert(name.to_string(), conn);
         }
         Ok(self.clients.get_mut(name).unwrap())
@@ -490,7 +507,7 @@ impl Session {
                 },
             };
         }
-        if let Err(err) = self.client(&name) {
+        if let Err(err) = self.client(&name, assertion.username, assertion.password) {
             return Observation { client_error: Some(err), ..Observation::default() };
         }
         if assertion.expected_blocking {
@@ -569,6 +586,7 @@ pub fn effective_flow(assertion: &ScriptTestAssertion) -> Flow {
         Flow::Auto => match assertion.expected {
             Expected::Rows { .. } | Expected::Tag(_) => Flow::Query,
             Expected::Ok | Expected::Error(_) | Expected::ClientError(_) => Flow::Exec,
+            Expected::Plan(_) => Flow::Query,
         },
         flow => flow,
     }
@@ -578,6 +596,12 @@ pub fn effective_flow(assertion: &ScriptTestAssertion) -> Flow {
 fn execute(conn: &mut Conn, assertion: &ScriptTestAssertion) -> Observation {
     let query = expand(assertion.query);
     let args: Vec<Arg> = assertion.bind_vars.iter().map(|v| v.to_arg()).collect();
+    if !assertion.prepare.is_empty() {
+        return match conn.prepare(assertion.prepare, &query) {
+            Ok(_) => Observation::default(),
+            Err(err) => error_observation(err, Vec::new()),
+        };
+    }
     if !assertion.copy_from_stdin_file.is_empty() {
         let data = match std::fs::read(testdata_dir().join(assertion.copy_from_stdin_file)) {
             Ok(data) => data,
@@ -709,6 +733,12 @@ pub fn check(assertion: &ScriptTestAssertion, observation: &Observation) -> Vec<
                     if !observation.columns.is_empty() {
                         problems.push(format!("expected no result columns, got {:?}", observation.columns));
                     }
+                }
+                Expected::Plan(facts) => {
+                    let lines: Vec<String> =
+                        observation.rows.iter().map(|row| row.first().cloned().flatten().unwrap_or_default()).collect();
+                    problems
+                        .extend(crate::plan::check_facts(facts, &crate::plan::facts(&crate::plan::parse_gms(&lines))));
                 }
                 Expected::Ok | Expected::Error(_) | Expected::ClientError(_) => {}
             }
@@ -963,6 +993,9 @@ pub fn run_script(target: &Target, script: &ScriptTest, repetitions: usize) -> V
     for _ in 0..repetitions {
         for (index, assertion) in script.assertions.iter().enumerate() {
             if focus && !assertion.focus {
+                continue;
+            }
+            if matches!(assertion.expected, Expected::Plan(_)) && target.is_postgres() {
                 continue;
             }
             let observation = session.run(assertion);

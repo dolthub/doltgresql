@@ -20,6 +20,7 @@
 pub mod decode;
 pub mod oid;
 pub mod pgx;
+pub mod plan;
 pub mod script;
 pub mod server;
 pub mod wire;

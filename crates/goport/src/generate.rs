@@ -85,8 +85,9 @@ fn observation_equal(a: &Value, b: &Value) -> bool {
     strip(a) == strip(b)
 }
 
-/// expectation renders an observation as an expected outcome, returning the code and the outcome's kind.
-fn expectation(observation: &Value) -> (String, Expected) {
+/// expectation renders an observation as an expected outcome, returning the code and the outcome's kind. Values that
+/// differ from a second capture of the same statement are arbitrary, so they become Any.
+fn expectation(observation: &Value, second: Option<&Value>) -> (String, Expected) {
     if let Some(error) = observation.get("error").filter(|e| !e.is_null()) {
         return (format!("Expected::Error({})", rust::diagnostic(error)), Expected::Error(harness::script::E));
     }
@@ -114,8 +115,23 @@ fn expectation(observation: &Value) -> (String, Expected) {
             code.push_str("],\n");
         } else {
             code.push('\n');
-            for row in &rows {
-                let cells: Vec<String> = row.as_array().unwrap().iter().map(rust::cell).collect();
+            let second_rows = second
+                .and_then(|s| s["rows"].as_array())
+                .filter(|s| s.len() == rows.len())
+                .cloned()
+                .unwrap_or_default();
+            for (row_index, row) in rows.iter().enumerate() {
+                let second_row = second_rows.get(row_index).and_then(Value::as_array);
+                let cells: Vec<String> = row
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .enumerate()
+                    .map(|(column, value)| match second_row.and_then(|r| r.get(column)) {
+                        Some(other) if other != value && !value.is_null() && !other.is_null() => "Any".to_string(),
+                        _ => rust::cell(value),
+                    })
+                    .collect();
                 let _ = writeln!(code, "                            &[{}],", cells.join(", "));
             }
             code.push_str("                        ],\n");
@@ -126,11 +142,57 @@ fn expectation(observation: &Value) -> (String, Expected) {
     (format!("Expected::Tag({})", rust::string(tag)), Expected::Tag(""))
 }
 
+/// plan_facts derives the plan facts that a Go EXPLAIN assertion's expected plan shows, adding NoSort when the query
+/// orders its rows without sorting. It returns None when the Go test is skipped or its expected text is not a
+/// go-mysql-server plan.
+fn plan_facts(go: &Value, query: &str) -> Option<Vec<String>> {
+    if go["Skip"].as_bool() == Some(true) {
+        return None;
+    }
+    let lines: Vec<String> = go["Expected"]
+        .as_array()?
+        .iter()
+        .map(|row| row.as_array().and_then(|r| r.first()).and_then(|v| v["$value"].as_str()).map(str::to_string))
+        .collect::<Option<Vec<_>>>()?;
+    let facts = harness::plan::facts(&harness::plan::parse_gms(&lines));
+    if facts.is_empty() {
+        return None;
+    }
+    let mut code: Vec<String> = facts
+        .iter()
+        .map(|fact| match fact {
+            harness::plan::Fact::IndexScan(table, columns, ranges) => format!(
+                "PlanFact::IndexScan {{ table: {}, columns: &[{}], ranges: {} }}",
+                rust::string(table),
+                columns.iter().map(|c| rust::string(c)).collect::<Vec<_>>().join(", "),
+                rust::string(ranges)
+            ),
+            harness::plan::Fact::ReverseScan(table) => {
+                format!("PlanFact::ReverseScan {{ table: {} }}", rust::string(table))
+            }
+            harness::plan::Fact::FullScan(table) => format!("PlanFact::FullScan {{ table: {} }}", rust::string(table)),
+            harness::plan::Fact::Join(kind, left, right) => format!(
+                "PlanFact::Join {{ kind: {}, left: {}, right: {} }}",
+                rust::string(kind),
+                rust::string(left),
+                rust::string(right)
+            ),
+            harness::plan::Fact::Sort => "PlanFact::Sort".to_string(),
+        })
+        .collect();
+    if harness::script::is_ordered(query) && !facts.contains(&harness::plan::Fact::Sort) {
+        code.push("PlanFact::NoSort".to_string());
+    }
+    code.dedup();
+    Some(code)
+}
+
 /// generate_assertion renders one assertion from its Go definition and chosen observation.
 fn generate_assertion(
     go: &Value,
     transaction: bool,
     observation: Option<&Value>,
+    second: Option<&Value>,
     source: Source,
 ) -> GeneratedAssertion {
     let converted: ScriptTestAssertion = match to_assertion(go, transaction) {
@@ -157,7 +219,7 @@ fn generate_assertion(
     match observation {
         _ if blocking_or_close => {}
         Some(observation) if observation["client_error"].is_null() => {
-            let (code, expected_kind) = expectation(observation);
+            let (code, expected_kind) = expectation(observation, second);
             kind = expected_kind;
             fields.push(format!("expected: {code}"));
             let notices = observation["notices"].as_array().cloned().unwrap_or_default();
@@ -199,6 +261,7 @@ fn generate_assertion(
         ("copy_from_stdin_file", converted.copy_from_stdin_file),
         ("copy_to_stdout_file", converted.copy_to_stdout_file),
         ("copy_round_trip_stdin_query", converted.copy_round_trip_stdin_query),
+        ("prepare", converted.prepare),
     ] {
         if !value.is_empty() {
             fields.push(format!("{name}: {}", rust::string(value)));
@@ -213,8 +276,16 @@ fn generate_assertion(
     let is_explain = converted.query.trim_start().to_uppercase().starts_with("EXPLAIN");
     if is_explain {
         source = Source::Plan;
-        note = Some("plan assertion pending".to_string());
-        fields.push("skip: Some(\"plan assertion pending\")".to_string());
+        fields.retain(|f| !f.starts_with("expected:") && !f.starts_with("notices:") && !f.starts_with("flow:"));
+        match plan_facts(go, converted.query) {
+            Some(facts) => fields.push(format!("expected: Expected::Plan(&[{}])", facts.join(", "))),
+            None => {
+                note = Some("the Go test expects plan text that is not a go-mysql-server plan".to_string());
+                fields.push(
+                    "skip: Some(\"the Go test expects plan text that is not a go-mysql-server plan\")".to_string(),
+                );
+            }
+        }
     } else if source == Source::Unavailable {
         fields.push(format!("skip: Some({})", rust::string(note.as_deref().unwrap_or("no expectation"))));
     }
@@ -257,6 +328,7 @@ fn generate_script(
     test: &Value,
     pg: Option<&Value>,
     go: Option<&Value>,
+    pg_second: Option<&Value>,
     report: &mut Report,
 ) -> String {
     let transaction = record.runner == "RunTransactionTests";
@@ -296,13 +368,18 @@ fn generate_script(
         } else {
             (None, Source::Unavailable)
         };
-        let generated = generate_assertion(assertion, transaction, observation, source);
+        let second = if source == Source::Postgres { observations(pg_second).get(index).cloned() } else { None };
+        let generated = generate_assertion(assertion, transaction, observation, second.as_ref(), source);
         *report.sources.entry(format!("{:?}", generated.source)).or_default() += 1;
         report.assertion_sources.push(serde_json::json!({
             "test": format!("{}::{}", go_file(record), rust::snake_case(record.test.split('/').next().unwrap())),
             "script": name,
             "part": format!("assertion {index}"),
-            "source": format!("{:?}", generated.source),
+            "source": if generated.source == Source::Postgres && pg.is_some_and(|pg| pg["postgres_version"].as_u64() == Some(17)) {
+                "Postgres17".to_string()
+            } else {
+                format!("{:?}", generated.source)
+            },
         }));
         if generated.source != Source::Postgres || generated.note.is_some() {
             report.notes.push(format!(
@@ -477,7 +554,7 @@ pub fn go_file(record: &Record) -> String {
 }
 
 /// generate writes a Rust module for every Go test file, returning the report.
-pub fn generate(records: &[Record], pg: &Captures, go: &Captures, out_dir: &str) -> Report {
+pub fn generate(records: &[Record], pg: &Captures, go: &Captures, second: &Captures, out_dir: &str) -> Report {
     let mut report = Report::default();
     let mut files: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
     for record in records {
@@ -511,6 +588,7 @@ pub fn generate(records: &[Record], pg: &Captures, go: &Captures, out_dir: &str)
                 test,
                 pg.get(&(record.index, index)),
                 go.get(&(record.index, index)),
+                second.get(&(record.index, index)),
                 &mut report,
             ));
         }
@@ -527,7 +605,7 @@ pub fn generate(records: &[Record], pg: &Captures, go: &Captures, out_dir: &str)
     for (file, tests) in &files {
         let mut code = String::from(rust::LICENSE_HEADER);
         code.push_str(
-            "\nuse harness::oid::*;\nuse harness::pgx::Time;\nuse harness::script::Cell::{Null, Text as T};\n",
+            "\nuse harness::oid::*;\nuse harness::pgx::Time;\nuse harness::plan::PlanFact;\nuse harness::script::Cell::{Any, Null, Text as T};\n",
         );
         code.push_str(
             "use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, \

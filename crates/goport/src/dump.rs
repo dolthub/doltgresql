@@ -120,7 +120,11 @@ pub fn to_assertion(assertion: &Value, transaction: bool) -> Result<ScriptTestAs
         Some(values) => values.iter().map(to_bind_var).collect::<Result<Vec<_>, _>>()?,
         None => Vec::new(),
     };
-    let client = if transaction { transaction_client(&query)? } else { String::new() };
+    let client = match assertion.get("Client").and_then(Value::as_str) {
+        Some(client) => client.to_string(),
+        None if transaction => transaction_client(&query)?,
+        None => String::new(),
+    };
     Ok(ScriptTestAssertion {
         query: leak(&query),
         bind_vars: leak_slice(bind_vars),
@@ -134,6 +138,7 @@ pub fn to_assertion(assertion: &Value, transaction: bool) -> Result<ScriptTestAs
         copy_from_stdin_file: leak(&string_field(assertion, "CopyFromStdInFile")),
         copy_to_stdout_file: leak(&string_field(assertion, "CopyToStdOutFile")),
         copy_round_trip_stdin_query: leak(&string_field(assertion, "CopyRoundTripStdInQuery")),
+        prepare: leak(&string_field(assertion, "Prepare")),
         ..A
     })
 }
