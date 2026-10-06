@@ -24,6 +24,17 @@ const ADDRESS_ENCODINGS: [u8; 5] = [21, 23, 24, 26, 27];
 /// Field encodings that hold an adaptive value: inline after a 0 byte, or a size and an address.
 const ADAPTIVE_ENCODINGS: [u8; 5] = [135, 136, 137, 138, 139];
 
+/// unhex decodes hex text.
+fn unhex(text: &[u8]) -> Result<Vec<u8>> {
+    let digit = |c: u8| {
+        (c as char).to_digit(16).ok_or_else(|| store::Error::Corrupt("invalid hex in a column type".to_string()))
+    };
+    if !text.len().is_multiple_of(2) {
+        return Err(store::Error::Corrupt("odd hex length in a column type".to_string()));
+    }
+    text.chunks(2).map(|pair| Ok((digit(pair[0])? * 16 + digit(pair[1])?) as u8)).collect()
+}
+
 /// resolve returns a field's value, reading out-of-band values from their blob trees.
 fn resolve(reader: &dyn ChunkReader, encoding: u8, field: &[u8]) -> Result<Vec<u8>> {
     if ADDRESS_ENCODINGS.contains(&encoding) {
@@ -137,6 +148,10 @@ pub(crate) fn describe_table(
             c.hidden_system,
             c.adaptive_encoding_breaking_change,
         ));
+        if let Some(hex_type) = c.sql_type.strip_prefix(b"extended_") {
+            let typ = objects::SerializedType::deserialize(&unhex(hex_type)?)?;
+            lines.push(format!("columntype {schema_address} {i} {}", typ.show()));
+        }
     }
     let clustered = schema.clustered_index()?;
     lines.push(describe_index(schema_address, "clustered", &clustered));
