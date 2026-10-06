@@ -219,6 +219,11 @@ impl<'a> Vector<'a> {
         u16_at(self.buf, self.start + index * 2)
     }
 
+    /// u64 returns the u64 element at the index.
+    pub fn u64(&self, index: usize) -> Result<u64> {
+        read::<8>(self.buf, self.start + index * 8).map(u64::from_le_bytes)
+    }
+
     /// table returns the table that the offset element at the index points to.
     pub fn table(&self, index: usize) -> Result<Table<'a>> {
         let at = self.start + index * 4;

@@ -67,6 +67,11 @@ fn reads_many_tables_and_branches() {
 }
 
 #[test]
+fn reads_stashes_and_rebase_state() {
+    check_fixture("states");
+}
+
+#[test]
 fn hash_strings_round_trip() {
     let text = "b45a39lbakbo1lvppskat4cd0nd5bp9q";
     assert_eq!(Hash::parse(text).unwrap().to_string(), text);

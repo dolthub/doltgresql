@@ -93,6 +93,17 @@ impl<'a> TreeNode<'a> {
                 tree_count: table.u64(4, 0)?,
                 tree_level: table.u8(5, 0)?,
             }),
+            MERGE_ARTIFACTS => Ok(TreeNode {
+                table,
+                key_items: table.bytes(0)?.ok_or_else(|| missing("key_items"))?,
+                key_offsets: Some(table.vector(1, 2)?.ok_or_else(|| missing("key_offsets"))?),
+                value_items: table.bytes(3)?,
+                value_offsets: table.vector(4, 2)?,
+                address_array: table.bytes(5)?,
+                subtree_counts: table.bytes(6)?,
+                tree_count: table.u64(7, 0)?,
+                tree_level: table.u8(8, 0)?,
+            }),
             COMMIT_CLOSURE => Ok(TreeNode {
                 table,
                 key_items: table.bytes(0)?.ok_or_else(|| missing("key_items"))?,
@@ -495,6 +506,186 @@ impl<'a> TableSchema<'a> {
 
     pub fn target_row_size(&self) -> Result<u16> {
         self.0.u16(7, 2048)
+    }
+}
+
+/// string_list reads a [string] field.
+pub fn string_list<'a>(table: &Table<'a>, field: usize) -> Result<Vec<&'a [u8]>> {
+    match table.vector(field, 4)? {
+        Some(vector) => (0..vector.len()).map(|i| vector.string(i)).collect(),
+        None => Ok(Vec::new()),
+    }
+}
+
+/// u64_list reads a [uint64] field.
+fn u64_list(table: &Table<'_>, field: usize) -> Result<Vec<u64>> {
+    match table.vector(field, 8)? {
+        Some(vector) => (0..vector.len()).map(|i| vector.u64(i)).collect(),
+        None => Ok(Vec::new()),
+    }
+}
+
+/// ForeignKey is a foreign key of a root value's foreign key collection.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForeignKey<'a> {
+    pub name: &'a [u8],
+    pub child_table_name: &'a [u8],
+    pub child_table_index: &'a [u8],
+    pub child_table_columns: Vec<u64>,
+    pub parent_table_name: &'a [u8],
+    pub parent_table_index: &'a [u8],
+    pub parent_table_columns: Vec<u64>,
+    pub on_update: u8,
+    pub on_delete: u8,
+    pub unresolved_child_columns: Vec<&'a [u8]>,
+    pub unresolved_parent_columns: Vec<&'a [u8]>,
+    pub child_table_database_schema: Vec<&'a [u8]>,
+    pub parent_table_database_schema: Vec<&'a [u8]>,
+    pub is_not_valid: bool,
+    pub match_type: u8,
+}
+
+/// foreign_keys decodes a ForeignKeyCollection message.
+pub fn foreign_keys(message: Message<'_>) -> Result<Vec<ForeignKey<'_>>> {
+    let collection = message.expect(FOREIGN_KEY_COLLECTION)?;
+    let Some(vector) = collection.vector(0, 4)? else { return Ok(Vec::new()) };
+    (0..vector.len())
+        .map(|i| {
+            let t = vector.table(i)?;
+            Ok(ForeignKey {
+                name: t.string(0)?.unwrap_or_default(),
+                child_table_name: t.string(1)?.unwrap_or_default(),
+                child_table_index: t.string(2)?.unwrap_or_default(),
+                child_table_columns: u64_list(&t, 3)?,
+                parent_table_name: t.string(4)?.unwrap_or_default(),
+                parent_table_index: t.string(5)?.unwrap_or_default(),
+                parent_table_columns: u64_list(&t, 6)?,
+                on_update: t.u8(7, 0)?,
+                on_delete: t.u8(8, 0)?,
+                unresolved_child_columns: string_list(&t, 9)?,
+                unresolved_parent_columns: string_list(&t, 10)?,
+                child_table_database_schema: string_list(&t, 11)?,
+                parent_table_database_schema: string_list(&t, 12)?,
+                is_not_valid: t.bool(13, false)?,
+                match_type: t.u8(14, 0)?,
+            })
+        })
+        .collect()
+}
+
+/// MergeState is a working set's merge in progress.
+pub struct MergeState<'a>(pub Table<'a>);
+
+impl<'a> MergeState<'a> {
+    pub fn pre_working_root(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(0)?.unwrap_or_default())
+    }
+
+    pub fn from_commit(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(1)?.unwrap_or_default())
+    }
+
+    pub fn from_commit_spec(&self) -> Result<&'a [u8]> {
+        Ok(self.0.string(2)?.unwrap_or_default())
+    }
+
+    pub fn unmergable_tables(&self) -> Result<Vec<&'a [u8]>> {
+        string_list(&self.0, 3)
+    }
+
+    pub fn is_cherry_pick(&self) -> Result<bool> {
+        self.0.bool(4, false)
+    }
+
+    pub fn is_revert(&self) -> Result<bool> {
+        self.0.bool(5, false)
+    }
+
+    pub fn pre_merge_head_commit(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(6)?.unwrap_or_default())
+    }
+
+    pub fn pending_commit_hashes(&self) -> Result<Vec<&'a [u8]>> {
+        string_list(&self.0, 7)
+    }
+}
+
+/// RebaseState is a working set's rebase in progress.
+pub struct RebaseState<'a>(pub Table<'a>);
+
+impl<'a> RebaseState<'a> {
+    pub fn pre_working_root(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(0)?.unwrap_or_default())
+    }
+
+    pub fn branch(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(1)?.unwrap_or_default())
+    }
+
+    pub fn onto_commit(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(2)?.unwrap_or_default())
+    }
+
+    pub fn empty_commit_handling(&self) -> Result<u8> {
+        self.0.u8(3, 0)
+    }
+
+    pub fn commit_becomes_empty_handling(&self) -> Result<u8> {
+        self.0.u8(4, 0)
+    }
+
+    pub fn last_attempted_step(&self) -> Result<f32> {
+        self.0.u32(5, 0).map(f32::from_bits)
+    }
+
+    pub fn rebasing_started(&self) -> Result<bool> {
+        self.0.bool(6, false)
+    }
+
+    pub fn skip_verification(&self) -> Result<bool> {
+        self.0.bool(7, false)
+    }
+}
+
+/// StashList is the address map of a database's stashes.
+pub struct StashList<'a>(pub Table<'a>);
+
+impl<'a> StashList<'a> {
+    pub fn new(message: Message<'a>) -> Result<StashList<'a>> {
+        message.expect(STASH_LIST).map(StashList)
+    }
+
+    pub fn address_map(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(0)?.unwrap_or_default())
+    }
+}
+
+/// Stash is a stash: its root, the commit it was made on, and its metadata.
+pub struct Stash<'a>(pub Table<'a>);
+
+impl<'a> Stash<'a> {
+    pub fn new(message: Message<'a>) -> Result<Stash<'a>> {
+        message.expect(STASH).map(Stash)
+    }
+
+    pub fn root(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(0)?.unwrap_or_default())
+    }
+
+    pub fn head_commit(&self) -> Result<&'a [u8]> {
+        Ok(self.0.bytes(1)?.unwrap_or_default())
+    }
+
+    pub fn branch_name(&self) -> Result<&'a [u8]> {
+        Ok(self.0.string(2)?.unwrap_or_default())
+    }
+
+    pub fn description(&self) -> Result<&'a [u8]> {
+        Ok(self.0.string(3)?.unwrap_or_default())
+    }
+
+    pub fn tables_to_stage(&self) -> Result<Vec<&'a [u8]>> {
+        string_list(&self.0, 4)
     }
 }
 

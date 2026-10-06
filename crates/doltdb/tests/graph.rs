@@ -66,3 +66,8 @@ fn reads_root_objects_and_tags() {
 fn reads_multi_level_address_maps() {
     check_fixture("wide");
 }
+
+#[test]
+fn reads_stashes_and_rebase_state() {
+    check_fixture("states");
+}

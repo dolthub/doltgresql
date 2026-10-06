@@ -15,12 +15,21 @@
 use std::collections::{HashSet, VecDeque};
 
 use prolly::{Node, walk_leaves};
-use serial::{Commit, DoltgresRootValue, Message, StoreRoot, TableMessage, Tag, WorkingSet};
+use serial::{
+    Commit, DoltgresRootValue, MergeState, Message, RebaseState, Stash, StashList, StoreRoot, TableMessage, Tag,
+    WorkingSet,
+};
+use sha2::{Digest, Sha256};
 use store::{ChunkReader, Hash, Result};
 
 /// hex renders bytes as lower-case hex.
 pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// hex_list renders byte strings as comma-separated hex.
+fn hex_list(values: &[&[u8]]) -> String {
+    values.iter().map(|v| hex(v)).collect::<Vec<_>>().join(",")
 }
 
 /// address_map returns the entries of a serialized AddressMap in key order.
@@ -39,6 +48,7 @@ struct Graph<'a> {
     lines: Vec<String>,
     seen: HashSet<Hash>,
     seen_objects: HashSet<Hash>,
+    seen_extra: HashSet<Hash>,
     queue: VecDeque<Hash>,
 }
 
@@ -47,6 +57,111 @@ impl Graph<'_> {
         if !hash.is_empty() && self.seen.insert(hash) {
             self.queue.push_back(hash);
         }
+    }
+
+    /// describe_tree renders the digest of the raw items of the tree at the address once.
+    fn describe_tree(&mut self, kind: &str, address: Hash) -> Result<()> {
+        if address.is_empty() || !self.seen_extra.insert(address) {
+            return Ok(());
+        }
+        let mut hasher = Sha256::new();
+        let mut count = 0;
+        walk_leaves(self.reader, &Node::load(self.reader, &address)?, &mut |key, value| {
+            hasher.update(format!("{} {}\n", hex(key), hex(value)).as_bytes());
+            count += 1;
+            Ok(())
+        })?;
+        self.lines.push(format!("tree {address} {kind} count={count} digest={}", hex(&hasher.finalize())));
+        Ok(())
+    }
+
+    /// describe_foreign_keys renders a foreign key collection once.
+    fn describe_foreign_keys(&mut self, address: Hash) -> Result<()> {
+        if address.is_empty() || !self.seen_extra.insert(address) {
+            return Ok(());
+        }
+        let chunk = self.reader.require(&address)?;
+        let numbers = |values: &[u64]| values.iter().map(u64::to_string).collect::<Vec<_>>().join(",");
+        for (i, fk) in serial::foreign_keys(Message(&chunk.data))?.iter().enumerate() {
+            self.lines.push(format!(
+                "foreignkey {address} {i} name={} child={} childindex={} childcols={} parent={} parentindex={} \
+                 parentcols={} onupdate={} ondelete={} unresolvedchild={} unresolvedparent={} childschema={} \
+                 parentschema={} notvalid={} match={}",
+                hex(fk.name),
+                hex(fk.child_table_name),
+                hex(fk.child_table_index),
+                numbers(&fk.child_table_columns),
+                hex(fk.parent_table_name),
+                hex(fk.parent_table_index),
+                numbers(&fk.parent_table_columns),
+                fk.on_update,
+                fk.on_delete,
+                hex_list(&fk.unresolved_child_columns),
+                hex_list(&fk.unresolved_parent_columns),
+                hex_list(&fk.child_table_database_schema),
+                hex_list(&fk.parent_table_database_schema),
+                fk.is_not_valid,
+                fk.match_type,
+            ));
+        }
+        Ok(())
+    }
+
+    /// describe_merge_state renders a working set's merge and rebase state.
+    fn describe_merge_state(&mut self, address: Hash, working_set: &WorkingSet<'_>) -> Result<()> {
+        if let Some(table) = working_set.merge_state()? {
+            let state = MergeState(table);
+            let (pre_working, from) = (serial::hash(state.pre_working_root()?)?, serial::hash(state.from_commit()?)?);
+            self.lines.push(format!(
+                "mergestate {address} preworking={pre_working} from={from} spec={} unmergable={} cherrypick={} \
+                 revert={} premergehead={} pending={}",
+                hex(state.from_commit_spec()?),
+                hex_list(&state.unmergable_tables()?),
+                state.is_cherry_pick()?,
+                state.is_revert()?,
+                hex(state.pre_merge_head_commit()?),
+                hex_list(&state.pending_commit_hashes()?),
+            ));
+            self.visit(pre_working);
+            self.visit(from);
+        }
+        if let Some(table) = working_set.rebase_state()? {
+            let state = RebaseState(table);
+            let (pre_working, onto) = (serial::hash(state.pre_working_root()?)?, serial::hash(state.onto_commit()?)?);
+            self.lines.push(format!(
+                "rebasestate {address} preworking={pre_working} branch={} onto={onto} empty={} becomesempty={} \
+                 step={} started={} skip={}",
+                hex(state.branch()?),
+                state.empty_commit_handling()?,
+                state.commit_becomes_empty_handling()?,
+                objects::go_float32(state.last_attempted_step()?),
+                state.rebasing_started()?,
+                state.skip_verification()?,
+            ));
+            self.visit(pre_working);
+            self.visit(onto);
+        }
+        Ok(())
+    }
+
+    /// describe_stash_list renders a stash list and its stashes.
+    fn describe_stash_list(&mut self, address: Hash, message: Message<'_>) -> Result<()> {
+        let list = StashList::new(message)?;
+        for (name, entry) in address_map(self.reader, list.address_map()?)? {
+            let chunk = self.reader.require(&entry)?;
+            let stash = Stash::new(Message(&chunk.data))?;
+            let (root, head) = (serial::hash(stash.root()?)?, serial::hash(stash.head_commit()?)?);
+            self.lines.push(format!(
+                "stash {address} {} {entry} root={root} head={head} branch={} desc={} stage={}",
+                hex(&name),
+                hex(stash.branch_name()?),
+                hex(stash.description()?),
+                hex_list(&stash.tables_to_stage()?),
+            ));
+            self.visit(root);
+            self.visit(head);
+        }
+        Ok(())
     }
 
     fn describe(&mut self, address: Hash) -> Result<()> {
@@ -60,6 +175,9 @@ impl Graph<'_> {
                     self.visit(*parent);
                 }
                 let closure = commit.parent_closure_bytes()?.map(serial::hash).transpose()?;
+                if let Some(closure) = closure {
+                    self.describe_tree("closure", closure)?;
+                }
                 self.lines.push(format!(
                     "commit {address} root={} height={} parents={} closure={} name={} email={} desc={} ts={} uts={} \
                      sig={} cname={} cemail={}",
@@ -109,6 +227,7 @@ impl Graph<'_> {
                     working_set.rebase_state()?.is_some(),
                 ));
                 self.visit(working_set.working_root()?);
+                self.describe_merge_state(address, &working_set)?;
             }
             serial::DOLTGRES_ROOT_VALUE => {
                 let root = DoltgresRootValue::new(message)?;
@@ -119,6 +238,9 @@ impl Graph<'_> {
                     hex(root.foreign_keys()?.unwrap_or_default()),
                     root.schemas()?.iter().map(|s| hex(s)).collect::<Vec<_>>().join(","),
                 ));
+                if let Some(fk) = root.foreign_keys()?.filter(|fk| fk.len() == Hash::LEN) {
+                    self.describe_foreign_keys(serial::hash(fk)?)?;
+                }
                 let mut maps = vec![("tables", root.tables()?)];
                 maps.extend(root.root_object_maps()?);
                 for (name, bytes) in maps {
@@ -175,7 +297,14 @@ impl Graph<'_> {
                     &secondary,
                     &mut self.lines,
                 )?;
+                if let Some(artifacts) = table.artifacts()?.filter(|a| a.len() == Hash::LEN) {
+                    self.describe_tree("artifacts", serial::hash(artifacts)?)?;
+                }
+                if let Some(violations) = table.violations()?.filter(|v| v.len() == Hash::LEN) {
+                    self.describe_tree("violations", serial::hash(violations)?)?;
+                }
             }
+            serial::STASH_LIST => self.describe_stash_list(address, message)?,
             other => self.lines.push(format!("other {address} {other}")),
         }
         Ok(())
@@ -190,6 +319,7 @@ pub fn dump_graph(reader: &dyn ChunkReader, root: Hash) -> Result<String> {
         lines: vec![format!("root {root}")],
         seen: HashSet::new(),
         seen_objects: HashSet::new(),
+        seen_extra: HashSet::new(),
         queue: VecDeque::new(),
     };
     let chunk = reader.require(&root)?;
