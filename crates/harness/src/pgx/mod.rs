@@ -699,6 +699,45 @@ impl Conn {
         Ok(result)
     }
 
+    /// simple_query_rows mirrors pgx's Query in the simple protocol mode, returning the first result's rows in text.
+    pub fn simple_query_rows(&mut self, sql: &str) -> Result<QueryResult, Error> {
+        self.stream.send(&FrontendMessage::Query { query: sql.to_string() });
+        self.stream.flush()?;
+        let mut result = QueryResult::default();
+        let mut results = 0;
+        let mut started = false;
+        loop {
+            match self.stream.recv()? {
+                BackendMessage::RowDescription { fields } if results == 0 => {
+                    result.fields = fields;
+                    started = true;
+                }
+                BackendMessage::DataRow { values } if results == 0 => {
+                    result.rows.push(values);
+                    started = true;
+                }
+                BackendMessage::CommandComplete { command_tag } => {
+                    if results == 0 {
+                        result.command_tag = command_tag;
+                    }
+                    results += 1;
+                }
+                BackendMessage::EmptyQueryResponse => results += 1,
+                BackendMessage::ErrorResponse(fields) => {
+                    if result.error.is_none() {
+                        result.error = Some(Error::pg(fields));
+                    }
+                }
+                BackendMessage::ReadyForQuery { .. } => break,
+                _ => {}
+            }
+        }
+        match result.error.take() {
+            Some(error) if !started => Err(error),
+            error => Ok(QueryResult { error, ..result }),
+        }
+    }
+
     /// copy_from mirrors pgconn's CopyFrom. pgx streams the data while it watches for an early error, so the number
     /// of CopyData messages it sends after an error is timing dependent; this sends all of the data, then CopyDone.
     pub fn copy_from(&mut self, sql: &str, data: &[u8]) -> Result<String, Error> {

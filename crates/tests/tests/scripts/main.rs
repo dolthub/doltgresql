@@ -57,6 +57,7 @@ mod do_statement;
 mod dolt_functions;
 mod dolt_procedures_record;
 mod dolt_tables;
+mod doltgres_engine;
 mod domain;
 mod drop_database;
 mod drop_function;

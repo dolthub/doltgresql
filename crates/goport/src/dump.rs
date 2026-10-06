@@ -86,7 +86,9 @@ fn strings_field(value: &Value, name: &str) -> Vec<String> {
 
 /// go_flow returns how the Go suite sends an assertion, which depends on what the assertion checks.
 pub fn go_flow(assertion: &Value) -> Flow {
-    if bool_field(assertion, "SkipResultsCheck")
+    if bool_field(assertion, "SimpleProtocol") {
+        Flow::Simple
+    } else if bool_field(assertion, "SkipResultsCheck")
         || !string_field(assertion, "ExpectedErr").is_empty()
         || !string_field(assertion, "ExpectedErrCode").is_empty()
         || !string_field(assertion, "ExpectedTag").is_empty()

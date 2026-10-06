@@ -160,6 +160,8 @@ pub enum Flow {
     Exec,
     /// pgx's Query: a described statement executed with pgx's result formats.
     Query,
+    /// pgx's Query in the simple protocol mode, which the Go enginetests use for every statement.
+    Simple,
 }
 
 /// Column is an expected result column: its name, and its type OID or USER_DEFINED for any type outside the
@@ -627,40 +629,43 @@ fn execute(conn: &mut Conn, assertion: &ScriptTestAssertion) -> Observation {
             Err(err) => error_observation(err, Vec::new()),
         };
     }
-    match effective_flow(assertion) {
-        Flow::Query => match conn.query(&query, &args) {
-            Ok(result) => {
-                let mut observation = Observation {
-                    columns: result.fields.iter().map(|f| (f.name.clone(), f.data_type_oid)).collect(),
-                    queried: true,
-                    tag: result.command_tag,
-                    ..Observation::default()
-                };
-                for row in &result.rows {
-                    let mut cells = Vec::with_capacity(row.len());
-                    for (value, field) in row.iter().zip(&result.fields) {
-                        cells.push(match value {
-                            None => None,
-                            Some(bytes) => Some(match render(field.data_type_oid, field.format, bytes) {
-                                Ok(text) => text,
-                                Err(err) => {
-                                    observation.client_error = Some(err);
-                                    String::new()
-                                }
-                            }),
-                        });
+    let flow = effective_flow(assertion);
+    match flow {
+        Flow::Query | Flow::Simple => {
+            match if flow == Flow::Simple { conn.simple_query_rows(&query) } else { conn.query(&query, &args) } {
+                Ok(result) => {
+                    let mut observation = Observation {
+                        columns: result.fields.iter().map(|f| (f.name.clone(), f.data_type_oid)).collect(),
+                        queried: true,
+                        tag: result.command_tag,
+                        ..Observation::default()
+                    };
+                    for row in &result.rows {
+                        let mut cells = Vec::with_capacity(row.len());
+                        for (value, field) in row.iter().zip(&result.fields) {
+                            cells.push(match value {
+                                None => None,
+                                Some(bytes) => Some(match render(field.data_type_oid, field.format, bytes) {
+                                    Ok(text) => text,
+                                    Err(err) => {
+                                        observation.client_error = Some(err);
+                                        String::new()
+                                    }
+                                }),
+                            });
+                        }
+                        observation.rows.push(cells);
                     }
-                    observation.rows.push(cells);
+                    if let Some(err) = result.error {
+                        let error = error_observation(err, Vec::new());
+                        observation.error = error.error;
+                        observation.client_error = observation.client_error.or(error.client_error);
+                    }
+                    observation
                 }
-                if let Some(err) = result.error {
-                    let error = error_observation(err, Vec::new());
-                    observation.error = error.error;
-                    observation.client_error = observation.client_error.or(error.client_error);
-                }
-                observation
+                Err(err) => error_observation(err, Vec::new()),
             }
-            Err(err) => error_observation(err, Vec::new()),
-        },
+        }
         _ => match conn.exec(&query, &args) {
             Ok(tag) => Observation { tag, ..Observation::default() },
             Err(err) => error_observation(err, Vec::new()),

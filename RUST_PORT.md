@@ -150,6 +150,12 @@ Done:
   under the Go test. The proxy serves psql's connections concurrently, so the 12 dumps that hung the Go test by
   reconnecting now run and fail on real server errors.
 
+- Enginetest Dolt version-control sets (`doltgres_engine` module): every script that passes in the Go run of the
+  15 version-control enginetests (183 scripts, 4,275 statements) is replayed statement by statement over the simple
+  protocol, as the Go harness sends them. Expectations come from the Go binary, cross-checked against each statement's
+  outcome in the Go test process. 7 `dolt_help` statements take the Go test process's rows, since the Go binary has
+  no help text, so they fail on the Go binary.
+
 Remaining:
 
 - Hand ports: missing-database connection, invalid startup timezone, SSL (needs TLS in the harness), dropped-role
@@ -157,7 +163,7 @@ Remaining:
 - 29 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too), and 7 EXPLAIN
   assertions that expect Postgres plan text.
 - A full sqllogictest corpus run with both runners.
-- Ports of the enginetest Dolt sets and the go-sql-server-driver runners.
+- Port of the go-sql-server-driver runner and its Go tests.
 
 ## Baseline artifacts
 

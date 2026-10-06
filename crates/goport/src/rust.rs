@@ -112,6 +112,7 @@ pub fn flow(flow: Flow) -> &'static str {
         Flow::Auto => "Flow::Auto",
         Flow::Exec => "Flow::Exec",
         Flow::Query => "Flow::Query",
+        Flow::Simple => "Flow::Simple",
     }
 }
 
