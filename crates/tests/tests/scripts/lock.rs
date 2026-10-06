@@ -228,6 +228,10 @@ fn test_advisory_locks() {
             ..S
         },
     ]);
+}
+
+#[test]
+fn test_advisory_locks_2() {
     run_scripts(&[
         ScriptTest {
             name: "transaction advisory locks",

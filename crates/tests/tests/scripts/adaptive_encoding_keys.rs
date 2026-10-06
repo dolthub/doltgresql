@@ -277,6 +277,10 @@ fn test_adaptive_encoding_in_primary_keys() {
             ..S
         },
     ]);
+}
+
+#[test]
+fn test_adaptive_encoding_in_primary_keys_2() {
     run_scripts(&[
         ScriptTest {
             name: "out-of-band values in primary keys",

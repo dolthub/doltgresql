@@ -30,7 +30,8 @@ fn test_describe() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "EXPLAIN t1",
-                    skip: Some("the Go test expects plan text that is not a go-mysql-server plan"),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "t1""#, position: 9, ..E }),
+                    flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
@@ -85,9 +86,18 @@ fn test_describe() {
                     },
                     ..A
                 },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "EXPLAIN public.t1 AS OF 'HEAD'",
-                    skip: Some("the Go test expects plan text that is not a go-mysql-server plan"),
+                    expected: Expected::Rows {
+                        columns: &[Column("Field", TEXT), Column("Type", TEXT), Column("Null", TEXT), Column("Key", TEXT), Column("Default", TEXT), Column("Extra", TEXT)],
+                        rows: &[
+                            &[T("id"), T("integer"), T("NO"), T("PRI"), Null, T("")],
+                            &[T("name"), T("text"), T("YES"), T(""), Null, T("")],
+                            &[T("age"), T("integer"), T("YES"), T(""), Null, T("")],
+                        ],
+                        tag: "EXPLAIN",
+                    },
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

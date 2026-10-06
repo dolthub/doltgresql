@@ -30,7 +30,7 @@ fn test_explain() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT * FROM T;",
-                    skip: Some("the Go test expects plan text that is not a go-mysql-server plan"),
+                    skip: Some("the Go test expects Postgres plan text, whose costs are implementation details"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -49,7 +49,7 @@ EXPLAIN
 ) 
 	SELECT * FROM t;
 "#,
-                    skip: Some("the Go test expects plan text that is not a go-mysql-server plan"),
+                    skip: Some("the Go test expects Postgres plan text, whose costs are implementation details"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -68,7 +68,7 @@ EXPLAIN
 ) 
 	SELECT * FROM t;
 "#,
-                    skip: Some("the Go test expects plan text that is not a go-mysql-server plan"),
+                    skip: Some("the Go test expects Postgres plan text, whose costs are implementation details"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -79,7 +79,7 @@ EXPLAIN
 ) 
 	SELECT * FROM t;
 "#,
-                    skip: Some("the Go test expects plan text that is not a go-mysql-server plan"),
+                    skip: Some("the Go test expects Postgres plan text, whose costs are implementation details"),
                     ..A
                 },
             ],

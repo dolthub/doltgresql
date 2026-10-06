@@ -274,18 +274,19 @@ fn generate_assertion(
         fields.push("close_client: true".to_string());
     }
     let is_explain = converted.query.trim_start().to_uppercase().starts_with("EXPLAIN");
-    if is_explain {
+    let facts = if is_explain { plan_facts(go, converted.query) } else { None };
+    if let Some(facts) = facts {
         source = Source::Plan;
         fields.retain(|f| !f.starts_with("expected:") && !f.starts_with("notices:") && !f.starts_with("flow:"));
-        match plan_facts(go, converted.query) {
-            Some(facts) => fields.push(format!("expected: Expected::Plan(&[{}])", facts.join(", "))),
-            None => {
-                note = Some("the Go test expects plan text that is not a go-mysql-server plan".to_string());
-                fields.push(
-                    "skip: Some(\"the Go test expects plan text that is not a go-mysql-server plan\")".to_string(),
-                );
-            }
-        }
+        fields.push(format!("expected: Expected::Plan(&[{}])", facts.join(", ")));
+    } else if is_explain && go["Skip"].as_bool() == Some(true) {
+        source = Source::Plan;
+        note = Some("the Go test expects Postgres plan text, whose costs are implementation details".to_string());
+        fields.retain(|f| !f.starts_with("expected:") && !f.starts_with("notices:") && !f.starts_with("flow:"));
+        fields.push(
+            "skip: Some(\"the Go test expects Postgres plan text, whose costs are implementation details\")"
+                .to_string(),
+        );
     } else if source == Source::Unavailable {
         fields.push(format!("skip: Some({})", rust::string(note.as_deref().unwrap_or("no expectation"))));
     }
@@ -642,12 +643,10 @@ pub fn generate(
             "use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};\n",
         );
         for (test, calls) in tests {
-            let _ = write!(code, "\n#[test]\nfn {}() {{\n", rust::snake_case(test));
-            for call in calls {
-                code.push_str("    ");
-                code.push_str(call);
+            for (index, call) in calls.iter().enumerate() {
+                let suffix = if index == 0 { String::new() } else { format!("_{}", index + 1) };
+                let _ = write!(code, "\n#[test]\nfn {}{suffix}() {{\n    {call}}}\n", rust::snake_case(test));
             }
-            code.push_str("}\n");
         }
         std::fs::write(format!("{out_dir}/{file}.rs"), code).unwrap();
         modules.push(file.clone());

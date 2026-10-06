@@ -473,7 +473,7 @@ fn test_basic_indexing() {
                 },
                 ScriptTestAssertion {
                     query: "explain select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
-                    skip: Some("the Go test expects plan text that is not a go-mysql-server plan"),
+                    skip: Some("the Go test expects Postgres plan text, whose costs are implementation details"),
                     ..A
                 },
                 ScriptTestAssertion {

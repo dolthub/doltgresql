@@ -425,6 +425,10 @@ fn test_copy_unexpected_message_fatal() {
             ..W
         },
     ]);
+}
+
+#[test]
+fn test_copy_unexpected_message_fatal_2() {
     run_wire_tests(&[
         WireTest {
             name: "simple origin rejects *pgproto3.Parse",
@@ -451,6 +455,10 @@ fn test_copy_unexpected_message_fatal() {
             ..W
         },
     ]);
+}
+
+#[test]
+fn test_copy_unexpected_message_fatal_3() {
     run_wire_tests(&[
         WireTest {
             name: "extended origin rejects *pgproto3.Query",
@@ -481,6 +489,10 @@ fn test_copy_unexpected_message_fatal() {
             ..W
         },
     ]);
+}
+
+#[test]
+fn test_copy_unexpected_message_fatal_4() {
     run_wire_tests(&[
         WireTest {
             name: "extended origin rejects *pgproto3.Parse",

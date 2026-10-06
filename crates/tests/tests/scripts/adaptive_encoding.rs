@@ -236,6 +236,10 @@ fn test_adaptive_encoding_text() {
             ..S
         },
     ]);
+}
+
+#[test]
+fn test_adaptive_encoding_text_2() {
     run_scripts(&[
         ScriptTest {
             name: "Adaptive Encoding With One Column",
@@ -904,6 +908,10 @@ fn test_string_functions_on_out_of_band_values() {
             ..S
         },
     ]);
+}
+
+#[test]
+fn test_string_functions_on_out_of_band_values_2() {
     run_scripts(&[
         ScriptTest {
             name: "string functions on out-of-band values",
