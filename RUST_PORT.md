@@ -202,13 +202,21 @@ Done (write path), each checked against every chunk of the Go-written fixtures:
   tables, schemas, foreign keys, and Doltgres root values in Go's build order. Every message rewrites identically,
   including the layouts that Go's in-place edits leave behind (a root object field added after the others, an
   auto-increment value set to zero).
-- `prolly`: serializers of every tree node kind; the chunker, which rebuilds every tree node from its leaf items; and
-  the blob builder, which rebuilds every blob, including the single-child roots Go builds when a blob fills its
-  levels exactly.
+- `prolly`: serializers of every tree node kind; the chunker, which rebuilds every tree node from its leaf items; the
+  blob builder, which rebuilds every blob, including the single-child roots Go builds when a blob fills its levels
+  exactly; and cursors with in-place edits (a port of Dolt's ApplyMutations), which build the same trees as building
+  from empty over random edits to trees of three and more levels.
 - `objects`: serializers of every root object, which write current versions as Go does.
 - `store`: chunk records (the Rust `snap` crate compresses every chunk exactly as `golang/snappy` did), table files
-  (every one rewrites identically, name included), and journal records (every one re-encodes identically). libzstd
-  is pinned to 1.5.6, the version Dolt's gozstd bundles.
+  (every one rewrites identically, name included), manifests and their lock hashes, and journal records (every one
+  re-encodes identically). libzstd is pinned to 1.5.6, the version Dolt's gozstd bundles.
+- The journal writer replays every fixture journal into identical bytes, and keeps an index file that Go accepts
+  (checked by having Go open a Rust-written journal of 45,000 chunks over several index batches).
+- The journaling store (`JournalStore`) puts chunks through a memtable, commits roots to the journal, rewrites the
+  manifest only when its files change, trues up the manifest's root on open, locks out other processes, and refuses
+  dangling references. Go reads databases that it wrote and Rust extended.
+- `serial::walk`: the addresses each message refers to, in the order Dolt's WalkAddrs visits them, matching Go on
+  every chunk of every fixture.
 
 Findings:
 
@@ -219,9 +227,14 @@ Findings:
   exhaustively against Go on both (amd64 under Rosetta).
 - Table file indexes sort records by prefix with Go's unstable sort, so two chunks whose 8-byte prefixes collide can
   land in either order. The Rust writer keeps them in insertion order.
+- Go's GC is not deterministic: on two copies of one database, it writes the same chunks to each generation, and the
+  same new-generation table file, but old-generation files whose chunk order differs. GC is checked by the chunks
+  of each generation, not by file bytes.
+- Dolt's journal iterator reports the chunks it found through the index file by the first 16 bytes of their
+  addresses, padded with zeros. Comparisons with Go's iteration go by each chunk's data hash.
 
-Remaining: the journal writer and its index file, manifest writing, the writable generational store, GC, archive
-writing (chunk grouping and dictionary training), statistics, and mutating trees in place.
+Remaining, with the phases that use them: GC and the writable old generation, conjoining, and archive writing (chunk
+grouping and dictionary training) with Phase 5; statistics, and the auth and branch control files with Phase 4.
 
 ## Baseline artifacts
 
