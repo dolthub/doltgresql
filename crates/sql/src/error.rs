@@ -55,12 +55,16 @@ pub mod code {
     pub const SERIALIZATION_FAILURE: &str = "40001";
     pub const CANT_CHANGE_RUNTIME_PARAM: &str = "55P02";
     pub const PROGRAM_LIMIT_EXCEEDED: &str = "54000";
+    pub const DATA_EXCEPTION: &str = "22000";
+    pub const NULL_VALUE_NOT_ALLOWED: &str = "22004";
     pub const SUBSTRING_ERROR: &str = "22011";
     pub const AMBIGUOUS_FUNCTION: &str = "42725";
     pub const WRONG_OBJECT_TYPE: &str = "42809";
     pub const CARDINALITY_VIOLATION: &str = "21000";
     pub const DUPLICATE_ALIAS: &str = "42712";
     pub const INVALID_DATETIME_FORMAT: &str = "22007";
+    pub const ARRAY_SUBSCRIPT_ERROR: &str = "2202E";
+    pub const INDETERMINATE_DATATYPE: &str = "42P18";
     pub const DATETIME_FIELD_OVERFLOW: &str = "22008";
     pub const INVALID_TIME_ZONE_DISPLACEMENT: &str = "22009";
     pub const INVALID_ARGUMENT_FOR_LOG: &str = "2201E";

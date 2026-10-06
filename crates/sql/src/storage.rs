@@ -20,8 +20,10 @@ use doltdb::database::Database;
 use prolly::val::{compare_field, encoding};
 use store::Hash;
 
+use num_traits::Zero;
+
 use crate::catalog::ColumnType;
-use crate::error::{PgError, Result};
+use crate::error::{PgError, Result, code};
 use crate::numeric::Numeric;
 use crate::types::Value;
 
@@ -41,29 +43,8 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
             field
         }
         (Value::Text(s), encoding::STRING_ADAPTIVE) => inline(s.as_bytes()),
-        (Value::Bool(b), encoding::EXTENDED) if ty.oid == crate::oid::BOOL => vec![*b as u8],
-        (Value::Date(d), encoding::EXTENDED) => {
-            let ts = match *d {
-                crate::datetime::DATE_NOBEGIN => crate::datetime::TIMESTAMP_NOBEGIN,
-                crate::datetime::DATE_NOEND => crate::datetime::TIMESTAMP_NOEND,
-                d => d as i64 * crate::datetime::USECS_PER_DAY,
-            };
-            let (seconds, nanos) = crate::datetime::timestamp_to_go(ts);
-            crate::datetime::go_time::marshal(seconds, nanos)
-        }
-        (Value::Timestamp(ts) | Value::TimestampTz(ts), encoding::EXTENDED) => {
-            let (seconds, nanos) = crate::datetime::timestamp_to_go(*ts);
-            crate::datetime::go_time::marshal(seconds, nanos)
-        }
-        (Value::Time(t), encoding::EXTENDED) => offset_i64(*t).to_vec(),
-        (Value::TimeTz(t, z), encoding::EXTENDED) => [offset_i64(*t).as_slice(), &offset_i32(*z)].concat(),
-        (Value::Interval(iv), encoding::EXTENDED) => {
-            let sort_nanos = (iv.months as i64 * 30 * crate::datetime::USECS_PER_DAY
-                + iv.days as i64 * crate::datetime::USECS_PER_DAY
-                + iv.micros)
-                .saturating_mul(1000);
-            [offset_i64(sort_nanos).as_slice(), &offset_i32(iv.months), &offset_i32(iv.days)].concat()
-        }
+        (value, encoding::EXTENDED) => serialize_value(value, ty)?,
+        (value, encoding::EXTENDED_ADAPTIVE) => inline(&serialize_value(value, ty)?),
         (value, field_encoding) => {
             return Err(PgError::unsupported(format!("storing {value:?} with encoding {field_encoding}")));
         }
@@ -93,33 +74,164 @@ pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty:
             Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?)
         }
         encoding::STRING_ADAPTIVE => Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?),
-        encoding::EXTENDED if ty.oid == crate::oid::BOOL => Value::Bool(field.first().is_some_and(|&b| b != 0)),
-        encoding::EXTENDED if matches!(ty.oid, crate::oid::DATE | crate::oid::TIMESTAMP | crate::oid::TIMESTAMPTZ) => {
-            let (seconds, nanos) = crate::datetime::go_time::unmarshal(field).ok_or_else(corrupt)?;
-            let ts = crate::datetime::timestamp_from_go(seconds, nanos);
+        encoding::EXTENDED | encoding::EXTENDED_ADAPTIVE => deserialize_value(field, ty)?,
+        _ => return Err(PgError::unsupported(format!("reading fields of encoding {field_encoding}"))),
+    })
+}
+
+/// serialize_value writes a value of a type as Doltgres' type serialization does, which extended columns and array
+/// elements store.
+pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
+    use crate::datetime::{self as dt, USECS_PER_DAY};
+    Ok(match value {
+        Value::Bool(b) => vec![*b as u8],
+        Value::Int2(i) => ((*i as u16) ^ (1 << 15)).to_be_bytes().to_vec(),
+        Value::Int4(i) => offset_i32(*i).to_vec(),
+        Value::Int8(i) => offset_i64(*i).to_vec(),
+        Value::Float4(f) => {
+            let bits = f.to_bits();
+            (if *f >= 0.0 { bits ^ (1 << 31) } else { !bits }).to_be_bytes().to_vec()
+        }
+        Value::Float8(f) => {
+            let bits = f.to_bits();
+            (if *f >= 0.0 { bits ^ (1 << 63) } else { !bits }).to_be_bytes().to_vec()
+        }
+        Value::Numeric(n) => numeric_gob(n)?,
+        Value::Text(s) => {
+            let mut out = Vec::with_capacity(s.len() + 2);
+            let mut length = s.len() as u64;
+            while length >= 0x80 {
+                out.push(length as u8 | 0x80);
+                length >>= 7;
+            }
+            out.push(length as u8);
+            out.extend_from_slice(s.as_bytes());
+            out
+        }
+        Value::Date(d) => {
+            let ts = match *d {
+                dt::DATE_NOBEGIN => dt::TIMESTAMP_NOBEGIN,
+                dt::DATE_NOEND => dt::TIMESTAMP_NOEND,
+                d => d as i64 * USECS_PER_DAY,
+            };
+            let (seconds, nanos) = dt::timestamp_to_go(ts);
+            dt::go_time::marshal(seconds, nanos)
+        }
+        Value::Timestamp(ts) | Value::TimestampTz(ts) => {
+            let (seconds, nanos) = dt::timestamp_to_go(*ts);
+            dt::go_time::marshal(seconds, nanos)
+        }
+        Value::Time(t) => offset_i64(*t).to_vec(),
+        Value::TimeTz(t, z) => [offset_i64(*t).as_slice(), &offset_i32(*z)].concat(),
+        Value::Interval(iv) => {
+            let sort_nanos = (iv.months as i64 * 30 * USECS_PER_DAY + iv.days as i64 * USECS_PER_DAY + iv.micros)
+                .saturating_mul(1000);
+            [offset_i64(sort_nanos).as_slice(), &offset_i32(iv.months), &offset_i32(iv.days)].concat()
+        }
+        Value::Array(a) => {
+            let element = ColumnType { oid: a.element, modifier: ty.modifier };
+            crate::array::serialize(a, &|v| serialize_value(v, element))?
+        }
+        other => return Err(PgError::unsupported(format!("storing {other:?}"))),
+    })
+}
+
+/// deserialize_value reads a value of a type from Doltgres' type serialization.
+pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
+    use crate::datetime::{self as dt, USECS_PER_DAY};
+    use crate::oid;
+    let corrupt = || PgError::internal(format!("a stored value of type {} has {} bytes", ty.oid, field.len()));
+    if crate::array::is_array_type(ty.oid) {
+        let element = crate::catalog::builtin_type(ty.oid).map_or(oid::TEXT, |t| t.elem);
+        let element_type = ColumnType { oid: element, modifier: ty.modifier };
+        let array = crate::array::deserialize(field, element, &|bytes| deserialize_value(bytes, element_type))?;
+        return Ok(Value::Array(Box::new(array)));
+    }
+    Ok(match ty.oid {
+        oid::BOOL => Value::Bool(field.first().is_some_and(|&b| b != 0)),
+        oid::INT2 => Value::Int2((u16::from_be_bytes(field.try_into().map_err(|_| corrupt())?) ^ (1 << 15)) as i16),
+        oid::INT4 => Value::Int4(read_offset_i32(field).ok_or_else(corrupt)?),
+        oid::INT8 => Value::Int8(read_offset_i64(field).ok_or_else(corrupt)?),
+        oid::FLOAT4 => {
+            let bits = u32::from_be_bytes(field.try_into().map_err(|_| corrupt())?);
+            Value::Float4(f32::from_bits(if bits & (1 << 31) != 0 { bits ^ (1 << 31) } else { !bits }))
+        }
+        oid::FLOAT8 => {
+            let bits = u64::from_be_bytes(field.try_into().map_err(|_| corrupt())?);
+            Value::Float8(f64::from_bits(if bits & (1 << 63) != 0 { bits ^ (1 << 63) } else { !bits }))
+        }
+        oid::NUMERIC => Value::Numeric(numeric_from_gob(field).ok_or_else(corrupt)?),
+        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME => {
+            let (mut length, mut shift, mut i) = (0u64, 0, 0);
+            loop {
+                let byte = *field.get(i).ok_or_else(corrupt)?;
+                length |= ((byte & 0x7f) as u64) << shift;
+                i += 1;
+                if byte < 0x80 {
+                    break;
+                }
+                shift += 7;
+            }
+            let bytes = field.get(i..i + length as usize).ok_or_else(corrupt)?;
+            Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?)
+        }
+        oid::DATE | oid::TIMESTAMP | oid::TIMESTAMPTZ => {
+            let (seconds, nanos) = dt::go_time::unmarshal(field).ok_or_else(corrupt)?;
+            let ts = dt::timestamp_from_go(seconds, nanos);
             match ty.oid {
-                crate::oid::DATE => Value::Date(match ts {
-                    crate::datetime::TIMESTAMP_NOBEGIN => crate::datetime::DATE_NOBEGIN,
-                    crate::datetime::TIMESTAMP_NOEND => crate::datetime::DATE_NOEND,
-                    ts => ts.div_euclid(crate::datetime::USECS_PER_DAY) as i32,
+                oid::DATE => Value::Date(match ts {
+                    dt::TIMESTAMP_NOBEGIN => dt::DATE_NOBEGIN,
+                    dt::TIMESTAMP_NOEND => dt::DATE_NOEND,
+                    ts => ts.div_euclid(USECS_PER_DAY) as i32,
                 }),
-                crate::oid::TIMESTAMP => Value::Timestamp(go_local(field, ts)),
+                oid::TIMESTAMP => Value::Timestamp(go_local(field, ts)),
                 _ => Value::TimestampTz(ts),
             }
         }
-        encoding::EXTENDED if ty.oid == crate::oid::TIME => Value::Time(read_offset_i64(field).ok_or_else(corrupt)?),
-        encoding::EXTENDED if ty.oid == crate::oid::TIMETZ && field.len() == 12 => Value::TimeTz(
+        oid::TIME => Value::Time(read_offset_i64(field).ok_or_else(corrupt)?),
+        oid::TIMETZ if field.len() == 12 => Value::TimeTz(
             read_offset_i64(&field[..8]).ok_or_else(corrupt)?,
             read_offset_i32(&field[8..]).ok_or_else(corrupt)?,
         ),
-        encoding::EXTENDED if ty.oid == crate::oid::INTERVAL && field.len() == 16 => {
+        oid::INTERVAL if field.len() == 16 => {
             let sort_nanos = read_offset_i64(&field[..8]).ok_or_else(corrupt)?;
             let months = read_offset_i32(&field[8..12]).ok_or_else(corrupt)?;
             let days = read_offset_i32(&field[12..]).ok_or_else(corrupt)?;
-            let nanos = sort_nanos - (months as i64 * 30 + days as i64) * crate::datetime::USECS_PER_DAY * 1000;
-            Value::Interval(crate::datetime::Interval { months, days, micros: nanos / 1000 })
+            let nanos = sort_nanos - (months as i64 * 30 + days as i64) * USECS_PER_DAY * 1000;
+            Value::Interval(dt::Interval { months, days, micros: nanos / 1000 })
         }
-        _ => return Err(PgError::unsupported(format!("reading fields of encoding {field_encoding}"))),
+        other => return Err(PgError::unsupported(format!("reading stored values of type {other}"))),
+    })
+}
+
+/// numeric_gob writes a numeric as shopspring's Decimal.MarshalBinary does: the exponent as a big-endian 32-bit
+/// integer, then the coefficient as Go's big.Int.GobEncode writes it.
+fn numeric_gob(n: &Numeric) -> Result<Vec<u8>> {
+    let Numeric::Finite { negative, coefficient, scale } = n else {
+        return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "cannot store NaN or infinite numeric array elements"));
+    };
+    let mut out = (-(*scale as i32)).to_be_bytes().to_vec();
+    out.push(2 | (*negative as u8));
+    if !coefficient.is_zero() {
+        out.extend_from_slice(&coefficient.to_bytes_be());
+    }
+    Ok(out)
+}
+
+/// numeric_from_gob reads what numeric_gob writes.
+fn numeric_from_gob(bytes: &[u8]) -> Option<Numeric> {
+    let exponent = i32::from_be_bytes(bytes.get(..4)?.try_into().ok()?);
+    let flags = *bytes.get(4)?;
+    let coefficient = num_bigint::BigUint::from_bytes_be(&bytes[5..]);
+    let negative = flags & 1 == 1 && !coefficient.is_zero();
+    Some(if exponent >= 0 {
+        Numeric::Finite {
+            negative,
+            coefficient: coefficient * num_bigint::BigUint::from(10u32).pow(exponent as u32),
+            scale: 0,
+        }
+    } else {
+        Numeric::Finite { negative, coefficient, scale: (-exponent) as u32 }
     })
 }
 

@@ -25,7 +25,7 @@ use crate::oid::{BOOL, FLOAT4, FLOAT8, INT2, INT4, INT8, NUMERIC, TEXT};
 use crate::query::Ctx;
 use crate::types::Value;
 
-use super::{ANYELEMENT, implicitly_castable};
+use super::{ANYARRAY, ANYELEMENT, ANYNONARRAY, implicitly_castable};
 
 /// Kind is what an aggregate computes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,6 +43,7 @@ pub enum Kind {
     VarSamp,
     StddevPop,
     StddevSamp,
+    ArrayAgg,
 }
 
 /// Aggregate is one overload of an aggregate function.
@@ -93,6 +94,8 @@ pub const AGGREGATES: &[Aggregate] = &[
     a("stddev_samp", &[FLOAT8], FLOAT8, Kind::StddevSamp),
     a("stddev", &[NUMERIC], NUMERIC, Kind::StddevSamp),
     a("stddev", &[FLOAT8], FLOAT8, Kind::StddevSamp),
+    a("array_agg", &[ANYNONARRAY], ANYARRAY, Kind::ArrayAgg),
+    a("array_agg", &[ANYARRAY], ANYARRAY, Kind::ArrayAgg),
 ];
 
 /// exists reports whether an aggregate of the name exists.
@@ -154,13 +157,20 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<(usize, Vec<u
         .args
         .iter()
         .zip(types)
-        .map(
-            |(&p, &t)| {
-                if p == ANYELEMENT || p == super::ANY { if t == crate::oid::UNKNOWN { TEXT } else { t } } else { p }
-            },
-        )
+        .map(|(&p, &t)| {
+            if matches!(p, ANYELEMENT | ANYNONARRAY | ANYARRAY | super::ANY) {
+                if t == crate::oid::UNKNOWN { TEXT } else { t }
+            } else {
+                p
+            }
+        })
         .collect();
-    let ret = if aggregate.ret == ANYELEMENT { element } else { aggregate.ret };
+    let ret = match aggregate.ret {
+        ANYELEMENT => element,
+        ANYARRAY if aggregate.args == [ANYARRAY] => element,
+        ANYARRAY => crate::expr::array_of(element),
+        ret => ret,
+    };
     Ok((index, arg_types, ret))
 }
 
@@ -258,6 +268,17 @@ impl Accumulator {
                 }
                 return Ok(Value::Text(out));
             }
+            Kind::ArrayAgg => {
+                let values: Vec<Value> = args.into_iter().filter_map(|r| r.into_iter().next()).collect();
+                if values.is_empty() {
+                    return Ok(Value::Null);
+                }
+                let element = crate::expr::element_type(call.ret);
+                if crate::array::is_array_type(aggregate.args[0]) {
+                    return array_agg_arrays(element, values);
+                }
+                return Ok(Value::Array(Box::new(crate::array::Array::one_dimensional(element, values))));
+            }
             _ => args.into_iter().filter_map(|r| r.into_iter().next()).filter(|v| !v.is_null()).collect(),
         };
         match aggregate.kind {
@@ -278,9 +299,24 @@ impl Accumulator {
             Kind::VarPop | Kind::VarSamp | Kind::StddevPop | Kind::StddevSamp => {
                 variance(&values, aggregate.kind, call.ret)
             }
-            Kind::CountStar | Kind::StringAgg => unreachable!("handled above"),
+            Kind::CountStar | Kind::StringAgg | Kind::ArrayAgg => unreachable!("handled above"),
         }
     }
+}
+
+/// array_agg_arrays stacks arrays of matching dimensions into an array with one more dimension.
+fn array_agg_arrays(element: u32, values: Vec<Value>) -> Result<Value> {
+    let error = |message: &str| PgError::new(code::ARRAY_SUBSCRIPT_ERROR, message);
+    for value in &values {
+        match value {
+            Value::Array(a) if a.dims.is_empty() => return Err(error("cannot accumulate empty arrays")),
+            Value::Array(_) => {}
+            _ => return Err(PgError::new(code::NULL_VALUE_NOT_ALLOWED, "cannot accumulate null arrays")),
+        }
+    }
+    crate::array::nest(element, values)
+        .map(|a| Value::Array(Box::new(a)))
+        .map_err(|_| error("cannot accumulate arrays of different dimensionality"))
 }
 
 /// numeric_of converts an integer or numeric value to numeric.

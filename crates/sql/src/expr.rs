@@ -20,8 +20,9 @@ use pg_query::protobuf::a_const::Val;
 use pg_query::protobuf::{AExprKind, BoolExprType, NullTestType, SqlValueFunctionOp};
 use pg_query::{Node, NodeEnum};
 
+use crate::array::{Array, is_array_type};
 use crate::cast::{cast_value, type_display};
-use crate::catalog::{ColumnType, resolve_type};
+use crate::catalog::{ColumnType, builtin_type, resolve_type};
 use crate::error::{PgError, Result, code};
 use crate::functions;
 use crate::functions::aggregate::AggCall;
@@ -89,6 +90,17 @@ pub enum DateOp {
     IntervalDivFloat,
 }
 
+/// ArrayOp is an operator over arrays.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrayOp {
+    Concat,
+    Append,
+    Prepend,
+    Contains,
+    ContainedBy,
+    Overlaps,
+}
+
 /// Expr is a bound expression.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -141,6 +153,13 @@ pub enum Expr {
     Default(usize),
     /// A date and time operator.
     DateTime(DateOp, Box<Expr>, Box<Expr>),
+    /// An ARRAY constructor of the element type, whose items are themselves arrays when it is multidimensional.
+    Array(u32, Vec<Expr>, bool),
+    /// Subscripts of an array, as lower and upper bounds, which select a slice when the flag is set.
+    Subscript(Box<Expr>, Vec<(Option<Expr>, Option<Expr>)>, bool),
+    /// A comparison against each element of an array, which holds for every element when the flag is set.
+    AnyArray(Box<Expr>, Box<Expr>, bool),
+    ArrayOp(ArrayOp, Box<Expr>, Box<Expr>),
 }
 
 /// Bound is a bound expression with its type.
@@ -196,6 +215,8 @@ pub fn common_type(types: &[(ColumnType, i32)], context: &str) -> Result<ColumnT
                 }
             }
             _ if is_string(result.oid) && is_string(ty.oid) => typ(oid::TEXT),
+            _ if implicitly_converts(result.oid, ty.oid) => typ(ty.oid),
+            _ if implicitly_converts(ty.oid, result.oid) => typ(result.oid),
             _ => {
                 return Err(PgError {
                     position: position(location),
@@ -294,7 +315,12 @@ impl<'b, 'a> Binder<'b, 'a> {
             NodeEnum::TypeCast(cast) => {
                 let target = resolve_type_name(cast.type_name.as_ref().ok_or_else(|| PgError::internal("no type"))?)?;
                 let arg = cast.arg.as_deref().ok_or_else(|| PgError::internal("no cast argument"))?;
-                let bound = self.bind(arg)?;
+                let bound = match arg.node.as_ref() {
+                    Some(NodeEnum::AArrayExpr(array)) if is_array_type(target.oid) => {
+                        self.array_expr(array, Some(target.oid))?
+                    }
+                    _ => self.bind(arg)?,
+                };
                 coerce(bound, target, true, arg_location(arg))
             }
             NodeEnum::AExpr(e) => self.a_expr(e),
@@ -360,6 +386,8 @@ impl<'b, 'a> Binder<'b, 'a> {
                 Ok((Expr::BoolTest(Box::new(expr), value, negated), typ(oid::BOOL)))
             }
             NodeEnum::SubLink(link) => self.sublink(link),
+            NodeEnum::AArrayExpr(array) => self.array_expr(array, None),
+            NodeEnum::AIndirection(indirection) => self.indirection(indirection),
             NodeEnum::NullTest(test) => {
                 let arg = test.arg.as_deref().ok_or_else(|| PgError::internal("no null test argument"))?;
                 let (expr, _) = self.bind(arg)?;
@@ -607,7 +635,24 @@ impl<'b, 'a> Binder<'b, 'a> {
                 let Expr::Compare(_, l, r) = test else { return Err(PgError::internal("a distinct test")) };
                 Ok((Expr::DistinctFrom(l, r, kind == AExprKind::AexprNotDistinct), typ(oid::BOOL)))
             }
-            AExprKind::AexprOpAny | AExprKind::AexprOpAll => Err(PgError::unsupported("ANY and ALL with arrays")),
+            AExprKind::AexprOpAny | AExprKind::AexprOpAll => {
+                let left = self.bind(operand(&e.lexpr)?)?;
+                let mut right = self.bind(operand(&e.rexpr)?)?;
+                if right.1.oid == oid::UNKNOWN {
+                    let array_type = if left.1.oid == oid::UNKNOWN { oid::TEXT_ARRAY } else { array_of(left.1.oid) };
+                    right = coerce(right, typ(array_type), false, e.location)?;
+                }
+                if !is_array_type(right.1.oid) {
+                    return Err(PgError {
+                        position: position(e.location),
+                        ..PgError::new(code::WRONG_OBJECT_TYPE, "op ANY/ALL (array) requires array on right side")
+                    });
+                }
+                let element = ColumnType { oid: element_type(right.1.oid), ..right.1 };
+                let (comparison, _) = self.binary(&op, left, (Expr::SubqueryValue, element), e.location)?;
+                let all = kind == AExprKind::AexprOpAll;
+                Ok((Expr::AnyArray(Box::new(comparison), Box::new(right.0), all), typ(oid::BOOL)))
+            }
             _ => Err(PgError::unsupported(format!("the operator expression {kind:?}"))),
         }
     }
@@ -731,6 +776,9 @@ impl<'b, 'a> Binder<'b, 'a> {
                 format!("operator does not exist: {} {op} {}", type_display(lt), type_display(rt)),
             )
         };
+        if is_array_type(lt) || is_array_type(rt) {
+            return self.array_binary(op, left, right, location).and_then(|b| b.ok_or_else(missing));
+        }
         if is_datetime(lt) || is_datetime(rt) {
             if let Some(bound) = self.datetime_binary(op, &left, &right, location)? {
                 return Ok(bound);
@@ -805,6 +853,162 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         Ok((Expr::Arith(arith, Box::new(left), Box::new(right), domain), domain))
     }
+}
+
+impl<'b, 'a> Binder<'b, 'a> {
+    /// array_expr binds an ARRAY constructor, whose type comes from a cast around it when it is empty.
+    fn array_expr(&mut self, array: &pg_query::protobuf::AArrayExpr, target: Option<u32>) -> Result<Bound> {
+        let nested = array.elements.iter().any(|e| matches!(e.node.as_ref(), Some(NodeEnum::AArrayExpr(_))));
+        let mut bound = Vec::with_capacity(array.elements.len());
+        for element in &array.elements {
+            let item = match element.node.as_ref() {
+                Some(NodeEnum::AArrayExpr(inner)) => self.array_expr(inner, target)?,
+                _ => self.bind(element)?,
+            };
+            bound.push((item, arg_location(element)));
+        }
+        if bound.is_empty() {
+            let Some(target) = target else {
+                return Err(PgError {
+                    position: position(array.location),
+                    hint: Some("Explicitly cast to the desired type, for example ARRAY[]::integer[].".into()),
+                    ..PgError::new(code::INDETERMINATE_DATATYPE, "cannot determine type of empty array")
+                });
+            };
+            return Ok((Expr::Array(element_type(target), Vec::new(), false), typ(target)));
+        }
+        let types: Vec<(ColumnType, i32)> = bound.iter().map(|((_, t), l)| (*t, *l)).collect();
+        let mut ty = match target {
+            Some(target) if types.iter().all(|(t, _)| t.oid == oid::UNKNOWN) => {
+                typ(if nested { target } else { element_type(target) })
+            }
+            _ => common_type(&types, "ARRAY")?,
+        };
+        if nested && !is_array_type(ty.oid) {
+            ty = typ(array_of(ty.oid));
+        }
+        let mut items = Vec::with_capacity(bound.len());
+        for (item, location) in bound {
+            items.push(coerce(item, ty, false, location)?.0);
+        }
+        if nested {
+            return Ok((Expr::Array(element_type(ty.oid), items, true), typ(ty.oid)));
+        }
+        Ok((Expr::Array(ty.oid, items, false), typ(array_of(ty.oid))))
+    }
+
+    /// indirection binds subscripts of an array.
+    fn indirection(&mut self, indirection: &pg_query::protobuf::AIndirection) -> Result<Bound> {
+        let arg = indirection.arg.as_deref().ok_or_else(|| PgError::internal("no subscripted value"))?;
+        let (base, ty) = self.bind(arg)?;
+        let mut subscripts = Vec::new();
+        let mut slice = false;
+        for item in &indirection.indirection {
+            let Some(NodeEnum::AIndices(indices)) = item.node.as_ref() else {
+                return Err(PgError::unsupported("field selection"));
+            };
+            slice |= indices.is_slice;
+            let mut bound_index = |node: &Option<Box<Node>>| -> Result<Option<Expr>> {
+                match node.as_deref() {
+                    Some(node) => {
+                        let bound = self.bind(node)?;
+                        let location = arg_location(node);
+                        Ok(Some(subscript_int(bound, location)?))
+                    }
+                    None => Ok(None),
+                }
+            };
+            let lower = bound_index(&indices.lidx)?;
+            let upper = bound_index(&indices.uidx)?;
+            subscripts.push(if indices.is_slice { (lower, upper) } else { (Some(Expr::Const(Value::Int4(1))), upper) });
+        }
+        if !is_array_type(ty.oid) {
+            return Err(PgError {
+                position: position(arg_location(arg)),
+                ..PgError::new(
+                    code::DATATYPE_MISMATCH,
+                    format!("cannot subscript type {} because it does not support subscripting", type_display(ty.oid)),
+                )
+            });
+        }
+        let result = if slice { ty } else { ColumnType { oid: element_type(ty.oid), ..ty } };
+        Ok((Expr::Subscript(Box::new(base), subscripts, slice), result))
+    }
+
+    /// array_binary binds an operator with an array operand, or returns None when no array operator matches.
+    fn array_binary(&mut self, op: &str, left: Bound, right: Bound, location: i32) -> Result<Option<Bound>> {
+        let (lt, rt) = (left.1.oid, right.1.oid);
+        let (l_array, r_array) = (is_array_type(lt), is_array_type(rt));
+        let array_op = match op {
+            "@>" => Some(ArrayOp::Contains),
+            "<@" => Some(ArrayOp::ContainedBy),
+            "&&" => Some(ArrayOp::Overlaps),
+            "||" => Some(ArrayOp::Concat),
+            _ => None,
+        };
+        if op == "||" && (!l_array || !r_array) && lt != oid::UNKNOWN && rt != oid::UNKNOWN {
+            let (array, element, kind) =
+                if l_array { (&left.1, rt, ArrayOp::Append) } else { (&right.1, lt, ArrayOp::Prepend) };
+            let common = common_type(&[(typ(element_type(array.oid)), location), (typ(element), location)], "ARRAY")
+                .map_err(|_| ())
+                .ok();
+            let Some(common) = common else { return Ok(None) };
+            let array_type = typ(array_of(common.oid));
+            let (l, r) = if l_array {
+                (coerce(left, array_type, false, location)?.0, coerce(right, common, false, location)?.0)
+            } else {
+                (coerce(left, common, false, location)?.0, coerce(right, array_type, false, location)?.0)
+            };
+            return Ok(Some((Expr::ArrayOp(kind, Box::new(l), Box::new(r)), array_type)));
+        }
+        let domain = match (l_array, r_array) {
+            (true, true) => match common_type(&[(typ(lt), location), (typ(rt), location)], "ARRAY") {
+                Ok(t) => t,
+                Err(_) if op == "||" => {
+                    let (le, re) = (element_type(lt), element_type(rt));
+                    if le != re {
+                        return Ok(None);
+                    }
+                    left.1
+                }
+                Err(_) => return Ok(None),
+            },
+            (true, false) if rt == oid::UNKNOWN => left.1,
+            (false, true) if lt == oid::UNKNOWN => right.1,
+            _ => return Ok(None),
+        };
+        let domain = ColumnType { modifier: -1, ..domain };
+        let l = coerce(left, domain, false, location)?.0;
+        let r = coerce(right, domain, false, location)?.0;
+        if let Some(kind) = array_op {
+            let ret = if kind == ArrayOp::Concat { domain } else { typ(oid::BOOL) };
+            return Ok(Some((Expr::ArrayOp(kind, Box::new(l), Box::new(r)), ret)));
+        }
+        let cmp = match op {
+            "=" => CmpOp::Eq,
+            "<>" | "!=" => CmpOp::Ne,
+            "<" => CmpOp::Lt,
+            "<=" => CmpOp::Le,
+            ">" => CmpOp::Gt,
+            ">=" => CmpOp::Ge,
+            _ => return Ok(None),
+        };
+        Ok(Some((Expr::Compare(cmp, Box::new(l), Box::new(r)), typ(oid::BOOL))))
+    }
+}
+
+/// subscript_int converts an array subscript to an integer.
+fn subscript_int(bound: Bound, location: i32) -> Result<Expr> {
+    if !matches!(
+        bound.1.oid,
+        oid::INT2 | oid::INT4 | oid::INT8 | oid::UNKNOWN | oid::NUMERIC | oid::FLOAT4 | oid::FLOAT8
+    ) {
+        return Err(PgError {
+            position: position(location),
+            ..PgError::new(code::DATATYPE_MISMATCH, "array subscript must have type integer")
+        });
+    }
+    Ok(coerce(bound, typ(oid::INT4), true, location)?.0)
 }
 
 /// implicit_datetime reports whether Postgres converts one date or time type to another without being asked.
@@ -1027,12 +1231,8 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     if from.oid == to.oid && !explicit && to.modifier == -1 {
         return Ok((expr, to));
     }
-    let numeric = numeric_rank(from.oid).zip(numeric_rank(to.oid));
-    let allowed = explicit
-        || from.oid == to.oid
-        || numeric.is_some_and(|(f, t)| f <= t)
-        || (is_string(from.oid) && is_string(to.oid))
-        || implicit_datetime(from.oid, to.oid);
+    let allowed = explicit && (is_array_type(from.oid) == is_array_type(to.oid) || is_string(from.oid))
+        || implicitly_converts(from.oid, to.oid);
     if !allowed {
         return Err(PgError {
             position: position(location),
@@ -1048,16 +1248,45 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     Ok((Expr::Cast(Box::new(expr), to, explicit), to))
 }
 
+/// implicitly_converts reports whether Postgres converts a value of one type to the other without being asked.
+fn implicitly_converts(from: u32, to: u32) -> bool {
+    if is_array_type(from) && is_array_type(to) {
+        return implicitly_converts(element_type(from), element_type(to));
+    }
+    let numeric = numeric_rank(from).zip(numeric_rank(to));
+    from == to
+        || numeric.is_some_and(|(f, t)| f <= t)
+        || (is_string(from) && is_string(to))
+        || implicit_datetime(from, to)
+}
+
+/// assignable reports whether a value of one type converts to the other on assignment.
+fn assignable(from: u32, to: u32) -> bool {
+    if is_array_type(from) && is_array_type(to) {
+        return assignable(element_type(from), element_type(to));
+    }
+    from == oid::UNKNOWN
+        || from == to
+        || (numeric_rank(from).is_some() && numeric_rank(to).is_some())
+        || assignable_datetime(from, to)
+        || (is_string(to) && !is_array_type(from))
+}
+
+/// element_type returns the element type of an array type.
+pub fn element_type(array_type: u32) -> u32 {
+    builtin_type(array_type).map_or(oid::TEXT, |t| t.elem)
+}
+
+/// array_of returns the array type of an element type.
+pub fn array_of(element: u32) -> u32 {
+    builtin_type(element).map_or(oid::TEXT_ARRAY, |t| t.array)
+}
+
 /// assign converts a bound expression to a column's type as an assignment does, which also allows numeric narrowing
 /// and conversions to text, and names the column in its error.
 pub fn assign(bound: Bound, to: ColumnType, column: &str, location: i32) -> Result<Bound> {
     let from = bound.1.oid;
-    let allowed = from == oid::UNKNOWN
-        || from == to.oid
-        || (numeric_rank(from).is_some() && numeric_rank(to.oid).is_some())
-        || assignable_datetime(from, to.oid)
-        || is_string(to.oid);
-    if !allowed {
+    if !assignable(from, to.oid) {
         return Err(PgError {
             position: position(location),
             hint: Some("You will need to rewrite or cast the expression.".into()),
@@ -1110,9 +1339,16 @@ fn figure_name_strength(node: &Node) -> (String, u8) {
                 None => ("?column?".into(), 0),
             },
         },
-        Some(NodeEnum::CaseExpr(_)) => ("case".into(), 1),
-        Some(NodeEnum::AArrayExpr(_)) => ("array".into(), 1),
-        Some(NodeEnum::RowExpr(_)) => ("row".into(), 1),
+        Some(NodeEnum::CaseExpr(c)) => match c.defresult.as_deref().map(figure_name_strength) {
+            Some((name, strength)) if strength > 1 => (name, strength),
+            _ => ("case".into(), 1),
+        },
+        Some(NodeEnum::AArrayExpr(_)) => strong("array"),
+        Some(NodeEnum::RowExpr(_)) => strong("row"),
+        Some(NodeEnum::AIndirection(i)) => match i.indirection.iter().filter_map(node_name).next_back() {
+            Some(name) => strong(name),
+            None => i.arg.as_deref().map_or_else(|| ("?column?".into(), 0), figure_name_strength),
+        },
         Some(NodeEnum::CoalesceExpr(_)) => strong("coalesce"),
         Some(NodeEnum::MinMaxExpr(m)) => {
             strong(if m.op == pg_query::protobuf::MinMaxOp::IsGreatest as i32 { "greatest" } else { "least" })
@@ -1192,6 +1428,7 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
             .cmp(&((*rt as i128) + (*rz as i128) * 1_000_000))
             .then(lz.cmp(rz)),
         (Value::Interval(l), Value::Interval(r)) => l.cmp_key().cmp(&r.cmp_key()),
+        (Value::Array(l), Value::Array(r)) => crate::array::compare(l, r),
         (l, r) => match (as_i64(l), as_i64(r)) {
             (Some(l), Some(r)) => l.cmp(&r),
             _ => Ordering::Equal,
@@ -1310,6 +1547,68 @@ impl Expr {
                 date_op(*op, l, r)?
             }
             Expr::SubqueryValue => ctx.subquery_value.clone(),
+            Expr::Array(element, items, nested) => {
+                let values = items.iter().map(|i| i.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+                if *nested {
+                    Value::Array(Box::new(crate::array::nest(*element, values)?))
+                } else {
+                    Value::Array(Box::new(Array::one_dimensional(*element, values)))
+                }
+            }
+            Expr::Subscript(base, subscripts, slice) => {
+                let Value::Array(array) = base.eval(ctx, row)? else { return Ok(Value::Null) };
+                let mut bounds = Vec::with_capacity(subscripts.len());
+                for (lower, upper) in subscripts {
+                    let mut bound = |e: &Option<Expr>| -> Result<Option<Option<i32>>> {
+                        match e {
+                            Some(e) => match e.eval(ctx, row)? {
+                                Value::Int4(i) => Ok(Some(Some(i))),
+                                _ => Ok(None),
+                            },
+                            None => Ok(Some(None)),
+                        }
+                    };
+                    let (Some(lower), Some(upper)) = (bound(lower)?, bound(upper)?) else { return Ok(Value::Null) };
+                    bounds.push((lower, upper));
+                }
+                if *slice {
+                    Value::Array(Box::new(crate::array::slice(&array, &bounds)))
+                } else {
+                    let indexes: Vec<i32> = bounds.iter().map(|(_, u)| u.unwrap_or(0)).collect();
+                    crate::array::element(&array, &indexes).cloned().unwrap_or(Value::Null)
+                }
+            }
+            Expr::AnyArray(comparison, array, all) => {
+                let Value::Array(array) = array.eval(ctx, row)? else { return Ok(Value::Null) };
+                let mut saw_null = false;
+                let previous = std::mem::replace(&mut ctx.subquery_value, Value::Null);
+                let mut result = None;
+                for value in array.values {
+                    ctx.subquery_value = value;
+                    match comparison.eval(ctx, row) {
+                        Ok(Value::Bool(b)) if b != *all => {
+                            result = Some(b);
+                            break;
+                        }
+                        Ok(Value::Null) => saw_null = true,
+                        Ok(_) => {}
+                        Err(err) => {
+                            ctx.subquery_value = previous;
+                            return Err(err);
+                        }
+                    }
+                }
+                ctx.subquery_value = previous;
+                match result {
+                    Some(b) => Value::Bool(b),
+                    None if saw_null => Value::Null,
+                    None => Value::Bool(*all),
+                }
+            }
+            Expr::ArrayOp(op, left, right) => {
+                let (l, r) = (left.eval(ctx, row)?, right.eval(ctx, row)?);
+                crate::array::operate(*op, l, r)?
+            }
             Expr::Coalesce(args) => {
                 for arg in args {
                     let value = arg.eval(ctx, row)?;
@@ -1472,6 +1771,20 @@ impl Expr {
                 let l = b(l);
                 Expr::DateTime(op, l, b(r))
             }
+            Expr::Array(t, items, n) => Expr::Array(t, items.into_iter().map(&mut *f).collect(), n),
+            Expr::Subscript(base, subscripts, slice) => {
+                let base = b(base);
+                let subscripts = subscripts.into_iter().map(|(l, u)| (l.map(&mut *f), u.map(&mut *f))).collect();
+                Expr::Subscript(base, subscripts, slice)
+            }
+            Expr::AnyArray(c, a, all) => {
+                let c = b(c);
+                Expr::AnyArray(c, b(a), all)
+            }
+            Expr::ArrayOp(op, l, r) => {
+                let l = b(l);
+                Expr::ArrayOp(op, l, b(r))
+            }
             other => other,
         }
     }
@@ -1490,11 +1803,21 @@ impl Expr {
             | Expr::Or(l, r)
             | Expr::NullIf(l, r)
             | Expr::DateTime(_, l, r)
+            | Expr::AnyArray(l, r, _)
+            | Expr::ArrayOp(_, l, r)
             | Expr::DistinctFrom(l, r, _) => {
                 l.visit(f);
                 r.visit(f);
             }
-            Expr::Func(_, args) | Expr::Coalesce(args) | Expr::MinMax(_, args) => args.iter().for_each(|a| a.visit(f)),
+            Expr::Func(_, args) | Expr::Coalesce(args) | Expr::MinMax(_, args) | Expr::Array(_, args, _) => {
+                args.iter().for_each(|a| a.visit(f))
+            }
+            Expr::Subscript(base, subscripts, _) => {
+                base.visit(f);
+                for (l, u) in subscripts {
+                    l.iter().chain(u).for_each(|e| e.visit(f));
+                }
+            }
             Expr::Case(whens, otherwise) => {
                 for (c, r) in whens {
                     c.visit(f);

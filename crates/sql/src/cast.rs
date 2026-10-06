@@ -21,7 +21,11 @@ use crate::oid;
 use crate::types::Value;
 
 /// type_display returns the name Postgres uses for a type in error messages.
-pub fn type_display(type_oid: u32) -> &'static str {
+pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
+    if crate::array::is_array_type(type_oid) {
+        let element = builtin_type(type_oid).map_or(0, |t| t.elem);
+        return format!("{}[]", type_display(element)).into();
+    }
     match type_oid {
         oid::BOOL => "boolean",
         oid::INT2 => "smallint",
@@ -40,6 +44,7 @@ pub fn type_display(type_oid: u32) -> &'static str {
         oid::BPCHAR => "character",
         _ => builtin_type(type_oid).map_or("unknown", |t| t.name),
     }
+    .into()
 }
 
 /// invalid_syntax returns Postgres' error for text that is not a value of the type.
@@ -143,6 +148,11 @@ fn parse_bool(text: &str) -> Result<bool> {
 
 /// input reads a value of the type from its text format.
 pub fn input(text: &str, type_oid: u32) -> Result<Value> {
+    if crate::array::is_array_type(type_oid) {
+        let element = builtin_type(type_oid).map_or(oid::TEXT, |t| t.elem);
+        let parsed = crate::array::parse(text, element, &|item| input(item, element))?;
+        return Ok(Value::Array(Box::new(parsed)));
+    }
     Ok(match type_oid {
         oid::BOOL => Value::Bool(parse_bool(text)?),
         oid::INT2 => Value::Int2(parse_integer(text, type_oid, i16::MIN as i128, i16::MAX as i128)? as i16),
@@ -338,6 +348,27 @@ fn cast_datetime(value: Value, to: ColumnType) -> Result<Value> {
 pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value> {
     if value.is_null() {
         return Ok(Value::Null);
+    }
+    if crate::array::is_array_type(to.oid) {
+        let element = builtin_type(to.oid).map_or(oid::TEXT, |t| t.elem);
+        let element_type = ColumnType { oid: element, modifier: to.modifier };
+        return match value {
+            Value::Array(array) => {
+                let values = array
+                    .values
+                    .into_iter()
+                    .map(|v| cast_value(v, element_type, explicit))
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Value::Array(Box::new(crate::array::Array { element, dims: array.dims, values })))
+            }
+            Value::Text(text) => {
+                let parsed = crate::array::parse(&text, element, &|item| {
+                    input(item, element).and_then(|v| cast_value(v, element_type, explicit))
+                })?;
+                Ok(Value::Array(Box::new(parsed)))
+            }
+            other => Err(cannot_cast(&other, to.oid)),
+        };
     }
     Ok(match to.oid {
         oid::INT2 | oid::INT4 | oid::INT8 => to_integer(value, to.oid)?,

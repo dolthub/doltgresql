@@ -14,6 +14,7 @@
 
 //! Values and their text and binary wire formats.
 
+use crate::array::{self, Array};
 use crate::datetime::{self, Interval};
 use crate::error::{PgError, Result, code};
 use crate::numeric::Numeric;
@@ -45,6 +46,7 @@ pub enum Value {
     /// Microseconds from 2000-01-01 00:00:00 UTC.
     TimestampTz(i64),
     Interval(Interval),
+    Array(Box<Array>),
     /// A string of the text types, and the value of an untyped literal.
     Text(String),
     /// The rows of a set-returning function, which never reach a client.
@@ -114,6 +116,7 @@ impl Value {
                 datetime::format_timestamp(*ts, Some((offset, &name)), f)
             }),
             Value::Interval(iv) => datetime::with_format(|f| datetime::format_interval(iv, f.interval_style)),
+            Value::Array(a) => array::format(a, &|v| v.output().unwrap_or_default()),
             Value::Text(s) => s.clone(),
             Value::Set(_) => return None,
         })
@@ -137,6 +140,10 @@ impl Value {
             Value::Interval(iv) => {
                 [iv.micros.to_be_bytes().as_slice(), &iv.days.to_be_bytes(), &iv.months.to_be_bytes()].concat()
             }
+            Value::Array(a) => {
+                let element = a.element;
+                array::send(a, &|v| v.send(element))
+            }
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) => s.clone().into_bytes(),
             Value::Set(_) => return None,
@@ -146,6 +153,11 @@ impl Value {
     /// decode returns a parameter value sent in the format for the type, where a zero type OID means unspecified.
     pub fn decode(type_oid: u32, format: i16, bytes: Option<&[u8]>) -> Result<Value> {
         let Some(bytes) = bytes else { return Ok(Value::Null) };
+        if format == BINARY_FORMAT && array::is_array_type(type_oid) {
+            let element = crate::catalog::builtin_type(type_oid).map_or(0, |t| t.elem);
+            let parsed = array::receive(bytes, &|oid, data| Value::decode(oid, BINARY_FORMAT, Some(data)))?;
+            return Ok(Value::Array(Box::new(Array { element, ..parsed })));
+        }
         let invalid =
             || PgError::new(code::INVALID_BINARY_REPRESENTATION, "incorrect binary data format in bind parameter");
         if format == BINARY_FORMAT {
