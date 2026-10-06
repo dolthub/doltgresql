@@ -671,7 +671,7 @@ pub fn generate(
     main.push_str(
         "\n//! Script tests ported from the Go test suite, whose expectations are what Postgres returns.\n\n",
     );
-    main.push_str("#![allow(unused_imports)]\n\n");
+    main.push_str("#![allow(unused_imports, clippy::octal_escapes)]\n\n");
     for module in &modules {
         if KEYWORD_MODULES.contains(&module.as_str()) {
             let _ = writeln!(main, "#[path = \"{module}.rs\"]\nmod {module}_statement;");

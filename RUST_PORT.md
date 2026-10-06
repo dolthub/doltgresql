@@ -143,6 +143,12 @@ Done:
   replay (a kept fixture test). Against the Go binary it gives the Go replay's result for all 42,090 statements,
   apart from one `now()` comparison that also varies between Go runs. The one known difference: a timestamp in the
   machine's local zone prints a numeric zone name, which only changes error text.
+- `logictest`: the sqllogictest runner, sending what pgx v4's database/sql driver sends and scanning values the way
+  the Go harness does. On a test file covering every result path, its log matches the Go runner's record for record,
+  messages included. The full corpus has not been run yet.
+- Dump imports (`crates/tests/tests/dumps.rs`, ignored by default like the Go test): the same 45 of 103 dumps pass as
+  under the Go test. The proxy serves psql's connections concurrently, so the 12 dumps that hung the Go test by
+  reconnecting now run and fail on real server errors.
 
 Remaining:
 
@@ -150,7 +156,8 @@ Remaining:
   grant cleanup across a restart (needs restart support), Dolt backup and remote suites.
 - 29 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too), and 7 EXPLAIN
   assertions that expect Postgres plan text.
-- Ports of the sqllogictest, dump import, enginetest Dolt sets, and go-sql-server-driver runners.
+- A full sqllogictest corpus run with both runners.
+- Ports of the enginetest Dolt sets and the go-sql-server-driver runners.
 
 ## Baseline artifacts
 

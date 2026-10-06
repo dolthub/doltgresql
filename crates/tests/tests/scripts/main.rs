@@ -14,7 +14,7 @@
 
 //! Script tests ported from the Go test suite, whose expectations are what Postgres returns.
 
-#![allow(unused_imports)]
+#![allow(unused_imports, clippy::octal_escapes)]
 
 mod adaptive_encoding;
 mod adaptive_encoding_keys;

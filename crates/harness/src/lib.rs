@@ -18,6 +18,7 @@
 //! same protocol messages as the pgx driver that the Go suite uses.
 
 pub mod decode;
+pub mod dumps;
 pub mod gostd;
 pub mod oid;
 pub mod pgx;
