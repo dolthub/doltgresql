@@ -681,7 +681,13 @@ impl<'b, 'a> Planner<'b, 'a> {
                     self.ctx.require_catalog(catalog.name)?;
                     return Ok(self.plan_catalog(catalog, relation));
                 }
-                let table = match self.ctx.resolve_table(relation) {
+                let as_of =
+                    self.ctx.session.as_of.iter().find(|(l, _)| *l == relation.location).map(|(_, r)| r.clone());
+                let resolved = match &as_of {
+                    Some(revision) => self.ctx.resolve_table_as_of(relation, revision),
+                    None => self.ctx.resolve_table(relation),
+                };
+                let table = match resolved {
                     Ok(table) => table,
                     Err(err) => {
                         if let Some((schema, fragment)) = self.ctx.find_view(&relation.schemaname, &relation.relname)? {
@@ -787,7 +793,10 @@ impl<'b, 'a> Planner<'b, 'a> {
     /// plan_view plans a view's query in place of the view, naming its columns after the view's column names.
     fn plan_view(&mut self, fragment: &str, relation: &pg_query::protobuf::RangeVar) -> Result<(Plan, Scope)> {
         let (select, aliases) = crate::views::view_query(fragment)?;
-        let query = Planner { ctx: self.ctx, outer: Vec::new() }.plan_query(&select)?;
+        let as_of = std::mem::take(&mut self.ctx.session.as_of);
+        let query = Planner { ctx: self.ctx, outer: Vec::new() }.plan_query(&select);
+        self.ctx.session.as_of = as_of;
+        let query = query?;
         let alias = relation.alias.as_ref();
         let table = alias.map_or(relation.relname.clone(), |a| a.aliasname.clone());
         let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();

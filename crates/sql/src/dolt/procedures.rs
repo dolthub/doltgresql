@@ -49,6 +49,8 @@ pub const FUNCTIONS: &[Function] = &[
     v("dolt_reset", INT8, dolt_reset),
     v("dolt_merge", RECORD, dolt_merge),
     v("dolt_conflicts_resolve", INT8, crate::dolt::conflicts::dolt_conflicts_resolve),
+    v("dolt_revert", RECORD, crate::dolt::revert::dolt_revert),
+    v("dolt_cherry_pick", RECORD, crate::dolt::revert::dolt_cherry_pick),
     Function {
         name: "dolt_preview_merge_conflicts_summary",
         args: &[TEXT],
@@ -140,6 +142,14 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
     ("dolt_checkout", &[("status", INT8), ("message", TEXT)]),
     ("dolt_merge", &[("hash", TEXT), ("fast_forward", INT8), ("conflicts", INT8), ("message", TEXT)]),
     (
+        "dolt_revert",
+        &[("hash", TEXT), ("data_conflicts", INT8), ("schema_conflicts", INT8), ("constraint_violations", INT8)],
+    ),
+    (
+        "dolt_cherry_pick",
+        &[("hash", TEXT), ("data_conflicts", INT8), ("schema_conflicts", INT8), ("constraint_violations", INT8)],
+    ),
+    (
         "dolt_log",
         &[
             ("commit_hash", TEXT),
@@ -190,7 +200,7 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
 ];
 
 /// strings returns the text arguments.
-fn strings(args: &[Value]) -> Vec<String> {
+pub fn strings(args: &[Value]) -> Vec<String> {
     args.iter().map(|a| a.output().unwrap_or_default()).collect()
 }
 
@@ -324,7 +334,7 @@ fn dolt_add(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Int8(0))
 }
 
-/// stage_modified stages the tables of the working root that the staged root also has.
+/// stage_modified stages the tables and root objects of the working root that the staged root also has.
 fn stage_modified(ctx: &mut Ctx<'_>) -> Result<()> {
     let working = table_map(ctx.db, &ctx.txn.root)?;
     let staged = table_map(ctx.db, &ctx.txn.staged)?;
@@ -335,7 +345,18 @@ fn stage_modified(ctx: &mut Ctx<'_>) -> Result<()> {
             _ => {}
         }
     }
-    stage_database(ctx);
+    for collection in 0..ctx.txn.staged.root_objects.len() {
+        let working: BTreeMap<Vec<u8>, Hash> = ctx.txn.root.objects(ctx.db, collection)?.into_iter().collect();
+        for (id, address) in ctx.txn.staged.objects(ctx.db, collection)? {
+            match working.get(&id) {
+                Some(w) if *w != address => ctx.txn.staged.put_object(ctx.db, collection, &id, Some(*w))?,
+                None => ctx.txn.staged.put_object(ctx.db, collection, &id, None)?,
+                _ => {}
+            }
+        }
+    }
+    ctx.txn.staged.foreign_keys = ctx.txn.root.foreign_keys.clone();
+    ctx.txn.staged.collation = ctx.txn.root.collation;
     Ok(())
 }
 
@@ -372,7 +393,7 @@ pub fn parse_author(text: &str) -> Result<(String, String)> {
 }
 
 /// parse_date reads a commit date in one of the formats Dolt accepts, returning Unix milliseconds.
-fn parse_date(text: &str) -> Result<i64> {
+pub fn parse_date(text: &str) -> Result<i64> {
     let format = crate::datetime::Format::from_settings("ISO, MDY", "postgres", "UTC");
     let ts = crate::datetime::parse_timestamp(text, true, &format, crate::datetime::now())
         .map_err(|_| error(format!("error: '{text}' is not in a supported format.")))?;
@@ -411,6 +432,14 @@ fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         stage_modified(ctx)?;
     }
     let amend = parsed.has("amend");
+    if let Some(merge) = ctx.txn.merge.as_ref().filter(|_| amend) {
+        let operation = match (merge.is_cherry_pick, merge.is_revert) {
+            (true, _) => "cherry-pick",
+            (_, true) => "revert",
+            _ => "merge",
+        };
+        return Err(error(format!("you are in the middle of a {operation} -- cannot amend")));
+    }
     let head = history::load(ctx.db, ctx.txn.head)?;
     let message = match parsed.value("message") {
         Some(m) => m.to_string(),
@@ -436,15 +465,24 @@ fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         }
         return Err(error("nothing to commit"));
     }
-    let (user, host) = (ctx.session.user.clone(), ctx.session.host.clone());
     let hash = if amend {
-        amend_commit(ctx, &head, meta)?
+        let hash = amend_commit(ctx, &head, meta)?;
+        ctx.session.advisory.release_all(ctx.session.id, true, false);
+        hash
     } else {
-        let parents = merging.map(|m| vec![ctx.txn.head, m]).unwrap_or_default();
-        ctx.txn.dolt_commit(ctx.db, &user, &host, parents, meta)?
+        let parent = ctx.txn.merge.as_ref().filter(|m| !m.is_cherry_pick && !m.is_revert).map(|m| m.from_commit);
+        commit_staged(ctx, parent.map(|m| vec![ctx.txn.head, m]).unwrap_or_default(), meta)?
     };
-    ctx.session.advisory.release_all(ctx.session.id, true, false);
     Ok(Value::Text(hash.to_string()))
+}
+
+/// commit_staged commits the staged root on the given parents, or on the head alone without them, and releases the
+/// session's transaction-scoped advisory locks, as Dolt's DoltCommit does.
+pub fn commit_staged(ctx: &mut Ctx<'_>, parents: Vec<Hash>, meta: CommitMeta) -> Result<Hash> {
+    let (user, host) = (ctx.session.user.clone(), ctx.session.host.clone());
+    let hash = ctx.txn.dolt_commit(ctx.db, &user, &host, parents, meta)?;
+    ctx.session.advisory.release_all(ctx.session.id, true, false);
+    Ok(hash)
 }
 
 /// amend_commit replaces the head commit with one of the staged root on the head's parents.
@@ -907,7 +945,7 @@ fn reset_staged_tables(ctx: &mut Ctx<'_>, keys: Option<Vec<(String, String)>>) -
 }
 
 /// move_head points the session's branch at a commit.
-fn move_head(ctx: &mut Ctx<'_>, commit: Hash) -> Result<()> {
+pub fn move_head(ctx: &mut Ctx<'_>, commit: Hash) -> Result<()> {
     if commit != ctx.txn.head {
         ctx.db.set_head(&branch_ref(&ctx.txn.branch), commit)?;
         ctx.txn.head = commit;

@@ -166,6 +166,12 @@ fn unit_size(unit: &str) -> Option<(i64, &'static [(&'static str, i64)])> {
 
 /// display returns how SHOW prints a setting's stored value, in the largest unit that divides it evenly.
 pub fn display(definition: &Setting, value: &str) -> String {
+    if definition.name == "tcp_user_timeout" {
+        return "0".to_string();
+    }
+    if definition.kind == "real" {
+        return display_real(definition, value);
+    }
     if definition.kind != "integer" || definition.name.starts_with("tcp_") {
         return value.to_string();
     }
@@ -183,6 +189,25 @@ pub fn display(definition: &Setting, value: &str) -> String {
         }
     }
     format!("{number}{}", definition.unit)
+}
+
+/// display_real returns how SHOW prints a real setting's stored value, in the first unit, largest first, that
+/// holds it as a whole number, or else in the smallest, as Postgres' convert_real_from_base_unit chooses.
+fn display_real(definition: &Setting, value: &str) -> String {
+    let (Ok(number), Some((base, units))) = (value.parse::<f64>(), unit_size(&definition.unit)) else {
+        return value.to_string();
+    };
+    if number == 0.0 {
+        return value.to_string();
+    }
+    let mut shown = (number, definition.unit.as_str());
+    for &(name, size) in units {
+        shown = (number * base as f64 / size as f64, name);
+        if shown.0 > 0.0 && ((shown.0.round() / shown.0) - 1.0).abs() <= 1e-8 {
+            break;
+        }
+    }
+    format!("{}{}", crate::types::Value::Float8(shown.0).output().unwrap_or_default(), shown.1)
 }
 
 /// parse_bool reads a boolean setting value as Postgres' parse_bool does.
@@ -241,6 +266,15 @@ pub fn normalize(definition: &Setting, value: &str) -> Result<String> {
                     ),
                 ));
             }
+            if number != 0.0 && matches!(name.as_str(), "effective_io_concurrency" | "maintenance_io_concurrency") {
+                return Err(PgError {
+                    detail: Some(format!("{name} must be set to 0 on platforms that lack posix_fadvise().")),
+                    ..PgError::new(
+                        code::INVALID_PARAMETER_VALUE,
+                        format!("invalid value for parameter \"{name}\": {}", number as i64),
+                    )
+                });
+            }
             Ok((number as i64).to_string())
         }
         "real" => {
@@ -272,6 +306,19 @@ pub fn normalize(definition: &Setting, value: &str) -> Result<String> {
                 detail: Some(format!("Unrecognized key word: \"{}\".", value.split(',').next().unwrap_or("").trim())),
                 ..invalid_value(name, value)
             }),
+            "timezone_abbreviations" => match value {
+                "Default" => Ok(value.to_string()),
+                "" => Err(PgError::new(
+                    code::INVALID_PARAMETER_VALUE,
+                    "could not read time zone file \"\": Is a directory",
+                )),
+                "Australia" | "India" => Err(PgError::unsupported("this time zone abbreviation file")),
+                _ if value.chars().all(|c| c.is_ascii_alphabetic()) => Err(PgError::new(
+                    code::INVALID_PARAMETER_VALUE,
+                    format!("could not open time zone file \"{value}\": No such file or directory"),
+                )),
+                _ => Err(invalid_value(name, value)),
+            },
             "client_encoding" => crate::encodings::Encoding::lookup(value)
                 .map(|e| e.name().to_string())
                 .ok_or_else(|| invalid_value(name, value)),

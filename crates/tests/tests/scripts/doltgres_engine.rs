@@ -7271,10 +7271,11 @@ fn test_dolt_commit() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected, with the notice Postgres sends.
                 ScriptTestAssertion {
                     query: "drop table if exists invalidFK",
                     expected: Expected::Tag("DROP TABLE"),
+                    notices: &[Diagnostic { code: "00000", message: r#"table "invalidfk" does not exist, skipping"#, ..N }],
                     flow: Flow::Simple,
                     ..A
                 },

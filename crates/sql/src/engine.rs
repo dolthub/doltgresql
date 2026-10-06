@@ -150,6 +150,7 @@ impl Engine {
                 id: NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 advisory: self.shared.advisory.clone(),
                 pending_copy: None,
+                as_of: Vec::new(),
             },
             txns: Vec::new(),
             pending: None,
@@ -235,6 +236,8 @@ pub struct SessionState {
     pub advisory: Arc<crate::advisory::AdvisoryLocks>,
     /// The COPY FROM STDIN waiting for its data.
     pub pending_copy: Option<Box<crate::copy::CopyFrom>>,
+    /// The `AS OF` revisions of the running statement's tables, each with the location of the table it follows.
+    pub as_of: Vec<(i32, pg_query::Node)>,
 }
 
 /// NEXT_SESSION numbers the sessions of the process.
@@ -793,6 +796,7 @@ impl Session {
 
     /// postgres runs a statement of Postgres' grammar.
     fn postgres(&mut self, node: &NodeEnum, extras: &Extras, params: &[Value]) -> Result<Outcome> {
+        self.state.as_of = extras.as_of.clone();
         match node {
             NodeEnum::CreatedbStmt(create) => {
                 let mut parameters = Vec::new();
@@ -911,19 +915,16 @@ impl Session {
             matches!(kind, VariableSetKind::VarReset | VariableSetKind::VarResetAll | VariableSetKind::VarSetDefault);
         let tag =
             if matches!(kind, VariableSetKind::VarReset | VariableSetKind::VarResetAll) { "RESET" } else { "SET" };
-        let word = if reset { "RESET" } else { "SET" };
-        // The transaction characteristics only exist in a transaction block.
         let transactional =
             matches!(set.name.as_str(), "transaction_isolation" | "transaction_read_only" | "transaction_deferrable");
-        if transactional && !in_transaction && kind != VariableSetKind::VarResetAll {
+        if reset && set.name == "transaction_isolation" && !in_transaction {
             self.state.notices.push(PgError {
                 severity: "WARNING",
                 ..PgError::new(
                     code::NO_ACTIVE_SQL_TRANSACTION,
-                    format!("{word} TRANSACTION can only be used in transaction blocks"),
+                    "RESET TRANSACTION can only be used in transaction blocks",
                 )
             });
-            return Ok(Outcome::command(tag));
         }
         let local = set.is_local || transactional;
         match kind {

@@ -12867,12 +12867,13 @@ fn test_set_statements() {
         ScriptTest {
             name: "set 'server_version' configuration variable",
             assertions: &[
+                // Doltgres-specific: Doltgres reports Postgres 15.17 as its server version.
                 ScriptTestAssertion {
                     query: "SHOW server_version",
                     expected: Expected::Rows {
                         columns: &[Column("server_version", TEXT)],
                         rows: &[
-                            &[T("15.19 (Homebrew)")],
+                            &[T("15.17")],
                         ],
                         tag: "SHOW",
                     },
@@ -17456,32 +17457,42 @@ fn test_set_statements() {
                     expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "myvar.unknown_var""#, ..E }),
                     ..A
                 },
+                // Doltgres extension: SET takes an expression, which Postgres' grammar rejects.
                 ScriptTestAssertion {
                     query: "set myvar.var_value to (select 'a')",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "(""#, position: 24, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
+                // Doltgres extension: SET takes an expression, which Postgres' grammar rejects.
                 ScriptTestAssertion {
                     query: "SHOW myvar.var_value",
                     expected: Expected::Rows {
                         columns: &[Column("myvar.var_value", TEXT)],
                         rows: &[
-                            &[T("value")],
+                            &[T("a")],
                         ],
                         tag: "SHOW",
                     },
                     ..A
                 },
+                // Doltgres extension: SET takes an expression, which Postgres' grammar rejects.
                 ScriptTestAssertion {
                     query: "set myvar.val2 to (select current_setting('myvar.var_value'))",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "(""#, position: 19, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
+                // Doltgres extension: SET takes an expression, which Postgres' grammar rejects.
                 ScriptTestAssertion {
                     query: "SHOW myvar.val2",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "myvar.val2""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("myvar.val2", TEXT)],
+                        rows: &[
+                            &[T("a")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },

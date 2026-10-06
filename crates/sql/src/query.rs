@@ -80,15 +80,45 @@ impl Ctx<'_> {
                 return Ok(table);
             }
         }
-        let name = if relation.schemaname.is_empty() {
-            relation.relname.clone()
-        } else {
-            format!("{}.{}", relation.schemaname, relation.relname)
+        Err(undefined_table(relation))
+    }
+
+    /// resolve_table_as_of loads the table that a range variable names as it was at a revision: a commit spec,
+    /// `WORKING`, `STAGED`, or a time, which names the newest commit of the branch made by then, as Dolt's
+    /// resolveAsOf does.
+    pub fn resolve_table_as_of(&mut self, relation: &RangeVar, revision: &Node) -> Result<TableDef> {
+        let revision = self.constant_text(revision)?;
+        let Some(root) = self.revision_root(&revision)? else {
+            return Err(undefined_table(relation));
         };
-        Err(PgError {
-            position: position(relation.location),
-            ..PgError::new(code::UNDEFINED_TABLE, format!("relation \"{name}\" does not exist"))
-        })
+        let schemas: Vec<String> =
+            if relation.schemaname.is_empty() { self.session.search_path() } else { vec![relation.schemaname.clone()] };
+        for schema in &schemas {
+            if let Some(address) = root.table(self.db, schema, &relation.relname)? {
+                return TableDef::load(self.db, schema, &relation.relname, address);
+            }
+        }
+        Err(undefined_table(relation))
+    }
+
+    /// revision_root returns the root value at a revision, or None for a time before the branch's first commit.
+    fn revision_root(&mut self, revision: &str) -> Result<Option<doltdb::root::Root>> {
+        let address = match revision.to_ascii_uppercase().as_str() {
+            "WORKING" => return Ok(Some(self.txn.root.clone())),
+            "STAGED" => return Ok(Some(self.txn.staged.clone())),
+            _ => match crate::dolt::history::resolve(self.db, self.txn.head, revision) {
+                Ok(commit) => crate::dolt::history::load(self.db, commit)?.root,
+                Err(err) => {
+                    let millis = crate::dolt::procedures::parse_date(revision).map_err(|_| err)?;
+                    let log = crate::dolt::history::log(self.db, &[self.txn.head])?;
+                    match log.into_iter().find(|c| c.committer_millis as i64 <= millis) {
+                        Some(commit) => commit.root,
+                        None => return Ok(None),
+                    }
+                }
+            },
+        };
+        Ok(Some(doltdb::root::Root::decode(&crate::txn::read(self.db, &address)?)?))
     }
 
     /// creation_schema returns the schema that an unqualified new object goes in: the first schema of the search
@@ -105,6 +135,19 @@ impl Ctx<'_> {
     pub fn constant_text(&mut self, node: &Node) -> Result<String> {
         let (expr, _) = Binder::new(self, Scope::default()).bind(node)?;
         Ok(expr.eval(self, &[])?.output().unwrap_or_default())
+    }
+}
+
+/// undefined_table returns the error for a range variable that names no table.
+fn undefined_table(relation: &RangeVar) -> PgError {
+    let name = if relation.schemaname.is_empty() {
+        relation.relname.clone()
+    } else {
+        format!("{}.{}", relation.schemaname, relation.relname)
+    };
+    PgError {
+        position: position(relation.location),
+        ..PgError::new(code::UNDEFINED_TABLE, format!("relation \"{name}\" does not exist"))
     }
 }
 

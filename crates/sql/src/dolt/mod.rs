@@ -23,4 +23,5 @@ pub mod history;
 pub mod ignore;
 pub mod merge;
 pub mod procedures;
+pub mod revert;
 pub mod tables;
