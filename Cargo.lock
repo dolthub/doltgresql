@@ -281,6 +281,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "doltdb"
+version = "0.1.0"
+dependencies = [
+ "prolly",
+ "serial",
+ "store",
+]
+
+[[package]]
 name = "doltgres-tests"
 version = "0.1.0"
 dependencies = [
@@ -724,6 +733,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "prolly"
+version = "0.1.0"
+dependencies = [
+ "serial",
+ "store",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -927,6 +944,13 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serial"
+version = "0.1.0"
+dependencies = [
+ "store",
 ]
 
 [[package]]

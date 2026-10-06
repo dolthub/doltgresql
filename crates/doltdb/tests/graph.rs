@@ -12,63 +12,57 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Databases written by the Go server, each with `oracle.txt` holding what Dolt's chunk store read from it.
+//! The store crate's fixture databases, each with `graph.txt` holding the object graph that Dolt and Doltgres read.
 
 use std::path::{Path, PathBuf};
 
-use store::Hash;
+use store::GenerationalStore;
 
 /// fixture returns the directory of a fixture database.
 fn fixture(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name).join("postgres")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../store/tests/fixtures").join(name).join("postgres")
 }
 
-/// check_fixture checks that the store reads the root and chunks that Dolt read.
+/// check_fixture checks that the object graph matches the one Dolt and Doltgres read.
 fn check_fixture(name: &str) {
     let dir = fixture(name);
-    let expected = std::fs::read_to_string(dir.join("oracle.txt")).unwrap();
-    let actual = store::dump(&dir.join(".dolt/noms")).unwrap();
+    let expected = std::fs::read_to_string(dir.join("graph.txt")).unwrap();
+    let store = GenerationalStore::open(&dir.join(".dolt/noms")).unwrap();
+    let actual = doltdb::dump_graph(&store, store.root()).unwrap();
     assert!(expected == actual, "{name} differs from Dolt:\n{actual}");
 }
 
 #[test]
-fn reads_a_journal() {
+fn reads_commits_and_working_sets() {
     check_fixture("journal");
 }
 
 #[test]
-fn reads_table_files() {
+fn reads_the_graph_from_table_files() {
     check_fixture("gc");
 }
 
 #[test]
-fn reads_archives() {
+fn reads_the_graph_from_archives() {
     check_fixture("archive");
 }
 
 #[test]
-fn reads_large_chunks_from_archives() {
+fn reads_tables_with_large_values() {
     check_fixture("large");
 }
 
 #[test]
-fn reads_a_merge_with_conflicts() {
+fn reads_merge_state() {
     check_fixture("conflict");
 }
 
 #[test]
-fn reads_root_objects_tags_and_many_types() {
+fn reads_root_objects_and_tags() {
     check_fixture("rich");
 }
 
 #[test]
-fn reads_many_tables_and_branches() {
+fn reads_multi_level_address_maps() {
     check_fixture("wide");
-}
-
-#[test]
-fn hash_strings_round_trip() {
-    let text = "b45a39lbakbo1lvppskat4cd0nd5bp9q";
-    assert_eq!(Hash::parse(text).unwrap().to_string(), text);
-    assert_eq!(Hash::parse("b45a39lbakbo1lvppskat4cd0nd5bp9w"), None);
 }

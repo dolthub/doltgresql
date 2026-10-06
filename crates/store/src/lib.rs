@@ -33,6 +33,29 @@ pub use hash::Hash;
 pub use manifest::{Manifest, TableSpec};
 pub use store::{BlockStore, GenerationalStore};
 
+/// ChunkReader reads chunks by address.
+pub trait ChunkReader {
+    /// get returns the chunk when the reader holds it.
+    fn get(&self, hash: &Hash) -> Result<Option<Chunk>>;
+
+    /// require returns the chunk, failing when the reader lacks it.
+    fn require(&self, hash: &Hash) -> Result<Chunk> {
+        self.get(hash)?.ok_or_else(|| Error::Corrupt(format!("chunk {hash} is missing")))
+    }
+}
+
+impl ChunkReader for BlockStore {
+    fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
+        BlockStore::get(self, hash)
+    }
+}
+
+impl ChunkReader for GenerationalStore {
+    fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
+        GenerationalStore::get(self, hash)
+    }
+}
+
 /// dump renders the root and every chunk of a database's noms directory, one chunk per line as its generation,
 /// address, length, and the address of its data, sorted by address and then generation.
 pub fn dump(dir: &std::path::Path) -> Result<String> {

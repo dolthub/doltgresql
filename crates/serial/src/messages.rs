@@ -1,0 +1,364 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Typed views of the message tables, whose field indexes follow the order of the fields in Dolt's and Doltgres'
+//! flatbuffers schemas.
+
+use store::Hash;
+
+use crate::fb::{Result, Table, Vector};
+use crate::{Message, *};
+
+/// missing returns the error for a required field that is absent.
+fn missing(field: &str) -> store::Error {
+    store::Error::Corrupt(format!("required field {field} is missing"))
+}
+
+/// hash converts bytes into an address.
+pub fn hash(bytes: &[u8]) -> Result<Hash> {
+    bytes.try_into().map(Hash).map_err(|_| store::Error::Corrupt(format!("address has {} bytes", bytes.len())))
+}
+
+/// hashes splits concatenated addresses.
+pub fn hashes(bytes: &[u8]) -> Result<Vec<Hash>> {
+    if !bytes.len().is_multiple_of(Hash::LEN) {
+        return Err(store::Error::Corrupt(format!("address array has {} bytes", bytes.len())));
+    }
+    bytes.chunks(Hash::LEN).map(hash).collect()
+}
+
+/// StoreRoot is the root of a database's chunk graph: an address map from ref names to commits, tags, and working sets.
+pub struct StoreRoot<'a>(pub Table<'a>);
+
+impl<'a> StoreRoot<'a> {
+    pub fn new(message: Message<'a>) -> Result<StoreRoot<'a>> {
+        message.expect(STORE_ROOT).map(StoreRoot)
+    }
+
+    /// address_map returns the serialized AddressMap of refs, which is absent in an empty database.
+    pub fn address_map(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(0)
+    }
+}
+
+/// TreeNode is the shared shape of the tree messages: key items and either value items or child addresses.
+pub struct TreeNode<'a> {
+    pub table: Table<'a>,
+    pub key_items: &'a [u8],
+    /// The u16 offsets of the key items, one more than the item count, which commit closures lack.
+    pub key_offsets: Option<Vector<'a>>,
+    pub value_items: Option<&'a [u8]>,
+    pub value_offsets: Option<Vector<'a>>,
+    pub address_array: Option<&'a [u8]>,
+    pub subtree_counts: Option<&'a [u8]>,
+    pub tree_count: u64,
+    pub tree_level: u8,
+}
+
+impl<'a> TreeNode<'a> {
+    /// new reads a ProllyTreeNode, AddressMap, CommitClosure, or MergeArtifacts message as a tree node.
+    pub fn new(message: Message<'a>) -> Result<TreeNode<'a>> {
+        let table = message.root()?;
+        match message.file_id() {
+            PROLLY_TREE_NODE => Ok(TreeNode {
+                table,
+                key_items: table.bytes(0)?.ok_or_else(|| missing("key_items"))?,
+                key_offsets: Some(table.vector(1, 2)?.ok_or_else(|| missing("key_offsets"))?),
+                value_items: table.bytes(3)?,
+                value_offsets: table.vector(4, 2)?,
+                address_array: table.bytes(7)?,
+                subtree_counts: table.bytes(8)?,
+                tree_count: table.u64(9, 0)?,
+                tree_level: table.u8(10, 0)?,
+            }),
+            ADDRESS_MAP => Ok(TreeNode {
+                table,
+                key_items: table.bytes(0)?.ok_or_else(|| missing("key_items"))?,
+                key_offsets: Some(table.vector(1, 2)?.ok_or_else(|| missing("key_offsets"))?),
+                value_items: None,
+                value_offsets: None,
+                address_array: Some(table.bytes(2)?.ok_or_else(|| missing("address_array"))?),
+                subtree_counts: table.bytes(3)?,
+                tree_count: table.u64(4, 0)?,
+                tree_level: table.u8(5, 0)?,
+            }),
+            COMMIT_CLOSURE => Ok(TreeNode {
+                table,
+                key_items: table.bytes(0)?.ok_or_else(|| missing("key_items"))?,
+                key_offsets: None,
+                value_items: None,
+                value_offsets: None,
+                address_array: table.bytes(1)?,
+                subtree_counts: table.bytes(2)?,
+                tree_count: table.u64(3, 0)?,
+                tree_level: table.u8(4, 0)?,
+            }),
+            other => Err(store::Error::Corrupt(format!("{other:?} is not a tree node message"))),
+        }
+    }
+}
+
+/// Commit is a commit: its root value, parents, and metadata.
+pub struct Commit<'a>(pub Table<'a>);
+
+impl<'a> Commit<'a> {
+    pub fn new(message: Message<'a>) -> Result<Commit<'a>> {
+        message.expect(COMMIT).map(Commit)
+    }
+
+    pub fn root(&self) -> Result<Hash> {
+        hash(self.0.bytes(0)?.ok_or_else(|| missing("root"))?)
+    }
+
+    pub fn height(&self) -> Result<u64> {
+        self.0.u64(1, 0)
+    }
+
+    pub fn parents(&self) -> Result<Vec<Hash>> {
+        hashes(self.0.bytes(2)?.ok_or_else(|| missing("parent_addrs"))?)
+    }
+
+    /// parent_closure_bytes returns the address bytes of the commit closure of the parents, which are absent or empty
+    /// when there is none, and all zero for a commit without parents.
+    pub fn parent_closure_bytes(&self) -> Result<Option<&'a [u8]>> {
+        Ok(self.0.bytes(3)?.filter(|bytes| !bytes.is_empty()))
+    }
+
+    pub fn name(&self) -> Result<&'a [u8]> {
+        self.0.string(4)?.ok_or_else(|| missing("name"))
+    }
+
+    pub fn email(&self) -> Result<&'a [u8]> {
+        self.0.string(5)?.ok_or_else(|| missing("email"))
+    }
+
+    pub fn description(&self) -> Result<&'a [u8]> {
+        self.0.string(6)?.ok_or_else(|| missing("description"))
+    }
+
+    pub fn timestamp_millis(&self) -> Result<u64> {
+        self.0.u64(7, 0)
+    }
+
+    pub fn user_timestamp_millis(&self) -> Result<i64> {
+        self.0.i64(8, 0)
+    }
+
+    pub fn signature(&self) -> Result<Option<&'a [u8]>> {
+        self.0.string(9)
+    }
+
+    pub fn committer_name(&self) -> Result<Option<&'a [u8]>> {
+        self.0.string(10)
+    }
+
+    pub fn committer_email(&self) -> Result<Option<&'a [u8]>> {
+        self.0.string(11)
+    }
+}
+
+/// Tag is a tag: the commit it names and its metadata.
+pub struct Tag<'a>(pub Table<'a>);
+
+impl<'a> Tag<'a> {
+    pub fn new(message: Message<'a>) -> Result<Tag<'a>> {
+        message.expect(TAG).map(Tag)
+    }
+
+    pub fn commit(&self) -> Result<Hash> {
+        hash(self.0.bytes(0)?.ok_or_else(|| missing("commit_addr"))?)
+    }
+
+    pub fn name(&self) -> Result<&'a [u8]> {
+        self.0.string(1)?.ok_or_else(|| missing("name"))
+    }
+
+    pub fn email(&self) -> Result<&'a [u8]> {
+        self.0.string(2)?.ok_or_else(|| missing("email"))
+    }
+
+    pub fn description(&self) -> Result<&'a [u8]> {
+        self.0.string(3)?.ok_or_else(|| missing("desc"))
+    }
+
+    pub fn timestamp_millis(&self) -> Result<u64> {
+        self.0.u64(4, 0)
+    }
+
+    pub fn user_timestamp_millis(&self) -> Result<i64> {
+        self.0.i64(5, 0)
+    }
+}
+
+/// WorkingSet is a branch's working and staged roots, with any merge or rebase in progress.
+pub struct WorkingSet<'a>(pub Table<'a>);
+
+impl<'a> WorkingSet<'a> {
+    pub fn new(message: Message<'a>) -> Result<WorkingSet<'a>> {
+        message.expect(WORKING_SET).map(WorkingSet)
+    }
+
+    pub fn working_root(&self) -> Result<Hash> {
+        hash(self.0.bytes(0)?.ok_or_else(|| missing("working_root_addr"))?)
+    }
+
+    pub fn staged_root(&self) -> Result<Option<Hash>> {
+        self.0.bytes(1)?.map(hash).transpose()
+    }
+
+    pub fn name(&self) -> Result<&'a [u8]> {
+        self.0.string(2)?.ok_or_else(|| missing("name"))
+    }
+
+    pub fn email(&self) -> Result<&'a [u8]> {
+        self.0.string(3)?.ok_or_else(|| missing("email"))
+    }
+
+    pub fn description(&self) -> Result<&'a [u8]> {
+        self.0.string(4)?.ok_or_else(|| missing("desc"))
+    }
+
+    pub fn timestamp_millis(&self) -> Result<u64> {
+        self.0.u64(5, 0)
+    }
+
+    pub fn merge_state(&self) -> Result<Option<Table<'a>>> {
+        self.0.table(6)
+    }
+
+    pub fn rebase_state(&self) -> Result<Option<Table<'a>>> {
+        self.0.table(7)
+    }
+}
+
+/// RootObjectMaps is the address bytes of each root object collection's AddressMap, by field name.
+pub type RootObjectMaps<'a> = Vec<(&'static str, Option<&'a [u8]>)>;
+
+/// DoltgresRootValue is a Doltgres root value: the address maps of its tables and root objects, and its schemas.
+pub struct DoltgresRootValue<'a>(pub Table<'a>);
+
+impl<'a> DoltgresRootValue<'a> {
+    pub fn new(message: Message<'a>) -> Result<DoltgresRootValue<'a>> {
+        message.expect(DOLTGRES_ROOT_VALUE).map(DoltgresRootValue)
+    }
+
+    pub fn feature_version(&self) -> Result<i64> {
+        self.0.i64(0, 0)
+    }
+
+    /// tables returns the serialized AddressMap of tables.
+    pub fn tables(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(1)
+    }
+
+    pub fn foreign_keys(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(2)
+    }
+
+    pub fn collation(&self) -> Result<u16> {
+        self.0.u16(3, 0)
+    }
+
+    /// schemas returns the names of the database's schemas.
+    pub fn schemas(&self) -> Result<Vec<&'a [u8]>> {
+        let Some(vector) = self.0.vector(4, 4)? else { return Ok(Vec::new()) };
+        (0..vector.len()).map(|i| Ok(vector.table(i)?.string(0)?.unwrap_or_default())).collect()
+    }
+
+    /// root_object_maps returns the address bytes of the AddressMap of each root object collection, by field name,
+    /// which are empty or all zero for an empty collection.
+    pub fn root_object_maps(&self) -> Result<RootObjectMaps<'a>> {
+        const FIELDS: [(&str, usize); 10] = [
+            ("sequences", 5),
+            ("types", 6),
+            ("functions", 7),
+            ("triggers", 8),
+            ("extensions", 9),
+            ("conflicts", 10),
+            ("procedures", 11),
+            ("casts", 12),
+            ("operators", 13),
+            ("aggregates", 14),
+        ];
+        FIELDS.iter().map(|&(name, field)| Ok((name, self.0.bytes(field)?))).collect()
+    }
+}
+
+/// TableMessage is a table: its schema, primary index, secondary indexes, and conflict and violation state.
+pub struct TableMessage<'a>(pub Table<'a>);
+
+impl<'a> TableMessage<'a> {
+    pub fn new(message: Message<'a>) -> Result<TableMessage<'a>> {
+        message.expect(TABLE).map(TableMessage)
+    }
+
+    pub fn schema(&self) -> Result<Hash> {
+        hash(self.0.bytes(0)?.ok_or_else(|| missing("schema"))?)
+    }
+
+    /// primary_index returns the serialized root node of the primary index.
+    pub fn primary_index(&self) -> Result<&'a [u8]> {
+        self.0.bytes(1)?.ok_or_else(|| missing("primary_index"))
+    }
+
+    /// secondary_indexes returns the serialized AddressMap of secondary indexes.
+    pub fn secondary_indexes(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(2)
+    }
+
+    pub fn auto_increment(&self) -> Result<u64> {
+        self.0.u64(3, 0)
+    }
+
+    pub fn conflicts(&self) -> Result<Option<Table<'a>>> {
+        self.0.table(4)
+    }
+
+    pub fn violations(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(5)
+    }
+
+    pub fn artifacts(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(6)
+    }
+}
+
+/// Blob is a node of a blob tree: payload bytes at a leaf, and child addresses with their sizes above.
+pub struct Blob<'a>(pub Table<'a>);
+
+impl<'a> Blob<'a> {
+    pub fn new(message: Message<'a>) -> Result<Blob<'a>> {
+        message.expect(BLOB).map(Blob)
+    }
+
+    pub fn payload(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(0)
+    }
+
+    pub fn address_array(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(1)
+    }
+
+    pub fn subtree_sizes(&self) -> Result<Option<&'a [u8]>> {
+        self.0.bytes(2)
+    }
+
+    pub fn tree_size(&self) -> Result<u64> {
+        self.0.u64(3, 0)
+    }
+
+    pub fn tree_level(&self) -> Result<u8> {
+        self.0.u8(4, 0)
+    }
+}

@@ -1,0 +1,13 @@
+[package]
+name = "serial"
+description = "Dolt's flatbuffers messages: store roots, commits, root values, tables, schemas, and tree nodes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+store = { path = "../store" }
+
+[lints]
+workspace = true

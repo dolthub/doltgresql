@@ -1,0 +1,15 @@
+[package]
+name = "doltdb"
+description = "A Doltgres database's version-controlled data: refs, commits, working sets, root values, and tables"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+prolly = { path = "../prolly" }
+serial = { path = "../serial" }
+store = { path = "../store" }
+
+[lints]
+workspace = true

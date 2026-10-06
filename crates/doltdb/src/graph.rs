@@ -1,0 +1,185 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::collections::{HashSet, VecDeque};
+
+use prolly::{Node, walk_leaves};
+use serial::{Commit, DoltgresRootValue, Message, StoreRoot, TableMessage, Tag, WorkingSet};
+use store::{ChunkReader, Hash, Result};
+
+/// hex renders bytes as lower-case hex.
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// address_map returns the entries of a serialized AddressMap in key order.
+pub fn address_map(reader: &dyn ChunkReader, bytes: &[u8]) -> Result<Vec<(Vec<u8>, Hash)>> {
+    let mut entries = Vec::new();
+    walk_leaves(reader, &Node::decode(bytes.to_vec())?, &mut |key, value| {
+        entries.push((key.to_vec(), serial::hash(value)?));
+        Ok(())
+    })?;
+    Ok(entries)
+}
+
+/// Graph walks the objects reachable from a store's root.
+struct Graph<'a> {
+    reader: &'a dyn ChunkReader,
+    lines: Vec<String>,
+    seen: HashSet<Hash>,
+    queue: VecDeque<Hash>,
+}
+
+impl Graph<'_> {
+    fn visit(&mut self, hash: Hash) {
+        if !hash.is_empty() && self.seen.insert(hash) {
+            self.queue.push_back(hash);
+        }
+    }
+
+    fn describe(&mut self, address: Hash) -> Result<()> {
+        let chunk = self.reader.require(&address)?;
+        let message = Message(&chunk.data);
+        match message.file_id() {
+            serial::COMMIT => {
+                let commit = Commit::new(message)?;
+                let parents = commit.parents()?;
+                for parent in &parents {
+                    self.visit(*parent);
+                }
+                let closure = commit.parent_closure_bytes()?.map(serial::hash).transpose()?;
+                self.lines.push(format!(
+                    "commit {address} root={} height={} parents={} closure={} name={} email={} desc={} ts={} uts={} \
+                     sig={} cname={} cemail={}",
+                    commit.root()?,
+                    commit.height()?,
+                    parents.iter().map(Hash::to_string).collect::<Vec<_>>().join(","),
+                    closure.map(|h| h.to_string()).unwrap_or_default(),
+                    hex(commit.name()?),
+                    hex(commit.email()?),
+                    hex(commit.description()?),
+                    commit.timestamp_millis()?,
+                    commit.user_timestamp_millis()?,
+                    hex(commit.signature()?.unwrap_or_default()),
+                    hex(commit.committer_name()?.unwrap_or_default()),
+                    hex(commit.committer_email()?.unwrap_or_default()),
+                ));
+                self.visit(commit.root()?);
+            }
+            serial::TAG => {
+                let tag = Tag::new(message)?;
+                self.lines.push(format!(
+                    "tag {address} commit={} name={} email={} desc={} ts={} uts={}",
+                    tag.commit()?,
+                    hex(tag.name()?),
+                    hex(tag.email()?),
+                    hex(tag.description()?),
+                    tag.timestamp_millis()?,
+                    tag.user_timestamp_millis()?,
+                ));
+                self.visit(tag.commit()?);
+            }
+            serial::WORKING_SET => {
+                let working_set = WorkingSet::new(message)?;
+                let staged = working_set.staged_root()?;
+                if let Some(staged) = staged {
+                    self.visit(staged);
+                }
+                self.lines.push(format!(
+                    "workingset {address} working={} staged={} name={} email={} desc={} ts={} merge={} rebase={}",
+                    working_set.working_root()?,
+                    staged.map(|h| h.to_string()).unwrap_or_default(),
+                    hex(working_set.name()?),
+                    hex(working_set.email()?),
+                    hex(working_set.description()?),
+                    working_set.timestamp_millis()?,
+                    working_set.merge_state()?.is_some(),
+                    working_set.rebase_state()?.is_some(),
+                ));
+                self.visit(working_set.working_root()?);
+            }
+            serial::DOLTGRES_ROOT_VALUE => {
+                let root = DoltgresRootValue::new(message)?;
+                self.lines.push(format!(
+                    "rootvalue {address} fv={} collation={} fk={} schemas={}",
+                    root.feature_version()?,
+                    root.collation()?,
+                    hex(root.foreign_keys()?.unwrap_or_default()),
+                    root.schemas()?.iter().map(|s| hex(s)).collect::<Vec<_>>().join(","),
+                ));
+                let mut maps = vec![("tables", root.tables()?)];
+                maps.extend(root.root_object_maps()?);
+                for (name, bytes) in maps {
+                    let Some(mut bytes) = bytes.filter(|b| !b.is_empty()).map(<[u8]>::to_vec) else { continue };
+                    if name != "tables" {
+                        if bytes.len() != Hash::LEN || bytes.iter().all(|&b| b == 0) {
+                            continue;
+                        }
+                        let map = serial::hash(&bytes)?;
+                        self.lines.push(format!("rootvalue-map {address} {name} {map}"));
+                        bytes = self.reader.require(&map)?.data;
+                    }
+                    for (key, entry) in address_map(self.reader, &bytes)? {
+                        self.lines.push(format!("rootvalue-entry {address} {name} {} {entry}", hex(&key)));
+                        if name == "tables" {
+                            self.visit(entry);
+                        }
+                    }
+                }
+            }
+            serial::TABLE => {
+                let table = TableMessage::new(message)?;
+                let primary = table.primary_index()?;
+                let node = Node::decode(primary.to_vec())?;
+                self.lines.push(format!(
+                    "table {address} schema={} autoinc={} primary={} level={} count={} conflicts={} violations={} \
+                     artifacts={}",
+                    table.schema()?,
+                    table.auto_increment()?,
+                    Hash::of(primary),
+                    node.level(),
+                    node.tree_count(),
+                    table.conflicts()?.is_some(),
+                    hex(table.violations()?.unwrap_or_default()),
+                    hex(table.artifacts()?.unwrap_or_default()),
+                ));
+                if let Some(bytes) = table.secondary_indexes()?.filter(|b| !b.is_empty()) {
+                    for (key, entry) in address_map(self.reader, bytes)? {
+                        self.lines.push(format!("table-index {address} {} {entry}", hex(&key)));
+                    }
+                }
+            }
+            other => self.lines.push(format!("other {address} {other}")),
+        }
+        Ok(())
+    }
+}
+
+/// dump_graph renders the refs and every object reachable from them, one sorted line each, as the Go graph oracle
+/// does.
+pub fn dump_graph(reader: &dyn ChunkReader, root: Hash) -> Result<String> {
+    let mut graph = Graph { reader, lines: vec![format!("root {root}")], seen: HashSet::new(), queue: VecDeque::new() };
+    let chunk = reader.require(&root)?;
+    if let Some(bytes) = StoreRoot::new(Message(&chunk.data))?.address_map()?.filter(|b| !b.is_empty()) {
+        for (name, address) in address_map(reader, bytes)? {
+            graph.lines.push(format!("ref {} {address}", hex(&name)));
+            graph.visit(address);
+        }
+    }
+    while let Some(address) = graph.queue.pop_front() {
+        graph.describe(address)?;
+    }
+    graph.lines.sort();
+    Ok(graph.lines.join("\n") + "\n")
+}

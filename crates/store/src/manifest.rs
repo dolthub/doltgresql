@@ -66,7 +66,9 @@ impl Manifest {
             "4" => 3,
             "5" => 4,
             _ => {
-                return Err(corrupt(format!("Unknown manifest version: {version}. You may need to update your client")));
+                return Err(corrupt(format!(
+                    "Unknown manifest version: {version}. You may need to update your client"
+                )));
             }
         };
         if fields.len() < fixed || !(fields.len() - fixed).is_multiple_of(2) {
