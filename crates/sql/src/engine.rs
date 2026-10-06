@@ -20,12 +20,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use doltdb::database::Database;
-use pg_query::NodeEnum;
-use pg_query::protobuf::TransactionStmtKind;
+use pg_query::protobuf::a_const::Val;
+use pg_query::protobuf::{TransactionStmtKind, VariableSetKind, VariableSetStmt};
+use pg_query::{Node, NodeEnum};
 
 use crate::error::{PgError, Result, code};
 use crate::parse::{self, Extras, Statement};
-use crate::query::Ctx;
+use crate::query::{Ctx, column};
+use crate::settings::{Settings, setting};
 use crate::txn::{DbHandle, Txn};
 use crate::types::Value;
 use crate::{Column, DEFAULT_BRANCH, Outcome, Prepared};
@@ -91,8 +93,8 @@ impl Engine {
     }
 
     /// session starts a session for the user, connected from the host, on a database or a branch of one written as
-    /// `database/branch`.
-    pub fn session(&self, user: &str, host: &str, database: &str) -> Result<Session> {
+    /// `database/branch`, with the parameters the client sent at startup.
+    pub fn session(&self, user: &str, host: &str, database: &str, startup: &[(String, String)]) -> Result<Session> {
         let mut session = Session {
             engine: self.clone(),
             user: user.to_string(),
@@ -104,6 +106,8 @@ impl Engine {
             explicit: false,
             failed: false,
             notices: Vec::new(),
+            settings: Settings::new(startup).map_err(|err| PgError { severity: "FATAL", ..err })?,
+            reported: HashMap::new(),
         };
         session.switch(database).map_err(|_| {
             PgError::fatal(code::INVALID_CATALOG_NAME, format!("database \"{database}\" does not exist"))
@@ -128,6 +132,35 @@ pub struct Session {
     /// Whether a statement failed in the explicit transaction, which then only ends.
     failed: bool,
     notices: Vec<PgError>,
+    pub settings: Settings,
+    /// The reported parameters as the client last heard them.
+    reported: HashMap<String, String>,
+}
+
+/// REPORTED_PARAMETERS are the parameters whose values the server reports to the client with ParameterStatus.
+const REPORTED_PARAMETERS: [&str; 13] = [
+    "application_name",
+    "client_encoding",
+    "DateStyle",
+    "default_transaction_read_only",
+    "in_hot_standby",
+    "integer_datetimes",
+    "IntervalStyle",
+    "is_superuser",
+    "server_encoding",
+    "server_version",
+    "session_authorization",
+    "standard_conforming_strings",
+    "TimeZone",
+];
+
+/// quote_identifier quotes an identifier when Postgres would.
+pub fn quote_identifier(name: &str) -> String {
+    let simple = name.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c == '_')
+        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '$');
+    let keyword =
+        pg_query::scan(name).ok().and_then(|scan| scan.tokens.first().map(|t| t.keyword_kind > 1)).unwrap_or(false);
+    if simple && !keyword { name.to_string() } else { format!("\"{}\"", name.replace('"', "\"\"")) }
 }
 
 /// transaction_kind returns the kind of a transaction statement.
@@ -151,6 +184,42 @@ impl Session {
             (true, false) => b'T',
             _ => b'I',
         }
+    }
+
+    /// parameter_changes returns the reported parameters whose values changed since the client last heard them, all
+    /// of them the first time.
+    pub fn parameter_changes(&mut self) -> Vec<(String, String)> {
+        let mut changes = Vec::new();
+        for name in REPORTED_PARAMETERS {
+            let value = match name {
+                "session_authorization" => self.user.clone(),
+                "server_version" => crate::SERVER_VERSION.to_string(),
+                "is_superuser" => "on".to_string(),
+                _ => self.settings.show(name).unwrap_or_default(),
+            };
+            if self.reported.get(name) != Some(&value) {
+                self.reported.insert(name.to_string(), value.clone());
+                changes.push((name.to_string(), value));
+            }
+        }
+        changes
+    }
+
+    /// search_path returns the schemas that unqualified names resolve in.
+    fn search_path(&self) -> Vec<String> {
+        let path = self.settings.get("search_path").unwrap_or_default();
+        path.split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                let s = if s.starts_with('"') && s.ends_with('"') && s.len() > 1 {
+                    s[1..s.len() - 1].replace("\"\"", "\"")
+                } else {
+                    s.to_ascii_lowercase()
+                };
+                if s == "$user" { self.user.clone() } else { s }
+            })
+            .collect()
     }
 
     /// take_notices returns the notices raised since the last call.
@@ -210,7 +279,9 @@ impl Session {
         let statement = statements.pop();
         let mut parameters = parameter_types.to_vec();
         let mut columns = None;
-        if let Some(Statement::Postgres { node, .. }) = &statement
+        if let Some(Statement::Postgres { node: NodeEnum::VariableShowStmt(show), .. }) = &statement {
+            columns = Some(show_columns(&show.name));
+        } else if let Some(Statement::Postgres { node, .. }) = &statement
             && describable(node)
         {
             columns = self.with_ctx(&mut parameters, |ctx| ctx.describe(node))?;
@@ -239,6 +310,7 @@ impl Session {
             self.failed = true;
         } else {
             self.txn = None;
+            self.settings.end_transaction(false);
         }
         err
     }
@@ -253,6 +325,7 @@ impl Session {
 
     /// commit commits and ends the open transaction.
     fn commit(&mut self) -> Result<()> {
+        self.settings.end_transaction(true);
         let Some(txn) = self.txn.take() else { return Ok(()) };
         let handle = txn.handle.clone();
         let mut db = lock(&handle)?;
@@ -265,10 +338,11 @@ impl Session {
             let handle = self.engine.database(&self.database)?;
             self.txn = Some(Txn::begin(handle, &self.database, &self.branch)?);
         }
+        let search_path = self.search_path();
         let txn = self.txn.as_mut().expect("an open transaction");
         let handle = txn.handle.clone();
         let mut db = lock(&handle)?;
-        let mut ctx = Ctx { db: &mut db, txn, parameters, notices: &mut self.notices };
+        let mut ctx = Ctx { db: &mut db, txn, parameters, notices: &mut self.notices, search_path };
         f(&mut ctx)
     }
 
@@ -281,6 +355,7 @@ impl Session {
                     self.txn = None;
                     self.explicit = false;
                     self.failed = false;
+                    self.settings.end_transaction(false);
                     Ok(Outcome::command("ROLLBACK"))
                 }
                 _ => Err(PgError::new(
@@ -298,7 +373,12 @@ impl Session {
                 self.switch(target)?;
                 Ok(Outcome::command("SET"))
             }
-            Statement::SetExpression { .. } => Err(PgError::unsupported("SET to an expression")),
+            Statement::SetExpression { name, local, value } => {
+                let mut parameters = Vec::new();
+                let value = self.with_ctx(&mut parameters, |ctx| ctx.constant_text(value, params))?;
+                self.settings.set(name, Some(&value), *local, self.explicit)?;
+                Ok(Outcome::command("SET"))
+            }
             Statement::Postgres { node, extras } => self.postgres(node, extras, params),
         }
     }
@@ -336,6 +416,7 @@ impl Session {
                 }
                 self.explicit = false;
                 self.txn = None;
+                self.settings.end_transaction(false);
                 Ok(Outcome::command("ROLLBACK"))
             }
             other => Err(PgError::unsupported(format!("the transaction statement {other:?}"))),
@@ -366,12 +447,128 @@ impl Session {
 
     /// postgres runs a statement of Postgres' grammar.
     fn postgres(&mut self, node: &NodeEnum, extras: &Extras, params: &[Value]) -> Result<Outcome> {
-        if let NodeEnum::CreatedbStmt(create) = node {
-            return self.create_database(&create.dbname, extras.if_not_exists);
+        match node {
+            NodeEnum::CreatedbStmt(create) => return self.create_database(&create.dbname, extras.if_not_exists),
+            NodeEnum::VariableSetStmt(set) => return self.set(set),
+            NodeEnum::VariableShowStmt(show) => return self.show(&show.name),
+            _ => {}
         }
         let mut parameters = Vec::new();
         self.with_ctx(&mut parameters, |ctx| ctx.run(node, params))
     }
+}
+
+impl Session {
+    /// set runs SET and RESET.
+    fn set(&mut self, set: &VariableSetStmt) -> Result<Outcome> {
+        let kind = VariableSetKind::try_from(set.kind).unwrap_or(VariableSetKind::Undefined);
+        let in_transaction = self.explicit;
+        let reset =
+            matches!(kind, VariableSetKind::VarReset | VariableSetKind::VarResetAll | VariableSetKind::VarSetDefault);
+        let tag =
+            if matches!(kind, VariableSetKind::VarReset | VariableSetKind::VarResetAll) { "RESET" } else { "SET" };
+        let word = if reset { "RESET" } else { "SET" };
+        // The transaction characteristics only exist in a transaction block.
+        let transactional =
+            matches!(set.name.as_str(), "transaction_isolation" | "transaction_read_only" | "transaction_deferrable");
+        if transactional && !in_transaction && kind != VariableSetKind::VarResetAll {
+            self.notices.push(PgError {
+                severity: "WARNING",
+                ..PgError::new(
+                    code::NO_ACTIVE_SQL_TRANSACTION,
+                    format!("{word} TRANSACTION can only be used in transaction blocks"),
+                )
+            });
+            return Ok(Outcome::command(tag));
+        }
+        let local = set.is_local || transactional;
+        match kind {
+            VariableSetKind::VarSetValue => {
+                let value = set_value(&set.name, &set.args)?;
+                self.settings.set(&set.name, Some(&value), local, in_transaction)?;
+            }
+            VariableSetKind::VarSetDefault | VariableSetKind::VarReset => {
+                self.settings.set(&set.name, None, local, in_transaction)?;
+            }
+            VariableSetKind::VarResetAll => self.settings.reset_all(in_transaction),
+            VariableSetKind::VarSetMulti => {}
+            _ => return Err(PgError::unsupported("this SET")),
+        }
+        Ok(Outcome::command(tag))
+    }
+
+    /// show runs SHOW.
+    fn show(&mut self, name: &str) -> Result<Outcome> {
+        if name == "all" {
+            let mut rows = Vec::new();
+            for definition in crate::settings::all_settings() {
+                let value = self.settings.show(&definition.name)?;
+                rows.push(vec![
+                    Value::Text(definition.name.clone()),
+                    Value::Text(value),
+                    Value::Text(definition.description.clone()),
+                ]);
+            }
+            let tag = format!("SHOW {}", rows.len());
+            return Ok(Outcome::Rows { columns: show_columns(name), rows, tag });
+        }
+        let value = match name {
+            "session_authorization" => self.user.clone(),
+            "server_version" => crate::SERVER_VERSION.to_string(),
+            _ => self.settings.show(name)?,
+        };
+        Ok(Outcome::Rows { columns: show_columns(name), rows: vec![vec![Value::Text(value)]], tag: "SHOW".into() })
+    }
+}
+
+/// show_columns returns the result columns of SHOW for a parameter, or for every parameter.
+fn show_columns(name: &str) -> Vec<Column> {
+    let text = crate::expr::typ(crate::oid::TEXT);
+    if name == "all" {
+        return vec![column("name".into(), text), column("setting".into(), text), column("description".into(), text)];
+    }
+    vec![column(setting(name).map_or(name.to_string(), |s| s.name.clone()), text)]
+}
+
+/// LIST_QUOTE_SETTINGS are the list settings whose items SET quotes as identifiers.
+const LIST_QUOTE_SETTINGS: [&str; 5] = [
+    "search_path",
+    "temp_tablespaces",
+    "session_preload_libraries",
+    "shared_preload_libraries",
+    "local_preload_libraries",
+];
+
+/// set_value flattens SET's arguments into the text of the value, as Postgres' flatten_set_variable_args does.
+fn set_value(name: &str, args: &[Node]) -> Result<String> {
+    let quote = LIST_QUOTE_SETTINGS.contains(&name);
+    let mut parts = Vec::new();
+    for arg in args {
+        let text = match arg.node.as_ref() {
+            Some(NodeEnum::AConst(c)) => match &c.val {
+                Some(Val::Ival(i)) => i.ival.to_string(),
+                Some(Val::Fval(f)) => f.fval.clone(),
+                Some(Val::Sval(s)) if quote => quote_identifier(&s.sval),
+                Some(Val::Sval(s)) => s.sval.clone(),
+                Some(Val::Boolval(b)) => if b.boolval { "on" } else { "off" }.to_string(),
+                _ => return Err(PgError::unsupported("this SET value")),
+            },
+            Some(NodeEnum::TypeCast(cast)) if name == "timezone" => {
+                let Some(NodeEnum::AConst(c)) = cast.arg.as_deref().and_then(|a| a.node.as_ref()) else {
+                    return Err(PgError::unsupported("this time zone"));
+                };
+                let Some(Val::Sval(s)) = &c.val else { return Err(PgError::unsupported("this time zone")) };
+                let text = s.sval.trim();
+                let (sign, rest) = text.strip_prefix('-').map_or((1.0, text.trim_start_matches('+')), |r| (-1.0, r));
+                let mut fields = rest.split(':').map(|f| f.parse::<f64>().unwrap_or(0.0));
+                let hours = fields.next().unwrap_or(0.0) + fields.next().unwrap_or(0.0) / 60.0;
+                (sign * hours).to_string()
+            }
+            _ => return Err(PgError::unsupported("this SET value")),
+        };
+        parts.push(text);
+    }
+    Ok(parts.join(", "))
 }
 
 /// describable reports whether describing a statement needs the catalog.

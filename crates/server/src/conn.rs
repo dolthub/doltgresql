@@ -64,19 +64,6 @@ fn error_fields(err: &PgError) -> ErrorFields {
     }
 }
 
-/// local_timezone returns the name of the machine's time zone, from the /etc/localtime link, or UTC.
-fn local_timezone() -> String {
-    if let Ok(zone) = std::env::var("TZ")
-        && !zone.is_empty()
-    {
-        return zone.trim_start_matches(':').to_string();
-    }
-    std::fs::read_link("/etc/localtime")
-        .ok()
-        .and_then(|path| path.to_str().and_then(|p| p.split_once("zoneinfo/").map(|(_, zone)| zone.to_string())))
-        .unwrap_or_else(|| "UTC".to_string())
-}
-
 /// Conn is a client connection.
 pub struct Conn {
     stream: TcpStream,
@@ -178,30 +165,20 @@ impl Conn {
         }
         let database = parameter("database").filter(|d| !d.is_empty()).unwrap_or_else(|| user.clone());
         let host = self.stream.peer_addr().map(|addr| addr.ip().to_string()).unwrap_or_default();
-        let mut session = match self.server.engine.session(&user, &host, &database) {
+        let mut startup: Vec<(String, String)> = parameters
+            .iter()
+            .filter(|(name, _)| !matches!(name.as_str(), "user" | "database" | "options" | "replication"))
+            .cloned()
+            .collect();
+        if !startup.iter().any(|(name, _)| name.eq_ignore_ascii_case("DateStyle")) {
+            startup.push(("DateStyle".into(), "ISO, MDY".into()));
+        }
+        let mut session = match self.server.engine.session(&user, &host, &database, &startup) {
             Ok(session) => session,
             Err(err) => return self.fatal(err),
         };
         self.queue(BackendMessage::AuthenticationOk);
-        let date_style = parameter("DateStyle").unwrap_or_else(|| "ISO, MDY".into());
-        let timezone = parameter("TimeZone").or_else(|| parameter("timezone")).unwrap_or_else(local_timezone);
-        for (name, value) in [
-            ("application_name", parameter("application_name").unwrap_or_default()),
-            ("client_encoding", "UTF8".to_string()),
-            ("DateStyle", date_style),
-            ("default_transaction_read_only", "off".into()),
-            ("in_hot_standby", "off".into()),
-            ("integer_datetimes", "on".into()),
-            ("IntervalStyle", "postgres".into()),
-            ("is_superuser", "on".into()),
-            ("server_encoding", "UTF8".into()),
-            ("server_version", "15.17".into()),
-            ("session_authorization", user.clone()),
-            ("standard_conforming_strings", "on".into()),
-            ("TimeZone", timezone),
-        ] {
-            self.queue(BackendMessage::ParameterStatus { name: name.into(), value });
-        }
+        self.queue_parameters(&mut session);
         self.queue(BackendMessage::BackendKeyData { process_id: self.process_id, secret_key: vec![0; 4] });
         self.queue(BackendMessage::ReadyForQuery { tx_status: b'I' });
         self.flush()?;
@@ -267,11 +244,13 @@ impl Conn {
                     if let Some(err) = error {
                         self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                     }
+                    self.queue_parameters(session);
                     self.queue(BackendMessage::ReadyForQuery { tx_status: session.tx_status() });
                     self.flush()?;
                 }
                 FrontendMessage::Sync => {
                     extended.failed = false;
+                    self.queue_parameters(session);
                     self.queue(BackendMessage::ReadyForQuery { tx_status: session.tx_status() });
                     self.flush()?;
                 }
@@ -365,6 +344,13 @@ impl Conn {
             other => return Err(PgError::unsupported(format!("the {} message", message_name(&other)))),
         }
         Ok(())
+    }
+
+    /// queue_parameters queues a ParameterStatus for each reported parameter that changed.
+    fn queue_parameters(&mut self, session: &mut Session) {
+        for (name, value) in session.parameter_changes() {
+            self.queue(BackendMessage::ParameterStatus { name, value });
+        }
     }
 
     /// queue_notices queues the notices the session raised.

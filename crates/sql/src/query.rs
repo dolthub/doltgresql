@@ -38,6 +38,8 @@ pub struct Ctx<'a> {
     pub parameters: &'a mut Vec<u32>,
     /// The notices the statement raised.
     pub notices: &'a mut Vec<PgError>,
+    /// The schemas that unqualified names resolve in.
+    pub search_path: Vec<String>,
 }
 
 /// SortKey is an ORDER BY key over the input row.
@@ -72,14 +74,11 @@ pub fn column(name: String, ty: crate::catalog::ColumnType) -> Column {
     }
 }
 
-/// SEARCH_PATH is the schemas that unqualified names resolve in.
-const SEARCH_PATH: [&str; 1] = ["public"];
-
 impl Ctx<'_> {
     /// resolve_table loads the table that a range variable names.
     pub fn resolve_table(&mut self, relation: &RangeVar) -> Result<TableDef> {
-        let schemas: Vec<&str> =
-            if relation.schemaname.is_empty() { SEARCH_PATH.to_vec() } else { vec![relation.schemaname.as_str()] };
+        let schemas: Vec<String> =
+            if relation.schemaname.is_empty() { self.search_path.clone() } else { vec![relation.schemaname.clone()] };
         for schema in &schemas {
             if let Some(table) = self.txn.table(self.db, schema, &relation.relname)? {
                 return Ok(table);
@@ -94,6 +93,24 @@ impl Ctx<'_> {
             position: position(relation.location),
             ..PgError::new(code::UNDEFINED_TABLE, format!("relation \"{name}\" does not exist"))
         })
+    }
+
+    /// creation_schema returns the schema that an unqualified new object goes in: the first schema of the search
+    /// path that exists.
+    pub fn creation_schema(&self) -> Result<String> {
+        self.search_path
+            .iter()
+            .find(|s| self.txn.root.schemas.iter().any(|existing| existing == s.as_bytes()))
+            .cloned()
+            .ok_or_else(|| PgError::new(code::INVALID_SCHEMA_NAME, "no schema has been selected to create in"))
+    }
+
+    /// constant_text evaluates an expression without columns and returns its text.
+    pub fn constant_text(&mut self, node: &Node, params: &[Value]) -> Result<String> {
+        let scope = Scope::default();
+        let mut binder = Binder { scope: &scope, parameters: self.parameters };
+        let (expr, _) = binder.bind(node)?;
+        Ok(expr.eval(&[], params)?.output().unwrap_or_default())
     }
 
     /// plan_select plans a SELECT.

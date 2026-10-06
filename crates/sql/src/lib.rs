@@ -27,6 +27,7 @@ pub mod expr;
 pub mod numeric;
 pub mod parse;
 pub mod query;
+pub mod settings;
 pub mod storage;
 pub mod txn;
 pub mod types;
@@ -35,6 +36,9 @@ pub use engine::{Engine, Session};
 pub use error::{PgError, Result, code};
 use parse::Statement;
 pub use types::Value;
+
+/// SERVER_VERSION is the Postgres version the server reports.
+pub const SERVER_VERSION: &str = "15.17";
 
 /// DEFAULT_BRANCH is the branch a new database starts on.
 pub const DEFAULT_BRANCH: &str = "main";

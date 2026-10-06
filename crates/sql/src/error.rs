@@ -50,6 +50,7 @@ pub mod code {
     pub const INVALID_ROW_COUNT_IN_LIMIT_CLAUSE: &str = "2201W";
     pub const INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE: &str = "2201X";
     pub const SERIALIZATION_FAILURE: &str = "40001";
+    pub const CANT_CHANGE_RUNTIME_PARAM: &str = "55P02";
     pub const INVALID_BINARY_REPRESENTATION: &str = "22P03";
     pub const CHARACTER_NOT_IN_REPERTOIRE: &str = "22021";
     pub const PROTOCOL_VIOLATION: &str = "08P01";

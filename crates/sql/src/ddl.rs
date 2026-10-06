@@ -34,7 +34,8 @@ impl Ctx<'_> {
     /// create_table runs CREATE TABLE.
     pub fn create_table(&mut self, create: &CreateStmt) -> Result<Outcome> {
         let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
-        let schema = if relation.schemaname.is_empty() { "public" } else { relation.schemaname.as_str() };
+        let schema = if relation.schemaname.is_empty() { self.creation_schema()? } else { relation.schemaname.clone() };
+        let schema = schema.as_str();
         if !self.txn.root.schemas.iter().any(|s| s == schema.as_bytes()) {
             return Err(PgError {
                 position: position(relation.location),
