@@ -168,6 +168,7 @@ func Init() {
 	initOctetLength()
 	initPgAvailableExtensionVersions()
 	initPgBackendPid()
+	initPgCharMaxLength()
 	initPgCharToEncoding()
 	initPgCollationIsVisible()
 	initPgConversionIsVisible()

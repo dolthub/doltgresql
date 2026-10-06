@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/id"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 func TestInfoSchemaRevisionDb(t *testing.T) {
@@ -117,6 +120,132 @@ var InfoSchemaRevisionDbScripts = []ScriptTest{
 			},
 		},
 	},
+}
+
+func TestInfoSchemaPgCharMaxLength(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema._pg_char_max_length",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Issue #3495: varchar(10) has OID 1043 and typmod 14.
+					Query:            `SELECT information_schema._pg_char_max_length(1043::oid, 14);`,
+					Expected:         []sql.Row{{10}},
+					ExpectedColNames: []string{"_pg_char_max_length"},
+					ExpectedColTypes: []id.Type{pgtypes.Int32.ID},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(1042::oid, 14);`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(1560::oid, 10);`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(1562::oid, 10);`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query: `SELECT information_schema._pg_char_max_length(1042::oid, -1),
+						information_schema._pg_char_max_length(1043::oid, -1),
+						information_schema._pg_char_max_length(1560::oid, -1),
+						information_schema._pg_char_max_length(1562::oid, -1);`,
+					Expected: []sql.Row{{nil, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(NULL::oid, 14);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(1043::oid, NULL::integer);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(NULL::oid, NULL::integer);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: `SELECT information_schema._pg_char_max_length(25::oid, 14),
+						information_schema._pg_char_max_length(23::oid, 14),
+						information_schema._pg_char_max_length(18::oid, 14),
+						information_schema._pg_char_max_length(19::oid, 14),
+						information_schema._pg_char_max_length(1015::oid, 14),
+						information_schema._pg_char_max_length(0::oid, 14),
+						information_schema._pg_char_max_length(999999::oid, 14);`,
+					Expected: []sql.Row{{nil, nil, nil, nil, nil, nil, nil}},
+				},
+				{
+					// Only -1 is a sentinel; other modifiers are used without validation.
+					Query: `SELECT information_schema._pg_char_max_length(1042::oid, 0),
+						information_schema._pg_char_max_length(1043::oid, 4),
+						information_schema._pg_char_max_length(1043::oid, -2),
+						information_schema._pg_char_max_length(1560::oid, 0),
+						information_schema._pg_char_max_length(1562::oid, -2);`,
+					Expected: []sql.Row{{-4, 0, -6, 0, -2}},
+				},
+				{
+					Query: `SELECT information_schema._pg_char_max_length(1043::oid, 2147483647),
+						information_schema._pg_char_max_length(1042::oid, '-2147483644'::integer),
+						information_schema._pg_char_max_length(1560::oid, '-2147483648'::integer),
+						information_schema._pg_char_max_length(1562::oid, 2147483647);`,
+					Expected: []sql.Row{{2147483643, -2147483648, -2147483648, 2147483647}},
+				},
+				{
+					Query:           `SELECT information_schema._pg_char_max_length(1042::oid, '-2147483648'::integer);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT information_schema._pg_char_max_length(1043::oid, '-2147483645'::integer);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					// An unrelated OID must not evaluate the overflowing subtraction.
+					Query:    `SELECT information_schema._pg_char_max_length(25::oid, '-2147483648'::integer);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length('varchar'::regtype::oid, 14);`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length($1::oid, $2::integer);`,
+					BindVars: []any{uint32(1043), int32(14)},
+					Expected: []sql.Row{{10}},
+				},
+			},
+		},
+		{
+			Name: "information_schema._pg_char_max_length with catalog inputs",
+			SetUpScript: []string{
+				`CREATE DOMAIN char_max_length_domain AS varchar(10);`,
+				`CREATE TABLE char_max_length_columns (
+					id integer PRIMARY KEY, c char(10), v varchar(10), txt text,
+					default_c character, unlimited_v varchar, b bit(10), vb bit varying(10),
+					unlimited_vb bit varying, internal_c "char", va varchar(10)[], d char_max_length_domain
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, information_schema._pg_char_max_length(a.atttypid, a.atttypmod)
+						FROM pg_attribute a
+						WHERE a.attrelid = 'char_max_length_columns'::regclass AND a.attnum > 0
+						ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", nil}, {"c", 10}, {"v", 10}, {"txt", nil},
+						{"default_c", 1}, {"unlimited_v", nil}, {"b", 10}, {"vb", 10},
+						{"unlimited_vb", nil}, {"internal_c", nil}, {"va", nil}, {"d", nil},
+					},
+				},
+			},
+		},
+	})
 }
 
 func TestInfoSchemaColumns(t *testing.T) {
