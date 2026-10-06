@@ -239,6 +239,11 @@ Findings:
 Remaining, with the phases that use them: GC and the writable old generation, conjoining, and archive writing (chunk
 grouping and dictionary training) with Phase 5; statistics, and the auth and branch control files with Phase 4.
 
+## Findings in Go
+
+`GO_FINDINGS.md` records surprising behavior in the Go implementation, and problems that would be very hard to change
+there, as evidence for the port beyond performance. Add to it as they are found.
+
 ## Baseline artifacts
 
 - `testing/go/regression/out/results.trackers`: per-statement regression results of the Go baseline.
