@@ -2093,19 +2093,31 @@ fn test_json_table() {
             ],
             ..S
         },
+        // Expectations from Postgres 17, since Postgres 15 lacks this feature.
         ScriptTest {
             name: "JSON_TABLE paths and PASSING",
             assertions: &[
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*] ? (@.a > $x)' PASSING 1 AS x COLUMNS (a INT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 74, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' AS p COLUMNS (a INT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "AS""#, position: 61, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2114,8 +2126,14 @@ fn test_json_table() {
 							'$[*] ? (@ >= $a && @ < $b)' PASSING 2 AS a, 3.5::numeric AS b
 							COLUMNS (v INT PATH '$')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 88, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2124,14 +2142,24 @@ fn test_json_table() {
 							'$[*] ? (@ == $s)' PASSING 'b' AS s, 'b'::varchar AS t
 							COLUMNS (v TEXT PATH '$', w TEXT PATH '$t')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 80, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT), Column("w", TEXT)],
+                        rows: &[
+                            &[T("b"), T("b")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[true,false]'::jsonb, '$[*] ? (@ == $s)' PASSING TRUE AS s COLUMNS (v TEXT PATH '$')) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 68, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2140,8 +2168,13 @@ fn test_json_table() {
 							'$[*] ? (@ == $s.k)' PASSING '{"k":2}'::jsonb AS s
 							COLUMNS (v TEXT PATH '$')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 84, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2156,8 +2189,13 @@ fn test_json_table() {
 								z TEXT PATH '$t'
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 61, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT), Column("w", JSONB), Column("x", TEXT), Column("y", JSONB), Column("z", TEXT)],
+                        rows: &[
+                            &[T("2020-01-01"), T(r#""2020-01-01""#), T("2020-01-01 10:00:00"), T(r#""2020-01-01T10:00:00""#), T("10:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2166,8 +2204,13 @@ fn test_json_table() {
 							'$' PASSING NULL AS d, NULL::int AS e
 							COLUMNS (v TEXT PATH '$d', w JSONB PATH '$e')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 70, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT), Column("w", TEXT)],
+                        rows: &[
+                            &[Null, T("null")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2176,8 +2219,13 @@ fn test_json_table() {
 							'$' PASSING 1.5::float8 AS d, 2::int8 AS e, 3::int2 AS f, 4.5::float4 AS g
 							COLUMNS (v TEXT PATH '$d', w TEXT PATH '$e', x TEXT PATH '$f', y TEXT PATH '$g')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 61, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT), Column("w", TEXT), Column("x", TEXT), Column("y", TEXT)],
+                        rows: &[
+                            &[T("1.5"), T("2"), T("3"), T("4.5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2186,8 +2234,13 @@ fn test_json_table() {
 							'$' PASSING ARRAY[1] AS d, ROW(1,2) AS e
 							COLUMNS (v JSONB PATH '$d' ERROR ON ERROR, w JSONB PATH '$e' ERROR ON ERROR)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 59, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", JSONB), Column("w", JSONB)],
+                        rows: &[
+                            &[T("[1]"), T(r#"{"f1": 1, "f2": 2}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2196,8 +2249,13 @@ fn test_json_table() {
 							'$' PASSING 1 AS d, 2 AS d, 3 AS "D"
 							COLUMNS (v TEXT PATH '$d', w TEXT PATH '$D')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 61, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT), Column("w", TEXT)],
+                        rows: &[
+                            &[T("1"), T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2206,91 +2264,108 @@ fn test_json_table() {
 							'$' PASSING '[1]' FORMAT JSON AS d, '[2]'::text FORMAT JSON AS e
 							COLUMNS (v TEXT PATH '$d[0]', w TEXT PATH '$e[0]')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 61, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT), Column("w", TEXT)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1,2]'::jsonb, '$' PASSING 1 AS D COLUMNS (v TEXT PATH '$D')) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 46, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"could not find jsonpath variable "D""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*] ? ($x > 0)' COLUMNS (e INT PATH '$')) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 58, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"could not find jsonpath variable "x""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('["a","b"]'::jsonb, '$[*] ? (@ == $s)' PASSING 'b'::name AS s COLUMNS (v TEXT PATH '$')) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 65, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "could not convert value of type name to jsonpath", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (a INT, a TEXT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 61, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42712", message: "duplicate JSON_TABLE column or path name: a", position: 77, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' AS a COLUMNS (a INT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "AS""#, position: 61, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42712", message: "duplicate JSON_TABLE column or path name: a", position: 75, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (n FOR ORDINALITY, m FOR ORDINALITY)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 61, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "only one FOR ORDINALITY column is allowed", position: 88, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*' COLUMNS (a INT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 60, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "syntax error at end of jsonpath input", position: 54, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '' COLUMNS (a INT)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 43, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type jsonpath: """#, position: 40, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$' || '[*]' COLUMNS (a INT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 67, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "only string constants are supported in JSON_TABLE path specification", position: 54, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, 'strict $.b' COLUMNS (a INT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 57, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, 'strict $.b' COLUMNS (a INT) EMPTY ARRAY ON ERROR) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 57, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, 'strict $.b' COLUMNS (a INT) ERROR ON ERROR) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 57, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203A", message: r#"JSON object does not contain key "b""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('{"a":1}'::jsonb, 'strict $.b' COLUMNS (a INT) NULL ON ERROR) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 57, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "invalid ON ERROR behavior", detail: "Only EMPTY [ ARRAY ] or ERROR is allowed in the top-level ON ERROR clause.", position: 73, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*] / 0' COLUMNS (e INT PATH '$') ERROR ON ERROR) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 51, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a') ERROR ON ERROR) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INT4)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
             ],
             ..S
         },
+        // Expectations from Postgres 17, since Postgres 15 lacks this feature.
         ScriptTest {
             name: "JSON_TABLE columns",
             set_up_script: &[
@@ -2299,8 +2374,14 @@ fn test_json_table() {
             assertions: &[
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{"a":2}]'::jsonb, '$[*]' COLUMNS (n FOR ORDINALITY, a INT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 61, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("n", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2308,8 +2389,17 @@ fn test_json_table() {
 							'[1,"x",true,null,1.5]'::jsonb,
 							'$[*]' COLUMNS (a TEXT PATH '$', b JSONB PATH '$', n FOR ORDINALITY)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 92, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", TEXT), Column("n", INT4)],
+                        rows: &[
+                            &[T("1"), T("1"), T("1")],
+                            &[T("x"), T(r#""x""#), T("2")],
+                            &[T("t"), T("true"), T("3")],
+                            &[Null, T("null"), T("4")],
+                            &[T("1.5"), T("1.5"), T("5")],
+                        ],
+                        tag: "SELECT 5",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2332,8 +2422,19 @@ fn test_json_table() {
 								js JSON PATH '$.a'
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 236, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INT4), Column("t", TEXT), Column("n", NUMERIC), Column("b", BOOL), Column("j", TEXT), Column("js", TEXT)],
+                        rows: &[
+                            &[Null, T("1.5"), T("1.5"), Null, T("1.5"), T("1.5")],
+                            &[T("12"), T("12"), T("12"), Null, T(r#""12""#), T(r#""12""#)],
+                            &[Null, T("t"), Null, T("t"), T("true"), T("true")],
+                            &[Null, Null, Null, Null, T("[1]"), T("[1]")],
+                            &[Null, Null, Null, Null, T(r#"{"b": 1}"#), T(r#"{"b": 1}"#)],
+                            &[Null, Null, Null, Null, T("null"), T("null")],
+                            &[Null, Null, Null, Null, Null, Null],
+                        ],
+                        tag: "SELECT 7",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2347,8 +2448,13 @@ fn test_json_table() {
 								"A" INT PATH '$.a.b'
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 71, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", TEXT), Column("c", JSON), Column("d", TEXT), Column("A", INT4)],
+                        rows: &[
+                            &[Null, T(r#"{"b": 1}"#), T(r#"{"b": 1}"#), T("1"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2356,38 +2462,43 @@ fn test_json_table() {
 							'{"A": 1, "a": 2, "a b": 3, "q\"x": 4}'::jsonb,
 							'$' COLUMNS ("A" INT, a INT, "a b" INT, "q""x" INT)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 93, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("A", INT4), Column("a", INT4), Column("a b", INT4), Column(r#"q"x"#, INT4)],
+                        rows: &[
+                            &[T("1"), T("2"), T("3"), T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1.5}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "1.5""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":[1]}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203F", message: r#"JSON path expression for column "i" must return single scalar item"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a[*]' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 57, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22034", message: r#"JSON path expression for column "i" must return single scalar item"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (i JSONB PATH '$.a[*]' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 57, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22034", message: r#"JSON path expression for column "i" must return single item when no wrapper is requested"#, hint: "Use the WITH WRAPPER clause to wrap SQL/JSON items into an array.", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[{}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' ERROR ON EMPTY)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 48, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22035", message: r#"no SQL/JSON item found for specified path of column "i""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[{}]'::jsonb, '$[*]' COLUMNS (i INT PATH 'strict $.a' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 48, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203A", message: r#"JSON object does not contain key "a""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2395,8 +2506,13 @@ fn test_json_table() {
 							'[{}]'::jsonb,
 							'$[*]' COLUMNS (i INT PATH 'strict $.a' ERROR ON EMPTY, j INT PATH '$.a' DEFAULT 5 ON EMPTY)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 63, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INT4), Column("j", INT4)],
+                        rows: &[
+                            &[Null, T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2410,39 +2526,49 @@ fn test_json_table() {
 								m INT PATH '$.a' DEFAULT length('ab') ON ERROR
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 70, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INT4), Column("j", INT4), Column("k", INT4), Column("l", INT4), Column("m", INT4)],
+                        rows: &[
+                            &[T("6"), T("7"), T("8"), T("2"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i JSONB PATH '$.b' DEFAULT '{"q":1}' ON EMPTY)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("i", JSONB)],
+                        rows: &[
+                            &[T(r#"{"q": 1}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' DEFAULT 'q' ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "q""#, position: 89, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' DEFAULT (SELECT 1) ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "can only specify a constant, non-aggregate function, or operator expression for DEFAULT", position: 89, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' EMPTY ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"invalid ON ERROR behavior for column "i""#, detail: "Only ERROR, NULL, or DEFAULT expression is allowed in ON ERROR for scalar columns.", position: 81, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (i INT PATH '$.a' EMPTY ARRAY ON EMPTY)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"invalid ON EMPTY behavior for column "i""#, detail: "Only ERROR, NULL, or DEFAULT expression is allowed in ON EMPTY for scalar columns.", position: 81, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":[1,2]}]'::jsonb, '$[*]' COLUMNS (q JSONB PATH '$.a[*]' TRUE ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 57, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"invalid ON ERROR behavior for column "q""#, detail: "Only ERROR, NULL, EMPTY ARRAY, EMPTY OBJECT, or DEFAULT expression is allowed in ON ERROR for formatted columns.", position: 88, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2471,8 +2597,18 @@ fn test_json_table() {
 								f4 INT PATH '$.a' OMIT QUOTES
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 185, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("w1", JSONB), Column("w2", JSONB), Column("w3", JSONB), Column("w4", JSONB), Column("w5", JSONB), Column("q1", TEXT), Column("q2", TEXT), Column("q3", TEXT), Column("q4", JSONB), Column("f1", TEXT), Column("f2", TEXT), Column("f3", INT4), Column("f4", INT4)],
+                        rows: &[
+                            &[T("[1, 2]"), T("[1, 2]"), T("[1, 2]"), T("[[1, 2]]"), T("[1, 2]"), T("[1, 2]"), T("[1, 2]"), T("[1, 2]"), T("[1, 2]"), T("[1, 2]"), T("[[1, 2]]"), Null, Null],
+                            &[T("[3]"), T("3"), T("3"), T("[3]"), T("3"), T("3"), T("3"), T("3"), T("3"), T("3"), T("[3]"), T("3"), T("3")],
+                            &[T(r#"["s"]"#), T(r#""s""#), T(r#""s""#), T(r#"["s"]"#), T(r#""s""#), T("s"), T(r#""s""#), T("s"), Null, T(r#""s""#), T(r#"["s"]"#), Null, Null],
+                            &[Null, Null, T("[]"), T("[[]]"), T("[]"), T("[]"), T("[]"), T("[]"), T("[]"), T("[]"), T("[[]]"), Null, Null],
+                            &[T(r#"[{"k": 1}]"#), T(r#"{"k": 1}"#), T(r#"{"k": 1}"#), T(r#"[{"k": 1}]"#), T(r#"{"k": 1}"#), T(r#"{"k": 1}"#), T(r#"{"k": 1}"#), T(r#"{"k": 1}"#), T(r#"{"k": 1}"#), T(r#"{"k": 1}"#), T(r#"[{"k": 1}]"#), Null, Null],
+                            &[Null, Null, Null, Null, Null, Null, Null, Null, Null, Null, Null, Null, Null],
+                        ],
+                        tag: "SELECT 6",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2486,8 +2622,13 @@ fn test_json_table() {
 								u JSONB PATH '$.a[*]' DEFAULT '"z"' ON ERROR
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 72, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("q", JSONB), Column("r", JSONB), Column("s", JSONB), Column("t", TEXT), Column("u", JSONB)],
+                        rows: &[
+                            &[T("[]"), T("{}"), T("[]"), T("{}"), T(r#""z""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2495,37 +2636,37 @@ fn test_json_table() {
 							'[{"a":[1,2]}]'::jsonb,
 							'$[*]' COLUMNS (q JSONB PATH '$.b' WITH WRAPPER, r JSONB PATH '$.b' WITH WRAPPER ERROR ON EMPTY)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 72, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22035", message: r#"no SQL/JSON item found for specified path of column "r""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"s"}]'::jsonb, '$[*]' COLUMNS (q JSONB PATH '$.a' OMIT QUOTES ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "invalid input syntax for type json", detail: r#"Token "s" is invalid."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"x"}]'::jsonb, '$[*]' COLUMNS (q TEXT PATH '$.a' WITH WRAPPER OMIT QUOTES)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "SQL/JSON QUOTES behavior must not be specified when WITH WRAPPER is used", position: 64, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a INT FORMAT JSON)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 53, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use JSON format with non-string output types", position: 68, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a JSON FORMAT JSON ENCODING UTF8 PATH '$.a')) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 53, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot set JSON encoding for non-bytea output types", position: 69, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a BYTEA FORMAT JSON ENCODING UTF16)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 53, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "unsupported JSON encoding", hint: "Only UTF8 JSON encoding is supported.", position: 70, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a BYTEA FORMAT JSON ENCODING FOO)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 53, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "unrecognized JSON encoding: foo", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2539,8 +2680,13 @@ fn test_json_table() {
 								e TEXT PATH 'lax $.a' DEFAULT 'x' ON EMPTY ERROR ON ERROR
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 68, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", INT4), Column("c", INT4), Column("d", TEXT), Column("e", TEXT)],
+                        rows: &[
+                            &[T("1"), T("1"), Null, T("1"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2548,8 +2694,13 @@ fn test_json_table() {
 							'[{"d":"2020-01-02"}]'::jsonb,
 							'$[*]' COLUMNS (d DATE PATH '$.d', t TEXT PATH '$.d.datetime()', j JSONB PATH '$.d.datetime()')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 79, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("d", DATE), Column("t", TEXT), Column("j", JSONB)],
+                        rows: &[
+                            &[T("2020-01-02"), T("2020-01-02"), T(r#""2020-01-02""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2563,14 +2714,29 @@ fn test_json_table() {
 							]'::jsonb,
 							'$[*]' COLUMNS (a INT[], t TEXT[] PATH '$.a')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 197, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4_ARRAY), Column("t", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2},{3,4}}"), T("{{1,2},{3,4}}")],
+                            &[Null, T("{{a}}")],
+                            &[Null, T("{1,[2]}")],
+                            &[T("{NULL,3}"), T("{NULL,3}")],
+                            &[T("{}"), T("{}")],
+                        ],
+                        tag: "SELECT 5",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":"12"},{"a":"{1,2}"}]'::jsonb, '$[*]' COLUMNS (a INT[] PATH '$.a' OMIT QUOTES)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 70, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4_ARRAY)],
+                        rows: &[
+                            &[Null],
+                            &[T("{1,2}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2582,8 +2748,15 @@ fn test_json_table() {
 							]'::jsonb,
 							'$[*]' COLUMNS (a pair)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 148, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", USER_DEFINED)],
+                        rows: &[
+                            &[T("(1,q)")],
+                            &[Null],
+                            &[Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2597,8 +2770,14 @@ fn test_json_table() {
 								a BOOL EXISTS
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 71, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("e", BOOL), Column("i", INT4), Column("t", TEXT), Column("j", JSONB), Column("a", BOOL)],
+                        rows: &[
+                            &[T("t"), T("1"), T("true"), T("true"), T("t")],
+                            &[T("f"), T("0"), T("false"), T("false"), T("f")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2611,8 +2790,14 @@ fn test_json_table() {
 								h BOOL EXISTS PATH 'strict $.a' FALSE ON ERROR
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 71, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("e", BOOL), Column("f", BOOL), Column("g", BOOL), Column("h", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("t"), T("t")],
+                            &[T("f"), T("t"), Null, T("f")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2625,44 +2810,55 @@ fn test_json_table() {
 								y BOOL EXISTS PATH '$ ? (@ / 0 > 1)' ERROR ON ERROR
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 62, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("e", INT4), Column("u", INT4), Column("x", INT4), Column("y", BOOL)],
+                        rows: &[
+                            &[T("0"), Null, T("1"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{}]'::jsonb, '$[*]' COLUMNS (e BOOL EXISTS PATH 'strict $.a' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 56, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203A", message: r#"JSON object does not contain key "a""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1},{}]'::jsonb, '$[*]' COLUMNS (e DATE EXISTS PATH '$.a')) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 56, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "could not coerce ON ERROR expression (FALSE) to the RETURNING type", detail: r#"invalid input syntax for type date: "false""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e BOOL EXISTS PATH '$.a' NULL ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"invalid ON ERROR behavior for column "e""#, detail: "Only ERROR, TRUE, FALSE, or UNKNOWN is allowed in ON ERROR for EXISTS columns.", position: 81, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e BOOL EXISTS PATH '$.a' EMPTY ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"invalid ON ERROR behavior for column "e""#, detail: "Only ERROR, TRUE, FALSE, or UNKNOWN is allowed in ON ERROR for EXISTS columns.", position: 81, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH '$ / 0')) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("e", INT4)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH '$ / 0' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
                     ..A
                 },
             ],
             ..S
         },
+        // Expectations from Postgres 17, since Postgres 15 lacks this feature.
         ScriptTest {
             name: "JSON_TABLE NESTED PATH",
             assertions: &[
@@ -2680,8 +2876,19 @@ fn test_json_table() {
 								NESTED '$.c[*]' AS cp COLUMNS (cn FOR ORDINALITY, c TEXT PATH '$')
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 195, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("n", INT4), Column("a", INT4), Column("bn", INT4), Column("b", INT4), Column("cn", INT4), Column("c", TEXT)],
+                        rows: &[
+                            &[T("1"), T("1"), T("1"), T("10"), Null, Null],
+                            &[T("1"), T("1"), T("2"), T("20"), Null, Null],
+                            &[T("1"), T("1"), Null, Null, T("1"), T("x")],
+                            &[T("2"), T("2"), Null, Null, Null, Null],
+                            &[T("3"), T("3"), T("1"), T("30"), Null, Null],
+                            &[T("3"), T("3"), Null, Null, T("1"), T("y")],
+                            &[T("3"), T("3"), Null, Null, T("2"), T("z")],
+                        ],
+                        tag: "SELECT 7",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2695,14 +2902,26 @@ fn test_json_table() {
 								)
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 103, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("bn", INT4), Column("xn", INT4), Column("x", INT4)],
+                        rows: &[
+                            &[T("1"), T("1"), T("1"), T("1")],
+                            &[T("1"), T("1"), T("2"), T("2")],
+                            &[T("1"), T("2"), T("1"), T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1,"b":[1]}]'::jsonb, '$[*]' COLUMNS (NESTED PATH '$.b[*]' COLUMNS (b INT PATH '$'))) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 61, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("b", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2710,8 +2929,13 @@ fn test_json_table() {
 							'[{"a":1,"b":1}]'::jsonb,
 							'$[*]' COLUMNS (a INT, NESTED PATH 'strict $.q' COLUMNS (b INT PATH '$'))
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 74, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", INT4)],
+                        rows: &[
+                            &[T("1"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2719,7 +2943,7 @@ fn test_json_table() {
 							'[{"a":1,"b":1}]'::jsonb,
 							'$[*]' COLUMNS (a INT, NESTED PATH 'strict $.q' COLUMNS (b INT PATH '$')) ERROR ON ERROR
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 74, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203A", message: r#"JSON object does not contain key "q""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2727,7 +2951,7 @@ fn test_json_table() {
 							'[{"a":1,"b":[1]}]'::jsonb,
 							'$[*]' COLUMNS (a INT, NESTED PATH '$.b[*]' COLUMNS (a INT PATH '$'))
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 76, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42712", message: "duplicate JSON_TABLE column or path name: a", position: 122, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2735,7 +2959,7 @@ fn test_json_table() {
 							'[{"a":1,"b":[1]}]'::jsonb,
 							'$[*]' AS p COLUMNS (a INT, NESTED PATH '$.b[*]' AS p COLUMNS (b INT PATH '$'))
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "AS""#, position: 76, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42712", message: "duplicate JSON_TABLE column or path name: p", position: 121, ..E }),
                     ..A
                 },
             ],
@@ -2927,6 +3151,7 @@ fn test_json_table() {
             ],
             ..S
         },
+        // Expectations from Postgres 17, since Postgres 15 lacks this feature.
         ScriptTest {
             name: "JSON_TABLE column types and nested behaviors",
             set_up_script: &[
@@ -2945,8 +3170,13 @@ fn test_json_table() {
 								f FLOAT8 PATH '$.n'
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 135, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("n", NUMERIC), Column("v", VARCHAR), Column("ts", TIMESTAMP), Column("d", DATE), Column("i2", INT2), Column("f", FLOAT8)],
+                        rows: &[
+                            &[T("1.23"), T("abc"), T("2020-01-02 03:04:05"), T("2020-01-02"), T("7"), T("1.234")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2954,14 +3184,24 @@ fn test_json_table() {
 							'[1]'::bytea FORMAT JSON ENCODING UTF8,
 							'$[*]' COLUMNS (a INT PATH '$', b BYTEA FORMAT JSON PATH '$', c BYTEA PATH '$')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "FORMAT""#, position: 65, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT), Column("c", TEXT)],
+                        rows: &[
+                            &[T("1"), T(r#"\x31"#), T(r#"\x31"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('{"é":"ü"}'::jsonb, '$' COLUMNS ("é" TEXT)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 50, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("é", TEXT)],
+                        rows: &[
+                            &[T("ü")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2974,8 +3214,14 @@ fn test_json_table() {
 								dbl FLOAT8 PATH '$.k.double()'
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 82, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("kv", TEXT), Column("sz", INT4), Column("t", TEXT), Column("dbl", FLOAT8)],
+                        rows: &[
+                            &[T("a"), T("1"), T("object"), Null],
+                            &[Null, T("1"), T("number"), T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2983,8 +3229,13 @@ fn test_json_table() {
 							'[1]'::jsonb,
 							'$[*]' COLUMNS (e INT PATH 'strict $.a' DEFAULT -1 ON ERROR, f INT PATH '$.a' DEFAULT -2 ON EMPTY)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 62, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("e", INT4), Column("f", INT4)],
+                        rows: &[
+                            &[T("-1"), T("-2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2992,8 +3243,13 @@ fn test_json_table() {
 							'[{"a":{"x":1,"y":"q"}}]'::jsonb,
 							'$[*]' COLUMNS (a pair[] PATH '$[*].a' WITH WRAPPER, b TEXT PATH '$.a.y')
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 82, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", USER_DEFINED), Column("b", TEXT)],
+                        rows: &[
+                            &[T(r#"{"(1,q)"}"#), T("q")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -3004,8 +3260,15 @@ fn test_json_table() {
 								NESTED PATH '$.b[*]' COLUMNS (b INT PATH '$' DEFAULT 0 ON ERROR)
 							)
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 80, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("ae", BOOL), Column("aj", JSONB), Column("b", INT4)],
+                        rows: &[
+                            &[T("1"), T("f"), T("[1]"), Null],
+                            &[T("2"), T("t"), T("[2]"), Null],
+                            &[Null, Null, Null, T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -3013,8 +3276,13 @@ fn test_json_table() {
 							'[{"a":[1,2]}]'::jsonb,
 							'$[*]' PASSING 2 AS lim COLUMNS (NESTED PATH '$.a[*] ? (@ < $lim)' COLUMNS (a INT PATH '$'))
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "PASSING""#, position: 72, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -3022,113 +3290,114 @@ fn test_json_table() {
 							'[{"a":[1,2]}]'::jsonb,
 							'$[*]' COLUMNS (NESTED PATH '$.a[*]' COLUMNS (a INT PATH 'strict $.x' ERROR ON ERROR))
 						) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 72, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203A", message: "jsonpath member accessor can only be applied to an object", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":{"k":1}}]'::jsonb, '$[*]' COLUMNS (a INT[] ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 59, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":[[1],2]}]'::jsonb, '$[*]' COLUMNS (a INT[] ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 59, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: "See the array element [1].", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":3}]'::jsonb, '$[*]' COLUMNS (a pair ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 53, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot call populate_composite on a scalar", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":[1]}]'::jsonb, '$[*]' COLUMNS (a pair ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 55, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot call populate_composite on an array", ..E }),
                     ..A
                 },
             ],
             ..S
         },
+        // Expectations from Postgres 17, since Postgres 15 lacks this feature.
         ScriptTest {
             name: "JSON_TABLE path error codes",
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $.a' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203A", message: "jsonpath member accessor can only be applied to an object", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $.*' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203C", message: "jsonpath wildcard member accessor can only be applied to an object", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $[0]' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22039", message: "jsonpath array accessor can only be applied to an array", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[[1]]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $[5]' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 49, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22033", message: "jsonpath array subscript is out of bounds", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('["a"]'::jsonb, '$[*]' COLUMNS (e INT PATH '-$' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 49, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203B", message: "operand of unary jsonpath operator - is not a numeric value", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('["a"]'::jsonb, '$[*]' COLUMNS (e INT PATH '$ + 1' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 49, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22038", message: "left operand of jsonpath operator + is not a single numeric value", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('["a"]'::jsonb, '$[*]' COLUMNS (e INT PATH '$.abs()' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 49, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22036", message: "jsonpath item method .abs() can only be applied to a numeric value", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e INT PATH 'strict $.size()' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22039", message: "jsonpath item method .size() can only be applied to an array", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e JSONB PATH '$.keyvalue()' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203C", message: "jsonpath item method .keyvalue() can only be applied to an object", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$[*]' COLUMNS (e TEXT PATH '$.datetime()' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 47, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22031", message: "jsonpath item method .datetime() can only be applied to a string", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('["x"]'::jsonb, '$[*]' COLUMNS (e TEXT PATH '$.datetime()' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 49, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22031", message: r#"datetime format is not recognized: "x""#, hint: "Use a datetime template argument to specify the input data format.", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('["x"]'::jsonb, '$[*]' COLUMNS (e FLOAT8 PATH '$.double()' ERROR ON ERROR)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 49, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22036", message: r#"argument "x" of jsonpath item method .double() is invalid for type double precision"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[[]]'::jsonb, '$[*]' COLUMNS (e FLOAT8 PATH 'strict $.double()' ERROR ON ERROR)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 48, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22036", message: "jsonpath item method .double() can only be applied to a string or numeric value", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, 'strict $.a' COLUMNS (e INT PATH '$') ERROR ON ERROR) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 53, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2203A", message: "jsonpath member accessor can only be applied to an object", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '$$' COLUMNS (a INT)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 45, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "$" of jsonpath input"#, position: 40, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM JSON_TABLE('[1]'::jsonb, '@' COLUMNS (a INT)) AS jt;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "COLUMNS""#, position: 44, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "@ is not allowed in root expressions", position: 40, ..E }),
                     ..A
                 },
             ],
