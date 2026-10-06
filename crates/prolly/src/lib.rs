@@ -23,6 +23,7 @@ mod cursor;
 mod node;
 mod serialize;
 mod tuple;
+pub mod val;
 
 pub use blob::{BLOB_CHUNK_SIZE, NodeSink, read_blob, write_blob};
 pub use chunker::{Chunker, NodeSerializer, apply_mutations};

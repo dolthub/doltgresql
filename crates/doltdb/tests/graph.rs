@@ -111,3 +111,8 @@ fn reads_blobs_of_every_size() {
 fn reads_a_new_database() {
     check_fixture("empty");
 }
+
+#[test]
+fn reads_a_table_with_rows() {
+    check_fixture("onetable");
+}
