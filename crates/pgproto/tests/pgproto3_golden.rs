@@ -346,3 +346,16 @@ fn frontend_messages_match_pgproto3() {
     check_frontend("sync", FrontendMessage::Sync, password, "5300000004");
     check_frontend("terminate", FrontendMessage::Terminate, password, "5800000004");
 }
+
+#[test]
+fn error_numbers_decode_like_pgproto3() {
+    // A message with an embedded NUL leaves its tail to be read as an internal position, which pgproto3 reads as zero
+    let body = b"SERROR\0Mroot returned table `fkpart1.\0pk11` but it could not be found\0P99999999999\0L-7\0\0";
+    let BackendMessage::ErrorResponse(fields) = BackendMessage::decode(b'E', body).unwrap() else {
+        panic!("not an ErrorResponse");
+    };
+    assert_eq!(fields.message, "root returned table `fkpart1.");
+    assert_eq!(fields.internal_position, 0);
+    assert_eq!(fields.position, i32::MAX);
+    assert_eq!(fields.line, -7);
+}

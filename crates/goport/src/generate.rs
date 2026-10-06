@@ -320,7 +320,6 @@ pub struct Report {
     pub notes: Vec<String>,
     /// Where each assertion's expectation came from, for matching against test failures.
     pub assertion_sources: Vec<Value>,
-    /// The Rust test function, as `module::function`, of the runner call being generated.
     function: String,
 }
 

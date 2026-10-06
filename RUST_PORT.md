@@ -136,15 +136,21 @@ Done:
   `// Doltgres-specific`). 105 EXPLAIN assertions are plan facts. Values that vary between two Postgres runs are
   `Any`, and the server port is `{PORT}`.
 - Round trip: every Postgres-sourced assertion passes against a real Postgres 15.
+- Client traffic: the Rust suite sends the same frontend messages as the pgx recordings of the Go suite for 2,022
+  scripts. The 21 that differ are deliberate input changes and testdata paths.
+- `regression`: the Postgres regression replay, with pgx's cell decoding emulated so that rows match exactly when the
+  Go replay's rows match. Every distinct cell of the recordings and of the Go server's responses decodes like the Go
+  replay (a kept fixture test). Against the Go binary it gives the Go replay's result for all 42,090 statements,
+  apart from one `now()` comparison that also varies between Go runs. The one known difference: a timestamp in the
+  machine's local zone prints a numeric zone name, which only changes error text.
 
 Remaining:
 
-- Compare the Rust suite's client traffic against the pgx recordings of the Go suite.
 - Hand ports: missing-database connection, invalid startup timezone, SSL (needs TLS in the harness), dropped-role
   grant cleanup across a restart (needs restart support), Dolt backup and remote suites.
 - 29 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too), and 7 EXPLAIN
   assertions that expect Postgres plan text.
-- Ports of the regression replay, sqllogictest, dump import, enginetest Dolt sets, and go-sql-server-driver runners.
+- Ports of the sqllogictest, dump import, enginetest Dolt sets, and go-sql-server-driver runners.
 
 ## Baseline artifacts
 

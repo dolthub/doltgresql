@@ -16,6 +16,7 @@
 
 //! Temporary tooling that ports the Go test suite to Rust. It is removed along with the Go code.
 
+mod cells;
 mod dump;
 mod generate;
 mod recordings;
@@ -62,6 +63,8 @@ fn main() {
             std::fs::write(format!("{}.sources.jsonl", args[8]), sources).unwrap();
             eprintln!("{:#?}", report.sources);
         }
+        Some("collect-cells") if args.len() == 5 => cells::collect(&args[2], &args[3], &args[4]),
+        Some("check-cells") if args.len() == 4 => cells::check(&args[2], &args[3]),
         Some("show-recording") if args.len() == 3 => match recordings::read_recording(std::path::Path::new(&args[2])) {
             Ok(connections) => {
                 for (index, messages) in connections.iter().enumerate() {

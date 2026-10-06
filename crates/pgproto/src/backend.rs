@@ -480,8 +480,8 @@ fn decode_error_fields(r: &mut Reader<'_>) -> Result<ErrorFields, DecodeError> {
             b'M' => fields.message = value,
             b'D' => fields.detail = value,
             b'H' => fields.hint = value,
-            b'P' => fields.position = parse_error_number(&value)?,
-            b'p' => fields.internal_position = parse_error_number(&value)?,
+            b'P' => fields.position = parse_error_number(&value),
+            b'p' => fields.internal_position = parse_error_number(&value),
             b'q' => fields.internal_query = value,
             b'W' => fields.where_ = value,
             b's' => fields.schema_name = value,
@@ -490,7 +490,7 @@ fn decode_error_fields(r: &mut Reader<'_>) -> Result<ErrorFields, DecodeError> {
             b'd' => fields.data_type_name = value,
             b'n' => fields.constraint_name = value,
             b'F' => fields.file = value,
-            b'L' => fields.line = parse_error_number(&value)?,
+            b'L' => fields.line = parse_error_number(&value),
             b'R' => fields.routine = value,
             _ => {
                 fields.unknown_fields.insert(code, value);
@@ -499,7 +499,12 @@ fn decode_error_fields(r: &mut Reader<'_>) -> Result<ErrorFields, DecodeError> {
     }
 }
 
-/// parse_error_number parses a numeric error field.
-fn parse_error_number(value: &str) -> Result<i32, DecodeError> {
-    value.parse().map_err(|_| DecodeError::new(format!("invalid numeric error field: {value}")))
+/// parse_error_number parses a numeric error field like pgproto3, which reads text that is not a number as zero and
+/// clamps numbers outside of the int32 range.
+fn parse_error_number(value: &str) -> i32 {
+    let digits = value.strip_prefix(['+', '-']).unwrap_or(value);
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return 0;
+    }
+    value.parse::<i32>().unwrap_or(if value.starts_with('-') { i32::MIN } else { i32::MAX })
 }
