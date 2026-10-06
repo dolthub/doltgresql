@@ -729,7 +729,8 @@ impl Ctx<'_> {
     }
 
     /// resolve_target resolves the table that INSERT, UPDATE, or DELETE changes, checking the privilege on a view of
-    /// that name first, as Postgres does before it rewrites a change of a view.
+    /// that name first, as Postgres does before it rewrites a change of a view, and creating the docs table on the
+    /// first change of it and a schema's dolt_ignore table on the first INSERT into it, as Dolt does.
     pub fn resolve_target(&mut self, relation: &pg_query::protobuf::RangeVar, privilege: &str) -> Result<TableDef> {
         match self.resolve_table(relation) {
             Ok(table) => Ok(table),
@@ -737,6 +738,17 @@ impl Ctx<'_> {
                 Some((schema, _)) => {
                     self.require_view(&schema, &relation.relname, privilege, -1)?;
                     Err(PgError::unsupported("changing the rows of a view"))
+                }
+                None if crate::dolt::docs::is_docs(&relation.schemaname, &relation.relname) => {
+                    crate::dolt::docs::table(self)
+                }
+                None if relation.relname == crate::dolt::ignore::TABLE && privilege == "a" => {
+                    let schema = match relation.schemaname.as_str() {
+                        "" => self.creation_schema()?,
+                        schema if self.txn.root.schemas.iter().any(|s| s == schema.as_bytes()) => schema.to_string(),
+                        _ => return Err(err),
+                    };
+                    crate::dolt::ignore::create(self, &schema)
                 }
                 None => Err(err),
             },

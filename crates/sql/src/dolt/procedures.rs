@@ -212,14 +212,16 @@ fn find_table(ctx: &mut Ctx<'_>, roots: &[&Root], name: &str) -> Result<Option<(
 }
 
 /// stage_all copies every table, schema, and root object of the working root to the staged root.
-fn stage_all(ctx: &mut Ctx<'_>) -> Result<()> {
+fn stage_all(ctx: &mut Ctx<'_>, respect_ignored: bool) -> Result<()> {
     let working = table_map(ctx.db, &ctx.txn.root)?;
     let staged = table_map(ctx.db, &ctx.txn.staged)?;
-    for key in staged.keys().filter(|k| !working.contains_key(*k)) {
+    let names: Vec<(String, String)> = staged.keys().chain(working.keys()).cloned().collect();
+    let ignored = ignored_tables(ctx, &names, respect_ignored)?;
+    for key in staged.keys().filter(|k| !working.contains_key(*k) && !ignored.contains(k)) {
         ctx.txn.staged.put_table(ctx.db, &key.0, &key.1, None)?;
     }
     for (key, address) in &working {
-        if staged.get(key) != Some(address) {
+        if staged.get(key) != Some(address) && !ignored.contains(key) {
             ctx.txn.staged.put_table(ctx.db, &key.0, &key.1, Some(*address))?;
         }
     }
@@ -240,8 +242,34 @@ fn stage_database(ctx: &mut Ctx<'_>) {
     ctx.txn.staged.collation = ctx.txn.root.collation;
 }
 
-/// stage_tables copies the named tables of the working root to the staged root.
-fn stage_tables(ctx: &mut Ctx<'_>, names: &[String]) -> Result<()> {
+/// ignored_tables returns the tables that their schemas' dolt_ignore patterns ignore, or none when staging does not
+/// respect them.
+fn ignored_tables(
+    ctx: &mut Ctx<'_>,
+    names: &[(String, String)],
+    respect_ignored: bool,
+) -> Result<std::collections::HashSet<(String, String)>> {
+    let mut ignored = std::collections::HashSet::new();
+    if !respect_ignored {
+        return Ok(ignored);
+    }
+    let working = ctx.txn.root.clone();
+    let mut patterns: std::collections::HashMap<String, crate::dolt::ignore::Patterns> = Default::default();
+    for name in names {
+        if !patterns.contains_key(&name.0) {
+            let found = crate::dolt::ignore::patterns(ctx, &working, &name.0)?;
+            patterns.insert(name.0.clone(), found);
+        }
+        if crate::dolt::ignore::is_ignored(&patterns[&name.0], &name.1)? {
+            ignored.insert(name.clone());
+        }
+    }
+    Ok(ignored)
+}
+
+/// stage_tables copies the named tables of the working root to the staged root, leaving out those that dolt_ignore
+/// ignores when staging respects it.
+fn stage_tables(ctx: &mut Ctx<'_>, names: &[String], respect_ignored: bool) -> Result<()> {
     let mut found = Vec::new();
     let mut missing = Vec::new();
     let (working, staged) = (ctx.txn.root.clone(), ctx.txn.staged.clone());
@@ -254,7 +282,8 @@ fn stage_tables(ctx: &mut Ctx<'_>, names: &[String]) -> Result<()> {
     if !missing.is_empty() {
         return Err(error(format!("error: the table(s) {} do not exist", missing.join(", "))));
     }
-    for (schema, table) in found {
+    let ignored = ignored_tables(ctx, &found, respect_ignored)?;
+    for (schema, table) in found.into_iter().filter(|key| !ignored.contains(key)) {
         let address = working.table(ctx.db, &schema, &table)?;
         ctx.txn.staged.put_table(ctx.db, &schema, &table, address)?;
     }
@@ -275,9 +304,9 @@ fn dolt_add(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         return Err(error("Nothing specified, nothing added. Maybe you wanted to say 'dolt add .'?"));
     }
     if parsed.has("all") || parsed.args == ["."] {
-        stage_all(ctx)?;
+        stage_all(ctx, !parsed.has("force"))?;
     } else {
-        stage_tables(ctx, &parsed.args)?;
+        stage_tables(ctx, &parsed.args, !parsed.has("force"))?;
     }
     Ok(Value::Int8(0))
 }
@@ -364,7 +393,7 @@ fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         return Err(error("error: cannot use both --allow-empty and --skip-empty"));
     }
     if parsed.has("ALL") {
-        stage_all(ctx)?;
+        stage_all(ctx, true)?;
     } else if parsed.has("all") {
         stage_modified(ctx)?;
     }

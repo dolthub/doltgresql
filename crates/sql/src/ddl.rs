@@ -413,6 +413,12 @@ impl Ctx<'_> {
     pub fn create_table(&mut self, create: &CreateStmt) -> Result<Outcome> {
         let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
         let schema = self.target_schema(&relation.schemaname, relation.location)?;
+        self.create_table_in(create, schema)
+    }
+
+    /// create_table_in runs CREATE TABLE in a schema, which may be the `dolt` schema that holds Dolt's own tables.
+    pub(crate) fn create_table_in(&mut self, create: &CreateStmt, schema: String) -> Result<Outcome> {
+        let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
         let name = relation.relname.as_str();
         let user_type = crate::usertypes::lookup(Some(&schema), name).filter(|t| !t.is_array());
         let composite = user_type.as_ref().is_some_and(|t| matches!(t.kind, crate::usertypes::Kind::Composite(_)));

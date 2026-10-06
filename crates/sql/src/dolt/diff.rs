@@ -709,6 +709,15 @@ fn has_rows(table: &doltdb::table::Table) -> Result<bool> {
 }
 
 impl Delta {
+    /// ignored reports whether ignore patterns leave out the delta, which they do only for an added or dropped table,
+    /// as Dolt's ShouldIgnoreDelta decides.
+    fn ignored(&self, patterns: &crate::dolt::ignore::Patterns) -> Result<bool> {
+        match (&self.from, &self.to) {
+            (None, Some((name, _))) | (Some((name, _)), None) => crate::dolt::ignore::is_ignored(patterns, &name.1),
+            _ => Ok(false),
+        }
+    }
+
     /// summary returns how the table or root object changed, as Dolt's GetSummary describes it.
     pub fn summary(&self, db: &mut Database, from_root: &Root, to_root: &Root) -> Result<Summary> {
         let name = |side: &Option<(Name, Hash)>| side.as_ref().map(|(n, _)| full_name(n)).unwrap_or_default();
@@ -805,11 +814,16 @@ impl ChangeSet {
 }
 
 /// unscoped_rows returns the tables that each commit reachable from the head changed from its first parent, after
-/// the staged changes and then the changes that are not staged, as Dolt's unscoped diff table returns them.
+/// the staged changes and then the changes that are not staged, leaving out new tables that dolt_ignore ignores, as
+/// Dolt's unscoped diff table returns them.
 pub fn unscoped_rows(ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
     let mut out = Vec::new();
+    let patterns = crate::dolt::ignore::patterns(ctx, &ctx.txn.root.clone(), "public")?;
     for set in ChangeSet::all(ctx)? {
         for delta in deltas(ctx.db, &set.from, &set.to)? {
+            if set.name == "WORKING" && delta.from.is_none() && delta.ignored(&patterns).unwrap_or(false) {
+                continue;
+            }
             let summary = delta.summary(ctx.db, &set.from, &set.to)?;
             let changes = vec![Value::Bool(summary.data_change), Value::Bool(summary.schema_change)];
             out.push(set.row(summary.table_name, Vec::new(), changes));
@@ -929,12 +943,23 @@ fn matches(side: &Option<(Name, Hash)>, table: &str) -> bool {
 }
 
 /// dolt_diff_summary returns how each table and root object changed between two revisions, or only the table the
-/// third argument names, as rows of records.
+/// third argument names, leaving out tables that dolt_ignore ignores when a revision is the working set, as rows of
+/// records.
 pub fn dolt_diff_summary(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let args: Vec<String> = args.iter().map(|a| a.output().unwrap_or_default()).collect();
-    let (from, to, rest) = diff_refs(ctx, &args, "dolt_diff_summary", 2..=3, 1..=2)?;
-    let (from, to) = (ref_root(ctx, &from)?, ref_root(ctx, &to)?);
-    let mut all = deltas(ctx.db, &from, &to)?;
+    let (from_ref, to_ref, rest) = diff_refs(ctx, &args, "dolt_diff_summary", 2..=3, 1..=2)?;
+    let (from, to) = (ref_root(ctx, &from_ref)?, ref_root(ctx, &to_ref)?);
+    let working_set = [&from_ref, &to_ref].iter().any(|r| matches!(r.as_str(), "WORKING" | "STAGED"));
+    let patterns = match working_set {
+        true => crate::dolt::ignore::patterns(ctx, &ctx.txn.root.clone(), "public")?,
+        false => Vec::new(),
+    };
+    let mut all = Vec::new();
+    for delta in deltas(ctx.db, &from, &to)? {
+        if !delta.ignored(&patterns)? {
+            all.push(delta);
+        }
+    }
     let key = |side: &Option<(Name, Hash)>| side.as_ref().map(|(n, _)| n.clone()).unwrap_or_default();
     all.sort_by_key(|d| key(&d.to));
     if let Some(table) = rest.first() {

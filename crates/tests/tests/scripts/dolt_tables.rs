@@ -2634,16 +2634,16 @@ This guide enables agents to leverage Dolt's unique version control capabilities
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.docs",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: docs", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"public.docs\" does not exist", position: 15, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM docs",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: docs", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"docs\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

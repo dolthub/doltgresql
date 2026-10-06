@@ -88,7 +88,7 @@ impl Ctx<'_> {
             let text = String::from_utf8_lossy(&key).into_owned();
             let mut parts = text.splitn(3, '\0').skip(1);
             let (Some(schema), Some(name)) = (parts.next(), parts.next()) else { continue };
-            if name.starts_with("dolt_") {
+            if name.starts_with("dolt_") || schema == "dolt" {
                 continue;
             }
             tables.push(TableDef::load(self.db, schema, name, address)?);

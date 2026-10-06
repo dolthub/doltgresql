@@ -16,6 +16,8 @@
 
 pub mod args;
 pub mod diff;
+pub mod docs;
 pub mod history;
+pub mod ignore;
 pub mod procedures;
 pub mod tables;

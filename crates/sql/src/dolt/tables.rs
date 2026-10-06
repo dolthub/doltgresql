@@ -20,11 +20,12 @@ use doltdb::root::Root;
 use store::Hash;
 
 use crate::catalog::ColumnType;
+use crate::catalog::table::TableDef;
 use crate::dolt::args::{Kind, Parser, error};
 use crate::dolt::diff::UserTable;
 use crate::dolt::history::{self, CommitInfo};
 use crate::dolt::procedures::table_map;
-use crate::error::Result;
+use crate::error::{PgError, Result};
 use crate::expr::typ;
 use crate::numeric::Numeric;
 use crate::oid::{BOOL, INT4, NUMERIC, TEXT, TIMESTAMP};
@@ -52,6 +53,11 @@ pub enum SystemTable {
     SchemaConflicts,
     Diff,
     ColumnDiff,
+    /// A schema's dolt_ignore table before anything creates it.
+    Ignore,
+    Docs,
+    /// A schema's dolt_procedures table, which stays empty since Doltgres keeps procedures as root objects.
+    Procedures,
     /// A system table over a user table.
     User(Box<UserTable>),
 }
@@ -72,6 +78,9 @@ const TABLES: &[(&str, SystemTable)] = &[
     ("schema_conflicts", SystemTable::SchemaConflicts),
     ("diff", SystemTable::Diff),
     ("column_diff", SystemTable::ColumnDiff),
+    ("ignore", SystemTable::Ignore),
+    ("procedures", SystemTable::Procedures),
+    ("docs", SystemTable::Docs),
 ];
 
 /// lookup returns the system table that a schema and name refer to: a name in the `dolt` schema, or the name with a
@@ -79,6 +88,20 @@ const TABLES: &[(&str, SystemTable)] = &[
 pub fn lookup(schema: &str, name: &str) -> Option<SystemTable> {
     let short = if schema == "dolt" { name } else { name.strip_prefix("dolt_")? };
     TABLES.iter().find(|(n, _)| *n == short).map(|(_, t)| t.clone())
+}
+
+/// create_backing creates the table that holds the rows of one of Dolt's writable system tables, from the column
+/// definitions of a CREATE TABLE statement.
+pub fn create_backing(ctx: &mut Ctx<'_>, schema: &str, name: &str, definition: &str) -> Result<TableDef> {
+    let sql = format!("CREATE TABLE {} {definition}", crate::engine::quote_identifier(name));
+    let parsed = pg_query::parse(&sql).map_err(PgError::internal)?;
+    let Some(pg_query::NodeEnum::CreateStmt(create)) =
+        parsed.protobuf.stmts.first().and_then(|s| s.stmt.as_ref()).and_then(|s| s.node.as_ref())
+    else {
+        return Err(PgError::internal(format!("the definition of {name}")));
+    };
+    ctx.create_table_in(create, schema.to_string())?;
+    ctx.txn.table(ctx.db, schema, name)?.ok_or_else(|| PgError::internal(format!("the new table {name}")))
 }
 
 /// BRANCH_COLUMNS are the columns of the branches table.
@@ -182,9 +205,23 @@ impl SystemTable {
                 ("author_email", TEXT),
                 ("author_date", TIMESTAMP),
             ],
+            SystemTable::Ignore => vec![("pattern", TEXT), ("ignored", BOOL)],
+            SystemTable::Docs => vec![("doc_name", TEXT), ("doc_text", TEXT)],
+            SystemTable::Procedures => vec![
+                ("name", TEXT),
+                ("create_stmt", TEXT),
+                ("created_at", TIMESTAMP),
+                ("modified_at", TIMESTAMP),
+                ("sql_mode", TEXT),
+            ],
             SystemTable::User(table) => return table.columns(),
         };
         columns.into_iter().map(|(name, oid)| (name.to_string(), typ(oid))).collect()
+    }
+
+    /// per_schema reports whether the table belongs to a schema, which must exist, rather than to the database.
+    pub fn per_schema(&self) -> bool {
+        matches!(self, SystemTable::Ignore | SystemTable::Procedures)
     }
 
     /// rows returns the table's rows.
@@ -201,8 +238,11 @@ impl SystemTable {
             SystemTable::Remotes
             | SystemTable::Conflicts
             | SystemTable::ConstraintViolations
-            | SystemTable::SchemaConflicts => Ok(Vec::new()),
+            | SystemTable::SchemaConflicts
+            | SystemTable::Ignore
+            | SystemTable::Procedures => Ok(Vec::new()),
             SystemTable::Diff => crate::dolt::diff::unscoped_rows(ctx),
+            SystemTable::Docs => crate::dolt::docs::rows(ctx),
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),
             SystemTable::User(table) => table.rows(ctx),
         }

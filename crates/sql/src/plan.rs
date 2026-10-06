@@ -697,8 +697,11 @@ impl<'b, 'a> Planner<'b, 'a> {
                             "" if self.ctx.session.search_path().iter().any(|s| s == "dolt") => "dolt",
                             schema => schema,
                         };
+                        let schema_exists = relation.schemaname.is_empty()
+                            || self.ctx.txn.root.schemas.iter().any(|s| s == relation.schemaname.as_bytes());
                         if let Some(system) = crate::dolt::tables::lookup(schema, &relation.relname)
                             .or_else(|| crate::dolt::tables::lookup(&relation.schemaname, &relation.relname))
+                            .filter(|s| !s.per_schema() || schema_exists)
                         {
                             return Ok(self.plan_system(system, relation));
                         }
@@ -715,6 +718,11 @@ impl<'b, 'a> Planner<'b, 'a> {
                         };
                     }
                 };
+                if table.schema == "dolt"
+                    && let Some(system) = crate::dolt::tables::lookup("dolt", &table.name)
+                {
+                    return Ok(self.plan_system(system, relation));
+                }
                 if !table.name.starts_with("dolt_") {
                     let object = crate::auth::Object::Table(table.schema.clone(), table.name.clone());
                     self.ctx.require(&object, "r", relation.location)?;
