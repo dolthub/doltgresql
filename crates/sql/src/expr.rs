@@ -41,6 +41,8 @@ pub struct ScopeColumn {
     pub ty: ColumnType,
     /// Whether the column is reachable only by its table's name, as a column that USING merged is.
     pub hidden: bool,
+    /// The OID and attribute number of the table column it comes from, or zeros for any other column.
+    pub origin: (u32, u16),
 }
 
 /// Scope is the columns of the rows that expressions evaluate over, in row order.

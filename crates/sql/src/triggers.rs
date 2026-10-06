@@ -293,6 +293,7 @@ impl Ctx<'_> {
                     name: column.name.clone(),
                     ty: column.ty,
                     hidden: true,
+                    origin: (0, 0),
                 });
             }
         }

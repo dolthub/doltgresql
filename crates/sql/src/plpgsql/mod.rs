@@ -670,6 +670,10 @@ impl<'r> Frame<'r> {
                 Ok(QueryResult { columns: Vec::new(), rows: Vec::new(), found: affected(&tag) > 0 })
             }
             Outcome::Empty => Ok(QueryResult { columns: Vec::new(), rows: Vec::new(), found: false }),
+            Outcome::CopyIn { .. } | Outcome::CopyOut { .. } => {
+                ctx.session.pending_copy = None;
+                Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "cannot COPY to/from client in PL/pgSQL"))
+            }
         }
     }
 

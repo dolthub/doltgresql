@@ -1417,6 +1417,7 @@ dependencies = [
  "chrono-tz",
  "crc",
  "doltdb",
+ "encoding_rs",
  "hmac",
  "md-5",
  "num-bigint",

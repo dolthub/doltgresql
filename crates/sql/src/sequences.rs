@@ -551,7 +551,8 @@ impl Ctx<'_> {
         sequence.owner_column = column.as_bytes().to_vec();
         store(self.db, &mut self.txn.root, &sequence)?;
         self.own(crate::auth::Object::Sequence(schema.to_string(), name.clone()))?;
-        Ok(format!("(nextval('{schema}.{name}'))"))
+        let quoted = format!("{}.{}", crate::engine::quote_identifier(schema), crate::engine::quote_identifier(&name));
+        Ok(format!("(nextval('{}'))", quoted.replace('\'', "''")))
     }
 }
 

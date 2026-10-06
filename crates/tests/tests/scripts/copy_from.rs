@@ -686,10 +686,9 @@ bar"#), T("baz")],
                     expected: Expected::Error(Diagnostic { code: "42601", message: "cannot specify DELIMITER in BINARY mode", ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "COPY tbl3 FROM '{TESTDATA}/copy-to-basic.txt' (FORMAT BINARY);",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "COPY file signature not recognized", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P04", message: "COPY file signature not recognized", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -709,10 +708,9 @@ bar"#), T("baz")],
                 "CREATE TABLE test_info (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references test(pk));",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "COPY test_info FROM '{TESTDATA}/file-not-found.sql' WITH (HEADER)",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "open {TESTDATA}/file-not-found.sql: no such file or directory", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "58P01", message: r#"could not open file "{TESTDATA}/file-not-found.sql" for reading: No such file or directory"#, hint: r#"COPY FROM instructs the PostgreSQL server process to read a file. You may want a client-side facility such as psql's \copy."#, ..E }),
                     ..A
                 },
             ],
@@ -724,16 +722,14 @@ bar"#), T("baz")],
                 "CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "COPY tbl1 (pk, c1) FROM '{TESTDATA}/csv-load-basic-cases.sql' (FORMAT CSV)",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "extra data after last expected column", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P04", message: "extra data after last expected column", ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "COPY tbl1 (pk, c1, c3) FROM '{TESTDATA}/csv-load-basic-cases.sql' (FORMAT CSV)",
-                    expected: Expected::Error(Diagnostic { code: "42703", message: "Unknown column 'c3' in 'tbl1'", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "c3" of relation "tbl1" does not exist"#, ..E }),
                     ..A
                 },
             ],
@@ -745,10 +741,9 @@ bar"#), T("baz")],
                 "CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "COPY tbl2 (pk, c1) FROM '{TESTDATA}/csv-load-basic-cases.sql' (FORMAT CSV)",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: tbl2", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "tbl2" does not exist"#, ..E }),
                     ..A
                 },
             ],
@@ -761,6 +756,7 @@ bar"#), T("baz")],
                 ScriptTestAssertion {
                     query: "COPY dolt_log FROM '{TESTDATA}/csv-load-basic-cases.sql' (FORMAT CSV)",
                     expected: Expected::Error(Diagnostic { code: "XX000", message: "table doesn't support INSERT INTO", ..E }),
+                    skip: Some("Dolt system tables do not resolve as the targets of writes yet"),
                     ..A
                 },
             ],
@@ -772,10 +768,9 @@ bar"#), T("baz")],
                 "CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "COPY tbl1 (pk, c1, c2) FROM '{TESTDATA}/missing-columns.sql' (FORMAT CSV)",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "record on line 2: wrong number of fields", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P04", message: r#"missing data for column "c2""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -789,10 +784,9 @@ bar"#), T("baz")],
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "COPY tbl1 (pk, c1, c2) FROM '{TESTDATA}/too-many-columns.sql' (FORMAT CSV)",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "record on line 6: wrong number of fields", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P04", message: "extra data after last expected column", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -806,10 +800,9 @@ bar"#), T("baz")],
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "COPY tbl1 (pk, c1, c2) FROM '{TESTDATA}/wrong-types.sql' (FORMAT CSV)",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type int4: "abc""#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "abc""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -821,6 +814,469 @@ bar"#), T("baz")],
                         ],
                         tag: "SELECT 1",
                     },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_copy_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "copy option errors",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (pk INT PRIMARY KEY, c1 TEXT, c2 TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORMAT CSV, QUOTE 'ab');",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY quote must be a single one-byte character", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (QUOTE 'a');",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY quote available only in CSV mode", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (ESCAPE 'a');",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY escape available only in CSV mode", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (bogus 1);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"option "bogus" not recognized"#, position: 19, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"COPY t TO STDOUT (FORMAT CSV, DELIMITER '"');"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "COPY delimiter and quote must be different", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (DELIMITER 'ab');",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY delimiter must be a single one-byte character", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (DELIMITER 'a');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"COPY delimiter cannot be "a""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORMAT BINARY, NULL 'x');",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "cannot specify NULL in BINARY mode", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORMAT CSV, HEADER 'match');",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cannot use "match" with HEADER in COPY TO"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORMAT CSV, HEADER 'maybe');",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"header requires a Boolean value or "match""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORCE_QUOTE *);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY force quote available only in CSV mode", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t FROM STDIN (FORMAT CSV, FORCE_QUOTE (c1));",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY force quote only available using COPY TO", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t FROM STDIN (FORCE_NOT_NULL (c1));",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY force not null available only in CSV mode", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORMAT CSV, FORCE_NOT_NULL (c1));",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY force not null only available using COPY FROM", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORMAT CSV, FORCE_NULL (c1));",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY force null only available using COPY FROM", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORMAT CSV, NULL 'a,b');",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "COPY delimiter must not appear in the NULL specification", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"COPY t TO STDOUT (FORMAT CSV, NULL 'a"b');"#,
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "CSV quote character must not appear in the NULL specification", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t TO STDOUT (FORMAT CSV, FORMAT TEXT);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "conflicting or redundant options", position: 31, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t (pk, pk) TO STDOUT;",
+                    expected: Expected::Error(Diagnostic { code: "42701", message: r#"column "pk" specified more than once"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY t (pk, c3) TO STDOUT;",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "c3" of relation "t" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY missing TO STDOUT;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "missing" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "copy round trips through files",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE src (pk INT PRIMARY KEY, c1 TEXT, c2 TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO src VALUES (1, 'a,b', NULL), (2, '', 'x"y'), (3, E'tab\there\\back', E'nl\nx'), (4, '\.', 'q|r');"#,
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"COPY src TO '/tmp/doltgres-kept-copy.csv' (FORMAT CSV, HEADER, FORCE_QUOTE (c2), ESCAPE '\');"#,
+                    expected: Expected::Tag("COPY 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE dst1 (pk INT PRIMARY KEY, c1 TEXT, c2 TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"COPY dst1 FROM '/tmp/doltgres-kept-copy.csv' (FORMAT CSV, HEADER, ESCAPE '\');"#,
+                    expected: Expected::Tag("COPY 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM dst1 ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("c1", TEXT), Column("c2", TEXT)],
+                        rows: &[
+                            &[T("1"), T("a,b"), Null],
+                            &[T("2"), T(""), T(r#"x"y"#)],
+                            &[T("3"), T(r#"tab	here\back"#), T(r#"nl
+x"#)],
+                            &[T("4"), T(r#"\."#), T("q|r")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY src TO '/tmp/doltgres-kept-copy.txt' (DELIMITER '|', NULL 'NULL');",
+                    expected: Expected::Tag("COPY 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE dst2 (pk INT PRIMARY KEY, c1 TEXT, c2 TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY dst2 FROM '/tmp/doltgres-kept-copy.txt' (DELIMITER '|', NULL 'NULL');",
+                    expected: Expected::Tag("COPY 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM dst2 ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("c1", TEXT), Column("c2", TEXT)],
+                        rows: &[
+                            &[T("1"), T("a,b"), Null],
+                            &[T("2"), T(""), T(r#"x"y"#)],
+                            &[T("3"), T(r#"tab	here\back"#), T(r#"nl
+x"#)],
+                            &[T("4"), T(r#"\."#), T("q|r")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY (SELECT pk, c1 FROM src WHERE pk > 1 ORDER BY pk) TO '/tmp/doltgres-kept-copy.bin' (FORMAT BINARY);",
+                    expected: Expected::Tag("COPY 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE dst3 (pk INT, c1 TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY dst3 FROM '/tmp/doltgres-kept-copy.bin' (FORMAT BINARY);",
+                    expected: Expected::Tag("COPY 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM dst3 ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("c1", TEXT)],
+                        rows: &[
+                            &[T("2"), T("")],
+                            &[T("3"), T(r#"tab	here\back"#)],
+                            &[T("4"), T(r#"\."#)],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY dst3 FROM '/tmp/doltgres-kept-copy.csv' (FORMAT BINARY);",
+                    expected: Expected::Error(Diagnostic { code: "22P04", message: "COPY file signature not recognized", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY dst1 FROM '/tmp/doltgres-kept-copy.bin' (FORMAT BINARY);",
+                    expected: Expected::Error(Diagnostic { code: "22P04", message: "row field count is 2, expected 3", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "copy null handling in CSV",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE n (pk INT PRIMARY KEY, a TEXT, b TEXT, c TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY (SELECT 1, '', NULL::TEXT, 'x' UNION ALL SELECT 2, NULL, '', 'y') TO '/tmp/doltgres-kept-nulls.csv' (FORMAT CSV);",
+                    expected: Expected::Tag("COPY 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY n FROM '/tmp/doltgres-kept-nulls.csv' (FORMAT CSV);",
+                    expected: Expected::Tag("COPY 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, a IS NULL, a, b IS NULL, b, c FROM n ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("?column?", BOOL), Column("a", TEXT), Column("?column?", BOOL), Column("b", TEXT), Column("c", TEXT)],
+                        rows: &[
+                            &[T("1"), T("f"), T(""), T("t"), Null, T("x")],
+                            &[T("2"), T("t"), Null, T("f"), T(""), T("y")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM n;",
+                    expected: Expected::Tag("DELETE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY n FROM '/tmp/doltgres-kept-nulls.csv' (FORMAT CSV, FORCE_NOT_NULL (b), FORCE_NULL (a));",
+                    expected: Expected::Tag("COPY 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, a IS NULL, a, b IS NULL, b, c FROM n ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("?column?", BOOL), Column("a", TEXT), Column("?column?", BOOL), Column("b", TEXT), Column("c", TEXT)],
+                        rows: &[
+                            &[T("1"), T("t"), Null, T("f"), T(""), T("x")],
+                            &[T("2"), T("t"), Null, T("f"), T(""), T("y")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "copy of generated columns and views",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE g (a INT PRIMARY KEY, b INT GENERATED ALWAYS AS (a * 2) STORED);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO g (a) VALUES (1), (2);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY g (b) TO STDOUT;",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: r#"column "b" is a generated column"#, detail: "Generated columns cannot be used in COPY.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY g TO '/tmp/doltgres-kept-generated.txt';",
+                    expected: Expected::Tag("COPY 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM g;",
+                    expected: Expected::Tag("DELETE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY g FROM '/tmp/doltgres-kept-generated.txt';",
+                    expected: Expected::Tag("COPY 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM g ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("2"), T("4")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW v AS SELECT 1 AS x;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY v TO STDOUT;",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#"cannot copy from view "v""#, hint: "Try the COPY (SELECT ...) TO variant.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY v FROM STDIN;",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#"cannot copy to view "v""#, hint: "To enable copying to a view, provide an INSTEAD OF INSERT trigger.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "copy errors in the data",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE e (pk INT PRIMARY KEY, c TEXT NOT NULL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY (SELECT 'abc', 'x') TO '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Tag("COPY 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "abc""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY (SELECT 1, 'x', 'y') TO '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Tag("COPY 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Error(Diagnostic { code: "22P04", message: "extra data after last expected column", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY (SELECT 1) TO '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Tag("COPY 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Error(Diagnostic { code: "22P04", message: r#"missing data for column "c""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY (SELECT 1, NULL) TO '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Tag("COPY 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Error(Diagnostic { code: "23502", message: r#"null value in column "c" of relation "e" violates not-null constraint"#, detail: "Failing row contains (1, null).", schema: "public", table: "e", column: "c", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY (SELECT 1, 'x' UNION ALL SELECT 1, 'y') TO '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Tag("COPY 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "e_pkey""#, detail: "Key (pk)=(1) already exists.", schema: "public", table: "e", constraint: "e_pkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM e;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COPY e FROM '/tmp/doltgres-kept-missing.txt';",
+                    expected: Expected::Error(Diagnostic { code: "58P01", message: r#"could not open file "/tmp/doltgres-kept-missing.txt" for reading: No such file or directory"#, hint: r#"COPY FROM instructs the PostgreSQL server process to read a file. You may want a client-side facility such as psql's \copy."#, ..E }),
+                    flow: Flow::Query,
                     ..A
                 },
             ],

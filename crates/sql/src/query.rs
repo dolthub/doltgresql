@@ -66,6 +66,7 @@ pub fn column(name: String, ty: crate::catalog::ColumnType) -> Column {
         type_oid,
         type_size: if ty.oid == oid::UNKNOWN { -1 } else { type_size },
         type_modifier: ty.modifier,
+        origin: (0, 0),
     }
 }
 

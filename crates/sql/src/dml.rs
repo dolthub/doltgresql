@@ -133,7 +133,13 @@ pub(crate) fn table_scope(table: &TableDef, alias: Option<&str>) -> Scope {
         columns: table
             .columns
             .iter()
-            .map(|c| ScopeColumn { table: name.to_string(), name: c.name.clone(), ty: c.ty, hidden: false })
+            .map(|c| ScopeColumn {
+                table: name.to_string(),
+                name: c.name.clone(),
+                ty: c.ty,
+                hidden: false,
+                origin: (0, 0),
+            })
             .collect(),
     }
 }
@@ -616,6 +622,13 @@ impl Ctx<'_> {
         let scope = table_scope(&table, alias.as_deref());
         let returning = self.plan_returning(scope, &insert.returning_list)?;
         Ok(InsertPlan { table, rules, targets, source, on_conflict, returning })
+    }
+
+    /// plan_copy plans inserting rows of values into columns of a table, as COPY FROM does.
+    pub fn plan_copy(&mut self, table: TableDef, targets: Vec<usize>, rows: Vec<Vec<Value>>) -> Result<InsertPlan> {
+        let rules = self.row_rules(&table)?;
+        let rows = rows.into_iter().map(|row| row.into_iter().map(Expr::Const).collect()).collect();
+        Ok(InsertPlan { table, rules, targets, source: InsertSource::Values(rows), on_conflict: None, returning: None })
     }
 
     /// plan_returning binds a RETURNING list over a scope.

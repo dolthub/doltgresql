@@ -353,7 +353,13 @@ impl Ctx<'_> {
         let scope = Scope {
             columns: columns
                 .iter()
-                .map(|c| ScopeColumn { table: table.to_string(), name: c.name.clone(), ty: c.ty, hidden: false })
+                .map(|c| ScopeColumn {
+                    table: table.to_string(),
+                    name: c.name.clone(),
+                    ty: c.ty,
+                    hidden: false,
+                    origin: (0, 0),
+                })
                 .collect(),
         };
         let mut binder = Binder::new(self, scope);

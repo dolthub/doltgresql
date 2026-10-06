@@ -144,8 +144,10 @@ impl Engine {
                 aggregates: None,
                 user_types: None,
                 call_depth: 0,
+                pending_copy: None,
             },
             txns: Vec::new(),
+            pending: None,
             failed: false,
             reported: HashMap::new(),
         };
@@ -167,6 +169,9 @@ pub struct Session {
     failed: bool,
     /// The reported parameters as the client last heard them.
     reported: HashMap<String, String>,
+    /// The statements of a simple query that wait for its COPY FROM STDIN to finish, or None when the extended
+    /// protocol began the copy.
+    pending: Option<Vec<Statement>>,
 }
 
 /// RoutineCache is the functions and procedures of a root value, with the addresses of their collections.
@@ -215,6 +220,8 @@ pub struct SessionState {
     pub aggregates: Option<crate::aggregates::AggregateCache>,
     /// How many function calls are running inside one another.
     pub call_depth: usize,
+    /// The COPY FROM STDIN waiting for its data.
+    pub pending_copy: Option<Box<crate::copy::CopyFrom>>,
 }
 
 impl SessionState {
@@ -392,9 +399,20 @@ impl Session {
         if statements.is_empty() {
             return (vec![Outcome::Empty], None);
         }
-        let mut outcomes = Vec::new();
-        for statement in &statements {
-            match self.run(statement, &[]) {
+        self.run_batch(statements, Vec::new())
+    }
+
+    /// run_batch runs the statements of a simple query after the outcomes of the ones before them, pausing at a COPY
+    /// FROM STDIN until the client sends its data.
+    fn run_batch(&mut self, statements: Vec<Statement>, mut outcomes: Vec<Outcome>) -> (Vec<Outcome>, Option<PgError>) {
+        let mut statements = statements.into_iter();
+        while let Some(statement) = statements.next() {
+            match self.run(&statement, &[]) {
+                Ok(outcome @ Outcome::CopyIn { .. }) => {
+                    self.pending = Some(statements.collect());
+                    outcomes.push(outcome);
+                    return (outcomes, None);
+                }
                 Ok(outcome) => outcomes.push(outcome),
                 Err(err) => return (outcomes, Some(self.fail(err))),
             }
@@ -403,6 +421,29 @@ impl Session {
             return (outcomes, Some(self.fail(err)));
         }
         (outcomes, None)
+    }
+
+    /// copy_data finishes a COPY FROM STDIN with the data the client sent, then runs the rest of its query.
+    pub fn copy_data(&mut self, data: &[u8]) -> (Vec<Outcome>, Option<PgError>) {
+        let Some(copy) = self.state.pending_copy.take() else { return (Vec::new(), None) };
+        let mut parameters = Vec::new();
+        match self.with_ctx(&mut parameters, &[], |ctx| ctx.copy_rows(&copy, data)) {
+            Ok(outcome) => match self.pending.take() {
+                Some(pending) => self.run_batch(pending, vec![outcome]),
+                None => (vec![outcome], None),
+            },
+            Err(err) => {
+                self.pending = None;
+                (Vec::new(), Some(self.fail(err)))
+            }
+        }
+    }
+
+    /// abort_copy ends a COPY FROM STDIN with an error at a line of its data, along with the rest of its query.
+    pub fn abort_copy(&mut self, err: PgError, line: usize) -> PgError {
+        let table = self.state.pending_copy.take().map(|copy| copy.table.name).unwrap_or_default();
+        self.pending = None;
+        self.fail(crate::copy::with_context(err, crate::copy::context(&table, line)))
     }
 
     /// prepare parses a query of at most one statement and describes its parameters and results.
@@ -420,9 +461,6 @@ impl Session {
             && describable(node)
         {
             columns = self.with_ctx(&mut parameters, &[], |ctx| ctx.describe(node))?;
-            if !self.state.explicit {
-                self.txns.clear();
-            }
         }
         for parameter in &mut parameters {
             if *parameter == 0 {
@@ -432,11 +470,21 @@ impl Session {
         Ok(Prepared { statement, parameter_types: parameters, columns })
     }
 
-    /// execute_prepared runs a prepared statement with the parameter values.
+    /// execute_prepared runs a prepared statement with the parameter values, in the implicit transaction that lasts
+    /// until the next Sync.
     pub fn execute_prepared(&mut self, prepared: &Prepared, parameters: &[Value]) -> Result<Outcome> {
         let Some(statement) = &prepared.statement else { return Ok(Outcome::Empty) };
-        let result = self.run(statement, parameters).and_then(|outcome| self.end_implicit().map(|_| outcome));
-        result.map_err(|err| self.fail(err))
+        self.run(statement, parameters).map_err(|err| self.fail(err))
+    }
+
+    /// sync commits the implicit transaction of the extended protocol's messages since the last Sync.
+    pub fn sync(&mut self) -> Result<()> {
+        self.end_implicit().map_err(|err| self.fail(err))
+    }
+
+    /// abort ends an implicit transaction, or marks an explicit one failed, after an error in a protocol message.
+    pub fn abort(&mut self, err: PgError) -> PgError {
+        self.fail(err)
     }
 
     /// fail ends an implicit transaction, or marks an explicit one failed, after an error.
@@ -876,6 +924,7 @@ impl Ctx<'_> {
             NodeEnum::CreateDomainStmt(stmt) => self.create_domain(stmt),
             NodeEnum::AlterEnumStmt(stmt) => self.alter_enum(stmt),
             NodeEnum::CreateExtensionStmt(stmt) => self.create_extension(stmt),
+            NodeEnum::CopyStmt(stmt) => self.copy(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

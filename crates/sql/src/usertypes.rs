@@ -638,6 +638,7 @@ impl Ctx<'_> {
                 name: "value".into(),
                 ty: base,
                 hidden: false,
+                origin: (0, 0),
             }],
         };
         let mut binder = crate::expr::Binder::new(self, scope);

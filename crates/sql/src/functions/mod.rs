@@ -160,7 +160,7 @@ pub fn implicitly_castable(from: u32, to: u32) -> bool {
         || from == oid::UNKNOWN
         || to == ANY
         || numeric_rank(from).zip(numeric_rank(to)).is_some_and(|(f, t)| f < t)
-        || (is_string(from) && matches!(to, oid::TEXT | oid::VARCHAR | oid::BPCHAR))
+        || (is_string(from) && matches!(to, oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME))
         || (to == ANYELEMENT && from != oid::UNKNOWN)
         || (to == ANYARRAY && is_array(from))
         || (to == ANYNONARRAY && !is_array(from))

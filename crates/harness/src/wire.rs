@@ -599,9 +599,18 @@ fn run_steps(
                     }
                 } else {
                     let mut messages = Vec::new();
+                    let mut seen_ready = 0;
                     for _ in 0..expected.len() {
-                        match conn.receive(RECEIVE_TIMEOUT) {
-                            Ok(Some(message)) => messages.push(message),
+                        let timeout = if pending_ready > 0 && seen_ready >= pending_ready {
+                            QUIET_TIMEOUT
+                        } else {
+                            RECEIVE_TIMEOUT
+                        };
+                        match conn.receive(timeout) {
+                            Ok(Some(message)) => {
+                                seen_ready += usize::from(matches!(message, BackendMessage::ReadyForQuery { .. }));
+                                messages.push(message)
+                            }
                             Ok(None) => break,
                             Err(err) => {
                                 failures.push(format!("step {index}: {err}"));

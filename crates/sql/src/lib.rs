@@ -25,10 +25,12 @@ pub mod binary;
 pub mod cast;
 pub mod casts;
 pub mod catalog;
+pub mod copy;
 pub mod datetime;
 mod ddl;
 pub mod dml;
 pub mod dolt;
+pub mod encodings;
 mod engine;
 pub mod error;
 pub mod expr;
@@ -119,6 +121,8 @@ pub struct Column {
     /// The type's size in bytes, or -1 for a variable-length type.
     pub type_size: i16,
     pub type_modifier: i32,
+    /// The OID and attribute number of the table column it comes from, or zeros for any other column.
+    pub origin: (u32, u16),
 }
 
 /// Outcome is what one statement produced.
@@ -130,6 +134,10 @@ pub enum Outcome {
     Command { tag: String },
     /// An empty query.
     Empty,
+    /// A COPY FROM STDIN waiting for the client to send the data of its columns, in the binary format or as text.
+    CopyIn { binary: bool, columns: usize },
+    /// The data of a COPY TO STDOUT, in chunks to send in turn, with the command tag that ends it.
+    CopyOut { binary: bool, columns: usize, chunks: Vec<Vec<u8>>, tag: String },
 }
 
 /// Prepared is a parsed statement, ready to bind parameters to and execute.

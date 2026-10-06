@@ -19,7 +19,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
 
-use pgproto::{BackendMessage, ErrorFields, FieldDescription, FrameReader, FrontendMessage, PasswordKind};
+use pgproto::{BackendMessage, ErrorFields, FieldDescription, Frame, FrameReader, FrontendMessage, PasswordKind};
 use sql::{Column, Outcome, PgError, Prepared, Session, Value, code};
 
 use crate::Server;
@@ -78,11 +78,14 @@ pub struct Conn {
     out: Vec<u8>,
     server: Arc<Server>,
     process_id: u32,
+    /// The encoding that text values go to the client in.
+    client_encoding: sql::encodings::Encoding,
 }
 
 impl Conn {
     pub fn new(stream: TcpStream, server: Arc<Server>, process_id: u32) -> Conn {
-        Conn { stream, frames: FrameReader::new(), out: Vec::new(), server, process_id }
+        let client_encoding = sql::encodings::UTF8;
+        Conn { stream, frames: FrameReader::new(), out: Vec::new(), server, process_id, client_encoding }
     }
 
     /// queue adds a message to the output buffer.
@@ -123,12 +126,16 @@ impl Conn {
 
     /// read reads a typed message, decoding a password message as the kind.
     fn read(&mut self, password_kind: PasswordKind) -> Result<FrontendMessage, ConnError> {
+        let frame = self.read_frame()?;
+        FrontendMessage::decode(frame.tag, &frame.body, password_kind)
+            .map_err(|err| ConnError::Protocol(err.to_string()))
+    }
+
+    /// read_frame reads the frame of a typed message.
+    fn read_frame(&mut self) -> Result<Frame, ConnError> {
         loop {
             match self.frames.next_frame() {
-                Ok(Some(frame)) => {
-                    return FrontendMessage::decode(frame.tag, &frame.body, password_kind)
-                        .map_err(|err| ConnError::Protocol(err.to_string()));
-                }
+                Ok(Some(frame)) => return Ok(frame),
                 Ok(None) => self.fill()?,
                 Err(err) => return Err(ConnError::Protocol(err.to_string())),
             }
@@ -246,19 +253,30 @@ impl Conn {
                 FrontendMessage::Query { query } => {
                     extended.statements.remove("");
                     extended.portals.remove("");
-                    let (outcomes, error) = session.execute(&query);
-                    self.queue_notices(session);
-                    for outcome in outcomes {
-                        self.queue_outcome(outcome, None);
-                    }
-                    if let Some(err) = error {
-                        self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                    let (mut outcomes, mut error) = session.execute(&query);
+                    loop {
+                        self.queue_notices(session);
+                        let copy = match outcomes.last() {
+                            Some(Outcome::CopyIn { binary, .. }) => Some(*binary),
+                            _ => None,
+                        };
+                        for outcome in outcomes {
+                            self.queue_outcome(outcome, None);
+                        }
+                        if let Some(err) = error {
+                            self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                        }
+                        let Some(binary) = copy else { break };
+                        (outcomes, error) = self.copy_in(session, binary)?;
                     }
                     self.queue_parameters(session);
                     self.queue(BackendMessage::ReadyForQuery { tx_status: session.tx_status() });
                     self.flush()?;
                 }
                 FrontendMessage::Sync => {
+                    if let Err(err) = session.sync() {
+                        self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                    }
                     extended.failed = false;
                     self.queue_parameters(session);
                     self.queue(BackendMessage::ReadyForQuery { tx_status: session.tx_status() });
@@ -270,8 +288,20 @@ impl Conn {
                     let result = self.extended_message(session, &mut extended, message);
                     self.queue_notices(session);
                     if let Err(err) = result {
+                        let err = session.abort(err);
                         self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                         extended.failed = true;
+                    }
+                    if let Some(binary) = extended.copying.take() {
+                        let (outcomes, error) = self.copy_in(session, binary)?;
+                        self.queue_notices(session);
+                        for outcome in outcomes {
+                            self.queue_outcome(outcome, Some(&[]));
+                        }
+                        if let Some(err) = error {
+                            self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                            extended.failed = true;
+                        }
                     }
                 }
             }
@@ -341,6 +371,9 @@ impl Conn {
                 let portal = extended.portal(&portal)?;
                 let (prepared, formats) = (portal.prepared.clone(), portal.result_formats.clone());
                 let outcome = session.execute_prepared(&prepared, &portal.parameters.clone())?;
+                if let Outcome::CopyIn { binary, .. } = outcome {
+                    extended.copying = Some(binary);
+                }
                 self.queue_outcome(outcome, Some(&formats));
             }
             FrontendMessage::Close { object_type, name } => {
@@ -356,9 +389,52 @@ impl Conn {
         Ok(())
     }
 
+    /// copy_in receives the data of a COPY FROM STDIN and finishes the copy, returning what it and the rest of its
+    /// query produced, or ends the connection when the client leaves the copy protocol, as Postgres does.
+    fn copy_in(&mut self, session: &mut Session, binary: bool) -> Result<(Vec<Outcome>, Option<PgError>), ConnError> {
+        self.flush()?;
+        let mut data = Vec::new();
+        let line = |data: &[u8]| data.iter().filter(|&&b| b == b'\n').count() + 1;
+        loop {
+            let frame = self.read_frame()?;
+            match frame.tag {
+                b'd' => data.extend_from_slice(&frame.body),
+                b'c' => break,
+                b'f' => {
+                    let message = String::from_utf8_lossy(frame.body.strip_suffix(&[0]).unwrap_or(&frame.body));
+                    let err = PgError::new(code::QUERY_CANCELED, format!("COPY from stdin failed: {message}"));
+                    return Ok((Vec::new(), Some(session.abort_copy(err, line(&data)))));
+                }
+                b'S' | b'H' => {}
+                tag => {
+                    let message = format!("unexpected message type 0x{tag:02X} during COPY from stdin");
+                    let err = session.abort_copy(PgError::new(code::PROTOCOL_VIOLATION, message), line(&data));
+                    self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                    self.fatal(PgError::new(
+                        code::PROTOCOL_VIOLATION,
+                        "terminating connection because protocol synchronization was lost",
+                    ))?;
+                    return Err(ConnError::Protocol(format!("unexpected message type 0x{tag:02X} during COPY")));
+                }
+            }
+        }
+        if !binary && self.client_encoding != sql::encodings::UTF8 {
+            match self.client_encoding.decode(&data) {
+                Ok(text) => data = text.into_bytes(),
+                Err(err) => return Ok((Vec::new(), Some(session.abort_copy(err, line(&data))))),
+            }
+        }
+        Ok(session.copy_data(&data))
+    }
+
     /// queue_parameters queues a ParameterStatus for each reported parameter that changed.
     fn queue_parameters(&mut self, session: &mut Session) {
         for (name, value) in session.parameter_changes() {
+            if name == "client_encoding"
+                && let Some(encoding) = sql::encodings::Encoding::lookup(&value)
+            {
+                self.client_encoding = encoding;
+            }
             self.queue(BackendMessage::ParameterStatus { name, value });
         }
     }
@@ -391,17 +467,54 @@ impl Conn {
                     }
                 };
                 for row in rows {
-                    let values = row
+                    let values: Result<Vec<Option<Vec<u8>>>, PgError> = row
                         .iter()
                         .enumerate()
-                        .map(|(i, value)| value.encode(columns[i].type_oid, format(formats, i)))
+                        .map(|(i, value)| {
+                            let bytes = value.encode(columns[i].type_oid, format(formats, i));
+                            match bytes {
+                                Some(text)
+                                    if format(formats, i) == 0 && self.client_encoding != sql::encodings::UTF8 =>
+                                {
+                                    let text = String::from_utf8_lossy(&text);
+                                    self.client_encoding.encode(&text).map(Some)
+                                }
+                                other => Ok(other),
+                            }
+                        })
                         .collect();
-                    self.queue(BackendMessage::DataRow { values });
+                    match values {
+                        Ok(values) => self.queue(BackendMessage::DataRow { values }),
+                        Err(err) => return self.queue(BackendMessage::ErrorResponse(error_fields(&err))),
+                    }
                 }
                 self.queue(BackendMessage::CommandComplete { command_tag: tag });
             }
             Outcome::Command { tag } => self.queue(BackendMessage::CommandComplete { command_tag: tag }),
             Outcome::Empty => self.queue(BackendMessage::EmptyQueryResponse),
+            Outcome::CopyIn { binary, columns } => {
+                let format = u8::from(binary);
+                let column_format_codes = vec![format as u16; columns];
+                self.queue(BackendMessage::CopyInResponse { overall_format: format, column_format_codes });
+            }
+            Outcome::CopyOut { binary, columns, chunks, tag } => {
+                let format = u8::from(binary);
+                let column_format_codes = vec![format as u16; columns];
+                self.queue(BackendMessage::CopyOutResponse { overall_format: format, column_format_codes });
+                for chunk in chunks {
+                    let data = if binary || self.client_encoding == sql::encodings::UTF8 {
+                        chunk
+                    } else {
+                        match self.client_encoding.encode(&String::from_utf8_lossy(&chunk)) {
+                            Ok(encoded) => encoded,
+                            Err(err) => return self.queue(BackendMessage::ErrorResponse(error_fields(&err))),
+                        }
+                    };
+                    self.queue(BackendMessage::CopyData { data });
+                }
+                self.queue(BackendMessage::CopyDone);
+                self.queue(BackendMessage::CommandComplete { command_tag: tag });
+            }
         }
     }
 }
@@ -413,6 +526,8 @@ struct Extended {
     statements: HashMap<String, Arc<Prepared>>,
     portals: HashMap<String, Portal>,
     failed: bool,
+    /// Whether an executed COPY FROM STDIN waits for its data, in the binary format or as text.
+    copying: Option<bool>,
 }
 
 impl Extended {
@@ -458,8 +573,9 @@ fn fields(columns: &[Column], formats: &[i16]) -> Vec<FieldDescription> {
             data_type_oid: c.type_oid,
             data_type_size: c.type_size,
             type_modifier: c.type_modifier,
+            table_oid: c.origin.0,
+            table_attribute_number: c.origin.1,
             format: format(formats, i),
-            ..FieldDescription::default()
         })
         .collect()
 }

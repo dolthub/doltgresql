@@ -81,3 +81,16 @@ Impact: any database with an array-of-enum column, or an array of any user-defin
 Hard to change in Go: needs element types of stored array types resolved through the type collection on load.
 
 Rust: user-defined types are registered by OID from the stored definitions, so element types always resolve.
+
+## Serial defaults name mixed-case sequences unquoted (confirmed)
+
+A serial column's default is stored as `nextval('schema.name')` without quoting, and Go's `nextval` never folds case,
+so `"Id" SERIAL` on table `regions` stores `nextval('public.regions_Id_seq')`. Postgres reads that text as
+`public.regions_id_seq`, which does not exist.
+
+Impact: Rust, which resolves the name as Postgres does, cannot run the default of a mixed-case serial column that Go
+created. Go reads the quoted defaults that Rust writes, since it trims the quotes.
+
+Hard to change in Go: fixing the stored text breaks nothing, but every existing database keeps the unquoted form.
+
+Rust: writes `nextval('public."regions_Id_seq"')`.

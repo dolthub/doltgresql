@@ -463,7 +463,13 @@ impl<'b, 'a> Planner<'b, 'a> {
             columns: columns
                 .iter()
                 .zip(&types)
-                .map(|(c, &ty)| ScopeColumn { table: String::new(), name: c.name.clone(), ty, hidden: false })
+                .map(|(c, &ty)| ScopeColumn {
+                    table: String::new(),
+                    name: c.name.clone(),
+                    ty,
+                    hidden: false,
+                    origin: (0, 0),
+                })
                 .collect(),
         };
         Ok((Query { plan: Plan::Values(exprs), columns, types }, scope))
@@ -504,7 +510,13 @@ impl<'b, 'a> Planner<'b, 'a> {
             columns: columns
                 .iter()
                 .zip(&types)
-                .map(|(c, &ty)| ScopeColumn { table: String::new(), name: c.name.clone(), ty, hidden: false })
+                .map(|(c, &ty)| ScopeColumn {
+                    table: String::new(),
+                    name: c.name.clone(),
+                    ty,
+                    hidden: false,
+                    origin: (0, 0),
+                })
                 .collect(),
         };
         let op = match op {
@@ -578,6 +590,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 let name = alias.map_or(table.name.clone(), |a| a.aliasname.clone());
                 let renames: Vec<&str> =
                     alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+                let table_oid = crate::pgcatalog::snapshot::table_oid(&table.schema, &table.name);
                 let scope = Scope {
                     columns: table
                         .columns
@@ -588,6 +601,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                             name: renames.get(i).map_or(c.name.clone(), |r| r.to_string()),
                             ty: c.ty,
                             hidden: false,
+                            origin: (table_oid, i as u16 + 1),
                         })
                         .collect(),
                 };
@@ -615,6 +629,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 name: renames.get(i).map_or(c.name.clone(), |r| r.to_string()),
                 ty,
                 hidden: false,
+                origin: c.origin,
             })
             .collect();
         let plan = cte.plan.unwrap_or(Plan::WorkTable(cte.work_table));
@@ -642,6 +657,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                     .unwrap_or_else(|| c.name.clone()),
                 ty,
                 hidden: false,
+                origin: c.origin,
             })
             .collect();
         Ok((query.plan, Scope { columns }))
@@ -665,6 +681,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 name: renames.get(i).map_or(column.name.to_string(), |r| r.to_string()),
                 ty: typ(column.type_oid),
                 hidden: false,
+                origin: (0, 0),
             })
             .collect();
         (Plan::Catalog(catalog), Scope { columns })
@@ -688,6 +705,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 name: renames.get(i).map_or(column.to_string(), |r| r.to_string()),
                 ty: typ(ty),
                 hidden: false,
+                origin: (0, 0),
             })
             .collect();
         (Plan::System(system), Scope { columns })
@@ -717,6 +735,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                     name: renames.get(i).map_or(c.name.clone(), |r| r.to_string()),
                     ty,
                     hidden: false,
+                    origin: c.origin,
                 })
                 .collect(),
         };
@@ -768,14 +787,15 @@ impl<'b, 'a> Planner<'b, 'a> {
                     name: renames.get(i).map_or(n.to_string(), |r| r.to_string()),
                     ty: *t,
                     hidden: false,
+                    origin: (0, 0),
                 })
                 .collect(),
-            _ => vec![ScopeColumn { table: table.clone(), name: column_name, ty, hidden: false }],
+            _ => vec![ScopeColumn { table: table.clone(), name: column_name, ty, hidden: false, origin: (0, 0) }],
         };
         let width = columns.len();
         if function.ordinality {
             let name = renames.get(1).map_or("ordinality".to_string(), |r| r.to_string());
-            columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false });
+            columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false, origin: (0, 0) });
         }
         Ok((Plan::Function { call: expr, ordinality: function.ordinality, width }, Scope { columns }))
     }
@@ -847,7 +867,13 @@ impl<'b, 'a> Planner<'b, 'a> {
             let mut exprs: Vec<Expr> = merged.iter().map(|m| m.1.clone()).collect();
             let mut columns: Vec<ScopeColumn> = merged
                 .iter()
-                .map(|m| ScopeColumn { table: String::new(), name: m.0.clone(), ty: m.2, hidden: false })
+                .map(|m| ScopeColumn {
+                    table: String::new(),
+                    name: m.0.clone(),
+                    ty: m.2,
+                    hidden: false,
+                    origin: (0, 0),
+                })
                 .collect();
             let replaced: HashSet<usize> = merged.iter().flat_map(|m| [m.3, m.4]).collect();
             for (i, c) in scope.columns.iter().enumerate() {
@@ -941,6 +967,13 @@ impl<'b, 'a> Planner<'b, 'a> {
             targets.push((expr, ty, name, target.location));
         }
         let names: Vec<String> = targets.iter().map(|t| t.2.clone()).collect();
+        let origins: Vec<(u32, u16)> = targets
+            .iter()
+            .map(|t| match t.0 {
+                Expr::Column(i) => scope.columns.get(i).map_or((0, 0), |c| c.origin),
+                _ => (0, 0),
+            })
+            .collect();
         // ORDER BY keys may name output columns, refer to them by position, or be expressions of the input.
         let mut sorts: Vec<(Expr, bool, bool)> = Vec::new();
         for sort in &select.sort_clause {
@@ -1060,7 +1093,8 @@ impl<'b, 'a> Planner<'b, 'a> {
         }
         let width = targets.len();
         let types: Vec<ColumnType> = targets.iter().map(|t| t.1).collect();
-        let columns: Vec<Column> = targets.iter().map(|t| column(t.2.clone(), t.1)).collect();
+        let columns: Vec<Column> =
+            targets.iter().zip(&origins).map(|(t, &origin)| Column { origin, ..column(t.2.clone(), t.1) }).collect();
         let mut exprs: Vec<Expr> = targets.into_iter().map(|t| t.0).collect();
         let distinct = !select.distinct_clause.is_empty();
         let distinct_on: Vec<&Node> = select.distinct_clause.iter().filter(|n| n.node.is_some()).collect();

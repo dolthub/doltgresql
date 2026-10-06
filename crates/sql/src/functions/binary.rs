@@ -18,6 +18,7 @@ use std::ops::Range;
 
 use super::Function;
 use crate::binary::{decode_escape, decode_hex, encode_hex};
+use crate::encodings::Encoding;
 use crate::error::{PgError, Result, code};
 use crate::oid::{BIT, BOOL, BYTEA, INT4, INT8, NAME, TEXT, UUID, VARBIT};
 use crate::query::Ctx;
@@ -55,6 +56,9 @@ pub const FUNCTIONS: &[Function] = &[
     f("sha512", &[BYTEA], BYTEA, sha512),
     f("convert_from", &[BYTEA, NAME], TEXT, convert_from),
     f("convert_to", &[TEXT, NAME], BYTEA, convert_to),
+    f("convert", &[BYTEA, NAME, NAME], BYTEA, convert),
+    f("pg_char_to_encoding", &[NAME], INT4, pg_char_to_encoding),
+    f("pg_encoding_to_char", &[INT4], NAME, pg_encoding_to_char),
     f("||", &[VARBIT, VARBIT], VARBIT, bit_concat),
     f("&", &[BIT, BIT], BIT, bit_and),
     f("|", &[BIT, BIT], BIT, bit_or),
@@ -305,25 +309,38 @@ fn sha512(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Bytea(sha2::Sha512::digest(bytes(&args[0])).to_vec()))
 }
 
-/// convert_from reads text from bytes in an encoding, which must be UTF8 or SQL_ASCII.
-fn convert_from(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    let data = bytes(&args[0]);
-    match String::from_utf8(data.to_vec()) {
-        Ok(text) => Ok(Value::Text(text)),
-        Err(err) => {
-            let bad =
-                data[err.utf8_error().valid_up_to()..].iter().take(1).map(|b| format!("0x{b:02x}")).collect::<String>();
-            Err(PgError::new(
-                code::CHARACTER_NOT_IN_REPERTOIRE,
-                format!("invalid byte sequence for encoding \"UTF8\": {bad}"),
-            ))
-        }
-    }
+/// encoding returns the encoding that an argument names, as the source or the destination of a conversion.
+fn encoding(value: &Value, role: &str) -> Result<Encoding> {
+    let name = text(value);
+    Encoding::lookup(name)
+        .ok_or_else(|| PgError::new(code::INVALID_PARAMETER_VALUE, format!("invalid {role} encoding name \"{name}\"")))
 }
 
-/// convert_to writes text as bytes in an encoding, which must be UTF8 or SQL_ASCII.
+/// convert_from reads text from bytes in an encoding.
+fn convert_from(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Text(encoding(&args[1], "source")?.decode(bytes(&args[0]))?))
+}
+
+/// convert_to writes text as bytes in an encoding.
 fn convert_to(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Bytea(text(&args[0]).as_bytes().to_vec()))
+    Ok(Value::Bytea(encoding(&args[1], "destination")?.encode(text(&args[0]))?))
+}
+
+/// convert converts bytes from one encoding to another.
+fn convert(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let (source, destination) = (encoding(&args[1], "source")?, encoding(&args[2], "destination")?);
+    Ok(Value::Bytea(destination.encode(&source.decode(bytes(&args[0]))?)?))
+}
+
+/// pg_char_to_encoding returns Postgres' number of the encoding a name names, or -1 for none.
+fn pg_char_to_encoding(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Int4(Encoding::lookup(text(&args[0])).map_or(-1, Encoding::number)))
+}
+
+/// pg_encoding_to_char returns the name of the encoding of Postgres' number, or an empty name for none.
+fn pg_encoding_to_char(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let number = if let Value::Int4(n) = args[0] { n } else { -1 };
+    Ok(Value::Text(Encoding::from_number(number).map_or("", Encoding::name).to_string()))
 }
 
 /// bit_concat concatenates two bit strings.

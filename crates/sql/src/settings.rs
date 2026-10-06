@@ -272,15 +272,9 @@ pub fn normalize(definition: &Setting, value: &str) -> Result<String> {
                 detail: Some(format!("Unrecognized key word: \"{}\".", value.split(',').next().unwrap_or("").trim())),
                 ..invalid_value(name, value)
             }),
-            "client_encoding" => {
-                let normalized = value.trim().to_ascii_uppercase().replace(['-', '_'], "");
-                match normalized.as_str() {
-                    "UTF8" | "UNICODE" => Ok("UTF8".into()),
-                    "SQLASCII" => Ok("SQL_ASCII".into()),
-                    "LATIN1" => Ok("LATIN1".into()),
-                    _ => Err(invalid_value(name, value)),
-                }
-            }
+            "client_encoding" => crate::encodings::Encoding::lookup(value)
+                .map(|e| e.name().to_string())
+                .ok_or_else(|| invalid_value(name, value)),
             _ => Ok(value.to_string()),
         },
     }

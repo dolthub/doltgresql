@@ -312,9 +312,10 @@ impl Value {
                     days: i32::from_be_bytes(bytes[8..12].try_into().map_err(|_| invalid())?),
                     months: i32::from_be_bytes(bytes[12..].try_into().map_err(|_| invalid())?),
                 })),
-                oid::TEXT | oid::UNKNOWN | 0 => {
+                oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN | 0 => {
                     Ok(Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?))
                 }
+                oid::JSON => Ok(Value::Json(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?)),
                 oid::BYTEA => Ok(Value::Bytea(bytes.to_vec())),
                 oid::UUID => Ok(Value::Uuid(bytes.try_into().map_err(|_| invalid())?)),
                 oid::BIT | oid::VARBIT if bytes.len() >= 4 => {
@@ -325,7 +326,10 @@ impl Value {
                     }
                     Ok(Value::Bit(crate::binary::unpack_bits(&bytes[4..], length)))
                 }
-                _ => Err(PgError::unsupported(format!("binary parameters of type {type_oid}"))),
+                _ => match base_type(type_oid) {
+                    Some(base) => Ok(Value::Base(Box::new(BaseValue { type_oid, data: (base.receive)(bytes, -1)? }))),
+                    None => Err(PgError::unsupported(format!("binary parameters of type {type_oid}"))),
+                },
             };
         }
         let text = std::str::from_utf8(bytes).map_err(|_| {
