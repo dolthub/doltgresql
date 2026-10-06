@@ -25,7 +25,7 @@ use std::time::Duration;
 use pgproto::ErrorFields;
 
 use crate::decode::decode_binary;
-use crate::pgx::{self, Arg, Conn, ConnConfig, QueryExecMode, Time, formats};
+use crate::pgx::{self, Arg, Conn, ConnConfig, QueryExecMode, Recorder, Time, formats};
 use crate::server::{Server, Target};
 
 /// How long a blocking assertion must stay unfinished.
@@ -325,6 +325,15 @@ pub struct Session {
     other: Option<(Conn, String, String)>,
     clients: HashMap<String, Conn>,
     blocked: HashMap<String, mpsc::Receiver<BlockedResult>>,
+    recorder: Option<Recorder>,
+}
+
+/// The environment variable naming the directory that receives recordings of the bytes clients send.
+pub const RECORD_DIR_ENV: &str = "DOLTGRES_RECORD_DIR";
+
+/// sanitize makes a name safe to use in a file name.
+fn sanitize(name: &str) -> String {
+    name.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
 }
 
 impl Session {
@@ -336,7 +345,10 @@ impl Session {
         let url = |database: &str| {
             format!("postgres://postgres:password@127.0.0.1:{}/{database}?DateStyle=ISO%2C%20MDY", server.port)
         };
-        let mut setup = connect_with_retries(ConnConfig::parse(&url("")).map_err(|err| err.to_string())?)?;
+        let recorder = std::env::var_os(RECORD_DIR_ENV).map(|_| Recorder::new());
+        let mut setup_config = ConnConfig::parse(&url("")).map_err(|err| err.to_string())?;
+        setup_config.recorder = recorder.clone();
+        let mut setup = connect_with_retries(setup_config)?;
         let create = if target.is_postgres() {
             (database != "postgres").then(|| format!("CREATE DATABASE {database}"))
         } else {
@@ -348,6 +360,7 @@ impl Session {
         setup.close();
         let mut config = ConnConfig::parse(&url(&database)).map_err(|err| err.to_string())?;
         config.default_query_exec_mode = QueryExecMode::DescribeExec;
+        config.recorder = recorder.clone();
         let mut default = Conn::connect(config).map_err(|err| err.to_string())?;
         default.ping().map_err(|err| format!("ping: {err}"))?;
         Ok(Session {
@@ -358,7 +371,28 @@ impl Session {
             other: None,
             clients: HashMap::new(),
             blocked: HashMap::new(),
+            recorder,
         })
+    }
+
+    /// save_recording writes the bytes every connection sent, one hexadecimal line per connection, to a file in
+    /// DOLTGRES_RECORD_DIR named after the running test and script, when recording is enabled.
+    pub fn save_recording(&self, script_name: &str) {
+        let (Some(recorder), Some(dir)) = (&self.recorder, std::env::var_os(RECORD_DIR_ENV)) else { return };
+        let test = std::thread::current().name().unwrap_or("unknown").rsplit("::").next().unwrap_or("unknown").to_string();
+        let base = format!("{test}__{}", sanitize(script_name));
+        let mut path = PathBuf::from(&dir).join(format!("{base}.hex"));
+        let mut counter = 1;
+        while path.exists() {
+            counter += 1;
+            path = PathBuf::from(&dir).join(format!("{base}__{counter}.hex"));
+        }
+        let text: String = recorder
+            .take()
+            .iter()
+            .map(|bytes| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>() + "\n")
+            .collect();
+        let _ = std::fs::write(path, text);
     }
 
     /// set_up runs a setup statement on the default connection.
@@ -381,7 +415,9 @@ impl Session {
                 other.close();
             }
             let url = format!("postgres://{username}:{password}@127.0.0.1:{}/{}", self.server.port, self.database);
-            let conn = Conn::connect(ConnConfig::parse(&url)?)?;
+            let mut config = ConnConfig::parse(&url)?;
+            config.recorder = self.recorder.clone();
+            let conn = Conn::connect(config)?;
             self.other = Some((conn, username.to_string(), password.to_string()));
         }
         Ok(&mut self.other.as_mut().unwrap().0)
@@ -875,6 +911,7 @@ pub fn run_script(target: &Target, script: &ScriptTest, repetitions: usize) -> V
     for err in session.finish() {
         failures.push(format!("{}: {err}", script.name));
     }
+    session.save_recording(script.name);
     failures
 }
 
