@@ -20,6 +20,7 @@
 mod alter;
 pub mod array;
 pub mod auth;
+pub mod binary;
 pub mod cast;
 pub mod catalog;
 pub mod datetime;
@@ -100,6 +101,10 @@ pub mod oid {
     pub const REGTYPE: u32 = 2206;
     pub const REGNAMESPACE: u32 = 4089;
     pub const REGROLE: u32 = 4096;
+    pub const BYTEA: u32 = 17;
+    pub const UUID: u32 = 2950;
+    pub const BIT: u32 = 1560;
+    pub const VARBIT: u32 = 1562;
 }
 
 /// Column describes a result column.

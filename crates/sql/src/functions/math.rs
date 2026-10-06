@@ -28,6 +28,24 @@ const fn f(name: &'static str, args: &'static [u32], ret: u32, implementation: s
 
 /// FUNCTIONS are the math functions.
 pub const FUNCTIONS: &[Function] = &[
+    f("&", &[INT2, INT2], INT2, int_and),
+    f("&", &[INT4, INT4], INT4, int_and),
+    f("&", &[INT8, INT8], INT8, int_and),
+    f("|", &[INT2, INT2], INT2, int_or),
+    f("|", &[INT4, INT4], INT4, int_or),
+    f("|", &[INT8, INT8], INT8, int_or),
+    f("#", &[INT2, INT2], INT2, int_xor),
+    f("#", &[INT4, INT4], INT4, int_xor),
+    f("#", &[INT8, INT8], INT8, int_xor),
+    f("~", &[INT2], INT2, int_not),
+    f("~", &[INT4], INT4, int_not),
+    f("~", &[INT8], INT8, int_not),
+    f("<<", &[INT2, INT4], INT2, int_shift_left),
+    f("<<", &[INT4, INT4], INT4, int_shift_left),
+    f("<<", &[INT8, INT4], INT8, int_shift_left),
+    f(">>", &[INT2, INT4], INT2, int_shift_right),
+    f(">>", &[INT4, INT4], INT4, int_shift_right),
+    f(">>", &[INT8, INT4], INT8, int_shift_right),
     f("abs", &[INT2], INT2, abs),
     f("abs", &[INT4], INT4, abs),
     f("abs", &[INT8], INT8, abs),
@@ -338,6 +356,50 @@ fn same_int(template: &Value, value: Option<i64>) -> Result<Value> {
         Value::Int4(_) => i32::try_from(value).map(Value::Int4).map_err(|_| out_of_range(template)),
         _ => Ok(Value::Int8(value)),
     }
+}
+
+/// int_and returns the bitwise AND of two integers.
+fn int_and(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    same_int(&args[0], Some(int(&args[0]) & int(&args[1])))
+}
+
+/// int_or returns the bitwise OR of two integers.
+fn int_or(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    same_int(&args[0], Some(int(&args[0]) | int(&args[1])))
+}
+
+/// int_xor returns the bitwise exclusive OR of two integers.
+fn int_xor(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    same_int(&args[0], Some(int(&args[0]) ^ int(&args[1])))
+}
+
+/// int_not returns the bitwise complement of an integer.
+fn int_not(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    same_int(&args[0], Some(!int(&args[0])))
+}
+
+/// int_shift shifts an integer left by a count, or right for `right`, wrapping the count to the width as C's shifts
+/// do and keeping the integer's type.
+fn int_shift(value: &Value, count: i64, right: bool) -> Value {
+    let count = count as u32;
+    match value {
+        Value::Int8(i) => Value::Int8(if right { i.wrapping_shr(count) } else { i.wrapping_shl(count) }),
+        other => {
+            let i = int(other) as i32;
+            let shifted = if right { i.wrapping_shr(count) } else { i.wrapping_shl(count) };
+            if let Value::Int2(_) = other { Value::Int2(shifted as i16) } else { Value::Int4(shifted) }
+        }
+    }
+}
+
+/// int_shift_left shifts an integer left.
+fn int_shift_left(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(int_shift(&args[0], int(&args[1]), false))
+}
+
+/// int_shift_right shifts an integer right, keeping its sign.
+fn int_shift_right(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(int_shift(&args[0], int(&args[1]), true))
 }
 
 /// modulo returns the remainder of truncating division.

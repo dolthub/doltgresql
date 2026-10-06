@@ -47,6 +47,7 @@ pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
         oid::VARCHAR => "character varying",
         oid::BPCHAR => "character",
         oid::CHAR => "\"char\"",
+        oid::VARBIT => "bit varying",
         _ => builtin_type(type_oid).map_or("unknown", |t| t.name),
     }
     .into()
@@ -257,6 +258,9 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
         oid::OID | oid::XID | oid::CID => Value::Oid(parse_oid(text, type_oid)?),
         oid::CHAR => char_value(text),
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN => Value::Text(text.to_string()),
+        oid::BYTEA => Value::Bytea(crate::binary::parse_bytea(text)?),
+        oid::UUID => Value::Uuid(crate::binary::parse_uuid(text)?),
+        oid::BIT | oid::VARBIT => Value::Bit(crate::binary::parse_bits(text)?),
         _ => return Err(PgError::unsupported(format!("reading values of type {}", type_display(type_oid)))),
     })
 }
@@ -300,6 +304,14 @@ fn to_integer(value: Value, type_oid: u32) -> Result<Value> {
         Value::Oid(o) => o as i64,
         Value::Reg(reg) => reg.oid as i64,
         Value::Text(text) => return input(&text, type_oid),
+        Value::Bit(bits) if type_oid != oid::INT2 => {
+            let width = if type_oid == oid::INT4 { 32 } else { 64 };
+            if bits.len() > width {
+                return Err(int_out_of_range(type_oid));
+            }
+            let unsigned = bits.bytes().fold(0u64, |n, b| n << 1 | (b == b'1') as u64);
+            return Ok(if width == 32 { Value::Int4(unsigned as u32 as i32) } else { Value::Int8(unsigned as i64) });
+        }
         other => return Err(cannot_cast(&other, type_oid)),
     };
     match type_oid {
@@ -424,6 +436,18 @@ fn cast_datetime(value: Value, to: ColumnType) -> Result<Value> {
         (other, _) => return Err(cannot_cast(&other, to.oid)),
     };
     Ok(result)
+}
+
+/// int_bits returns an integer's low `width` bits as a bit string of the modifier's length, sign-extending a longer
+/// one as Postgres' bitfromint8 does.
+fn int_bits(value: i64, width: usize, modifier: i32) -> String {
+    let length = if modifier > 0 { modifier as usize } else { 1 };
+    (0..length)
+        .map(|i| {
+            let shift = (length - 1 - i).min(width - 1).min(63);
+            if (value >> shift) & 1 == 1 { '1' } else { '0' }
+        })
+        .collect()
 }
 
 /// is_string_type reports whether a type is one of the text types.
@@ -667,6 +691,21 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
             Value::Text(text) => input(&text, to.oid)?,
             other => return Err(cannot_cast(&other, to.oid)),
         },
+        oid::BYTEA | oid::UUID => match value {
+            Value::Text(text) => input(&text, to.oid)?,
+            value @ (Value::Bytea(_) | Value::Uuid(_)) => value,
+            other => return Err(cannot_cast(&other, to.oid)),
+        },
+        oid::BIT | oid::VARBIT => {
+            let bits = match value {
+                Value::Bit(bits) => bits,
+                Value::Text(text) => crate::binary::parse_bits(&text)?,
+                Value::Int4(i) => int_bits(i as i64, 32, to.modifier),
+                Value::Int8(i) => int_bits(i, 64, to.modifier),
+                other => return Err(cannot_cast(&other, to.oid)),
+            };
+            Value::Bit(crate::binary::fit_bits(bits, to, explicit)?)
+        }
         _ => return Err(PgError::unsupported(format!("casts to {}", type_display(to.oid)))),
     })
 }

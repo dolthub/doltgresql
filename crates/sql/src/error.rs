@@ -36,6 +36,7 @@ pub mod code {
     pub const NUMERIC_VALUE_OUT_OF_RANGE: &str = "22003";
     pub const DIVISION_BY_ZERO: &str = "22012";
     pub const STRING_DATA_RIGHT_TRUNCATION: &str = "22001";
+    pub const STRING_DATA_LENGTH_MISMATCH: &str = "22026";
     pub const AMBIGUOUS_COLUMN: &str = "42702";
     pub const UNDEFINED_TABLE: &str = "42P01";
     pub const UNDEFINED_COLUMN: &str = "42703";

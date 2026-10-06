@@ -64,6 +64,12 @@ pub enum Value {
     Enum(Box<EnumValue>),
     /// A value of a composite type, whose fields print as a record's do.
     Composite(Box<CompositeValue>),
+    /// A bytea value.
+    Bytea(Vec<u8>),
+    /// A uuid.
+    Uuid([u8; 16]),
+    /// A value of the bit and bit varying types, as its binary digits.
+    Bit(String),
 }
 
 /// EnumValue is a label of an enum type, which orders labels by their position in the type.
@@ -162,6 +168,9 @@ impl Value {
             Value::Reg(reg) => reg.name.clone(),
             Value::Enum(e) => e.label.clone(),
             Value::Composite(c) => format_record(&c.fields),
+            Value::Bytea(bytes) => crate::binary::format_bytea(bytes),
+            Value::Uuid(uuid) => crate::binary::format_uuid(uuid),
+            Value::Bit(bits) => bits.clone(),
         })
     }
 
@@ -238,6 +247,11 @@ impl Value {
                 }
                 out
             }
+            Value::Bytea(bytes) => bytes.clone(),
+            Value::Uuid(uuid) => uuid.to_vec(),
+            Value::Bit(bits) => {
+                [(bits.len() as i32).to_be_bytes().as_slice(), &crate::binary::pack_bits(bits)].concat()
+            }
         })
     }
 
@@ -289,6 +303,16 @@ impl Value {
                 })),
                 oid::TEXT | oid::UNKNOWN | 0 => {
                     Ok(Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?))
+                }
+                oid::BYTEA => Ok(Value::Bytea(bytes.to_vec())),
+                oid::UUID => Ok(Value::Uuid(bytes.try_into().map_err(|_| invalid())?)),
+                oid::BIT | oid::VARBIT if bytes.len() >= 4 => {
+                    let length = i32::from_be_bytes(bytes[..4].try_into().map_err(|_| invalid())?);
+                    let length = usize::try_from(length).map_err(|_| invalid())?;
+                    if bytes.len() - 4 != length.div_ceil(8) {
+                        return Err(invalid());
+                    }
+                    Ok(Value::Bit(crate::binary::unpack_bits(&bytes[4..], length)))
                 }
                 _ => Err(PgError::unsupported(format!("binary parameters of type {type_oid}"))),
             };

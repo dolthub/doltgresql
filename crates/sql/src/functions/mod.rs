@@ -18,6 +18,7 @@ pub mod aggregate;
 pub use array::value_type;
 pub use json::OUT_COLUMNS as JSON_OUT_COLUMNS;
 mod array;
+mod binary;
 pub mod datetime;
 pub mod json;
 mod math;
@@ -80,6 +81,7 @@ fn registry() -> &'static Registry {
             array::FUNCTIONS,
             pattern::FUNCTIONS,
             json::FUNCTIONS,
+            binary::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
             crate::sequences::FUNCTIONS,
         ]
@@ -162,6 +164,7 @@ pub fn implicitly_castable(from: u32, to: u32) -> bool {
         || (to == ANYELEMENT && from != oid::UNKNOWN)
         || (to == ANYARRAY && is_array(from))
         || (to == ANYNONARRAY && !is_array(from))
+        || (matches!(from, oid::BIT | oid::VARBIT) && matches!(to, oid::BIT | oid::VARBIT))
 }
 
 /// is_preferred reports whether a type is the preferred type of its category.

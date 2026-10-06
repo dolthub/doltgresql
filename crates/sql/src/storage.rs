@@ -44,6 +44,7 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
         }
         (Value::Text(s) | Value::Json(s), encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE) => inline(s.as_bytes()),
         (Value::Jsonb(json), encoding::JSON_ADAPTIVE) => inline(json.compact().as_bytes()),
+        (Value::Bytea(bytes), encoding::BYTES_ADAPTIVE) => inline(bytes),
         (value, encoding::EXTENDED) => serialize_value(value, ty)?,
         (value, encoding::EXTENDED_ADAPTIVE) => inline(&serialize_value(value, ty)?),
         (value, field_encoding) => {
@@ -84,6 +85,7 @@ pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty:
         encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE => {
             Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?)
         }
+        encoding::BYTES_ADAPTIVE => Value::Bytea(field.to_vec()),
         encoding::EXTENDED | encoding::EXTENDED_ADAPTIVE => deserialize_value(field, ty)?,
         _ => return Err(PgError::unsupported(format!("reading fields of encoding {field_encoding}"))),
     })
@@ -107,17 +109,19 @@ pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
             (if *f >= 0.0 { bits ^ (1 << 63) } else { !bits }).to_be_bytes().to_vec()
         }
         Value::Numeric(n) => numeric_gob(n)?,
-        Value::Text(s) => {
+        Value::Text(s) | Value::Bit(s) => {
             let mut out = Vec::with_capacity(s.len() + 2);
-            let mut length = s.len() as u64;
-            while length >= 0x80 {
-                out.push(length as u8 | 0x80);
-                length >>= 7;
-            }
-            out.push(length as u8);
+            write_uvarint(&mut out, s.len() as u64);
             out.extend_from_slice(s.as_bytes());
             out
         }
+        Value::Bytea(bytes) => {
+            let mut out = Vec::with_capacity(bytes.len() + 2);
+            write_uvarint(&mut out, bytes.len() as u64);
+            out.extend_from_slice(bytes);
+            out
+        }
+        Value::Uuid(uuid) => uuid.to_vec(),
         Value::Date(d) => {
             let ts = match *d {
                 dt::DATE_NOBEGIN => dt::TIMESTAMP_NOBEGIN,
@@ -205,20 +209,17 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
             Value::Float8(f64::from_bits(if bits & (1 << 63) != 0 { bits ^ (1 << 63) } else { !bits }))
         }
         oid::NUMERIC => Value::Numeric(numeric_from_gob(field).ok_or_else(corrupt)?),
-        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME => {
-            let (mut length, mut shift, mut i) = (0u64, 0, 0);
-            loop {
-                let byte = *field.get(i).ok_or_else(corrupt)?;
-                length |= ((byte & 0x7f) as u64) << shift;
-                i += 1;
-                if byte < 0x80 {
-                    break;
-                }
-                shift += 7;
-            }
+        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::BIT | oid::VARBIT | oid::BYTEA => {
+            let mut i = 0;
+            let length = read_uvarint(field, &mut i).ok_or_else(corrupt)?;
             let bytes = field.get(i..i + length as usize).ok_or_else(corrupt)?;
-            Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?)
+            match ty.oid {
+                oid::BYTEA => Value::Bytea(bytes.to_vec()),
+                oid::BIT | oid::VARBIT => Value::Bit(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?),
+                _ => Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?),
+            }
         }
+        oid::UUID => Value::Uuid(field.try_into().map_err(|_| corrupt())?),
         oid::DATE | oid::TIMESTAMP | oid::TIMESTAMPTZ => {
             let (seconds, nanos) = dt::go_time::unmarshal(field).ok_or_else(corrupt)?;
             let ts = dt::timestamp_from_go(seconds, nanos);

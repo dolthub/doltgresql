@@ -62,7 +62,7 @@ pub const FUNCTIONS: &[Function] = &[
 ];
 
 /// like_matches reports whether text matches a LIKE pattern whose escape character is a backslash.
-fn like_matches(text: &[char], pattern: &[char]) -> Result<bool> {
+pub(super) fn like_matches(text: &[char], pattern: &[char]) -> Result<bool> {
     let (mut t, mut p) = (0, 0);
     let (mut star_p, mut star_t) = (None, 0);
     while t < text.len() {

@@ -263,7 +263,7 @@ impl SessionState {
         role.superuser || auth.holds(role.id, &object, "U") || auth.owner(&object) == Some(role.id)
     }
 
-    /// install_format installs the session's DateStyle, IntervalStyle, and time zone for printing values.
+    /// install_format installs the session's DateStyle, IntervalStyle, time zone, and bytea_output for printing values.
     pub fn install_format(&self) {
         let get = |name: &str| self.settings.get(name).unwrap_or_default();
         crate::datetime::install_format(crate::datetime::Format::from_settings(
@@ -271,6 +271,7 @@ impl SessionState {
             &get("IntervalStyle"),
             &get("TimeZone"),
         ));
+        crate::binary::install_output(&get("bytea_output"));
     }
 
     /// notice records a notice for the client.

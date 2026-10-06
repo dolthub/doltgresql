@@ -7791,3 +7791,494 @@ column m of table t depends on type mood"#, hint: "Use DROP ... CASCADE to drop 
         },
     ]);
 }
+
+#[test]
+fn test_binary_type_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "bit strings",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '101'::bit, '101'::bit(3), B'101', X'1F', '101'::varbit, '101'::bit varying(2), '10'::bit(3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("bit", BIT), Column("bit", BIT), Column("?column?", BIT), Column("?column?", BIT), Column("varbit", VARBIT), Column("varbit", VARBIT), Column("bit", BIT)],
+                        rows: &[
+                            &[T("1"), T("101"), T("101"), T("00011111"), T("101"), T("10"), T("100")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1012'::bit(4);",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#""2" is not a valid binary digit"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'X1G'::bit(8);",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#""G" is not a valid hexadecimal digit"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT B'10012';",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#""2" is not a valid binary digit"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tb (a BIT(3), b VARBIT(2));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tb VALUES ('10', '1');",
+                    expected: Expected::Error(Diagnostic { code: "22026", message: "bit string length 2 does not match type bit(3)", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tb VALUES ('101', '101');",
+                    expected: Expected::Error(Diagnostic { code: "22001", message: "bit string too long for type bit varying(2)", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tb VALUES (B'101', B'10');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM tb;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", BIT), Column("b", VARBIT)],
+                        rows: &[
+                            &[T("101"), T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 5::bit(4), B'1010'::int, B'101' & B'110', B'101' | B'110', B'101' # B'110', ~B'101', B'1011' << 1, B'1011' >> 2, B'10' || B'01';",
+                    expected: Expected::Rows {
+                        columns: &[Column("bit", BIT), Column("int4", INT4), Column("?column?", BIT), Column("?column?", BIT), Column("?column?", BIT), Column("?column?", BIT), Column("?column?", BIT), Column("?column?", BIT), Column("?column?", VARBIT)],
+                        rows: &[
+                            &[T("0101"), T("10"), T("100"), T("111"), T("011"), T("010"), T("0110"), T("0010"), T("1001")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT length(B'1011'), bit_length(B'1011'), octet_length(B'101010101'), get_bit(B'1011', 1), set_bit(B'1011', 1, 0), substring(B'101101' FROM 2 FOR 3), position(B'01' IN B'1101');",
+                    expected: Expected::Rows {
+                        columns: &[Column("length", INT4), Column("bit_length", INT4), Column("octet_length", INT4), Column("get_bit", INT4), Column("set_bit", BIT), Column("substring", BIT), Column("position", INT4)],
+                        rows: &[
+                            &[T("4"), T("4"), T("2"), T("0"), T("1011"), T("011"), T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT B'101' & B'1100';",
+                    expected: Expected::Error(Diagnostic { code: "22026", message: "cannot AND bit strings of different sizes", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT get_bit(B'101', 3);",
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "bit index 3 out of valid range (0..2)", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT set_bit(B'101', 1, 2);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "new bit must be 0 or 1", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT B'1011' << -1, B'1011' >> 5, B'1011' << 0, substring(B'1011' FROM 3), substring(B'1011', 0, 2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BIT), Column("?column?", BIT), Column("?column?", BIT), Column("substring", BIT), Column("substring", BIT)],
+                        rows: &[
+                            &[T("0101"), T("0000"), T("1011"), T("11"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT B'101' = '101'::varbit, pg_typeof(B'10' || B'1'), B'101' < B'11', B'1' || '01';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("pg_typeof", REGTYPE), Column("?column?", BOOL), Column("?column?", VARBIT)],
+                        rows: &[
+                            &[T("t"), T("bit varying"), T("t"), T("101")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT B'101'::varbit(2), B'101'::bit(2), B'101'::bit(5), B'1'::bit(5)::int;",
+                    expected: Expected::Rows {
+                        columns: &[Column("varbit", VARBIT), Column("bit", BIT), Column("bit", BIT), Column("int4", INT4)],
+                        rows: &[
+                            &[T("10"), T("10"), T("10100"), T("16")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 300::bit(4), (-1)::bit(4), 5::bigint::bit(70), B'111'::int8;",
+                    expected: Expected::Rows {
+                        columns: &[Column("bit", BIT), Column("bit", BIT), Column("bit", BIT), Column("int8", INT8)],
+                        rows: &[
+                            &[T("1100"), T("1111"), T("0000000000000000000000000000000000000000000000000000000000000000000101"), T("7")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "integer bitwise operators",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 5 & 3, 5 | 3, 5 # 3, ~5, 1 << 4, 256 >> 2, 5::int2 & 3::int2, pg_typeof(5::int2 & 3), 5::int8 << 62, 1 << 33, 1::int8 << 65, -16 >> 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4), Column("?column?", INT4), Column("?column?", INT4), Column("?column?", INT4), Column("?column?", INT4), Column("?column?", INT4), Column("?column?", INT2), Column("pg_typeof", REGTYPE), Column("?column?", INT8), Column("?column?", INT4), Column("?column?", INT8), Column("?column?", INT4)],
+                        rows: &[
+                            &[T("1"), T("7"), T("6"), T("-6"), T("16"), T("64"), T("1"), T("integer"), T("4611686018427387904"), T("2"), T("2"), T("-4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "bytea",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT '\x0102ff'::bytea, 'abc\\x'::bytea, E'\\001abc'::bytea, '\x 01 02'::bytea;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("bytea", BYTEA), Column("bytea", BYTEA), Column("bytea", BYTEA), Column("bytea", BYTEA)],
+                        rows: &[
+                            &[T(r#"\x0102ff"#), T(r#"\x6162635c78"#), T(r#"\x01616263"#), T(r#"\x0102"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '\x012'::bytea;"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "invalid hexadecimal data: odd number of digits", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '\x0g'::bytea;"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"invalid hexadecimal digit: "g""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'a\b'::bytea;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "invalid input syntax for type bytea", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '\xdeadbeef'::bytea || '\x01'::bytea, length('\xdead'::bytea), octet_length('\xdead'::bytea), get_byte('\xdead'::bytea, 1), set_byte('\xdead'::bytea, 0, 1), substring('\xdeadbeef'::bytea FROM 2 FOR 2), position('\xbe'::bytea IN '\xdeadbeef'::bytea);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BYTEA), Column("length", INT4), Column("octet_length", INT4), Column("get_byte", INT4), Column("set_byte", BYTEA), Column("substring", BYTEA), Column("position", INT4)],
+                        rows: &[
+                            &[T(r#"\xdeadbeef01"#), T("2"), T("2"), T("173"), T(r#"\x01ad"#), T(r#"\xadbe"#), T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT get_byte('\xdead'::bytea, 2);"#,
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "index 2 out of valid range, 0..1", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT get_bit('\x80'::bytea, 7), set_bit('\x00'::bytea, 7, 1), substring('\x0102030405'::bytea FROM -1 FOR 3), substr('\x0102'::bytea, 2);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("get_bit", INT4), Column("set_bit", BYTEA), Column("substring", BYTEA), Column("substr", BYTEA)],
+                        rows: &[
+                            &[T("1"), T(r#"\x80"#), T(r#"\x01"#), T(r#"\x02"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT get_bit('\x80'::bytea, 8);"#,
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "index 8 out of valid range, 0..7", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT encode('\xdeadbeef'::bytea, 'hex'), encode('abc'::bytea, 'base64'), encode('\x00ff5c41'::bytea, 'escape'), decode('3q2+7w==', 'base64'), decode('deadbeef', 'hex'), decode('a\001', 'escape');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("encode", TEXT), Column("encode", TEXT), Column("encode", TEXT), Column("decode", BYTEA), Column("decode", BYTEA), Column("decode", BYTEA)],
+                        rows: &[
+                            &[T("deadbeef"), T("YWJj"), T(r#"\000\377\\A"#), T(r#"\xdeadbeef"#), T(r#"\xdeadbeef"#), T(r#"\x6101"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT encode(repeat('x', 60)::bytea, 'base64');",
+                    expected: Expected::Rows {
+                        columns: &[Column("encode", TEXT)],
+                        rows: &[
+                            &[T(r#"eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4
+eHh4"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT decode('!!', 'base64');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"invalid symbol "!" found while decoding base64 sequence"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT decode('ab', 'foo');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized encoding: "foo""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT decode('a\x', 'escape');"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "invalid input syntax for type bytea", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT md5('abc'::bytea), sha256('abc'::bytea), sha224('a'::bytea), convert_from('\x616263'::bytea, 'UTF8'), convert_to('abc', 'UTF8');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("md5", TEXT), Column("sha256", BYTEA), Column("sha224", BYTEA), Column("convert_from", TEXT), Column("convert_to", BYTEA)],
+                        rows: &[
+                            &[T("900150983cd24fb0d6963f7d28e17f72"), T(r#"\xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"#), T(r#"\xabd37534c7d9a2efb9465de931cd7055ffdb8879563ae98078d6d6d5"#), T("abc"), T(r#"\x616263"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT convert_from('\xff'::bytea, 'UTF8');"#,
+                    expected: Expected::Error(Diagnostic { code: "22021", message: r#"invalid byte sequence for encoding "UTF8": 0xff"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '\xff'::bytea > '\x01'::bytea, '\x01'::bytea = '\x01'::bytea, 'abc'::bytea::text, 'abc'::text::bytea, '\x01'::bytea || 'ab', pg_typeof('\x01'::bytea || 'ab');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("text", TEXT), Column("bytea", BYTEA), Column("?column?", BYTEA), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("t"), T("t"), T(r#"\x616263"#), T(r#"\x616263"#), T(r#"\x016162"#), T("bytea")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT length('abc'), length('\x01'::bytea), bit_length('\x0102'::bytea), btrim('\x0001020100'::bytea, '\x00'::bytea);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("length", INT4), Column("length", INT4), Column("bit_length", INT4), Column("btrim", BYTEA)],
+                        rows: &[
+                            &[T("3"), T("1"), T("16"), T(r#"\x010201"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET bytea_output = 'escape';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT E'a\\001\\377b\\\\'::bytea;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("bytea", BYTEA)],
+                        rows: &[
+                            &[T(r#"\x6101ff625c"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET bytea_output;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'abc'::bytea LIKE 'a%'::bytea;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "uuid",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'A0EEBC99-9C0B-4EF8-BB6D-6BB9BD380A11'::uuid, '{a0eebc999c0b4ef8bb6d6bb9bd380a11}'::uuid, 'a0ee-bc99-9c0b-4ef8-bb6d-6bb9-bd38-0a11'::uuid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("uuid", UUID), Column("uuid", UUID), Column("uuid", UUID)],
+                        rows: &[
+                            &[T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"), T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"), T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a1'::uuid;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type uuid: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a1""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a0eebc99-9c0b4-ef8-bb6d-6bb9bd380a11'::uuid;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type uuid: "a0eebc99-9c0b4-ef8-bb6d-6bb9bd380a11""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid < 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid::text;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("text", TEXT)],
+                        rows: &[
+                            &[T("t"), T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(gen_random_uuid()), length(gen_random_uuid()::text);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE), Column("length", INT4)],
+                        rows: &[
+                            &[T("uuid"), T("36")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'abc'::bytea::uuid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type bytea to uuid", position: 20, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "stored bytea, uuid, and bit values",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE bt (id INT PRIMARY KEY, b BYTEA, u UUID, x BIT(4), v VARBIT(8), ba BYTEA[], ua UUID[], xa BIT(2)[]);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO bt VALUES (1, '\xdeadbeef', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', B'1010', B'101', ARRAY['\x01'::bytea, '\x'], ARRAY['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid], ARRAY[B'10', B'01']), (2, '', '00000000-0000-0000-0000-000000000000', '0000', '', NULL, NULL, NULL);"#,
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM bt ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("b", BYTEA), Column("u", UUID), Column("x", BIT), Column("v", VARBIT), Column("ba", BYTEA_ARRAY), Column("ua", UUID_ARRAY), Column("xa", BIT_ARRAY)],
+                        rows: &[
+                            &[T("1"), T(r#"\xdeadbeef"#), T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"), T("1010"), T("101"), T(r#"{"\\x01","\\x"}"#), T("{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11}"), T("{10,01}")],
+                            &[T("2"), T(r#"\x"#), T("00000000-0000-0000-0000-000000000000"), T("0000"), T(""), Null, Null, Null],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ku (u UUID PRIMARY KEY, b BYTEA UNIQUE);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO ku VALUES ('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', '\x02'), ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', '\x01');"#,
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO ku VALUES ('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', '\x03');"#,
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "ku_pkey""#, detail: "Key (u)=(b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11) already exists.", schema: "public", table: "ku", constraint: "ku_pkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM ku ORDER BY u;",
+                    expected: Expected::Rows {
+                        columns: &[Column("u", UUID), Column("b", BYTEA)],
+                        rows: &[
+                            &[T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"), T(r#"\x01"#)],
+                            &[T("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"), T(r#"\x02"#)],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM ku WHERE u = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';",
+                    expected: Expected::Rows {
+                        columns: &[Column("u", UUID), Column("b", BYTEA)],
+                        rows: &[
+                            &[T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"), T(r#"\x01"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM ku WHERE b > '\x01' ORDER BY b DESC;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("u", UUID), Column("b", BYTEA)],
+                        rows: &[
+                            &[T("b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"), T(r#"\x02"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

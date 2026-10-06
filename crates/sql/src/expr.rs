@@ -1129,6 +1129,26 @@ impl<'b, 'a> Binder<'b, 'a> {
         Ok(Expr::And(Box::new(lower), Box::new(upper)))
     }
 
+    /// operator_call binds a binary operator that a built-in function implements.
+    fn operator_call(
+        &mut self,
+        resolved: functions::Resolved,
+        left: Bound,
+        right: Bound,
+        location: i32,
+    ) -> Result<Bound> {
+        let mut args = Vec::with_capacity(2);
+        for (bound, &target) in [left, right].into_iter().zip(&resolved.arg_types) {
+            if let Expr::Param(i) = bound.0
+                && self.ctx.parameters[i] == 0
+            {
+                self.ctx.parameters[i] = target;
+            }
+            args.push(coerce(bound, typ(target), false, location)?.0);
+        }
+        Ok((Expr::Func(resolved.index, args), typ(resolved.ret)))
+    }
+
     /// binary binds a binary operator, resolving its operand types as Postgres does for the built-in operators.
     fn binary(&mut self, op: &str, left: Bound, right: Bound, location: i32) -> Result<Bound> {
         let mut left = (left.0, crate::usertypes::base_type(left.1));
@@ -1154,22 +1174,16 @@ impl<'b, 'a> Binder<'b, 'a> {
             if functions::exists(op)
                 && let Ok(resolved) = functions::resolve(op, &[lt, rt], location)
             {
-                let mut args = Vec::with_capacity(2);
-                for (bound, &target) in [left, right].into_iter().zip(&resolved.arg_types) {
-                    if let Expr::Param(i) = bound.0
-                        && self.ctx.parameters[i] == 0
-                    {
-                        self.ctx.parameters[i] = target;
-                    }
-                    args.push(coerce(bound, typ(target), false, location)?.0);
-                }
-                return Ok((Expr::Func(resolved.index, args), typ(resolved.ret)));
+                return self.operator_call(resolved, left, right, location);
             }
             if lt == oid::JSON || rt == oid::JSON || !matches!(op, "=" | "<>" | "!=" | "<" | "<=" | ">" | ">=") {
                 return Err(missing());
             }
         }
-        if let Some(function) = pattern_function(op) {
+        if let Some(function) = pattern_function(op)
+            && lt != oid::BYTEA
+            && rt != oid::BYTEA
+        {
             let types = [lt, rt].map(|t| if t == oid::UNKNOWN { oid::TEXT } else { t });
             if !types.iter().all(|&t| is_string(t)) {
                 return Err(missing());
@@ -1200,6 +1214,12 @@ impl<'b, 'a> Binder<'b, 'a> {
             }
         }
         let textual = |t: u32| is_string(t) || t == oid::UNKNOWN;
+        if !(textual(lt) && textual(rt))
+            && functions::exists(op)
+            && let Ok(resolved) = functions::resolve(op, &[lt, rt], location)
+        {
+            return self.operator_call(resolved, left, right, location);
+        }
         let other = |t: u32| !textual(t) && !matches!(t, oid::JSON | oid::JSONB) && !is_array_type(t);
         if op == "||" && ((textual(lt) && other(rt)) || (other(lt) && textual(rt))) {
             let left = coerce(left, typ(oid::TEXT), true, location)?.0;
@@ -1224,6 +1244,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                 (Some(_), Some(_)) => typ(oid::NUMERIC),
                 _ if is_string(lt) && is_string(rt) => typ(oid::TEXT),
                 _ if lt == rt => left.1,
+                _ if matches!(lt, oid::BIT | oid::VARBIT) && matches!(rt, oid::BIT | oid::VARBIT) => typ(oid::VARBIT),
                 _ if (lt == oid::CHAR && is_string(rt)) || (rt == oid::CHAR && is_string(lt)) => typ(oid::TEXT),
                 _ if (is_oid_type(lt) || numeric_rank(lt).is_some_and(|r| r <= 2))
                     && (is_oid_type(rt) || numeric_rank(rt).is_some_and(|r| r <= 2)) =>
@@ -1635,6 +1656,13 @@ fn unary(op: &str, (expr, ty): Bound, location: i32) -> Result<Bound> {
         }
         "+" if numeric_rank(ty.oid).is_some() => Ok((expr, ty)),
         "-" if ty.oid == oid::INTERVAL => Ok((Expr::Neg(Box::new(expr), ty), ty)),
+        "~" if matches!(ty.oid, oid::INT2 | oid::INT4 | oid::INT8 | oid::BIT | oid::VARBIT) => {
+            let resolved = functions::resolve("~", &[ty.oid], location)?;
+            Ok((
+                Expr::Func(resolved.index, vec![coerce((expr, ty), typ(resolved.arg_types[0]), false, location)?.0]),
+                ty,
+            ))
+        }
         _ => Err(PgError {
             position: position(location),
             hint: Some(
@@ -1683,6 +1711,11 @@ fn constant(c: &pg_query::protobuf::AConst) -> Result<Bound> {
         }
         Some(Val::Sval(s)) => (Expr::Const(Value::Text(s.sval.clone())), typ(oid::UNKNOWN)),
         Some(Val::Boolval(b)) => (Expr::Const(Value::Bool(b.boolval)), typ(oid::BOOL)),
+        Some(Val::Bsval(b)) => {
+            let bits =
+                crate::binary::parse_bits(&b.bsval).map_err(|e| PgError { position: position(c.location), ..e })?;
+            (Expr::Const(Value::Bit(bits)), typ(oid::BIT))
+        }
         _ => return Err(PgError::unsupported("this constant")),
     })
 }
@@ -1733,14 +1766,18 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     if from.oid == to.oid && !explicit && to.modifier == -1 {
         return Ok((expr, to));
     }
+    let opaque = |t: u32| matches!(t, oid::BYTEA | oid::UUID | oid::BIT | oid::VARBIT);
+    let bits_or_ints = |t: u32| matches!(t, oid::BIT | oid::VARBIT | oid::INT4 | oid::INT8);
+    let textual = is_string(from.oid) || is_string(to.oid);
     let allowed = explicit
-        && (is_array_type(from.oid) == is_array_type(to.oid) || is_string(from.oid) || is_string(to.oid))
+        && (is_array_type(from.oid) == is_array_type(to.oid) || textual)
+        && (!(opaque(from.oid) || opaque(to.oid)) || textual || (bits_or_ints(from.oid) && bits_or_ints(to.oid)))
         || implicitly_converts(from.oid, to.oid);
     if !allowed {
         return Err(PgError {
             position: position(location),
             ..PgError::new(
-                code::DATATYPE_MISMATCH,
+                if explicit { code::CANNOT_COERCE } else { code::DATATYPE_MISMATCH },
                 format!("cannot cast type {} to {}", type_display(from.oid), type_display(to.oid)),
             )
         });
@@ -1795,6 +1832,7 @@ pub(crate) fn implicitly_converts(from: u32, to: u32) -> bool {
         || (matches!(from, oid::INT2 | oid::INT4 | oid::INT8) && is_oid_type(to))
         || (is_oid_type(from) && is_oid_type(to) && (from == oid::OID || to == oid::OID))
         || (from == oid::RECORD && is_composite(to))
+        || (matches!(from, oid::BIT | oid::VARBIT) && matches!(to, oid::BIT | oid::VARBIT))
 }
 
 /// is_composite reports whether a type is a user-defined composite type.
@@ -2013,6 +2051,9 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
         (Value::Composite(l), Value::Composite(r)) => {
             compare_values(&Value::Record(l.fields.clone()), &Value::Record(r.fields.clone()))
         }
+        (Value::Bytea(l), Value::Bytea(r)) => l.cmp(r),
+        (Value::Uuid(l), Value::Uuid(r)) => l.cmp(r),
+        (Value::Bit(l), Value::Bit(r)) => l.cmp(r),
         (Value::Record(l), Value::Record(r)) => {
             for (a, b) in l.iter().zip(r) {
                 let ordering = match (a.is_null(), b.is_null()) {
