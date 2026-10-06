@@ -12,14 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![forbid(unsafe_code)]
-
-//! Drives a doltgres server, or a real Postgres, exactly the way the Go test suite does. The pgx module sends the
-//! same protocol messages as the pgx driver that the Go suite uses.
-
-pub mod decode;
-pub mod oid;
-pub mod pgx;
-pub mod script;
-pub mod server;
-pub mod wire;
+//! Script tests ported from the Go test suite, whose expectations are what Postgres returns.

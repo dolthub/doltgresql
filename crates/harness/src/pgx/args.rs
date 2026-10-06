@@ -90,6 +90,12 @@ impl Time {
         seconds * 1_000_000 + (self.nanosecond / 1000) as i64
     }
 
+    /// microseconds_of_day returns the microseconds since midnight, which is how pgx encodes a time of day.
+    fn microseconds_of_day(&self) -> i64 {
+        (self.hour as i64 * 3600 + self.minute as i64 * 60 + self.second as i64) * 1_000_000
+            + (self.nanosecond / 1000) as i64
+    }
+
     /// utc_microseconds_since_2000 returns the microseconds from 2000-01-01 00:00:00 UTC to this instant.
     fn utc_microseconds_since_2000(&self) -> i64 {
         self.civil_microseconds_since_2000() - self.offset_seconds as i64 * 1_000_000
@@ -155,6 +161,12 @@ fn encode_with_format(oid: u32, format: i16, arg: &Arg) -> Result<Option<Vec<u8>
             (701, BINARY) => Ok(Some(value.to_bits().to_be_bytes().to_vec())),
             (700, BINARY) => Ok(Some((*value as f32).to_bits().to_be_bytes().to_vec())),
             (1700, BINARY) => Ok(Some(encode_numeric(&format_go_float(*value))?)),
+            (20 | 21 | 23 | 26, _) => {
+                if value.fract() != 0.0 || !value.is_finite() || *value < i64::MIN as f64 || *value >= i64::MAX as f64 {
+                    return Err(format!("cannot convert {} to int64", format_go_float(*value)));
+                }
+                encode_integer(oid, format, *value as i64).map(Some).ok_or(()).or_else(|_| unsupported())
+            }
             _ => unsupported(),
         },
         Arg::Bool(value) => match (oid, format) {
@@ -169,6 +181,7 @@ fn encode_with_format(oid: u32, format: i16, arg: &Arg) -> Result<Option<Vec<u8>
             (1184, BINARY) => Ok(Some(time.utc_microseconds_since_2000().to_be_bytes().to_vec())),
             (1114, BINARY) => Ok(Some(time.civil_microseconds_since_2000().to_be_bytes().to_vec())),
             (1082, BINARY) => Ok(Some((time.days_since_2000() as i32).to_be_bytes().to_vec())),
+            (1083, BINARY) => Ok(Some(time.microseconds_of_day().to_be_bytes().to_vec())),
             _ => unsupported(),
         },
         Arg::Date(time) => match (oid, format) {

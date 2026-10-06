@@ -20,8 +20,19 @@ fn is_array_space(byte: u8) -> bool {
     matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c)
 }
 
-/// decode_nested decodes an element of an array, record, or range, which must be of a built-in type.
+/// decode_nested decodes an element of an array, record, or range. A user-defined type has no known format, so it is
+/// read as a composite when its bytes form exactly one, and as text otherwise, which covers composites and enums.
 fn decode_nested(oid: u32, bytes: &[u8]) -> Result<String, String> {
+    if oid >= 16384 {
+        let mut r = Reader::new(bytes);
+        if let Ok(text) = record_text(&mut r)
+            && r.is_empty()
+        {
+            return Ok(text);
+        }
+        return String::from_utf8(bytes.to_vec())
+            .map_err(|_| format!("cannot decode a value of user-defined type {oid}: {bytes:?}"));
+    }
     let mut r = Reader::new(bytes);
     let text = decode_value(oid, &mut r)?;
     r.expect_end(oid)?;

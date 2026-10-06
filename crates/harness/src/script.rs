@@ -132,16 +132,20 @@ pub enum Expected {
         /// The command tag.
         tag: &'static str,
     },
-    /// The statement succeeds with this command tag and returns no result columns.
+    /// The statement succeeds with this command tag and returns no result columns, such as most DDL and DML.
     Tag(&'static str),
     /// The statement fails with this error.
     Error(Diagnostic),
+    /// The client fails before the server can answer, with an error containing this text, such as a parameter that
+    /// pgx cannot encode.
+    ClientError(&'static str),
 }
 
 /// Flow is how an assertion's statement is sent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flow {
-    /// Query for rows, and Exec for everything else, as the Go suite chose.
+    /// Query when the statement succeeds with rows or a tag, and Exec when it fails or is unchecked, which is how
+    /// the Go suite sends most assertions.
     Auto,
     /// pgx's Exec: the simple protocol without parameters, and a prepared statement with them.
     Exec,
@@ -149,14 +153,10 @@ pub enum Flow {
     Query,
 }
 
-/// Column is an expected result column.
+/// Column is an expected result column: its name, and its type OID or USER_DEFINED for any type outside the
+/// built-in range.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Column {
-    /// The column name.
-    pub name: &'static str,
-    /// The type OID, or USER_DEFINED for any type outside the built-in range.
-    pub type_oid: u32,
-}
+pub struct Column(pub &'static str, pub u32);
 
 /// USER_DEFINED matches any type OID of 16384 or more, since user-defined types get arbitrary OIDs.
 pub const USER_DEFINED: u32 = 0;
@@ -301,9 +301,12 @@ pub struct Observation {
     pub skipped: bool,
 }
 
-/// testdata_dir returns the directory holding COPY test files: the testdata directory of the crate whose tests are
-/// running, which cargo names in CARGO_MANIFEST_DIR.
+/// testdata_dir returns the directory holding COPY test files: DOLTGRES_TESTDATA when it is set, and otherwise the
+/// testdata directory of the crate whose tests are running, which cargo names in CARGO_MANIFEST_DIR.
 pub fn testdata_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("DOLTGRES_TESTDATA") {
+        return PathBuf::from(dir);
+    }
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from).unwrap_or_default();
     manifest.join("testdata")
 }
@@ -524,8 +527,8 @@ fn error_observation(err: pgx::Error, notices: Vec<ErrorFields>) -> Observation 
 pub fn effective_flow(assertion: &ScriptTestAssertion) -> Flow {
     match assertion.flow {
         Flow::Auto => match assertion.expected {
-            Expected::Rows { .. } => Flow::Query,
-            Expected::Ok | Expected::Tag(_) | Expected::Error(_) => Flow::Exec,
+            Expected::Rows { .. } | Expected::Tag(_) => Flow::Query,
+            Expected::Ok | Expected::Error(_) | Expected::ClientError(_) => Flow::Exec,
         },
         flow => flow,
     }
@@ -618,6 +621,13 @@ pub fn is_ordered(query: &str) -> bool {
 /// check compares an observation against an assertion's expectations, returning every difference.
 pub fn check(assertion: &ScriptTestAssertion, observation: &Observation) -> Vec<String> {
     let mut problems = Vec::new();
+    if let Expected::ClientError(expected) = &assertion.expected {
+        match &observation.client_error {
+            Some(actual) if actual.contains(expected) => {}
+            actual => problems.push(format!("expected a client error containing {expected:?}, got {actual:?}")),
+        }
+        return problems;
+    }
     if let Some(err) = &observation.client_error {
         problems.push(format!("client error: {err}"));
     }
@@ -646,7 +656,7 @@ pub fn check(assertion: &ScriptTestAssertion, observation: &Observation) -> Vec<
                         problems.push(format!("expected no result columns, got {:?}", observation.columns));
                     }
                 }
-                Expected::Ok | Expected::Error(_) => {}
+                Expected::Ok | Expected::Error(_) | Expected::ClientError(_) => {}
             }
         }
     }
@@ -676,6 +686,20 @@ pub fn check(assertion: &ScriptTestAssertion, observation: &Observation) -> Vec<
             Err(err) => problems.push(format!("cannot read {}: {err}", assertion.copy_to_stdout_file)),
         }
     }
+    problems
+}
+
+/// check_other_rows compares the rows a query returned against expected rows in any order, for queries that only
+/// observe state, such as a wire test's checks on a separate connection.
+pub fn check_other_rows(expected: &[&[Cell]], observation: &Observation) -> Vec<String> {
+    let mut problems = Vec::new();
+    if let Some(err) = &observation.client_error {
+        problems.push(format!("client error: {err}"));
+    }
+    if let Some(err) = &observation.error {
+        problems.push(format!("unexpected error: {} ({})", err.message, err.code));
+    }
+    check_rows(expected, &observation.rows, false, &mut problems);
     problems
 }
 
@@ -711,13 +735,14 @@ fn check_diagnostic(kind: &str, expected: &Diagnostic, actual: &ErrorFields, pro
 /// check_columns compares result columns.
 fn check_columns(expected: &[Column], actual: &[(String, u32)], problems: &mut Vec<String>) {
     let matches = expected.len() == actual.len()
-        && expected.iter().zip(actual).all(|(e, (name, oid))| {
-            e.name == name && (e.type_oid == *oid || (e.type_oid == USER_DEFINED && *oid >= 16384))
-        });
+        && expected
+            .iter()
+            .zip(actual)
+            .all(|(e, (name, oid))| e.0 == name && (e.1 == *oid || (e.1 == USER_DEFINED && *oid >= 16384)));
     if !matches {
         problems.push(format!(
             "expected columns {:?}, got {:?}",
-            expected.iter().map(|c| (c.name, c.type_oid)).collect::<Vec<_>>(),
+            expected.iter().map(|c| (c.0, c.1)).collect::<Vec<_>>(),
             actual
         ));
     }

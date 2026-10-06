@@ -17,6 +17,9 @@
 //! Temporary tooling that ports the Go test suite to Rust. It is removed along with the Go code.
 
 mod dump;
+mod generate;
+mod rust;
+mod wire;
 
 use std::collections::VecDeque;
 use std::io::Write;
@@ -38,21 +41,39 @@ fn main() {
             let filter = args.get(6).cloned();
             capture(&args[2], &args[3], &args[4], jobs, filter);
         }
+        Some("generate") if args.len() == 7 => {
+            let records = dump::read_dump(&args[2]);
+            let pg = generate::read_captures(&args[3]);
+            let go = generate::read_captures(&args[4]);
+            let report = generate::generate(&records, &pg, &go, &args[5]);
+            let mut text = format!("{:#?}\n\n", report.sources);
+            text.push_str(&report.notes.join("\n"));
+            std::fs::write(&args[6], text).unwrap();
+            eprintln!("{:#?}", report.sources);
+        }
         _ => {
             eprintln!("usage: goport capture <dump.jsonl> <target> <out.jsonl> [jobs] [test name filter]");
+            eprintln!("       goport generate <dump.jsonl> <pg capture> <go capture> <out dir> <report>");
             std::process::exit(2);
         }
     }
 }
 
-/// Job is one script to capture.
+/// Work is what a job runs.
+enum Work {
+    /// A script, run the given number of times.
+    Script(Result<harness::script::ScriptTest, String>, usize),
+    /// A wire conversation.
+    Wire(Result<harness::wire::WireTest, String>),
+}
+
+/// Job is one test to capture.
 struct Job {
     record: usize,
     test: usize,
     go_test: String,
     runner: String,
-    repetitions: usize,
-    script: Result<harness::script::ScriptTest, String>,
+    work: Work,
 }
 
 /// capture runs every script of the dump against the target and writes what each returned.
@@ -64,7 +85,7 @@ fn capture(dump_path: &str, target: &str, out_path: &str, jobs: usize, filter: O
         let transaction = record.runner == "RunTransactionTests";
         let repetitions = record.extra.get("n").and_then(Value::as_u64).unwrap_or(1) as usize;
         match record.runner.as_str() {
-            "RunScripts" | "RunTransactionTests" | "RunScriptN" => {}
+            "RunScripts" | "RunTransactionTests" | "RunScriptN" | "RunWireScripts" | "RunMessageFlowTests" => {}
             _ => continue,
         }
         if let Some(filter) = &filter
@@ -73,13 +94,17 @@ fn capture(dump_path: &str, target: &str, out_path: &str, jobs: usize, filter: O
             continue;
         }
         for (test, value) in record.tests.iter().enumerate() {
+            let work = match record.runner.as_str() {
+                "RunWireScripts" => Work::Wire(wire::from_wire_script(value)),
+                "RunMessageFlowTests" => Work::Wire(wire::from_message_flow(value)),
+                _ => Work::Script(dump::to_script(value, transaction), repetitions),
+            };
             queue.push_back(Job {
                 record: record.index,
                 test,
                 go_test: record.test.clone(),
                 runner: record.runner.clone(),
-                repetitions,
-                script: dump::to_script(value, transaction),
+                work,
             });
         }
     }
@@ -95,11 +120,29 @@ fn capture(dump_path: &str, target: &str, out_path: &str, jobs: usize, filter: O
         workers.push(std::thread::spawn(move || {
             loop {
                 let Some(job) = queue.lock().unwrap().pop_front() else { break };
-                let capture = match &job.script {
-                    Ok(script) => capture_script(&target, script, job.repetitions),
+                let (script, repetitions) = match &job.work {
+                    Work::Script(script, repetitions) => (script, *repetitions),
+                    Work::Wire(test) => {
+                        let (name, wire) = match test {
+                            Ok(test) => (test.name, wire::capture_json(&target, test)),
+                            Err(err) => ("", json!({"error": format!("conversion: {err}")})),
+                        };
+                        let _ = sender.send(json!({
+                            "record": job.record,
+                            "test": job.test,
+                            "go_test": job.go_test,
+                            "runner": job.runner,
+                            "name": name,
+                            "wire": wire,
+                        }));
+                        continue;
+                    }
+                };
+                let capture = match script {
+                    Ok(script) => capture_script(&target, script, repetitions),
                     Err(err) => Capture { setup_error: Some(format!("conversion: {err}")), ..Capture::default() },
                 };
-                let name = job.script.as_ref().map(|s| s.name).unwrap_or_default();
+                let name = script.as_ref().map(|s| s.name).unwrap_or_default();
                 let _ = sender.send(json!({
                     "record": job.record,
                     "test": job.test,

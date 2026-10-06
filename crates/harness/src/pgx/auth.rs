@@ -38,8 +38,9 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
 
 /// ScramClient performs the client side of SCRAM-SHA-256 without channel binding, as pgx does over a plaintext
 /// connection.
-pub(crate) struct ScramClient {
+pub struct ScramClient {
     password: String,
+    user: String,
     client_nonce: String,
     client_first_message_bare: String,
     salted_password: Vec<u8>,
@@ -50,10 +51,17 @@ impl ScramClient {
     /// new returns a client with a fresh random nonce. Like pgx, the nonce is 18 random bytes encoded as unpadded
     /// base64. Passwords are used as given, which matches pgx for every password that SASLprep leaves unchanged.
     pub(crate) fn new(password: &str) -> ScramClient {
+        ScramClient::with_user(password, "")
+    }
+
+    /// with_user returns a client that names the user in its client-first-message, as some SCRAM libraries do even
+    /// though Postgres ignores it.
+    pub fn with_user(password: &str, user: &str) -> ScramClient {
         let mut nonce = [0u8; 18];
         rand::thread_rng().fill_bytes(&mut nonce);
         ScramClient {
             password: password.to_string(),
+            user: user.replace('=', "=3D").replace(',', "=2C"),
             client_nonce: STANDARD_NO_PAD.encode(nonce),
             client_first_message_bare: String::new(),
             salted_password: Vec::new(),
@@ -62,13 +70,13 @@ impl ScramClient {
     }
 
     /// client_first_message returns the data of the SASLInitialResponse.
-    pub(crate) fn client_first_message(&mut self) -> Vec<u8> {
-        self.client_first_message_bare = format!("n=,r={}", self.client_nonce);
+    pub fn client_first_message(&mut self) -> Vec<u8> {
+        self.client_first_message_bare = format!("n={},r={}", self.user, self.client_nonce);
         format!("n,,{}", self.client_first_message_bare).into_bytes()
     }
 
     /// client_final_message consumes the server-first-message and returns the data of the SASLResponse.
-    pub(crate) fn client_final_message(&mut self, server_first_message: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn client_final_message(&mut self, server_first_message: &[u8]) -> Result<Vec<u8>, String> {
         let server_first = String::from_utf8_lossy(server_first_message).into_owned();
         let rest = server_first
             .strip_prefix("r=")
@@ -106,7 +114,7 @@ impl ScramClient {
     }
 
     /// verify_server_final_message checks the server's signature.
-    pub(crate) fn verify_server_final_message(&self, server_final_message: &[u8]) -> Result<(), String> {
+    pub fn verify_server_final_message(&self, server_final_message: &[u8]) -> Result<(), String> {
         let signature = server_final_message
             .strip_prefix(b"v=")
             .ok_or("invalid SCRAM server-final-message received from server")?;

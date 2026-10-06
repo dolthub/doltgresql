@@ -27,11 +27,12 @@ use std::collections::HashMap;
 use pgproto::{BackendMessage, FieldDescription, FrontendMessage, PROTOCOL_VERSION_3, SSL_REQUEST_CODE};
 
 pub use args::{Arg, Time};
+pub use auth::ScramClient;
 pub use error::{ConnectAttemptError, Error, PgError};
 pub use stream::{Notification, Recorder};
 
 use args::encode_arg;
-use auth::{SCRAM_SHA_256, ScramClient, md5_password};
+use auth::{SCRAM_SHA_256, md5_password};
 use stmtcache::{LruCache, statement_name};
 use stream::Stream;
 

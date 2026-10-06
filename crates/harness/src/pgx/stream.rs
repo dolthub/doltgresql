@@ -16,13 +16,14 @@ use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use pgproto::{BackendMessage, ErrorFields, FrameReader, FrontendMessage};
 
 use crate::pgx::error::Error;
 
-/// READ_TIMEOUT bounds how long a read may block, so that a hung server fails the test instead of hanging it.
+/// READ_TIMEOUT bounds how long the server may take to answer a request, so that a hung or endlessly streaming
+/// server fails the test instead of hanging it.
 const READ_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// SharedBuffer is a byte buffer shared between a connection and its recorder.
@@ -71,6 +72,7 @@ pub(crate) struct Stream {
     reader: FrameReader,
     write_buffer: Vec<u8>,
     recording: Option<SharedBuffer>,
+    deadline: Instant,
     /// The transaction status from the most recent ReadyForQuery.
     pub(crate) tx_status: u8,
     /// The most recent value of every runtime parameter that the server reported.
@@ -86,12 +88,13 @@ impl Stream {
     pub(crate) fn connect(address: &str, recorder: Option<&Recorder>) -> Result<Stream, std::io::Error> {
         let socket = TcpStream::connect(address)?;
         socket.set_nodelay(true)?;
-        socket.set_read_timeout(Some(READ_TIMEOUT))?;
+        socket.set_write_timeout(Some(READ_TIMEOUT))?;
         Ok(Stream {
             socket,
             reader: FrameReader::new(),
             write_buffer: Vec::new(),
             recording: recorder.map(Recorder::connection),
+            deadline: Instant::now() + READ_TIMEOUT,
             tx_status: 0,
             parameter_statuses: BTreeMap::new(),
             notices: Vec::new(),
@@ -114,6 +117,7 @@ impl Stream {
         }
         let result = self.socket.write_all(&self.write_buffer);
         self.write_buffer.clear();
+        self.deadline = Instant::now() + READ_TIMEOUT;
         result?;
         Ok(())
     }
@@ -124,6 +128,7 @@ impl Stream {
             recording.lock().unwrap().extend_from_slice(bytes);
         }
         self.socket.write_all(bytes)?;
+        self.deadline = Instant::now() + READ_TIMEOUT;
         Ok(())
     }
 
@@ -133,6 +138,7 @@ impl Stream {
             return Ok(byte);
         }
         let mut byte = [0u8; 1];
+        self.socket.set_read_timeout(Some(READ_TIMEOUT))?;
         self.socket.read_exact(&mut byte)?;
         Ok(byte[0])
     }
@@ -144,8 +150,19 @@ impl Stream {
             if let Some(frame) = self.reader.next_frame()? {
                 break frame;
             }
+            let remaining = self.deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(Error::Other(format!("timed out after {READ_TIMEOUT:?} waiting for the server")));
+            }
+            self.socket.set_read_timeout(Some(remaining))?;
             let mut buffer = [0u8; 16384];
-            let count = self.socket.read(&mut buffer)?;
+            let count = match self.socket.read(&mut buffer) {
+                Ok(count) => count,
+                Err(err) if matches!(err.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
+                    return Err(Error::Other(format!("timed out after {READ_TIMEOUT:?} waiting for the server")));
+                }
+                Err(err) => return Err(err.into()),
+            };
             if count == 0 {
                 return Err(Error::Other("unexpected EOF".to_string()));
             }
