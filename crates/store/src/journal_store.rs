@@ -19,7 +19,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use crate::chunk::Chunk;
-use crate::error::{Result, corrupt};
+use crate::error::{Error, Result, corrupt};
 use crate::hash::Hash;
 use crate::journal::JOURNAL_FILE;
 use crate::journal_writer::JournalWriter;
@@ -41,6 +41,8 @@ struct MemTable {
     chunks: HashMap<Hash, Vec<u8>>,
     order: Vec<Hash>,
     size: u64,
+    /// The addresses the chunks refer to, which must be in the store before the chunks are written.
+    refs: Vec<Hash>,
 }
 
 /// JournalStore is a writable chunk store whose new chunks go to the chunk journal.
@@ -148,8 +150,9 @@ impl JournalStore {
         self.journal.as_ref().is_some_and(|j| j.has(hash)) || self.sources.iter().any(|s| s.has(hash))
     }
 
-    /// put adds a chunk, which becomes durable when a later commit succeeds.
-    pub fn put(&mut self, chunk: Chunk) -> Result<()> {
+    /// put adds a chunk with the addresses it refers to, which becomes durable when a later commit succeeds. Writing
+    /// it fails when it refers to a chunk the store lacks.
+    pub fn put(&mut self, chunk: Chunk, refs: impl IntoIterator<Item = Hash>) -> Result<()> {
         assert!(!chunk.data.is_empty(), "NBS blocks cannot be zero length");
         if self.memtable.chunks.contains_key(&chunk.hash) {
             return Ok(());
@@ -160,16 +163,36 @@ impl JournalStore {
         self.memtable.size += chunk.data.len() as u64;
         self.memtable.order.push(chunk.hash);
         self.memtable.chunks.insert(chunk.hash, chunk.data);
+        self.memtable.refs.extend(refs);
         Ok(())
+    }
+
+    /// check_refs fails when an address is in neither the memtable nor the store, as Dolt's refCheck does, dropping
+    /// the memtable as Dolt does on a dangling reference.
+    fn check_refs(&mut self, refs: &[Hash]) -> Result<()> {
+        let mut absent: Vec<Hash> = refs
+            .iter()
+            .filter(|hash| !self.memtable.chunks.contains_key(hash) && !self.has_persisted(hash))
+            .copied()
+            .collect();
+        if absent.is_empty() {
+            return Ok(());
+        }
+        absent.sort_by_key(|hash| hash.0);
+        absent.dedup();
+        self.memtable = MemTable::default();
+        Err(Error::DanglingRef(absent))
     }
 
     /// persist writes the memtable's chunks that the store lacks to the journal, in the order they were put, as
     /// Dolt's ChunkJournal.Persist does.
     fn persist(&mut self) -> Result<()> {
-        let memtable = std::mem::take(&mut self.memtable);
-        if memtable.order.is_empty() {
+        if self.memtable.order.is_empty() {
             return Ok(());
         }
+        let refs = std::mem::take(&mut self.memtable.refs);
+        self.check_refs(&refs)?;
+        let memtable = std::mem::take(&mut self.memtable);
         if self.journal.is_none() {
             let (mut writer, _) = JournalWriter::open(&self.dir)?;
             if !self.upstream.lock.is_empty() {
@@ -212,6 +235,9 @@ impl JournalStore {
             return Ok(true);
         }
         self.persist()?;
+        if !current.is_empty() {
+            self.check_refs(&[current])?;
+        }
         let specs = self.specs();
         let next = Manifest {
             version: MANIFEST_VERSION.to_string(),

@@ -20,6 +20,7 @@
 mod builder;
 pub mod fb;
 mod messages;
+pub mod walk;
 pub mod write;
 
 pub use builder::Builder;

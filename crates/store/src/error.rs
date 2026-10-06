@@ -21,6 +21,8 @@ pub enum Error {
     Io(std::io::Error),
     /// Stored data does not have the expected format.
     Corrupt(String),
+    /// Chunks refer to chunks the store lacks, which Dolt calls ErrDanglingRef.
+    DanglingRef(Vec<crate::Hash>),
 }
 
 /// Result is a storage result.
@@ -31,6 +33,14 @@ impl fmt::Display for Error {
         match self {
             Error::Io(err) => write!(f, "{err}"),
             Error::Corrupt(message) => write!(f, "{message}"),
+            Error::DanglingRef(hashes) => {
+                // Go prints its hash set in map order, which varies, where this prints the hashes sorted.
+                writeln!(f, "dangling ref: found dangling references to HashSet {{")?;
+                for hash in hashes {
+                    writeln!(f, "\t{hash}")?;
+                }
+                writeln!(f, "}}")
+            }
         }
     }
 }

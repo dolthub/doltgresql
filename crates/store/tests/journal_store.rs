@@ -52,14 +52,14 @@ fn new_stores_commit_and_reopen() {
     assert!(store.root().is_empty());
     let first = chunks(1, 10);
     for chunk in &first {
-        store.put(chunk.clone()).unwrap();
+        store.put(chunk.clone(), []).unwrap();
     }
     assert_eq!(store.get(&first[3].hash).unwrap().as_ref(), Some(&first[3]));
     assert!(!store.commit(first[0].hash, first[1].hash).unwrap(), "a commit from another root succeeded");
     assert!(store.commit(first[0].hash, Hash::default()).unwrap());
     let second = chunks(2, 10);
     for chunk in &second {
-        store.put(chunk.clone()).unwrap();
+        store.put(chunk.clone(), []).unwrap();
     }
     assert!(store.commit(second[0].hash, first[0].hash).unwrap());
     store.close().unwrap();
@@ -100,7 +100,7 @@ fn extend_fixture(name: &str) -> (PathBuf, Vec<Chunk>, Hash) {
     assert_eq!(store.root(), before);
     let added = chunks(3, 100);
     for chunk in &added {
-        store.put(chunk.clone()).unwrap();
+        store.put(chunk.clone(), []).unwrap();
     }
     let root = added[0].hash;
     assert!(store.commit(root, before).unwrap());
@@ -125,6 +125,25 @@ fn stores_extend_databases_go_wrote() {
         assert_eq!(after.root, root, "{name}: the manifest's root after reopening");
         assert_eq!(after.specs, before.specs, "{name}: the manifest's files after reopening");
     }
+}
+
+#[test]
+fn commits_fail_on_dangling_references() {
+    let dir = scratch("dangling");
+    let mut store = JournalStore::open(&dir, "__DOLT__").unwrap();
+    let missing = Chunk::new(b"never put".to_vec());
+    let parent = Chunk::new(b"parent".to_vec());
+    store.put(parent.clone(), [missing.hash]).unwrap();
+    let err = store.commit(parent.hash, Hash::default()).unwrap_err();
+    assert!(matches!(&err, store::Error::DanglingRef(hashes) if hashes == &[missing.hash]), "{err}");
+    assert!(!store.has(&parent.hash), "the memtable survived a dangling reference");
+    let child = Chunk::new(b"child".to_vec());
+    store.put(child.clone(), []).unwrap();
+    store.put(parent.clone(), [child.hash]).unwrap();
+    assert!(store.commit(parent.hash, Hash::default()).unwrap());
+    let err = store.commit(missing.hash, parent.hash).unwrap_err();
+    assert!(matches!(&err, store::Error::DanglingRef(hashes) if hashes == &[missing.hash]), "{err}");
+    store.close().unwrap();
 }
 
 #[test]
