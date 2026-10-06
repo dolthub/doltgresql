@@ -73,6 +73,13 @@ impl FrameReader {
         &self.buffer[self.start..]
     }
 
+    /// next_byte returns the next unframed byte, such as the answer to an SSLRequest, or None when none is buffered.
+    pub fn next_byte(&mut self) -> Option<u8> {
+        let byte = *self.buffer.get(self.start)?;
+        self.consume(1);
+        Some(byte)
+    }
+
     /// next_frame returns the next complete typed frame, or None when more bytes are needed.
     pub fn next_frame(&mut self) -> Result<Option<Frame>, DecodeError> {
         let available = &self.buffer[self.start..];
