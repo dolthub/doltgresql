@@ -248,13 +248,13 @@ fn test_advisory_locks_2() {
                     client: "A",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_xact_lock(20)",
                     expected: Expected::Rows {
                         columns: &[Column("pg_advisory_xact_lock", VOID)],
                         rows: &[
-                            &[Null],
+                            &[T("")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -384,20 +384,20 @@ fn test_advisory_locks_2() {
                     client: "A",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_xact_lock(42)",
                     expected: Expected::Rows {
                         columns: &[Column("pg_advisory_xact_lock", VOID)],
                         rows: &[
-                            &[Null],
+                            &[T("")],
                         ],
                         tag: "SELECT 1",
                     },
                     client: "A",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_unlock(42)",
                     expected: Expected::Rows {
@@ -407,6 +407,7 @@ fn test_advisory_locks_2() {
                         ],
                         tag: "SELECT 1",
                     },
+                    notices: &[Diagnostic { severity: "WARNING", code: "01000", message: "you don't own a lock of type ExclusiveLock", ..E }],
                     client: "A",
                     ..A
                 },
@@ -457,13 +458,13 @@ fn test_advisory_locks_2() {
                     client: "B",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_lock(43)",
                     expected: Expected::Rows {
-                        columns: &[Column("pg_advisory_lock", BOOL)],
+                        columns: &[Column("pg_advisory_lock", VOID)],
                         rows: &[
-                            &[T("t")],
+                            &[T("")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -478,13 +479,13 @@ fn test_advisory_locks_2() {
                     client: "A",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_xact_lock(43)",
                     expected: Expected::Rows {
                         columns: &[Column("pg_advisory_xact_lock", VOID)],
                         rows: &[
-                            &[Null],
+                            &[T("")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -504,7 +505,7 @@ fn test_advisory_locks_2() {
                     client: "A",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_unlock(43)",
                     expected: Expected::Rows {
@@ -514,6 +515,7 @@ fn test_advisory_locks_2() {
                         ],
                         tag: "SELECT 1",
                     },
+                    notices: &[Diagnostic { severity: "WARNING", code: "01000", message: "you don't own a lock of type ExclusiveLock", ..E }],
                     client: "A",
                     ..A
                 },
@@ -572,13 +574,13 @@ fn test_advisory_locks_2() {
                     client: "A",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_xact_lock(22)",
                     expected: Expected::Rows {
                         columns: &[Column("pg_advisory_xact_lock", VOID)],
                         rows: &[
-                            &[Null],
+                            &[T("")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -690,13 +692,13 @@ fn test_advisory_locks_2() {
                     client: "A",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_xact_lock(24)",
                     expected: Expected::Rows {
                         columns: &[Column("pg_advisory_xact_lock", VOID)],
                         rows: &[
-                            &[Null],
+                            &[T("")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -753,13 +755,13 @@ fn test_advisory_locks_2() {
                     client: "A",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this multi-client script, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "/* client A */ SELECT pg_advisory_xact_lock(25)",
                     expected: Expected::Rows {
                         columns: &[Column("pg_advisory_xact_lock", VOID)],
                         rows: &[
-                            &[Null],
+                            &[T("")],
                         ],
                         tag: "SELECT 1",
                     },

@@ -47,6 +47,8 @@ struct Shared {
     /// The roles and privileges.
     auth: Arc<Mutex<crate::auth::AuthDb>>,
     databases: Mutex<HashMap<String, (DbHandle, SequenceTracker)>>,
+    /// The advisory locks that sessions hold.
+    advisory: Arc<crate::advisory::AdvisoryLocks>,
 }
 
 /// create_times returns the clock readings of creating a database now.
@@ -78,6 +80,7 @@ impl Engine {
                 superuser: superuser.to_string(),
                 auth: Arc::new(Mutex::new(auth)),
                 databases: Mutex::new(HashMap::new()),
+                advisory: Arc::default(),
             }),
         };
         if !engine.database_exists(superuser) {
@@ -144,6 +147,8 @@ impl Engine {
                 aggregates: None,
                 user_types: None,
                 call_depth: 0,
+                id: NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                advisory: self.shared.advisory.clone(),
                 pending_copy: None,
             },
             txns: Vec::new(),
@@ -220,11 +225,31 @@ pub struct SessionState {
     pub aggregates: Option<crate::aggregates::AggregateCache>,
     /// How many function calls are running inside one another.
     pub call_depth: usize,
+    /// The session's number among the engine's sessions, which advisory locks record their holders by.
+    pub id: u64,
+    /// The engine's advisory locks.
+    pub advisory: Arc<crate::advisory::AdvisoryLocks>,
     /// The COPY FROM STDIN waiting for its data.
     pub pending_copy: Option<Box<crate::copy::CopyFrom>>,
 }
 
+/// NEXT_SESSION numbers the sessions of the process.
+static NEXT_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.state.advisory.release_all(self.state.id, false, true);
+    }
+}
+
 impl SessionState {
+    /// end_transaction ends the transaction's settings, undoing every change when it rolled back, and releases the
+    /// advisory locks it took.
+    pub fn end_transaction(&mut self, committed: bool) {
+        self.settings.end_transaction(committed);
+        self.advisory.release_all(self.id, true, false);
+    }
+
     /// sync_identity sets the session user and the current role from the parameters that SET SESSION AUTHORIZATION
     /// and SET ROLE change, which transactions can undo.
     pub fn sync_identity(&mut self) {
@@ -501,7 +526,7 @@ impl Session {
             self.failed = true;
         } else {
             self.txns.clear();
-            self.state.settings.end_transaction(false);
+            self.state.end_transaction(false);
         }
         err
     }
@@ -516,7 +541,7 @@ impl Session {
 
     /// commit commits and ends the open transaction.
     fn commit(&mut self) -> Result<()> {
-        self.state.settings.end_transaction(true);
+        self.state.end_transaction(true);
         for txn in std::mem::take(&mut self.txns) {
             let handle = txn.handle.clone();
             let mut db = lock(&handle)?;
@@ -588,7 +613,7 @@ impl Session {
                     self.txns.clear();
                     self.state.explicit = false;
                     self.failed = false;
-                    self.state.settings.end_transaction(false);
+                    self.state.end_transaction(false);
                     Ok(Outcome::command("ROLLBACK"))
                 }
                 _ => Err(PgError::new(
@@ -649,7 +674,7 @@ impl Session {
                 }
                 self.state.explicit = false;
                 self.txns.clear();
-                self.state.settings.end_transaction(false);
+                self.state.end_transaction(false);
                 Ok(Outcome::command("ROLLBACK"))
             }
             other => Err(PgError::unsupported(format!("the transaction statement {other:?}"))),
@@ -725,8 +750,38 @@ impl Session {
             }
             _ => {}
         }
+        self.wait_for_advisory_locks(node);
         let mut parameters = Vec::new();
         self.with_ctx(&mut parameters, params, |ctx| ctx.run(node))
+    }
+
+    /// wait_for_advisory_locks waits until the advisory locks that a statement takes with constant keys are free,
+    /// before the statement takes its database, since a statement cannot wait while it holds its database.
+    fn wait_for_advisory_locks(&self, node: &NodeEnum) {
+        for (node, ..) in node.nodes() {
+            let pg_query::NodeRef::FuncCall(call) = node else { continue };
+            let exclusive = match call.funcname.iter().filter_map(crate::expr::node_name).next_back() {
+                Some("pg_advisory_lock" | "pg_advisory_xact_lock") => true,
+                Some("pg_advisory_lock_shared" | "pg_advisory_xact_lock_shared") => false,
+                _ => continue,
+            };
+            let ints: Option<Vec<i64>> = call
+                .args
+                .iter()
+                .map(|arg| match arg.node.as_ref() {
+                    Some(NodeEnum::AConst(c)) => match &c.val {
+                        Some(Val::Ival(i)) => Some(i.ival as i64),
+                        Some(Val::Fval(f)) => f.fval.parse().ok(),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            if let Some(ints) = ints {
+                let key = crate::advisory::Key::new(&self.state.database, &ints);
+                self.state.advisory.wait(self.state.id, &key, exclusive);
+            }
+        }
     }
 }
 

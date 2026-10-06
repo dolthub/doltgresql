@@ -17,6 +17,7 @@
 pub mod aggregate;
 pub use array::value_type;
 pub use json::OUT_COLUMNS as JSON_OUT_COLUMNS;
+mod advisory;
 mod array;
 mod binary;
 mod catalog;
@@ -86,6 +87,7 @@ fn registry() -> &'static Registry {
             binary::FUNCTIONS,
             xml::FUNCTIONS,
             catalog::FUNCTIONS,
+            advisory::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
             crate::sequences::FUNCTIONS,
         ]

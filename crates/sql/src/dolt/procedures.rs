@@ -358,6 +358,10 @@ fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         let parents = merging.map(|m| vec![ctx.txn.head, m]).unwrap_or_default();
         ctx.txn.dolt_commit(ctx.db, &user, &host, parents, meta)?
     };
+    if ctx.session.explicit {
+        ctx.session.explicit = false;
+        ctx.session.end_transaction(true);
+    }
     Ok(Value::Text(hash.to_string()))
 }
 

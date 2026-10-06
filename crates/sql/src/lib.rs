@@ -17,6 +17,7 @@
 //! The SQL engine. An engine serves the databases of a data directory, and each connection runs statements in a
 //! session, which parses them with Postgres' own grammar and the Doltgres-only syntax it rejects.
 
+pub mod advisory;
 pub mod aggregates;
 mod alter;
 pub mod array;
