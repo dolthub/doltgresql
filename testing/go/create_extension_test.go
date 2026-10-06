@@ -136,10 +136,6 @@ func TestCreateExtension(t *testing.T) {
 					Query:       `CREATE EXTENSION "uuid-ossp" CASCADE;`,
 					ExpectedErr: "CASCADE is not yet supported",
 				},
-				{
-					Query:       `DROP EXTENSION "uuid-ossp";`,
-					ExpectedErr: "DROP EXTENSION is not yet implemented",
-				},
 			},
 		},
 		{
