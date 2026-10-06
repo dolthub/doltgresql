@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 
 use store::{Error, Result};
 
-use crate::codec::Reader;
+use crate::codec::{Reader, Writer};
 use crate::show::{Fields, list, string_map, strings};
 use crate::types::SerializedType;
 
@@ -61,6 +61,18 @@ impl Operation {
                 })
             })
             .collect()
+    }
+
+    fn write_all(w: &mut Writer, operations: &[Operation]) {
+        w.variable_uint(operations.len() as u64);
+        for op in operations {
+            w.uint16(op.op_code);
+            w.string(&op.primary_data);
+            w.string_slice(&op.secondary_data);
+            w.string(&op.target);
+            w.int32(op.index);
+            w.string_map(&op.options);
+        }
     }
 
     fn show(&self) -> String {
@@ -144,6 +156,24 @@ impl Sequence {
         Ok(s)
     }
 
+    /// serialize encodes the sequence at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.variable_uint(1);
+        w.string(&self.id);
+        w.string(&self.data_type_id);
+        w.uint8(self.persistence);
+        for value in [self.start, self.current, self.increment, self.minimum, self.maximum, self.cache] {
+            w.int64(value);
+        }
+        w.bool(self.cycle);
+        w.bool(self.is_at_end);
+        w.bool(self.has_been_called);
+        w.string(&self.owner_table);
+        w.string(&self.owner_column);
+        w.data()
+    }
+
     fn show(&self) -> String {
         let state = Fields::new()
             .string("Id", &self.id)
@@ -219,6 +249,27 @@ impl Function {
         Ok(f)
     }
 
+    /// serialize encodes the function at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.variable_uint(4);
+        w.string(&self.id);
+        w.string(&self.return_type);
+        write_parameter_names_and_types(&mut w, &self.all_params);
+        w.bool(self.variadic);
+        w.bool(self.is_non_deterministic);
+        w.bool(self.strict);
+        w.string(&self.definition);
+        Operation::write_all(&mut w, &self.operations);
+        w.string(&self.extension_name);
+        w.string(&self.extension_symbol);
+        w.string(&self.sql_definition);
+        w.bool(self.set_of);
+        write_parameter_defaults(&mut w, &self.all_params);
+        write_parameter_modes(&mut w, &self.all_params);
+        w.data()
+    }
+
     fn show(&self) -> String {
         Fields::new()
             .string("ID", &self.id)
@@ -263,6 +314,34 @@ fn parameters(
             })
         })
         .collect()
+}
+
+/// write_parameter_names_and_types writes the parallel name and type lists of a routine's parameters.
+fn write_parameter_names_and_types(w: &mut Writer, params: &[Parameter]) {
+    w.variable_uint(params.len() as u64);
+    for param in params {
+        w.string(&param.name);
+    }
+    w.variable_uint(params.len() as u64);
+    for param in params {
+        w.string(&param.type_id);
+    }
+}
+
+/// write_parameter_defaults writes the default of each of a routine's parameters.
+fn write_parameter_defaults(w: &mut Writer, params: &[Parameter]) {
+    w.variable_uint(params.len() as u64);
+    for param in params {
+        w.string(&param.default);
+    }
+}
+
+/// write_parameter_modes writes the mode of each of a routine's parameters.
+fn write_parameter_modes(w: &mut Writer, params: &[Parameter]) {
+    w.variable_uint(params.len() as u64);
+    for param in params {
+        w.uint8(param.mode);
+    }
 }
 
 /// TriggerEvent is an event that fires a trigger.
@@ -318,6 +397,30 @@ impl Trigger {
         }
         finish(&r, "a trigger")?;
         Ok(t)
+    }
+
+    /// serialize encodes the trigger at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.variable_uint(0);
+        w.string(&self.id);
+        w.string(&self.function);
+        w.uint8(self.timing);
+        w.bool(self.for_each_row);
+        w.uint8(self.deferrable);
+        w.string(&self.referenced_table_name);
+        w.bool(self.constraint);
+        w.string(&self.old_transition_name);
+        w.string(&self.new_transition_name);
+        w.string_slice(&self.arguments);
+        w.string(&self.definition);
+        Operation::write_all(&mut w, &self.when);
+        w.variable_uint(self.events.len() as u64);
+        for event in &self.events {
+            w.uint8(event.event_type);
+            w.string_slice(&event.column_names);
+        }
+        w.data()
     }
 
     fn show(&self) -> String {
@@ -378,6 +481,22 @@ impl Procedure {
         Ok(p)
     }
 
+    /// serialize encodes the procedure at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.variable_uint(1);
+        w.string(&self.id);
+        write_parameter_names_and_types(&mut w, &self.all_params);
+        w.string(&self.definition);
+        w.string(&self.extension_name);
+        w.string(&self.extension_symbol);
+        w.string(&self.sql_definition);
+        write_parameter_modes(&mut w, &self.all_params);
+        Operation::write_all(&mut w, &self.operations);
+        write_parameter_defaults(&mut w, &self.all_params);
+        w.data()
+    }
+
     fn show(&self) -> String {
         Fields::new()
             .string("ID", &self.id)
@@ -422,6 +541,17 @@ impl Extension {
         Ok(e)
     }
 
+    /// serialize encodes the extension at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.variable_uint(1);
+        w.string(&self.ext_name);
+        w.string(&self.namespace);
+        w.bool(self.relocatable);
+        w.string(&self.version);
+        w.data()
+    }
+
     fn show(&self) -> String {
         Fields::new()
             .string("ExtName", &self.ext_name)
@@ -451,6 +581,17 @@ impl Cast {
         let c = Cast { id: r.string()?, cast_type: r.uint8()?, function: r.string()?, use_in_out: r.bool()? };
         finish(&r, "a cast")?;
         Ok(c)
+    }
+
+    /// serialize encodes the cast at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.variable_uint(0);
+        w.string(&self.id);
+        w.uint8(self.cast_type);
+        w.string(&self.function);
+        w.bool(self.use_in_out);
+        w.data()
     }
 
     fn show(&self) -> String {
@@ -495,6 +636,18 @@ impl Operator {
         };
         finish(&r, "an operator")?;
         Ok(o)
+    }
+
+    /// serialize encodes the operator at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.variable_uint(0);
+        for field in [&self.id, &self.function, &self.return_type, &self.commutator, &self.negator] {
+            w.string(field);
+        }
+        w.bool(self.hashes);
+        w.bool(self.merges);
+        w.data()
     }
 
     fn show(&self) -> String {
@@ -544,6 +697,18 @@ impl Aggregate {
         Ok(a)
     }
 
+    /// serialize encodes the aggregate at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.variable_uint(0);
+        for field in [&self.id, &self.return_type, &self.s_func, &self.s_type, &self.final_func, &self.combine_func] {
+            w.string(field);
+        }
+        w.string(&self.init_cond);
+        w.bool(self.has_init_cond);
+        w.data()
+    }
+
     fn show(&self) -> String {
         Fields::new()
             .string("ID", &self.id)
@@ -589,6 +754,23 @@ impl Conflict {
         c.ancestor = load(has_ancestor, &ancestor)?;
         finish(&r, "a conflict")?;
         Ok(c)
+    }
+
+    /// serialize encodes the conflict at the current version.
+    pub fn serialize(&self) -> Vec<u8> {
+        let data = |o: &Option<Box<RootObject>>| o.as_ref().map(|o| o.serialize()).unwrap_or_default();
+        let mut w = Writer::new();
+        w.variable_uint(0);
+        w.string(&self.id);
+        w.string(&self.from_hash);
+        w.int64(self.root_object_id);
+        w.bool(self.ours.is_some());
+        w.bool(self.theirs.is_some());
+        w.bool(self.ancestor.is_some());
+        w.string(&data(&self.ours));
+        w.string(&data(&self.theirs));
+        w.string(&data(&self.ancestor));
+        w.data()
     }
 
     fn show(&self) -> String {
@@ -692,6 +874,22 @@ impl RootObject {
             Kind::Operators => RootObject::Operator(Operator::deserialize(data)?),
             Kind::Aggregates => RootObject::Aggregate(Aggregate::deserialize(data)?),
         })
+    }
+
+    /// serialize encodes the object as its collection's Serialize does.
+    pub fn serialize(&self) -> Vec<u8> {
+        match self {
+            RootObject::Sequence(o) => o.serialize(),
+            RootObject::Type(o) => o.serialize(),
+            RootObject::Function(o) => o.serialize(),
+            RootObject::Trigger(o) => o.serialize(),
+            RootObject::Extension(o) => o.serialize(),
+            RootObject::Conflict(o) => o.serialize(),
+            RootObject::Procedure(o) => o.serialize(),
+            RootObject::Cast(o) => o.serialize(),
+            RootObject::Operator(o) => o.serialize(),
+            RootObject::Aggregate(o) => o.serialize(),
+        }
     }
 
     /// show renders the object as the Go graph oracle renders the value its deserializer returns.

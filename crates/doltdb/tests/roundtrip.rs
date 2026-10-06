@@ -14,9 +14,10 @@
 
 //! Every version-control message in the store crate's fixtures, which Go wrote, writes back to the same bytes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+use objects::{Kind, RootObject};
 use serial::write::{
     CheckFields, ColumnFields, CommitFields, ForeignKeyFields, IndexFields, KEYLESS_CARDINALITY_TAG,
     KEYLESS_ROW_ID_TAG, MergeStateFields, Meta, ROOT_OBJECT_COLLECTIONS, RebaseStateFields, RootValueFields,
@@ -28,7 +29,7 @@ use serial::{
     Commit, DoltgresRootValue, MergeState, Message, RebaseState, Stash, StashList, StoreRoot, TableMessage,
     TableSchema, Tag, WorkingSet,
 };
-use store::{Chunk, GenerationalStore};
+use store::{Chunk, ChunkReader, GenerationalStore};
 
 /// owned copies a list of byte strings.
 fn owned(values: Vec<&[u8]>) -> Vec<Vec<u8>> {
@@ -346,4 +347,89 @@ fn version_control_messages_write_the_bytes_go_wrote() {
         assert!(checked.contains_key(kind), "no {kind} messages were checked: {checked:?}");
     }
     assert!(failures.is_empty(), "{} differ ({checked:?}):\n{}", failures.len(), failures.join("\n"));
+}
+
+/// CURRENT_VERSIONS is the serialization version that Go writes for each root object collection, by the root value
+/// field that holds it, where a type keeps the version it was read with and so never upgrades.
+const CURRENT_VERSIONS: [(&str, u8); 10] = [
+    ("sequences", 1),
+    ("types", 0),
+    ("functions", 4),
+    ("triggers", 0),
+    ("extensions", 1),
+    ("conflicts", 0),
+    ("procedures", 1),
+    ("casts", 0),
+    ("operators", 0),
+    ("aggregates", 0),
+];
+
+#[test]
+fn root_objects_serialize_to_the_bytes_go_wrote() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../store/tests/fixtures");
+    let mut checked: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut upgraded: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut failures = Vec::new();
+    for fixture in std::fs::read_dir(&fixtures).unwrap() {
+        let fixture = fixture.unwrap().path();
+        if !fixture.is_dir() {
+            continue;
+        }
+        for database in std::fs::read_dir(&fixture).unwrap() {
+            let noms = database.unwrap().path().join(".dolt/noms");
+            if !noms.is_dir() {
+                continue;
+            }
+            let store = GenerationalStore::open(&noms).unwrap();
+            let mut maps = BTreeSet::new();
+            for generation in [&store.new_gen, &store.old_gen] {
+                generation
+                    .for_each(&mut |chunk| {
+                        let message = Message(&chunk.data);
+                        if message.file_id() == serial::DOLTGRES_ROOT_VALUE {
+                            let root = DoltgresRootValue::new(message).unwrap();
+                            for (name, address) in root.root_object_maps().unwrap() {
+                                if let Some(address) = address.filter(|a| a.iter().any(|&b| b != 0)) {
+                                    maps.insert((name, serial::hash(address).unwrap()));
+                                }
+                            }
+                        }
+                        Ok(())
+                    })
+                    .unwrap();
+            }
+            let mut seen = BTreeSet::new();
+            for (name, map) in maps {
+                let map = store.require(&map).unwrap().data;
+                for (_, entry) in doltdb::address_map(&store, &map).unwrap() {
+                    if !seen.insert(entry) {
+                        continue;
+                    }
+                    let data = prolly::read_blob(&store, &entry).unwrap();
+                    let kind = Kind::from_field(name).unwrap();
+                    let object = RootObject::deserialize(kind, &data).unwrap();
+                    let bytes = object.serialize();
+                    *checked.entry(name).or_default() += 1;
+                    if bytes == data {
+                        continue;
+                    }
+                    let current = CURRENT_VERSIONS.iter().find(|(n, _)| *n == name).unwrap().1;
+                    if data[0] < current && RootObject::deserialize(kind, &bytes).unwrap() == object {
+                        *upgraded.entry(name).or_default() += 1;
+                    } else {
+                        failures.push(format!("{}: {entry} {name}", noms.display()));
+                    }
+                }
+            }
+        }
+    }
+    for (name, _) in CURRENT_VERSIONS {
+        assert!(checked.contains_key(name), "no {name} were checked: {checked:?}");
+    }
+    assert!(
+        failures.is_empty(),
+        "{} differ ({checked:?}, upgraded {upgraded:?}):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
