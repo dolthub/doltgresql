@@ -1316,6 +1316,9 @@ name = "sql"
 version = "0.1.0"
 dependencies = [
  "doltdb",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
  "objects",
  "pg_query",
  "prolly",

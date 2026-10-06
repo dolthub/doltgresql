@@ -203,10 +203,15 @@ impl Ctx<'_> {
 /// scan returns every row of a table in key order, repeating each keyless row by its cardinality.
 pub fn scan(db: &mut Database, table: &TableDef) -> Result<Vec<Vec<Value>>> {
     let node = Arc::new(prolly::Node::decode(table.table.primary_index.clone())?);
+    let mut items = Vec::new();
+    walk_leaves(db, &node, &mut |key, value| {
+        items.push((key.to_vec(), value.to_vec()));
+        Ok(())
+    })?;
     let mut rows = Vec::new();
     let mut failure = None;
-    walk_leaves(db, &node, &mut |key, value| {
-        match table.decode_row(key, value) {
+    for (key, value) in items {
+        match table.decode_row(db, &key, &value) {
             Ok((row, cardinality)) => {
                 for _ in 0..cardinality {
                     rows.push(row.clone());
@@ -214,8 +219,7 @@ pub fn scan(db: &mut Database, table: &TableDef) -> Result<Vec<Vec<Value>>> {
             }
             Err(err) => failure = Some(err),
         }
-        Ok(())
-    })?;
+    }
     match failure {
         Some(err) => Err(err),
         None => Ok(rows),

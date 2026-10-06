@@ -15,6 +15,7 @@
 //! Values and their text and binary wire formats.
 
 use crate::error::{PgError, Result, code};
+use crate::numeric::Numeric;
 use crate::oid;
 
 /// TEXT_FORMAT and BINARY_FORMAT are the wire format codes.
@@ -31,6 +32,7 @@ pub enum Value {
     Int8(i64),
     Float4(f32),
     Float8(f64),
+    Numeric(Numeric),
     /// A string of the text types, and the value of an untyped literal.
     Text(String),
 }
@@ -88,6 +90,7 @@ impl Value {
             Value::Int8(i) => i.to_string(),
             Value::Float4(f) => format_float(format!("{f:e}"), 6),
             Value::Float8(f) => format_float(format!("{f:e}"), 15),
+            Value::Numeric(n) => n.to_string(),
             Value::Text(s) => s.clone(),
         })
     }
@@ -102,6 +105,7 @@ impl Value {
             Value::Int8(i) => i.to_be_bytes().to_vec(),
             Value::Float4(f) => f.to_be_bytes().to_vec(),
             Value::Float8(f) => f.to_be_bytes().to_vec(),
+            Value::Numeric(n) => n.send(),
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) => s.clone().into_bytes(),
         })
@@ -120,6 +124,7 @@ impl Value {
                 oid::INT8 => Ok(Value::Int8(i64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::FLOAT4 => Ok(Value::Float4(f32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::FLOAT8 => Ok(Value::Float8(f64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
+                oid::NUMERIC => Numeric::receive(bytes).map(Value::Numeric).ok_or_else(invalid),
                 oid::TEXT | oid::UNKNOWN | 0 => {
                     Ok(Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?))
                 }

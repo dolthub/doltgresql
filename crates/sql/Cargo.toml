@@ -8,6 +8,9 @@ license.workspace = true
 
 [dependencies]
 doltdb = { path = "../doltdb" }
+num-bigint = "0.4"
+num-integer = "0.1"
+num-traits = "0.2"
 objects = { path = "../objects" }
 pg_query = "6"
 prolly = { path = "../prolly" }

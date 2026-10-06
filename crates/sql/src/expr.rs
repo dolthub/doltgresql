@@ -23,6 +23,7 @@ use pg_query::{Node, NodeEnum};
 use crate::cast::{cast_value, type_display};
 use crate::catalog::{ColumnType, resolve_type};
 use crate::error::{PgError, Result, code};
+use crate::numeric::Numeric;
 use crate::oid;
 use crate::types::Value;
 
@@ -449,7 +450,7 @@ fn constant(c: &pg_query::protobuf::AConst) -> Result<Bound> {
             let text = &f.fval;
             match text.parse::<i64>() {
                 Ok(i) if !text.contains(['.', 'e', 'E']) => (Expr::Const(Value::Int8(i)), typ(oid::INT8)),
-                _ => return Err(PgError::unsupported("numeric constants")),
+                _ => (Expr::Const(Value::Numeric(Numeric::parse(text)?)), typ(oid::NUMERIC)),
             }
         }
         Some(Val::Sval(s)) => (Expr::Const(Value::Text(s.sval.clone())), typ(oid::UNKNOWN)),
@@ -588,6 +589,7 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
         (Value::Float4(l), Value::Float4(r)) => compare_floats(*l as f64, *r as f64),
         (Value::Float8(l), Value::Float8(r)) => compare_floats(*l, *r),
         (Value::Text(l), Value::Text(r)) => l.as_bytes().cmp(r.as_bytes()),
+        (Value::Numeric(l), Value::Numeric(r)) => l.cmp_numeric(r),
         (l, r) => match (as_i64(l), as_i64(r)) {
             (Some(l), Some(r)) => l.cmp(&r),
             _ => Ordering::Equal,
@@ -638,6 +640,7 @@ impl Expr {
             }
             Expr::Neg(expr, ty) => match expr.eval(row, params)? {
                 Value::Null => Value::Null,
+                Value::Numeric(n) => Value::Numeric(n.negate()),
                 Value::Float4(f) => Value::Float4(-f),
                 Value::Float8(f) => Value::Float8(-f),
                 value => int_result(as_i64(&value).and_then(i64::checked_neg), *ty)?,
@@ -704,6 +707,15 @@ fn arith(op: ArithOp, left: &Value, right: &Value, ty: ColumnType) -> Result<Val
             ArithOp::Mod => Some(l.checked_rem(r).unwrap_or(0)),
         };
         return int_result(result, ty);
+    }
+    if let (Value::Numeric(l), Value::Numeric(r)) = (left, right) {
+        return Ok(Value::Numeric(match op {
+            ArithOp::Add => l.add(r),
+            ArithOp::Sub => l.sub(r),
+            ArithOp::Mul => l.mul(r),
+            ArithOp::Div => l.div(r)?,
+            ArithOp::Mod => l.rem(r)?,
+        }));
     }
     let float = |value: &Value| match value {
         Value::Float4(f) => *f as f64,

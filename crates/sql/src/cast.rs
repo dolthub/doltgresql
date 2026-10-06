@@ -16,6 +16,7 @@
 
 use crate::catalog::{ColumnType, builtin_type};
 use crate::error::{PgError, Result, code};
+use crate::numeric::Numeric;
 use crate::oid;
 use crate::types::Value;
 
@@ -143,6 +144,7 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
         oid::INT8 => Value::Int8(parse_integer(text, type_oid, i64::MIN as i128, i64::MAX as i128)? as i64),
         oid::FLOAT4 => Value::Float4(parse_float(text, type_oid)? as f32),
         oid::FLOAT8 => Value::Float8(parse_float(text, type_oid)?),
+        oid::NUMERIC => Value::Numeric(Numeric::parse(text)?),
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN => Value::Text(text.to_string()),
         _ => return Err(PgError::unsupported(format!("reading values of type {}", type_display(type_oid)))),
     })
@@ -166,6 +168,21 @@ fn to_integer(value: Value, type_oid: u32) -> Result<Value> {
         Value::Int8(i) => i,
         Value::Float4(f) => float_to_i64(f as f64, type_oid)?,
         Value::Float8(f) => float_to_i64(f, type_oid)?,
+        Value::Numeric(n) => match &n {
+            Numeric::NaN => {
+                return Err(PgError::new(
+                    code::FEATURE_NOT_SUPPORTED,
+                    format!("cannot convert NaN to {}", type_display(type_oid)),
+                ));
+            }
+            Numeric::Infinity | Numeric::NegativeInfinity => {
+                return Err(PgError::new(
+                    code::FEATURE_NOT_SUPPORTED,
+                    format!("cannot convert infinity to {}", type_display(type_oid)),
+                ));
+            }
+            _ => n.to_i64().ok_or_else(|| int_out_of_range(type_oid))?,
+        },
         Value::Bool(b) if type_oid == oid::INT4 => b as i64,
         Value::Text(text) => return input(&text, type_oid),
         other => return Err(cannot_cast(&other, type_oid)),
@@ -237,6 +254,7 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
                 Value::Int8(i) => i as f64,
                 Value::Float4(f) => f as f64,
                 Value::Float8(f) => f,
+                Value::Numeric(n) => n.to_f64(),
                 Value::Text(text) => return input(&text, to.oid),
                 other => return Err(cannot_cast(&other, to.oid)),
             };
@@ -248,6 +266,21 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
             } else {
                 Value::Float8(f)
             }
+        }
+        oid::NUMERIC => {
+            let n = match value {
+                Value::Int2(i) => Numeric::from_i64(i as i64),
+                Value::Int4(i) => Numeric::from_i64(i as i64),
+                Value::Int8(i) => Numeric::from_i64(i),
+                Value::Float4(f) => {
+                    Numeric::from_f64(Value::Float4(f).output().unwrap_or_default().parse().unwrap_or(f64::NAN))
+                }
+                Value::Float8(f) => Numeric::from_f64(f),
+                Value::Numeric(n) => n,
+                Value::Text(text) => Numeric::parse(&text)?,
+                other => return Err(cannot_cast(&other, to.oid)),
+            };
+            Value::Numeric(n.apply_typmod(to.modifier)?)
         }
         oid::BOOL => match value {
             Value::Bool(b) => Value::Bool(b),

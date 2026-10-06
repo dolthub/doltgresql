@@ -146,7 +146,7 @@ impl<'a> Edits<'a> {
 
     /// insert adds a row, failing on a duplicate primary key, and adding to the cardinality of a keyless row.
     fn insert(&mut self, db: &mut Database, row: &[Value]) -> Result<()> {
-        let (key, mut value) = self.table.encode_row(row)?;
+        let (key, mut value) = self.table.encode_row(db, row)?;
         if let Some(existing) = self.current(db, &key)? {
             if !self.table.keyless() {
                 return Err(duplicate_key(self.table, row));
@@ -159,7 +159,7 @@ impl<'a> Edits<'a> {
 
     /// delete removes one copy of a row.
     fn delete(&mut self, db: &mut Database, row: &[Value]) -> Result<()> {
-        let (key, _) = self.table.encode_row(row)?;
+        let (key, _) = self.table.encode_row(db, row)?;
         if self.table.keyless()
             && let Some(existing) = self.current(db, &key)?
             && cardinality(&existing) > 1

@@ -19,14 +19,14 @@ use std::cmp::Ordering;
 use doltdb::database::Database;
 use doltdb::table::Table;
 use prolly::Tuple;
-use prolly::val::{build_tuple, compare_tuples, encoding};
+use prolly::val::{build_tuple, encoding};
 use serial::write::{ColumnFields, DEFAULT_TARGET_ROW_SIZE, SchemaFields, write_schema};
 use serial::{Message, TableSchema};
 use store::Hash;
 
 use super::{ColumnType, builtin_type_by_id};
 use crate::error::{PgError, Result};
-use crate::storage::{decode_field, encode_field};
+use crate::storage::{compare_key_field, decode_field, encode_field, place_adaptive};
 use crate::types::Value;
 
 /// COLLATION is the collation of every Doltgres schema, utf8mb4_0900_bin.
@@ -121,12 +121,27 @@ impl TableDef {
 
     /// compare_keys orders two keys of the primary index.
     pub fn compare_keys(&self, left: &[u8], right: &[u8]) -> Ordering {
-        compare_tuples(&self.key_encodings(), left, right)
+        let (left, right) = (Tuple(left), Tuple(right));
+        for (i, field_encoding) in self.key_encodings().into_iter().enumerate() {
+            let ordering =
+                compare_key_field(field_encoding, left.field(i).ok().flatten(), right.field(i).ok().flatten());
+            if ordering != Ordering::Equal {
+                return ordering;
+            }
+        }
+        Ordering::Equal
+    }
+
+    /// value_encodings returns the field encodings of the primary index's values.
+    pub fn value_encodings(&self) -> Vec<u8> {
+        let mut encodings = if self.keyless() { vec![encoding::UINT64] } else { Vec::new() };
+        encodings.extend(self.value_columns.iter().map(|&i| self.columns[i].encoding));
+        encodings
     }
 
     /// encode_row returns a row's key and value tuples. A keyless row's value starts with its cardinality, and its key
     /// is a hash of the rest of the value, as Dolt's keyless tables store them.
-    pub fn encode_row(&self, row: &[Value]) -> Result<(Vec<u8>, Vec<u8>)> {
+    pub fn encode_row(&self, db: &mut Database, row: &[Value]) -> Result<(Vec<u8>, Vec<u8>)> {
         let field = |i: usize| encode_field(&row[i], self.columns[i].encoding);
         let mut values: Vec<Option<Vec<u8>>> = Vec::with_capacity(self.value_columns.len() + 1);
         if self.keyless() {
@@ -135,20 +150,22 @@ impl TableDef {
         for &i in &self.value_columns {
             values.push(field(i)?);
         }
+        place_adaptive(db, &mut values, &self.value_encodings(), DEFAULT_TARGET_ROW_SIZE as usize)?;
         let value = build_tuple(&values.iter().map(Option::as_deref).collect::<Vec<_>>());
         if self.keyless() {
             return Ok((keyless_key(&value), value));
         }
-        let keys = self.key_columns.iter().map(|&i| field(i)).collect::<Result<Vec<_>>>()?;
+        let mut keys = self.key_columns.iter().map(|&i| field(i)).collect::<Result<Vec<_>>>()?;
+        place_adaptive(db, &mut keys, &self.key_encodings(), DEFAULT_TARGET_ROW_SIZE as usize)?;
         Ok((build_tuple(&keys.iter().map(Option::as_deref).collect::<Vec<_>>()), value))
     }
 
     /// decode_row reads a row from its key and value tuples, with its cardinality, which is 1 for a keyed table.
-    pub fn decode_row(&self, key: &[u8], value: &[u8]) -> Result<(Vec<Value>, u64)> {
+    pub fn decode_row(&self, db: &Database, key: &[u8], value: &[u8]) -> Result<(Vec<Value>, u64)> {
         let mut row = vec![Value::Null; self.columns.len()];
         let (key, value) = (Tuple(key), Tuple(value));
         for (field, &i) in self.key_columns.iter().enumerate() {
-            row[i] = decode_field(key.field(field)?, self.columns[i].encoding)?;
+            row[i] = decode_field(db, key.field(field)?, self.columns[i].encoding)?;
         }
         let mut cardinality = 1;
         let offset = if self.keyless() {
@@ -159,7 +176,7 @@ impl TableDef {
             0
         };
         for (field, &i) in self.value_columns.iter().enumerate() {
-            row[i] = decode_field(value.field(field + offset)?, self.columns[i].encoding)?;
+            row[i] = decode_field(db, value.field(field + offset)?, self.columns[i].encoding)?;
         }
         Ok((row, cardinality))
     }
