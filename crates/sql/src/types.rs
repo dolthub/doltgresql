@@ -47,6 +47,8 @@ pub enum Value {
     TimestampTz(i64),
     Interval(Interval),
     Array(Box<Array>),
+    /// A row value, whose fields print as Postgres prints records.
+    Record(Vec<Value>),
     /// A string of the text types, and the value of an untyped literal.
     Text(String),
     /// The rows of a set-returning function, which never reach a client.
@@ -117,6 +119,7 @@ impl Value {
             }),
             Value::Interval(iv) => datetime::with_format(|f| datetime::format_interval(iv, f.interval_style)),
             Value::Array(a) => array::format(a, &|v| v.output().unwrap_or_default()),
+            Value::Record(fields) => format_record(fields),
             Value::Text(s) => s.clone(),
             Value::Set(_) => return None,
         })
@@ -144,6 +147,7 @@ impl Value {
                 let element = a.element;
                 array::send(a, &|v| v.send(element))
             }
+            Value::Record(_) => return self.output().map(String::into_bytes),
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) => s.clone().into_bytes(),
             Value::Set(_) => return None,
@@ -198,6 +202,33 @@ impl Value {
             _ => crate::cast::input(text, type_oid),
         }
     }
+}
+
+/// format_record prints a record's fields as Postgres' record_out does, quoting fields that need it.
+fn format_record(fields: &[Value]) -> String {
+    let mut out = String::from("(");
+    for (i, field) in fields.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let Some(text) = field.output() else { continue };
+        let quote = text.is_empty()
+            || text.chars().any(|c| matches!(c, '"' | '\\' | '(' | ')' | ',') || c.is_ascii_whitespace());
+        if quote {
+            out.push('"');
+            for c in text.chars() {
+                if c == '"' || c == '\\' {
+                    out.push(c);
+                }
+                out.push(c);
+            }
+            out.push('"');
+        } else {
+            out.push_str(&text);
+        }
+    }
+    out.push(')');
+    out
 }
 
 #[cfg(test)]

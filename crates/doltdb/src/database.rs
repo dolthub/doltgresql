@@ -352,6 +352,17 @@ impl Database {
         self.update(|_, _| Ok(vec![(id.clone(), Some(address))]))
     }
 
+    /// delete_heads removes the datasets.
+    pub fn delete_heads(&mut self, datasets: &[String]) -> Result<()> {
+        self.update(|_, current| {
+            Ok(datasets
+                .iter()
+                .filter(|d| current.iter().any(|(name, _)| name == *d))
+                .map(|d| (d.clone(), None))
+                .collect())
+        })
+    }
+
     /// update_working_set writes the working set and makes it the dataset's head, failing when the head moved from
     /// `previous`, as Dolt's UpdateWorkingSet does, and returns its address.
     pub fn update_working_set(

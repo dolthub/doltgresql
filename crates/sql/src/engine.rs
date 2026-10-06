@@ -108,7 +108,7 @@ impl Engine {
                 settings: Settings::new(startup).map_err(|err| PgError { severity: "FATAL", ..err })?,
                 explicit: false,
             },
-            txn: None,
+            txns: Vec::new(),
             failed: false,
             reported: HashMap::new(),
         };
@@ -123,7 +123,8 @@ impl Engine {
 pub struct Session {
     engine: Engine,
     pub state: SessionState,
-    txn: Option<Txn>,
+    /// The open transaction's view of each branch it touched.
+    txns: Vec<Txn>,
     /// Whether a statement failed in the explicit transaction, which then only ends.
     failed: bool,
     /// The reported parameters as the client last heard them.
@@ -311,7 +312,7 @@ impl Session {
         {
             columns = self.with_ctx(&mut parameters, &[], |ctx| ctx.describe(node))?;
             if !self.state.explicit {
-                self.txn = None;
+                self.txns.clear();
             }
         }
         for parameter in &mut parameters {
@@ -334,7 +335,7 @@ impl Session {
         if self.state.explicit {
             self.failed = true;
         } else {
-            self.txn = None;
+            self.txns.clear();
             self.state.settings.end_transaction(false);
         }
         err
@@ -351,10 +352,12 @@ impl Session {
     /// commit commits and ends the open transaction.
     fn commit(&mut self) -> Result<()> {
         self.state.settings.end_transaction(true);
-        let Some(txn) = self.txn.take() else { return Ok(()) };
-        let handle = txn.handle.clone();
-        let mut db = lock(&handle)?;
-        txn.commit(&mut db, &self.state.user, &self.state.host)
+        for txn in std::mem::take(&mut self.txns) {
+            let handle = txn.handle.clone();
+            let mut db = lock(&handle)?;
+            txn.commit(&mut db, &self.state.user, &self.state.host)?;
+        }
+        Ok(())
     }
 
     /// with_ctx runs a function with the planning context of the open transaction, beginning one when needed.
@@ -364,11 +367,20 @@ impl Session {
         params: &[Value],
         f: impl FnOnce(&mut Ctx<'_>) -> Result<T>,
     ) -> Result<T> {
-        if self.txn.is_none() {
-            let handle = self.engine.database(&self.state.database)?;
-            self.txn = Some(Txn::begin(handle, &self.state.database, &self.state.branch)?);
-        }
-        let txn = self.txn.as_mut().expect("an open transaction");
+        let (database, branch) = (&self.state.database, &self.state.branch);
+        let index = match self.txns.iter().position(|t| t.database == *database && t.branch == *branch) {
+            Some(index) => index,
+            None => {
+                let handle = self.engine.database(database)?;
+                let mut txn = Txn::begin(handle, database, branch)?;
+                if let Some(first) = self.txns.first() {
+                    txn.started = first.started;
+                }
+                self.txns.push(txn);
+                self.txns.len() - 1
+            }
+        };
+        let txn = &mut self.txns[index];
         crate::datetime::install_now(txn.started);
         self.state.install_format();
         let handle = txn.handle.clone();
@@ -391,7 +403,7 @@ impl Session {
         if self.failed {
             return match kind {
                 Some(TransactionStmtKind::TransStmtCommit | TransactionStmtKind::TransStmtRollback) => {
-                    self.txn = None;
+                    self.txns.clear();
                     self.state.explicit = false;
                     self.failed = false;
                     self.state.settings.end_transaction(false);
@@ -454,7 +466,7 @@ impl Session {
                     });
                 }
                 self.state.explicit = false;
-                self.txn = None;
+                self.txns.clear();
                 self.state.settings.end_transaction(false);
                 Ok(Outcome::command("ROLLBACK"))
             }

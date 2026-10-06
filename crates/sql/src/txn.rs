@@ -19,10 +19,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use doltdb::create::{branch_ref, working_set_ref};
-use doltdb::database::{self, Database};
+use doltdb::database::{self, CommitMeta, Database, PendingCommit};
 use doltdb::root::Root;
-use serial::write::{Meta, WorkingSetFields};
-use serial::{Commit, Message, TableSchema, WorkingSet};
+use serial::write::{MergeStateFields, Meta, WorkingSetFields, write_working_set};
+use serial::{Commit, MergeState, Message, TableSchema, WorkingSet};
 use store::Hash;
 
 use crate::catalog::table::TableDef;
@@ -38,12 +38,17 @@ pub struct Txn {
     pub handle: DbHandle,
     /// The working set's address when the transaction began.
     working_set: Hash,
-    staged: Hash,
-    /// The branch head's root value, which column tags must also avoid.
-    head_root: Option<Hash>,
+    /// The branch's head commit and its root value.
+    pub head: Hash,
+    pub head_root: Hash,
     pub root: Root,
     /// The working root as it was when the transaction began.
     original: Vec<u8>,
+    pub staged: Root,
+    original_staged: Vec<u8>,
+    /// The merge in progress, if any.
+    pub merge: Option<MergeStateFields>,
+    original_merge: Option<MergeStateFields>,
     /// When the transaction began, as a UTC timestamp.
     pub started: i64,
 }
@@ -51,6 +56,22 @@ pub struct Txn {
 /// read returns the message at the address, failing when the database lacks it.
 pub fn read(db: &Database, address: &Hash) -> Result<Vec<u8>> {
     db.read_value(address)?.ok_or_else(|| PgError::internal(format!("missing chunk {address}")))
+}
+
+/// merge_state_fields reads a working set's merge in progress.
+fn merge_state_fields(state: &MergeState<'_>) -> Result<MergeStateFields> {
+    let address = |bytes: &[u8]| serial::hash(bytes).map_err(PgError::from);
+    let head = state.pre_merge_head_commit()?;
+    Ok(MergeStateFields {
+        pre_working_root: address(state.pre_working_root()?)?,
+        from_commit: address(state.from_commit()?)?,
+        from_commit_spec: state.from_commit_spec()?.to_vec(),
+        unmergable_tables: state.unmergable_tables()?.into_iter().map(<[u8]>::to_vec).collect(),
+        is_cherry_pick: state.is_cherry_pick()?,
+        is_revert: state.is_revert()?,
+        pre_merge_head_commit: if head.is_empty() { None } else { Some(address(head)?) },
+        pending_commit_hashes: state.pending_commit_hashes()?.into_iter().map(<[u8]>::to_vec).collect(),
+    })
 }
 
 impl Txn {
@@ -61,27 +82,34 @@ impl Txn {
         let head = db.head(&branch_ref(branch))?.ok_or_else(not_found)?;
         let commit = read(&db, &head)?;
         let head_root = Commit::new(Message(&commit))?.root()?;
-        let (working_set, working, staged) = match db.head(&working_set_ref(branch))? {
+        let (working_set, working, staged, merge) = match db.head(&working_set_ref(branch))? {
             Some(address) => {
                 let data = read(&db, &address)?;
                 let ws = WorkingSet::new(Message(&data))?;
                 let working = ws.working_root()?;
-                (address, working, ws.staged_root()?.unwrap_or(working))
+                let merge = ws.merge_state()?.map(|t| merge_state_fields(&MergeState(t))).transpose()?;
+                (address, working, ws.staged_root()?.unwrap_or(working), merge)
             }
-            None => (Hash::default(), head_root, head_root),
+            None => (Hash::default(), head_root, head_root, None),
         };
         let original = read(&db, &working)?;
+        let original_staged = read(&db, &staged)?;
         let root = Root::decode(&original)?;
+        let staged = Root::decode(&original_staged)?;
         drop(db);
         Ok(Txn {
             database: database.to_string(),
             branch: branch.to_string(),
             handle,
             working_set,
-            staged,
-            head_root: Some(head_root),
+            head,
+            head_root,
             root,
             original,
+            staged,
+            original_staged,
+            original_merge: merge.clone(),
+            merge,
             started: crate::datetime::clock(),
         })
     }
@@ -91,19 +119,15 @@ impl Txn {
         self.root.encode() != self.original
     }
 
-    /// commit writes the working root back to the working set when the transaction changed it, as the user connected
-    /// from the host.
-    pub fn commit(self, db: &mut Database, user: &str, host: &str) -> Result<()> {
-        let encoded = self.root.encode();
-        if encoded == self.original {
-            return Ok(());
-        }
-        let working_root = db.write_value(encoded)?;
+    /// working_set_fields writes the working and staged roots and returns the working set that holds them.
+    fn working_set_fields(&self, db: &mut Database, user: &str, host: &str) -> Result<WorkingSetFields> {
+        let working_root = db.write_value(self.root.encode())?;
+        let staged_root = db.write_value(self.staged.encode())?;
         let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
-        let fields = WorkingSetFields {
+        Ok(WorkingSetFields {
             working_root,
-            staged_root: Some(self.staged),
-            merge_state: None,
+            staged_root: Some(staged_root),
+            merge_state: self.merge.clone(),
             rebase_state: None,
             meta: Some(Meta {
                 name: user.as_bytes().to_vec(),
@@ -112,14 +136,78 @@ impl Txn {
                 timestamp_millis: seconds,
                 user_timestamp_millis: 0,
             }),
-        };
+        })
+    }
+
+    /// commit writes the working and staged roots back to the working set when the transaction changed them, as the
+    /// user connected from the host.
+    pub fn commit(self, db: &mut Database, user: &str, host: &str) -> Result<()> {
+        if self.root.encode() == self.original
+            && self.staged.encode() == self.original_staged
+            && self.merge == self.original_merge
+        {
+            return Ok(());
+        }
+        let fields = self.working_set_fields(db, user, host)?;
         match db.update_working_set(&working_set_ref(&self.branch), &fields, self.working_set) {
             Ok(_) => Ok(()),
-            Err(database::Error::OptimisticLockFailed) => {
-                Err(PgError::new(code::SERIALIZATION_FAILURE, "could not serialize access due to concurrent update"))
-            }
+            Err(database::Error::OptimisticLockFailed) => Err(serialization_failure()),
             Err(err) => Err(err.into()),
         }
+    }
+
+    /// flush writes the working and staged roots to the working set now, when they changed, and continues the
+    /// transaction from there.
+    pub fn flush(&mut self, db: &mut Database, user: &str, host: &str) -> Result<()> {
+        if self.root.encode() == self.original
+            && self.staged.encode() == self.original_staged
+            && self.merge == self.original_merge
+        {
+            return Ok(());
+        }
+        let fields = self.working_set_fields(db, user, host)?;
+        self.working_set = match db.update_working_set(&working_set_ref(&self.branch), &fields, self.working_set) {
+            Ok(address) => address,
+            Err(database::Error::OptimisticLockFailed) => return Err(serialization_failure()),
+            Err(err) => return Err(err.into()),
+        };
+        self.original = self.root.encode();
+        self.original_staged = self.staged.encode();
+        self.original_merge = self.merge.clone();
+        Ok(())
+    }
+
+    /// dolt_commit commits the staged root on the branch's head with any extra parents, writes the working set
+    /// alongside it, and continues the transaction from the new commit.
+    pub fn dolt_commit(
+        &mut self,
+        db: &mut Database,
+        user: &str,
+        host: &str,
+        parents: Vec<Hash>,
+        meta: CommitMeta,
+    ) -> Result<Hash> {
+        self.merge = None;
+        let fields = self.working_set_fields(db, user, host)?;
+        let pending = PendingCommit { root_value: self.staged.encode(), parents, meta };
+        let commit = match db.commit_with_working_set(
+            &branch_ref(&self.branch),
+            &working_set_ref(&self.branch),
+            &fields,
+            self.working_set,
+            pending,
+        ) {
+            Ok(commit) => commit,
+            Err(database::Error::OptimisticLockFailed) => return Err(serialization_failure()),
+            Err(err) => return Err(err.into()),
+        };
+        self.working_set = Hash::of(&write_working_set(&fields));
+        self.head = commit.hash;
+        self.head_root = fields.staged_root.unwrap_or_default();
+        self.original = self.root.encode();
+        self.original_staged = self.staged.encode();
+        self.original_merge = None;
+        Ok(commit.hash)
     }
 
     /// table loads a table of the working root, if it has the table.
@@ -134,10 +222,7 @@ impl Txn {
     /// must avoid.
     pub fn all_tags(&self, db: &mut Database) -> Result<HashSet<u64>> {
         let mut tags = HashSet::new();
-        let mut roots = vec![self.root.clone()];
-        if let Some(head) = self.head_root {
-            roots.push(Root::decode(&read(db, &head)?)?);
-        }
+        let roots = vec![self.root.clone(), Root::decode(&read(db, &self.head_root)?)?];
         for root in roots {
             for (_, address) in root.tables(db)? {
                 let table = doltdb::table::Table::decode(&read(db, &address)?)?;
@@ -149,4 +234,9 @@ impl Txn {
         }
         Ok(tags)
     }
+}
+
+/// serialization_failure returns the error for a transaction that lost a race with a concurrent one.
+fn serialization_failure() -> PgError {
+    PgError::new(code::SERIALIZATION_FAILURE, "could not serialize access due to concurrent update")
 }

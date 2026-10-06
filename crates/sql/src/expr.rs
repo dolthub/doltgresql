@@ -271,7 +271,7 @@ pub fn node_name(node: &Node) -> Option<&str> {
     }
 }
 
-/// type_name_parts returns a type name's parts, modifiers, and whether it names an array, for resolving it.
+/// resolve_type_name resolves a type name with its modifiers and array bounds.
 pub fn resolve_type_name(type_name: &pg_query::protobuf::TypeName) -> Result<ColumnType> {
     let names: Vec<String> = type_name.names.iter().filter_map(node_name).map(str::to_string).collect();
     let mut modifiers = Vec::new();

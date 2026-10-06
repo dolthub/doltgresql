@@ -700,7 +700,7 @@ fn make_interval(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     }))
 }
 
-/// to_timestamp converts Unix seconds to a timestamptz.
+/// to_timestamp_epoch converts Unix seconds to a timestamptz.
 fn to_timestamp_epoch(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let seconds = float(&args[0]);
     if seconds.is_nan() {
@@ -833,7 +833,7 @@ fn timezone_of_timestamp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::TimestampTz(ts - zone.offset_for_local(ts) as i64 * USECS_PER_SEC))
 }
 
-/// add_months adds months and days to a local timestamp as Postgres does, clamping the day to the month's end.
+/// add_months_days adds months and days to a local timestamp as Postgres does, clamping the day to the month's end.
 pub fn add_months_days(local: i64, months: i32, days: i32) -> Result<i64> {
     let mut f = dt::fields_of_timestamp(local);
     if months != 0 {

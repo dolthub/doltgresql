@@ -1170,8 +1170,7 @@ pub fn parse_timetz(text: &str, format: &Format, now: Now) -> Result<(i64, i32)>
     Ok((time, -offset))
 }
 
-/// UNITS are the interval units Postgres reads, with the field they set and how many of the next smaller unit a
-/// fraction of one cascades into.
+/// interval_unit returns the canonical name of an interval unit that Postgres reads.
 fn interval_unit(word: &str) -> Option<&'static str> {
     Some(match word {
         "microsecond" | "microseconds" | "us" | "usec" | "usecs" | "useconds" => "us",

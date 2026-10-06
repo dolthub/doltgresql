@@ -23,6 +23,7 @@ pub mod catalog;
 pub mod datetime;
 mod ddl;
 pub mod dml;
+pub mod dolt;
 mod engine;
 pub mod error;
 pub mod expr;
@@ -40,6 +41,9 @@ pub use engine::{Engine, Session};
 pub use error::{PgError, Result, code};
 use parse::Statement;
 pub use types::Value;
+
+/// DOLTGRES_VERSION is the Doltgres version the server reports.
+pub const DOLTGRES_VERSION: &str = "1.4.0";
 
 /// SERVER_VERSION is the Postgres version the server reports.
 pub const SERVER_VERSION: &str = "15.17";

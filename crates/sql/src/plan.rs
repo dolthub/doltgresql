@@ -64,13 +64,17 @@ pub enum Plan {
     /// One row without columns, the input of a SELECT without FROM.
     OneRow,
     Scan(Box<TableDef>),
+    /// The rows of one of Dolt's system tables.
+    System(crate::dolt::tables::SystemTable),
     /// Rows of expressions, evaluated without an input row.
     Values(Vec<Vec<Expr>>),
-    /// The rows a set-returning function returns for its arguments, with a row number when asked.
+    /// The rows a set-returning function returns for its arguments, with a row number when asked, spreading
+    /// records over the given number of columns.
     Function {
         index: usize,
         args: Vec<Expr>,
         ordinality: bool,
+        width: usize,
     },
     Filter {
         input: Box<Plan>,
@@ -124,7 +128,7 @@ pub struct Query {
     pub types: Vec<ColumnType>,
 }
 
-/// AGGREGATES names every aggregate function, which a query must group to call.
+/// is_aggregate reports whether a function is an aggregate, which a query must group to call.
 pub fn is_aggregate(name: &str) -> bool {
     crate::functions::aggregate::exists(name)
 }
@@ -160,7 +164,7 @@ fn has_aggregate(node: &Node) -> bool {
     }
 }
 
-/// sort_key reads an ORDER BY item's direction and NULLS placement.
+/// sort_order reads an ORDER BY item's direction and NULLS placement.
 fn sort_order(sort: &pg_query::protobuf::SortBy) -> (bool, bool) {
     let descending = SortByDir::try_from(sort.sortby_dir) == Ok(SortByDir::SortbyDesc);
     let nulls_first = match SortByNulls::try_from(sort.sortby_nulls) {
@@ -390,7 +394,13 @@ impl<'b, 'a> Planner<'b, 'a> {
     fn plan_from_item(&mut self, item: &Node) -> Result<(Plan, Scope)> {
         match item.node.as_ref() {
             Some(NodeEnum::RangeVar(relation)) => {
-                let table = self.ctx.resolve_table(relation)?;
+                let table = match self.ctx.resolve_table(relation) {
+                    Ok(table) => table,
+                    Err(err) => match crate::dolt::tables::lookup(&relation.schemaname, &relation.relname) {
+                        Some(system) => return Ok(self.plan_system(system, relation)),
+                        None => return Err(err),
+                    },
+                };
                 let alias = relation.alias.as_ref();
                 let name = alias.map_or(table.name.clone(), |a| a.aliasname.clone());
                 let renames: Vec<&str> =
@@ -415,6 +425,29 @@ impl<'b, 'a> Planner<'b, 'a> {
             Some(NodeEnum::RangeFunction(function)) => self.plan_range_function(function),
             _ => Err(PgError::unsupported("this FROM item")),
         }
+    }
+
+    /// plan_system plans a scan of one of Dolt's system tables.
+    fn plan_system(
+        &mut self,
+        system: crate::dolt::tables::SystemTable,
+        relation: &pg_query::protobuf::RangeVar,
+    ) -> (Plan, Scope) {
+        let alias = relation.alias.as_ref();
+        let name = alias.map_or(relation.relname.clone(), |a| a.aliasname.clone());
+        let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+        let columns = system
+            .columns()
+            .into_iter()
+            .enumerate()
+            .map(|(i, (column, ty))| ScopeColumn {
+                table: name.clone(),
+                name: renames.get(i).map_or(column.to_string(), |r| r.to_string()),
+                ty: typ(ty),
+                hidden: false,
+            })
+            .collect();
+        (Plan::System(system), Scope { columns })
     }
 
     /// plan_subselect plans a subquery in FROM.
@@ -462,14 +495,30 @@ impl<'b, 'a> Planner<'b, 'a> {
         let table = alias.map_or(name.clone(), |a| a.aliasname.clone());
         let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
         // A function returning one column names the column after the alias when there is one.
-        let column_name =
-            renames.first().map(|r| r.to_string()).unwrap_or_else(|| alias.map_or(name, |a| a.aliasname.clone()));
-        let mut columns = vec![ScopeColumn { table: table.clone(), name: column_name, ty, hidden: false }];
+        let column_name = renames
+            .first()
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| alias.map_or(name.clone(), |a| a.aliasname.clone()));
+        let out_columns = crate::dolt::procedures::OUT_COLUMNS.iter().find(|(n, _)| *n == name).map(|(_, c)| *c);
+        let mut columns = match out_columns {
+            Some(out) => out
+                .iter()
+                .enumerate()
+                .map(|(i, (n, t))| ScopeColumn {
+                    table: table.clone(),
+                    name: renames.get(i).map_or(n.to_string(), |r| r.to_string()),
+                    ty: typ(*t),
+                    hidden: false,
+                })
+                .collect(),
+            _ => vec![ScopeColumn { table: table.clone(), name: column_name, ty, hidden: false }],
+        };
+        let width = columns.len();
         if function.ordinality {
             let name = renames.get(1).map_or("ordinality".to_string(), |r| r.to_string());
             columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false });
         }
-        Ok((Plan::Function { index, args, ordinality: function.ordinality }, Scope { columns }))
+        Ok((Plan::Function { index, args, ordinality: function.ordinality, width }, Scope { columns }))
     }
 
     /// plan_join plans a join with its condition, merging the columns that USING or NATURAL name.
@@ -858,7 +907,7 @@ fn output_ordinal_named(names: &[String], n: usize, location: i32) -> Result<()>
     Ok(())
 }
 
-/// compare_rows orders two rows by sort keys already evaluated into them.
+/// compare_sorted orders two rows by sort keys already evaluated into them.
 fn compare_sorted(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
     for (i, key) in keys.iter().enumerate() {
         let ordering = match (&a[i], &b[i]) {
@@ -932,8 +981,9 @@ impl Plan {
         match self {
             Plan::OneRow => 0,
             Plan::Scan(table) => table.columns.len(),
+            Plan::System(system) => system.columns().len(),
             Plan::Values(rows) => rows.first().map_or(0, Vec::len),
-            Plan::Function { ordinality, .. } => 1 + *ordinality as usize,
+            Plan::Function { ordinality, width, .. } => width + *ordinality as usize,
             Plan::Filter { input, .. }
             | Plan::Sort { input, .. }
             | Plan::Distinct { input, .. }
@@ -950,6 +1000,7 @@ impl Plan {
         Ok(match self {
             Plan::OneRow => vec![Vec::new()],
             Plan::Scan(table) => scan(ctx.db, table)?,
+            Plan::System(system) => system.rows(ctx)?,
             Plan::Values(rows) => {
                 let mut out = Vec::with_capacity(rows.len());
                 for row in rows {
@@ -957,12 +1008,22 @@ impl Plan {
                 }
                 out
             }
-            Plan::Function { index, args, ordinality } => {
+            Plan::Function { index, args, ordinality, width } => {
                 let values = args.iter().map(|a| a.eval(ctx, &[])).collect::<Result<Vec<_>>>()?;
                 let rows = crate::functions::call_set(ctx, *index, &values)?;
                 rows.into_iter()
                     .enumerate()
-                    .map(|(i, v)| if *ordinality { vec![v, Value::Int8(i as i64 + 1)] } else { vec![v] })
+                    .map(|(i, v)| {
+                        let mut row = match v {
+                            Value::Record(fields) if *width > 1 => fields,
+                            v => vec![v],
+                        };
+                        row.resize(*width, Value::Null);
+                        if *ordinality {
+                            row.push(Value::Int8(i as i64 + 1));
+                        }
+                        row
+                    })
                     .collect()
             }
             Plan::Filter { input, predicate } => {

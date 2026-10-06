@@ -182,7 +182,7 @@ impl Numeric {
         Ok(rounded)
     }
 
-    /// signed returns a finite value's sign and coefficient at the scale.
+    /// signed_at returns a finite value's sign and coefficient at the scale.
     fn signed_at(&self, scale: u32) -> (bool, BigUint) {
         match self.with_scale(scale) {
             Numeric::Finite { negative, coefficient, .. } => (negative, coefficient),
@@ -387,7 +387,7 @@ impl Numeric {
         })
     }
 
-    /// cmp orders numerics as Postgres does, with NaN above everything.
+    /// cmp_numeric orders numerics as Postgres does, with NaN above everything.
     pub fn cmp_numeric(&self, other: &Numeric) -> Ordering {
         let rank = |n: &Numeric| match n {
             Numeric::NegativeInfinity => 0,
