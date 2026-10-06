@@ -109,7 +109,6 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{{"testschema, myschema"}},
 			},
 			{
-				Skip:     true, // TODO: Should be able to resolve views from all schema in search_path
 				Query:    "select v1 from myview order by pk;",
 				Expected: []sql.Row{{4}, {5}, {6}},
 			},
@@ -118,10 +117,62 @@ var createViewStmts = []ScriptTest{
 				Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
 			},
 			{
-				Skip:     true, // TODO: Should be able to resolve views from all schema in search_path
 				Query:    "select name from dolt_schemas;",
-				Expected: []sql.Row{{"testview"}, {"myview"}},
+				Expected: []sql.Row{{"testview"}},
 			},
+			{
+				Query:    "select name from myschema.dolt_schemas;",
+				Expected: []sql.Row{{"myview"}},
+			},
+		},
+	},
+	{
+		Name: "view lookup follows relation order on search_path",
+		SetUpScript: []string{
+			"CREATE SCHEMA first_schema",
+			"CREATE SCHEMA second_schema",
+			"CREATE TABLE second_schema.source (v INT)",
+			"INSERT INTO second_schema.source VALUES (42)",
+			"CREATE VIEW second_schema.later_view AS SELECT v FROM second_schema.source",
+			"CREATE TABLE first_schema.shadow (v INT)",
+			"INSERT INTO first_schema.shadow VALUES (10)",
+			"CREATE VIEW second_schema.shadow AS SELECT 20 AS v",
+			"CREATE VIEW first_schema.first_view AS SELECT 30 AS v",
+			"CREATE TABLE second_schema.first_view (v INT)",
+			"INSERT INTO second_schema.first_view VALUES (40)",
+			"CREATE VIEW first_schema.same_view AS SELECT 1 AS v",
+			"CREATE VIEW second_schema.same_view AS SELECT 2 AS v",
+			"SET search_path TO first_schema, second_schema",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "SELECT * FROM later_view", Expected: []sql.Row{{42}}},
+			{Query: "SELECT * FROM second_schema.later_view", Expected: []sql.Row{{42}}},
+			{Query: "SELECT * FROM shadow", Expected: []sql.Row{{10}}},
+			{Query: "SELECT * FROM first_view", Expected: []sql.Row{{30}}},
+			{Query: "SELECT * FROM same_view", Expected: []sql.Row{{1}}},
+			{Query: "SET search_path TO missing_schema, second_schema, first_schema"},
+			{Query: "SELECT * FROM later_view", Expected: []sql.Row{{42}}},
+			{Query: "SELECT * FROM shadow", Expected: []sql.Row{{20}}},
+			{Query: "SELECT * FROM first_view", Expected: []sql.Row{{40}}},
+			{Query: "SELECT * FROM same_view", Expected: []sql.Row{{2}}},
+		},
+	},
+	{
+		Name: "view in later search_path schema reaches privilege checks",
+		SetUpScript: []string{
+			"CREATE SCHEMA empty_schema",
+			"CREATE SCHEMA protected_schema",
+			"CREATE VIEW protected_schema.target_view AS SELECT 42 AS v",
+			"CREATE ROLE allowed_reader LOGIN PASSWORD 'password'",
+			"CREATE ROLE denied_reader LOGIN PASSWORD 'password'",
+			"GRANT USAGE ON SCHEMA empty_schema, protected_schema TO allowed_reader, denied_reader",
+			"GRANT SELECT ON protected_schema.target_view TO allowed_reader",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "SET search_path TO empty_schema, protected_schema", Username: "allowed_reader", Password: "password"},
+			{Query: "SELECT * FROM target_view", Username: "allowed_reader", Password: "password", Expected: []sql.Row{{42}}},
+			{Query: "SET search_path TO empty_schema, protected_schema", Username: "denied_reader", Password: "password"},
+			{Query: "SELECT * FROM target_view", Username: "denied_reader", Password: "password", ExpectedErr: "permission denied for view target_view", ExpectedErrCode: "42501"},
 		},
 	},
 	{
