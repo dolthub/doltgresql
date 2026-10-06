@@ -28,6 +28,10 @@ pub enum Arg {
     Int64(i64),
     /// A Go float64.
     Float64(f64),
+    /// A Go float32.
+    Float32(f32),
+    /// A Go uint64.
+    Uint64(u64),
     /// A Go bool.
     Bool(bool),
     /// A Go string.
@@ -168,6 +172,17 @@ fn encode_with_format(oid: u32, format: i16, arg: &Arg) -> Result<Option<Vec<u8>
                 encode_integer(oid, format, *value as i64).map(Some).ok_or(()).or_else(|_| unsupported())
             }
             _ => unsupported(),
+        },
+        Arg::Float32(value) => match (oid, format) {
+            (700, BINARY) => Ok(Some(value.to_bits().to_be_bytes().to_vec())),
+            _ => encode_with_format(oid, format, &Arg::Float64(*value as f64)),
+        },
+        Arg::Uint64(value) => match (oid, format) {
+            (1700, BINARY) => Ok(Some(encode_numeric(&value.to_string())?)),
+            _ => match i64::try_from(*value) {
+                Ok(value) => encode_with_format(oid, format, &Arg::Int64(value)),
+                Err(_) => Err(format!("{value} is greater than maximum value for int64")),
+            },
         },
         Arg::Bool(value) => match (oid, format) {
             (16, BINARY) => Ok(Some(vec![*value as u8])),

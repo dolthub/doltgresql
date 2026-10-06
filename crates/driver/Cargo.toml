@@ -19,3 +19,11 @@ nix = { version = "0.31", features = ["signal"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+aws-lc-rs = "1.18.1"
+base64 = "0.22"
+jiff = "0.2.37"
+rand = "0.8"
+serde_json = "1"
+uuid = { version = "1.27.0", features = ["v4"] }

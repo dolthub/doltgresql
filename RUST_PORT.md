@@ -155,15 +155,18 @@ Done:
   protocol, as the Go harness sends them. Expectations come from the Go binary, cross-checked against each statement's
   outcome in the Go test process. 7 `dolt_help` statements take the Go test process's rows, since the Go binary has
   no help text, so they fail on the Go binary.
+- `driver`: the go-sql-server-driver runner, with pgx v5's database/sql value conversion and TLS modes. All 99 YAML
+  cases and every Go test (large values, type diversity, wide tables, GC, auto GC, concurrency, metrics auth) are
+  ported, one test per subtest. Against the Go binary, each passes where the Go run passes, and each Go skip is an
+  ignored test with the same reason. TestStatsGCConcurrency's skip is stale: it passes in Go and Rust once unskipped.
 
 Remaining:
 
-- Hand ports: missing-database connection, invalid startup timezone, SSL (needs TLS in the harness), dropped-role
-  grant cleanup across a restart (needs restart support), Dolt backup and remote suites.
+- Hand ports: missing-database connection, invalid startup timezone, SSL, dropped-role grant cleanup across a
+  restart (needs restart support), Dolt backup and remote suites.
 - 29 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too), and 7 EXPLAIN
   assertions that expect Postgres plan text.
 - A full sqllogictest corpus run with both runners.
-- Port of the go-sql-server-driver runner and its Go tests.
 
 ## Baseline artifacts
 

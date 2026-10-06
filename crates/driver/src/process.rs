@@ -122,12 +122,19 @@ impl RepoStore {
 
     /// init_database briefly runs a server on the store to create the database, then calls the function with a
     /// connection to it.
-    pub fn init_database(
-        &self,
-        name: &str,
-        function: Option<&DbFunction>,
-    ) -> Result<(), String> {
-        let port = free_port()?;
+    pub fn init_database(&self, name: &str, function: Option<&DbFunction>) -> Result<(), String> {
+        let mut attempts = 0;
+        loop {
+            match self.init_database_on(name, function, free_port()?) {
+                Err(e) if e.contains("already in use") && attempts < 5 => attempts += 1,
+                result => return result,
+            }
+        }
+    }
+
+    /// init_database_on runs init_database's server on the port, which another process may have taken since it was
+    /// found free.
+    fn init_database_on(&self, name: &str, function: Option<&DbFunction>, port: u16) -> Result<(), String> {
         let config_path = self.dir.join(format!(".init-{}-config.yaml", sanitize(name)));
         let socket = std::env::temp_dir().join(format!("dg-init-{port}.sock"));
         let config =
