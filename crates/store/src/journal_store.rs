@@ -45,11 +45,17 @@ struct MemTable {
     refs: Vec<Hash>,
 }
 
-/// JournalStore is a writable chunk store whose new chunks go to the chunk journal.
+/// JournalStore is a writable chunk store whose new chunks go to the chunk journal, or to new table files when it
+/// was opened without one.
 pub struct JournalStore {
     dir: PathBuf,
-    /// The lock that keeps other processes from opening the store while it is open.
-    _lock: File,
+    /// The lock that keeps other processes from opening the store while it is open, which only journaling stores
+    /// hold.
+    _lock: Option<File>,
+    /// Whether new chunks go to the journal rather than to table files.
+    journaled: bool,
+    /// The table files written since the last commit, which the next manifest names.
+    pending: Vec<TableSpec>,
     /// The manifest as of the last commit, whose root comes from the journal.
     upstream: Manifest,
     /// The table files and archives the manifest names.
@@ -68,6 +74,22 @@ impl JournalStore {
         let lock = File::options().read(true).write(true).create(true).truncate(false).open(dir.join(LOCK_FILE))?;
         lock.try_lock()
             .map_err(|_| corrupt(format!("the database at {} is locked by another process", dir.display())))?;
+        JournalStore::open_with(dir, format, Some(lock))
+    }
+
+    /// open_tables opens the store in a directory for writing without a journal, so that each commit writes its new
+    /// chunks to a table file, as Dolt's NewLocalStore does for file remotes and backups.
+    pub fn open_tables(dir: &Path, format: &str) -> Result<JournalStore> {
+        if !dir.is_dir() {
+            return Err(corrupt(format!("path is not a directory: {}", dir.display())));
+        }
+        File::options().read(true).write(true).create(true).truncate(false).open(dir.join(LOCK_FILE))?;
+        JournalStore::open_with(dir, format, None)
+    }
+
+    /// open_with opens the store, reading the journal when the lock shows it is a journaling store.
+    fn open_with(dir: &Path, format: &str, lock: Option<File>) -> Result<JournalStore> {
+        let journaled = lock.is_some();
         let manifest = Manifest::read(dir)?;
         let mut upstream = manifest.clone().unwrap_or_else(|| Manifest {
             version: MANIFEST_VERSION.to_string(),
@@ -78,7 +100,7 @@ impl JournalStore {
             specs: Vec::new(),
         });
         let mut journal = None;
-        if dir.join(JOURNAL_FILE).exists() {
+        if journaled && dir.join(JOURNAL_FILE).exists() {
             let (mut writer, root) = JournalWriter::open(dir)?;
             if root.is_empty() {
                 if let Some(manifest) = &manifest {
@@ -102,6 +124,8 @@ impl JournalStore {
         Ok(JournalStore {
             dir: dir.to_path_buf(),
             _lock: lock,
+            journaled,
+            pending: Vec::new(),
             upstream,
             sources,
             journal,
@@ -185,7 +209,7 @@ impl JournalStore {
     }
 
     /// persist writes the memtable's chunks that the store lacks to the journal, in the order they were put, as
-    /// Dolt's ChunkJournal.Persist does.
+    /// Dolt's ChunkJournal.Persist does, or to a new table file in a store without a journal.
     fn persist(&mut self) -> Result<()> {
         if self.memtable.order.is_empty() {
             return Ok(());
@@ -193,6 +217,26 @@ impl JournalStore {
         let refs = std::mem::take(&mut self.memtable.refs);
         self.check_refs(&refs)?;
         let memtable = std::mem::take(&mut self.memtable);
+        if !self.journaled {
+            let mut writer = crate::table::TableWriter::new();
+            let mut written = HashSet::new();
+            for hash in memtable.order.iter().filter(|hash| !self.has_persisted(hash)) {
+                if written.insert(*hash) {
+                    writer.add_chunk(&Chunk { hash: *hash, data: memtable.chunks[hash].clone() });
+                }
+            }
+            if writer.count() == 0 {
+                return Ok(());
+            }
+            let chunk_count = writer.count() as u32;
+            let (name, bytes) = writer.finish();
+            let path = self.dir.join(name.to_string());
+            std::fs::write(&path, bytes)?;
+            File::open(&path)?.sync_all()?;
+            self.sources.push(Source::open_file(&self.dir, &name)?);
+            self.pending.push(TableSpec { name, chunk_count });
+            return Ok(());
+        }
         if self.journal.is_none() {
             let (mut writer, _) = JournalWriter::open(&self.dir)?;
             if !self.upstream.lock.is_empty() {
@@ -217,6 +261,7 @@ impl JournalStore {
         let journal_name = Hash::parse(JOURNAL_FILE).unwrap();
         let mut specs: Vec<TableSpec> =
             self.upstream.specs.iter().filter(|spec| spec.name != journal_name).copied().collect();
+        specs.extend(self.pending.iter().copied());
         if let Some(journal) = self.journal.as_ref().filter(|j| j.count() > 0) {
             specs.push(TableSpec { name: journal_name, chunk_count: journal.count() as u32 });
         }
@@ -259,6 +304,7 @@ impl JournalStore {
             None => write_manifest(&self.dir, &next)?,
         }
         self.upstream = next;
+        self.pending.clear();
         Ok(true)
     }
 

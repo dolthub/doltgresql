@@ -113,11 +113,11 @@ fn test_dolt_remote_2() {
                 "USE cloned_seq",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' output for the query.
                 ScriptTestAssertion {
                     query: "select sequence_name, sequence_catalog from information_schema.sequences where sequence_schema = 'public';",
                     expected: Expected::Rows {
-                        columns: &[Column("sequence_name", VARCHAR), Column("sequence_catalog", VARCHAR)],
+                        columns: &[Column("sequence_name", NAME), Column("sequence_catalog", NAME)],
                         rows: &[
                             &[T("counter"), T("cloned_seq")],
                         ],
@@ -257,11 +257,11 @@ fn test_dolt_remote_5() {
                 "USE cloned_schema",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' output for the query.
                 ScriptTestAssertion {
                     query: "select sequence_schema, sequence_name from information_schema.sequences where sequence_name = 'seq2';",
                     expected: Expected::Rows {
-                        columns: &[Column("sequence_schema", VARCHAR), Column("sequence_name", VARCHAR)],
+                        columns: &[Column("sequence_schema", NAME), Column("sequence_name", NAME)],
                         rows: &[
                             &[T("myschema"), T("seq2")],
                         ],
@@ -331,13 +331,13 @@ fn test_dolt_remote_6() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server returns 1 again after the pull, reusing the value the source took, while the pulled sequence's next value is 6.
                 ScriptTestAssertion {
                     query: "select nextval('counter');",
                     expected: Expected::Rows {
                         columns: &[Column("nextval", INT8)],
                         rows: &[
-                            &[T("1")],
+                            &[T("6")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -1175,10 +1175,10 @@ fn test_dolt_remote_25() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' output for the query.
                 ScriptTestAssertion {
                     query: "insert into measurements values (2, -1);",
-                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"Check constraint "pos_int_check" violated"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain pos_int violates check constraint "pos_int_check""#, schema: "public", data_type: "pos_int", constraint: "pos_int_check", ..E }),
                     ..A
                 },
             ],
@@ -1335,23 +1335,24 @@ fn test_dolt_remote_29() {
                 "USE cloned_ext",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' output for the query.
                 ScriptTestAssertion {
                     query: "select extname, extversion from pg_catalog.pg_extension;",
                     expected: Expected::Rows {
                         columns: &[Column("extname", NAME), Column("extversion", TEXT)],
                         rows: &[
+                            &[T("plpgsql"), T("1.0")],
                             &[T("uuid-ossp"), T("1.1")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 2",
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' output for the query.
                 ScriptTestAssertion {
                     query: "select length(uuid_generate_v4()::text) = 36;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 36", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1383,11 +1384,11 @@ fn test_dolt_remote_30() {
                 "USE cloned_schema_contents",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' output for the query.
                 ScriptTestAssertion {
                     query: "select schema_name from information_schema.schemata where schema_name = 'inventory';",
                     expected: Expected::Rows {
-                        columns: &[Column("schema_name", VARCHAR)],
+                        columns: &[Column("schema_name", NAME)],
                         rows: &[
                             &[T("inventory")],
                         ],

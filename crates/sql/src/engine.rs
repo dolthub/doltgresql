@@ -51,7 +51,19 @@ struct Shared {
     advisory: Arc<crate::advisory::AdvisoryLocks>,
 }
 
-/// create_times returns the clock readings of creating a database now.
+/// undrop_hint lists the dropped databases that dolt_undrop can restore, as Dolt's CreateUndropErrorMessage does.
+pub fn undrop_hint(available: &[String]) -> String {
+    match available.is_empty() {
+        true => "there are no databases currently available to be undropped".to_string(),
+        false => format!("available databases that can be undropped: {}", available.join(", ")),
+    }
+}
+
+/// DROPPED_DATABASES is the directory in the data directory that holds dropped databases.
+const DROPPED_DATABASES: &str = ".dolt_dropped_databases";
+
+/// create_times returns the clock readings of creating a database now, with the CREATE DATABASE commit a millisecond
+/// after the initial one so that ordering commits by date never ties them.
 fn create_times() -> doltdb::create::CreateTimes {
     let millis = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
     doltdb::create::CreateTimes {
@@ -59,7 +71,7 @@ fn create_times() -> doltdb::create::CreateTimes {
         init_committer_millis: millis,
         environment_seconds: millis / 1000,
         session_seconds: millis / 1000,
-        commit_millis: millis,
+        commit_millis: millis + 1,
     }
 }
 
@@ -102,6 +114,74 @@ impl Engine {
         !name.is_empty() && !name.contains(['/', '\\']) && self.shared.data_dir.join(name).join(".dolt").is_dir()
     }
 
+    /// create_database creates a database in the data directory, as the user connected from the host.
+    pub fn create_database(&self, name: &str, user: &str, host: &str) -> Result<()> {
+        let dir = self.shared.data_dir.join(name);
+        Ok(doltdb::create::create_database(&dir, DEFAULT_BRANCH, user, host, &create_times())?)
+    }
+
+    /// drop_database closes a database and moves its directory into the dropped databases directory, moving aside
+    /// an earlier dropped database of the same name, so that dolt_undrop can restore it, as Dolt's
+    /// droppedDatabaseManager does.
+    pub fn drop_database(&self, name: &str) -> Result<()> {
+        lock(&self.shared.databases)?.remove(name);
+        let dropped = self.shared.data_dir.join(DROPPED_DATABASES);
+        std::fs::create_dir_all(&dropped).map_err(PgError::internal)?;
+        let target = dropped.join(name);
+        if target.exists() {
+            let millis = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
+            std::fs::rename(&target, dropped.join(format!("{name}.backup.{millis}"))).map_err(|e| {
+                PgError::internal(format!("unable to move existing dropped database out of the way: {e}"))
+            })?;
+        }
+        std::fs::rename(self.shared.data_dir.join(name), target).map_err(PgError::internal)
+    }
+
+    /// dropped_databases returns the names of the dropped databases that dolt_undrop can restore.
+    pub fn dropped_databases(&self) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(self.shared.data_dir.join(DROPPED_DATABASES))
+            .map(|entries| entries.filter_map(|e| e.ok()?.file_name().into_string().ok()).collect())
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    /// undrop_database moves a dropped database back into the data directory, matching its name without regard to
+    /// case, and returns its name as it was dropped.
+    pub fn undrop_database(&self, name: &str) -> Result<String> {
+        let dropped = self.shared.data_dir.join(DROPPED_DATABASES);
+        let available = self.dropped_databases();
+        let Some(exact) = available.iter().find(|n| n.eq_ignore_ascii_case(name)).cloned() else {
+            return Err(PgError::internal(format!(
+                "no database named '{name}' found to undrop. {}",
+                undrop_hint(&available)
+            )));
+        };
+        let existing = std::fs::read_dir(&self.shared.data_dir).map_err(PgError::internal)?;
+        if existing.flatten().any(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(&exact)) {
+            return Err(PgError::internal(format!(
+                "unable to undrop database '{exact}'; another database already exists with the same case-insensitive \
+                 name"
+            )));
+        }
+        std::fs::rename(dropped.join(&exact), self.shared.data_dir.join(&exact)).map_err(PgError::internal)?;
+        Ok(exact)
+    }
+
+    /// purge_dropped_databases deletes every dropped database.
+    pub fn purge_dropped_databases(&self) -> Result<()> {
+        let dropped = self.shared.data_dir.join(DROPPED_DATABASES);
+        if !dropped.exists() {
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(&dropped).map_err(PgError::internal)?.flatten() {
+            let path = entry.path();
+            let removed = if path.is_dir() { std::fs::remove_dir_all(&path) } else { std::fs::remove_file(&path) };
+            removed.map_err(PgError::internal)?;
+        }
+        Ok(())
+    }
+
     /// database returns the shared handle of a database, opening it on first use.
     fn database(&self, name: &str) -> Result<DbHandle> {
         Ok(self.open_database(name)?.0)
@@ -123,8 +203,8 @@ impl Engine {
     /// `database/branch`, with the parameters the client sent at startup.
     pub fn session(&self, user: &str, host: &str, database: &str, startup: &[(String, String)]) -> Result<Session> {
         let mut session = Session {
-            engine: self.clone(),
             state: SessionState {
+                engine: self.clone(),
                 user: user.to_string(),
                 host: host.to_string(),
                 database: String::new(),
@@ -168,7 +248,6 @@ impl Engine {
 
 /// Session runs statements for one connection.
 pub struct Session {
-    engine: Engine,
     pub state: SessionState,
     /// The open transaction's view of each branch it touched.
     txns: Vec<Txn>,
@@ -193,6 +272,8 @@ pub type TriggerCache = (Option<store::Hash>, Arc<Vec<Arc<objects::Trigger>>>);
 
 /// SessionState is the part of a session that statements and functions can read and change.
 pub struct SessionState {
+    /// The engine the session runs on.
+    pub engine: Engine,
     pub user: String,
     /// The address the client connected from.
     pub host: String,
@@ -419,13 +500,21 @@ impl Session {
     fn switch(&mut self, target: &str) -> Result<()> {
         let not_found = || PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{target}\" does not exist"));
         let (database, branch) = match target.split_once('/') {
-            Some((database, branch)) => (database, branch),
-            None => (target, DEFAULT_BRANCH),
+            Some((database, branch)) => (database, branch.to_string()),
+            None => (target, String::new()),
         };
-        if !self.engine.database_exists(database) {
+        if !self.state.engine.database_exists(database) {
             return Err(not_found());
         }
-        let handle = self.engine.database(database)?;
+        let branch = match branch.is_empty() {
+            true => crate::dolt::remotes::RepoState::load(&self.state.data_dir.join(database))
+                .ok()
+                .and_then(|state| state.head.strip_prefix("refs/heads/").map(str::to_string))
+                .unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
+            false => branch,
+        };
+        let branch = branch.as_str();
+        let handle = self.state.engine.database(database)?;
         if lock(&handle)?.head(&doltdb::create::branch_ref(branch))?.is_none() {
             return Err(not_found());
         }
@@ -597,7 +686,7 @@ impl Session {
         let index = match self.txns.iter().position(|t| t.database == *database && t.branch == *branch) {
             Some(index) => index,
             None => {
-                let (handle, tracker) = self.engine.open_database(database)?;
+                let (handle, tracker) = self.state.engine.open_database(database)?;
                 let mut txn = Txn::begin(handle, tracker, database, branch)?;
                 if let Some(first) = self.txns.first() {
                     txn.started = first.started;
@@ -783,21 +872,53 @@ impl Session {
                 ..PgError::new(code::INVALID_NAME, format!("invalid database name \"{name}\""))
             });
         }
-        if self.engine.database_exists(name) {
+        if self.state.engine.database_exists(name) {
             if if_not_exists {
                 return Ok(Outcome::command("CREATE DATABASE"));
             }
             return Err(PgError::new(code::DUPLICATE_DATABASE, format!("database \"{name}\" already exists")));
         }
-        let dir = self.engine.shared.data_dir.join(name);
-        doltdb::create::create_database(&dir, DEFAULT_BRANCH, &self.state.user, &self.state.host, &create_times())?;
+        self.state.engine.create_database(name, &self.state.user, &self.state.host)?;
         Ok(Outcome::command("CREATE DATABASE"))
+    }
+
+    /// drop_database runs DROP DATABASE, which only superusers may run since databases record no owner, refusing
+    /// the session's own database as Postgres does.
+    fn drop_database(&mut self, name: &str, missing_ok: bool, superuser: bool) -> Result<Outcome> {
+        if self.state.explicit {
+            return Err(PgError::new(
+                code::ACTIVE_SQL_TRANSACTION,
+                "DROP DATABASE cannot run inside a transaction block",
+            ));
+        }
+        if !self.state.engine.database_exists(name) {
+            if missing_ok {
+                self.state
+                    .notices
+                    .push(PgError::notice("00000", format!("database \"{name}\" does not exist, skipping")));
+                return Ok(Outcome::command("DROP DATABASE"));
+            }
+            return Err(PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{name}\" does not exist")));
+        }
+        if !superuser {
+            return Err(PgError::new(code::INSUFFICIENT_PRIVILEGE, format!("must be owner of database {name}")));
+        }
+        if self.state.database == name {
+            return Err(PgError::new(code::OBJECT_IN_USE, "cannot drop the currently open database"));
+        }
+        self.state.engine.drop_database(name)?;
+        Ok(Outcome::command("DROP DATABASE"))
     }
 
     /// postgres runs a statement of Postgres' grammar.
     fn postgres(&mut self, node: &NodeEnum, extras: &Extras, params: &[Value]) -> Result<Outcome> {
         self.state.as_of = extras.as_of.clone();
         match node {
+            NodeEnum::DropdbStmt(drop) => {
+                let mut parameters = Vec::new();
+                let superuser = self.with_ctx(&mut parameters, params, |ctx| Ok(ctx.current_role()?.superuser))?;
+                return self.drop_database(&drop.dbname, drop.missing_ok, superuser);
+            }
             NodeEnum::CreatedbStmt(create) => {
                 let mut parameters = Vec::new();
                 self.with_ctx(&mut parameters, params, |ctx| ctx.require_create_db())?;

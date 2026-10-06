@@ -1028,7 +1028,14 @@ impl Ctx<'_> {
                 ("increment_by", Value::Int8(sequence.increment)),
                 ("cycle", boolean(sequence.cycle)),
                 ("cache_size", Value::Int8(sequence.cache)),
-                ("last_value", if sequence.has_been_called { Value::Int8(sequence.current) } else { Value::Null }),
+                (
+                    "last_value",
+                    match (sequence.has_been_called, sequence.is_at_end) {
+                        (false, _) => Value::Null,
+                        (true, true) => Value::Int8(sequence.current),
+                        (true, false) => Value::Int8(sequence.current - sequence.increment),
+                    },
+                ),
             ]);
         }
         Ok(())

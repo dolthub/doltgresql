@@ -47,6 +47,7 @@ pub enum SystemTable {
     CommitAncestors,
     Status,
     Remotes,
+    Backups,
     MergeStatus,
     Conflicts,
     ConstraintViolations,
@@ -74,6 +75,7 @@ const TABLES: &[(&str, SystemTable)] = &[
     ("commit_ancestors", SystemTable::CommitAncestors),
     ("status", SystemTable::Status),
     ("remotes", SystemTable::Remotes),
+    ("dolt_backups", SystemTable::Backups),
     ("merge_status", SystemTable::MergeStatus),
     ("conflicts", SystemTable::Conflicts),
     ("constraint_violations", SystemTable::ConstraintViolations),
@@ -165,6 +167,7 @@ impl SystemTable {
             SystemTable::CommitAncestors => vec![("commit_hash", TEXT), ("parent_hash", TEXT), ("parent_index", INT4)],
             SystemTable::Status => vec![("table_name", TEXT), ("staged", BOOL), ("status", TEXT)],
             SystemTable::Remotes => vec![("name", TEXT), ("url", TEXT), ("fetch_specs", JSON), ("params", JSON)],
+            SystemTable::Backups => vec![("name", TEXT), ("url", TEXT), ("params", JSON)],
             SystemTable::MergeStatus => vec![
                 ("is_merging", BOOL),
                 ("source", TEXT),
@@ -233,14 +236,14 @@ impl SystemTable {
             SystemTable::Log => log_rows(ctx, &[ctx.txn.head]),
             SystemTable::Branches => branch_rows(ctx, "refs/heads/", true),
             SystemTable::RemoteBranches => branch_rows(ctx, "refs/remotes/", false),
+            SystemTable::Remotes => crate::dolt::remotes::remote_rows(ctx, false),
+            SystemTable::Backups => crate::dolt::remotes::remote_rows(ctx, true),
             SystemTable::Tags => tag_rows(ctx),
             SystemTable::Commits => commit_rows(ctx),
             SystemTable::CommitAncestors => ancestor_rows(ctx),
             SystemTable::Status => status_rows(ctx),
             SystemTable::MergeStatus => merge_status_rows(ctx),
-            SystemTable::Remotes | SystemTable::SchemaConflicts | SystemTable::Ignore | SystemTable::Procedures => {
-                Ok(Vec::new())
-            }
+            SystemTable::SchemaConflicts | SystemTable::Ignore | SystemTable::Procedures => Ok(Vec::new()),
             SystemTable::Diff => crate::dolt::diff::unscoped_rows(ctx),
             SystemTable::Docs => crate::dolt::docs::rows(ctx),
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),
@@ -464,8 +467,9 @@ fn branch_rows(ctx: &mut Ctx<'_>, prefix: &str, local: bool) -> Result<Vec<Vec<V
     let mut rows = Vec::new();
     for (name, hash) in history::refs(ctx.db, prefix)? {
         let c = history::load(ctx.db, hash)?;
+        let shown = if local { name.clone() } else { format!("remotes/{name}") };
         let mut row = vec![
-            text(name.clone()),
+            text(shown),
             text(hash.to_string()),
             text(c.committer_name.clone()),
             text(c.committer_email.clone()),
@@ -474,7 +478,8 @@ fn branch_rows(ctx: &mut Ctx<'_>, prefix: &str, local: bool) -> Result<Vec<Vec<V
         ];
         if local {
             let dirty = branch_dirty(ctx, &name)?;
-            row.extend([text(""), text(""), Value::Bool(dirty)]);
+            let (remote, branch) = crate::dolt::remotes::upstream(ctx, &name)?;
+            row.extend([text(remote), text(branch), Value::Bool(dirty)]);
         }
         row.extend([text(c.name.clone()), text(c.email.clone()), timestamp(c.author_millis)]);
         rows.push(row);

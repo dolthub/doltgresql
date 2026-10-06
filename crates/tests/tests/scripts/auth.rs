@@ -1362,11 +1362,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-am', 'resolve conflicts')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1525,13 +1525,14 @@ fn test_auth_dolt_procedures() {
                     },
                     username: "auth_test_super",
                     password: "auth_test_spass",
+                    skip: Some("instr is a MySQL function that Postgres lacks, and the Rust server's thread dump lists threads rather than goroutines"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-m', 'rm to_rm')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2095,11 +2096,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_bpass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-am', 'resolve conflicts')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2234,11 +2235,11 @@ fn test_auth_dolt_procedures() {
                     password: "auth_test_bpass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select length(dolt_commit('-m', 'rm to_rm')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],

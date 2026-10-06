@@ -82,7 +82,7 @@ pub fn working_set_ref(branch: &str) -> String {
 }
 
 /// environment_meta returns the working set author of Dolt's environment updates, which has no name or email.
-fn environment_meta(seconds: u64) -> Meta {
+pub fn environment_meta(seconds: u64) -> Meta {
     Meta {
         name: Vec::new(),
         email: Vec::new(),
@@ -119,9 +119,9 @@ fn update_roots(
     Ok(previous)
 }
 
-/// create_database creates a database in the directory, whose initial commit is by Dolt's system account and whose
-/// default schemas are committed by the user connected from the host, as Go's CREATE DATABASE does.
-pub fn create_database(dir: &Path, branch: &str, user: &str, host: &str, times: &CreateTimes) -> Result<()> {
+/// create_files creates the directories and files of an empty database in the directory, whose checked out branch
+/// is the branch, as Dolt's environment does before it writes any data.
+pub fn create_files(dir: &Path, branch: &str) -> Result<()> {
     let dolt = dir.join(".dolt");
     let noms = dolt.join("noms");
     std::fs::create_dir_all(noms.join("oldgen")).map_err(store::Error::from)?;
@@ -133,8 +133,14 @@ pub fn create_database(dir: &Path, branch: &str, user: &str, host: &str, times: 
     )
     .map_err(store::Error::from)?;
     std::fs::File::create(noms.join("oldgen/LOCK")).map_err(store::Error::from)?;
+    Ok(())
+}
 
-    let mut db = Database::open(&noms)?;
+/// create_database creates a database in the directory, whose initial commit is by Dolt's system account and whose
+/// default schemas are committed by the user connected from the host, as Go's CREATE DATABASE does.
+pub fn create_database(dir: &Path, branch: &str, user: &str, host: &str, times: &CreateTimes) -> Result<()> {
+    create_files(dir, branch)?;
+    let mut db = Database::open(&dir.join(".dolt/noms"))?;
     // Dolt's WriteEmptyRepo: the empty root, its commit on the creation ref, and the branch.
     let empty = empty_root_value(&[]);
     db.write_value(empty.clone())?;

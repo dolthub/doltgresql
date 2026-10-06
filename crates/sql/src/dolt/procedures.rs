@@ -51,6 +51,28 @@ pub const FUNCTIONS: &[Function] = &[
     v("dolt_conflicts_resolve", INT8, crate::dolt::conflicts::dolt_conflicts_resolve),
     v("dolt_revert", RECORD, crate::dolt::revert::dolt_revert),
     v("dolt_cherry_pick", RECORD, crate::dolt::revert::dolt_cherry_pick),
+    v("dolt_remote", INT8, crate::dolt::remotes::dolt_remote),
+    v("dolt_push", RECORD, crate::dolt::remotes::dolt_push),
+    v("dolt_fetch", INT8, crate::dolt::remotes::dolt_fetch),
+    v("dolt_pull", RECORD, crate::dolt::remotes::dolt_pull),
+    v("dolt_clone", INT8, crate::dolt::remotes::dolt_clone),
+    v("dolt_backup", INT8, crate::dolt::remotes::dolt_backup),
+    v("dolt_clean", INT8, crate::dolt::admin::dolt_clean),
+    v("dolt_count_commits", RECORD, crate::dolt::admin::dolt_count_commits),
+    v("dolt_commit_hash_out", TEXT, crate::dolt::admin::dolt_commit_hash_out),
+    v("dolt_rm", INT8, crate::dolt::admin::dolt_rm),
+    v("dolt_update_column_tag", INT8, crate::dolt::admin::dolt_update_column_tag),
+    Function {
+        name: "dolt_undrop",
+        args: &[TEXT],
+        ret: INT8,
+        strict: false,
+        variadic: true,
+        implementation: crate::dolt::admin::dolt_undrop,
+    },
+    f("dolt_undrop", &[], INT8, crate::dolt::admin::dolt_undrop),
+    f("dolt_purge_dropped_databases", &[], INT8, crate::dolt::admin::dolt_purge_dropped_databases),
+    f("dolt_thread_dump", &[], TEXT, crate::dolt::admin::dolt_thread_dump),
     Function {
         name: "dolt_preview_merge_conflicts_summary",
         args: &[TEXT],
@@ -149,6 +171,20 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
         "dolt_cherry_pick",
         &[("hash", TEXT), ("data_conflicts", INT8), ("schema_conflicts", INT8), ("constraint_violations", INT8)],
     ),
+    ("dolt_remote", &[("status", INT8)]),
+    ("dolt_push", &[("status", INT8), ("message", TEXT)]),
+    ("dolt_fetch", &[("status", INT8)]),
+    ("dolt_pull", &[("fast_forward", INT8), ("conflicts", INT8), ("message", TEXT)]),
+    ("dolt_clone", &[("status", INT8)]),
+    ("dolt_backup", &[("status", INT8)]),
+    ("dolt_clean", &[("status", INT8)]),
+    ("dolt_count_commits", &[("ahead", INT8), ("behind", INT8)]),
+    ("dolt_commit_hash_out", &[("hash", TEXT)]),
+    ("dolt_rm", &[("status", INT8)]),
+    ("dolt_update_column_tag", &[("status", INT8)]),
+    ("dolt_undrop", &[("status", INT8)]),
+    ("dolt_purge_dropped_databases", &[("status", INT8)]),
+    ("dolt_thread_dump", &[("thread_dump", TEXT)]),
     (
         "dolt_log",
         &[
@@ -199,6 +235,14 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
     ),
 ];
 
+/// require_admin refuses a Dolt procedure that only superusers may run when the current role is not one.
+pub fn require_admin(ctx: &mut Ctx<'_>) -> Result<()> {
+    match ctx.current_role()?.superuser {
+        true => Ok(()),
+        false => Err(error("permission denied for Dolt procedure")),
+    }
+}
+
 /// strings returns the text arguments.
 pub fn strings(args: &[Value]) -> Vec<String> {
     args.iter().map(|a| a.output().unwrap_or_default()).collect()
@@ -218,7 +262,7 @@ pub fn table_map(db: &mut Database, root: &Root) -> Result<BTreeMap<(String, Str
 }
 
 /// find_table finds a table by name in the roots, searching the session's schemas for an unqualified name.
-fn find_table(ctx: &mut Ctx<'_>, roots: &[&Root], name: &str) -> Result<Option<(String, String)>> {
+pub fn find_table(ctx: &mut Ctx<'_>, roots: &[&Root], name: &str) -> Result<Option<(String, String)>> {
     let (schemas, table) = match name.split_once('.') {
         Some((schema, table)) => (vec![schema.to_string()], table),
         None => (ctx.session.search_path(), name),
@@ -421,7 +465,7 @@ pub fn commit_meta(ctx: &Ctx<'_>, description: &str) -> CommitMeta {
 }
 
 /// dolt_commit commits the staged tables.
-fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+pub fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let parsed = COMMIT.parse(&strings(args))?;
     if parsed.has("allow-empty") && parsed.has("skip-empty") {
         return Err(error("error: cannot use both --allow-empty and --skip-empty"));
@@ -984,7 +1028,7 @@ fn merge_record(hash: &str, fast_forward: bool, conflicts: i64, message: &str) -
 }
 
 /// dolt_merge merges a branch or commit into the session's branch.
-fn dolt_merge(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+pub fn dolt_merge(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let parsed = MERGE.parse(&strings(args)).map_err(|e| {
         if e.message.contains("too many positional arguments") {
             error("Error: Dolt does not support merging from multiple commits. You probably meant to checkout one and then merge from the other.")

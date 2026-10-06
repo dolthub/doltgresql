@@ -160,6 +160,63 @@ impl Database {
         Ok(Database { store, old_gen, nodes: HashMap::new() })
     }
 
+    /// open_remote opens a file remote or backup in a directory for writing, as Dolt's FileFactory does: each commit
+    /// writes its new chunks to a table file, and a missing old generation directory is made.
+    pub fn open_remote(dir: &Path) -> Result<Database> {
+        let store = JournalStore::open_tables(dir, "__DOLT__")?;
+        let old_gen_dir = dir.join("oldgen");
+        std::fs::create_dir_all(&old_gen_dir).map_err(store::Error::from)?;
+        let old_gen =
+            if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
+        Ok(Database { store, old_gen, nodes: HashMap::new() })
+    }
+
+    /// has reports whether the database holds the chunk.
+    pub fn has(&self, hash: &Hash) -> bool {
+        self.store.has(hash) || self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(hash))
+    }
+
+    /// pull copies the chunks reachable from an address that the database lacks from another database, children
+    /// before the chunks that refer to them, taking a chunk the database holds to have everything it refers to, as
+    /// Dolt's puller does.
+    pub fn pull(&mut self, from: &Database, address: Hash) -> Result<()> {
+        let mut seen = std::collections::HashSet::new();
+        let mut stack = vec![(address, false)];
+        let mut loaded: HashMap<Hash, Chunk> = HashMap::new();
+        while let Some((hash, expanded)) = stack.pop() {
+            if expanded {
+                if let Some(chunk) = loaded.remove(&hash) {
+                    self.put(chunk)?;
+                }
+                continue;
+            }
+            if hash.is_empty() || !seen.insert(hash) || self.has(&hash) {
+                continue;
+            }
+            let chunk = from.require(&hash)?;
+            stack.push((hash, true));
+            serial::walk::walk_addrs(Message(&chunk.data), &mut |child| {
+                stack.push((child, false));
+                Ok(())
+            })?;
+            loaded.insert(hash, chunk);
+        }
+        Ok(())
+    }
+
+    /// replace_root makes a store root already in the database current, whatever the root was, as Dolt's CommitRoot
+    /// does when it syncs one database to another.
+    pub fn replace_root(&mut self, root: Hash) -> Result<()> {
+        while !self.store.commit(root, self.root())? {}
+        Ok(())
+    }
+
+    /// set_heads points datasets at addresses already in the database, and deletes those without one, in one update
+    /// of the store root.
+    pub fn set_heads(&mut self, heads: &[(String, Option<Hash>)]) -> Result<()> {
+        self.update(|_, _| Ok(heads.to_vec()))
+    }
+
     /// root returns the address of the store root.
     pub fn root(&self) -> Hash {
         self.store.root()

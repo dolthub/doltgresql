@@ -146,7 +146,7 @@ fn counts(ctx: &mut Ctx<'_>, schema_conflicts: usize) -> Result<Counts> {
 
 /// changed returns the tables and root objects that differ between two roots, leaving out new tables that
 /// dolt_ignore ignores.
-fn changed(ctx: &mut Ctx<'_>, from: &Root, to: &Root) -> Result<Vec<Name>> {
+pub fn changed(ctx: &mut Ctx<'_>, from: &Root, to: &Root) -> Result<Vec<Name>> {
     let mut out = Vec::new();
     for delta in crate::dolt::diff::deltas(ctx.db, from, to)? {
         if let (None, Some((name, _)), false) = (&delta.from, &delta.to, delta.object) {

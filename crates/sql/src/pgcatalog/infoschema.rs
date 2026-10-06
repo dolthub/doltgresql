@@ -123,6 +123,7 @@ impl Ctx<'_> {
             "sequences" => self.information_schema_sequences(rows),
             "table_constraints" => self.information_schema_table_constraints(rows),
             "key_column_usage" => self.information_schema_key_column_usage(rows),
+            "referential_constraints" => self.information_schema_referential_constraints(rows),
             "triggers" => self.information_schema_triggers(rows),
             _ => Ok(()),
         }
@@ -297,6 +298,39 @@ impl Ctx<'_> {
                     ("nulls_distinct", if kind == "UNIQUE" { yes_no(true) } else { Value::Null }),
                 ]);
             }
+        }
+        Ok(())
+    }
+
+    /// information_schema_referential_constraints lists the foreign keys with the unique constraints they refer to.
+    fn information_schema_referential_constraints(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let database = self.session.database.clone();
+        let snapshot = self.snapshot()?;
+        let rule = |rule: crate::foreign::Rule| match rule {
+            crate::foreign::Rule::NoAction => "NO ACTION",
+            crate::foreign::Rule::Restrict => "RESTRICT",
+            crate::foreign::Rule::Cascade => "CASCADE",
+            crate::foreign::Rule::SetNull => "SET NULL",
+            crate::foreign::Rule::SetDefault => "SET DEFAULT",
+        };
+        for fk in &snapshot.foreign_keys {
+            let unique = snapshot.table(&fk.parent_schema, &fk.parent_table).and_then(|parent| {
+                table_indexes(parent)
+                    .into_iter()
+                    .find(|i| if fk.parent_index.is_empty() { i.primary } else { i.name == fk.parent_index })
+                    .map(|i| i.name)
+            });
+            rows.push(vec![
+                ("constraint_catalog", text(database.clone())),
+                ("constraint_schema", text(fk.child_schema.clone())),
+                ("constraint_name", text(fk.name.clone())),
+                ("unique_constraint_catalog", text(database.clone())),
+                ("unique_constraint_schema", text(fk.parent_schema.clone())),
+                ("unique_constraint_name", unique.map_or(Value::Null, text)),
+                ("match_option", text("NONE")),
+                ("update_rule", text(rule(fk.on_update))),
+                ("delete_rule", text(rule(fk.on_delete))),
+            ]);
         }
         Ok(())
     }
