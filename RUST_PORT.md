@@ -123,6 +123,29 @@ captured and re-verified.
 6. Operational features, logical replication, admin tool, and performance work against sysbench.
 7. Remove the Go code.
 
+## Phase 0 status
+
+Done:
+
+- `pgproto`: wire codec, byte-identical to pgproto3 on golden messages.
+- `harness`: pgx-equivalent client, binary decoder (cross-checked against Postgres' own output), script runner,
+  wire conversation runner, plan facts, server launcher, recording and structured failure output.
+- `goport` (temporary): dumps the Go tests, captures them against Postgres and the Go server, and generates Rust.
+- `crates/tests`: 2,233 scripts and 198 wire conversations ported. Expectations come from Postgres 15 for 11,823
+  assertions, from Postgres 17 for JSON_TABLE, and from the Go server for 1,891 Dolt-dependent ones (marked
+  `// Doltgres-specific`). 105 EXPLAIN assertions are plan facts. Values that vary between two Postgres runs are
+  `Any`, and the server port is `{PORT}`.
+- Round trip: every Postgres-sourced assertion passes against a real Postgres 15.
+
+Remaining:
+
+- Compare the Rust suite's client traffic against the pgx recordings of the Go suite.
+- Hand ports: missing-database connection, invalid startup timezone, SSL (needs TLS in the harness), dropped-role
+  grant cleanup across a restart (needs restart support), Dolt backup and remote suites.
+- 29 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too), and 7 EXPLAIN
+  assertions that expect Postgres plan text.
+- Ports of the regression replay, sqllogictest, dump import, enginetest Dolt sets, and go-sql-server-driver runners.
+
 ## Baseline artifacts
 
 - `testing/go/regression/out/results.trackers`: per-statement regression results of the Go baseline.
