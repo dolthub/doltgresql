@@ -779,8 +779,8 @@ impl Ctx<'_> {
         for table in tables {
             let mut stored = table.table.clone();
             stored.primary_index = empty_rows();
-            let empty = Hash::of(&empty_rows());
             for index in &table.indexes {
+                let empty = index.empty_root(self.db)?;
                 stored.put_index(self.db, &index.name, Some(empty))?;
             }
             let address = stored.write(self.db)?;
@@ -840,8 +840,24 @@ impl Ctx<'_> {
         let relation = stmt.relation.as_ref().ok_or_else(|| PgError::internal("CREATE INDEX without a table"))?;
         let table = self.resolve_table(relation)?;
         self.require_owner(&Object::Table(table.schema.clone(), table.name.clone()))?;
-        if !matches!(stmt.access_method.as_str(), "" | "btree" | "hash") {
-            return Err(PgError::unsupported(format!("indexes using {}", stmt.access_method)));
+        let method = stmt.access_method.as_str();
+        if !matches!(method, "" | "btree" | "hash") {
+            if let Some((extension, access_method)) = self.access_method(method)? {
+                return self.create_vector_index(stmt, table, extension, access_method);
+            }
+            if !matches!(method, "gist" | "gin" | "spgist" | "brin") {
+                return Err(PgError::new(code::UNDEFINED_OBJECT, format!("access method \"{method}\" does not exist")));
+            }
+            for param in &stmt.index_params {
+                let Some(NodeEnum::IndexElem(elem)) = param.node.as_ref() else { continue };
+                let column = table.columns.iter().find(|c| c.name == elem.name);
+                if let Some(column) = column.filter(|c| crate::types::base_type(c.ty.oid).is_some())
+                    && elem.opclass.is_empty()
+                {
+                    return Err(crate::extensions::no_default_class(column.ty.oid, method));
+                }
+            }
+            return Err(PgError::unsupported(format!("indexes using {method}")));
         }
         if stmt.where_clause.is_some() {
             return Err(PgError::unsupported("partial indexes"));
@@ -872,6 +888,20 @@ impl Ctx<'_> {
             nulls_last.push(last);
             op_classes.push(elem.opclass.iter().filter_map(node_name).next_back().unwrap_or_default().to_string());
         }
+        let Some(name) = self.index_name(stmt, &table, &columns)? else { return Ok(Outcome::command("CREATE INDEX")) };
+        let index = IndexDef { descending, nulls_last, op_classes, ..new_index(name, columns, stmt.unique) };
+        self.build_index(table, index)?;
+        Ok(Outcome::command("CREATE INDEX"))
+    }
+
+    /// index_name chooses the name of a new index of a table's columns, returning None after the notice of IF NOT
+    /// EXISTS when the name is taken.
+    pub(crate) fn index_name(
+        &mut self,
+        stmt: &IndexStmt,
+        table: &TableDef,
+        columns: &[usize],
+    ) -> Result<Option<String>> {
         let taken = self.relation_names(&table.schema)?;
         let name = if stmt.idxname.is_empty() {
             let names: Vec<&str> = columns.iter().map(|&c| table.columns[c].name.as_str()).collect();
@@ -883,13 +913,11 @@ impl Ctx<'_> {
             let message = format!("relation \"{name}\" already exists");
             if stmt.if_not_exists {
                 self.session.notice(PgError::notice(code::DUPLICATE_TABLE, format!("{message}, skipping")));
-                return Ok(Outcome::command("CREATE INDEX"));
+                return Ok(None);
             }
             return Err(PgError::new(code::DUPLICATE_TABLE, message));
         }
-        let index = IndexDef { descending, nulls_last, op_classes, ..new_index(name, columns, stmt.unique) };
-        self.build_index(table, index)?;
-        Ok(Outcome::command("CREATE INDEX"))
+        Ok(Some(name))
     }
 
     /// build_index adds an index to a table and fills it from the table's rows, failing for duplicates in a unique
@@ -928,12 +956,17 @@ impl Ctx<'_> {
                 }
             }
         }
-        let empty = Hash::of(&empty_rows());
         let mut stored = table.table.clone();
-        stored.put_index(self.db, &index.name, Some(empty))?;
-        let edits = keys.into_iter().map(|(k, _)| (k, Some(prolly::val::build_tuple(&[])))).collect();
-        let compare = |a: &[u8], b: &[u8]| table.compare_index_keys(&index, a, b);
-        stored.edit_index(self.db, &index.name, empty, edits, &compare, &table.index_encodings(&index))?;
+        if let Some(distance) = index.vector {
+            let root = table.write_vector_index(self.db, &index, distance)?;
+            stored.put_index(self.db, &index.name, Some(root))?;
+        } else {
+            let empty = Hash::of(&empty_rows());
+            stored.put_index(self.db, &index.name, Some(empty))?;
+            let edits = keys.into_iter().map(|(k, _)| (k, Some(prolly::val::build_tuple(&[])))).collect();
+            let compare = |a: &[u8], b: &[u8]| table.compare_index_keys(&index, a, b);
+            stored.edit_index(self.db, &index.name, empty, edits, &compare, &table.index_encodings(&index))?;
+        }
         stored.schema = self.db.write_value(table.schema_message()?)?;
         let address = stored.write(self.db)?;
         self.txn.root.put_table(self.db, &table.schema, &table.name, Some(address))?;
@@ -1008,6 +1041,7 @@ pub(crate) fn new_index(name: String, columns: Vec<usize>, unique: bool) -> Inde
         predicate: String::new(),
         root: Hash::of(&empty_rows()),
         system: false,
+        vector: None,
     }
 }
 

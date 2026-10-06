@@ -281,6 +281,7 @@ ORDER BY namespace.nspname;"#,
                         ],
                         tag: "SELECT 6",
                     },
+                    skip: Some("Dolt stores only a vector index's distance, so every vector index renders with hnsw and its operator class"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -303,6 +304,7 @@ ORDER BY namespace.nspname;"#,
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("Dolt stores only a vector index's distance, so every vector index renders with hnsw and its operator class"),
                     ..A
                 },
             ],

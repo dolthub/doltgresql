@@ -21,6 +21,7 @@ mod blob;
 mod chunker;
 mod cursor;
 mod node;
+mod proximity;
 mod serialize;
 mod tuple;
 pub mod val;
@@ -29,6 +30,7 @@ pub use blob::{BLOB_CHUNK_SIZE, NodeSink, read_blob, write_blob};
 pub use chunker::{Chunker, NodeSerializer, apply_mutations};
 pub use cursor::{Compare, NodeStore, get, scan_from};
 pub use node::{ItemVisitor, Node, walk_leaves};
+pub use proximity::{Distance, Entry, write_proximity_map};
 pub use serialize::{
     AddressMapSerializer, CommitClosureSerializer, MergeArtifactsSerializer, ProllyMapSerializer, ProllyNode,
     serialize_address_map, serialize_blob, serialize_commit_closure, serialize_merge_artifacts, serialize_prolly_node,

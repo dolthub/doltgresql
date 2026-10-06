@@ -49,7 +49,7 @@ fn dolt_schemas_schema() -> Vec<u8> {
         nullable: !key,
         generated: false,
         is_virtual: false,
-        adaptive_encoding: crate::storage::is_adaptive(encoding),
+        adaptive_encoding: crate::storage::marks_adaptive(encoding),
         hidden: false,
         hidden_system: false,
     };

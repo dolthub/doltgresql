@@ -22,7 +22,7 @@ use crate::NodeSerializer;
 const ITEM_TYPE_TUPLE_FORMAT_ALPHA: u8 = 1;
 
 /// write_item_bytes writes the items concatenated as a byte vector.
-fn write_item_bytes(b: &mut Builder, items: &[&[u8]]) -> u32 {
+pub(crate) fn write_item_bytes(b: &mut Builder, items: &[&[u8]]) -> u32 {
     let total: usize = items.iter().map(|item| item.len()).sum();
     b.prep(4, total);
     b.create_byte_vector(&items.concat())
@@ -50,7 +50,7 @@ fn write_u16_vector(b: &mut Builder, values: &[u16]) -> u32 {
 }
 
 /// encode_counts encodes subtree counts as Go zigzag varint deltas.
-fn encode_counts(counts: &[u64]) -> Vec<u8> {
+pub(crate) fn encode_counts(counts: &[u64]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut previous: i64 = 0;
     for &count in counts {

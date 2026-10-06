@@ -300,7 +300,7 @@ fn covering_index(table: &TableDef, columns: &[usize]) -> Option<String> {
     if !table.keyless() && leads(&table.key_columns) {
         return Some(String::new());
     }
-    table.indexes.iter().find(|i| leads(&i.columns)).map(|i| i.name.clone())
+    table.indexes.iter().find(|i| i.vector.is_none() && leads(&i.columns)).map(|i| i.name.clone())
 }
 
 /// ParentRows are the referenced table of a foreign key, the positions of its referenced columns, and its rows.

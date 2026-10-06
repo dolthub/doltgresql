@@ -14,13 +14,12 @@
 
 //! ALTER TABLE and RENAME, which change a table's definition and rebuild its rows when their layout changes.
 
-use doltdb::table::{Table, empty_rows};
+use doltdb::table::Table;
 use doltdb::tags::{EXTENDED_KIND, auto_generate_tag};
 use pg_query::protobuf::{
     AlterTableCmd, AlterTableStmt, AlterTableType, ConstrType, DropBehavior, ObjectType, RenameStmt,
 };
 use pg_query::{Node, NodeEnum};
-use store::Hash;
 
 use crate::Outcome;
 use crate::catalog::table::{Check, TableDef};
@@ -606,8 +605,8 @@ impl Ctx<'_> {
             None => scan(self.db, &alteration.table)?,
         };
         let (mut address, mut stored) = Table::create(self.db, message)?;
-        let empty = Hash::of(&empty_rows());
         for index in &mut alteration.table.indexes {
+            let empty = index.empty_root(self.db)?;
             stored.put_index(self.db, &index.name, Some(empty))?;
             index.root = empty;
         }

@@ -57,6 +57,7 @@ pub fn extension() -> Extension {
                 typmod_in: |modifiers| typmod_in("vector", MAX_DENSE_DIMS as i64, modifiers),
                 typmod: dense_typmod::<false>,
                 compare: dense_compare::<false>,
+                vector: Some(decode_dense::<false>),
             },
             BaseType {
                 name: "halfvec",
@@ -67,6 +68,7 @@ pub fn extension() -> Extension {
                 typmod_in: |modifiers| typmod_in("halfvec", MAX_DENSE_DIMS as i64, modifiers),
                 typmod: dense_typmod::<true>,
                 compare: dense_compare::<true>,
+                vector: Some(decode_dense::<true>),
             },
             BaseType {
                 name: "sparsevec",
@@ -77,6 +79,7 @@ pub fn extension() -> Extension {
                 typmod_in: |modifiers| typmod_in("sparsevec", MAX_SPARSE_DIMS, modifiers),
                 typmod: sparse_typmod,
                 compare: sparse_compare,
+                vector: None,
             },
         ],
         routines: routines(),
@@ -85,8 +88,12 @@ pub fn extension() -> Extension {
         aggregates: aggregates(),
         operator_classes: operator_classes(),
         access_methods: vec![
-            AccessMethod { name: "hnsw", handler: "hnswhandler" },
-            AccessMethod { name: "ivfflat", handler: "ivfflathandler" },
+            AccessMethod {
+                name: "hnsw",
+                handler: "hnswhandler",
+                params: vec![("m", 2, 100, 16), ("ef_construction", 4, 1000, 64)],
+            },
+            AccessMethod { name: "ivfflat", handler: "ivfflathandler", params: vec![("lists", 1, 32768, 100)] },
         ],
     }
 }
@@ -387,35 +394,49 @@ fn aggregates() -> Vec<Aggregate> {
 
 /// operator_classes returns the extension's operator classes.
 fn operator_classes() -> Vec<OperatorClass> {
+    use prolly::Distance;
+    let metrics = [
+        ("_l2_ops", Distance::L2Squared),
+        ("_ip_ops", Distance::InnerProduct),
+        ("_cosine_ops", Distance::Cosine),
+        ("_l1_ops", Distance::L1),
+    ];
     let mut all = Vec::new();
-    for ty in ["vector", "halfvec"] {
-        for metric in ["_l2_ops", "_ip_ops", "_cosine_ops", "_l1_ops"] {
+    for (ty, max_dimensions) in [("vector", 2000), ("halfvec", 4000)] {
+        for (metric, distance) in metrics {
             let name = format!("{ty}{metric}");
             let default_for = if name == "vector_l2_ops" { vec!["ivfflat"] } else { Vec::new() };
             let access_methods = if metric == "_l1_ops" { vec!["hnsw"] } else { vec!["hnsw", "ivfflat"] };
-            all.push(OperatorClass { name, access_methods, default_for, type_name: ty });
+            all.push(OperatorClass {
+                name,
+                access_methods,
+                default_for,
+                type_name: ty,
+                distance: Some(distance),
+                max_dimensions,
+            });
         }
     }
-    for metric in ["_l2_ops", "_ip_ops", "_cosine_ops", "_l1_ops"] {
+    for (metric, _) in metrics {
         all.push(OperatorClass {
             name: format!("sparsevec{metric}"),
             access_methods: vec!["hnsw"],
             default_for: Vec::new(),
             type_name: "sparsevec",
+            distance: None,
+            max_dimensions: 1_000_000_000,
         });
     }
-    all.push(OperatorClass {
-        name: "bit_hamming_ops".into(),
-        access_methods: vec!["hnsw", "ivfflat"],
-        default_for: Vec::new(),
-        type_name: "bit",
-    });
-    all.push(OperatorClass {
-        name: "bit_jaccard_ops".into(),
-        access_methods: vec!["hnsw"],
-        default_for: Vec::new(),
-        type_name: "bit",
-    });
+    for (name, access_methods) in [("bit_hamming_ops", vec!["hnsw", "ivfflat"]), ("bit_jaccard_ops", vec!["hnsw"])] {
+        all.push(OperatorClass {
+            name: name.into(),
+            access_methods,
+            default_for: Vec::new(),
+            type_name: "bit",
+            distance: None,
+            max_dimensions: 64000,
+        });
+    }
     all
 }
 

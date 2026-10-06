@@ -183,6 +183,10 @@ pub(crate) fn describe_table(
             lines.push(format!("rows {address} index {} missing", hex(name)));
             continue;
         };
+        if index.vector_key {
+            lines.push(format!("rows {address} index {} vector", hex(name)));
+            continue;
+        }
         let keys = encodings(&columns, &index.key_columns);
         let (count, sum) = digest(reader, &Node::load(reader, root)?, &keys, &[])?;
         lines.push(format!("rows {address} index {} count={count} digest={sum}", hex(name)));

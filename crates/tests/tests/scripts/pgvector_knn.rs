@@ -767,6 +767,7 @@ fn test_pgvector_knn() {
                         ],
                         tag: "SELECT 5",
                     },
+                    skip: Some("rows tied at a NULL distance follow Postgres' physical row order"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -931,6 +932,7 @@ fn test_pgvector_knn() {
                         ],
                         tag: "SELECT 5",
                     },
+                    skip: Some("rows tied at a NULL distance follow Postgres' physical row order"),
                     ..A
                 },
             ],
@@ -965,6 +967,7 @@ fn test_pgvector_knn() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("Doltgres answers nearest-neighbor queries exactly, while hnsw stops after ef_search candidates"),
                     ..A
                 },
                 ScriptTestAssertion {

@@ -439,8 +439,15 @@ impl<'a> Edits<'a> {
             &|a, b| table.compare_keys(a, b),
             (&table.key_encodings(), &table.value_encodings()),
         )?;
+        let mut rebuilt: Option<TableDef> = None;
         for (index, mut edits) in current.indexes.iter().zip(index_edits) {
             if edits.is_empty() {
+                continue;
+            }
+            if let Some(distance) = index.vector {
+                let rebuilt = rebuilt.get_or_insert_with(|| TableDef { table: stored.clone(), ..current.clone() });
+                let root = rebuilt.write_vector_index(db, index, distance)?;
+                stored.put_index(db, &index.name, Some(root))?;
                 continue;
             }
             let compare = |a: &[u8], b: &[u8]| table.compare_index_keys(index, a, b);

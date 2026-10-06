@@ -15,10 +15,12 @@
 //! The extensions that Doltgres emulates, whose objects CREATE EXTENSION writes as their installation scripts would and
 //! whose library functions Rust implements.
 
+mod index;
 mod install;
 mod uuid_ossp;
 mod vector;
 
+pub use index::{no_default_class, vector_rendering};
 pub use install::COLLECTION;
 
 use std::cmp::Ordering;
@@ -28,6 +30,9 @@ use crate::catalog::ColumnType;
 use crate::error::Result;
 use crate::query::Ctx;
 use crate::types::Value;
+
+/// Elements returns the elements of a stored vector.
+pub type Elements = fn(&[u8]) -> Vec<f32>;
 
 /// Implementation computes a routine's result from its arguments, given the routine's result type.
 pub type Implementation = fn(&mut Ctx<'_>, &[Value], ColumnType) -> Result<Value>;
@@ -60,6 +65,8 @@ pub struct BaseType {
     pub typmod: fn(&[u8], i32) -> Result<()>,
     /// compare orders two values.
     pub compare: fn(&[u8], &[u8]) -> Ordering,
+    /// vector returns a value's elements for a vector index, for a type that Dolt's vector indexes can hold.
+    pub vector: Option<Elements>,
 }
 
 impl std::fmt::Debug for BaseType {
@@ -123,12 +130,18 @@ pub struct OperatorClass {
     /// The access methods for which this is the type's default operator class.
     pub default_for: Vec<&'static str>,
     pub type_name: &'static str,
+    /// The distance of the index that the class builds, or None when Doltgres cannot build its indexes yet.
+    pub distance: Option<prolly::Distance>,
+    /// The most dimensions an indexed column may have.
+    pub max_dimensions: i32,
 }
 
 /// AccessMethod is an index access method that an extension provides.
 pub struct AccessMethod {
     pub name: &'static str,
     pub handler: &'static str,
+    /// The integer storage parameters the method takes, with their least, greatest, and default values.
+    pub params: Vec<(&'static str, i64, i64, i64)>,
 }
 
 /// Extension is an extension that Doltgres emulates.

@@ -500,6 +500,12 @@ pub fn is_adaptive(field_encoding: u8) -> bool {
     )
 }
 
+/// marks_adaptive reports whether a column of an encoding has the schema's adaptive encoding flags, which Dolt leaves
+/// off extended types since they serialize themselves.
+pub fn marks_adaptive(field_encoding: u8) -> bool {
+    is_adaptive(field_encoding) && field_encoding != encoding::EXTENDED_ADAPTIVE
+}
+
 /// inline returns bytes as an inline adaptive value: a zero byte, then the bytes.
 fn inline(bytes: &[u8]) -> Vec<u8> {
     let mut field = Vec::with_capacity(bytes.len() + 1);

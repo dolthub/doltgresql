@@ -73,6 +73,24 @@ pub struct IndexDef {
     pub root: Hash,
     /// Whether Dolt made the index itself, as it does for a foreign key's columns.
     pub system: bool,
+    /// The distance of a vector index, which Dolt stores as a proximity map rather than a prolly map.
+    pub vector: Option<prolly::Distance>,
+}
+
+impl IndexDef {
+    /// empty_root returns the address of the index's root when it holds no rows, which a vector index stores as a
+    /// proximity map.
+    pub fn empty_root(&self, db: &mut Database) -> Result<Hash> {
+        match self.vector {
+            Some(distance) => {
+                let mut sink = |_: Hash, bytes: &[u8]| {
+                    db.write_value(bytes.to_vec()).map(|_| ()).map_err(|e| store::Error::Corrupt(e.to_string()))
+                };
+                Ok(prolly::write_proximity_map(Vec::new(), distance, &mut sink)?)
+            }
+            None => Ok(Hash::of(&doltdb::table::empty_rows())),
+        }
+    }
 }
 
 /// TableDef is a table: its columns, which of them form the primary key, and its storage.
@@ -179,6 +197,11 @@ impl TableDef {
                     comment: lossy(index.comment),
                     predicate: lossy(index.predicate),
                     system: index.system_defined,
+                    vector: if index.vector_key {
+                        Some(prolly::Distance::from_stored(index.vector_distance.unwrap_or(0)).ok_or_else(missing)?)
+                    } else {
+                        None
+                    },
                     name,
                     root,
                 })
@@ -227,6 +250,23 @@ impl TableDef {
         }
         place_adaptive(db, &mut fields, &self.index_encodings(index), DEFAULT_TARGET_ROW_SIZE as usize)?;
         Ok(build_tuple(&fields.iter().map(Option::as_deref).collect::<Vec<_>>()))
+    }
+
+    /// write_vector_index writes a vector index of the table's rows as Dolt's proximity map, leaving out the rows whose
+    /// vector is NULL, and returns the address of its root.
+    pub fn write_vector_index(&self, db: &mut Database, index: &IndexDef, distance: prolly::Distance) -> Result<Hash> {
+        let mut entries = Vec::new();
+        for row in crate::query::scan(db, self)? {
+            let Value::Base(base) = &row[index.columns[0]] else { continue };
+            let Some(vector) = crate::types::base_type(base.type_oid).and_then(|t| t.vector) else { continue };
+            let (primary, _) = self.encode_row(db, &row)?;
+            let key = self.index_key(db, index, &row, &primary)?;
+            entries.push(prolly::Entry { key, value: build_tuple(&[]), vector: vector(&base.data) });
+        }
+        let mut sink = |_: Hash, bytes: &[u8]| {
+            db.write_value(bytes.to_vec()).map(|_| ()).map_err(|e| store::Error::Corrupt(e.to_string()))
+        };
+        Ok(prolly::write_proximity_map(entries, distance, &mut sink)?)
     }
 
     /// compare_index_keys orders two keys of an index with each indexed column's direction and NULLS placement, as
@@ -373,14 +413,16 @@ pub fn schema_message(
             nullable: c.nullable,
             generated: c.generated,
             is_virtual: false,
-            adaptive_encoding: crate::storage::is_adaptive(c.encoding),
+            adaptive_encoding: crate::storage::marks_adaptive(c.encoding),
             hidden: false,
             hidden_system: false,
         })
         .collect();
     let keyless = key_columns.is_empty();
-    let index_fields = indexes
-        .iter()
+    let mut sorted: Vec<&IndexDef> = indexes.iter().collect();
+    sorted.sort_by(|a, b| a.name.cmp(&b.name));
+    let index_fields = sorted
+        .into_iter()
         .map(|index| {
             let mut keys: Vec<u16> = index.columns.iter().map(|&i| i as u16).collect();
             keys.extend(key_columns.iter().filter(|c| !index.columns.contains(c)).map(|&i| i as u16));
@@ -402,7 +444,7 @@ pub fn schema_message(
                 system_defined: index.system,
                 spatial: false,
                 fulltext: None,
-                vector_distance: None,
+                vector_distance: index.vector.map(|d| d as u8),
             }
         })
         .collect();

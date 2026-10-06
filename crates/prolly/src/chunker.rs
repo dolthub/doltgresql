@@ -37,7 +37,7 @@ const TARGET_SIZE: f64 = 4096.0;
 const MAX_VECTOR_OFFSET: usize = u16::MAX as usize;
 
 /// level_salt returns the hash seed of the splitter at the level, as Dolt's levelSalt does.
-fn level_salt(level: u8) -> u64 {
+pub(crate) fn level_salt(level: u8) -> u64 {
     assert!(level < 15, "prolly trees have at most 15 levels");
     let full = Sha512::digest([level + 1]);
     u64::from_le_bytes(full[..8].try_into().unwrap())

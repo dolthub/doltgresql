@@ -747,10 +747,11 @@ fn test_pgvector_upstream_index() {
                     },
                     ..A
                 },
+                // Doltgres extension: Dolt stores only a vector index's distance, so TRUNCATE cannot tell that it rebuilt an
+                // ivfflat index and warn about its recall.
                 ScriptTestAssertion {
                     query: "TRUNCATE t;",
                     expected: Expected::Tag("TRUNCATE TABLE"),
-                    notices: &[Diagnostic { code: "00000", message: "ivfflat index created with little data", detail: "This will cause low recall.", hint: "Drop the index until the table has more data.", ..N }],
                     ..A
                 },
                 ScriptTestAssertion {

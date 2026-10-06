@@ -23,6 +23,22 @@ use crate::types::Value;
 /// FUNCTIONS are the session and server functions.
 pub const FUNCTIONS: &[Function] = &[
     Function {
+        name: "pg_get_indexdef",
+        args: &[crate::oid::OID],
+        ret: TEXT,
+        strict: true,
+        variadic: false,
+        implementation: pg_get_indexdef,
+    },
+    Function {
+        name: "pg_get_indexdef",
+        args: &[crate::oid::OID, crate::oid::INT4, BOOL],
+        ret: TEXT,
+        strict: true,
+        variadic: false,
+        implementation: pg_get_indexdef,
+    },
+    Function {
         name: "format_type",
         args: &[crate::oid::OID, crate::oid::INT4],
         ret: TEXT,
@@ -189,4 +205,19 @@ fn format_type(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         return Ok(Value::Text("-".into()));
     }
     Ok(Value::Text(crate::cast::format_type(type_oid, modifier).unwrap_or_else(|| "???".into())))
+}
+
+/// pg_get_indexdef returns an index's CREATE INDEX statement, or one of its columns for a positive column number, or
+/// NULL for an OID that no index has.
+fn pg_get_indexdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let index = match &args[0] {
+        Value::Oid(oid) => *oid,
+        Value::Reg(reg) => reg.oid,
+        _ => 0,
+    };
+    let column = match args.get(1) {
+        Some(Value::Int4(column)) => *column,
+        _ => 0,
+    };
+    Ok(ctx.index_definition_of(index, column)?.map_or(Value::Null, Value::Text))
 }

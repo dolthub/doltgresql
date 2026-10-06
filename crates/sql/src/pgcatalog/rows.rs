@@ -200,6 +200,8 @@ pub struct TableIndex {
     pub primary: bool,
     pub descending: Vec<bool>,
     pub nulls_first: Vec<bool>,
+    /// The distance of a vector index.
+    pub vector: Option<prolly::Distance>,
 }
 
 /// table_indexes returns a table's primary key index and its visible secondary indexes.
@@ -213,6 +215,7 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
             primary: true,
             descending: vec![false; table.key_columns.len()],
             nulls_first: vec![false; table.key_columns.len()],
+            vector: None,
         });
     }
     for index in table.indexes.iter().filter(|i| !i.system) {
@@ -223,6 +226,7 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
             primary: false,
             descending: index.descending.clone(),
             nulls_first: index.nulls_last.iter().map(|&l| !l).collect(),
+            vector: index.vector,
         });
     }
     out
@@ -600,7 +604,12 @@ impl Ctx<'_> {
             rows.push(row);
             for index in indexes {
                 let index_relation = index_oid(&table.schema, &table.name, &index.name);
-                let mut row = class_row(index_relation, &index.name, namespace, "i", index.columns.len() as i16, 403);
+                let method = match index.vector {
+                    Some(_) => super::extensions::access_method_oid("hnsw"),
+                    None => 403,
+                };
+                let mut row =
+                    class_row(index_relation, &index.name, namespace, "i", index.columns.len() as i16, method);
                 row.extend([
                     ("relfilenode", oid(index_relation)),
                     ("relpages", int4(1)),
@@ -833,6 +842,28 @@ impl Ctx<'_> {
             }
         }
         Ok(())
+    }
+
+    /// index_definition_of returns the definition of the index with the OID as pg_get_indexdef prints it, or the name
+    /// of one of its columns for a positive column number, or None when no index has the OID.
+    pub(crate) fn index_definition_of(&mut self, index: u32, column: i32) -> Result<Option<String>> {
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            for candidate in table_indexes(table) {
+                if index_oid(&table.schema, &table.name, &candidate.name) != index {
+                    continue;
+                }
+                return Ok(Some(match usize::try_from(column) {
+                    Ok(position) if position >= 1 => candidate
+                        .columns
+                        .get(position - 1)
+                        .map(|&c| crate::engine::quote_identifier(&table.columns[c].name))
+                        .unwrap_or_default(),
+                    _ => index_definition(table, &candidate),
+                }));
+            }
+        }
+        Ok(None)
     }
 
     /// pg_constraint lists the primary key, unique, check, and foreign key constraints of the user tables.
@@ -1070,6 +1101,9 @@ fn rule_letter(rule: Rule) -> &'static str {
 
 /// index_definition returns an index's CREATE INDEX statement as pg_get_indexdef prints it.
 pub fn index_definition(table: &TableDef, index: &TableIndex) -> String {
+    let rendering = index.vector.and_then(|distance| {
+        crate::extensions::vector_rendering(distance, table.columns[*index.columns.first()?].ty.oid)
+    });
     let columns: Vec<String> = index
         .columns
         .iter()
@@ -1082,15 +1116,20 @@ pub fn index_definition(table: &TableDef, index: &TableIndex) -> String {
                 (false, true) => column.push_str(" NULLS FIRST"),
                 (false, false) => {}
             }
+            if let Some((_, class)) = &rendering {
+                column.push(' ');
+                column.push_str(class);
+            }
             column
         })
         .collect();
     format!(
-        "CREATE {}INDEX {} ON {}.{} USING btree ({})",
+        "CREATE {}INDEX {} ON {}.{} USING {} ({})",
         if index.unique { "UNIQUE " } else { "" },
         crate::engine::quote_identifier(&index.name),
         crate::engine::quote_identifier(&table.schema),
         crate::engine::quote_identifier(&table.name),
+        rendering.as_ref().map_or("btree", |(method, _)| method),
         columns.join(", ")
     )
 }
