@@ -305,6 +305,26 @@ func TestPgAttributeViewColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Skip: true, // TODO: pg_attribute resolves a view's tables using the current search_path
+			Name: "pg_attribute includes view columns outside the search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA other;`,
+				`SET search_path = other;`,
+				`CREATE TABLE remote (id INT PRIMARY KEY, label TEXT);`,
+				`CREATE VIEW v AS SELECT id, label AS name FROM remote;`,
+				`SET search_path = public;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, a.atttypid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname = 'v' ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", uint32(23)},
+						{"name", uint32(25)},
+					},
+				},
+			},
+		},
 	})
 }
 
@@ -6839,6 +6859,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1241754361, "dolt_tags_dolt_tags_name_idx_key", 2200, "i"},
 						{2969045375, "commits_from", 1634633383, "i"},
 						{1819666711, "commits_to", 1634633383, "i"},
+						{3962040469, "dolt_blame_t1", 1634633383, "v"},
 						{1763579892, "dolt_branches", 1634633383, "r"},
 						{3929519011, "dolt_branches_dolt_branches_name_idx_key", 1634633383, "i"},
 						{1212681264, "dolt_column_diff", 1634633383, "r"},

@@ -134,7 +134,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Skip: true, // TODO: dolt blame will not work until the first query (with clause) works
 			Name: "dolt blame with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -173,15 +172,15 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, committer FROM dolt_blame_test`,
-					Expected: []sql.Row{{10, "John Doe"}},
+					Expected: []sql.Row{{1, "John Doe"}},
 				},
 				{
 					Query:    `SELECT id, committer FROM public.dolt_blame_test`,
-					Expected: []sql.Row{{10, "John Doe"}},
+					Expected: []sql.Row{{1, "John Doe"}},
 				},
 				{
 					Query:    `SELECT dolt_blame_test.id FROM public.dolt_blame_test`,
-					Expected: []sql.Row{{10}},
+					Expected: []sql.Row{{1}},
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_blame_test`,
@@ -204,8 +203,8 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT dolt_commit('-Am', 'add test_sch')`,
-					Expected: []sql.Row{},
+					Query:            `SELECT dolt_commit('-Am', 'add test_sch')`,
+					SkipResultsCheck: true,
 				},
 				{
 					Query:    `SELECT id FROM newschema.dolt_blame_test_sch`,
@@ -213,7 +212,63 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT id, committer FROM public.dolt_blame_test`,
-					Expected: []sql.Row{{10, "John Doe"}},
+					Expected: []sql.Row{{1, "John Doe"}},
+				},
+				{
+					Query:    `CREATE TABLE "Test-2" ("P-K" INT PRIMARY KEY)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO "Test-2" VALUES (12)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'add Test-2')`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT "P-K", message FROM "dolt_blame_Test-2"`,
+					Expected: []sql.Row{{12, "add Test-2"}},
+				},
+				{
+					Query:    `CREATE TABLE keyless (v INT)`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT schemaname, viewname FROM pg_views WHERE viewname LIKE 'dolt_blame%'`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SET dolt_show_system_tables = 1`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT schemaname, viewname FROM pg_views WHERE viewname LIKE 'dolt_blame%' ORDER BY 1, 2`,
+					Expected: []sql.Row{{"newschema", "dolt_blame_Test-2"}, {"newschema", "dolt_blame_test_sch"}, {"public", "dolt_blame_test"}},
+				},
+				{
+					Query:    `SELECT relname, relkind FROM pg_class WHERE relname LIKE 'dolt_blame%' ORDER BY 1`,
+					Expected: []sql.Row{{"dolt_blame_Test-2", "v"}, {"dolt_blame_test", "v"}, {"dolt_blame_test_sch", "v"}},
+				},
+				{
+					Query:    `SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_name LIKE 'dolt_blame%' ORDER BY 1, 2`,
+					Expected: []sql.Row{{"newschema", "dolt_blame_Test-2", "VIEW"}, {"newschema", "dolt_blame_test_sch", "VIEW"}, {"public", "dolt_blame_test", "VIEW"}},
+				},
+				{
+					Query:    `SELECT count(*) FROM pg_tables WHERE tablename LIKE 'dolt_blame%'`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `CREATE VIEW dolt_blame_test_sch AS SELECT 1 AS x`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT schemaname, viewname FROM pg_views WHERE viewname = 'dolt_blame_test_sch'`,
+					Expected: []sql.Row{{"newschema", "dolt_blame_test_sch"}},
+				},
+				{
+					Query:    `SELECT id FROM dolt_blame_test_sch`,
+					Expected: []sql.Row{{11}},
 				},
 			},
 		},
@@ -3155,6 +3210,44 @@ WHERE to_commit = dolt_hashof('HEAD')
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM dolt_workspace_test`,
 					Expected: []sql.Row{{0, "f", nil, 12}},
+				},
+			},
+		},
+		{
+			Name: "dolt blame catalog columns outside search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA other`,
+				`CREATE TABLE other.remote (id INT PRIMARY KEY)`,
+				`INSERT INTO other.remote VALUES (11)`,
+				`SELECT dolt_commit('-Am', 'add remote')`,
+				`SET dolt_show_system_tables = 1`,
+				`SET search_path = public`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT id FROM other.dolt_blame_remote`,
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Skip: true, // TODO: pg_attribute resolves a view's tables using the current search_path
+					Query: `SELECT a.attname
+						FROM pg_attribute a
+						JOIN pg_class c ON a.attrelid = c.oid
+						WHERE c.relname = 'dolt_blame_remote'
+							AND a.attname = 'id'`,
+					Expected: []sql.Row{{"id"}},
+				},
+				{
+					Query:    `SET search_path = other`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT a.attname
+						FROM pg_attribute a
+						JOIN pg_class c ON a.attrelid = c.oid
+						WHERE c.relname = 'dolt_blame_remote'
+							AND a.attname = 'id'`,
+					Expected: []sql.Row{{"id"}},
 				},
 			},
 		},
