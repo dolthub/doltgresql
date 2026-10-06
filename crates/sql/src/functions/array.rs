@@ -20,7 +20,7 @@ use super::{ANYARRAY, ANYELEMENT, Function};
 use crate::array::{self, Array};
 use crate::error::{PgError, Result, code};
 use crate::expr::compare_values;
-use crate::oid::{BOOL, INT4, TEXT, TEXT_ARRAY};
+use crate::oid::{BOOL, INT4, RECORD, TEXT, TEXT_ARRAY};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -39,6 +39,12 @@ const fn n(name: &'static str, args: &'static [u32], ret: u32, implementation: s
 
 /// FUNCTIONS are the array functions.
 pub const FUNCTIONS: &[Function] = &[
+    f("record_eq", &[RECORD, RECORD], BOOL, |_, a| Ok(Value::Bool(compare_values(&a[0], &a[1]).is_eq()))),
+    f("record_ne", &[RECORD, RECORD], BOOL, |_, a| Ok(Value::Bool(compare_values(&a[0], &a[1]).is_ne()))),
+    f("record_lt", &[RECORD, RECORD], BOOL, |_, a| Ok(Value::Bool(compare_values(&a[0], &a[1]).is_lt()))),
+    f("record_le", &[RECORD, RECORD], BOOL, |_, a| Ok(Value::Bool(compare_values(&a[0], &a[1]).is_le()))),
+    f("record_gt", &[RECORD, RECORD], BOOL, |_, a| Ok(Value::Bool(compare_values(&a[0], &a[1]).is_gt()))),
+    f("record_ge", &[RECORD, RECORD], BOOL, |_, a| Ok(Value::Bool(compare_values(&a[0], &a[1]).is_ge()))),
     f("array_length", &[ANYARRAY, INT4], INT4, array_length),
     f("array_lower", &[ANYARRAY, INT4], INT4, array_lower),
     f("array_upper", &[ANYARRAY, INT4], INT4, array_upper),

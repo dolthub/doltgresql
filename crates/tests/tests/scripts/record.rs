@@ -1438,3 +1438,184 @@ fn test_records() {
         },
     ]);
 }
+
+#[test]
+fn test_row_comparison_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "row constructor comparisons",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) = ROW(1, 2), ROW(1, NULL) = ROW(1, 1), ROW(1, NULL) = ROW(2, 1), ROW(1, NULL) <> ROW(2, 1), ROW(NULL, 4) <> ROW(NULL, 4);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), Null, T("f"), T("t"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) < ROW(1, 3), ROW(2, 2) < ROW(2, NULL), ROW(1, 2) < ROW(NULL, 3), ROW(1, NULL) <= ROW(1, 2), ROW(NULL, 1) >= ROW(2, 1), (1, 2) >= (1, 2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), Null, Null, Null, Null, T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) = ROW(1);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "unequal number of entries in row expressions", position: 18, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) < ROW(1, 2, 3);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "unequal number of entries in row expressions", position: 18, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW() = ROW();",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot compare rows of zero length", position: 14, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) IS DISTINCT FROM ROW(1, NULL), ROW(1, NULL) IS NOT DISTINCT FROM ROW(1, NULL);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(NULL) IS NULL, ROW(NULL, NULL) IS NULL, ROW(NULL, 1) IS NULL, ROW(NULL, 1) IS NOT NULL, ROW(1, 2) IS NOT NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("f"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, NULL::INT4) IN (ROW(1, NULL::INT4), ROW(2, 3)), ROW(1, 2) IN (ROW(1, 2), ROW(3, 4)), ROW(1, 2) NOT IN (ROW(5, 6));",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[Null, T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) IN (ROW(1, 2), ROW(1));",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "unequal number of entries in row expressions", position: 18, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT record_eq(ROW(NULL::INT4), ROW(NULL::INT4)), record_lt(ROW(NULL::INT4), ROW(1)), record_gt(ROW(NULL::INT4), ROW(1));",
+                    expected: Expected::Rows {
+                        columns: &[Column("record_eq", BOOL), Column("record_lt", BOOL), Column("record_gt", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "rows compared to subqueries and composite values",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE sq (x INT, y INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sq VALUES (1, 2), (1, NULL), (3, 4);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) IN (SELECT x, y FROM sq), ROW(3, 5) IN (SELECT x, y FROM sq), ROW(1, 2) = ANY (SELECT x, y FROM sq), ROW(1, 3) < ALL (SELECT x, y FROM sq WHERE y IS NOT NULL);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) = (SELECT 1, 2), ROW(1, 2) < (SELECT 1, 3), ROW(1, NULL::INT4) = (SELECT 1, NULL::INT4), ROW(1, 2) = (SELECT x, y FROM sq WHERE x = 99);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) = (SELECT x, y FROM sq);",
+                    expected: Expected::Error(Diagnostic { code: "21000", message: "more than one row returned by a subquery used as an expression", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) IN (SELECT x FROM sq);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "subquery has too few columns", position: 18, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT x, y, (x, y) IN (SELECT 1, 2), (x, y) >= (1, 3) FROM sq ORDER BY x, y;",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4), Column("y", INT4), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("1"), T("2"), T("t"), T("f")],
+                            &[T("1"), Null, Null, Null],
+                            &[T("3"), T("4"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE ct AS (a INT, b INT);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, NULL)::ct = ROW(1, NULL)::ct, ROW(1, NULL)::ct = ROW(1, NULL::INT4), (ROW(1, NULL)::ct) IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

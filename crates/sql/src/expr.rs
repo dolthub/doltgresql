@@ -749,6 +749,93 @@ impl<'b, 'a> Binder<'b, 'a> {
     }
 }
 
+/// row_items returns the fields of a row constructor, `ROW(...)` or `(a, b)`, or None for any other expression.
+fn row_items(node: &Node) -> Option<&[Node]> {
+    match node.node.as_ref() {
+        Some(NodeEnum::RowExpr(row)) => Some(&row.args),
+        _ => None,
+    }
+}
+
+/// unequal_rows returns Postgres' error for comparing row constructors of different lengths.
+fn unequal_rows(location: i32) -> PgError {
+    PgError {
+        position: position(location),
+        ..PgError::new(code::SYNTAX_ERROR, "unequal number of entries in row expressions")
+    }
+}
+
+/// zero_length_rows returns Postgres' error for comparing empty row constructors.
+fn zero_length_rows(location: i32) -> PgError {
+    PgError {
+        position: position(location),
+        ..PgError::new(code::FEATURE_NOT_SUPPORTED, "cannot compare rows of zero length")
+    }
+}
+
+impl Binder<'_, '_> {
+    /// row_compare binds a comparison of two row constructors field by field, as Postgres does: equality holds when
+    /// every pair is equal, inequality when any pair differs, and an ordering is decided by the first pair that differs,
+    /// with NULL wherever a NULL field leaves the answer unknown.
+    fn row_compare(&mut self, op: &str, left: &[Node], right: &[Node], location: i32) -> Result<Expr> {
+        if left.len() != right.len() {
+            return Err(unequal_rows(location));
+        }
+        let left = left.iter().map(|n| self.bind(n)).collect::<Result<Vec<_>>>()?;
+        let right = right.iter().map(|n| self.bind(n)).collect::<Result<Vec<_>>>()?;
+        self.compare_rows(op, left, right, location)
+    }
+
+    /// compare_rows binds a field-by-field comparison of two rows of bound fields, as row_compare describes.
+    fn compare_rows(&mut self, op: &str, left: Vec<Bound>, right: Vec<Bound>, location: i32) -> Result<Expr> {
+        if left.len() != right.len() {
+            return Err(unequal_rows(location));
+        }
+        if left.is_empty() {
+            return Err(zero_length_rows(location));
+        }
+        let pair = |binder: &mut Self, op: &str, i: usize| -> Result<Expr> {
+            Ok(binder.binary(op, left[i].clone(), right[i].clone(), location)?.0)
+        };
+        let and = |l: Expr, r: Expr| Expr::And(Box::new(l), Box::new(r));
+        let or = |l: Expr, r: Expr| Expr::Or(Box::new(l), Box::new(r));
+        let last = left.len() - 1;
+        match op {
+            "=" => {
+                let mut result = pair(self, "=", 0)?;
+                for i in 1..=last {
+                    result = and(result, pair(self, "=", i)?);
+                }
+                Ok(result)
+            }
+            "<>" | "!=" => {
+                let mut result = pair(self, "<>", 0)?;
+                for i in 1..=last {
+                    result = or(result, pair(self, "<>", i)?);
+                }
+                Ok(result)
+            }
+            "<" | "<=" | ">" | ">=" => {
+                let strict = if op.starts_with('<') { "<" } else { ">" };
+                let mut result = pair(self, op, last)?;
+                for i in (0..last).rev() {
+                    let decided = pair(self, strict, i)?;
+                    let equal = pair(self, "=", i)?;
+                    result = or(decided, and(equal, result));
+                }
+                Ok(result)
+            }
+            _ => Err(PgError {
+                position: position(location),
+                ..PgError::new(
+                    code::UNDEFINED_FUNCTION,
+                    format!("could not determine interpretation of row comparison operator {op}"),
+                )
+            }),
+        }
+    }
+}
+
 /// operand returns an operand of an operator expression.
 fn operand(side: &Option<Box<Node>>) -> Result<&Node> {
     side.as_deref().ok_or_else(|| PgError::internal("no operand"))
@@ -764,6 +851,33 @@ impl<'b, 'a> Binder<'b, 'a> {
                 if e.lexpr.is_none() {
                     let right = self.bind(operand(&e.rexpr)?)?;
                     return unary(&op, right, e.location);
+                }
+                if let (Some(left), Some(right)) = (row_items(operand(&e.lexpr)?), row_items(operand(&e.rexpr)?)) {
+                    return Ok((self.row_compare(&op, left, right, e.location)?, typ(oid::BOOL)));
+                }
+                if let (Some(items), Some(NodeEnum::SubLink(link))) =
+                    (row_items(operand(&e.lexpr)?), operand(&e.rexpr)?.node.as_ref())
+                    && link.sub_link_type == pg_query::protobuf::SubLinkType::ExprSublink as i32
+                    && let Some(NodeEnum::SelectStmt(select)) = link.subselect.as_deref().and_then(|n| n.node.as_ref())
+                {
+                    let query = Planner { ctx: &mut *self.ctx, outer: self.scopes.clone() }.plan_query(select)?;
+                    if query.columns.len() != items.len() {
+                        let message = if query.columns.len() > items.len() {
+                            "subquery has too many columns"
+                        } else {
+                            "subquery has too few columns"
+                        };
+                        return Err(PgError {
+                            position: position(e.location),
+                            ..PgError::new(code::SYNTAX_ERROR, message)
+                        });
+                    }
+                    let left = items.iter().map(|n| self.bind(n)).collect::<Result<Vec<_>>>()?;
+                    let subquery = Expr::Scalar(Box::new(query.plan));
+                    let right = (0..items.len())
+                        .map(|i| (Expr::Field(Box::new(subquery.clone()), i), query.types[i]))
+                        .collect();
+                    return Ok((self.compare_rows(&op, left, right, e.location)?, typ(oid::BOOL)));
                 }
                 let left = self.bind(operand(&e.lexpr)?)?;
                 let right = self.bind(operand(&e.rexpr)?)?;
@@ -781,6 +895,14 @@ impl<'b, 'a> Binder<'b, 'a> {
                 };
                 let mut result: Option<Expr> = None;
                 for item in &list.items {
+                    if let (Some(left), Some(right)) = (row_items(left_node), row_items(item)) {
+                        let test = self.row_compare(cmp, left, right, e.location)?;
+                        result = Some(match result {
+                            Some(previous) => join(previous, test),
+                            None => test,
+                        });
+                        continue;
+                    }
                     let left = self.bind(left_node)?;
                     let right = self.bind(item)?;
                     let (test, _) = self.binary(cmp, left, right, e.location)?;
@@ -824,6 +946,25 @@ impl<'b, 'a> Binder<'b, 'a> {
                 Ok((Expr::NullIf(Box::new(left_expr), Box::new(test)), ty))
             }
             AExprKind::AexprDistinct | AExprKind::AexprNotDistinct => {
+                if let (Some(left), Some(right)) = (row_items(operand(&e.lexpr)?), row_items(operand(&e.rexpr)?)) {
+                    if left.len() != right.len() {
+                        return Err(unequal_rows(e.location));
+                    }
+                    let mut result: Option<Expr> = None;
+                    for (l, r) in left.iter().zip(right) {
+                        let (l, r) = (self.bind(l)?, self.bind(r)?);
+                        let (test, _) = self.binary("=", l, r, e.location)?;
+                        let Expr::Compare(_, l, r) = test else { return Err(PgError::internal("a distinct test")) };
+                        let distinct = Expr::DistinctFrom(l, r, false);
+                        result = Some(match result {
+                            Some(previous) => Expr::Or(Box::new(previous), Box::new(distinct)),
+                            None => distinct,
+                        });
+                    }
+                    let result = result.ok_or_else(|| zero_length_rows(e.location))?;
+                    let result = if kind == AExprKind::AexprNotDistinct { Expr::Not(Box::new(result)) } else { result };
+                    return Ok((result, typ(oid::BOOL)));
+                }
                 let left = self.bind(operand(&e.lexpr)?)?;
                 let right = self.bind(operand(&e.rexpr)?)?;
                 let (test, _) = self.binary("=", left, right, e.location)?;
@@ -929,6 +1070,31 @@ impl<'b, 'a> Binder<'b, 'a> {
                 Ok((Expr::Scalar(Box::new(query.plan)), query.types[0]))
             }
             T::AnySublink | T::AllSublink => {
+                let test =
+                    link.testexpr.as_deref().ok_or_else(|| PgError::internal("a subquery test without a value"))?;
+                if let Some(items) = row_items(test) {
+                    if items.len() != query.columns.len() {
+                        let message = if query.columns.len() > items.len() {
+                            "subquery has too many columns"
+                        } else {
+                            "subquery has too few columns"
+                        };
+                        return Err(PgError {
+                            position: position(link.location),
+                            ..PgError::new(code::SYNTAX_ERROR, message)
+                        });
+                    }
+                    let op = link.oper_name.iter().filter_map(node_name).next_back().unwrap_or("=").to_string();
+                    let left = items.iter().map(|n| self.bind(n)).collect::<Result<Vec<_>>>()?;
+                    let right = (0..items.len())
+                        .map(|i| (Expr::Field(Box::new(Expr::SubqueryValue), i), query.types[i]))
+                        .collect();
+                    let comparison = self.compare_rows(&op, left, right, link.location)?;
+                    return Ok((
+                        Expr::AnySubquery(Box::new(comparison), Box::new(query.plan), kind == T::AllSublink),
+                        typ(oid::BOOL),
+                    ));
+                }
                 if query.columns.len() != 1 {
                     let message = if query.columns.len() > 1 {
                         "subquery has too many columns"
@@ -965,8 +1131,13 @@ impl<'b, 'a> Binder<'b, 'a> {
 
     /// binary binds a binary operator, resolving its operand types as Postgres does for the built-in operators.
     fn binary(&mut self, op: &str, left: Bound, right: Bound, location: i32) -> Result<Bound> {
-        let left = (left.0, crate::usertypes::base_type(left.1));
-        let right = (right.0, crate::usertypes::base_type(right.1));
+        let mut left = (left.0, crate::usertypes::base_type(left.1));
+        let mut right = (right.0, crate::usertypes::base_type(right.1));
+        if is_composite(left.1.oid) && right.1.oid == oid::RECORD {
+            right = coerce(right, left.1, false, location)?;
+        } else if is_composite(right.1.oid) && left.1.oid == oid::RECORD {
+            left = coerce(left, right.1, false, location)?;
+        }
         let (lt, rt) = (left.1.oid, right.1.oid);
         let missing = || PgError {
             position: position(location),
@@ -1905,6 +2076,7 @@ impl Expr {
             Expr::Field(expr, index) => match expr.eval(ctx, row)? {
                 Value::Composite(c) => c.fields.get(*index).cloned().unwrap_or(Value::Null),
                 Value::Record(fields) => fields.get(*index).cloned().unwrap_or(Value::Null),
+                value if *index == 0 => value,
                 _ => Value::Null,
             },
             Expr::Arith(op, left, right, ty) => {
@@ -1961,7 +2133,11 @@ impl Expr {
                 Value::Bool(b) => Value::Bool(!b),
                 _ => Value::Null,
             },
-            Expr::IsNull(expr, negated) => Value::Bool(expr.eval(ctx, row)?.is_null() != *negated),
+            Expr::IsNull(expr, negated) => match expr.eval(ctx, row)? {
+                Value::Record(fields) => Value::Bool(fields.iter().all(|f| f.is_null() != *negated)),
+                Value::Composite(c) => Value::Bool(c.fields.iter().all(|f| f.is_null() != *negated)),
+                value => Value::Bool(value.is_null() != *negated),
+            },
             Expr::Func(index, args) => {
                 let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
                 functions::call(ctx, *index, &values)?
@@ -2129,7 +2305,11 @@ impl Expr {
                         "more than one row returned by a subquery used as an expression",
                     ));
                 }
-                rows.into_iter().next().and_then(|r| r.into_iter().next()).unwrap_or(Value::Null)
+                match rows.into_iter().next() {
+                    Some(r) if r.len() > 1 => Value::Record(r),
+                    Some(r) => r.into_iter().next().unwrap_or(Value::Null),
+                    None => Value::Null,
+                }
             }
             Expr::AnySubquery(comparison, plan, all) => {
                 ctx.outer.push(row.to_vec());
@@ -2139,7 +2319,8 @@ impl Expr {
                 let previous = std::mem::replace(&mut ctx.subquery_value, Value::Null);
                 let mut result = None;
                 for r in rows? {
-                    ctx.subquery_value = r.into_iter().next().unwrap_or(Value::Null);
+                    ctx.subquery_value =
+                        if r.len() == 1 { r.into_iter().next().unwrap_or(Value::Null) } else { Value::Record(r) };
                     match comparison.eval(ctx, row)? {
                         Value::Bool(b) if b != *all => {
                             result = Some(b);
