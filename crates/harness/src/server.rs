@@ -150,7 +150,8 @@ impl Drop for Server {
     }
 }
 
-/// start_doltgres starts a doltgres binary with a config file that listens on the port.
+/// start_doltgres starts a doltgres binary with a config file that listens on the port. The testdata directory is
+/// copied into its working directory, so that relative file paths in statements resolve.
 fn start_doltgres(
     binary: &Path,
     directory: &Path,
@@ -162,6 +163,10 @@ fn start_doltgres(
     std::fs::write(&config_path, config).map_err(|err| err.to_string())?;
     let data_dir = directory.join("data");
     std::fs::create_dir_all(&data_dir).map_err(|err| err.to_string())?;
+    let testdata = crate::script::testdata_dir();
+    if testdata.is_dir() {
+        copy_dir(&testdata, &directory.join("testdata")).map_err(|err| format!("cannot copy testdata: {err}"))?;
+    }
     let log = std::fs::File::create(directory.join("server.log")).map_err(|err| err.to_string())?;
     let child = Command::new(binary)
         .arg("--config")

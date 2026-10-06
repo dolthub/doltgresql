@@ -660,11 +660,18 @@ pub fn run_wire_tests(tests: &[WireTest]) {
             Ok((mut session, mut conn)) => {
                 let (result, problems) = run_steps(&mut session, &mut conn, test, false);
                 if let Some(err) = result.error {
+                    crate::script::record_failure(test.name, "wire", "", &err);
                     failures.push(format!("{}: {err}", test.name));
                 }
-                failures.extend(problems.into_iter().map(|p| format!("{}: {p}", test.name)));
+                for problem in problems {
+                    crate::script::record_failure(test.name, "wire", "", &problem);
+                    failures.push(format!("{}: {problem}", test.name));
+                }
             }
-            Err(err) => failures.push(format!("{}: {err}", test.name)),
+            Err(err) => {
+                crate::script::record_failure(test.name, "wire", "", &err);
+                failures.push(format!("{}: {err}", test.name));
+            }
         }
     }
     if !failures.is_empty() {

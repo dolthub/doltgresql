@@ -43,6 +43,12 @@ fn main() {
             capture(&args[2], &args[3], &args[4], jobs, filter);
         }
         Some("generate") if args.len() == 7 => {
+            let paths = ["testing/go/testdata", "testing/go/extensions/testdata", "crates/tests/testdata"]
+                .iter()
+                .filter_map(|p| std::fs::canonicalize(p).ok())
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
+            rust::TESTDATA_PATHS.set(paths).unwrap();
             let records = dump::read_dump(&args[2]);
             let pg = generate::read_captures(&args[3]);
             let go = generate::read_captures(&args[4]);
@@ -50,6 +56,8 @@ fn main() {
             let mut text = format!("{:#?}\n\n", report.sources);
             text.push_str(&report.notes.join("\n"));
             std::fs::write(&args[6], text).unwrap();
+            let sources: String = report.assertion_sources.iter().map(|s| format!("{s}\n")).collect();
+            std::fs::write(format!("{}.sources.jsonl", args[6]), sources).unwrap();
             eprintln!("{:#?}", report.sources);
         }
         Some("show-recording") if args.len() == 3 => match recordings::read_recording(std::path::Path::new(&args[2])) {

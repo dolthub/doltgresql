@@ -398,7 +398,10 @@ impl Session {
 
     /// set_up runs a setup statement on the default connection.
     pub fn set_up(&mut self, query: &str) -> Result<(), String> {
-        self.default.exec(query, &[]).map(|_| ()).map_err(|err| format!("error running setup query: {query}: {err}"))
+        self.default
+            .exec(&expand(query), &[])
+            .map(|_| ())
+            .map_err(|err| format!("error running setup query: {query}: {err}"))
     }
 
     /// connection returns the connection for an assertion's user, connecting as Connection.Connect does in the Go
@@ -573,20 +576,21 @@ pub fn effective_flow(assertion: &ScriptTestAssertion) -> Flow {
 
 /// execute sends an assertion's statement on the connection and observes the outcome.
 fn execute(conn: &mut Conn, assertion: &ScriptTestAssertion) -> Observation {
+    let query = expand(assertion.query);
     let args: Vec<Arg> = assertion.bind_vars.iter().map(|v| v.to_arg()).collect();
     if !assertion.copy_from_stdin_file.is_empty() {
         let data = match std::fs::read(testdata_dir().join(assertion.copy_from_stdin_file)) {
             Ok(data) => data,
             Err(err) => return Observation { client_error: Some(err.to_string()), ..Observation::default() },
         };
-        return match conn.copy_from(assertion.query, &data) {
+        return match conn.copy_from(&query, &data) {
             Ok(tag) => Observation { tag, ..Observation::default() },
             Err(err) => error_observation(err, Vec::new()),
         };
     }
     if !assertion.copy_round_trip_stdin_query.is_empty() {
-        return match conn.copy_to(assertion.query) {
-            Ok((data, _)) => match conn.copy_from(assertion.copy_round_trip_stdin_query, &data) {
+        return match conn.copy_to(&query) {
+            Ok((data, _)) => match conn.copy_from(&expand(assertion.copy_round_trip_stdin_query), &data) {
                 Ok(tag) => Observation { tag, copy_out: Some(data), ..Observation::default() },
                 Err(err) => error_observation(err, Vec::new()),
             },
@@ -594,13 +598,13 @@ fn execute(conn: &mut Conn, assertion: &ScriptTestAssertion) -> Observation {
         };
     }
     if !assertion.copy_to_stdout_file.is_empty() {
-        return match conn.copy_to(assertion.query) {
+        return match conn.copy_to(&query) {
             Ok((data, tag)) => Observation { tag, copy_out: Some(data), ..Observation::default() },
             Err(err) => error_observation(err, Vec::new()),
         };
     }
     match effective_flow(assertion) {
-        Flow::Query => match conn.query(assertion.query, &args) {
+        Flow::Query => match conn.query(&query, &args) {
             Ok(result) => {
                 let mut observation = Observation {
                     columns: result.fields.iter().map(|f| (f.name.clone(), f.data_type_oid)).collect(),
@@ -633,11 +637,24 @@ fn execute(conn: &mut Conn, assertion: &ScriptTestAssertion) -> Observation {
             }
             Err(err) => error_observation(err, Vec::new()),
         },
-        _ => match conn.exec(assertion.query, &args) {
+        _ => match conn.exec(&query, &args) {
             Ok(tag) => Observation { tag, ..Observation::default() },
             Err(err) => error_observation(err, Vec::new()),
         },
     }
+}
+
+/// TESTDATA_TOKEN stands for the absolute path of the testdata directory in queries and expectations, for statements
+/// that make the server read a file.
+pub const TESTDATA_TOKEN: &str = "{TESTDATA}";
+
+/// expand replaces TESTDATA_TOKEN with the absolute path of the testdata directory.
+pub fn expand(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.contains(TESTDATA_TOKEN) {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let dir = std::fs::canonicalize(testdata_dir()).unwrap_or_else(|_| testdata_dir());
+    std::borrow::Cow::Owned(text.replace(TESTDATA_TOKEN, &dir.to_string_lossy()))
 }
 
 /// render renders a result value as text.
@@ -743,11 +760,11 @@ pub fn check_other_rows(expected: &[&[Cell]], observation: &Observation) -> Vec<
 /// check_diagnostic compares an error or notice field by field.
 fn check_diagnostic(kind: &str, expected: &Diagnostic, actual: &ErrorFields, problems: &mut Vec<String>) {
     let mut differences = Vec::new();
-    if expected.message_contains && !actual.message.contains(expected.message) {
+    if expected.message_contains && !actual.message.contains(expand(expected.message).as_ref()) {
         differences.push(format!("message: expected to contain {:?}, got {:?}", expected.message, actual.message));
     }
     let mut compare = |field: &str, expected: &str, actual: &str| {
-        if expected != actual {
+        if expand(expected) != actual {
             differences.push(format!("{field}: expected {expected:?}, got {actual:?}"));
         }
     };
@@ -789,7 +806,7 @@ fn check_columns(expected: &[Column], actual: &[(String, u32)], problems: &mut V
 fn cell_matches(expected: &Cell, actual: &Option<String>) -> bool {
     match (expected, actual) {
         (Cell::Null, None) => true,
-        (Cell::Text(text), Some(value)) => text == value,
+        (Cell::Text(text), Some(value)) => expand(text) == value.as_str(),
         (Cell::Any, Some(_)) => true,
         _ => false,
     }
@@ -881,6 +898,47 @@ pub fn capture_script(target: &Target, script: &ScriptTest, repetitions: usize) 
     capture
 }
 
+/// The environment variable naming a file that receives one JSON line per failure, for tooling.
+pub const FAILURES_FILE_ENV: &str = "DOLTGRES_FAILURES_FILE";
+
+/// record_failure appends a failure to DOLTGRES_FAILURES_FILE when it is set, naming the running test, the script, and
+/// the part of the script that failed.
+pub(crate) fn record_failure(script: &str, part: &str, query: &str, problems: &str) {
+    let Some(path) = std::env::var_os(FAILURES_FILE_ENV) else { return };
+    let test = std::thread::current().name().unwrap_or("unknown").to_string();
+    let line = format!(
+        "{{\"test\":{},\"script\":{},\"part\":{},\"query\":{},\"problems\":{}}}\n",
+        json_string(&test),
+        json_string(script),
+        json_string(part),
+        json_string(query),
+        json_string(problems)
+    );
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        use std::io::Write as _;
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
+/// json_string renders a JSON string literal.
+fn json_string(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// run_script runs a single script against a fresh server, returning the failures.
 pub fn run_script(target: &Target, script: &ScriptTest, repetitions: usize) -> Vec<String> {
     let mut failures = Vec::new();
@@ -889,22 +947,31 @@ pub fn run_script(target: &Target, script: &ScriptTest, repetitions: usize) -> V
     }
     let mut session = match Session::start(target, script.database, script.server_config) {
         Ok(session) => session,
-        Err(err) => return vec![format!("{}: cannot start: {err}", script.name)],
+        Err(err) => {
+            record_failure(script.name, "start", "", &err);
+            return vec![format!("{}: cannot start: {err}", script.name)];
+        }
     };
-    for query in script.set_up_script {
+    for (index, query) in script.set_up_script.iter().enumerate() {
         if let Err(err) = session.set_up(query) {
+            record_failure(script.name, &format!("setup {index}"), query, &err);
             return vec![format!("{}: {err}", script.name)];
         }
     }
-    let assertions = focused(script.assertions, |a| a.focus, |a| format!("the assertion {:?}", a.query));
+    let focus = focused(script.assertions, |a| a.focus, |a| format!("the assertion {:?}", a.query)).len()
+        != script.assertions.len();
     for _ in 0..repetitions {
-        for assertion in &assertions {
+        for (index, assertion) in script.assertions.iter().enumerate() {
+            if focus && !assertion.focus {
+                continue;
+            }
             let observation = session.run(assertion);
             if observation.skipped {
                 continue;
             }
             let problems = check(assertion, &observation);
             if !problems.is_empty() {
+                record_failure(script.name, &format!("assertion {index}"), assertion.query, &problems.join("\n"));
                 failures.push(format!("{} / {}\n  {}", script.name, assertion.query, problems.join("\n  ")));
             }
         }

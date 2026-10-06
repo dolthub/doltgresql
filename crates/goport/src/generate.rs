@@ -246,6 +246,8 @@ pub struct Report {
     pub sources: BTreeMap<String, usize>,
     /// Lines for the review file.
     pub notes: Vec<String>,
+    /// Where each assertion's expectation came from, for matching against test failures.
+    pub assertion_sources: Vec<Value>,
 }
 
 /// generate_script renders one script.
@@ -296,6 +298,12 @@ fn generate_script(
         };
         let generated = generate_assertion(assertion, transaction, observation, source);
         *report.sources.entry(format!("{:?}", generated.source)).or_default() += 1;
+        report.assertion_sources.push(serde_json::json!({
+            "test": format!("{}::{}", go_file(record), rust::snake_case(record.test.split('/').next().unwrap())),
+            "script": name,
+            "part": format!("assertion {index}"),
+            "source": format!("{:?}", generated.source),
+        }));
         if generated.source != Source::Postgres || generated.note.is_some() {
             report.notes.push(format!(
                 "{} / {} / {}: {:?} {}",
@@ -379,6 +387,12 @@ fn generate_wire_test(
         _ => (None, "WireUnavailable"),
     };
     *report.sources.entry(source.into()).or_default() += 1;
+    report.assertion_sources.push(serde_json::json!({
+        "test": format!("{}::{}", go_file(record), rust::snake_case(record.test.split('/').next().unwrap())),
+        "script": name,
+        "part": "wire",
+        "source": source,
+    }));
     if source != "WirePostgres" {
         report.notes.push(format!(
             "{} / {name}: {source}: Postgres {}, Go {}",
@@ -539,7 +553,11 @@ pub fn generate(records: &[Record], pg: &Captures, go: &Captures, out_dir: &str)
     );
     main.push_str("#![allow(unused_imports)]\n\n");
     for module in &modules {
-        let _ = writeln!(main, "mod {module};");
+        if matches!(module.as_str(), "do" | "type" | "match" | "use" | "where" | "loop" | "move" | "ref") {
+            let _ = writeln!(main, "#[path = \"{module}.rs\"]\nmod {module}_statement;");
+        } else {
+            let _ = writeln!(main, "mod {module};");
+        }
     }
     std::fs::write(format!("{out_dir}/main.rs"), main).unwrap();
     report

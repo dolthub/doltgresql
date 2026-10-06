@@ -35,8 +35,21 @@ pub const LICENSE_HEADER: &str = "// Copyright 2026 Dolthub, Inc.
 // limitations under the License.
 ";
 
+/// TESTDATA_PATHS holds the absolute testdata paths that captures saw, which generated strings replace with the
+/// harness's testdata token.
+pub static TESTDATA_PATHS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
 /// string renders a string literal, using a raw string when escapes would hurt readability.
 pub fn string(text: &str) -> String {
+    let mut replaced = text.to_string();
+    for path in TESTDATA_PATHS.get().map(Vec::as_slice).unwrap_or_default() {
+        replaced = replaced.replace(path.as_str(), harness::script::TESTDATA_TOKEN);
+    }
+    literal(&replaced)
+}
+
+/// literal renders a string literal without any replacement.
+fn literal(text: &str) -> String {
     let needs_escape = text.contains(['"', '\\']) || text.contains('\n');
     let printable = text.chars().all(|c| c == '\n' || c == '\t' || !c.is_control());
     if !needs_escape || !printable {
@@ -67,7 +80,10 @@ pub fn snake_case(name: &str) -> String {
     for (i, c) in chars.iter().enumerate() {
         if c.is_ascii_uppercase() {
             let previous_lower = i > 0 && (chars[i - 1].is_ascii_lowercase() || chars[i - 1].is_ascii_digit());
-            let next_lower = i + 1 < chars.len() && chars[i + 1].is_ascii_lowercase();
+            let plural_acronym = i + 1 < chars.len()
+                && chars[i + 1] == 's'
+                && (i + 2 == chars.len() || chars[i + 2].is_ascii_uppercase());
+            let next_lower = i + 1 < chars.len() && chars[i + 1].is_ascii_lowercase() && !plural_acronym;
             let previous_upper = i > 0 && chars[i - 1].is_ascii_uppercase();
             if i > 0 && (previous_lower || (previous_upper && next_lower)) {
                 out.push('_');
