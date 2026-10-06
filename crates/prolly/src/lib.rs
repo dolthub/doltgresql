@@ -19,12 +19,14 @@
 
 mod blob;
 mod chunker;
+mod cursor;
 mod node;
 mod serialize;
 mod tuple;
 
-pub use blob::{BLOB_CHUNK_SIZE, read_blob, write_blob};
-pub use chunker::{Chunker, NodeSerializer, NodeSink};
+pub use blob::{BLOB_CHUNK_SIZE, NodeSink, read_blob, write_blob};
+pub use chunker::{Chunker, NodeSerializer, apply_mutations};
+pub use cursor::{Compare, NodeStore};
 pub use node::{ItemVisitor, Node, walk_leaves};
 pub use serialize::{
     AddressMapSerializer, CommitClosureSerializer, MergeArtifactsSerializer, ProllyMapSerializer, ProllyNode,

@@ -17,9 +17,10 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::Arc;
 
 use prolly::{
-    AddressMapSerializer, Chunker, CommitClosureSerializer, MergeArtifactsSerializer, Node, NodeSerializer,
+    AddressMapSerializer, Chunker, CommitClosureSerializer, MergeArtifactsSerializer, Node, NodeSerializer, NodeStore,
     ProllyMapSerializer,
 };
 use serial::Message;
@@ -87,19 +88,38 @@ fn rebuild(store: &GenerationalStore, node: &Node) -> (Hash, usize) {
 
 /// build adds the items to a chunker with the serializer.
 fn build<S: NodeSerializer>(store: &GenerationalStore, serializer: S, items: &[(Vec<u8>, Vec<u8>)]) -> (Hash, usize) {
-    let mut missing = 0;
-    let mut sink = |hash: Hash, _: &[u8]| {
-        if store.get(&hash)?.is_none() {
-            missing += 1;
-        }
-        Ok(())
-    };
-    let mut chunker = Chunker::new(serializer, &mut sink);
+    let mut nodes = FixtureNodes { store, written: HashMap::new(), missing: 0 };
+    let mut chunker = Chunker::new(serializer, &mut nodes);
     for (key, value) in items {
         chunker.add(key, value).unwrap();
     }
     let (root, _) = chunker.done().unwrap();
-    (root, missing)
+    (root, nodes.missing)
+}
+
+/// FixtureNodes reads a fixture's nodes and keeps the nodes a chunker writes, counting those the fixture lacks.
+struct FixtureNodes<'s> {
+    store: &'s GenerationalStore,
+    written: HashMap<Hash, Arc<Node>>,
+    missing: usize,
+}
+
+impl NodeStore for FixtureNodes<'_> {
+    fn read(&mut self, hash: &Hash) -> store::Result<Arc<Node>> {
+        match self.written.get(hash) {
+            Some(node) => Ok(node.clone()),
+            None => Ok(Arc::new(Node::load(self.store, hash)?)),
+        }
+    }
+
+    fn write(&mut self, hash: Hash, bytes: Vec<u8>) -> store::Result<Arc<Node>> {
+        if self.store.get(&hash)?.is_none() {
+            self.missing += 1;
+        }
+        let node = Arc::new(Node::decode(bytes)?);
+        self.written.insert(hash, node.clone());
+        Ok(node)
+    }
 }
 
 #[test]

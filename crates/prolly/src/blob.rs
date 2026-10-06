@@ -15,7 +15,10 @@
 use serial::{Blob, Message};
 use store::{ChunkReader, Hash, Result};
 
-use crate::{NodeSink, serialize_blob};
+use crate::serialize_blob;
+
+/// NodeSink receives each node a blob builder writes, with its address.
+pub type NodeSink<'a> = dyn FnMut(Hash, &[u8]) -> Result<()> + 'a;
 
 /// read_blob returns the bytes of the blob tree at the address: the payloads of its leaves in order.
 pub fn read_blob(reader: &dyn ChunkReader, hash: &Hash) -> Result<Vec<u8>> {
@@ -75,12 +78,7 @@ struct BlobLevelWrite {
 
 /// write_blob_level writes the next node of the level from the bytes at the position, where an internal node takes
 /// up to BLOB_FANOUT children and is written even when it ends up empty, as Go's blobLevelWriter is.
-fn write_blob_level(
-    data: &[u8],
-    position: &mut usize,
-    level: u8,
-    sink: &mut NodeSink<'_>,
-) -> Result<BlobLevelWrite> {
+fn write_blob_level(data: &[u8], position: &mut usize, level: u8, sink: &mut NodeSink<'_>) -> Result<BlobLevelWrite> {
     if level == 0 {
         if *position == data.len() {
             return Ok(BlobLevelWrite { node: None, leaves: 0, end: true });

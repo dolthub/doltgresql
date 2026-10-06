@@ -43,7 +43,8 @@ pub struct Node {
     values: Values,
     level: u8,
     tree_count: u64,
-    subtree_counts: Option<Range<usize>>,
+    /// The leaf item count under each child of an internal node.
+    subtree_counts: Vec<u64>,
 }
 
 /// range_of returns the range of a slice within the bytes it was taken from.
@@ -79,7 +80,10 @@ impl Node {
             (_, _, Some(addresses)) => Values::Addresses(range_of(&bytes, addresses)),
             _ => Values::None,
         };
-        let subtree_counts = tree.subtree_counts.map(|counts| range_of(&bytes, counts));
+        let subtree_counts = match tree.subtree_counts {
+            Some(counts) => decode_counts(counts, count)?,
+            None => Vec::new(),
+        };
         let (level, tree_count) = (tree.tree_level, tree.tree_count);
         Ok(Node { bytes, file_id, key_items, key_offsets, count, values, level, tree_count, subtree_counts })
     }
@@ -165,24 +169,31 @@ impl Node {
         serial::hash(self.value(index)?)
     }
 
-    /// subtree_counts returns the leaf item count under each child of an internal node, decoded from zigzag varint
-    /// deltas.
+    /// subtree_counts returns the leaf item count under each child of an internal node.
     pub fn subtree_counts(&self) -> Result<Vec<u64>> {
-        let Some(range) = &self.subtree_counts else { return Ok(Vec::new()) };
-        let mut bytes = &self.bytes[range.clone()];
-        let mut counts = Vec::with_capacity(self.count);
-        let mut previous: i64 = 0;
-        for _ in 0..self.count {
-            let (delta, len) = varint(bytes)?;
-            bytes = &bytes[len..];
-            previous += delta;
-            counts.push(previous as u64);
-        }
-        if !bytes.is_empty() {
-            return Err(corrupt("extra bytes after decoding varints"));
-        }
-        Ok(counts)
+        Ok(self.subtree_counts.clone())
     }
+
+    /// subtree_count returns the leaf item count under the child at the index of an internal node.
+    pub fn subtree_count(&self, index: usize) -> Result<u64> {
+        self.subtree_counts.get(index).copied().ok_or_else(|| corrupt("subtree count out of range"))
+    }
+}
+
+/// decode_counts decodes the zigzag varint deltas of a node's subtree counts.
+fn decode_counts(mut bytes: &[u8], count: usize) -> Result<Vec<u64>> {
+    let mut counts = Vec::with_capacity(count);
+    let mut previous: i64 = 0;
+    for _ in 0..count {
+        let (delta, len) = varint(bytes)?;
+        bytes = &bytes[len..];
+        previous += delta;
+        counts.push(previous as u64);
+    }
+    if !bytes.is_empty() {
+        return Err(corrupt("extra bytes after decoding varints"));
+    }
+    Ok(counts)
 }
 
 /// varint decodes a Go zigzag varint, returning it and its length.

@@ -15,8 +15,14 @@
 //! The chunker that splits sorted items into tree nodes where Dolt's does, so that the same items always build the
 //! same nodes.
 
+use std::cmp::Ordering;
+use std::sync::Arc;
+
 use sha2::{Digest, Sha512};
 use store::{Hash, Result};
+
+use crate::Node;
+use crate::cursor::{Compare, Cursor, NodeStore};
 
 /// MIN_CHUNK_SIZE is the size of items below which a node never ends.
 const MIN_CHUNK_SIZE: u32 = 1 << 9;
@@ -189,18 +195,6 @@ pub trait NodeSerializer {
     fn serialize(&self, keys: &[&[u8]], values: &[&[u8]], subtrees: &[u64], level: u8) -> Vec<u8>;
 }
 
-/// NodeSink receives each node the chunker writes, with its address.
-pub type NodeSink<'a> = dyn FnMut(Hash, &[u8]) -> Result<()> + 'a;
-
-/// Written is the last node a level wrote.
-struct Written {
-    hash: Hash,
-    bytes: Vec<u8>,
-    count: usize,
-    /// The address of the node's only child, when it is an internal node with one child.
-    only_child: Option<Hash>,
-}
-
 /// Level is the node a level is building.
 struct Level {
     splitter: KeySplitter,
@@ -208,38 +202,96 @@ struct Level {
     values: Vec<Vec<u8>>,
     subtrees: Vec<u64>,
     size: usize,
-    last_written: Option<Written>,
 }
 
 impl Level {
     fn new(level: u8) -> Level {
-        Level {
-            splitter: KeySplitter::new(level),
-            keys: Vec::new(),
-            values: Vec::new(),
-            subtrees: Vec::new(),
-            size: 0,
-            last_written: None,
-        }
+        Level { splitter: KeySplitter::new(level), keys: Vec::new(), values: Vec::new(), subtrees: Vec::new(), size: 0 }
     }
 }
 
-/// Chunker builds a tree from items added in key order, writing each node to a sink, as Dolt's chunker does for a
-/// tree built from empty.
+/// Chunker builds a tree from items in key order, as Dolt's chunker does: from empty, or along a cursor into an
+/// existing tree, where it keeps the existing tree's items between the edits it is given.
 pub struct Chunker<'a, S: NodeSerializer> {
     serializer: S,
-    sink: &'a mut NodeSink<'a>,
+    store: &'a mut dyn NodeStore,
     levels: Vec<Level>,
+    /// The position in the existing tree, whose level is each chunker level's cursor.
+    cursor: Option<Cursor>,
 }
 
 impl<'a, S: NodeSerializer> Chunker<'a, S> {
-    pub fn new(serializer: S, sink: &'a mut NodeSink<'a>) -> Chunker<'a, S> {
-        Chunker { serializer, sink, levels: vec![Level::new(0)] }
+    /// new returns a chunker that builds a tree from empty.
+    pub fn new(serializer: S, store: &'a mut dyn NodeStore) -> Chunker<'a, S> {
+        Chunker { serializer, store, levels: vec![Level::new(0)], cursor: None }
+    }
+
+    /// at_cursor returns a chunker that rebuilds the existing tree from the cursor's position on, having added the
+    /// items before it in its leaf and in the nodes above.
+    pub(crate) fn at_cursor(serializer: S, store: &'a mut dyn NodeStore, cursor: Cursor) -> Result<Chunker<'a, S>> {
+        let mut chunker = Chunker { serializer, store, levels: vec![Level::new(0)], cursor: Some(cursor) };
+        chunker.process_prefix(0)?;
+        Ok(chunker)
+    }
+
+    /// cursor returns the chunker's cursor.
+    fn cursor(&mut self) -> &mut Cursor {
+        self.cursor.as_mut().expect("chunker has no cursor")
+    }
+
+    /// has_cursor reports whether the level has a cursor into the existing tree.
+    fn has_cursor(&self, level: usize) -> bool {
+        self.cursor.as_ref().is_some_and(|cursor| level < cursor.levels.len())
+    }
+
+    /// process_prefix adds the items of the level's node before its cursor, as Dolt's processPrefix does.
+    fn process_prefix(&mut self, level: usize) -> Result<()> {
+        if self.cursor.as_ref().unwrap().has_parent(level) && self.levels.len() == level + 1 {
+            self.create_parent(level)?;
+        }
+        let end = self.cursor().levels[level].idx;
+        self.cursor().skip_to_node_start(level);
+        while self.cursor().levels[level].idx < end {
+            self.append_current(level)?;
+            let (cursor, store) = (self.cursor.as_mut().unwrap(), &mut *self.store);
+            cursor.advance(level, store)?;
+        }
+        Ok(())
+    }
+
+    /// append_current adds the cursor's current item at the level, returning whether it ended a node.
+    fn append_current(&mut self, level: usize) -> Result<bool> {
+        let cursor = self.cursor.as_ref().unwrap();
+        let (node, idx) = cursor.item(level);
+        let size = cursor.subtree_size(level)?;
+        self.append(level, node.key(idx)?, node.value(idx)?, size)
+    }
+
+    /// create_parent adds the level above the level, which first adds its own prefix when it has a cursor.
+    fn create_parent(&mut self, level: usize) -> Result<()> {
+        assert_eq!(self.levels.len(), level + 1, "chunker parent must be nil");
+        self.levels.push(Level::new(level as u8 + 1));
+        if self.has_cursor(level + 1) {
+            self.process_prefix(level + 1)?;
+        }
+        Ok(())
     }
 
     /// add appends a leaf item, which must sort after every item added before it.
     pub fn add(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
         self.append(0, key, value, 1).map(|_| ())
+    }
+
+    /// update replaces the cursor's current leaf item with the item.
+    pub(crate) fn update(&mut self, key: &[u8], value: &[u8]) -> Result<()> {
+        self.skip()?;
+        self.append(0, key, value, 1).map(|_| ())
+    }
+
+    /// skip drops the cursor's current leaf item.
+    pub(crate) fn skip(&mut self) -> Result<()> {
+        let (cursor, store) = (self.cursor.as_mut().unwrap(), &mut *self.store);
+        cursor.advance(0, store)
     }
 
     /// append adds an item to the level, ending the level's node where the splitter or the node's capacity says,
@@ -266,34 +318,90 @@ impl<'a, S: NodeSerializer> Chunker<'a, S> {
         Ok(false)
     }
 
-    /// write_node serializes the level's node, writes it to the sink, and empties the level.
-    fn write_node(&mut self, level: usize) -> Result<(Hash, Vec<u8>, u64)> {
+    /// write_node serializes the level's node, writes it to the store, and empties the level.
+    fn write_node(&mut self, level: usize) -> Result<(Hash, Arc<Node>, Vec<u8>, u64)> {
         let l = &mut self.levels[level];
         let keys: Vec<&[u8]> = l.keys.iter().map(Vec::as_slice).collect();
         let values: Vec<&[u8]> = l.values.iter().map(Vec::as_slice).collect();
         let bytes = self.serializer.serialize(&keys, &values, &l.subtrees, level as u8);
         let hash = Hash::of(&bytes);
-        (self.sink)(hash, &bytes)?;
         let last_key = l.keys.last().cloned().unwrap_or_default();
         let tree_count = if level == 0 { l.keys.len() as u64 } else { l.subtrees.iter().sum() };
-        let only_child = if level > 0 && l.keys.len() == 1 { Some(serial::hash(&l.values[0])?) } else { None };
-        l.last_written = Some(Written { hash, bytes, count: l.keys.len(), only_child });
         l.keys.clear();
         l.values.clear();
         l.subtrees.clear();
         l.size = 0;
-        Ok((hash, last_key, tree_count))
+        let node = self.store.write(hash, bytes)?;
+        Ok((hash, node, last_key, tree_count))
     }
 
     /// handle_boundary ends the level's node and adds it to the level above.
     fn handle_boundary(&mut self, level: usize) -> Result<()> {
         assert!(!self.levels[level].keys.is_empty(), "in-progress chunk must be non-empty to create chunk boundary");
-        let (hash, last_key, tree_count) = self.write_node(level)?;
+        let (hash, _, last_key, tree_count) = self.write_node(level)?;
         if self.levels.len() == level + 1 {
-            self.levels.push(Level::new(level as u8 + 1));
+            self.create_parent(level)?;
         }
         self.append(level + 1, &last_key, &hash.0, tree_count)?;
         self.levels[level].splitter.reset();
+        Ok(())
+    }
+
+    /// advance_to adds the existing tree's items from the cursor up to the other cursor, stopping early at a node
+    /// boundary that the existing tree shares, from where the level above catches up instead, as Dolt's advanceTo
+    /// does.
+    pub(crate) fn advance_to(&mut self, level: usize, next: &mut Cursor) -> Result<()> {
+        let cmp = self.cursor().compare(next, level);
+        if cmp == 0 {
+            return Ok(());
+        }
+        if cmp > 0 {
+            while self.cursor().compare(next, level) > 0 {
+                next.advance(level, &mut *self.store)?;
+            }
+            return Ok(());
+        }
+        let mut split = self.append_current(level)?;
+        while !(split && self.cursor().at_node_end(level)) {
+            let (cursor, store) = (self.cursor.as_mut().unwrap(), &mut *self.store);
+            cursor.advance(level, store)?;
+            if self.cursor().compare(next, level) >= 0 {
+                return Ok(());
+            }
+            split = self.append_current(level)?;
+        }
+        if !self.cursor().has_parent(level) || !next.has_parent(level) {
+            self.cursor().copy_from(next, level);
+            return Ok(());
+        }
+        if self.cursor().compare(next, level + 1) == 0 {
+            self.cursor().copy_from(next, level);
+            return Ok(());
+        }
+        let (cursor, store) = (self.cursor.as_mut().unwrap(), &mut *self.store);
+        cursor.advance(level + 1, store)?;
+        self.cursor().invalidate_at_end(level);
+        self.advance_to(level + 1, next)?;
+        self.cursor().copy_from(next, level);
+        self.process_prefix(level)
+    }
+
+    /// finalize_cursor adds the existing tree's items after the cursor until a node ends where an existing node
+    /// ends, as Dolt's finalizeCursor does.
+    fn finalize_cursor(&mut self, level: usize) -> Result<()> {
+        while self.cursor().valid(level) {
+            let ended = self.append_current(level)?;
+            if ended && self.cursor().at_node_end(level) {
+                break;
+            }
+            let (cursor, store) = (self.cursor.as_mut().unwrap(), &mut *self.store);
+            cursor.advance(level, store)?;
+        }
+        if self.cursor().has_parent(level) {
+            let (cursor, store) = (self.cursor.as_mut().unwrap(), &mut *self.store);
+            cursor.advance(level + 1, store)?;
+            self.cursor().finish(level);
+        }
         Ok(())
     }
 
@@ -302,32 +410,87 @@ impl<'a, S: NodeSerializer> Chunker<'a, S> {
         self.levels[level..].iter().any(|l| !l.keys.is_empty())
     }
 
-    /// done finishes the tree and returns its root node's address and bytes.
-    pub fn done(mut self) -> Result<(Hash, Vec<u8>)> {
+    /// done finishes the tree and returns its root node with its address.
+    pub fn done(mut self) -> Result<(Hash, Arc<Node>)> {
         let mut level = 0;
-        while self.levels.len() > level + 1 && self.any_pending(level + 1) {
-            if !self.levels[level].keys.is_empty() {
-                self.handle_boundary(level)?;
+        loop {
+            if self.has_cursor(level) {
+                self.finalize_cursor(level)?;
             }
-            level += 1;
+            if self.levels.len() > level + 1 && self.any_pending(level + 1) {
+                if !self.levels[level].keys.is_empty() {
+                    self.handle_boundary(level)?;
+                }
+                level += 1;
+                continue;
+            }
+            break;
         }
         if level == 0 || self.levels[level].keys.len() > 1 {
-            let (hash, _, _) = self.write_node(level)?;
-            let bytes = self.levels[level].last_written.take().unwrap().bytes;
-            return Ok((hash, bytes));
+            let (hash, node, _, _) = self.write_node(level)?;
+            return Ok((hash, node));
         }
         // The root has one child, so the tree's root is the highest node below with more than one item.
         let mut child = serial::hash(&self.levels[level].values[0])?;
         loop {
-            level -= 1;
-            let written = self.levels[level].last_written.take().expect("a level below the root wrote no node");
-            assert_eq!(written.hash, child, "the root's child is not the last node written below it");
-            if level == 0 || written.count > 1 {
-                return Ok((written.hash, written.bytes));
+            let node = self.store.read(&child)?;
+            if node.is_leaf() || node.count() > 1 {
+                return Ok((child, node));
             }
-            child = written.only_child.unwrap();
+            child = node.child(0)?;
         }
     }
+}
+
+/// apply_mutations applies edits in key order to the tree at the root, where an edit without a value deletes its key,
+/// and returns the new root, as Dolt's ApplyMutations does.
+pub fn apply_mutations<S: NodeSerializer>(
+    store: &mut dyn NodeStore,
+    root: Arc<Node>,
+    serializer: S,
+    edits: impl IntoIterator<Item = (Vec<u8>, Option<Vec<u8>>)>,
+    compare: &Compare<'_>,
+) -> Result<(Hash, Arc<Node>)> {
+    let mut edits = edits.into_iter().peekable();
+    let Some((first, _)) = edits.peek() else {
+        return Ok((Hash::of(root.bytes()), root));
+    };
+    let mut cursor = Cursor::at_key(store, root, first, compare)?;
+    let mut chunker = Chunker::at_cursor(serializer, store, cursor.clone())?;
+    let mut previous: Option<Vec<u8>> = None;
+    for (key, value) in edits {
+        if let Some(previous) = &previous {
+            assert!(compare(&key, previous) == Ordering::Greater, "expected sorted edits");
+        }
+        cursor.seek(0, &key, &mut *chunker.store, compare)?;
+        let mut old: Option<Vec<u8>> = None;
+        if cursor.valid(0) {
+            let (node, idx) = cursor.item(0);
+            let current = node.key(idx)?;
+            if compare(&key, current) == Ordering::Equal {
+                old = Some(node.value(idx)?.to_vec());
+            }
+            // Go compares the values as byte slices, where a missing value equals an empty one.
+            let same = value.as_deref().unwrap_or_default() == old.as_deref().unwrap_or_default();
+            if same && key == current {
+                previous = Some(key);
+                continue;
+            }
+        }
+        if old.is_none() && value.is_none() {
+            previous = Some(key);
+            continue;
+        }
+        chunker.advance_to(0, &mut cursor)?;
+        match (old, &value) {
+            (None, Some(value)) => chunker.add(&key, value)?,
+            (Some(_), Some(value)) => chunker.update(&key, value)?,
+            (Some(_), None) => chunker.skip()?,
+            (None, None) => unreachable!(),
+        }
+        previous = Some(key);
+    }
+    chunker.done()
 }
 
 #[cfg(test)]
