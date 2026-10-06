@@ -20,6 +20,7 @@
 mod builder;
 pub mod fb;
 mod messages;
+pub mod write;
 
 pub use builder::Builder;
 pub use fb::{Result, Table, Vector};
