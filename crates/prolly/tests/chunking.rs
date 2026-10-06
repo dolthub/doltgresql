@@ -15,7 +15,7 @@
 //! Every tree node in the store crate's fixtures, which Go wrote, is rebuilt by the chunker from the leaf items under
 //! it, since a node's items always split where they did when Go built it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use prolly::{
@@ -160,5 +160,66 @@ fn chunker_rebuilds_every_tree_node_go_wrote() {
         }
     }
     assert!(checked.values().sum::<usize>() > 1000, "only {checked:?} nodes were checked");
+    assert!(failures.is_empty(), "{} differ ({checked:?}):\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn blob_builder_rebuilds_every_blob_go_wrote() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../store/tests/fixtures");
+    let mut checked: HashMap<u8, usize> = HashMap::new();
+    let mut failures = Vec::new();
+    for fixture in std::fs::read_dir(&fixtures).unwrap() {
+        let fixture = fixture.unwrap().path();
+        if !fixture.is_dir() {
+            continue;
+        }
+        for database in std::fs::read_dir(&fixture).unwrap() {
+            let noms = database.unwrap().path().join(".dolt/noms");
+            if !noms.is_dir() {
+                continue;
+            }
+            let store = GenerationalStore::open(&noms).unwrap();
+            let mut blobs = HashMap::new();
+            let mut children = HashSet::new();
+            for generation in [&store.new_gen, &store.old_gen] {
+                generation
+                    .for_each(&mut |chunk| {
+                        let message = Message(&chunk.data);
+                        if message.file_id() == serial::BLOB {
+                            let blob = serial::Blob::new(message).unwrap();
+                            let addresses = blob.address_array().unwrap().unwrap_or_default();
+                            children.extend(serial::hashes(addresses).unwrap());
+                            blobs.insert(chunk.hash, (blob.tree_level().unwrap(), addresses.is_empty()));
+                        }
+                        Ok(())
+                    })
+                    .unwrap();
+            }
+            for (hash, (level, empty)) in blobs {
+                // Go also writes an empty internal node that nothing uses when a blob fills its levels exactly.
+                if children.contains(&hash) || (level > 0 && empty) {
+                    continue;
+                }
+                let data = prolly::read_blob(&store, &hash).unwrap();
+                let mut missing = 0;
+                let mut sink = |written: Hash, _: &[u8]| {
+                    if store.get(&written)?.is_none() {
+                        missing += 1;
+                    }
+                    Ok(())
+                };
+                let (root, _) = prolly::write_blob(&data, &mut sink).unwrap().unwrap();
+                *checked.entry(level).or_default() += 1;
+                if root != hash || missing > 0 {
+                    failures.push(format!(
+                        "{}: {hash} level {level} of {} bytes rebuilt as {root} with {missing} unknown nodes",
+                        noms.display(),
+                        data.len()
+                    ));
+                }
+            }
+        }
+    }
+    assert!(checked.contains_key(&2), "no blobs of three levels were checked: {checked:?}");
     assert!(failures.is_empty(), "{} differ ({checked:?}):\n{}", failures.len(), failures.join("\n"));
 }

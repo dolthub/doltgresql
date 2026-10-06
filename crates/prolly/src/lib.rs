@@ -23,7 +23,7 @@ mod node;
 mod serialize;
 mod tuple;
 
-pub use blob::read_blob;
+pub use blob::{BLOB_CHUNK_SIZE, read_blob, write_blob};
 pub use chunker::{Chunker, NodeSerializer, NodeSink};
 pub use node::{ItemVisitor, Node, walk_leaves};
 pub use serialize::{

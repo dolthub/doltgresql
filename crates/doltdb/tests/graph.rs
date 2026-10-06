@@ -101,3 +101,8 @@ fn reads_doltgres_1_0() {
 fn reads_constraints_and_indexes() {
     check_fixture("schemas");
 }
+
+#[test]
+fn reads_blobs_of_every_size() {
+    check_fixture("blobs");
+}

@@ -118,3 +118,8 @@ fn hash_strings_round_trip() {
 fn reads_constraints_and_indexes() {
     check_fixture("schemas");
 }
+
+#[test]
+fn reads_blobs_of_every_size() {
+    check_fixture("blobs");
+}
