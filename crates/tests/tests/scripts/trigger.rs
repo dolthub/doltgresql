@@ -1999,3 +1999,286 @@ fn test_trigger_whole_record_reference() {
         },
     ]);
 }
+
+#[test]
+fn test_trigger_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "row and statement triggers",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (id int PRIMARY KEY, v text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE audit (n serial, what text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION before_row() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF TG_OP = 'DELETE' THEN INSERT INTO audit (what) VALUES ('delete ' || OLD.id); RETURN OLD; END IF; NEW.v := upper(NEW.v); IF NEW.v = 'SKIP' THEN RETURN NULL; END IF; RETURN NEW; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION after_row() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO audit (what) VALUES (TG_WHEN || ' ' || TG_LEVEL || ' ' || TG_OP || ' ' || TG_TABLE_NAME || ' ' || coalesce(NEW.v, OLD.v)); RETURN NULL; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION per_statement() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO audit (what) VALUES (TG_WHEN || ' ' || TG_LEVEL || ' ' || TG_OP || ' ' || TG_NARGS || ' ' || TG_ARGV[0]); RETURN NULL; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER b BEFORE INSERT OR UPDATE OR DELETE ON t FOR EACH ROW EXECUTE FUNCTION before_row();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER a AFTER INSERT OR UPDATE ON t FOR EACH ROW EXECUTE FUNCTION after_row();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER s AFTER INSERT ON t FOR EACH STATEMENT EXECUTE FUNCTION per_statement('arg', 'two');",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (1, 'one'), (2, 'skip'), (3, 'three');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("1"), T("ONE")],
+                            &[T("3"), T("THREE")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t SET v = 'uno' WHERE id = 1;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM t WHERE id = 3;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("1"), T("UNO")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT what FROM audit ORDER BY n;",
+                    expected: Expected::Rows {
+                        columns: &[Column("what", TEXT)],
+                        rows: &[
+                            &[T("AFTER ROW INSERT t ONE")],
+                            &[T("AFTER ROW INSERT t THREE")],
+                            &[T("AFTER STATEMENT INSERT 2 arg")],
+                            &[T("AFTER ROW UPDATE t UNO")],
+                            &[T("delete 3")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER b BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION before_row();",
+                    expected: Expected::Error(Diagnostic { code: "42710", message: r#"trigger "b" for relation "t" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER x BEFORE INSERT ON nope FOR EACH ROW EXECUTE FUNCTION before_row();",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER x BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION nope();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function nope() does not exist", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION not_trigger() RETURNS int LANGUAGE sql AS 'SELECT 1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER x BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION not_trigger();",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: "function not_trigger must return type trigger", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER x INSTEAD OF INSERT ON t FOR EACH ROW EXECUTE FUNCTION before_row();",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#""t" is a table"#, detail: "Tables cannot have INSTEAD OF triggers.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER x BEFORE UPDATE OF nope ON t FOR EACH ROW EXECUTE FUNCTION before_row();",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "nope" of relation "t" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER x BEFORE UPDATE OF v, v ON t FOR EACH ROW EXECUTE FUNCTION before_row();",
+                    expected: Expected::Error(Diagnostic { code: "42701", message: r#"column "v" specified more than once"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION before_row();",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop function before_row() because other objects depend on it", detail: "trigger b on table t depends on function before_row()", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TRIGGER nope ON t;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"trigger "nope" for table "t" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TRIGGER IF EXISTS nope ON t;",
+                    expected: Expected::Tag("DROP TRIGGER"),
+                    notices: &[Diagnostic { code: "00000", message: r#"trigger "nope" for relation "t" does not exist, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TRIGGER b ON t;",
+                    expected: Expected::Tag("DROP TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TRIGGER a ON t;",
+                    expected: Expected::Tag("DROP TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TRIGGER s ON t;",
+                    expected: Expected::Tag("DROP TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION before_row();",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "trigger WHEN conditions and UPDATE OF columns",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (id int PRIMARY KEY, a int, b int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE seen (what text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION note() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO seen VALUES (TG_NAME || ':' || NEW.id); RETURN NEW; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER big BEFORE INSERT ON t FOR EACH ROW WHEN (NEW.a > 10) EXECUTE FUNCTION note();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER changed AFTER UPDATE ON t FOR EACH ROW WHEN (OLD.a IS DISTINCT FROM NEW.a) EXECUTE FUNCTION note();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER of_b AFTER UPDATE OF b ON t FOR EACH ROW EXECUTE FUNCTION note();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (1, 5, 0), (2, 50, 0);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t SET a = a WHERE id = 1;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t SET a = a + 1 WHERE id = 1;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t SET b = 1 WHERE id = 2;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT what FROM seen ORDER BY what;",
+                    expected: Expected::Rows {
+                        columns: &[Column("what", TEXT)],
+                        rows: &[
+                            &[T("big:2")],
+                            &[T("changed:1")],
+                            &[T("of_b:2")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER bad BEFORE INSERT ON t FOR EACH ROW WHEN (NEW.a + 1) EXECUTE FUNCTION note();",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "argument of WHEN must be type boolean, not type integer", position: 58, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER bad BEFORE DELETE ON t FOR EACH ROW WHEN (NEW.a > 1) EXECUTE FUNCTION note();",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: "DELETE trigger's WHEN condition cannot reference NEW values", position: 58, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER bad BEFORE INSERT ON t FOR EACH ROW WHEN (OLD.a > 1) EXECUTE FUNCTION note();",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: "INSERT trigger's WHEN condition cannot reference OLD values", position: 58, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER bad AFTER INSERT ON t FOR EACH STATEMENT WHEN (NEW.a > 1) EXECUTE FUNCTION note();",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: "statement trigger's WHEN condition cannot reference column values", position: 63, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

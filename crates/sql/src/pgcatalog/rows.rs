@@ -230,6 +230,8 @@ impl Ctx<'_> {
             "pg_tables" => self.pg_tables(rows),
             "pg_views" => self.pg_views(rows),
             "pg_sequence" | "pg_sequences" => self.pg_sequences(rows),
+            "pg_proc" => self.pg_proc(rows),
+            "pg_trigger" => self.pg_trigger(rows),
             "pg_settings" => {
                 self.pg_settings(rows);
                 Ok(())
@@ -460,6 +462,7 @@ impl Ctx<'_> {
     /// pg_class lists the user tables, indexes, views, and sequences.
     fn pg_class(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let snapshot = self.snapshot()?;
+        let triggered = self.triggered_tables()?;
         for table in &snapshot.tables {
             let relation = table_oid(&table.schema, &table.name);
             let namespace = namespace_oid(&table.schema);
@@ -470,7 +473,13 @@ impl Ctx<'_> {
                 ("relfilenode", oid(relation)),
                 ("relhasindex", boolean(!indexes.is_empty())),
                 ("relchecks", int2(table.checks.len() as i16)),
-                ("relhastriggers", boolean(has_foreign_keys(&snapshot, table))),
+                (
+                    "relhastriggers",
+                    boolean(
+                        has_foreign_keys(&snapshot, table)
+                            || triggered.contains(&(table.schema.clone(), table.name.clone())),
+                    ),
+                ),
                 ("relreplident", text("d")),
                 ("relminmxid", oid(1)),
             ]);
@@ -762,18 +771,33 @@ impl Ctx<'_> {
         Ok(())
     }
 
+    /// triggered_tables returns the schema and name of each table with a user trigger.
+    fn triggered_tables(&mut self) -> Result<std::collections::HashSet<(String, String)>> {
+        Ok(self
+            .triggers()?
+            .iter()
+            .map(|t| {
+                let (schema, table, _) = crate::triggers::names(t);
+                (schema, table)
+            })
+            .collect())
+    }
+
     /// pg_tables lists the user tables.
     fn pg_tables(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let owner = self.session.superuser.clone();
         let snapshot = self.snapshot()?;
+        let triggered = self.triggered_tables()?;
         for table in &snapshot.tables {
+            let has_triggers =
+                has_foreign_keys(&snapshot, table) || triggered.contains(&(table.schema.clone(), table.name.clone()));
             rows.push(vec![
                 ("schemaname", text(table.schema.clone())),
                 ("tablename", text(table.name.clone())),
                 ("tableowner", text(owner.clone())),
                 ("hasindexes", boolean(!table_indexes(table).is_empty())),
                 ("hasrules", boolean(false)),
-                ("hastriggers", boolean(has_foreign_keys(&snapshot, table))),
+                ("hastriggers", boolean(has_triggers)),
                 ("rowsecurity", boolean(false)),
             ]);
         }

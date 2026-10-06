@@ -123,6 +123,7 @@ impl Ctx<'_> {
             "sequences" => self.information_schema_sequences(rows),
             "table_constraints" => self.information_schema_table_constraints(rows),
             "key_column_usage" => self.information_schema_key_column_usage(rows),
+            "triggers" => self.information_schema_triggers(rows),
             _ => Ok(()),
         }
     }

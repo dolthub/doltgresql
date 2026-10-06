@@ -3932,3 +3932,572 @@ $$ LANGUAGE plpgsql;"#,
         },
     ]);
 }
+
+#[test]
+fn test_plpgsql_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "PL/pgSQL control flow",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION classify(n int) RETURNS text LANGUAGE plpgsql AS $$ BEGIN IF n < 0 THEN RETURN 'negative'; ELSIF n = 0 THEN RETURN 'zero'; ELSE RETURN 'positive'; END IF; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT classify(-5), classify(0), classify(7);",
+                    expected: Expected::Rows {
+                        columns: &[Column("classify", TEXT), Column("classify", TEXT), Column("classify", TEXT)],
+                        rows: &[
+                            &[T("negative"), T("zero"), T("positive")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION case_of(n int) RETURNS text LANGUAGE plpgsql AS $$ BEGIN CASE n WHEN 1, 2 THEN RETURN 'small'; WHEN 3 THEN RETURN 'three'; END CASE; RETURN 'unreachable'; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT case_of(2), case_of(3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("case_of", TEXT), Column("case_of", TEXT)],
+                        rows: &[
+                            &[T("small"), T("three")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT case_of(9);",
+                    expected: Expected::Error(Diagnostic { code: "20000", message: "case not found", hint: "CASE statement is missing ELSE part.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION searched_case(n int) RETURNS text LANGUAGE plpgsql AS $$ BEGIN CASE WHEN n > 10 THEN RETURN 'big'; ELSE RETURN 'little'; END CASE; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT searched_case(11), searched_case(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("searched_case", TEXT), Column("searched_case", TEXT)],
+                        rows: &[
+                            &[T("big"), T("little")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION loops(n int) RETURNS text LANGUAGE plpgsql AS $$ DECLARE out text := ''; i int := 0; BEGIN <<outer>> LOOP i := i + 1; EXIT outer WHEN i > n; CONTINUE WHEN i = 2; out := out || i; END LOOP; WHILE i > 0 LOOP i := i - 2; out := out || '-'; END LOOP; FOR j IN REVERSE 10..1 BY 4 LOOP out := out || j; END LOOP; RETURN out; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT loops(4);",
+                    expected: Expected::Rows {
+                        columns: &[Column("loops", TEXT)],
+                        rows: &[
+                            &[T("134---1062")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION query_loop() RETURNS text LANGUAGE plpgsql AS $$ DECLARE r record; out text := ''; BEGIN FOR r IN SELECT * FROM (VALUES (1, 'a'), (2, 'b')) v(n, s) ORDER BY n LOOP out := out || r.n || r.s; END LOOP; RETURN out; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT query_loop();",
+                    expected: Expected::Rows {
+                        columns: &[Column("query_loop", TEXT)],
+                        rows: &[
+                            &[T("1a2b")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION array_loop(a int[]) RETURNS int LANGUAGE plpgsql AS $$ DECLARE x int; total int := 0; BEGIN FOREACH x IN ARRAY a LOOP total := total + x; END LOOP; RETURN total; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_loop(ARRAY[1, 2, 3]);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array_loop", INT4)],
+                        rows: &[
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_loop(NULL);",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "FOREACH expression must not be null", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION exit_outside() RETURNS int LANGUAGE plpgsql AS $$ BEGIN EXIT; END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "EXIT cannot be used outside a loop, unless it has a label", position: 73, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION no_return(n int) RETURNS int LANGUAGE plpgsql AS $$ BEGIN n := n + 1; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT no_return(1);",
+                    expected: Expected::Error(Diagnostic { code: "2F005", message: "control reached end of function without RETURN", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "PL/pgSQL statements and FOUND",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE items (id int PRIMARY KEY, name text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO items VALUES (1, 'one'), (2, 'two');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION lookup(want int) RETURNS text LANGUAGE plpgsql AS $$ DECLARE result text; BEGIN SELECT name INTO result FROM items WHERE id = want; IF NOT FOUND THEN RETURN 'missing'; END IF; RETURN result; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lookup(1), lookup(3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("lookup", TEXT), Column("lookup", TEXT)],
+                        rows: &[
+                            &[T("one"), T("missing")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION strict_lookup(want int) RETURNS text LANGUAGE plpgsql AS $$ DECLARE result text; BEGIN SELECT name INTO STRICT result FROM items WHERE id = want OR want = 0; RETURN result; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT strict_lookup(2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("strict_lookup", TEXT)],
+                        rows: &[
+                            &[T("two")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT strict_lookup(3);",
+                    expected: Expected::Error(Diagnostic { code: "P0002", message: "query returned no rows", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT strict_lookup(0);",
+                    expected: Expected::Error(Diagnostic { code: "P0003", message: "query returned more than one row", hint: "Make sure the query returns a single row, or use LIMIT 1.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION bump() RETURNS boolean LANGUAGE plpgsql AS $$ BEGIN UPDATE items SET name = name || '!' WHERE id = 1; RETURN FOUND; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT bump();",
+                    expected: Expected::Rows {
+                        columns: &[Column("bump", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT name FROM items WHERE id = 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT)],
+                        rows: &[
+                            &[T("one!")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION discard() RETURNS int LANGUAGE plpgsql AS $$ BEGIN SELECT 1; RETURN 1; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT discard();",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "query has no destination for result data", hint: "If you want to discard the results of a SELECT, use PERFORM instead.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION performs() RETURNS boolean LANGUAGE plpgsql AS $$ BEGIN PERFORM 1 FROM items WHERE id = 99; RETURN FOUND; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT performs();",
+                    expected: Expected::Rows {
+                        columns: &[Column("performs", BOOL)],
+                        rows: &[
+                            &[T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION dynamic(t text, want int) RETURNS text LANGUAGE plpgsql AS $$ DECLARE result text; BEGIN EXECUTE 'SELECT name FROM ' || t || ' WHERE id = $1' INTO result USING want; RETURN result; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT dynamic('items', 2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("dynamic", TEXT)],
+                        rows: &[
+                            &[T("two")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION null_dynamic() RETURNS void LANGUAGE plpgsql AS $$ BEGIN EXECUTE NULL; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT null_dynamic();",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "query string argument of EXECUTE is null", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION all_items() RETURNS SETOF items LANGUAGE plpgsql AS $$ BEGIN RETURN QUERY SELECT * FROM items ORDER BY id; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION wrong_shape() RETURNS TABLE(a int, b int) LANGUAGE plpgsql AS $$ BEGIN RETURN QUERY SELECT 1, 'x'::text; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM wrong_shape();",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: "Returned type text does not match expected type integer in column 2.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION too_few() RETURNS TABLE(a int, b int) LANGUAGE plpgsql AS $$ BEGIN RETURN QUERY SELECT 1; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM too_few();",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: "Number of returned columns (1) does not match expected column count (2).", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION pairs() RETURNS TABLE(a int, b text) LANGUAGE plpgsql AS $$ BEGIN RETURN QUERY SELECT id, name FROM items ORDER BY id; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM pairs();",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("1"), T("one!")],
+                            &[T("2"), T("two")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION out_params(x int, OUT doubled int, OUT label text) LANGUAGE plpgsql AS $$ BEGIN doubled := x * 2; label := 'n' || x; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT out_params(4);",
+                    expected: Expected::Rows {
+                        columns: &[Column("out_params", RECORD)],
+                        rows: &[
+                            &[T("(8,n4)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM out_params(5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("doubled", INT4), Column("label", TEXT)],
+                        rows: &[
+                            &[T("10"), T("n5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION void_result() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT void_result(), void_result() IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("void_result", VOID), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T(""), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "PL/pgSQL RAISE",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION notices(n int) RETURNS int LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'n is %, doubled %', n, n * 2; RAISE WARNING 'careful'; RAISE INFO 'info %%'; RAISE DEBUG 'hidden'; RETURN n; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT notices(3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("notices", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    notices: &[Diagnostic { code: "00000", message: "n is 3, doubled 6", ..N }, Diagnostic { severity: "WARNING", code: "01000", message: "careful", ..E }, Diagnostic { severity: "INFO", code: "00000", message: "info %", ..E }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION fails(n int) RETURNS int LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'bad value: %', n USING HINT = 'try ' || (n + 1), DETAIL = 'detail here', ERRCODE = '22023'; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT fails(1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "bad value: 1", detail: "detail here", hint: "try 2", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION fails_default() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'plain'; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT fails_default();",
+                    expected: Expected::Error(Diagnostic { code: "P0001", message: "plain", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION fails_named() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'dup' USING ERRCODE = 'unique_violation'; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT fails_named();",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: "dup", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION null_param() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'value: %', NULL::int; RETURN 1; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT null_param();",
+                    expected: Expected::Rows {
+                        columns: &[Column("null_param", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    notices: &[Diagnostic { code: "00000", message: "value: <NULL>", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION too_many() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'x', 1; RETURN 1; END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "too many parameters specified for RAISE", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "PL/pgSQL variables and declarations",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION defaults(p int) RETURNS text LANGUAGE plpgsql AS $$ DECLARE a int := p * 2; b int := a + 1; c text := 'a=' || a || ' b=' || b; BEGIN RETURN c; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT defaults(5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("defaults", TEXT)],
+                        rows: &[
+                            &[T("a=10 b=11")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION aliases(input text) RETURNS text LANGUAGE plpgsql AS $$ DECLARE v text; BEGIN DECLARE a1 ALIAS FOR v; a2 ALIAS FOR input; BEGIN a1 := a2 || '?'; END; RETURN v; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT aliases('x');",
+                    expected: Expected::Rows {
+                        columns: &[Column("aliases", TEXT)],
+                        rows: &[
+                            &[T("x?")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION positional(int, int) RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN $1 * $2; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT positional(6, 7);",
+                    expected: Expected::Rows {
+                        columns: &[Column("positional", INT4)],
+                        rows: &[
+                            &[T("42")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION bad_type() RETURNS int LANGUAGE plpgsql AS $$ DECLARE b pg_catalog.integer; BEGIN RETURN 1; END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "pg_catalog.integer" does not exist"#, position: 73, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION bad_syntax() RETURNS int LANGUAGE plpgsql AS $$ DECLARE b pg_catalog.double precision; BEGIN RETURN 1; END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "precision""#, position: 93, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION missing_type() RETURNS int LANGUAGE plpgsql AS $$ DECLARE b no_such_type; BEGIN RETURN 1; END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "no_such_type" does not exist"#, position: 77, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE things (id int, label text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO things VALUES (1, 'a');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION row_types() RETURNS text LANGUAGE plpgsql AS $$ DECLARE r things; l things.label%TYPE; BEGIN SELECT * INTO r FROM things; l := r.label || '!'; RETURN r.id || l; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT row_types();",
+                    expected: Expected::Rows {
+                        columns: &[Column("row_types", TEXT)],
+                        rows: &[
+                            &[T("1a!")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION records() RETURNS text LANGUAGE plpgsql AS $$ DECLARE r record := ROW(1, 'a'); BEGIN SELECT 2 AS x, 'b' AS y INTO r; RETURN r.x || r.y; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT records();",
+                    expected: Expected::Rows {
+                        columns: &[Column("records", TEXT)],
+                        rows: &[
+                            &[T("2b")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION unassigned() RETURNS int LANGUAGE plpgsql AS $$ DECLARE r record; BEGIN RETURN r.x; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT unassigned();",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: r#"record "r" is not assigned yet"#, detail: "The tuple structure of a not-yet-assigned record is indeterminate.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

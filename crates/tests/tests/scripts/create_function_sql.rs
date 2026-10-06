@@ -913,3 +913,401 @@ fn test_create_functions_language_sql() {
         },
     ]);
 }
+
+#[test]
+fn test_sql_function_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "SQL function definitions and overloads",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f(int) RETURNS int LANGUAGE sql AS 'SELECT $1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f(int) RETURNS int LANGUAGE sql AS 'SELECT $1';",
+                    expected: Expected::Error(Diagnostic { code: "42723", message: r#"function "f" already exists with same argument types"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OR REPLACE FUNCTION f(int) RETURNS text LANGUAGE sql AS 'SELECT $1::text';",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "cannot change return type of existing function", hint: "Use DROP FUNCTION f(integer) first.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION g(int = 1, int) RETURNS int LANGUAGE sql AS 'SELECT $1';",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "input parameters after one with a default value must also have defaults", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION g(out a int, out b text) RETURNS int LANGUAGE sql AS 'SELECT 1, 2';",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "function result type must be record because of OUT parameters", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION g() RETURNS int LANGUAGE foo AS 'SELECT 1';",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"language "foo" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION g() RETURNS int LANGUAGE sql AS 'SELECT ''a''::text';",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "return type mismatch in function declared to return integer", detail: "Actual return type is text.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION g() RETURNS int LANGUAGE sql AS 'SELECT 1, 2';",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "return type mismatch in function declared to return integer", detail: "Final statement must return exactly one column.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION g() RETURNS int LANGUAGE sql AS 'CREATE TABLE x (a int)';",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "return type mismatch in function declared to return integer", detail: "Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION g() RETURNS int LANGUAGE sql AS 'SELECT nope';",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "nope" does not exist"#, position: 57, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION g() RETURNS void LANGUAGE sql AS 'SELECT 1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT g() IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION h() RETURNS int LANGUAGE sql AS 'SELECT 1 WHERE false';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT h();",
+                    expected: Expected::Rows {
+                        columns: &[Column("h", INT4)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION h2() RETURNS SETOF int LANGUAGE sql AS 'SELECT 1 UNION SELECT 2 ORDER BY 1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT h2();",
+                    expected: Expected::Rows {
+                        columns: &[Column("h2", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM h2();",
+                    expected: Expected::Rows {
+                        columns: &[Column("h2", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION k(a int, b int = 10) RETURNS int LANGUAGE sql AS 'SELECT a + b';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT k(1), k(1, 2), k(b => 3, a => 1), k(1, b => 5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("k", INT4), Column("k", INT4), Column("k", INT4), Column("k", INT4)],
+                        rows: &[
+                            &[T("11"), T("3"), T("4"), T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT k();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function k() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION k(a int) RETURNS int LANGUAGE sql AS 'SELECT a';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT k(1);",
+                    expected: Expected::Error(Diagnostic { code: "42725", message: "function k(integer) is not unique", hint: "Could not choose a best candidate function. You might need to add explicit type casts.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION m(a int, out b int, out c text) LANGUAGE sql AS 'SELECT a, ''x''';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT m(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("m", RECORD)],
+                        rows: &[
+                            &[T("(1,x)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM m(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", INT4), Column("c", TEXT)],
+                        rows: &[
+                            &[T("1"), T("x")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION n(a int) RETURNS TABLE(x int, y text) LANGUAGE sql AS 'SELECT a, ''q'' UNION ALL SELECT a + 1, ''r''';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT n(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("n", RECORD)],
+                        rows: &[
+                            &[T("(1,q)")],
+                            &[T("(2,r)")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM n(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4), Column("y", TEXT)],
+                        rows: &[
+                            &[T("1"), T("q")],
+                            &[T("2"), T("r")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION one_column(a int) RETURNS TABLE(x int) LANGUAGE sql AS 'SELECT a UNION ALL SELECT a + 1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT one_column(5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("one_column", INT4)],
+                        rows: &[
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM one_column(5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4)],
+                        rows: &[
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION s(x int) RETURNS int STRICT LANGUAGE sql AS 'SELECT 5';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT s(NULL), s(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("s", INT4), Column("s", INT4)],
+                        rows: &[
+                            &[Null, T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION r(x int) RETURNS int LANGUAGE sql RETURN x * 2;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT r(4);",
+                    expected: Expected::Rows {
+                        columns: &[Column("r", INT4)],
+                        rows: &[
+                            &[T("8")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION ba(x int) RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT 1; SELECT x + 3; END;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ba(4);",
+                    expected: Expected::Rows {
+                        columns: &[Column("ba", INT4)],
+                        rows: &[
+                            &[T("7")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION concat_number(t text, n int) RETURNS text LANGUAGE sql AS 'SELECT t || n';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT concat_number('a', 1), 'b' || 2, 3 || 'c';",
+                    expected: Expected::Rows {
+                        columns: &[Column("concat_number", TEXT), Column("?column?", TEXT), Column("?column?", TEXT)],
+                        rows: &[
+                            &[T("a1"), T("b2"), T("3c")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(1), pg_typeof('a'::text), pg_typeof(ARRAY['x']), pg_typeof(now());",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("integer"), T("text"), T("text[]"), T("timestamp with time zone")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "dropping functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f(int) RETURNS int LANGUAGE sql AS 'SELECT $1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f(text) RETURNS int LANGUAGE sql AS 'SELECT 1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION nope;",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"could not find a function named "nope""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION nope(int);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function nope(integer) does not exist", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION IF EXISTS nope(int);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    notices: &[Diagnostic { code: "00000", message: "function nope(pg_catalog.int4) does not exist, skipping", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION IF EXISTS nope;",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    notices: &[Diagnostic { code: "00000", message: "function nope() does not exist, skipping", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION f;",
+                    expected: Expected::Error(Diagnostic { code: "42725", message: r#"function name "f" is not unique"#, hint: "Specify the argument list to select the function unambiguously.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION f(text), f(int);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT f(1);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function f(integer) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION p_like(int) RETURNS int LANGUAGE sql AS 'SELECT 1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP PROCEDURE p_like(int);",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "p_like(integer) is not a procedure", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP ROUTINE p_like(int);",
+                    expected: Expected::Tag("DROP ROUTINE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

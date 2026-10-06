@@ -209,28 +209,11 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
         )
     };
     let indexes = r.by_name.get(name).ok_or_else(not_found)?;
-    let mut candidates: Vec<(usize, Vec<u32>)> = indexes
-        .iter()
-        .filter_map(|&i| {
-            let params = parameter_types(r.functions[i], types.len())?;
-            params.iter().zip(types).all(|(&p, &t)| implicitly_castable(t, p)).then_some((i, params))
-        })
-        .collect();
+    let candidates: Vec<(usize, Vec<u32>)> =
+        indexes.iter().filter_map(|&i| Some((i, parameter_types(r.functions[i], types.len())?))).collect();
+    let mut candidates = best_candidates(types, candidates);
     if candidates.is_empty() {
         return Err(not_found());
-    }
-    let keep_best = |candidates: &mut Vec<(usize, Vec<u32>)>, score: &dyn Fn(&[u32]) -> usize| {
-        let best = candidates.iter().map(|(_, p)| score(p)).max().unwrap_or(0);
-        candidates.retain(|(_, p)| score(p) == best);
-    };
-    keep_best(&mut candidates, &|params| params.iter().zip(types).filter(|(p, t)| *p == *t).count());
-    keep_best(&mut candidates, &|params| {
-        params.iter().zip(types).filter(|(p, t)| *p != *t && is_preferred(**p)).count()
-    });
-    if candidates.len() > 1 {
-        keep_best(&mut candidates, &|params| {
-            params.iter().zip(types).filter(|(p, t)| **t == oid::UNKNOWN && is_string(**p)).count()
-        });
     }
     if candidates.len() > 1 {
         return Err(PgError {
@@ -273,6 +256,40 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
         other => other,
     };
     Ok(Resolved { index, arg_types, ret })
+}
+
+/// overload_types returns the parameter types each built-in overload of the name gives a number of arguments.
+pub fn overload_types(name: &str, count: usize) -> Vec<Vec<u32>> {
+    let r = registry();
+    r.by_name
+        .get(name)
+        .map(|indexes| indexes.iter().filter_map(|&i| parameter_types(r.functions[i], count)).collect())
+        .unwrap_or_default()
+}
+
+/// best_candidates keeps the overloads, each given with its parameter types, that a call with arguments of the types
+/// may choose, as Postgres' function resolution does: those every argument converts to, then those with the most
+/// exact matches, then the most preferred types, and finally, for untyped arguments, the string category. More than
+/// one remaining means the call is ambiguous.
+pub fn best_candidates<C>(types: &[u32], candidates: Vec<(C, Vec<u32>)>) -> Vec<(C, Vec<u32>)> {
+    let mut candidates: Vec<(C, Vec<u32>)> = candidates
+        .into_iter()
+        .filter(|(_, params)| params.iter().zip(types).all(|(&p, &t)| implicitly_castable(t, p)))
+        .collect();
+    let keep_best = |candidates: &mut Vec<(C, Vec<u32>)>, score: &dyn Fn(&[u32]) -> usize| {
+        let best = candidates.iter().map(|(_, p)| score(p)).max().unwrap_or(0);
+        candidates.retain(|(_, p)| score(p) == best);
+    };
+    keep_best(&mut candidates, &|params| params.iter().zip(types).filter(|(p, t)| *p == *t).count());
+    keep_best(&mut candidates, &|params| {
+        params.iter().zip(types).filter(|(p, t)| *p != *t && is_preferred(**p)).count()
+    });
+    if candidates.len() > 1 {
+        keep_best(&mut candidates, &|params| {
+            params.iter().zip(types).filter(|(p, t)| **t == oid::UNKNOWN && is_string(**p)).count()
+        });
+    }
+    candidates
 }
 
 /// call runs a function on arguments already converted to its parameter types.

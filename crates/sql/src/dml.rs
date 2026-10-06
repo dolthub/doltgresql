@@ -31,6 +31,7 @@ use crate::expr::{Binder, Expr, Scope, ScopeColumn, arg_location, assign, coerce
 use crate::foreign::Change;
 use crate::plan::{Plan, Planner};
 use crate::query::{Ctx, scan};
+use crate::triggers::{AFTER, BEFORE, Event, Triggers};
 use crate::txn::Txn;
 use crate::types::Value;
 use crate::{Outcome, oid};
@@ -410,7 +411,8 @@ impl<'a> Edits<'a> {
         Ok(())
     }
 
-    /// apply writes the edits to the table and the table to the transaction's working root.
+    /// apply writes the edits to the table as the working root now holds it and the table to the transaction's working
+    /// root.
     fn apply(self, db: &mut Database, txn: &mut Txn) -> Result<()> {
         if self.edits.is_empty() {
             return Ok(());
@@ -427,14 +429,16 @@ impl<'a> Edits<'a> {
                 _ => merged.push(edit),
             }
         }
-        let mut stored = table.table.clone();
+        let current = txn.table(db, &table.schema, &table.name)?;
+        let current = current.as_ref().unwrap_or(table);
+        let mut stored = current.table.clone();
         stored.edit_rows(
             db,
             merged,
             &|a, b| table.compare_keys(a, b),
             (&table.key_encodings(), &table.value_encodings()),
         )?;
-        for (index, mut edits) in table.indexes.iter().zip(index_edits) {
+        for (index, mut edits) in current.indexes.iter().zip(index_edits) {
             if edits.is_empty() {
                 continue;
             }
@@ -849,6 +853,15 @@ fn outcome(ctx: &mut Ctx<'_>, returning: &Option<Returning>, rows: &[Vec<Value>]
 impl InsertPlan {
     /// run inserts the rows, resolving conflicts as the ON CONFLICT clause says.
     pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Outcome> {
+        let triggers = ctx.table_triggers(&self.table)?;
+        triggers.statement(ctx, Event::Insert, BEFORE, &[])?;
+        let outcome = self.insert(ctx, &triggers)?;
+        triggers.statement(ctx, Event::Insert, AFTER, &[])?;
+        Ok(outcome)
+    }
+
+    /// insert inserts the rows, running the row triggers around each.
+    fn insert(&self, ctx: &mut Ctx<'_>, triggers: &Triggers) -> Result<Outcome> {
         let mut sources: Vec<Vec<Value>> = Vec::new();
         match &self.source {
             InsertSource::Values(rows) => {
@@ -877,9 +890,22 @@ impl InsertPlan {
             rows.push(row);
         }
         let Some(on_conflict) = &self.on_conflict else {
-            let rows = insert_checked_rows(ctx, &self.table, &self.rules, rows)?;
+            let rows = if triggers.fires(Event::Insert, BEFORE, true) {
+                let mut written = Vec::with_capacity(rows.len());
+                for row in rows {
+                    if let Some(row) = triggers.before_row(ctx, Event::Insert, None, Some(row), &[])? {
+                        written.extend(insert_checked_rows(ctx, &self.table, &self.rules, vec![row])?);
+                    }
+                }
+                written
+            } else {
+                insert_checked_rows(ctx, &self.table, &self.rules, rows)?
+            };
             let changes: Vec<Change> = rows.iter().map(|r| (None, Some(r.clone()))).collect();
             ctx.enforce_foreign_keys(&self.table, &changes)?;
+            for row in &rows {
+                triggers.after_row(ctx, Event::Insert, None, Some(row), &[])?;
+            }
             let tag = format!("INSERT 0 {}", rows.len());
             return outcome(ctx, &self.returning, &rows, tag);
         };
@@ -888,7 +914,8 @@ impl InsertPlan {
         let mut written = Vec::new();
         let mut changes: Vec<Change> = Vec::new();
         let mut touched: Vec<Vec<u8>> = Vec::new();
-        for mut row in rows {
+        for row in rows {
+            let Some(mut row) = triggers.before_row(ctx, Event::Insert, None, Some(row), &[])? else { continue };
             check_row(ctx, table, &self.rules, &mut row)?;
             let Some(existing) = edits.conflicting_row(ctx.db, &row, &on_conflict.target)? else {
                 edits.insert(ctx.db, &row)?;
@@ -925,6 +952,12 @@ impl InsertPlan {
                     expr => expr.eval(ctx, &combined)?,
                 };
             }
+            let updated: Vec<usize> = assignments.iter().map(|(i, _)| *i).collect();
+            let Some(mut new_row) =
+                triggers.before_row(ctx, Event::Update, Some(&existing), Some(new_row), &updated)?
+            else {
+                continue;
+            };
             check_row(ctx, table, &self.rules, &mut new_row)?;
             edits.delete(ctx.db, &existing)?;
             edits.insert(ctx.db, &new_row)?;
@@ -934,6 +967,17 @@ impl InsertPlan {
         }
         edits.apply(ctx.db, ctx.txn)?;
         ctx.enforce_foreign_keys(table, &changes)?;
+        if let ConflictAction::Update { assignments, .. } = &on_conflict.action {
+            let updated: Vec<usize> = assignments.iter().map(|(i, _)| *i).collect();
+            for (old, new) in &changes {
+                let event = if old.is_some() { Event::Update } else { Event::Insert };
+                triggers.after_row(ctx, event, old.as_deref(), new.as_deref(), &updated)?;
+            }
+        } else {
+            for (_, new) in &changes {
+                triggers.after_row(ctx, Event::Insert, None, new.as_deref(), &[])?;
+            }
+        }
         let tag = format!("INSERT 0 {}", written.len());
         outcome(ctx, &self.returning, &written, tag)
     }
@@ -1069,6 +1113,16 @@ fn matches(
 impl UpdatePlan {
     /// run updates the matching rows.
     pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Outcome> {
+        let triggers = ctx.table_triggers(&self.table)?;
+        let updated: Vec<usize> = self.assignments.iter().map(|(i, _)| *i).collect();
+        triggers.statement(ctx, Event::Update, BEFORE, &updated)?;
+        let outcome = self.update(ctx, &triggers, &updated)?;
+        triggers.statement(ctx, Event::Update, AFTER, &updated)?;
+        Ok(outcome)
+    }
+
+    /// update updates the matching rows, running the row triggers around each.
+    fn update(&self, ctx: &mut Ctx<'_>, triggers: &Triggers, updated: &[usize]) -> Result<Outcome> {
         let mut changes = Vec::new();
         for (row, from_row) in matches(ctx, &self.table, &self.from, &self.filter)? {
             let mut combined = row.clone();
@@ -1080,6 +1134,9 @@ impl UpdatePlan {
                     expr => expr.eval(ctx, &combined)?,
                 };
             }
+            let Some(mut new_row) = triggers.before_row(ctx, Event::Update, Some(&row), Some(new_row), updated)? else {
+                continue;
+            };
             check_row(ctx, &self.table, &self.rules, &mut new_row)?;
             changes.push((row, new_row, from_row));
         }
@@ -1094,6 +1151,9 @@ impl UpdatePlan {
         let edited: Vec<Change> =
             changes.iter().map(|(row, new_row, _)| (Some(row.clone()), Some(new_row.clone()))).collect();
         ctx.enforce_foreign_keys(&self.table, &edited)?;
+        for (row, new_row, _) in &changes {
+            triggers.after_row(ctx, Event::Update, Some(row), Some(new_row), updated)?;
+        }
         let written: Vec<Vec<Value>> = changes
             .into_iter()
             .map(|(_, mut new_row, from_row)| {
@@ -1109,7 +1169,21 @@ impl UpdatePlan {
 impl DeletePlan {
     /// run deletes the matching rows.
     pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Outcome> {
-        let doomed = matches(ctx, &self.table, &self.using, &self.filter)?;
+        let triggers = ctx.table_triggers(&self.table)?;
+        triggers.statement(ctx, Event::Delete, BEFORE, &[])?;
+        let outcome = self.delete(ctx, &triggers)?;
+        triggers.statement(ctx, Event::Delete, AFTER, &[])?;
+        Ok(outcome)
+    }
+
+    /// delete deletes the matching rows, running the row triggers around each.
+    fn delete(&self, ctx: &mut Ctx<'_>, triggers: &Triggers) -> Result<Outcome> {
+        let mut doomed = Vec::new();
+        for (row, using_row) in matches(ctx, &self.table, &self.using, &self.filter)? {
+            if let Some(row) = triggers.before_row(ctx, Event::Delete, Some(&row), None, &[])? {
+                doomed.push((row, using_row));
+            }
+        }
         let mut edits = Edits::new(&self.table);
         for (row, _) in &doomed {
             edits.delete(ctx.db, row)?;
@@ -1117,6 +1191,9 @@ impl DeletePlan {
         edits.apply(ctx.db, ctx.txn)?;
         let changes: Vec<Change> = doomed.iter().map(|(row, _)| (Some(row.clone()), None)).collect();
         ctx.enforce_foreign_keys(&self.table, &changes)?;
+        for (row, _) in &doomed {
+            triggers.after_row(ctx, Event::Delete, Some(row), None, &[])?;
+        }
         let deleted: Vec<Vec<Value>> = doomed
             .into_iter()
             .map(|(mut row, using_row)| {

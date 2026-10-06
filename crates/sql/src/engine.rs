@@ -137,6 +137,9 @@ impl Engine {
                 auth: self.shared.auth.clone(),
                 role: user.to_string(),
                 authenticated: user.to_string(),
+                routines: None,
+                triggers: None,
+                call_depth: 0,
             },
             txns: Vec::new(),
             failed: false,
@@ -161,6 +164,12 @@ pub struct Session {
     /// The reported parameters as the client last heard them.
     reported: HashMap<String, String>,
 }
+
+/// RoutineCache is the functions and procedures of a root value, with the addresses of their collections.
+pub type RoutineCache = ((Option<store::Hash>, Option<store::Hash>), Arc<Vec<Arc<crate::routines::Routine>>>);
+
+/// TriggerCache is the triggers of a root value, with the address of their collection.
+pub type TriggerCache = (Option<store::Hash>, Arc<Vec<Arc<objects::Trigger>>>);
 
 /// SessionState is the part of a session that statements and functions can read and change.
 pub struct SessionState {
@@ -187,6 +196,12 @@ pub struct SessionState {
     pub role: String,
     /// The user that logged in, which SET SESSION AUTHORIZATION checks.
     pub authenticated: String,
+    /// The functions and procedures last loaded, with the addresses of the collections they were loaded from.
+    pub routines: Option<RoutineCache>,
+    /// The triggers last loaded, with the address of the trigger collection they were loaded from.
+    pub triggers: Option<TriggerCache>,
+    /// How many function calls are running inside one another.
+    pub call_depth: usize,
 }
 
 impl SessionState {
@@ -483,6 +498,7 @@ impl Session {
             subquery_value: Value::Null,
             ctes: Vec::new(),
             work_tables: std::collections::HashMap::new(),
+            named_params: None,
         };
         f(&mut ctx)
     }
@@ -607,6 +623,18 @@ impl Session {
             NodeEnum::CreateRoleStmt(create) => {
                 let mut parameters = Vec::new();
                 return self.with_ctx(&mut parameters, params, |ctx| ctx.create_role(create, extras.if_not_exists));
+            }
+            NodeEnum::CreateFunctionStmt(create) => {
+                let mut parameters = Vec::new();
+                return self.with_ctx(&mut parameters, params, |ctx| ctx.create_function(create, &extras.text));
+            }
+            NodeEnum::DoStmt(stmt) => {
+                let mut parameters = Vec::new();
+                return self.with_ctx(&mut parameters, params, |ctx| ctx.do_block(stmt, &extras.text));
+            }
+            NodeEnum::CreateTrigStmt(create) => {
+                let mut parameters = Vec::new();
+                return self.with_ctx(&mut parameters, params, |ctx| ctx.create_trigger(create, &extras.text));
             }
             NodeEnum::VariableSetStmt(set) if matches!(set.name.as_str(), "role" | "session_authorization") => {
                 return self.set_role(set);
@@ -775,54 +803,32 @@ fn set_value(name: &str, args: &[Node]) -> Result<String> {
 }
 
 /// describable reports whether describing a statement needs the catalog.
-fn describable(node: &NodeEnum) -> bool {
+pub(crate) fn describable(node: &NodeEnum) -> bool {
     matches!(
         node,
-        NodeEnum::SelectStmt(_) | NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
+        NodeEnum::SelectStmt(_)
+            | NodeEnum::InsertStmt(_)
+            | NodeEnum::UpdateStmt(_)
+            | NodeEnum::DeleteStmt(_)
+            | NodeEnum::CallStmt(_)
     )
 }
 
 impl Ctx<'_> {
     /// describe plans a statement for its result columns, collecting its parameter types.
-    fn describe(&mut self, node: &NodeEnum) -> Result<Option<Vec<Column>>> {
+    pub(crate) fn describe(&mut self, node: &NodeEnum) -> Result<Option<Vec<Column>>> {
         Ok(match node {
             NodeEnum::SelectStmt(select) => Some(Planner { ctx: self, outer: Vec::new() }.plan_query(select)?.columns),
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.returning.map(|r| r.columns),
             NodeEnum::UpdateStmt(update) => self.plan_update(update)?.returning.map(|r| r.columns),
             NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.returning.map(|r| r.columns),
+            NodeEnum::CallStmt(call) => self.call_columns(call)?,
             _ => None,
         })
     }
 
-    /// call runs CALL, which fails as Postgres does for a function, since only procedures can be called.
-    fn call(&mut self, stmt: &pg_query::protobuf::CallStmt) -> Result<Outcome> {
-        let call = stmt.funccall.as_ref().ok_or_else(|| PgError::internal("CALL without a call"))?;
-        let name = call.funcname.iter().filter_map(crate::expr::node_name).next_back().unwrap_or_default().to_string();
-        let mut types = Vec::with_capacity(call.args.len());
-        for arg in &call.args {
-            types.push(crate::expr::Binder::new(self, crate::expr::Scope::default()).bind(arg)?.1.oid);
-        }
-        let signature =
-            format!("{name}({})", types.iter().map(|&t| crate::cast::type_display(t)).collect::<Vec<_>>().join(", "));
-        if crate::functions::exists(&name) && crate::functions::resolve(&name, &types, call.location).is_ok() {
-            return Err(PgError {
-                position: crate::expr::position(call.location),
-                hint: Some("To call a function, use SELECT.".into()),
-                ..PgError::new(code::WRONG_OBJECT_TYPE, format!("{signature} is not a procedure"))
-            });
-        }
-        Err(PgError {
-            position: crate::expr::position(call.location),
-            hint: Some(
-                "No procedure matches the given name and argument types. You might need to add explicit type casts."
-                    .into(),
-            ),
-            ..PgError::new(code::UNDEFINED_FUNCTION, format!("procedure {signature} does not exist"))
-        })
-    }
-
     /// run plans and runs a statement.
-    fn run(&mut self, node: &NodeEnum) -> Result<Outcome> {
+    pub(crate) fn run(&mut self, node: &NodeEnum) -> Result<Outcome> {
         match node {
             NodeEnum::SelectStmt(select) => {
                 let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
@@ -847,7 +853,7 @@ impl Ctx<'_> {
             NodeEnum::DropRoleStmt(stmt) => self.drop_role(stmt),
             NodeEnum::GrantStmt(stmt) => self.grant(stmt),
             NodeEnum::GrantRoleStmt(stmt) => self.grant_role(stmt),
-            NodeEnum::CallStmt(stmt) => self.call(stmt),
+            NodeEnum::CallStmt(stmt) => self.call_procedure(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

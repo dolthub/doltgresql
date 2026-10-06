@@ -94,6 +94,13 @@ pub mod code {
     pub const DUPLICATE_PREPARED_STATEMENT: &str = "42P05";
     pub const FOREIGN_KEY_VIOLATION: &str = "23503";
     pub const INVALID_FOREIGN_KEY: &str = "42830";
+    pub const DUPLICATE_FUNCTION: &str = "42723";
+    pub const INVALID_FUNCTION_DEFINITION: &str = "42P13";
+    pub const STATEMENT_TOO_COMPLEX: &str = "54001";
+    pub const RAISE_EXCEPTION: &str = "P0001";
+    pub const NO_DATA_FOUND: &str = "P0002";
+    pub const TOO_MANY_ROWS: &str = "P0003";
+    pub const CASE_NOT_FOUND: &str = "20000";
 }
 
 /// PgError is an error to report to the client.

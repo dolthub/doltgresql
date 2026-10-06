@@ -123,6 +123,8 @@ pub enum Expr {
     IsNull(Box<Expr>, bool),
     /// A call of the built-in function at the index.
     Func(usize, Vec<Expr>),
+    /// A call of a user-defined function, with an argument for each of its input parameters.
+    Routine(std::sync::Arc<crate::routines::Routine>, Vec<Expr>),
     /// A column of an enclosing query's row, by how many queries out it is and its position.
     Outer(usize, usize),
     /// A column of a grouped query's input, which grouping must replace.
@@ -485,6 +487,15 @@ impl<'b, 'a> Binder<'b, 'a> {
                 _ => {}
             }
         }
+        if let Some((routine, params)) = &self.ctx.named_params
+            && let Some(index) = match names.as_slice() {
+                [name] => params.iter().position(|p| p == name),
+                [function, name] if function == routine => params.iter().position(|p| p == name),
+                _ => None,
+            }
+        {
+            return Ok((Expr::Param(index), typ(self.ctx.parameters.get(index).copied().unwrap_or(oid::UNKNOWN))));
+        }
         if self.definition && self.scopes.iter().all(|s| s.columns.is_empty()) {
             return Err(PgError {
                 position: position(column.location),
@@ -513,9 +524,9 @@ impl<'b, 'a> Binder<'b, 'a> {
     /// func_call binds a call of a built-in function.
     fn func_call(&mut self, call: &pg_query::protobuf::FuncCall) -> Result<Bound> {
         let names: Vec<&str> = call.funcname.iter().filter_map(node_name).collect();
-        let name = match names.as_slice() {
-            [name] => *name,
-            ["pg_catalog", name] => *name,
+        let (schema, name) = match names.as_slice() {
+            [name] => (None, *name),
+            [schema, name] | [_, schema, name] => (Some(*schema), *name),
             _ => {
                 return Err(PgError {
                     position: position(call.location),
@@ -523,6 +534,23 @@ impl<'b, 'a> Binder<'b, 'a> {
                 });
             }
         };
+        if name == "pg_typeof" && schema.is_none_or(|s| s == "pg_catalog") && call.args.len() == 1 {
+            let (_, ty) = self.bind(&call.args[0])?;
+            let reg = crate::types::Reg {
+                type_oid: oid::REGTYPE,
+                oid: ty.oid,
+                name: crate::cast::type_display(ty.oid).into_owned(),
+            };
+            return Ok((Expr::Const(Value::Reg(Box::new(reg))), typ(oid::REGTYPE)));
+        }
+        if call.over.is_none() && !call.agg_star {
+            let routines = self.ctx.routines_named(schema, name)?;
+            if (!routines.is_empty() || schema.is_some_and(|s| s != "pg_catalog"))
+                && let Some(bound) = self.routine_call(call, schema, name, routines, false)?
+            {
+                return Ok(bound);
+            }
+        }
         if call.over.is_some() {
             return self.window_call(name, call);
         }
@@ -921,6 +949,13 @@ impl<'b, 'a> Binder<'b, 'a> {
             if !(is_datetime(lt) && (rt == oid::UNKNOWN || rt == lt) || is_datetime(rt) && lt == oid::UNKNOWN) {
                 return Err(missing());
             }
+        }
+        let textual = |t: u32| is_string(t) || t == oid::UNKNOWN;
+        let other = |t: u32| !textual(t) && !matches!(t, oid::JSON | oid::JSONB) && !is_array_type(t);
+        if op == "||" && ((textual(lt) && other(rt)) || (other(lt) && textual(rt))) {
+            let left = coerce(left, typ(oid::TEXT), true, location)?.0;
+            let right = coerce(right, typ(oid::TEXT), true, location)?.0;
+            return Ok((Expr::Concat(Box::new(left), Box::new(right)), typ(oid::TEXT)));
         }
         // An untyped operand takes the other operand's type, and two untyped operands are text.
         let domain = match (lt == oid::UNKNOWN, rt == oid::UNKNOWN) {
@@ -1763,6 +1798,10 @@ impl Expr {
                 let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
                 functions::call(ctx, *index, &values)?
             }
+            Expr::Routine(routine, args) => {
+                let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+                crate::routines::call(ctx, routine, values)?
+            }
             Expr::Outer(depth, i) => {
                 let level = ctx
                     .outer
@@ -1988,6 +2027,7 @@ impl Expr {
             Expr::Not(e) => Expr::Not(b(e)),
             Expr::IsNull(e, n) => Expr::IsNull(b(e), n),
             Expr::Func(i, args) => Expr::Func(i, args.into_iter().map(&mut *f).collect()),
+            Expr::Routine(r, args) => Expr::Routine(r, args.into_iter().map(&mut *f).collect()),
             Expr::Coalesce(args) => Expr::Coalesce(args.into_iter().map(&mut *f).collect()),
             Expr::MinMax(g, args) => Expr::MinMax(g, args.into_iter().map(&mut *f).collect()),
             Expr::Case(whens, otherwise) => {
@@ -2048,6 +2088,7 @@ impl Expr {
                 r.visit(f);
             }
             Expr::Func(_, args)
+            | Expr::Routine(_, args)
             | Expr::Coalesce(args)
             | Expr::MinMax(_, args)
             | Expr::Array(_, args, _)

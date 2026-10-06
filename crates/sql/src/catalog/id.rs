@@ -18,14 +18,20 @@
 pub const SECTION_DATABASE: u8 = 6;
 /// SECTION_FOREIGN_KEY is the ID section of foreign keys.
 pub const SECTION_FOREIGN_KEY: u8 = 11;
+/// SECTION_FUNCTION is the ID section of functions.
+pub const SECTION_FUNCTION: u8 = 15;
 /// SECTION_INDEX is the ID section of indexes.
 pub const SECTION_INDEX: u8 = 17;
 /// SECTION_NAMESPACE is the ID section of schemas.
 pub const SECTION_NAMESPACE: u8 = 18;
+/// SECTION_PROCEDURE is the ID section of procedures.
+pub const SECTION_PROCEDURE: u8 = 24;
 /// SECTION_SEQUENCE is the ID section of sequences.
 pub const SECTION_SEQUENCE: u8 = 27;
 /// SECTION_TABLE is the ID section of tables.
 pub const SECTION_TABLE: u8 = 29;
+/// SECTION_TRIGGER is the ID section of triggers.
+pub const SECTION_TRIGGER: u8 = 34;
 /// SECTION_TYPE is the ID section of types.
 pub const SECTION_TYPE: u8 = 35;
 /// SECTION_USER is the ID section of roles.

@@ -18,6 +18,7 @@
 mod builtin;
 mod infoschema;
 pub mod reg;
+mod routines;
 mod rows;
 pub mod snapshot;
 

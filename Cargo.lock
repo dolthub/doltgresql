@@ -1417,6 +1417,7 @@ dependencies = [
  "prolly",
  "rand",
  "regex",
+ "serde_json",
  "serial",
  "sha2",
  "store",

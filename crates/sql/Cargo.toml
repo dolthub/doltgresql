@@ -23,6 +23,7 @@ pg_query = "6"
 rand = "0.8"
 regex = "1"
 prolly = { path = "../prolly" }
+serde_json = "1"
 serial = { path = "../serial" }
 sha2 = "0.10"
 store = { path = "../store" }

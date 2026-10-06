@@ -73,8 +73,7 @@ pub enum Plan {
     /// The rows a set-returning function returns for its arguments, with a row number when asked, spreading
     /// records over the given number of columns.
     Function {
-        index: usize,
-        args: Vec<Expr>,
+        call: Expr,
         ordinality: bool,
         width: usize,
     },
@@ -739,7 +738,9 @@ impl<'b, 'a> Planner<'b, 'a> {
             Expr::SetRef(k) => binder.set_functions.take().unwrap_or_default().swap_remove(k),
             other => other,
         };
-        let Expr::Func(index, args) = expr else { return Err(PgError::unsupported("this function in FROM")) };
+        if !matches!(expr, Expr::Func(..) | Expr::Routine(..)) {
+            return Err(PgError::unsupported("this function in FROM"));
+        }
         let alias = function.alias.as_ref();
         let table = alias.map_or(name.clone(), |a| a.aliasname.clone());
         let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
@@ -748,11 +749,16 @@ impl<'b, 'a> Planner<'b, 'a> {
             .first()
             .map(|r| r.to_string())
             .unwrap_or_else(|| alias.map_or(name.clone(), |a| a.aliasname.clone()));
-        let out_columns = crate::dolt::procedures::OUT_COLUMNS
+        let routine_columns: Vec<(String, ColumnType)> = match &expr {
+            Expr::Routine(routine, _) => routine.columns.clone(),
+            _ => Vec::new(),
+        };
+        let out_columns: Option<Vec<(String, ColumnType)>> = crate::dolt::procedures::OUT_COLUMNS
             .iter()
             .chain(crate::functions::JSON_OUT_COLUMNS)
             .find(|(n, _)| *n == name)
-            .map(|(_, c)| *c);
+            .map(|(_, c)| c.iter().map(|(n, t)| (n.to_string(), typ(*t))).collect())
+            .or((!routine_columns.is_empty()).then_some(routine_columns));
         let mut columns = match out_columns {
             Some(out) => out
                 .iter()
@@ -760,7 +766,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 .map(|(i, (n, t))| ScopeColumn {
                     table: table.clone(),
                     name: renames.get(i).map_or(n.to_string(), |r| r.to_string()),
-                    ty: typ(*t),
+                    ty: *t,
                     hidden: false,
                 })
                 .collect(),
@@ -771,7 +777,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             let name = renames.get(1).map_or("ordinality".to_string(), |r| r.to_string());
             columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false });
         }
-        Ok((Plan::Function { index, args, ordinality: function.ordinality, width }, Scope { columns }))
+        Ok((Plan::Function { call: expr, ordinality: function.ordinality, width }, Scope { columns }))
     }
 
     /// plan_join plans a join with its condition, merging the columns that USING or NATURAL name.
@@ -1492,11 +1498,7 @@ impl Plan {
                 for row in input.run(ctx)? {
                     let mut columns = Vec::with_capacity(functions.len());
                     for function in functions {
-                        let Expr::Func(index, args) = function else {
-                            return Err(PgError::internal("a set-returning call that is not a function"));
-                        };
-                        let values = args.iter().map(|a| a.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
-                        columns.push(crate::functions::call_set(ctx, *index, &values)?);
+                        columns.push(set_rows(ctx, function, &row)?);
                     }
                     let count = columns.iter().map(Vec::len).max().unwrap_or(0);
                     for i in 0..count {
@@ -1548,9 +1550,8 @@ impl Plan {
                 }
                 out
             }
-            Plan::Function { index, args, ordinality, width } => {
-                let values = args.iter().map(|a| a.eval(ctx, &[])).collect::<Result<Vec<_>>>()?;
-                let rows = crate::functions::call_set(ctx, *index, &values)?;
+            Plan::Function { call, ordinality, width } => {
+                let rows = set_rows(ctx, call, &[])?;
                 rows.into_iter()
                     .enumerate()
                     .map(|(i, v)| {
@@ -1759,4 +1760,19 @@ fn set_operation(op: SetOp, all: bool, left: Vec<Vec<Value>>, right: Vec<Vec<Val
         }
     }
     out
+}
+
+/// set_rows calls a function in FROM or a select list for its rows: each value a set-returning function returns, or
+/// the one value of any other function.
+fn set_rows(ctx: &mut Ctx<'_>, call: &Expr, row: &[Value]) -> Result<Vec<Value>> {
+    match call {
+        Expr::Func(index, args) => {
+            let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+            crate::functions::call_set(ctx, *index, &values)
+        }
+        other => match other.eval(ctx, row)? {
+            Value::Set(values) => Ok(values),
+            value => Ok(vec![value]),
+        },
+    }
 }

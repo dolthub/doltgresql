@@ -820,3 +820,189 @@ $$;"#,
         },
     ]);
 }
+
+#[test]
+fn test_procedure_and_do_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "procedures and DO",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE PROCEDURE p(a int, OUT b int) LANGUAGE plpgsql AS $$ BEGIN b := a + 1; END $$;",
+                    expected: Expected::Tag("CREATE PROCEDURE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE PROCEDURE p(a int, OUT b int) LANGUAGE plpgsql AS $$ BEGIN b := a + 1; END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42723", message: r#"function "p" already exists with same argument types"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL p(1, NULL);",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "CALL",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL p(1);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "procedure p(integer) does not exist", hint: "No procedure matches the given name and argument types. You might need to add explicit type casts.", position: 6, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT p(1);",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "p(integer) is a procedure", hint: "To call a procedure, use CALL.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE PROCEDURE q(INOUT x int, y text = 'd') LANGUAGE sql AS $$ SELECT x * 2 $$;",
+                    expected: Expected::Tag("CREATE PROCEDURE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL q(4);",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4)],
+                        rows: &[
+                            &[T("8")],
+                        ],
+                        tag: "CALL",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL q(4, 'z');",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4)],
+                        rows: &[
+                            &[T("8")],
+                        ],
+                        tag: "CALL",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE PROCEDURE r() LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'hi'; RETURN; END $$;",
+                    expected: Expected::Tag("CREATE PROCEDURE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL r();",
+                    expected: Expected::Tag("CALL"),
+                    notices: &[Diagnostic { code: "00000", message: "hi", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP PROCEDURE r;",
+                    expected: Expected::Tag("DROP PROCEDURE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP PROCEDURE nope();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "procedure nope() does not exist", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION p(int, int);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function p(integer, integer) does not exist", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP PROCEDURE p(int);",
+                    expected: Expected::Tag("DROP PROCEDURE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION fx() RETURNS int LANGUAGE sql AS 'SELECT 1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL fx();",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "fx() is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP PROCEDURE fx();",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "fx() is not a procedure", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL abs(1);",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "abs(integer) is not a procedure", hint: "To call a function, use SELECT.", position: 6, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE PROCEDURE s(a int) LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "RETURN cannot have a parameter in a procedure", position: 63, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE logged (v text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE PROCEDURE log_it(v text) LANGUAGE plpgsql AS $$ BEGIN INSERT INTO logged VALUES (v); END $$;",
+                    expected: Expected::Tag("CREATE PROCEDURE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CALL log_it('first');",
+                    expected: Expected::Tag("CALL"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DO $$ BEGIN RAISE NOTICE 'x %', 1; INSERT INTO logged VALUES ('from do'); END $$;",
+                    expected: Expected::Tag("DO"),
+                    notices: &[Diagnostic { code: "00000", message: "x 1", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DO LANGUAGE plpgsql $$ DECLARE n int; BEGIN SELECT count(*) INTO n FROM logged; RAISE NOTICE 'rows %', n; END $$;",
+                    expected: Expected::Tag("DO"),
+                    notices: &[Diagnostic { code: "00000", message: "rows 2", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DO LANGUAGE sql $$ SELECT 1 $$;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"language "sql" does not support inline code execution"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DO LANGUAGE missing_language $$ SELECT 1 $$;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"language "missing_language" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM logged ORDER BY v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT)],
+                        rows: &[
+                            &[T("first")],
+                            &[T("from do")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

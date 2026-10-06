@@ -48,6 +48,9 @@ pub struct Ctx<'a> {
     pub ctes: Vec<crate::plan::Cte>,
     /// The rows of each recursive WITH query's working table while it runs, by its ID.
     pub work_tables: std::collections::HashMap<usize, Vec<Vec<Value>>>,
+    /// The name of the SQL function whose body is running and the names of its parameters, which the body can refer
+    /// to its parameters by.
+    pub named_params: Option<(String, Vec<String>)>,
 }
 
 /// column returns the description of a result column of the type.

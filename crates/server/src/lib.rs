@@ -56,6 +56,9 @@ impl Server {
     }
 }
 
+/// CONNECTION_STACK_SIZE is the stack size of each connection's thread, where function calls nest.
+const CONNECTION_STACK_SIZE: usize = 256 << 20;
+
 /// serve accepts connections on the configured address until the listener fails.
 pub fn serve(config: &Config) -> Result<(), String> {
     let server = Arc::new(Server::new(config)?);
@@ -68,13 +71,16 @@ pub fn serve(config: &Config) -> Result<(), String> {
         let _ = stream.set_nodelay(true);
         let server = server.clone();
         let process_id = server.next_process_id.fetch_add(1, Ordering::Relaxed);
-        std::thread::spawn(move || {
+        let spawned = std::thread::Builder::new().stack_size(CONNECTION_STACK_SIZE).spawn(move || {
             if let Err(err) = conn::Conn::new(stream, server, process_id).run()
                 && !matches!(&err, conn::ConnError::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof)
             {
                 eprintln!("connection {process_id} ended: {err}");
             }
         });
+        if let Err(err) = spawned {
+            eprintln!("connection {process_id} could not start: {err}");
+        }
     }
     Ok(())
 }

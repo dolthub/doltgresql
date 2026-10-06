@@ -40,25 +40,38 @@ pub struct Extras {
     pub if_not_exists: bool,
     /// The `AS OF` revisions of tables, each with the location of the table it follows.
     pub as_of: Vec<(i32, Node)>,
+    /// The statement's source text.
+    pub text: String,
 }
 
 /// parse parses the statements of a query.
 pub fn parse(query: &str) -> Result<Vec<Statement>> {
     match pg_query::parse_with_cursor(query) {
-        Ok(result) => Ok(postgres_statements(result, Extras::default())),
+        Ok(result) => Ok(postgres_statements(query, result, Extras::default())),
         Err((err, cursor)) => extended(query).ok_or_else(|| syntax_error(err, cursor)),
     }
 }
 
-/// postgres_statements returns the statements of a parse result, each with the extras.
-fn postgres_statements(result: pg_query::ParseResult, extras: Extras) -> Vec<Statement> {
+/// postgres_statements returns the statements of a parse result of the query, each with the extras.
+fn postgres_statements(query: &str, result: pg_query::ParseResult, extras: Extras) -> Vec<Statement> {
     result
         .protobuf
         .stmts
         .into_iter()
-        .filter_map(|raw| raw.stmt.and_then(|stmt| stmt.node))
-        .map(|node| Statement::Postgres { node, extras: extras.clone() })
+        .filter_map(|raw| {
+            let start = (raw.stmt_location.max(0) as usize).min(query.len());
+            let end = if raw.stmt_len == 0 { query.len() } else { (start + raw.stmt_len as usize).min(query.len()) };
+            let text = query.get(start..end).unwrap_or_default().trim().to_string();
+            let node = raw.stmt.and_then(|stmt| stmt.node)?;
+            Some(Statement::Postgres { node, extras: Extras { text, ..extras.clone() } })
+        })
         .collect()
+}
+
+/// expression_node parses the text of one expression, such as a stored default.
+pub fn expression_node(text: &str) -> Result<Node> {
+    expression(&format!("{}{text}", " ".repeat(7)), 7..7 + text.len())
+        .ok_or_else(|| PgError::new(code::SYNTAX_ERROR, format!("invalid expression: {text}")))
 }
 
 /// syntax_error converts a parser error, with the 1-based character position it reported, to Postgres' error.
@@ -88,8 +101,9 @@ fn extended(query: &str) -> Option<Vec<Statement>> {
 /// extended_statement parses one statement of a query from its tokens.
 fn extended_statement(query: &str, tokens: &[ScanToken]) -> Option<Vec<Statement>> {
     let range = tokens[0].start as usize..tokens[tokens.len() - 1].end as usize;
-    if let Ok(result) = pg_query::parse(&isolate(query, range.clone())) {
-        return Some(postgres_statements(result, Extras::default()));
+    let isolated = isolate(query, range.clone());
+    if let Ok(result) = pg_query::parse(&isolated) {
+        return Some(postgres_statements(&isolated, result, Extras::default()));
     }
     let words = Words { query, tokens };
     if words.keyword(0, "use") {
@@ -263,7 +277,7 @@ fn cut_statement(query: &str, range: Range<usize>, words: &Words<'_>) -> Option<
         let table = tables.iter().copied().filter(|&location| location < start).max()?;
         extras.as_of.push((table, revision));
     }
-    Some(postgres_statements(result, extras))
+    Some(postgres_statements(&text, result, extras))
 }
 
 /// as_of_end returns the index of the last token of an `AS OF` revision that starts at the token: a string, a typed

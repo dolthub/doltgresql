@@ -622,6 +622,10 @@ impl Ctx<'_> {
             ObjectType::ObjectIndex => self.drop_indexes(drop),
             ObjectType::ObjectSequence => self.drop_sequences(drop),
             ObjectType::ObjectView => self.drop_views(drop),
+            ObjectType::ObjectFunction => self.drop_routines(drop, Some(false)),
+            ObjectType::ObjectProcedure => self.drop_routines(drop, Some(true)),
+            ObjectType::ObjectRoutine => self.drop_routines(drop, None),
+            ObjectType::ObjectTrigger => self.drop_triggers(drop),
             other => Err(PgError::unsupported(format!("DROP {other:?}"))),
         }
     }
@@ -666,6 +670,7 @@ impl Ctx<'_> {
         }
         for (schema, name) in doomed {
             self.txn.root.put_table(self.db, &schema, &name, None)?;
+            self.drop_table_triggers(&schema, &name)?;
             self.forget_object(&Object::Table(schema.clone(), name.clone()))?;
             self.drop_owned_sequences(&schema, &name)?;
         }
@@ -726,6 +731,7 @@ impl Ctx<'_> {
             }
             for table in tables {
                 self.txn.root.put_table(self.db, &name, &table, None)?;
+                self.drop_table_triggers(&name, &table)?;
             }
             self.txn.root.schemas.retain(|s| s != name.as_bytes());
         }
