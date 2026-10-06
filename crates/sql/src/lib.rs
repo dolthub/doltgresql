@@ -67,6 +67,7 @@ pub mod oid {
     pub const TEXT_ARRAY: u32 = 1009;
     pub const JSON: u32 = 114;
     pub const JSONB: u32 = 3802;
+    pub const RECORD: u32 = 2249;
     pub const FLOAT4: u32 = 700;
     pub const FLOAT8: u32 = 701;
     pub const UNKNOWN: u32 = 705;

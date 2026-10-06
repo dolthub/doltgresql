@@ -278,11 +278,16 @@ impl<'b, 'a> Planner<'b, 'a> {
             let Some(NodeEnum::SelectStmt(query)) = cte.ctequery.as_deref().and_then(|q| q.node.as_ref()) else {
                 return Err(PgError::unsupported("data-modifying statements in WITH"));
             };
-            let aliases: Vec<String> = cte.aliascolnames.iter().filter_map(node_name).map(str::to_string).collect();
+            let mut aliases: Vec<String> = cte.aliascolnames.iter().filter_map(node_name).map(str::to_string).collect();
             let op = SetOperation::try_from(query.op).unwrap_or(SetOperation::SetopNone);
             let recursive = with.recursive && op == SetOperation::SetopUnion && references(query, &cte.ctename);
             let planned = if recursive {
-                self.plan_recursive(cte, query, &aliases)?
+                if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
+                    let rewritten = rewrite_search_and_cycle(cte, query, &mut aliases)?;
+                    self.plan_recursive(cte, &rewritten, &aliases)?
+                } else {
+                    self.plan_recursive(cte, query, &aliases)?
+                }
             } else {
                 let mut planned = self.plan_query(query)?;
                 rename_columns(&cte.ctename, &mut planned.columns, &aliases, cte.location)?;
@@ -313,6 +318,12 @@ impl<'b, 'a> Planner<'b, 'a> {
         };
         let mut anchor = self.plan_query(left)?;
         rename_columns(&cte.ctename, &mut anchor.columns, aliases, cte.location)?;
+        for (ty, column) in anchor.types.iter_mut().zip(&mut anchor.columns) {
+            if ty.oid == oid::UNKNOWN {
+                *ty = typ(oid::TEXT);
+                column.type_oid = oid::TEXT;
+            }
+        }
         let work_table = 1_000_000 + self.ctx.ctes.len();
         self.ctx.ctes.push(Cte {
             name: cte.ctename.clone(),
@@ -1194,6 +1205,144 @@ fn replace_windows(expr: Expr, input_width: usize) -> Expr {
         Expr::WindowRef(k) => Expr::Column(input_width + k),
         other => other.map_children(&mut |child| replace_windows(child, input_width)),
     }
+}
+
+/// target_expression returns the expression of a simple SELECT's output column, by position.
+fn target_expression(select: &SelectStmt, i: usize) -> Result<Node> {
+    let unsupported = || PgError::unsupported("CYCLE and SEARCH clauses over this query");
+    if SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone) != SetOperation::SetopNone {
+        return Err(unsupported());
+    }
+    match select.target_list.get(i).and_then(|t| t.node.as_ref()) {
+        Some(NodeEnum::ResTarget(t)) => {
+            let value = t.val.as_deref().ok_or_else(unsupported)?;
+            if matches!(value.node.as_ref(), Some(NodeEnum::ColumnRef(c)) if c.fields.iter().any(|f| matches!(f.node, Some(NodeEnum::AStar(_)))))
+            {
+                return Err(unsupported());
+            }
+            Ok(value.clone())
+        }
+        _ => Err(unsupported()),
+    }
+}
+
+/// worktable_name returns the name that a recursive term uses for its WITH query, its alias when it has one.
+fn worktable_name(select: &SelectStmt, cte: &str) -> String {
+    for (node, ..) in NodeEnum::SelectStmt(Box::new(select.clone())).nodes() {
+        if let pg_query::NodeRef::RangeVar(r) = node
+            && r.schemaname.is_empty()
+            && r.relname == cte
+        {
+            return r.alias.as_ref().map_or(r.relname.clone(), |a| a.aliasname.clone());
+        }
+    }
+    cte.to_string()
+}
+
+/// add_target appends an output column to a SELECT from the SQL text of its expression.
+fn add_target(select: &mut SelectStmt, name: &str, text: &str) -> Result<()> {
+    let value = crate::dml::parse_expression(text)?;
+    select.target_list.push(Node {
+        node: Some(NodeEnum::ResTarget(Box::new(pg_query::protobuf::ResTarget {
+            name: name.to_string(),
+            val: Some(Box::new(value)),
+            location: -1,
+            ..Default::default()
+        }))),
+    });
+    Ok(())
+}
+
+/// clause_columns returns the SQL text of the expressions of a SEARCH or CYCLE clause's columns in both terms.
+fn clause_columns(
+    names: &[String],
+    left: &SelectStmt,
+    right: &SelectStmt,
+    list: &[Node],
+    what: &str,
+) -> Result<(String, String)> {
+    use crate::ddl::expression_text;
+    let mut left_parts = Vec::new();
+    let mut right_parts = Vec::new();
+    for column in list.iter().filter_map(node_name) {
+        let i = names.iter().position(|n| n == column).ok_or_else(|| {
+            PgError::new(code::UNDEFINED_COLUMN, format!("{what} column \"{column}\" not in WITH query column list"))
+        })?;
+        left_parts.push(expression_text(&target_expression(left, i)?)?);
+        right_parts.push(expression_text(&target_expression(right, i)?)?);
+    }
+    Ok((left_parts.join(", "), right_parts.join(", ")))
+}
+
+/// rewrite_search_and_cycle adds the columns of a recursive query's SEARCH and CYCLE clauses to both of its terms,
+/// as Postgres' rewriteSearchAndCycle does, so that the recursive term stops at cycles.
+fn rewrite_search_and_cycle(
+    cte: &pg_query::protobuf::CommonTableExpr,
+    query: &SelectStmt,
+    aliases: &mut Vec<String>,
+) -> Result<SelectStmt> {
+    use crate::ddl::expression_text;
+    use crate::engine::quote_identifier as q;
+    let (Some(left), Some(right)) = (query.larg.as_deref(), query.rarg.as_deref()) else {
+        return Err(PgError::internal("a recursive query without both terms"));
+    };
+    let (mut left, mut right) = (left.clone(), right.clone());
+    let names: Vec<String> = if aliases.is_empty() {
+        left.target_list
+            .iter()
+            .map(|t| match t.node.as_ref() {
+                Some(NodeEnum::ResTarget(t)) if !t.name.is_empty() => t.name.clone(),
+                Some(NodeEnum::ResTarget(t)) => t.val.as_deref().map(figure_name).unwrap_or_default(),
+                _ => String::new(),
+            })
+            .collect()
+    } else {
+        aliases.clone()
+    };
+    let w = q(&worktable_name(&right, &cte.ctename));
+    let mut added = Vec::new();
+    if let Some(search) = cte.search_clause.as_ref() {
+        if search.search_breadth_first {
+            return Err(PgError::unsupported("SEARCH BREADTH FIRST"));
+        }
+        let (l, r) = clause_columns(&names, &left, &right, &search.search_col_list, "search")?;
+        let seq = &search.search_seq_column;
+        add_target(&mut left, seq, &format!("ARRAY[ROW({l})]"))?;
+        add_target(&mut right, seq, &format!("{w}.{} || ROW({r})", q(seq)))?;
+        added.push(seq.clone());
+    }
+    if let Some(cycle) = cte.cycle_clause.as_ref() {
+        let (l, r) = clause_columns(&names, &left, &right, &cycle.cycle_col_list, "cycle")?;
+        let mark_value = match cycle.cycle_mark_value.as_deref() {
+            Some(node) => expression_text(node)?,
+            None => "true".into(),
+        };
+        let mark_default = match cycle.cycle_mark_default.as_deref() {
+            Some(node) => expression_text(node)?,
+            None => "false".into(),
+        };
+        let (mark, path) = (&cycle.cycle_mark_column, &cycle.cycle_path_column);
+        add_target(&mut left, mark, &mark_default)?;
+        add_target(&mut left, path, &format!("ARRAY[ROW({l})]"))?;
+        add_target(
+            &mut right,
+            mark,
+            &format!("CASE WHEN ROW({r}) = ANY({w}.{}) THEN {mark_value} ELSE {mark_default} END", q(path)),
+        )?;
+        add_target(&mut right, path, &format!("{w}.{} || ROW({r})", q(path)))?;
+        let condition = format!("{w}.{} <> {mark_value}", q(mark));
+        let condition = match right.where_clause.as_deref() {
+            Some(existing) => format!("({}) AND ({condition})", expression_text(existing)?),
+            None => condition,
+        };
+        right.where_clause = Some(Box::new(crate::dml::parse_expression(&condition)?));
+        added.push(mark.clone());
+        added.push(path.clone());
+    }
+    if !aliases.is_empty() {
+        aliases.extend(added);
+    }
+    Ok(SelectStmt { larg: Some(Box::new(left)), rarg: Some(Box::new(right)), ..query.clone() })
 }
 
 /// dedupe drops rows that equal an earlier row or a row of the existing rows.

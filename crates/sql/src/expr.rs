@@ -155,6 +155,8 @@ pub enum Expr {
     DateTime(DateOp, Box<Expr>, Box<Expr>),
     /// A window function call's result, by its position among the select list's window calls.
     WindowRef(usize),
+    /// A row constructor.
+    Row(Vec<Expr>),
     /// A set-returning function call's current row, by its position among the select list's set-returning calls.
     SetRef(usize),
     /// An ARRAY constructor of the element type, whose items are themselves arrays when it is multidimensional.
@@ -408,6 +410,15 @@ impl<'b, 'a> Binder<'b, 'a> {
             }
             NodeEnum::SubLink(link) => self.sublink(link),
             NodeEnum::AArrayExpr(array) => self.array_expr(array, None),
+            NodeEnum::RowExpr(row) => {
+                let mut fields = Vec::with_capacity(row.args.len());
+                for arg in &row.args {
+                    let (expr, ty) = self.bind(arg)?;
+                    let ty = if ty.oid == oid::UNKNOWN { typ(oid::TEXT) } else { ty };
+                    fields.push(coerce((expr, ty), ty, false, arg_location(arg))?.0);
+                }
+                Ok((Expr::Row(fields), typ(oid::RECORD)))
+            }
             NodeEnum::AIndirection(indirection) => self.indirection(indirection),
             NodeEnum::NullTest(test) => {
                 let arg = test.arg.as_deref().ok_or_else(|| PgError::internal("no null test argument"))?;
@@ -1335,7 +1346,8 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     if from.oid == to.oid && !explicit && to.modifier == -1 {
         return Ok((expr, to));
     }
-    let allowed = explicit && (is_array_type(from.oid) == is_array_type(to.oid) || is_string(from.oid))
+    let allowed = explicit
+        && (is_array_type(from.oid) == is_array_type(to.oid) || is_string(from.oid) || is_string(to.oid))
         || implicitly_converts(from.oid, to.oid);
     if !allowed {
         return Err(PgError {
@@ -1534,6 +1546,20 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
         (Value::Interval(l), Value::Interval(r)) => l.cmp_key().cmp(&r.cmp_key()),
         (Value::Array(l), Value::Array(r)) => crate::array::compare(l, r),
         (Value::Jsonb(l), Value::Jsonb(r)) => crate::json::compare(l, r),
+        (Value::Record(l), Value::Record(r)) => {
+            for (a, b) in l.iter().zip(r) {
+                let ordering = match (a.is_null(), b.is_null()) {
+                    (true, true) => Ordering::Equal,
+                    (true, false) => Ordering::Greater,
+                    (false, true) => Ordering::Less,
+                    (false, false) => compare_values(a, b),
+                };
+                if ordering != Ordering::Equal {
+                    return ordering;
+                }
+            }
+            l.len().cmp(&r.len())
+        }
         (l, r) => match (as_i64(l), as_i64(r)) {
             (Some(l), Some(r)) => l.cmp(&r),
             _ => Ordering::Equal,
@@ -1654,6 +1680,7 @@ impl Expr {
                 date_op(*op, l, r)?
             }
             Expr::SubqueryValue => ctx.subquery_value.clone(),
+            Expr::Row(fields) => Value::Record(fields.iter().map(|f| f.eval(ctx, row)).collect::<Result<Vec<_>>>()?),
             Expr::Array(element, items, nested) => {
                 let values = items.iter().map(|i| i.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
                 if *nested {
@@ -1879,6 +1906,7 @@ impl Expr {
                 Expr::DateTime(op, l, b(r))
             }
             Expr::Array(t, items, n) => Expr::Array(t, items.into_iter().map(&mut *f).collect(), n),
+            Expr::Row(fields) => Expr::Row(fields.into_iter().map(&mut *f).collect()),
             Expr::Subscript(base, subscripts, slice) => {
                 let base = b(base);
                 let subscripts = subscripts.into_iter().map(|(l, u)| (l.map(&mut *f), u.map(&mut *f))).collect();
@@ -1916,9 +1944,11 @@ impl Expr {
                 l.visit(f);
                 r.visit(f);
             }
-            Expr::Func(_, args) | Expr::Coalesce(args) | Expr::MinMax(_, args) | Expr::Array(_, args, _) => {
-                args.iter().for_each(|a| a.visit(f))
-            }
+            Expr::Func(_, args)
+            | Expr::Coalesce(args)
+            | Expr::MinMax(_, args)
+            | Expr::Array(_, args, _)
+            | Expr::Row(args) => args.iter().for_each(|a| a.visit(f)),
             Expr::Subscript(base, subscripts, _) => {
                 base.visit(f);
                 for (l, u) in subscripts {
