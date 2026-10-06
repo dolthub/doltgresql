@@ -1,0 +1,24 @@
+[package]
+name = "server"
+description = "The Doltgres server: configuration, connections, authentication, and the Postgres wire protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "doltgres"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "0.22"
+hmac = "0.12"
+pbkdf2 = "0.12"
+pgproto.workspace = true
+rand = "0.8"
+sha2 = "0.10"
+sql = { path = "../sql" }
+yaml-rust2 = "0.13"
+
+[lints]
+workspace = true
