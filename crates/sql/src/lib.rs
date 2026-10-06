@@ -46,6 +46,7 @@ pub mod storage;
 mod triggers;
 pub mod txn;
 pub mod types;
+pub mod usertypes;
 pub mod views;
 pub mod window;
 

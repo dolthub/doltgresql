@@ -125,6 +125,8 @@ pub enum Expr {
     Func(usize, Vec<Expr>),
     /// A call of a user-defined function, with an argument for each of its input parameters.
     Routine(std::sync::Arc<crate::routines::Routine>, Vec<Expr>),
+    /// A field of a composite value by position.
+    Field(Box<Expr>, usize),
     /// A column of an enclosing query's row, by how many queries out it is and its position.
     Outer(usize, usize),
     /// A column of a grouped query's input, which grouping must replace.
@@ -342,7 +344,9 @@ impl<'b, 'a> Binder<'b, 'a> {
                 ))
             }
             NodeEnum::TypeCast(cast) => {
-                let target = resolve_type_name(cast.type_name.as_ref().ok_or_else(|| PgError::internal("no type"))?)?;
+                let type_name = cast.type_name.as_ref().ok_or_else(|| PgError::internal("no type"))?;
+                self.ctx.prepare_type(type_name)?;
+                let target = resolve_type_name(type_name)?;
                 let arg = cast.arg.as_deref().ok_or_else(|| PgError::internal("no cast argument"))?;
                 let bound = match arg.node.as_ref() {
                     Some(NodeEnum::AArrayExpr(array)) if is_array_type(target.oid) => {
@@ -429,6 +433,14 @@ impl<'b, 'a> Binder<'b, 'a> {
             NodeEnum::RowExpr(row) => {
                 let mut fields = Vec::with_capacity(row.args.len());
                 for arg in &row.args {
+                    if let Some(NodeEnum::ColumnRef(column)) = arg.node.as_ref()
+                        && let [table, star] = column.fields.as_slice()
+                        && matches!(star.node, Some(NodeEnum::AStar(_)))
+                        && let Some(table) = node_name(table)
+                    {
+                        fields.extend(self.whole_row_columns(table).into_iter().map(|(_, expr, _)| expr));
+                        continue;
+                    }
                     let (expr, ty) = self.bind(arg)?;
                     let ty = if ty.oid == oid::UNKNOWN { typ(oid::TEXT) } else { ty };
                     fields.push(coerce((expr, ty), ty, false, arg_location(arg))?.0);
@@ -487,6 +499,15 @@ impl<'b, 'a> Binder<'b, 'a> {
                 _ => {}
             }
         }
+        if let [name] = names.as_slice() {
+            let columns = self.whole_row_columns(name);
+            if !columns.is_empty() {
+                let types: Vec<(String, ColumnType)> = columns.iter().map(|(n, _, t)| (n.clone(), *t)).collect();
+                let type_oid = crate::usertypes::transient(name, &types);
+                let row = Expr::Row(columns.into_iter().map(|(_, e, _)| e).collect());
+                return Ok((Expr::Cast(Box::new(row), typ(type_oid), false), typ(type_oid)));
+            }
+        }
         if let Some((routine, params)) = &self.ctx.named_params
             && let Some(index) = match names.as_slice() {
                 [name] => params.iter().position(|p| p == name),
@@ -521,6 +542,38 @@ impl<'b, 'a> Binder<'b, 'a> {
 }
 
 impl<'b, 'a> Binder<'b, 'a> {
+    /// whole_row_columns returns the visible columns of the FROM item a name refers to, with their expressions, in the
+    /// innermost scope that has it, which a whole-row reference such as `t` or `t.*` stands for.
+    fn whole_row_columns(&mut self, table: &str) -> Vec<(String, Expr, ColumnType)> {
+        let depth_count = self.scopes.len();
+        for depth in 0..depth_count {
+            let scope = &self.scopes[depth_count - 1 - depth];
+            let columns: Vec<(usize, String, ColumnType)> = scope
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.table == table && !c.hidden)
+                .map(|(i, c)| (i, c.name.clone(), c.ty))
+                .collect();
+            if columns.is_empty() {
+                continue;
+            }
+            return columns
+                .into_iter()
+                .map(|(i, name, ty)| {
+                    let expr = if depth == 0 {
+                        self.columns.push((i, -1));
+                        Expr::Column(i)
+                    } else {
+                        Expr::Outer(depth, i)
+                    };
+                    (name, expr, ty)
+                })
+                .collect();
+        }
+        Vec::new()
+    }
+
     /// func_call binds a call of a built-in function.
     fn func_call(&mut self, call: &pg_query::protobuf::FuncCall) -> Result<Bound> {
         let names: Vec<&str> = call.funcname.iter().filter_map(node_name).collect();
@@ -542,6 +595,27 @@ impl<'b, 'a> Binder<'b, 'a> {
                 name: crate::cast::type_display(ty.oid).into_owned(),
             };
             return Ok((Expr::Const(Value::Reg(Box::new(reg))), typ(oid::REGTYPE)));
+        }
+        if matches!(name, "enum_first" | "enum_last" | "enum_range")
+            && schema.is_none_or(|s| s == "pg_catalog")
+            && call.args.len() == 1
+        {
+            let (_, ty) = self.bind(&call.args[0])?;
+            if let Some(user_type) = crate::usertypes::get(ty.oid)
+                && let crate::usertypes::Kind::Enum(labels) = &user_type.kind
+            {
+                let label = |l: &String| {
+                    Value::Enum(Box::new(crate::types::EnumValue { type_oid: user_type.oid, label: l.clone() }))
+                };
+                return Ok(match name {
+                    "enum_first" => (Expr::Const(labels.first().map_or(Value::Null, label)), ty),
+                    "enum_last" => (Expr::Const(labels.last().map_or(Value::Null, label)), ty),
+                    _ => {
+                        let array = crate::array::Array::one_dimensional(ty.oid, labels.iter().map(label).collect());
+                        (Expr::Const(Value::Array(Box::new(array))), typ(user_type.array))
+                    }
+                });
+            }
         }
         if call.over.is_none() && !call.agg_star {
             let routines = self.ctx.routines_named(schema, name)?;
@@ -574,7 +648,8 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         let mut bound = Vec::with_capacity(call.args.len());
         for arg in &call.args {
-            bound.push(self.bind(arg)?);
+            let (expr, ty) = self.bind(arg)?;
+            bound.push((expr, crate::usertypes::base_type(ty)));
         }
         let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
         let resolved = functions::resolve(name, &types, call.location)?;
@@ -632,7 +707,8 @@ impl<'b, 'a> Binder<'b, 'a> {
         let result = (|| -> Result<(AggCall, u32)> {
             let mut bound = Vec::with_capacity(call.args.len());
             for arg in &call.args {
-                bound.push(self.bind(arg)?);
+                let (expr, ty) = self.bind(arg)?;
+                bound.push((expr, crate::usertypes::base_type(ty)));
             }
             let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
             let (index, arg_types, ret) = functions::aggregate::resolve(name, &types, call.location)?;
@@ -889,6 +965,8 @@ impl<'b, 'a> Binder<'b, 'a> {
 
     /// binary binds a binary operator, resolving its operand types as Postgres does for the built-in operators.
     fn binary(&mut self, op: &str, left: Bound, right: Bound, location: i32) -> Result<Bound> {
+        let left = (left.0, crate::usertypes::base_type(left.1));
+        let right = (right.0, crate::usertypes::base_type(right.1));
         let (lt, rt) = (left.1.oid, right.1.oid);
         let missing = || PgError {
             position: position(location),
@@ -1076,10 +1154,45 @@ impl<'b, 'a> Binder<'b, 'a> {
     /// indirection binds subscripts of an array.
     fn indirection(&mut self, indirection: &pg_query::protobuf::AIndirection) -> Result<Bound> {
         let arg = indirection.arg.as_deref().ok_or_else(|| PgError::internal("no subscripted value"))?;
-        let (base, ty) = self.bind(arg)?;
+        let (mut base, mut ty) = self.bind(arg)?;
+        let mut items = indirection.indirection.as_slice();
+        while let Some((first, rest)) = items.split_first() {
+            let Some(NodeEnum::String(field)) = first.node.as_ref() else { break };
+            let attributes = match crate::usertypes::get(ty.oid).map(|t| t.kind.clone()) {
+                Some(crate::usertypes::Kind::Composite(attributes)) => attributes,
+                _ => {
+                    return Err(PgError {
+                        position: position(arg_location(arg)),
+                        ..PgError::new(
+                            code::DATATYPE_MISMATCH,
+                            format!(
+                                "column notation .{} applied to type {}, which is not a composite type",
+                                field.sval,
+                                type_display(ty.oid)
+                            ),
+                        )
+                    });
+                }
+            };
+            let Some(index) = attributes.iter().position(|(name, _)| *name == field.sval) else {
+                return Err(PgError {
+                    position: position(arg_location(arg)),
+                    ..PgError::new(
+                        code::UNDEFINED_COLUMN,
+                        format!("column \"{}\" not found in data type {}", field.sval, type_display(ty.oid)),
+                    )
+                });
+            };
+            base = Expr::Field(Box::new(base), index);
+            ty = attributes[index].1;
+            items = rest;
+        }
+        if items.is_empty() {
+            return Ok((base, ty));
+        }
         let mut subscripts = Vec::new();
         let mut slice = false;
-        for item in &indirection.indirection {
+        for item in items {
             let Some(NodeEnum::AIndices(indices)) = item.node.as_ref() else {
                 return Err(PgError::unsupported("field selection"));
             };
@@ -1374,6 +1487,7 @@ pub fn arg_location(node: &Node) -> i32 {
         },
         Some(NodeEnum::ParamRef(p)) => p.location,
         Some(NodeEnum::FuncCall(f)) => f.location,
+        Some(NodeEnum::RowExpr(r)) => r.location,
         _ => -1,
     }
 }
@@ -1408,6 +1522,24 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     if from == to {
         return Ok((expr, to));
     }
+    let base = crate::usertypes::base_type(to);
+    if base != to {
+        let (expr, _) = coerce((expr, from), base, explicit, location)?;
+        return Ok((Expr::Cast(Box::new(expr), to, explicit), to));
+    }
+    if let (Expr::Row(fields), Some(user_type)) = (&expr, crate::usertypes::get(to.oid))
+        && let crate::usertypes::Kind::Composite(attributes) = &user_type.kind
+        && fields.len() != attributes.len()
+    {
+        let detail =
+            if fields.len() < attributes.len() { "Input has too few columns." } else { "Input has too many columns." };
+        return Err(PgError {
+            position: position(location),
+            detail: Some(detail.into()),
+            ..PgError::new(code::CANNOT_COERCE, format!("cannot cast type record to {}", user_type.name))
+        });
+    }
+    let from = crate::usertypes::base_type(from);
     if (from.oid == oid::CHAR) != (to.oid == oid::CHAR) && from.oid != oid::UNKNOWN {
         return char_cast((expr, from), to, explicit, location);
     }
@@ -1491,6 +1623,12 @@ pub(crate) fn implicitly_converts(from: u32, to: u32) -> bool {
         || (from == oid::CHAR && to == oid::TEXT)
         || (matches!(from, oid::INT2 | oid::INT4 | oid::INT8) && is_oid_type(to))
         || (is_oid_type(from) && is_oid_type(to) && (from == oid::OID || to == oid::OID))
+        || (from == oid::RECORD && is_composite(to))
+}
+
+/// is_composite reports whether a type is a user-defined composite type.
+pub fn is_composite(type_oid: u32) -> bool {
+    crate::usertypes::get(type_oid).is_some_and(|t| matches!(t.kind, crate::usertypes::Kind::Composite(_)))
 }
 
 /// is_oid_type reports whether a type holds an OID: oid or one of the reg types.
@@ -1505,6 +1643,7 @@ fn singular(clause: &str) -> &str {
 
 /// assignable reports whether a value of one type converts to the other on assignment.
 pub(crate) fn assignable(from: u32, to: u32) -> bool {
+    let (from, to) = (crate::usertypes::base_type(typ(from)).oid, crate::usertypes::base_type(typ(to)).oid);
     if is_array_type(from) && is_array_type(to) {
         return assignable(element_type(from), element_type(to));
     }
@@ -1521,17 +1660,29 @@ pub(crate) fn assignable(from: u32, to: u32) -> bool {
 
 /// element_type returns the element type of an array type.
 pub fn element_type(array_type: u32) -> u32 {
-    builtin_type(array_type).map_or(oid::TEXT, |t| t.elem)
+    match builtin_type(array_type) {
+        Some(t) => t.elem,
+        None => match crate::usertypes::get(array_type).map(|t| t.kind.clone()) {
+            Some(crate::usertypes::Kind::Array(element)) => element,
+            _ => oid::TEXT,
+        },
+    }
 }
 
 /// array_of returns the array type of an element type.
 pub fn array_of(element: u32) -> u32 {
-    builtin_type(element).map_or(oid::TEXT_ARRAY, |t| t.array)
+    match builtin_type(element) {
+        Some(t) => t.array,
+        None => crate::usertypes::get(element).map_or(oid::TEXT_ARRAY, |t| t.array),
+    }
 }
 
 /// assign converts a bound expression to a column's type as an assignment does, which also allows numeric narrowing
 /// and conversions to text, and names the column in its error.
 pub fn assign(bound: Bound, to: ColumnType, column: &str, location: i32) -> Result<Bound> {
+    if let (Expr::Row(_), true) = (&bound.0, is_composite(to.oid)) {
+        return coerce(bound, to, false, location);
+    }
     let from = bound.1.oid;
     if !assignable(from, to.oid) {
         return Err(PgError {
@@ -1681,6 +1832,16 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
         (Value::Interval(l), Value::Interval(r)) => l.cmp_key().cmp(&r.cmp_key()),
         (Value::Array(l), Value::Array(r)) => crate::array::compare(l, r),
         (Value::Jsonb(l), Value::Jsonb(r)) => crate::json::compare(l, r),
+        (Value::Enum(l), Value::Enum(r)) => {
+            let position = |label: &str| match crate::usertypes::get(l.type_oid).map(|t| t.kind.clone()) {
+                Some(crate::usertypes::Kind::Enum(labels)) => labels.iter().position(|x| x == label),
+                _ => None,
+            };
+            position(&l.label).cmp(&position(&r.label))
+        }
+        (Value::Composite(l), Value::Composite(r)) => {
+            compare_values(&Value::Record(l.fields.clone()), &Value::Record(r.fields.clone()))
+        }
         (Value::Record(l), Value::Record(r)) => {
             for (a, b) in l.iter().zip(r) {
                 let ordering = match (a.is_null(), b.is_null()) {
@@ -1732,13 +1893,20 @@ impl Expr {
                 if crate::cast::is_reg_type(ty.oid) {
                     return ctx.reg_value(value, ty.oid);
                 }
-                match value {
+                let value = match value {
                     Value::Text(text) if !matches!(ty.oid, oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME) => {
                         cast_value(crate::cast::input(&text, ty.oid)?, *ty, *explicit)?
                     }
                     value => cast_value(value, *ty, *explicit)?,
-                }
+                };
+                ctx.check_domain(&value, *ty)?;
+                value
             }
+            Expr::Field(expr, index) => match expr.eval(ctx, row)? {
+                Value::Composite(c) => c.fields.get(*index).cloned().unwrap_or(Value::Null),
+                Value::Record(fields) => fields.get(*index).cloned().unwrap_or(Value::Null),
+                _ => Value::Null,
+            },
             Expr::Arith(op, left, right, ty) => {
                 let (left, right) = (left.eval(ctx, row)?, right.eval(ctx, row)?);
                 if left.is_null() || right.is_null() {
@@ -2003,6 +2171,7 @@ impl Expr {
         let mut b = |e: Box<Expr>| Box::new(f(*e));
         match self {
             Expr::Cast(e, t, x) => Expr::Cast(b(e), t, x),
+            Expr::Field(e, i) => Expr::Field(b(e), i),
             Expr::Arith(op, l, r, t) => {
                 let l = b(l);
                 Expr::Arith(op, l, b(r), t)
@@ -2071,9 +2240,12 @@ impl Expr {
     pub fn visit(&self, f: &mut dyn FnMut(&Expr)) {
         f(self);
         match self {
-            Expr::Cast(e, ..) | Expr::Neg(e, _) | Expr::Not(e) | Expr::IsNull(e, _) | Expr::BoolTest(e, ..) => {
-                e.visit(f)
-            }
+            Expr::Cast(e, ..)
+            | Expr::Neg(e, _)
+            | Expr::Not(e)
+            | Expr::IsNull(e, _)
+            | Expr::BoolTest(e, ..)
+            | Expr::Field(e, _) => e.visit(f),
             Expr::Arith(_, l, r, _)
             | Expr::Compare(_, l, r)
             | Expr::Concat(l, r)

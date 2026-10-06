@@ -30,7 +30,7 @@ struct Relation {
 }
 
 /// builtin_column returns a column of a built-in catalog's rows by name, as pairs of OID and value.
-fn builtin_column(catalog: &str, column: &str) -> Vec<(u32, Value)> {
+pub(super) fn builtin_column(catalog: &str, column: &str) -> Vec<(u32, Value)> {
     let Some(table) = lookup("pg_catalog", catalog) else { return Vec::new() };
     let (Some(oid), Some(i)) = (table.column("oid"), table.column(column)) else { return Vec::new() };
     builtin::rows(table)
@@ -77,7 +77,20 @@ impl Ctx<'_> {
         let name = match type_oid {
             _ if oid == 0 => Some("-".to_string()),
             types::REGCLASS => self.relations()?.into_iter().find(|r| r.oid == oid).map(|r| self.visible_name(&r)),
-            types::REGTYPE => builtin_type(oid).map(|_| crate::cast::type_display(oid).into_owned()),
+            types::REGTYPE => match builtin_type(oid).is_some() || crate::usertypes::get(oid).is_some() {
+                true => Some(crate::cast::type_display(oid).into_owned()),
+                false => self.snapshot()?.tables.iter().find_map(|t| {
+                    let array = crate::catalog::oids::oid(&crate::catalog::id::new(
+                        crate::catalog::id::SECTION_TYPE,
+                        &[&t.schema, &format!("_{}", t.name)],
+                    ));
+                    if crate::pgcatalog::rows::row_type_oid(&t.schema, &t.name) == oid {
+                        Some(t.name.clone())
+                    } else {
+                        (array == oid).then(|| format!("{}[]", t.name))
+                    }
+                }),
+            },
             types::REGNAMESPACE => self.namespaces().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n),
             types::REGROLE => self.roles().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n),
             types::REGPROC | types::REGPROCEDURE => {
@@ -230,6 +243,15 @@ impl Ctx<'_> {
                 name: view.name.clone(),
                 oid: view_oid(&view.schema, &view.name),
             });
+        }
+        for user_type in self.user_types()?.values() {
+            if matches!(user_type.kind, crate::usertypes::Kind::Composite(_)) {
+                out.push(Relation {
+                    schema: user_type.schema.clone(),
+                    name: user_type.name.clone(),
+                    oid: table_oid(&user_type.schema, &user_type.name),
+                });
+            }
         }
         for sequence in &snapshot.sequences {
             let (schema, name) = crate::sequences::schema_and_name(sequence);

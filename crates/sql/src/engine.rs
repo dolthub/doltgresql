@@ -139,6 +139,7 @@ impl Engine {
                 authenticated: user.to_string(),
                 routines: None,
                 triggers: None,
+                user_types: None,
                 call_depth: 0,
             },
             txns: Vec::new(),
@@ -166,7 +167,8 @@ pub struct Session {
 }
 
 /// RoutineCache is the functions and procedures of a root value, with the addresses of their collections.
-pub type RoutineCache = ((Option<store::Hash>, Option<store::Hash>), Arc<Vec<Arc<crate::routines::Routine>>>);
+pub type RoutineCache =
+    ((Option<store::Hash>, Option<store::Hash>, Option<store::Hash>), Arc<Vec<Arc<crate::routines::Routine>>>);
 
 /// TriggerCache is the triggers of a root value, with the address of their collection.
 pub type TriggerCache = (Option<store::Hash>, Arc<Vec<Arc<objects::Trigger>>>);
@@ -200,6 +202,8 @@ pub struct SessionState {
     pub routines: Option<RoutineCache>,
     /// The triggers last loaded, with the address of the trigger collection they were loaded from.
     pub triggers: Option<TriggerCache>,
+    /// The user-defined types last loaded, with the address of the type collection they were loaded from.
+    pub user_types: Option<(Option<store::Hash>, Arc<crate::usertypes::Types>)>,
     /// How many function calls are running inside one another.
     pub call_depth: usize,
 }
@@ -500,6 +504,7 @@ impl Session {
             work_tables: std::collections::HashMap::new(),
             named_params: None,
         };
+        ctx.install_types()?;
         f(&mut ctx)
     }
 
@@ -854,6 +859,10 @@ impl Ctx<'_> {
             NodeEnum::GrantStmt(stmt) => self.grant(stmt),
             NodeEnum::GrantRoleStmt(stmt) => self.grant_role(stmt),
             NodeEnum::CallStmt(stmt) => self.call_procedure(stmt),
+            NodeEnum::CreateEnumStmt(stmt) => self.create_enum(stmt),
+            NodeEnum::CompositeTypeStmt(stmt) => self.create_composite(stmt),
+            NodeEnum::CreateDomainStmt(stmt) => self.create_domain(stmt),
+            NodeEnum::AlterEnumStmt(stmt) => self.alter_enum(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

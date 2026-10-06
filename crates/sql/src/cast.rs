@@ -23,8 +23,12 @@ use crate::types::Value;
 /// type_display returns the name Postgres uses for a type in error messages.
 pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
     if crate::array::is_array_type(type_oid) {
-        let element = builtin_type(type_oid).map_or(0, |t| t.elem);
-        return format!("{}[]", type_display(element)).into();
+        return format!("{}[]", type_display(crate::expr::element_type(type_oid))).into();
+    }
+    if builtin_type(type_oid).is_none()
+        && let Some(user_type) = crate::usertypes::get(type_oid)
+    {
+        return user_type.name.clone().into();
     }
     match type_oid {
         oid::BOOL => "boolean",
@@ -211,9 +215,14 @@ fn is_char_value(text: &str) -> bool {
 /// input reads a value of the type from its text format.
 pub fn input(text: &str, type_oid: u32) -> Result<Value> {
     if crate::array::is_array_type(type_oid) {
-        let element = builtin_type(type_oid).map_or(oid::TEXT, |t| t.elem);
+        let element = crate::expr::element_type(type_oid);
         let parsed = crate::array::parse(text, element, &|item| input(item, element))?;
         return Ok(Value::Array(Box::new(parsed)));
+    }
+    if builtin_type(type_oid).is_none()
+        && let Some(user_type) = crate::usertypes::get(type_oid)
+    {
+        return user_input(text, &user_type);
     }
     Ok(match type_oid {
         oid::JSON => {
@@ -417,13 +426,140 @@ fn cast_datetime(value: Value, to: ColumnType) -> Result<Value> {
     Ok(result)
 }
 
+/// is_string_type reports whether a type is one of the text types.
+fn is_string_type(type_oid: u32) -> bool {
+    matches!(type_oid, oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME)
+}
+
+/// user_input reads a value of a user-defined type from its text format.
+fn user_input(text: &str, user_type: &crate::usertypes::UserType) -> Result<Value> {
+    use crate::usertypes::Kind;
+    match &user_type.kind {
+        Kind::Enum(labels) => {
+            if !labels.iter().any(|l| l == text) {
+                return Err(PgError::new(
+                    code::INVALID_TEXT_REPRESENTATION,
+                    format!("invalid input value for enum {}: \"{text}\"", user_type.name),
+                ));
+            }
+            Ok(Value::Enum(Box::new(crate::types::EnumValue { type_oid: user_type.oid, label: text.to_string() })))
+        }
+        Kind::Composite(attributes) => {
+            let fields = parse_record(text, attributes.len())?;
+            let mut values = Vec::with_capacity(fields.len());
+            for (field, (_, ty)) in fields.into_iter().zip(attributes) {
+                values.push(match field {
+                    Some(field) => cast_value(input(&field, ty.oid)?, *ty, false)?,
+                    None => Value::Null,
+                });
+            }
+            Ok(Value::Composite(Box::new(crate::types::CompositeValue { type_oid: user_type.oid, fields: values })))
+        }
+        Kind::Domain(domain) => cast_value(input(text, domain.base.oid)?, domain.base, false),
+        Kind::Array(element) => {
+            let element = *element;
+            let parsed = crate::array::parse(text, element, &|item| input(item, element))?;
+            Ok(Value::Array(Box::new(parsed)))
+        }
+    }
+}
+
+/// parse_record splits the text of a record literal into its fields, as Postgres' record_in does, where an empty
+/// unquoted field is NULL.
+pub fn parse_record(text: &str, columns: usize) -> Result<Vec<Option<String>>> {
+    let malformed = |detail: &str| PgError {
+        detail: Some(detail.to_string()),
+        ..PgError::new(code::INVALID_TEXT_REPRESENTATION, format!("malformed record literal: \"{text}\""))
+    };
+    let trimmed = text.trim_start();
+    let mut chars = trimmed.strip_prefix('(').ok_or_else(|| malformed("Missing left parenthesis."))?.chars().peekable();
+    let mut fields = Vec::new();
+    loop {
+        if fields.len() >= columns {
+            return Err(malformed("Too many columns."));
+        }
+        let mut field = String::new();
+        let (mut in_quotes, mut was_quoted) = (false, false);
+        let end = loop {
+            match chars.next() {
+                None => return Err(malformed("Unexpected end of input.")),
+                Some('"') if in_quotes && chars.peek() == Some(&'"') => {
+                    chars.next();
+                    field.push('"');
+                }
+                Some('"') => {
+                    in_quotes = !in_quotes;
+                    was_quoted = true;
+                }
+                Some('\\') => field.push(chars.next().ok_or_else(|| malformed("Unexpected end of input."))?),
+                Some(c @ (',' | ')')) if !in_quotes => break c,
+                Some(c) => field.push(c),
+            }
+        };
+        fields.push(if field.is_empty() && !was_quoted { None } else { Some(field) });
+        if end == ')' {
+            if chars.any(|c| !c.is_whitespace()) {
+                return Err(malformed("Junk after right parenthesis."));
+            }
+            if fields.len() < columns {
+                return Err(malformed("Too few columns."));
+            }
+            return Ok(fields);
+        }
+    }
+}
+
+/// cast_to_user_type converts a value to a user-defined type.
+fn cast_to_user_type(value: Value, user_type: &crate::usertypes::UserType, explicit: bool) -> Result<Value> {
+    use crate::usertypes::Kind;
+    match (&user_type.kind, value) {
+        (Kind::Domain(domain), value) => cast_value(value, domain.base, explicit),
+        (Kind::Enum(_), Value::Enum(e)) if e.type_oid == user_type.oid => Ok(Value::Enum(e)),
+        (Kind::Composite(_), Value::Composite(c)) if c.type_oid == user_type.oid => Ok(Value::Composite(c)),
+        (_, Value::Text(text)) => user_input(&text, user_type),
+        (Kind::Composite(attributes), value @ (Value::Record(_) | Value::Composite(_))) => {
+            let fields = match value {
+                Value::Composite(c) => c.fields,
+                Value::Record(fields) => fields,
+                _ => Vec::new(),
+            };
+            if fields.len() != attributes.len() {
+                let detail = if fields.len() < attributes.len() {
+                    "Input has too few columns."
+                } else {
+                    "Input has too many columns."
+                };
+                return Err(PgError {
+                    detail: Some(detail.into()),
+                    ..PgError::new(code::CANNOT_COERCE, format!("cannot cast type record to {}", user_type.name))
+                });
+            }
+            let mut values = Vec::with_capacity(fields.len());
+            for (field, (_, ty)) in fields.into_iter().zip(attributes) {
+                values.push(cast_value(field, *ty, explicit)?);
+            }
+            Ok(Value::Composite(Box::new(crate::types::CompositeValue { type_oid: user_type.oid, fields: values })))
+        }
+        (_, other) => Err(cannot_cast(&other, user_type.oid)),
+    }
+}
+
 /// cast_value converts a value to the type, as an explicit cast or as an implicit or assignment conversion.
 pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value> {
     if value.is_null() {
         return Ok(Value::Null);
     }
+    if !crate::array::is_array_type(to.oid)
+        && builtin_type(to.oid).is_none()
+        && let Some(user_type) = crate::usertypes::get(to.oid)
+    {
+        return cast_to_user_type(value, &user_type, explicit);
+    }
+    if matches!(value, Value::Enum(_) | Value::Composite(_)) && is_string_type(to.oid) {
+        return cast_value(Value::Text(value.output().unwrap_or_default()), to, explicit);
+    }
     if crate::array::is_array_type(to.oid) {
-        let element = builtin_type(to.oid).map_or(oid::TEXT, |t| t.elem);
+        let element = crate::expr::element_type(to.oid);
         let element_type = ColumnType { oid: element, modifier: to.modifier };
         return match value {
             Value::Array(array) => {

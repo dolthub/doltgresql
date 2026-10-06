@@ -55,7 +55,11 @@ pub struct Ctx<'a> {
 
 /// column returns the description of a result column of the type.
 pub fn column(name: String, ty: crate::catalog::ColumnType) -> Column {
-    let type_size = builtin_type(ty.oid).map_or(-1, |t| t.definition.typ_length);
+    let ty = crate::usertypes::base_type(ty);
+    let type_size = match builtin_type(ty.oid) {
+        Some(t) => t.definition.typ_length,
+        None => crate::usertypes::get(ty.oid).map_or(-1, |t| t.definition.typ_length),
+    };
     let type_oid = if ty.oid == oid::UNKNOWN { oid::TEXT } else { ty.oid };
     Column {
         name,

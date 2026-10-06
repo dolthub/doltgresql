@@ -149,6 +149,7 @@ fn check_row(ctx: &mut Ctx<'_>, table: &TableDef, rules: &RowRules, row: &mut [V
         row[*i] = expr.eval(ctx, row)?;
     }
     for (column, value) in table.columns.iter().zip(row.iter()) {
+        ctx.check_domain(value, column.ty)?;
         if !column.nullable && value.is_null() {
             return Err(PgError {
                 detail: Some(format!("Failing row contains ({}).", row_text(row))),
@@ -484,11 +485,15 @@ impl Ctx<'_> {
                 defaults.push(None);
                 continue;
             }
-            if column.default.is_empty() {
+            let domain_default = match crate::usertypes::get(column.ty.oid).map(|t| t.kind.clone()) {
+                Some(crate::usertypes::Kind::Domain(domain)) => domain.default,
+                _ => None,
+            };
+            let Some(default) = (!column.default.is_empty()).then(|| column.default.clone()).or(domain_default) else {
                 defaults.push(None);
                 continue;
-            }
-            let node = parse_expression(&column.default)?;
+            };
+            let node = parse_expression(&default)?;
             let bound = Binder::new(self, Scope::default()).bind(&node)?;
             let expr = assign(bound, ColumnType { modifier: -1, ..column.ty }, &column.name, -1)?.0;
             defaults.push(Some(match column.ty.modifier {

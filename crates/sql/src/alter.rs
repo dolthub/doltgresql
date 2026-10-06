@@ -236,6 +236,9 @@ impl Ctx<'_> {
             primary_key: alteration.table.key_columns.clone(),
             ..TableParts::default()
         };
+        if let Some(type_name) = &def.type_name {
+            self.prepare_type(type_name)?;
+        }
         parts.add_column(&name, def)?;
         let index = parts.columns.len() - 1;
         let mut column = parts.columns.pop().expect("a column was just added");

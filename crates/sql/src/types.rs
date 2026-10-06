@@ -60,6 +60,24 @@ pub enum Value {
     Oid(u32),
     /// A value of one of the reg types, such as regclass.
     Reg(Box<Reg>),
+    /// A label of an enum type.
+    Enum(Box<EnumValue>),
+    /// A value of a composite type, whose fields print as a record's do.
+    Composite(Box<CompositeValue>),
+}
+
+/// EnumValue is a label of an enum type, which orders labels by their position in the type.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnumValue {
+    pub type_oid: u32,
+    pub label: String,
+}
+
+/// CompositeValue is a value of a composite type, whose attributes name its fields.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompositeValue {
+    pub type_oid: u32,
+    pub fields: Vec<Value>,
 }
 
 /// Reg is a value of a reg type: the type, the object's OID, and the name it prints as, which is the OID for a
@@ -142,6 +160,8 @@ impl Value {
             Value::Set(_) => return None,
             Value::Oid(o) => o.to_string(),
             Value::Reg(reg) => reg.name.clone(),
+            Value::Enum(e) => e.label.clone(),
+            Value::Composite(c) => format_record(&c.fields),
         })
     }
 
@@ -196,6 +216,28 @@ impl Value {
             Value::Set(_) => return None,
             Value::Oid(o) => o.to_be_bytes().to_vec(),
             Value::Reg(reg) => reg.oid.to_be_bytes().to_vec(),
+            Value::Enum(e) => e.label.clone().into_bytes(),
+            Value::Composite(c) => {
+                let types: Vec<u32> = match crate::usertypes::get(c.type_oid).map(|t| t.kind.clone()) {
+                    Some(crate::usertypes::Kind::Composite(attributes)) => {
+                        attributes.iter().map(|(_, t)| t.oid).collect()
+                    }
+                    _ => Vec::new(),
+                };
+                let mut out = (c.fields.len() as i32).to_be_bytes().to_vec();
+                for (i, field) in c.fields.iter().enumerate() {
+                    let field_type = types.get(i).copied().unwrap_or_else(|| crate::functions::value_type(field));
+                    out.extend_from_slice(&field_type.to_be_bytes());
+                    match field.send(field_type) {
+                        Some(bytes) => {
+                            out.extend_from_slice(&(bytes.len() as i32).to_be_bytes());
+                            out.extend_from_slice(&bytes);
+                        }
+                        None => out.extend_from_slice(&(-1i32).to_be_bytes()),
+                    }
+                }
+                out
+            }
         })
     }
 

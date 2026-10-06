@@ -114,8 +114,12 @@ fn column_type(sql_type: &[u8]) -> Result<ColumnType> {
         .collect::<Option<_>>()
         .ok_or_else(unsupported)?;
     let definition = objects::SerializedType::deserialize(&bytes)?;
-    let builtin = builtin_type_by_id(&definition.id).ok_or_else(unsupported)?;
-    Ok(ColumnType { oid: builtin.oid, modifier: definition.att_typ_mod })
+    let modifier = definition.att_typ_mod;
+    let oid = match builtin_type_by_id(&definition.id) {
+        Some(builtin) => builtin.oid,
+        None => crate::usertypes::register(definition),
+    };
+    Ok(ColumnType { oid, modifier })
 }
 
 impl TableDef {

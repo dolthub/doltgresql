@@ -129,6 +129,8 @@ pub struct Routine {
     pub set_of: bool,
     pub strict: bool,
     pub body: Body,
+    /// The row type of the table the routine returns rows of, which each statement that uses it registers.
+    pub row_type: Option<objects::SerializedType>,
     /// The statements of a SQL body, parsed on first use.
     statements: OnceLock<Result<Vec<NodeEnum>>>,
 }
@@ -176,13 +178,30 @@ impl Routine {
         }
         let outputs: Vec<(String, ColumnType)> =
             params.iter().filter(|p| p.mode.is_output()).map(|p| (p.name.clone(), p.ty)).collect();
+        let mut table_row_type = None;
         let (ret, columns) = match table_columns(&object.return_type)? {
             _ if procedure => (typ(VOID), outputs),
-            Some(columns) if columns.len() == 1 => (columns[0].1, columns),
+            Some(columns) if columns.len() == 1 => {
+                match crate::usertypes::get(columns[0].1.oid).map(|t| t.kind.clone()) {
+                    Some(crate::usertypes::Kind::Composite(attributes)) => (columns[0].1, attributes),
+                    _ => (columns[0].1, columns),
+                }
+            }
             Some(columns) => (typ(oid::RECORD), columns),
             None => match type_from_id(&object.return_type) {
-                Ok(ty) => (ty, outputs),
-                Err(err) => (typ(oid::RECORD), row_type(&object.return_type)?.ok_or(err)?),
+                Ok(ty) => match crate::usertypes::get(ty.oid).map(|t| t.kind.clone()) {
+                    Some(crate::usertypes::Kind::Composite(attributes)) => (ty, attributes),
+                    _ => (ty, outputs),
+                },
+                Err(err) => {
+                    let definition = row_type(&object.return_type)?.ok_or(err)?;
+                    let columns = match crate::usertypes::UserType::from_definition(definition.clone()).kind {
+                        crate::usertypes::Kind::Composite(columns) => columns,
+                        _ => Vec::new(),
+                    };
+                    table_row_type = Some(definition);
+                    (typ(crate::usertypes::type_oid(&object.return_type)), columns)
+                }
             },
         };
         let body = if !object.extension_name.is_empty() {
@@ -193,6 +212,7 @@ impl Routine {
             Body::PlPgSql(object.operations.clone())
         };
         Ok(Routine {
+            row_type: table_row_type,
             procedure,
             schema,
             name,
@@ -210,6 +230,7 @@ impl Routine {
     /// internal returns a routine that only the server runs, such as a trigger's WHEN condition, with the result type.
     pub fn internal(object: Function, ret: ColumnType) -> Routine {
         Routine {
+            row_type: None,
             procedure: false,
             schema: String::new(),
             name: String::new(),
@@ -263,13 +284,16 @@ fn parse_body(text: &str) -> Result<Vec<NodeEnum>> {
 fn type_from_id(type_id: &[u8]) -> Result<ColumnType> {
     match builtin_type_by_id(type_id) {
         Some(t) => Ok(typ(t.oid)),
-        None => Err(PgError::unsupported(format!("the type {}", id::segments(type_id).join(".")))),
+        None => match crate::usertypes::get(crate::usertypes::type_oid(type_id)) {
+            Some(t) => Ok(typ(t.oid)),
+            None => Err(PgError::unsupported(format!("the type {}", id::segments(type_id).join(".")))),
+        },
     }
 }
 
 /// type_id returns the stored ID of a type.
 fn type_id(ty: ColumnType) -> Vec<u8> {
-    builtin_type(ty.oid).map(|t| t.definition.id.clone()).unwrap_or_default()
+    crate::usertypes::type_id(ty.oid)
 }
 
 /// TABLE_PREFIX starts the name of the anonymous type that Go stores as the result of a function returning a table.
@@ -350,8 +374,8 @@ fn table_type_id(columns: &[(String, ColumnType)]) -> Vec<u8> {
     id::new(crate::catalog::id::SECTION_TYPE, &["", &format!("{TABLE_PREFIX}{})", items.join(","))])
 }
 
-/// RowTypes finds the columns of the table whose row type a stored type ID names, or None for no such table.
-pub type RowTypes<'r> = dyn FnMut(&[u8]) -> Result<Option<Vec<(String, ColumnType)>>> + 'r;
+/// RowTypes finds the row type of the table that a stored type ID names, or None for no such table.
+pub type RowTypes<'r> = dyn FnMut(&[u8]) -> Result<Option<objects::SerializedType>> + 'r;
 
 /// all returns every function and procedure of a root value that this server can run.
 fn all(db: &mut Database, root: &Root) -> Result<Vec<Arc<Routine>>> {
@@ -363,13 +387,13 @@ fn all(db: &mut Database, root: &Root) -> Result<Vec<Arc<Routine>>> {
     for (_, address) in root.objects(db, PROCEDURES)? {
         procedures.push(Procedure::deserialize(&prolly::read_blob(db, &address)?)?);
     }
-    let mut row_type = |type_id: &[u8]| -> Result<Option<Vec<(String, ColumnType)>>> {
+    let mut row_type = |type_id: &[u8]| -> Result<Option<objects::SerializedType>> {
         let segments = id::segments(type_id);
         let [schema, name] = segments.as_slice() else { return Ok(None) };
         match root.table(db, schema, name)? {
             Some(address) => {
                 let table = crate::catalog::table::TableDef::load(db, schema, name, address)?;
-                Ok(Some(table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect()))
+                Ok(Some(crate::usertypes::row_type(&table)))
             }
             None => Ok(None),
         }
@@ -479,13 +503,24 @@ impl Ctx<'_> {
     /// routines returns every function and procedure of the working root, reusing them while their collections are
     /// unchanged.
     pub fn routines(&mut self) -> Result<Arc<Vec<Arc<Routine>>>> {
-        let address = (self.txn.root.root_objects[COLLECTION], self.txn.root.root_objects[PROCEDURES]);
+        let address = (
+            self.txn.root.root_objects[COLLECTION],
+            self.txn.root.root_objects[PROCEDURES],
+            self.txn.root.root_objects[crate::usertypes::COLLECTION],
+        );
         if let Some((cached, routines)) = &self.session.routines
             && *cached == address
         {
-            return Ok(routines.clone());
+            let routines = routines.clone();
+            for row_type in routines.iter().filter_map(|r| r.row_type.clone()) {
+                crate::usertypes::register(row_type);
+            }
+            return Ok(routines);
         }
         let routines = Arc::new(all(self.db, &self.txn.root)?);
+        for row_type in routines.iter().filter_map(|r| r.row_type.clone()) {
+            crate::usertypes::register(row_type);
+        }
         self.session.routines = Some((address, routines.clone()));
         Ok(routines)
     }
@@ -518,6 +553,9 @@ impl Ctx<'_> {
         let mut seen_variadic = false;
         for node in &stmt.parameters {
             let Some(NodeEnum::FunctionParameter(param)) = node.node.as_ref() else { continue };
+            if let Some(type_name) = &param.arg_type {
+                self.prepare_type(type_name)?;
+            }
             let ty = parameter_type(param)?;
             let mode = match FunctionParameterMode::try_from(param.mode) {
                 Ok(FunctionParameterMode::FuncParamOut) => Mode::Out,
@@ -562,6 +600,9 @@ impl Ctx<'_> {
         }
         let outputs: Vec<&Param> = params.iter().filter(|p| p.mode.is_output()).collect();
         let mut row_type = None;
+        if let Some(type_name) = &stmt.return_type {
+            self.prepare_type(type_name)?;
+        }
         let (mut ret, mut set_of) = match &stmt.return_type {
             Some(type_name) => match return_type(type_name) {
                 Ok(ret) => (ret, type_name.setof),
@@ -641,8 +682,14 @@ impl Ctx<'_> {
                     (None, None) => return Err(invalid_definition("no function body specified")),
                 };
                 let offset = text.find(body.as_str()).unwrap_or(0) as u32;
+                let composite = match crate::usertypes::get(ret.oid).map(|t| t.kind.clone()) {
+                    Some(crate::usertypes::Kind::Composite(attributes)) => Some(attributes),
+                    _ => None,
+                };
                 let columns = if let Some((_, columns)) = &row_type {
                     columns.clone()
+                } else if let Some(attributes) = composite {
+                    attributes
                 } else if table.is_empty() && ret.oid == oid::RECORD && outputs.len() > 1 {
                     outputs.iter().map(|p| (p.name.clone(), p.ty)).collect()
                 } else if table.len() > 1 {
@@ -743,6 +790,11 @@ impl Ctx<'_> {
             return Ok(());
         }
         let Some(result) = last else { return Err(final_statement()) };
+        if let [column] = result.as_slice()
+            && column.type_oid == ret.oid
+        {
+            return Ok(());
+        }
         if !columns.is_empty() {
             if result.len() > columns.len() {
                 return Err(mismatch("Final statement returns too many columns.".into()));
@@ -1301,10 +1353,22 @@ pub fn result_value(routine: &Routine, rows: Vec<Vec<Value>>) -> Result<Value> {
 
 /// row_value converts one row a routine produced to its result type.
 fn row_value(routine: &Routine, row: Vec<Value>) -> Result<Value> {
-    if routine.columns.len() > 1 || routine.procedure && !routine.columns.is_empty() {
+    let composite = routine.ret.oid != oid::RECORD && !routine.procedure && crate::expr::is_composite(routine.ret.oid);
+    if routine.columns.len() > 1 || composite || routine.procedure && !routine.columns.is_empty() {
+        let row = match row.as_slice() {
+            [Value::Composite(_) | Value::Record(_)] if routine.columns.len() > 1 => match row.into_iter().next() {
+                Some(Value::Composite(c)) => c.fields,
+                Some(Value::Record(fields)) => fields,
+                _ => Vec::new(),
+            },
+            _ => row,
+        };
         let mut fields = Vec::with_capacity(row.len());
         for (value, (_, ty)) in row.into_iter().zip(&routine.columns) {
             fields.push(crate::cast::cast_value(value, *ty, false)?);
+        }
+        if composite {
+            return Ok(Value::Composite(Box::new(crate::types::CompositeValue { type_oid: routine.ret.oid, fields })));
         }
         return Ok(Value::Record(fields));
     }

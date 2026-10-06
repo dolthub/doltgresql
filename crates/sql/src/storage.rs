@@ -148,6 +148,24 @@ pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
             serialize_json(json, &mut out)?;
             out
         }
+        Value::Enum(e) => serialize_value(&Value::Text(e.label.clone()), ty)?,
+        Value::Composite(c) => {
+            let attributes = match crate::usertypes::get(c.type_oid).map(|t| t.kind.clone()) {
+                Some(crate::usertypes::Kind::Composite(attributes)) => attributes,
+                _ => return Err(PgError::internal(format!("an unknown composite type {}", c.type_oid))),
+            };
+            let mut out = vec![0];
+            write_uvarint(&mut out, c.fields.len() as u64);
+            for (field, (_, field_type)) in c.fields.iter().zip(&attributes) {
+                let type_id = crate::usertypes::type_id(field_type.oid);
+                write_uvarint(&mut out, type_id.len() as u64);
+                out.extend_from_slice(&type_id);
+                let bytes = if field.is_null() { Vec::new() } else { serialize_value(field, *field_type)? };
+                write_uvarint(&mut out, bytes.len() as u64);
+                out.extend_from_slice(&bytes);
+            }
+            out
+        }
         other => return Err(PgError::unsupported(format!("storing {other:?}"))),
     })
 }
@@ -158,10 +176,15 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
     use crate::oid;
     let corrupt = || PgError::internal(format!("a stored value of type {} has {} bytes", ty.oid, field.len()));
     if crate::array::is_array_type(ty.oid) {
-        let element = crate::catalog::builtin_type(ty.oid).map_or(oid::TEXT, |t| t.elem);
+        let element = crate::expr::element_type(ty.oid);
         let element_type = ColumnType { oid: element, modifier: ty.modifier };
         let array = crate::array::deserialize(field, element, &|bytes| deserialize_value(bytes, element_type))?;
         return Ok(Value::Array(Box::new(array)));
+    }
+    if crate::catalog::builtin_type(ty.oid).is_none()
+        && let Some(user_type) = crate::usertypes::get(ty.oid)
+    {
+        return deserialize_user_value(field, &user_type);
     }
     Ok(match ty.oid {
         oid::JSON => Value::Json(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?),
@@ -223,6 +246,43 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
         }
         other => return Err(PgError::unsupported(format!("reading stored values of type {other}"))),
     })
+}
+
+/// deserialize_user_value reads a value of a user-defined type from Doltgres' type serialization.
+fn deserialize_user_value(field: &[u8], user_type: &crate::usertypes::UserType) -> Result<Value> {
+    use crate::usertypes::Kind;
+    let corrupt = || PgError::internal(format!("a stored value of type {} is corrupt", user_type.name));
+    match &user_type.kind {
+        Kind::Enum(_) => match deserialize_value(field, ColumnType { oid: crate::oid::TEXT, modifier: -1 })? {
+            Value::Text(label) => Ok(Value::Enum(Box::new(crate::types::EnumValue { type_oid: user_type.oid, label }))),
+            _ => Err(corrupt()),
+        },
+        Kind::Domain(domain) => deserialize_value(field, domain.base),
+        Kind::Composite(_) => {
+            if field.first() != Some(&0) {
+                return Err(corrupt());
+            }
+            let mut position = 1;
+            let count = read_uvarint(field, &mut position).ok_or_else(corrupt)?;
+            let mut fields = Vec::with_capacity(count as usize);
+            for _ in 0..count {
+                let length = read_uvarint(field, &mut position).ok_or_else(corrupt)? as usize;
+                let type_id = field.get(position..position + length).ok_or_else(corrupt)?;
+                position += length;
+                let length = read_uvarint(field, &mut position).ok_or_else(corrupt)? as usize;
+                let bytes = field.get(position..position + length).ok_or_else(corrupt)?;
+                position += length;
+                let field_type = ColumnType { oid: crate::usertypes::type_oid(type_id), modifier: -1 };
+                fields.push(if bytes.is_empty() { Value::Null } else { deserialize_value(bytes, field_type)? });
+            }
+            Ok(Value::Composite(Box::new(crate::types::CompositeValue { type_oid: user_type.oid, fields })))
+        }
+        Kind::Array(element) => {
+            let element_type = ColumnType { oid: *element, modifier: -1 };
+            let array = crate::array::deserialize(field, *element, &|bytes| deserialize_value(bytes, element_type))?;
+            Ok(Value::Array(Box::new(array)))
+        }
+    }
 }
 
 /// write_uvarint writes an unsigned varint.

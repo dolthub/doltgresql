@@ -7241,3 +7241,553 @@ line 1: Document is empty
         },
     ]);
 }
+
+#[test]
+fn test_user_type_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "enum types",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE mood AS ENUM ('x');",
+                    expected: Expected::Error(Diagnostic { code: "42710", message: r#"type "mood" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (id INT PRIMARY KEY, m mood, ms mood[]);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (1, 'ok', ARRAY['sad', 'happy']::mood[]), (2, 'happy', NULL), (3, 'sad', '{}');",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (4, 'nope', NULL);",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input value for enum mood: "nope""#, position: 26, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, m, ms FROM t ORDER BY m;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("m", USER_DEFINED), Column("ms", USER_DEFINED)],
+                        rows: &[
+                            &[T("3"), T("sad"), T("{}")],
+                            &[T("1"), T("ok"), T("{sad,happy}")],
+                            &[T("2"), T("happy"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT m, m::text, m = 'ok', m < 'happy' FROM t ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("m", USER_DEFINED), Column("m", TEXT), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("ok"), T("ok"), T("t"), T("t")],
+                            &[T("happy"), T("happy"), T("f"), T("f")],
+                            &[T("sad"), T("sad"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'happy'::mood > 'sad'::mood, enum_first(NULL::mood), enum_last(NULL::mood), enum_range(NULL::mood);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("enum_first", USER_DEFINED), Column("enum_last", USER_DEFINED), Column("enum_range", USER_DEFINED)],
+                        rows: &[
+                            &[T("t"), T("sad"), T("happy"), T("{sad,ok,happy}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(m), pg_typeof(ms) FROM t WHERE id = 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("mood"), T("mood[]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TYPE mood ADD VALUE 'meh' BEFORE 'ok';",
+                    expected: Expected::Tag("ALTER TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TYPE mood ADD VALUE 'ok';",
+                    expected: Expected::Error(Diagnostic { code: "42710", message: r#"enum label "ok" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TYPE mood ADD VALUE IF NOT EXISTS 'ok';",
+                    expected: Expected::Tag("ALTER TYPE"),
+                    notices: &[Diagnostic { code: "42710", message: r#"enum label "ok" already exists, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TYPE mood ADD VALUE 'great' AFTER 'nope';",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#""nope" is not an existing enum label"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TYPE mood RENAME VALUE 'meh' TO 'fine';",
+                    expected: Expected::Tag("ALTER TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT enum_range(NULL::mood), 'fine'::mood < 'ok'::mood;",
+                    expected: Expected::Rows {
+                        columns: &[Column("enum_range", USER_DEFINED), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("{sad,fine,ok,happy}"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT enumlabel, enumsortorder FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'mood' ORDER BY enumsortorder;",
+                    expected: Expected::Rows {
+                        columns: &[Column("enumlabel", NAME), Column("enumsortorder", FLOAT4)],
+                        rows: &[
+                            &[T("sad"), T("1")],
+                            &[T("fine"), T("1.5")],
+                            &[T("ok"), T("2")],
+                            &[T("happy"), T("3")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE mood;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop type mood because other objects depend on it", detail: r#"column ms of table t depends on type mood[]
+column m of table t depends on type mood"#, hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE t;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE mood;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE IF EXISTS mood;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    notices: &[Diagnostic { code: "00000", message: r#"type "mood" does not exist, skipping"#, ..N }],
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "composite types",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TYPE pair AS (x INT, y TEXT);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE pair AS (a INT);",
+                    expected: Expected::Error(Diagnostic { code: "42710", message: r#"type "pair" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE bad AS (x INT, y nope);",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE pair (a INT);",
+                    expected: Expected::Error(Diagnostic { code: "42P07", message: r#"relation "pair" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (id INT PRIMARY KEY, p pair);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO t VALUES (1, ROW(1, 'a')), (2, '(2,"b c")'), (3, NULL);"#,
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (4, ROW(1));",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type record to pair", detail: "Input has too few columns.", position: 26, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, p, (p).x, (p).y FROM t ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("p", USER_DEFINED), Column("x", INT4), Column("y", TEXT)],
+                        rows: &[
+                            &[T("1"), T("(1,a)"), T("1"), T("a")],
+                            &[T("2"), T(r#"(2,"b c")"#), T("2"), T("b c")],
+                            &[T("3"), Null, Null, Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('(5,z)'::pair).y, ROW(7, 'w')::pair, pg_typeof(ROW(7, 'w')::pair);",
+                    expected: Expected::Rows {
+                        columns: &[Column("y", TEXT), Column("row", USER_DEFINED), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("z"), T("(7,w)"), T("pair")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '(1)'::pair;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed record literal: "(1)""#, detail: "Too few columns.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1,2'::pair;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed record literal: "1,2""#, detail: "Missing left parenthesis.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (p).nope FROM t;",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "nope" not found in data type pair"#, position: 9, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_jsonb(p), row_to_json(p) FROM t WHERE id = 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_jsonb", JSONB), Column("row_to_json", JSON)],
+                        rows: &[
+                            &[T(r#"{"x": 1, "y": "a"}"#), T(r#"{"x":1,"y":"a"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname, typtype, typcategory, typlen FROM pg_type WHERE typname IN ('pair', '_pair') ORDER BY typname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME), Column("typtype", CHAR), Column("typcategory", CHAR), Column("typlen", INT2)],
+                        rows: &[
+                            &[T("_pair"), T("b"), T("A"), T("-1")],
+                            &[T("pair"), T("c"), T("C"), T("-1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relkind FROM pg_class WHERE relname = 'pair';",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relkind", CHAR)],
+                        rows: &[
+                            &[T("pair"), T("c")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE pair;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop type pair because other objects depend on it", detail: "column p of table t depends on type pair", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE t;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE pair;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "table row types and whole-row references",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE people (id INT PRIMARY KEY, name TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO people VALUES (1, 'ann'), (2, 'bob');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE holders (id INT PRIMARY KEY, who people);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO holders VALUES (1, ROW(9, 'zed'));",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, who, (who).name FROM holders;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("who", USER_DEFINED), Column("name", TEXT)],
+                        rows: &[
+                            &[T("1"), T("(9,zed)"), T("zed")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT p, to_jsonb(p), row(p.*, 42) FROM people p ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("p", USER_DEFINED), Column("to_jsonb", JSONB), Column("row", RECORD)],
+                        rows: &[
+                            &[T("(1,ann)"), T(r#"{"id": 1, "name": "ann"}"#), T("(1,ann,42)")],
+                            &[T("(2,bob)"), T(r#"{"id": 2, "name": "bob"}"#), T("(2,bob,42)")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(p) FROM people p WHERE id = 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("people")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("whole-row references carry their FROM item's alias rather than the table's row type"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "domains",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN posint AS INT CHECK (VALUE > 0);",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN d1 AS INT NULL NOT NULL;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "conflicting NULL/NOT NULL constraints", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN d1 AS INT DEFAULT 1 DEFAULT 2;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "multiple default expressions", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN d1 AS INT CHECK (VALUE + 1);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "argument of CHECK must be type boolean, not type integer", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN d1 AS INT CHECK (x > 1);",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "x" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN d1 AS nope;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN d1 AS RECORD;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#""record" is not a valid base type for a domain"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN bounded AS INT CONSTRAINT pos CHECK (VALUE > 0) CHECK (VALUE < 100) NOT NULL DEFAULT 7;",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 0::bounded;",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain bounded violates check constraint "pos""#, schema: "public", data_type: "bounded", constraint: "pos", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 5::bounded, 5::bounded + 1, pg_typeof(5::bounded), pg_typeof(5::bounded + 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("bounded", INT4), Column("?column?", INT4), Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("5"), T("6"), T("bounded"), T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT NULL::bounded;",
+                    expected: Expected::Error(Diagnostic { code: "23502", message: "domain bounded does not allow null values", schema: "public", data_type: "bounded", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE td (id INT PRIMARY KEY, v bounded, p posint);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO td (id) VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO td VALUES (2, NULL, 1);",
+                    expected: Expected::Error(Diagnostic { code: "23502", message: "domain bounded does not allow null values", schema: "public", data_type: "bounded", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO td VALUES (3, 500, 1);",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain bounded violates check constraint "bounded_check""#, schema: "public", data_type: "bounded", constraint: "bounded_check", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO td VALUES (4, 5, -1);",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain posint violates check constraint "posint_check""#, schema: "public", data_type: "posint", constraint: "posint_check", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO td VALUES (5, 50, 2);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE td SET v = v * 100;",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain bounded violates check constraint "bounded_check""#, schema: "public", data_type: "bounded", constraint: "bounded_check", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM td ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4), Column("p", INT4)],
+                        rows: &[
+                            &[T("1"), T("7"), Null],
+                            &[T("5"), T("50"), T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname, typtype, typbasetype::regtype, typnotnull, typdefault FROM pg_type WHERE typname IN ('bounded', 'posint') ORDER BY typname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME), Column("typtype", CHAR), Column("typbasetype", REGTYPE), Column("typnotnull", BOOL), Column("typdefault", TEXT)],
+                        rows: &[
+                            &[T("bounded"), T("d"), T("integer"), T("t"), T("7")],
+                            &[T("posint"), T("d"), T("integer"), T("f"), Null],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP DOMAIN bounded;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop type bounded because other objects depend on it", detail: "column v of table td depends on type bounded", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP DOMAIN IF EXISTS nope;",
+                    expected: Expected::Tag("DROP DOMAIN"),
+                    notices: &[Diagnostic { code: "00000", message: r#"type "nope" does not exist, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE not_domain AS ENUM ('a');",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP DOMAIN not_domain;",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#""not_domain" is not a domain"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE td;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP DOMAIN bounded, posint;",
+                    expected: Expected::Tag("DROP DOMAIN"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "pseudo-types are not column types",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (pk INT PRIMARY KEY, r RECORD);",
+                    expected: Expected::Error(Diagnostic { code: "42P16", message: r#"column "r" has pseudo-type record"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE outer_type AS (id INT, payload RECORD);",
+                    expected: Expected::Error(Diagnostic { code: "42P16", message: r#"column "payload" has pseudo-type record"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

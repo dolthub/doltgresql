@@ -1557,6 +1557,7 @@ impl Plan {
                     .map(|(i, v)| {
                         let mut row = match v {
                             Value::Record(fields) if *width > 1 => fields,
+                            Value::Composite(c) if *width > 1 => c.fields,
                             v => vec![v],
                         };
                         row.resize(*width, Value::Null);

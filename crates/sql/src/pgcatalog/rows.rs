@@ -128,6 +128,24 @@ fn regproc(function: &[u8]) -> Value {
     }))
 }
 
+/// builtin_proc returns a regproc value for a built-in function a type definition refers to, which is 0 and prints as
+/// `-` for none.
+fn builtin_proc(function: &[u8]) -> Value {
+    match id::segments(function).get(1) {
+        Some(name) => proc_named(name),
+        None => regproc(&[]),
+    }
+}
+
+/// proc_named returns a regproc value for a built-in function by name.
+fn proc_named(name: &str) -> Value {
+    let oid = crate::pgcatalog::reg::builtin_column("pg_proc", "proname")
+        .into_iter()
+        .find(|(_, n)| n.output().as_deref() == Some(name))
+        .map_or(0, |(o, _)| o);
+    Value::Reg(Box::new(Reg { type_oid: types::REGPROC, oid, name: name.to_string() }))
+}
+
 /// int2_array returns a smallint array.
 fn int2_array(values: impl IntoIterator<Item = i16>) -> Value {
     Value::Array(Box::new(Array::one_dimensional(types::INT2, values.into_iter().map(Value::Int2).collect())))
@@ -231,6 +249,7 @@ impl Ctx<'_> {
             "pg_views" => self.pg_views(rows),
             "pg_sequence" | "pg_sequences" => self.pg_sequences(rows),
             "pg_proc" => self.pg_proc(rows),
+            "pg_enum" => self.pg_enum(rows),
             "pg_trigger" => self.pg_trigger(rows),
             "pg_settings" => {
                 self.pg_settings(rows);
@@ -424,6 +443,58 @@ impl Ctx<'_> {
 
     /// pg_type lists the row types of the user tables and views.
     fn pg_type(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        for user_type in self.user_types()?.values() {
+            let definition = &user_type.definition;
+            let (base, element) = match &user_type.kind {
+                crate::usertypes::Kind::Domain(domain) => (domain.base.oid, 0),
+                crate::usertypes::Kind::Array(element) => (0, *element),
+                _ => (0, 0),
+            };
+            let relation = match user_type.kind {
+                crate::usertypes::Kind::Composite(_) => table_oid(&user_type.schema, &user_type.name),
+                _ => 0,
+            };
+            let typmod = if base == 0 { -1 } else { definition.typ_mod };
+            rows.push(vec![
+                ("oid", oid(user_type.oid)),
+                ("typname", text(user_type.name.clone())),
+                ("typnamespace", oid(namespace_oid(&user_type.schema))),
+                ("typowner", oid(SUPERUSER)),
+                ("typlen", int2(definition.typ_length)),
+                ("typbyval", boolean(definition.passed_by_val)),
+                ("typtype", text(String::from_utf8_lossy(&definition.typ_type).into_owned())),
+                ("typcategory", text(String::from_utf8_lossy(&definition.typ_category).into_owned())),
+                ("typispreferred", boolean(definition.is_preferred)),
+                ("typisdefined", boolean(true)),
+                ("typdelim", text(",")),
+                ("typrelid", oid(relation)),
+                ("typsubscript", builtin_proc(&definition.subscript_func)),
+                ("typelem", oid(element)),
+                ("typarray", oid(user_type.array)),
+                ("typinput", builtin_proc(&definition.input_func)),
+                ("typoutput", builtin_proc(&definition.output_func)),
+                ("typreceive", builtin_proc(&definition.receive_func)),
+                ("typsend", builtin_proc(&definition.send_func)),
+                ("typmodin", builtin_proc(&definition.mod_in_func)),
+                ("typmodout", builtin_proc(&definition.mod_out_func)),
+                ("typanalyze", builtin_proc(&definition.analyze_func)),
+                ("typalign", text(String::from_utf8_lossy(&definition.align).into_owned())),
+                ("typstorage", text(String::from_utf8_lossy(&definition.storage).into_owned())),
+                ("typnotnull", boolean(definition.not_null)),
+                ("typbasetype", oid(base)),
+                ("typtypmod", int4(typmod)),
+                ("typndims", int4(0)),
+                ("typcollation", oid(0)),
+                (
+                    "typdefault",
+                    if definition.default.is_empty() {
+                        Value::Null
+                    } else {
+                        text(String::from_utf8_lossy(&definition.default).into_owned())
+                    },
+                ),
+            ]);
+        }
         let snapshot = self.snapshot()?;
         let relations = snapshot
             .tables
@@ -431,6 +502,38 @@ impl Ctx<'_> {
             .map(|t| (t.schema.clone(), t.name.clone(), table_oid(&t.schema, &t.name)))
             .chain(snapshot.views.iter().map(|v| (v.schema.clone(), v.name.clone(), view_oid(&v.schema, &v.name))));
         for (schema, name, relation) in relations {
+            let array = oids::oid(&id::new(id::SECTION_TYPE, &[&schema, &format!("_{name}")]));
+            rows.push(vec![
+                ("oid", oid(array)),
+                ("typname", text(format!("_{name}"))),
+                ("typnamespace", oid(namespace_oid(&schema))),
+                ("typowner", oid(SUPERUSER)),
+                ("typlen", int2(-1)),
+                ("typbyval", boolean(false)),
+                ("typtype", text("b")),
+                ("typcategory", text("A")),
+                ("typispreferred", boolean(false)),
+                ("typisdefined", boolean(true)),
+                ("typdelim", text(",")),
+                ("typrelid", oid(0)),
+                ("typsubscript", proc_named("array_subscript_handler")),
+                ("typelem", oid(row_type_oid(&schema, &name))),
+                ("typarray", oid(0)),
+                ("typinput", proc_named("array_in")),
+                ("typoutput", proc_named("array_out")),
+                ("typreceive", proc_named("array_recv")),
+                ("typsend", proc_named("array_send")),
+                ("typmodin", regproc(&[])),
+                ("typmodout", regproc(&[])),
+                ("typanalyze", proc_named("array_typanalyze")),
+                ("typalign", text("d")),
+                ("typstorage", text("x")),
+                ("typnotnull", boolean(false)),
+                ("typbasetype", oid(0)),
+                ("typtypmod", int4(-1)),
+                ("typndims", int4(0)),
+                ("typcollation", oid(0)),
+            ]);
             rows.push(vec![
                 ("oid", oid(row_type_oid(&schema, &name))),
                 ("typname", text(name)),
@@ -446,7 +549,14 @@ impl Ctx<'_> {
                 ("typrelid", oid(relation)),
                 ("typsubscript", regproc(&[])),
                 ("typelem", oid(0)),
-                ("typarray", oid(0)),
+                ("typarray", oid(array)),
+                ("typinput", proc_named("record_in")),
+                ("typoutput", proc_named("record_out")),
+                ("typreceive", proc_named("record_recv")),
+                ("typsend", proc_named("record_send")),
+                ("typmodin", regproc(&[])),
+                ("typmodout", regproc(&[])),
+                ("typanalyze", regproc(&[])),
                 ("typalign", text("d")),
                 ("typstorage", text("x")),
                 ("typnotnull", boolean(false)),
@@ -506,6 +616,14 @@ impl Ctx<'_> {
                 0,
             );
             row.extend([("reltype", oid(row_type_oid(&view.schema, &view.name))), ("relhasrules", boolean(true))]);
+            rows.push(row);
+        }
+        for user_type in self.user_types()?.values() {
+            let crate::usertypes::Kind::Composite(fields) = &user_type.kind else { continue };
+            let relation = table_oid(&user_type.schema, &user_type.name);
+            let namespace = namespace_oid(&user_type.schema);
+            let mut row = class_row(relation, &user_type.name, namespace, "c", fields.len() as i16, 0);
+            row.push(("reltype", oid(user_type.oid)));
             rows.push(row);
         }
         for sequence in &snapshot.sequences {
@@ -578,6 +696,21 @@ impl Ctx<'_> {
                         generated: false,
                     });
                 }
+            }
+        }
+        for user_type in self.user_types()?.values() {
+            let crate::usertypes::Kind::Composite(fields) = &user_type.kind else { continue };
+            let relation = table_oid(&user_type.schema, &user_type.name);
+            for (i, (name, ty)) in fields.iter().enumerate() {
+                attributes.push(Attribute {
+                    relation,
+                    name: name.clone(),
+                    ty: *ty,
+                    number: i as i16 + 1,
+                    not_null: false,
+                    has_default: false,
+                    generated: false,
+                });
             }
         }
         for view in &snapshot.views {
@@ -781,6 +914,21 @@ impl Ctx<'_> {
                 (schema, table)
             })
             .collect())
+    }
+
+    /// pg_enum lists the labels of the user-defined enums.
+    fn pg_enum(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        for user_type in self.user_types()?.values() {
+            for label in &user_type.definition.enum_labels {
+                rows.push(vec![
+                    ("oid", oid(oids::oid(&label.id))),
+                    ("enumtypid", oid(user_type.oid)),
+                    ("enumsortorder", Value::Float4(label.sort_order)),
+                    ("enumlabel", text(id::segments(&label.id).pop().unwrap_or_default())),
+                ]);
+            }
+        }
+        Ok(())
     }
 
     /// pg_tables lists the user tables.

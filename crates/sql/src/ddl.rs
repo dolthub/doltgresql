@@ -157,6 +157,12 @@ impl TableParts {
             Some(data_type) => crate::catalog::resolve_type(&[data_type.to_string()], &[], false, None)?,
             None => resolve_type_name(type_name)?,
         };
+        if ty.oid == crate::oid::RECORD {
+            return Err(PgError::new(
+                code::INVALID_TABLE_DEFINITION,
+                format!("column \"{}\" has pseudo-type record", def.colname),
+            ));
+        }
         if let Some(data_type) = serial {
             self.generated.push((index, data_type, Vec::new()));
         }
@@ -402,13 +408,32 @@ impl Ctx<'_> {
         let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
         let schema = self.target_schema(&relation.schemaname, relation.location)?;
         let name = relation.relname.as_str();
-        if self.relation_names(&schema)?.iter().any(|n| n == name) {
+        let user_type = crate::usertypes::lookup(Some(&schema), name).filter(|t| !t.is_array());
+        let composite = user_type.as_ref().is_some_and(|t| matches!(t.kind, crate::usertypes::Kind::Composite(_)));
+        if composite || self.relation_names(&schema)?.iter().any(|n| n == name) {
             let message = format!("relation \"{name}\" already exists");
             if create.if_not_exists {
                 self.session.notice(PgError::notice(code::DUPLICATE_TABLE, format!("{message}, skipping")));
                 return Ok(Outcome::command("CREATE TABLE"));
             }
             return Err(PgError::new(code::DUPLICATE_TABLE, message));
+        }
+        if user_type.is_some() {
+            return Err(PgError {
+                hint: Some(
+                    "A relation has an associated type of the same name, so you must use a name that doesn't conflict \
+                     with any existing type."
+                        .into(),
+                ),
+                ..PgError::new(code::DUPLICATE_OBJECT, format!("type \"{name}\" already exists"))
+            });
+        }
+        for element in &create.table_elts {
+            if let Some(NodeEnum::ColumnDef(def)) = element.node.as_ref()
+                && let Some(type_name) = &def.type_name
+            {
+                self.prepare_type(type_name)?;
+            }
         }
         let mut parts = TableParts::default();
         for element in &create.table_elts {
@@ -626,6 +651,8 @@ impl Ctx<'_> {
             ObjectType::ObjectProcedure => self.drop_routines(drop, Some(true)),
             ObjectType::ObjectRoutine => self.drop_routines(drop, None),
             ObjectType::ObjectTrigger => self.drop_triggers(drop),
+            ObjectType::ObjectType => self.drop_types(drop, false),
+            ObjectType::ObjectDomain => self.drop_types(drop, true),
             other => Err(PgError::unsupported(format!("DROP {other:?}"))),
         }
     }

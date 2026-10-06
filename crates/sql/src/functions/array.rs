@@ -351,6 +351,8 @@ pub fn value_type(value: &Value) -> u32 {
         Value::Record(_) => oid::RECORD,
         Value::Oid(_) => oid::OID,
         Value::Reg(reg) => reg.type_oid,
+        Value::Enum(e) => e.type_oid,
+        Value::Composite(c) => c.type_oid,
         _ => oid::TEXT,
     }
 }

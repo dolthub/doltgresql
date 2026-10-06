@@ -113,6 +113,7 @@ pub const FUNCTIONS: &[Function] = &[
     f("jsonb_exists", &[JSONB, TEXT], BOOL, exists),
     f("to_json", &[ANYELEMENT], JSON, to_json),
     f("to_jsonb", &[ANYELEMENT], JSONB, to_jsonb),
+    f("row_to_json", &[ANYELEMENT], JSON, to_json),
     f("array_to_json", &[ANYARRAY], JSON, to_json),
     v("json_build_object", JSON, build_object),
     v("jsonb_build_object", JSONB, build_object_b),
@@ -689,6 +690,13 @@ pub fn datum_to_json(value: &Value) -> Result<Json> {
                 .map(|(i, f)| Ok((format!("f{}", i + 1), datum_to_json(f)?)))
                 .collect::<Result<_>>()?,
         ),
+        Value::Composite(c) => Json::Object(
+            field_names(c)
+                .into_iter()
+                .zip(&c.fields)
+                .map(|(name, f)| Ok((name, datum_to_json(f)?)))
+                .collect::<Result<_>>()?,
+        ),
         Value::Date(_) | Value::Timestamp(_) | Value::TimestampTz(_) => {
             let text = dt::with_format(|current| {
                 let format = dt::Format { style: dt::Style::Iso, ..current.clone() };
@@ -706,6 +714,14 @@ pub fn datum_to_json(value: &Value) -> Result<Json> {
         }
         other => Json::String(other.output().unwrap_or_default()),
     })
+}
+
+/// field_names returns the names of a composite value's fields, which are f1, f2, and so on for an unknown type.
+fn field_names(value: &crate::types::CompositeValue) -> Vec<String> {
+    match crate::usertypes::get(value.type_oid).map(|t| t.kind.clone()) {
+        Some(crate::usertypes::Kind::Composite(attributes)) => attributes.into_iter().map(|(name, _)| name).collect(),
+        _ => (1..=value.fields.len()).map(|i| format!("f{i}")).collect(),
+    }
 }
 
 /// iso_8601 rewrites an ISO-style timestamp as JSON writes it, with a T between the date and time and a full time
@@ -761,6 +777,19 @@ pub fn datum_json_text(value: &Value) -> Result<String> {
                     out.push(',');
                 }
                 out.push_str(&format!("\"f{}\":", i + 1));
+                out.push_str(&datum_json_text(field)?);
+            }
+            out.push('}');
+            out
+        }
+        Value::Composite(c) => {
+            let mut out = String::from("{");
+            for (i, (name, field)) in field_names(c).into_iter().zip(&c.fields).enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&Json::String(name).plain());
+                out.push(':');
                 out.push_str(&datum_json_text(field)?);
             }
             out.push('}');

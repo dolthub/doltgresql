@@ -67,3 +67,17 @@ The full sqllogictest corpus was run twice against fresh Go servers, once per ru
 nondeterminism in the Go server rather than differences between the runners: the same statement fails with
 `the expression ... could not be found from the index idx_...` naming a different index on each run, or panics with
 `index out of range [1] with length 1` on one run but not the other. To confirm by re-running the differing files.
+
+## Arrays of enums can't be read after a restart (confirmed)
+
+Creating an enum, a table with a column of the enum's array type, and a row, then restarting the server and selecting
+the column panics with a nil pointer dereference in `DoltgresType.CallReceive`, reached from `deserializeArray`. The
+element type that the column's stored array type refers to is not resolved after the restart, so it has neither a
+deserialization function nor a receive function. The same session that created the type reads the column fine.
+
+Impact: any database with an array-of-enum column (and likely an array of any user-defined type) is unreadable by Go
+after a restart.
+
+Hard to change in Go: needs element types of stored array types resolved through the type collection on load.
+
+Rust: user-defined types are registered by OID from the stored definitions, so element types always resolve.

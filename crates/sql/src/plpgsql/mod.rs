@@ -414,10 +414,7 @@ pub fn call_trigger(
         let ty = TRIGGER_VARIABLES.iter().find(|(n, _)| *n == name).map_or(oid::TEXT, |(_, t)| *t);
         frame.declare(name, Variable::scalar(typ(ty), value));
     }
-    match frame.run(ctx)? {
-        Value::Record(row) => Ok(Some(row)),
-        _ => Ok(None),
-    }
+    Ok(record_fields(frame.run(ctx)?))
 }
 
 /// call_condition runs a trigger's compiled WHEN condition with the NEW and OLD rows, returning its value.
@@ -516,13 +513,16 @@ impl<'r> Frame<'r> {
         let variable = &self.variables[self.variable(base)?];
         match (field, &variable.columns) {
             (None, None) if variable.ty.oid != oid::RECORD => Ok((variable.value.clone(), variable.ty)),
-            (None, _) => {
+            (None | Some("*"), _) => {
                 self.require_assigned(base, variable)?;
-                Ok((variable.value.clone(), typ(oid::RECORD)))
-            }
-            (Some("*"), _) => {
-                self.require_assigned(base, variable)?;
-                Ok((variable.value.clone(), typ(oid::RECORD)))
+                let value = match (&variable.value, &variable.columns) {
+                    (Value::Record(fields), Some(columns)) => {
+                        let type_oid = crate::usertypes::transient("record", columns);
+                        Value::Composite(Box::new(crate::types::CompositeValue { type_oid, fields: fields.clone() }))
+                    }
+                    (value, _) => value.clone(),
+                };
+                Ok((value, typ(oid::RECORD)))
             }
             (Some(field), Some(columns)) => {
                 let index = field_index(columns, field).ok_or_else(|| record_has_no_field(base, field))?;
@@ -569,8 +569,8 @@ impl<'r> Frame<'r> {
         let index = self.variable(name)?;
         let variable = &mut self.variables[index];
         if let Some(columns) = &variable.columns {
-            variable.value = match value {
-                Value::Record(fields) => {
+            variable.value = match record_fields(value.clone()) {
+                Some(fields) => {
                     let mut converted = Vec::with_capacity(columns.len());
                     for (i, (_, ty)) in columns.iter().enumerate() {
                         converted.push(crate::cast::cast_value(
@@ -581,9 +581,9 @@ impl<'r> Frame<'r> {
                     }
                     Value::Record(converted)
                 }
-                Value::Null => Value::Null,
-                other => {
-                    return Err(PgError::new(code::DATATYPE_MISMATCH, format!("cannot assign {other:?} to a record")));
+                None if value.is_null() => Value::Null,
+                None => {
+                    return Err(PgError::new(code::DATATYPE_MISMATCH, format!("cannot assign {value:?} to a record")));
                 }
             };
             return Ok(());
@@ -811,8 +811,8 @@ impl<'r> Frame<'r> {
                         let row = result.rows.into_iter().next();
                         let index = self.variable(&target)?;
                         self.variables[index] = match row {
-                            Some(row) if row.len() == 1 && matches!(row[0], Value::Record(_)) => {
-                                let Some(Value::Record(fields)) = row.into_iter().next() else { unreachable!() };
+                            Some(row) if row.len() == 1 && record_fields(row[0].clone()).is_some() => {
+                                let fields = row.into_iter().next().and_then(record_fields).unwrap_or_default();
                                 let source = secondary[2..].first().and_then(|b| self.find(b));
                                 let columns = match source.and_then(|i| self.variables[i].columns.clone()) {
                                     Some(columns) => columns,
@@ -1188,6 +1188,15 @@ impl<'r> Frame<'r> {
             }
             None => Err(PgError::new("2F005", "control reached end of function without RETURN")),
         }
+    }
+}
+
+/// record_fields returns the fields of a row value, anonymous or of a composite type, or None for any other value.
+fn record_fields(value: Value) -> Option<Vec<Value>> {
+    match value {
+        Value::Record(fields) => Some(fields),
+        Value::Composite(c) => Some(c.fields),
+        _ => None,
     }
 }
 

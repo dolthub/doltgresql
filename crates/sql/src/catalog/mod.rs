@@ -109,8 +109,12 @@ pub struct ColumnType {
 impl ColumnType {
     /// serialized returns the column type as a Dolt schema stores it: `extended_` and the hex of the serialized type.
     pub fn serialized(&self) -> Result<String> {
-        let t = builtin_type(self.oid).ok_or_else(|| PgError::internal(format!("unknown type OID {}", self.oid)))?;
-        let mut definition = t.definition.clone();
+        let mut definition = match builtin_type(self.oid) {
+            Some(t) => t.definition.clone(),
+            None => crate::usertypes::get(self.oid)
+                .map(|t| t.definition.clone())
+                .ok_or_else(|| PgError::internal(format!("unknown type OID {}", self.oid)))?,
+        };
         definition.att_typ_mod = self.modifier;
         let hex: String = definition.serialize().iter().map(|b| format!("{b:02x}")).collect();
         Ok(format!("extended_{hex}"))
@@ -118,7 +122,12 @@ impl ColumnType {
 
     /// encoding returns the field encoding of the column type in tuples, as Doltgres chooses it.
     pub fn encoding(&self) -> u8 {
-        let Some(t) = builtin_type(self.oid) else { return encoding::EXTENDED_ADAPTIVE };
+        let Some(t) = builtin_type(self.oid) else {
+            return match crate::usertypes::get(self.oid) {
+                Some(t) if t.definition.typ_length > 0 => encoding::EXTENDED,
+                _ => encoding::EXTENDED_ADAPTIVE,
+            };
+        };
         match t.name {
             "int2" => encoding::INT16,
             "int4" => encoding::INT32,
@@ -137,9 +146,12 @@ impl ColumnType {
         }
     }
 
-    /// name returns the type's name in pg_catalog.
-    pub fn name(&self) -> &'static str {
-        builtin_type(self.oid).map_or("unknown", |t| t.name)
+    /// name returns the type's name in pg_catalog, or the name of a user-defined type.
+    pub fn name(&self) -> std::borrow::Cow<'static, str> {
+        match builtin_type(self.oid) {
+            Some(t) => t.name.into(),
+            None => crate::usertypes::get(self.oid).map_or("unknown".into(), |t| t.name.clone().into()),
+        }
     }
 }
 
@@ -155,6 +167,22 @@ pub fn resolve_type(names: &[String], modifiers: &[i32], array: bool, position: 
         position,
         ..PgError::new(code::UNDEFINED_OBJECT, format!("type \"{}\" does not exist", names.join(".")))
     };
+    let user_type = match names {
+        [name] => crate::usertypes::lookup(None, name),
+        [schema, name] | [_, schema, name] => crate::usertypes::lookup(Some(schema), name),
+        _ => None,
+    };
+    if let Some(user_type) = user_type.filter(|t| !t.is_array()) {
+        let oid = if array { user_type.array } else { user_type.oid };
+        if oid == 0 {
+            return Err(not_found());
+        }
+        let modifier = match &user_type.kind {
+            crate::usertypes::Kind::Domain(domain) => domain.base.modifier,
+            _ => -1,
+        };
+        return Ok(ColumnType { oid, modifier: if array { -1 } else { modifier } });
+    }
     let t = builtin_type_named(name).filter(|t| !t.name.starts_with('_')).ok_or_else(not_found)?;
     let modifier = type_modifier(t.name, modifiers, position)?;
     let oid = if array { t.array } else { t.oid };
