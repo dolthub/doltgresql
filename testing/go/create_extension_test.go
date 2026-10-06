@@ -129,10 +129,6 @@ func TestCreateExtension(t *testing.T) {
 					ExpectedErr: "VERSION is not yet supported",
 				},
 				{
-					Query:       `CREATE EXTENSION "uuid-ossp" WITH SCHEMA myschema;`,
-					ExpectedErr: "non public SCHEMA is not yet supported",
-				},
-				{
 					Query:       `CREATE EXTENSION "uuid-ossp" CASCADE;`,
 					ExpectedErr: "CASCADE is not yet supported",
 				},
@@ -174,6 +170,138 @@ func TestCreateExtension(t *testing.T) {
 				{
 					Query:    "SELECT uuid_nil();",
 					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+			},
+		},
+		{
+			Name: "uuid-ossp in a non-public schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA extensions;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `CREATE EXTENSION "uuid-ossp" WITH SCHEMA nosuchschema;`,
+					ExpectedErr:     `schema "nosuchschema" does not exist`,
+					ExpectedErrCode: "3F000",
+				},
+				{
+					Query:    `CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT extensions.uuid_nil();`,
+					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+				{
+					Query:           `SELECT uuid_nil();`,
+					ExpectedErr:     `function: 'uuid_nil' not found`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:           `SELECT public.uuid_nil();`,
+					ExpectedErr:     `function: 'uuid_nil' not found`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:    `SELECT e.extname, n.nspname FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON e.extnamespace = n.oid;`,
+					Expected: []sql.Row{{"uuid-ossp", "extensions"}},
+				},
+				{
+					Query:    `CREATE TABLE goals (id UUID DEFAULT extensions.uuid_generate_v4() PRIMARY KEY, note TEXT);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO goals (note) VALUES ('first');`,
+					Expected: []sql.Row{},
+					Skip:     true, // Column defaults drop the schema of the functions they call
+				},
+				{
+					Query:           `DROP SCHEMA extensions;`,
+					ExpectedErr:     `cannot drop schema extensions because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+					Skip:            true, // Doltgres returns SQLSTATE XX000
+				},
+				{
+					Query:    `SET search_path = public, extensions;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT uuid_nil();`,
+					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+				{
+					Query:    `INSERT INTO goals (note) VALUES ('second');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT note, length(id::text) FROM goals;`,
+					Expected: []sql.Row{{"second", 36}},
+				},
+				{
+					Query:    `DROP TABLE goals;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP EXTENSION "uuid-ossp";`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT extensions.uuid_nil();`,
+					ExpectedErr:     `function: 'uuid_nil' not found`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:    `DROP SCHEMA extensions;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "vector in a non-public schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA extensions;`,
+				`CREATE EXTENSION vector WITH SCHEMA extensions;`,
+				`CREATE TABLE items (id INT PRIMARY KEY, embedding extensions.vector(3));`,
+				`INSERT INTO items VALUES (1, '[1,2,3]'), (2, '[4,5,6]');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `SELECT '[1,2,3]'::vector;`,
+					ExpectedErr:     `type "vector" does not exist`,
+					ExpectedErrCode: "42704",
+					Skip:            true, // Doltgres finds types in schemas outside the search path
+				},
+				{
+					Query:           `SELECT '[1,2,3]'::extensions.vector <-> '[1,2,4]'::extensions.vector;`,
+					ExpectedErr:     `operator does not exist: extensions.vector <-> extensions.vector`,
+					ExpectedErrCode: "42883",
+					Skip:            true, // Doltgres returns SQLSTATE XX000 and leaves out the schema of each type
+				},
+				{
+					Query:    `SELECT '[1,2,3]'::extensions.vector OPERATOR(extensions.<->) '[1,2,4]'::extensions.vector;`,
+					Expected: []sql.Row{{1.0}},
+					Skip:     true, // The parser only accepts a few operator symbols inside OPERATOR()
+				},
+				{
+					Query:    `SELECT extensions.l2_distance('[1,2,3]'::extensions.vector, '[1,2,4]'::extensions.vector);`,
+					Expected: []sql.Row{{1.0}},
+				},
+				{
+					Query:    `SET search_path = public, extensions;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 1;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:           `DROP EXTENSION vector;`,
+					ExpectedErr:     `cannot drop extension vector because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
 				},
 			},
 		},
