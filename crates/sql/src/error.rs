@@ -60,6 +60,9 @@ pub mod code {
     pub const WRONG_OBJECT_TYPE: &str = "42809";
     pub const CARDINALITY_VIOLATION: &str = "21000";
     pub const DUPLICATE_ALIAS: &str = "42712";
+    pub const INVALID_DATETIME_FORMAT: &str = "22007";
+    pub const DATETIME_FIELD_OVERFLOW: &str = "22008";
+    pub const INVALID_TIME_ZONE_DISPLACEMENT: &str = "22009";
     pub const INVALID_ARGUMENT_FOR_LOG: &str = "2201E";
     pub const INVALID_ARGUMENT_FOR_POWER: &str = "2201F";
     pub const INVALID_BINARY_REPRESENTATION: &str = "22P03";

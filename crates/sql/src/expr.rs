@@ -69,6 +69,26 @@ pub enum CmpOp {
     Ge,
 }
 
+/// DateOp is an operator on dates, times, timestamps, and intervals.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DateOp {
+    DatePlusDays,
+    DateMinusDays,
+    DateMinusDate,
+    /// A timestamp, or timestamptz when true, plus or minus an interval.
+    TimestampPlusInterval(bool),
+    TimestampMinusInterval(bool),
+    TimestampMinusTimestamp,
+    TimePlusInterval,
+    TimeMinusInterval,
+    TimeMinusTime,
+    DatePlusTime,
+    IntervalPlusInterval,
+    IntervalMinusInterval,
+    IntervalTimesFloat,
+    IntervalDivFloat,
+}
+
 /// Expr is a bound expression.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -119,6 +139,8 @@ pub enum Expr {
     SubqueryValue,
     /// The default of a column of the table being written, by position.
     Default(usize),
+    /// A date and time operator.
+    DateTime(DateOp, Box<Expr>, Box<Expr>),
 }
 
 /// Bound is a bound expression with its type.
@@ -300,6 +322,13 @@ impl<'b, 'a> Binder<'b, 'a> {
                     Ok(SqlValueFunctionOp::SvfopSessionUser) => "session_user",
                     Ok(SqlValueFunctionOp::SvfopCurrentCatalog) => "current_database",
                     Ok(SqlValueFunctionOp::SvfopCurrentSchema) => "current_schema",
+                    Ok(SqlValueFunctionOp::SvfopCurrentDate) => "current_date",
+                    Ok(SqlValueFunctionOp::SvfopCurrentTime | SqlValueFunctionOp::SvfopCurrentTimeN) => "current_time",
+                    Ok(SqlValueFunctionOp::SvfopCurrentTimestamp | SqlValueFunctionOp::SvfopCurrentTimestampN) => "now",
+                    Ok(SqlValueFunctionOp::SvfopLocaltime | SqlValueFunctionOp::SvfopLocaltimeN) => "localtime",
+                    Ok(SqlValueFunctionOp::SvfopLocaltimestamp | SqlValueFunctionOp::SvfopLocaltimestampN) => {
+                        "localtimestamp"
+                    }
                     _ => return Err(PgError::unsupported("this SQL value function")),
                 };
                 let resolved = functions::resolve(name, &[], f.location)?;
@@ -702,6 +731,14 @@ impl<'b, 'a> Binder<'b, 'a> {
                 format!("operator does not exist: {} {op} {}", type_display(lt), type_display(rt)),
             )
         };
+        if is_datetime(lt) || is_datetime(rt) {
+            if let Some(bound) = self.datetime_binary(op, &left, &right, location)? {
+                return Ok(bound);
+            }
+            if !(is_datetime(lt) && (rt == oid::UNKNOWN || rt == lt) || is_datetime(rt) && lt == oid::UNKNOWN) {
+                return Err(missing());
+            }
+        }
         // An untyped operand takes the other operand's type, and two untyped operands are text.
         let domain = match (lt == oid::UNKNOWN, rt == oid::UNKNOWN) {
             (true, true) => typ(oid::TEXT),
@@ -770,6 +807,146 @@ impl<'b, 'a> Binder<'b, 'a> {
     }
 }
 
+/// implicit_datetime reports whether Postgres converts one date or time type to another without being asked.
+fn implicit_datetime(from: u32, to: u32) -> bool {
+    matches!(
+        (from, to),
+        (oid::DATE, oid::TIMESTAMP | oid::TIMESTAMPTZ)
+            | (oid::TIMESTAMP, oid::TIMESTAMPTZ)
+            | (oid::TIME, oid::TIMETZ | oid::INTERVAL)
+    )
+}
+
+/// assignable_datetime reports whether a date or time type converts to another on assignment.
+fn assignable_datetime(from: u32, to: u32) -> bool {
+    implicit_datetime(from, to)
+        || matches!(
+            (from, to),
+            (oid::TIMESTAMP, oid::DATE | oid::TIME)
+                | (oid::TIMESTAMPTZ, oid::DATE | oid::TIME | oid::TIMETZ | oid::TIMESTAMP)
+                | (oid::INTERVAL, oid::TIME)
+                | (oid::TIMETZ, oid::TIME)
+        )
+}
+
+/// is_datetime reports whether a type is a date, time, timestamp, or interval type.
+fn is_datetime(type_oid: u32) -> bool {
+    matches!(type_oid, oid::DATE | oid::TIME | oid::TIMETZ | oid::TIMESTAMP | oid::TIMESTAMPTZ | oid::INTERVAL)
+}
+
+impl<'b, 'a> Binder<'b, 'a> {
+    /// datetime_binary binds an arithmetic or comparison operator with a date or time operand, returning None when
+    /// the operands compare as one type and need the general comparison.
+    fn datetime_binary(&mut self, op: &str, left: &Bound, right: &Bound, location: i32) -> Result<Option<Bound>> {
+        let (mut lt, mut rt) = (left.1.oid, right.1.oid);
+        // An untyped operand of + or - with a date or time is an interval, except that minus takes the other type
+        // first, as Postgres' operator resolution does.
+        if rt == oid::UNKNOWN && lt != oid::UNKNOWN {
+            rt = match (op, lt) {
+                ("-", _) => lt,
+                ("+", oid::DATE) => {
+                    return Err(PgError {
+                        position: position(location),
+                        hint: Some(
+                            "Could not choose a best candidate operator. You might need to add explicit type casts."
+                                .into(),
+                        ),
+                        ..PgError::new(code::AMBIGUOUS_FUNCTION, "operator is not unique: date + unknown")
+                    });
+                }
+                ("+", oid::TIMESTAMP | oid::TIMESTAMPTZ | oid::TIME) => oid::INTERVAL,
+                _ => lt,
+            };
+        } else if lt == oid::UNKNOWN && rt != oid::UNKNOWN {
+            lt = if op == "+" && matches!(rt, oid::TIMESTAMP | oid::TIMESTAMPTZ | oid::TIME | oid::DATE) {
+                oid::INTERVAL
+            } else {
+                rt
+            };
+        }
+        let int = |t: u32| matches!(t, oid::INT2 | oid::INT4 | oid::INT8);
+        let num = |t: u32| numeric_rank(t).is_some();
+        use DateOp as D;
+        let (op_kind, lcast, rcast, ret) = match (op, lt, rt) {
+            ("+", oid::DATE, t) if int(t) => (D::DatePlusDays, oid::DATE, oid::INT4, oid::DATE),
+            ("+", t, oid::DATE) if int(t) => (D::DatePlusDays, oid::INT4, oid::DATE, oid::DATE),
+            ("-", oid::DATE, t) if int(t) => (D::DateMinusDays, oid::DATE, oid::INT4, oid::DATE),
+            ("-", oid::DATE, oid::DATE) => (D::DateMinusDate, oid::DATE, oid::DATE, oid::INT4),
+            ("+", oid::DATE, oid::TIME) | ("+", oid::TIME, oid::DATE) => (D::DatePlusTime, lt, rt, oid::TIMESTAMP),
+            ("+", oid::DATE | oid::TIMESTAMP, oid::INTERVAL) => {
+                (D::TimestampPlusInterval(false), oid::TIMESTAMP, oid::INTERVAL, oid::TIMESTAMP)
+            }
+            ("+", oid::INTERVAL, oid::DATE | oid::TIMESTAMP) => {
+                (D::TimestampPlusInterval(false), oid::INTERVAL, oid::TIMESTAMP, oid::TIMESTAMP)
+            }
+            ("-", oid::DATE | oid::TIMESTAMP, oid::INTERVAL) => {
+                (D::TimestampMinusInterval(false), oid::TIMESTAMP, oid::INTERVAL, oid::TIMESTAMP)
+            }
+            ("+", oid::TIMESTAMPTZ, oid::INTERVAL) => {
+                (D::TimestampPlusInterval(true), oid::TIMESTAMPTZ, oid::INTERVAL, oid::TIMESTAMPTZ)
+            }
+            ("+", oid::INTERVAL, oid::TIMESTAMPTZ) => {
+                (D::TimestampPlusInterval(true), oid::INTERVAL, oid::TIMESTAMPTZ, oid::TIMESTAMPTZ)
+            }
+            ("-", oid::TIMESTAMPTZ, oid::INTERVAL) => {
+                (D::TimestampMinusInterval(true), oid::TIMESTAMPTZ, oid::INTERVAL, oid::TIMESTAMPTZ)
+            }
+            ("-", oid::TIMESTAMP, oid::TIMESTAMP) => {
+                (D::TimestampMinusTimestamp, oid::TIMESTAMP, oid::TIMESTAMP, oid::INTERVAL)
+            }
+            ("-", oid::TIMESTAMPTZ | oid::TIMESTAMP | oid::DATE, oid::TIMESTAMPTZ)
+            | ("-", oid::TIMESTAMPTZ, oid::TIMESTAMP | oid::DATE) => {
+                (D::TimestampMinusTimestamp, oid::TIMESTAMPTZ, oid::TIMESTAMPTZ, oid::INTERVAL)
+            }
+            ("+", oid::TIME, oid::INTERVAL) => (D::TimePlusInterval, oid::TIME, oid::INTERVAL, oid::TIME),
+            ("+", oid::INTERVAL, oid::TIME) => (D::TimePlusInterval, oid::INTERVAL, oid::TIME, oid::TIME),
+            ("-", oid::TIME, oid::INTERVAL) => (D::TimeMinusInterval, oid::TIME, oid::INTERVAL, oid::TIME),
+            ("-", oid::TIME, oid::TIME) => (D::TimeMinusTime, oid::TIME, oid::TIME, oid::INTERVAL),
+            ("+", oid::INTERVAL, oid::INTERVAL) => {
+                (D::IntervalPlusInterval, oid::INTERVAL, oid::INTERVAL, oid::INTERVAL)
+            }
+            ("-", oid::INTERVAL, oid::INTERVAL) => {
+                (D::IntervalMinusInterval, oid::INTERVAL, oid::INTERVAL, oid::INTERVAL)
+            }
+            ("*", oid::INTERVAL, t) if num(t) || t == oid::UNKNOWN => {
+                (D::IntervalTimesFloat, oid::INTERVAL, oid::FLOAT8, oid::INTERVAL)
+            }
+            ("*", t, oid::INTERVAL) if num(t) || t == oid::UNKNOWN => {
+                (D::IntervalTimesFloat, oid::FLOAT8, oid::INTERVAL, oid::INTERVAL)
+            }
+            ("/", oid::INTERVAL, t) if num(t) || t == oid::UNKNOWN => {
+                (D::IntervalDivFloat, oid::INTERVAL, oid::FLOAT8, oid::INTERVAL)
+            }
+            ("=" | "<>" | "!=" | "<" | "<=" | ">" | ">=", l, r) if l != r && is_datetime(l) && is_datetime(r) => {
+                // Dates promote to timestamps, and timestamps to timestamptz, so that mixed comparisons agree.
+                let common = if l == oid::TIMESTAMPTZ || r == oid::TIMESTAMPTZ {
+                    oid::TIMESTAMPTZ
+                } else if matches!((l, r), (oid::DATE, oid::TIMESTAMP) | (oid::TIMESTAMP, oid::DATE)) {
+                    oid::TIMESTAMP
+                } else if matches!((l, r), (oid::TIME, oid::TIMETZ) | (oid::TIMETZ, oid::TIME)) {
+                    oid::TIMETZ
+                } else {
+                    return Ok(None);
+                };
+                let l = coerce(left.clone(), typ(common), false, location)?.0;
+                let r = coerce(right.clone(), typ(common), false, location)?.0;
+                return Ok(Some(self.binary(op, (l, typ(common)), (r, typ(common)), location)?));
+            }
+            _ => return Ok(None),
+        };
+        for (bound, ty) in [(left, lcast), (right, rcast)] {
+            if let Expr::Param(i) = bound.0
+                && self.ctx.parameters[i] == 0
+            {
+                self.ctx.parameters[i] = ty;
+            }
+        }
+        let l = coerce(left.clone(), typ(lcast), false, location)?.0;
+        let r = coerce(right.clone(), typ(rcast), false, location)?.0;
+        Ok(Some((Expr::DateTime(op_kind, Box::new(l), Box::new(r)), typ(ret))))
+    }
+}
+
 /// unary binds a prefix operator.
 fn unary(op: &str, (expr, ty): Bound, location: i32) -> Result<Bound> {
     let ty = if ty.oid == oid::UNKNOWN { typ(oid::FLOAT8) } else { ty };
@@ -778,6 +955,7 @@ fn unary(op: &str, (expr, ty): Bound, location: i32) -> Result<Bound> {
             Ok((Expr::Neg(Box::new(coerce((expr, ty), ty, false, location)?.0), ty), ty))
         }
         "+" if numeric_rank(ty.oid).is_some() => Ok((expr, ty)),
+        "-" if ty.oid == oid::INTERVAL => Ok((Expr::Neg(Box::new(expr), ty), ty)),
         _ => Err(PgError {
             position: position(location),
             hint: Some(
@@ -853,7 +1031,8 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     let allowed = explicit
         || from.oid == to.oid
         || numeric.is_some_and(|(f, t)| f <= t)
-        || (is_string(from.oid) && is_string(to.oid));
+        || (is_string(from.oid) && is_string(to.oid))
+        || implicit_datetime(from.oid, to.oid);
     if !allowed {
         return Err(PgError {
             position: position(location),
@@ -876,6 +1055,7 @@ pub fn assign(bound: Bound, to: ColumnType, column: &str, location: i32) -> Resu
     let allowed = from == oid::UNKNOWN
         || from == to.oid
         || (numeric_rank(from).is_some() && numeric_rank(to.oid).is_some())
+        || assignable_datetime(from, to.oid)
         || is_string(to.oid);
     if !allowed {
         return Err(PgError {
@@ -908,47 +1088,56 @@ pub fn assign(bound: Bound, to: ColumnType, column: &str, location: i32) -> Resu
 
 /// figure_name returns the name Postgres gives a result column for an expression.
 pub fn figure_name(node: &Node) -> String {
+    figure_name_strength(node).0
+}
+
+/// figure_name_strength returns the name Postgres gives an expression's column, with how strongly the expression
+/// names it: 2 for columns and functions, 1 for casts and constructs, and 0 for none, as FigureColnameInternal does.
+fn figure_name_strength(node: &Node) -> (String, u8) {
+    let strong = |name: &str| (name.to_string(), 2);
     match node.node.as_ref() {
-        Some(NodeEnum::ColumnRef(c)) => {
-            c.fields.iter().filter_map(node_name).next_back().unwrap_or("?column?").to_string()
-        }
-        Some(NodeEnum::FuncCall(f)) => {
-            f.funcname.iter().filter_map(node_name).next_back().unwrap_or("?column?").to_string()
-        }
-        Some(NodeEnum::TypeCast(cast)) => match cast.arg.as_deref().map(figure_name) {
-            Some(name) if name != "?column?" => name,
-            _ => cast
-                .type_name
-                .as_ref()
-                .and_then(|t| t.names.iter().filter_map(node_name).next_back().map(str::to_string))
-                .unwrap_or_else(|| "?column?".into()),
+        Some(NodeEnum::ColumnRef(c)) => match c.fields.iter().filter_map(node_name).next_back() {
+            Some(name) => strong(name),
+            None => ("?column?".into(), 0),
         },
-        Some(NodeEnum::CaseExpr(_)) => "case".into(),
-        Some(NodeEnum::CoalesceExpr(_)) => "coalesce".into(),
-        Some(NodeEnum::MinMaxExpr(m)) => {
-            if m.op == pg_query::protobuf::MinMaxOp::IsGreatest as i32 { "greatest" } else { "least" }.into()
+        Some(NodeEnum::FuncCall(f)) => {
+            strong(f.funcname.iter().filter_map(node_name).next_back().unwrap_or("?column?"))
         }
-        Some(NodeEnum::AExpr(e)) if e.kind == AExprKind::AexprNullif as i32 => "nullif".into(),
+        Some(NodeEnum::TypeCast(cast)) => match cast.arg.as_deref().map(figure_name_strength) {
+            Some((name, strength)) if strength > 1 => (name, strength),
+            _ => match cast.type_name.as_ref().and_then(|t| t.names.iter().filter_map(node_name).next_back()) {
+                Some(name) => (name.to_string(), 1),
+                None => ("?column?".into(), 0),
+            },
+        },
+        Some(NodeEnum::CaseExpr(_)) => ("case".into(), 1),
+        Some(NodeEnum::AArrayExpr(_)) => ("array".into(), 1),
+        Some(NodeEnum::RowExpr(_)) => ("row".into(), 1),
+        Some(NodeEnum::CoalesceExpr(_)) => strong("coalesce"),
+        Some(NodeEnum::MinMaxExpr(m)) => {
+            strong(if m.op == pg_query::protobuf::MinMaxOp::IsGreatest as i32 { "greatest" } else { "least" })
+        }
+        Some(NodeEnum::AExpr(e)) if e.kind == AExprKind::AexprNullif as i32 => strong("nullif"),
         Some(NodeEnum::SubLink(link)) => match pg_query::protobuf::SubLinkType::try_from(link.sub_link_type) {
-            Ok(pg_query::protobuf::SubLinkType::ExistsSublink) => "exists".into(),
-            Ok(pg_query::protobuf::SubLinkType::ArraySublink) => "array".into(),
+            Ok(pg_query::protobuf::SubLinkType::ExistsSublink) => strong("exists"),
+            Ok(pg_query::protobuf::SubLinkType::ArraySublink) => strong("array"),
             Ok(pg_query::protobuf::SubLinkType::ExprSublink) => {
                 match link.subselect.as_deref().and_then(|n| n.node.as_ref()) {
                     Some(NodeEnum::SelectStmt(select)) => select
                         .target_list
                         .first()
                         .and_then(|t| match t.node.as_ref() {
-                            Some(NodeEnum::ResTarget(t)) if !t.name.is_empty() => Some(t.name.clone()),
-                            Some(NodeEnum::ResTarget(t)) => t.val.as_deref().map(figure_name),
+                            Some(NodeEnum::ResTarget(t)) if !t.name.is_empty() => Some(strong(&t.name)),
+                            Some(NodeEnum::ResTarget(t)) => t.val.as_deref().map(figure_name_strength),
                             _ => None,
                         })
-                        .unwrap_or_else(|| "?column?".into()),
-                    _ => "?column?".into(),
+                        .unwrap_or_else(|| ("?column?".into(), 0)),
+                    _ => ("?column?".into(), 0),
                 }
             }
-            _ => "?column?".into(),
+            _ => ("?column?".into(), 0),
         },
-        Some(NodeEnum::SqlvalueFunction(f)) => match SqlValueFunctionOp::try_from(f.op) {
+        Some(NodeEnum::SqlvalueFunction(f)) => strong(match SqlValueFunctionOp::try_from(f.op) {
             Ok(SqlValueFunctionOp::SvfopCurrentUser) => "current_user",
             Ok(SqlValueFunctionOp::SvfopCurrentRole) => "current_role",
             Ok(SqlValueFunctionOp::SvfopUser) => "user",
@@ -963,10 +1152,8 @@ pub fn figure_name(node: &Node) -> String {
             Ok(SqlValueFunctionOp::SvfopLocaltime | SqlValueFunctionOp::SvfopLocaltimeN) => "localtime",
             Ok(SqlValueFunctionOp::SvfopLocaltimestamp | SqlValueFunctionOp::SvfopLocaltimestampN) => "localtimestamp",
             _ => "?column?",
-        }
-        .into(),
-        Some(NodeEnum::AArrayExpr(_)) => "array".into(),
-        _ => "?column?".into(),
+        }),
+        _ => ("?column?".into(), 0),
     }
 }
 
@@ -998,6 +1185,13 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
         (Value::Float8(l), Value::Float8(r)) => compare_floats(*l, *r),
         (Value::Text(l), Value::Text(r)) => l.as_bytes().cmp(r.as_bytes()),
         (Value::Numeric(l), Value::Numeric(r)) => l.cmp_numeric(r),
+        (Value::Date(l), Value::Date(r)) => l.cmp(r),
+        (Value::Time(l), Value::Time(r)) => l.cmp(r),
+        (Value::Timestamp(l), Value::Timestamp(r)) | (Value::TimestampTz(l), Value::TimestampTz(r)) => l.cmp(r),
+        (Value::TimeTz(lt, lz), Value::TimeTz(rt, rz)) => ((*lt as i128) + (*lz as i128) * 1_000_000)
+            .cmp(&((*rt as i128) + (*rz as i128) * 1_000_000))
+            .then(lz.cmp(rz)),
+        (Value::Interval(l), Value::Interval(r)) => l.cmp_key().cmp(&r.cmp_key()),
         (l, r) => match (as_i64(l), as_i64(r)) {
             (Some(l), Some(r)) => l.cmp(&r),
             _ => Ordering::Equal,
@@ -1048,6 +1242,7 @@ impl Expr {
             }
             Expr::Neg(expr, ty) => match expr.eval(ctx, row)? {
                 Value::Null => Value::Null,
+                Value::Interval(iv) => Value::Interval(crate::functions::datetime::negate_interval(iv)?),
                 Value::Numeric(n) => Value::Numeric(n.negate()),
                 Value::Float4(f) => Value::Float4(-f),
                 Value::Float8(f) => Value::Float8(-f),
@@ -1107,6 +1302,13 @@ impl Expr {
             }
             Expr::InputColumn(_) | Expr::AggRef(_) => return Err(PgError::internal("an ungrouped expression")),
             Expr::Default(_) => return Err(PgError::internal("a default outside a written row")),
+            Expr::DateTime(op, left, right) => {
+                let (l, r) = (left.eval(ctx, row)?, right.eval(ctx, row)?);
+                if l.is_null() || r.is_null() {
+                    return Ok(Value::Null);
+                }
+                date_op(*op, l, r)?
+            }
             Expr::SubqueryValue => ctx.subquery_value.clone(),
             Expr::Coalesce(args) => {
                 for arg in args {
@@ -1266,6 +1468,10 @@ impl Expr {
             }
             Expr::BoolTest(e, v, n) => Expr::BoolTest(b(e), v, n),
             Expr::AnySubquery(c, p, all) => Expr::AnySubquery(b(c), p, all),
+            Expr::DateTime(op, l, r) => {
+                let l = b(l);
+                Expr::DateTime(op, l, b(r))
+            }
             other => other,
         }
     }
@@ -1283,6 +1489,7 @@ impl Expr {
             | Expr::And(l, r)
             | Expr::Or(l, r)
             | Expr::NullIf(l, r)
+            | Expr::DateTime(_, l, r)
             | Expr::DistinctFrom(l, r, _) => {
                 l.visit(f);
                 r.visit(f);
@@ -1299,6 +1506,88 @@ impl Expr {
             _ => {}
         }
     }
+}
+
+/// date_op applies a date and time operator to two non-NULL values.
+fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
+    use crate::datetime::{self as dt, USECS_PER_DAY};
+    use crate::functions::datetime::{interval_multiply, justify_hours_of, negate_interval, timestamp_plus_interval};
+    let date_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "date out of range");
+    let interval_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
+    let float = |v: &Value| match v {
+        Value::Float8(f) => *f,
+        _ => 0.0,
+    };
+    Ok(match (op, l, r) {
+        (DateOp::DatePlusDays, Value::Date(d), Value::Int4(n))
+        | (DateOp::DatePlusDays, Value::Int4(n), Value::Date(d)) => {
+            if d == dt::DATE_NOBEGIN || d == dt::DATE_NOEND {
+                Value::Date(d)
+            } else {
+                Value::Date(d.checked_add(n).ok_or_else(date_range)?)
+            }
+        }
+        (DateOp::DateMinusDays, Value::Date(d), Value::Int4(n)) => {
+            if d == dt::DATE_NOBEGIN || d == dt::DATE_NOEND {
+                Value::Date(d)
+            } else {
+                Value::Date(d.checked_sub(n).ok_or_else(date_range)?)
+            }
+        }
+        (DateOp::DateMinusDate, Value::Date(a), Value::Date(b)) => {
+            if [a, b].iter().any(|d| *d == dt::DATE_NOBEGIN || *d == dt::DATE_NOEND) {
+                return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "cannot subtract infinite dates"));
+            }
+            Value::Int4(a - b)
+        }
+        (DateOp::DatePlusTime, Value::Date(d), Value::Time(t))
+        | (DateOp::DatePlusTime, Value::Time(t), Value::Date(d)) => Value::Timestamp(d as i64 * USECS_PER_DAY + t),
+        (DateOp::TimestampPlusInterval(tz), Value::Timestamp(ts) | Value::TimestampTz(ts), Value::Interval(iv))
+        | (DateOp::TimestampPlusInterval(tz), Value::Interval(iv), Value::Timestamp(ts) | Value::TimestampTz(ts)) => {
+            let result = timestamp_plus_interval(ts, iv, tz)?;
+            if tz { Value::TimestampTz(result) } else { Value::Timestamp(result) }
+        }
+        (DateOp::TimestampMinusInterval(tz), Value::Timestamp(ts) | Value::TimestampTz(ts), Value::Interval(iv)) => {
+            let result = timestamp_plus_interval(ts, negate_interval(iv)?, tz)?;
+            if tz { Value::TimestampTz(result) } else { Value::Timestamp(result) }
+        }
+        (
+            DateOp::TimestampMinusTimestamp,
+            Value::Timestamp(a) | Value::TimestampTz(a),
+            Value::Timestamp(b) | Value::TimestampTz(b),
+        ) => {
+            if [a, b].iter().any(|t| *t == dt::TIMESTAMP_NOBEGIN || *t == dt::TIMESTAMP_NOEND) {
+                return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "cannot subtract infinite timestamps"));
+            }
+            let micros = a.checked_sub(b).ok_or_else(interval_range)?;
+            Value::Interval(justify_hours_of(dt::Interval { months: 0, days: 0, micros }))
+        }
+        (DateOp::TimePlusInterval, Value::Time(t), Value::Interval(iv))
+        | (DateOp::TimePlusInterval, Value::Interval(iv), Value::Time(t)) => {
+            Value::Time((t + iv.micros).rem_euclid(USECS_PER_DAY))
+        }
+        (DateOp::TimeMinusInterval, Value::Time(t), Value::Interval(iv)) => {
+            Value::Time((t - iv.micros).rem_euclid(USECS_PER_DAY))
+        }
+        (DateOp::TimeMinusTime, Value::Time(a), Value::Time(b)) => {
+            Value::Interval(dt::Interval { months: 0, days: 0, micros: a - b })
+        }
+        (DateOp::IntervalPlusInterval, Value::Interval(a), Value::Interval(b)) => Value::Interval(dt::Interval {
+            months: a.months.checked_add(b.months).ok_or_else(interval_range)?,
+            days: a.days.checked_add(b.days).ok_or_else(interval_range)?,
+            micros: a.micros.checked_add(b.micros).ok_or_else(interval_range)?,
+        }),
+        (DateOp::IntervalMinusInterval, Value::Interval(a), Value::Interval(b)) => Value::Interval(dt::Interval {
+            months: a.months.checked_sub(b.months).ok_or_else(interval_range)?,
+            days: a.days.checked_sub(b.days).ok_or_else(interval_range)?,
+            micros: a.micros.checked_sub(b.micros).ok_or_else(interval_range)?,
+        }),
+        (DateOp::IntervalTimesFloat, Value::Interval(iv), f) | (DateOp::IntervalTimesFloat, f, Value::Interval(iv)) => {
+            Value::Interval(interval_multiply(iv, float(&f), false)?)
+        }
+        (DateOp::IntervalDivFloat, Value::Interval(iv), f) => Value::Interval(interval_multiply(iv, float(&f), true)?),
+        _ => return Err(PgError::internal("a date operator on the wrong values")),
+    })
 }
 
 /// arith applies an arithmetic operator to two non-NULL values of the result type's domain.

@@ -15,6 +15,7 @@
 //! Built-in functions, and choosing among a function's overloads as Postgres does.
 
 pub mod aggregate;
+pub mod datetime;
 mod math;
 mod series;
 mod string;
@@ -66,7 +67,10 @@ fn registry() -> &'static Registry {
     static REGISTRY: OnceLock<Registry> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         let functions: Vec<&'static Function> =
-            [system::FUNCTIONS, string::FUNCTIONS, math::FUNCTIONS, series::FUNCTIONS].into_iter().flatten().collect();
+            [system::FUNCTIONS, string::FUNCTIONS, math::FUNCTIONS, series::FUNCTIONS, datetime::FUNCTIONS]
+                .into_iter()
+                .flatten()
+                .collect();
         let mut by_name: HashMap<&'static str, Vec<usize>> = HashMap::new();
         for (i, f) in functions.iter().enumerate() {
             by_name.entry(f.name).or_default().push(i);

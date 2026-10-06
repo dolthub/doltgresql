@@ -44,6 +44,8 @@ pub struct Txn {
     pub root: Root,
     /// The working root as it was when the transaction began.
     original: Vec<u8>,
+    /// When the transaction began, as a UTC timestamp.
+    pub started: i64,
 }
 
 /// read returns the message at the address, failing when the database lacks it.
@@ -80,6 +82,7 @@ impl Txn {
             head_root: Some(head_root),
             root,
             original,
+            started: crate::datetime::clock(),
         })
     }
 

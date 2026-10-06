@@ -42,6 +42,28 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
         }
         (Value::Text(s), encoding::STRING_ADAPTIVE) => inline(s.as_bytes()),
         (Value::Bool(b), encoding::EXTENDED) if ty.oid == crate::oid::BOOL => vec![*b as u8],
+        (Value::Date(d), encoding::EXTENDED) => {
+            let ts = match *d {
+                crate::datetime::DATE_NOBEGIN => crate::datetime::TIMESTAMP_NOBEGIN,
+                crate::datetime::DATE_NOEND => crate::datetime::TIMESTAMP_NOEND,
+                d => d as i64 * crate::datetime::USECS_PER_DAY,
+            };
+            let (seconds, nanos) = crate::datetime::timestamp_to_go(ts);
+            crate::datetime::go_time::marshal(seconds, nanos)
+        }
+        (Value::Timestamp(ts) | Value::TimestampTz(ts), encoding::EXTENDED) => {
+            let (seconds, nanos) = crate::datetime::timestamp_to_go(*ts);
+            crate::datetime::go_time::marshal(seconds, nanos)
+        }
+        (Value::Time(t), encoding::EXTENDED) => offset_i64(*t).to_vec(),
+        (Value::TimeTz(t, z), encoding::EXTENDED) => [offset_i64(*t).as_slice(), &offset_i32(*z)].concat(),
+        (Value::Interval(iv), encoding::EXTENDED) => {
+            let sort_nanos = (iv.months as i64 * 30 * crate::datetime::USECS_PER_DAY
+                + iv.days as i64 * crate::datetime::USECS_PER_DAY
+                + iv.micros)
+                .saturating_mul(1000);
+            [offset_i64(sort_nanos).as_slice(), &offset_i32(iv.months), &offset_i32(iv.days)].concat()
+        }
         (value, field_encoding) => {
             return Err(PgError::unsupported(format!("storing {value:?} with encoding {field_encoding}")));
         }
@@ -72,8 +94,63 @@ pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty:
         }
         encoding::STRING_ADAPTIVE => Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?),
         encoding::EXTENDED if ty.oid == crate::oid::BOOL => Value::Bool(field.first().is_some_and(|&b| b != 0)),
+        encoding::EXTENDED if matches!(ty.oid, crate::oid::DATE | crate::oid::TIMESTAMP | crate::oid::TIMESTAMPTZ) => {
+            let (seconds, nanos) = crate::datetime::go_time::unmarshal(field).ok_or_else(corrupt)?;
+            let ts = crate::datetime::timestamp_from_go(seconds, nanos);
+            match ty.oid {
+                crate::oid::DATE => Value::Date(match ts {
+                    crate::datetime::TIMESTAMP_NOBEGIN => crate::datetime::DATE_NOBEGIN,
+                    crate::datetime::TIMESTAMP_NOEND => crate::datetime::DATE_NOEND,
+                    ts => ts.div_euclid(crate::datetime::USECS_PER_DAY) as i32,
+                }),
+                crate::oid::TIMESTAMP => Value::Timestamp(go_local(field, ts)),
+                _ => Value::TimestampTz(ts),
+            }
+        }
+        encoding::EXTENDED if ty.oid == crate::oid::TIME => Value::Time(read_offset_i64(field).ok_or_else(corrupt)?),
+        encoding::EXTENDED if ty.oid == crate::oid::TIMETZ && field.len() == 12 => Value::TimeTz(
+            read_offset_i64(&field[..8]).ok_or_else(corrupt)?,
+            read_offset_i32(&field[8..]).ok_or_else(corrupt)?,
+        ),
+        encoding::EXTENDED if ty.oid == crate::oid::INTERVAL && field.len() == 16 => {
+            let sort_nanos = read_offset_i64(&field[..8]).ok_or_else(corrupt)?;
+            let months = read_offset_i32(&field[8..12]).ok_or_else(corrupt)?;
+            let days = read_offset_i32(&field[12..]).ok_or_else(corrupt)?;
+            let nanos = sort_nanos - (months as i64 * 30 + days as i64) * crate::datetime::USECS_PER_DAY * 1000;
+            Value::Interval(crate::datetime::Interval { months, days, micros: nanos / 1000 })
+        }
         _ => return Err(PgError::unsupported(format!("reading fields of encoding {field_encoding}"))),
     })
+}
+
+/// offset_i64 writes an integer as Doltgres' writer does: offset by 2^63 and big-endian, so bytes sort as numbers.
+fn offset_i64(value: i64) -> [u8; 8] {
+    ((value as u64) ^ (1 << 63)).to_be_bytes()
+}
+
+/// offset_i32 writes an integer offset by 2^31 and big-endian.
+fn offset_i32(value: i32) -> [u8; 4] {
+    ((value as u32) ^ (1 << 31)).to_be_bytes()
+}
+
+/// read_offset_i64 reads an integer that offset_i64 wrote.
+fn read_offset_i64(bytes: &[u8]) -> Option<i64> {
+    Some((u64::from_be_bytes(bytes.try_into().ok()?) ^ (1 << 63)) as i64)
+}
+
+/// read_offset_i32 reads an integer that offset_i32 wrote.
+fn read_offset_i32(bytes: &[u8]) -> Option<i32> {
+    Some((u32::from_be_bytes(bytes.try_into().ok()?) ^ (1 << 31)) as i32)
+}
+
+/// go_local returns a timestamp without a zone from a Go time that may carry a zone offset, by keeping its local
+/// wall clock.
+fn go_local(field: &[u8], utc: i64) -> i64 {
+    if utc == crate::datetime::TIMESTAMP_NOBEGIN || utc == crate::datetime::TIMESTAMP_NOEND || field.len() < 15 {
+        return utc;
+    }
+    let minutes = i16::from_be_bytes([field[13], field[14]]);
+    if minutes == -1 { utc } else { utc + minutes as i64 * 60 * crate::datetime::USECS_PER_SEC }
 }
 
 /// is_adaptive reports whether an encoding stores values inline or out of band by size.

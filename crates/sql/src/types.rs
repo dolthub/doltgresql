@@ -14,6 +14,7 @@
 
 //! Values and their text and binary wire formats.
 
+use crate::datetime::{self, Interval};
 use crate::error::{PgError, Result, code};
 use crate::numeric::Numeric;
 use crate::oid;
@@ -33,6 +34,17 @@ pub enum Value {
     Float4(f32),
     Float8(f64),
     Numeric(Numeric),
+    /// Days from 2000-01-01.
+    Date(i32),
+    /// Microseconds from midnight.
+    Time(i64),
+    /// Microseconds from midnight and the zone in seconds west of UTC.
+    TimeTz(i64, i32),
+    /// Microseconds from 2000-01-01 00:00:00.
+    Timestamp(i64),
+    /// Microseconds from 2000-01-01 00:00:00 UTC.
+    TimestampTz(i64),
+    Interval(Interval),
     /// A string of the text types, and the value of an untyped literal.
     Text(String),
     /// The rows of a set-returning function, which never reach a client.
@@ -93,6 +105,15 @@ impl Value {
             Value::Float4(f) => format_float(format!("{f:e}"), 6),
             Value::Float8(f) => format_float(format!("{f:e}"), 15),
             Value::Numeric(n) => n.to_string(),
+            Value::Date(d) => datetime::with_format(|f| datetime::format_date(*d, f)),
+            Value::Time(t) => datetime::format_time(*t),
+            Value::TimeTz(t, z) => datetime::format_timetz(*t, *z),
+            Value::Timestamp(ts) => datetime::with_format(|f| datetime::format_timestamp(*ts, None, f)),
+            Value::TimestampTz(ts) => datetime::with_format(|f| {
+                let (offset, name) = f.zone.offset_at(*ts);
+                datetime::format_timestamp(*ts, Some((offset, &name)), f)
+            }),
+            Value::Interval(iv) => datetime::with_format(|f| datetime::format_interval(iv, f.interval_style)),
             Value::Text(s) => s.clone(),
             Value::Set(_) => return None,
         })
@@ -109,6 +130,13 @@ impl Value {
             Value::Float4(f) => f.to_be_bytes().to_vec(),
             Value::Float8(f) => f.to_be_bytes().to_vec(),
             Value::Numeric(n) => n.send(),
+            Value::Date(d) => d.to_be_bytes().to_vec(),
+            Value::Time(t) => t.to_be_bytes().to_vec(),
+            Value::TimeTz(t, z) => [t.to_be_bytes().as_slice(), &z.to_be_bytes()].concat(),
+            Value::Timestamp(ts) | Value::TimestampTz(ts) => ts.to_be_bytes().to_vec(),
+            Value::Interval(iv) => {
+                [iv.micros.to_be_bytes().as_slice(), &iv.days.to_be_bytes(), &iv.months.to_be_bytes()].concat()
+            }
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) => s.clone().into_bytes(),
             Value::Set(_) => return None,
@@ -129,6 +157,21 @@ impl Value {
                 oid::FLOAT4 => Ok(Value::Float4(f32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::FLOAT8 => Ok(Value::Float8(f64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::NUMERIC => Numeric::receive(bytes).map(Value::Numeric).ok_or_else(invalid),
+                oid::DATE => Ok(Value::Date(i32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
+                oid::TIME => Ok(Value::Time(i64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
+                oid::TIMESTAMP => Ok(Value::Timestamp(i64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
+                oid::TIMESTAMPTZ => {
+                    Ok(Value::TimestampTz(i64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?)))
+                }
+                oid::TIMETZ if bytes.len() == 12 => Ok(Value::TimeTz(
+                    i64::from_be_bytes(bytes[..8].try_into().map_err(|_| invalid())?),
+                    i32::from_be_bytes(bytes[8..].try_into().map_err(|_| invalid())?),
+                )),
+                oid::INTERVAL if bytes.len() == 16 => Ok(Value::Interval(Interval {
+                    micros: i64::from_be_bytes(bytes[..8].try_into().map_err(|_| invalid())?),
+                    days: i32::from_be_bytes(bytes[8..12].try_into().map_err(|_| invalid())?),
+                    months: i32::from_be_bytes(bytes[12..].try_into().map_err(|_| invalid())?),
+                })),
                 oid::TEXT | oid::UNKNOWN | 0 => {
                     Ok(Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?))
                 }

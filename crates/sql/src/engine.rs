@@ -163,6 +163,16 @@ impl SessionState {
             .collect()
     }
 
+    /// install_format installs the session's DateStyle, IntervalStyle, and time zone for printing values.
+    pub fn install_format(&self) {
+        let get = |name: &str| self.settings.get(name).unwrap_or_default();
+        crate::datetime::install_format(crate::datetime::Format::from_settings(
+            &get("DateStyle"),
+            &get("IntervalStyle"),
+            &get("TimeZone"),
+        ));
+    }
+
     /// notice records a notice for the client.
     pub fn notice(&mut self, notice: PgError) {
         self.notices.push(notice);
@@ -359,6 +369,8 @@ impl Session {
             self.txn = Some(Txn::begin(handle, &self.state.database, &self.state.branch)?);
         }
         let txn = self.txn.as_mut().expect("an open transaction");
+        crate::datetime::install_now(txn.started);
+        self.state.install_format();
         let handle = txn.handle.clone();
         let mut db = lock(&handle)?;
         let mut ctx = Ctx {

@@ -19,6 +19,7 @@
 
 pub mod cast;
 pub mod catalog;
+pub mod datetime;
 mod ddl;
 pub mod dml;
 mod engine;
@@ -58,6 +59,12 @@ pub mod oid {
     pub const UNKNOWN: u32 = 705;
     pub const BPCHAR: u32 = 1042;
     pub const VARCHAR: u32 = 1043;
+    pub const DATE: u32 = 1082;
+    pub const TIME: u32 = 1083;
+    pub const TIMESTAMP: u32 = 1114;
+    pub const TIMESTAMPTZ: u32 = 1184;
+    pub const INTERVAL: u32 = 1186;
+    pub const TIMETZ: u32 = 1266;
     pub const NUMERIC: u32 = 1700;
 }
 

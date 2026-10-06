@@ -30,6 +30,12 @@ pub fn type_display(type_oid: u32) -> &'static str {
         oid::FLOAT4 => "real",
         oid::FLOAT8 => "double precision",
         oid::NUMERIC => "numeric",
+        oid::DATE => "date",
+        oid::TIME => "time without time zone",
+        oid::TIMETZ => "time with time zone",
+        oid::TIMESTAMP => "timestamp without time zone",
+        oid::TIMESTAMPTZ => "timestamp with time zone",
+        oid::INTERVAL => "interval",
         oid::VARCHAR => "character varying",
         oid::BPCHAR => "character",
         _ => builtin_type(type_oid).map_or("unknown", |t| t.name),
@@ -145,6 +151,23 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
         oid::FLOAT4 => Value::Float4(parse_float(text, type_oid)? as f32),
         oid::FLOAT8 => Value::Float8(parse_float(text, type_oid)?),
         oid::NUMERIC => Value::Numeric(Numeric::parse(text)?),
+        oid::DATE => crate::datetime::with_format(|f| crate::datetime::parse_date(text, f, crate::datetime::now()))
+            .map(Value::Date)?,
+        oid::TIME => crate::datetime::with_format(|f| crate::datetime::parse_time(text, f)).map(Value::Time)?,
+        oid::TIMETZ => {
+            let (time, zone) =
+                crate::datetime::with_format(|f| crate::datetime::parse_timetz(text, f, crate::datetime::now()))?;
+            Value::TimeTz(time, zone)
+        }
+        oid::TIMESTAMP => {
+            crate::datetime::with_format(|f| crate::datetime::parse_timestamp(text, false, f, crate::datetime::now()))
+                .map(Value::Timestamp)?
+        }
+        oid::TIMESTAMPTZ => {
+            crate::datetime::with_format(|f| crate::datetime::parse_timestamp(text, true, f, crate::datetime::now()))
+                .map(Value::TimestampTz)?
+        }
+        oid::INTERVAL => Value::Interval(crate::datetime::parse_interval(text)?),
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN => Value::Text(text.to_string()),
         _ => return Err(PgError::unsupported(format!("reading values of type {}", type_display(type_oid)))),
     })
@@ -240,6 +263,77 @@ fn apply_length(text: String, to: ColumnType, explicit: bool) -> Result<String> 
     Ok(text)
 }
 
+/// round_micros rounds microseconds to a precision of fractional digits, half away from zero.
+fn round_micros(micros: i64, precision: i32) -> i64 {
+    if !(0..6).contains(&precision) {
+        return micros;
+    }
+    let unit = 10i64.pow(6 - precision as u32);
+    let half = unit / 2;
+    if micros >= 0 { (micros + half) / unit * unit } else { -((-micros + half) / unit * unit) }
+}
+
+/// cast_datetime converts a value to a date, time, timestamp, or interval type, in the session's time zone where a
+/// zone matters.
+fn cast_datetime(value: Value, to: ColumnType) -> Result<Value> {
+    use crate::datetime::{self as dt, USECS_PER_DAY, USECS_PER_SEC};
+    let zone_offset = |utc: i64| dt::with_format(|f| f.zone.offset_at(utc).0) as i64 * USECS_PER_SEC;
+    let local_offset = |local: i64| dt::with_format(|f| f.zone.offset_for_local(local)) as i64 * USECS_PER_SEC;
+    let finite = |ts: i64| ts != dt::TIMESTAMP_NOBEGIN && ts != dt::TIMESTAMP_NOEND;
+    let date_to_timestamp = |d: i32| match d {
+        dt::DATE_NOBEGIN => dt::TIMESTAMP_NOBEGIN,
+        dt::DATE_NOEND => dt::TIMESTAMP_NOEND,
+        d => d as i64 * USECS_PER_DAY,
+    };
+    let timestamp_to_date = |ts: i64| match ts {
+        dt::TIMESTAMP_NOBEGIN => dt::DATE_NOBEGIN,
+        dt::TIMESTAMP_NOEND => dt::DATE_NOEND,
+        ts => ts.div_euclid(USECS_PER_DAY) as i32,
+    };
+    let result = match (value, to.oid) {
+        (Value::Text(text), _) => return input(&text, to.oid).and_then(|v| cast_datetime(v, to)),
+        (v @ Value::Date(_), oid::DATE) => v,
+        (Value::Timestamp(ts), oid::DATE) => Value::Date(timestamp_to_date(ts)),
+        (Value::TimestampTz(ts), oid::DATE) => {
+            Value::Date(timestamp_to_date(if finite(ts) { ts + zone_offset(ts) } else { ts }))
+        }
+        (Value::Date(d), oid::TIMESTAMP) => Value::Timestamp(date_to_timestamp(d)),
+        (Value::Timestamp(ts), oid::TIMESTAMP) => {
+            Value::Timestamp(if finite(ts) { round_micros(ts, to.modifier) } else { ts })
+        }
+        (Value::TimestampTz(ts), oid::TIMESTAMP) => {
+            Value::Timestamp(if finite(ts) { ts + zone_offset(ts) } else { ts })
+        }
+        (Value::Date(d), oid::TIMESTAMPTZ) => {
+            let local = date_to_timestamp(d);
+            Value::TimestampTz(if finite(local) { local - local_offset(local) } else { local })
+        }
+        (Value::Timestamp(ts), oid::TIMESTAMPTZ) => {
+            Value::TimestampTz(if finite(ts) { ts - local_offset(ts) } else { ts })
+        }
+        (Value::TimestampTz(ts), oid::TIMESTAMPTZ) => {
+            Value::TimestampTz(if finite(ts) { round_micros(ts, to.modifier) } else { ts })
+        }
+        (Value::Time(t), oid::TIME) => Value::Time(round_micros(t, to.modifier)),
+        (Value::TimeTz(t, _), oid::TIME) => Value::Time(t),
+        (Value::Timestamp(ts), oid::TIME) => Value::Time(ts.rem_euclid(USECS_PER_DAY)),
+        (Value::TimestampTz(ts), oid::TIME) => Value::Time((ts + zone_offset(ts)).rem_euclid(USECS_PER_DAY)),
+        (Value::Interval(iv), oid::TIME) => Value::Time(iv.micros.rem_euclid(USECS_PER_DAY)),
+        (Value::Time(t), oid::TIMETZ) => Value::TimeTz(t, -(zone_offset(dt::now().timestamp) / USECS_PER_SEC) as i32),
+        (Value::TimeTz(t, z), oid::TIMETZ) => Value::TimeTz(round_micros(t, to.modifier), z),
+        (Value::TimestampTz(ts), oid::TIMETZ) => {
+            let offset = zone_offset(ts);
+            Value::TimeTz((ts + offset).rem_euclid(USECS_PER_DAY), -(offset / USECS_PER_SEC) as i32)
+        }
+        (Value::Interval(iv), oid::INTERVAL) => {
+            Value::Interval(dt::Interval { micros: round_micros(iv.micros, to.modifier & 0xffff), ..iv })
+        }
+        (Value::Time(t), oid::INTERVAL) => Value::Interval(dt::Interval { months: 0, days: 0, micros: t }),
+        (other, _) => return Err(cannot_cast(&other, to.oid)),
+    };
+    Ok(result)
+}
+
 /// cast_value converts a value to the type, as an explicit cast or as an implicit or assignment conversion.
 pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value> {
     if value.is_null() {
@@ -281,6 +375,9 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
                 other => return Err(cannot_cast(&other, to.oid)),
             };
             Value::Numeric(n.apply_typmod(to.modifier)?)
+        }
+        oid::DATE | oid::TIME | oid::TIMETZ | oid::TIMESTAMP | oid::TIMESTAMPTZ | oid::INTERVAL => {
+            cast_datetime(value, to)?
         }
         oid::BOOL => match value {
             Value::Bool(b) => Value::Bool(b),
