@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,23 +23,23 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initRegproc handles all casts that are built-in. This comprises only the source types.
-func initRegproc(builtInCasts map[id.Cast]casts.Cast) {
-	regprocAssignment(builtInCasts)
-	regprocImplicit(builtInCasts)
+// initRegprocedure handles all casts that are built-in. This comprises only the source types.
+func initRegprocedure(builtInCasts map[id.Cast]casts.Cast) {
+	regprocedureAssignment(builtInCasts)
+	regprocedureImplicit(builtInCasts)
 }
 
-// regprocAssignment registers all assignment casts. This comprises only the source types.
-func regprocAssignment(builtInCasts map[id.Cast]casts.Cast) {
+// regprocedureAssignment registers all assignment casts. This comprises only the source types.
+func regprocedureAssignment(builtInCasts map[id.Cast]casts.Cast) {
 	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Regproc,
+		FromType: pgtypes.Regprocedure,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return int32(id.Cache().ToOID(val.(id.Id))), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Regproc,
+		FromType: pgtypes.Regprocedure,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return int64(id.Cache().ToOID(val.(id.Id))), nil
@@ -47,18 +47,18 @@ func regprocAssignment(builtInCasts map[id.Cast]casts.Cast) {
 	})
 }
 
-// regprocImplicit registers all implicit casts. This comprises only the source types.
-func regprocImplicit(builtInCasts map[id.Cast]casts.Cast) {
+// regprocedureImplicit registers all implicit casts. This comprises only the source types.
+func regprocedureImplicit(builtInCasts map[id.Cast]casts.Cast) {
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Regproc,
+		FromType: pgtypes.Regprocedure,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
-		FromType: pgtypes.Regproc,
-		ToType:   pgtypes.Regprocedure,
+		FromType: pgtypes.Regprocedure,
+		ToType:   pgtypes.Regproc,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},

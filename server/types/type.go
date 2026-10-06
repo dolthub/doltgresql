@@ -577,7 +577,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if ok {
 			return v, sql.InRange, nil
 		}
-	case "oid", "regclass", "regnamespace", "regproc", "regtype":
+	case "oid", "regclass", "regnamespace", "regproc", "regprocedure", "regtype":
 		if _, ok := v.(id.Id); ok {
 			return v, sql.InRange, nil
 		}
@@ -1193,7 +1193,7 @@ func (t *DoltgresType) Type() query.Type {
 			return sqltypes.Decimal
 		case "oid":
 			return sqltypes.VarChar
-		case "regclass", "regnamespace", "regproc", "regtype":
+		case "regclass", "regnamespace", "regproc", "regprocedure", "regtype":
 			return sqltypes.Text
 		default:
 			// TODO
@@ -1287,7 +1287,7 @@ func (t *DoltgresType) Zero() interface{} {
 			return int64(0)
 		case "numeric":
 			return apd.New(0, 0)
-		case "oid", "regclass", "regnamespace", "regproc", "regtype":
+		case "oid", "regclass", "regnamespace", "regproc", "regprocedure", "regtype":
 			return id.Null
 		default:
 			// TODO
