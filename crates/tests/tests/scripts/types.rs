@@ -1,0 +1,7243 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use harness::oid::*;
+use harness::pgx::Time;
+use harness::plan::PlanFact;
+use harness::script::Cell::{Any, Null, Text as T};
+use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, ScriptTestAssertion, USER_DEFINED, run_scripts, run_scripts_repeated};
+use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};
+
+#[test]
+fn test_composite_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "composite type as subquery alias",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT 'session_stats' AS chart_name,
+       						pg_catalog.Row_to_json(t) AS chart_data FROM (
+							SELECT
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity) AS "Total",
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity
+									WHERE  state = 'active') AS "Active",
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity
+                            		WHERE  state = 'idle') AS "Idle" ) t;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("chart_name", TEXT), Column("chart_data", JSON)],
+                        rows: &[
+                            &[T("session_stats"), T(r#"{"Total":6,"Active":1,"Idle":0}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_enum_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "create enum type",
+            set_up_script: &[
+                "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE person (name text, current_mood mood);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO person VALUES ('Moe', 'happy'), ('Larry', 'sad'), ('Curly', 'ok');",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'happy'::mood;",
+                    expected: Expected::Rows {
+                        columns: &[Column("mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("happy")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_mood::mood from person where name = 'Moe';",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("happy")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM person order by current_mood;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("current_mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("Larry"), T("sad")],
+                            &[T("Curly"), T("ok")],
+                            &[T("Moe"), T("happy")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM person order by name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("current_mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("Curly"), T("ok")],
+                            &[T("Larry"), T("sad")],
+                            &[T("Moe"), T("happy")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM person;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("current_mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("Moe"), T("happy")],
+                            &[T("Larry"), T("sad")],
+                            &[T("Curly"), T("ok")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM person WHERE current_mood = 'happy';",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("current_mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("Moe"), T("happy")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM person WHERE current_mood > 'sad';",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("current_mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("Moe"), T("happy")],
+                            &[T("Curly"), T("ok")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM person WHERE current_mood > 'sad' ORDER BY current_mood;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("current_mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("Curly"), T("ok")],
+                            &[T("Moe"), T("happy")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO person VALUES ('Joey', 'invalid');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input value for enum mood: "invalid""#, position: 36, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE failure AS ENUM ('ok','ok');",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "pg_enum_typid_label_index""#, detail: "Key (enumtypid, enumlabel)=(16397, ok) already exists.", schema: "pg_catalog", table: "pg_enum", constraint: "pg_enum_typid_label_index", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE empty_mood AS ENUM ();",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "drop enum type",
+            set_up_script: &[
+                "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
+                "CREATE TYPE empty_enum AS ENUM ()",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "DROP TYPE mood, empty_enum;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    flow: Flow::Exec,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE empty_enum;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "empty_enum" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE empty_enum;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "empty_enum" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE IF EXISTS empty_enum;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    notices: &[Diagnostic { code: "00000", message: r#"type "empty_enum" does not exist, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE _mood;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "_mood" does not exist"#, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "enum type cast",
+            set_up_script: &[
+                "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "select 'sad'::mood",
+                    expected: Expected::Rows {
+                        columns: &[Column("mood", USER_DEFINED)],
+                        rows: &[
+                            &[T("sad")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 'invalid'::mood",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input value for enum mood: "invalid""#, position: 8, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "enum type function",
+            set_up_script: &[
+                "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "select enum_in('sad'::cstring, 16675);",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "cache lookup failed for type 16675", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "btree index scan on enum column returns correct rows",
+            set_up_script: &[
+                "CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple')",
+                "CREATE TABLE enumtest (col rainbow)",
+                "INSERT INTO enumtest VALUES ('red'), ('orange'), ('yellow'), ('green')",
+                "CREATE UNIQUE INDEX enumtest_btree ON enumtest USING btree (col)",
+                "SET enable_seqscan = off",
+                "SET enable_bitmapscan = off",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM enumtest WHERE col = 'orange'",
+                    expected: Expected::Rows {
+                        columns: &[Column("col", USER_DEFINED)],
+                        rows: &[
+                            &[T("orange")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM enumtest WHERE col > 'orange' ORDER BY col",
+                    expected: Expected::Rows {
+                        columns: &[Column("col", USER_DEFINED)],
+                        rows: &[
+                            &[T("yellow")],
+                            &[T("green")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM enumtest WHERE col < 'orange' ORDER BY col",
+                    expected: Expected::Rows {
+                        columns: &[Column("col", USER_DEFINED)],
+                        rows: &[
+                            &[T("red")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "enum array type column",
+            set_up_script: &[
+                "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');",
+                "CREATE TABLE t (pk int primary key, v mood[]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (1, array['sad', 'happy']::mood[]);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (2, '{ok,sad}');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v", USER_DEFINED)],
+                        rows: &[
+                            &[T("1"), T("{sad,happy}")],
+                            &[T("2"), T("{ok,sad}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "create type with existing array type name updates the name of the array type",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TYPE my_type AS ENUM ();",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE _my_type;",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname from pg_type where typname like '%my_type'",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME)],
+                        rows: &[
+                            &[T("my_type")],
+                            &[T("__my_type")],
+                            &[T("_my_type")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE my_type;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE _my_type;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_same_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Integer types",
+            set_up_script: &[
+                "CREATE TABLE test1 (v1 SMALLINT, v2 INTEGER, v3 BIGINT);",
+                "CREATE TABLE test2 (v1 INT2, v2 INT4, v3 INT8);",
+                "INSERT INTO test1 VALUES (1, 2, 3), (4, 5, 6);",
+                "INSERT INTO test2 VALUES (1, 2, 3), (4, 5, 6);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test1 ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT2), Column("v2", INT4), Column("v3", INT8)],
+                        rows: &[
+                            &[T("1"), T("2"), T("3")],
+                            &[T("4"), T("5"), T("6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test1 ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT2), Column("v2", INT4), Column("v3", INT8)],
+                        rows: &[
+                            &[T("1"), T("2"), T("3")],
+                            &[T("4"), T("5"), T("6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test2 ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT2), Column("v2", INT4), Column("v3", INT8)],
+                        rows: &[
+                            &[T("1"), T("2"), T("3")],
+                            &[T("4"), T("5"), T("6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test2 ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT2), Column("v2", INT4), Column("v3", INT8)],
+                        rows: &[
+                            &[T("1"), T("2"), T("3")],
+                            &[T("4"), T("5"), T("6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select int2 '2', int4 '3', int8 '4'",
+                    expected: Expected::Rows {
+                        columns: &[Column("int2", INT2), Column("int4", INT4), Column("int8", INT8)],
+                        rows: &[
+                            &[T("2"), T("3"), T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Arbitrary precision types",
+            set_up_script: &[
+                "CREATE TABLE test (v1 DECIMAL(10, 1), v2 NUMERIC(11, 2));",
+                "INSERT INTO test VALUES (14854.5, 2504.25), (566821525.5, 735134574.75), (21525, 134574.7);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", NUMERIC), Column("v2", NUMERIC)],
+                        rows: &[
+                            &[T("14854.5"), T("2504.25")],
+                            &[T("21525.0"), T("134574.70")],
+                            &[T("566821525.5"), T("735134574.75")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Floating point types",
+            set_up_script: &[
+                "CREATE TABLE test1 (v1 REAL, v2 DOUBLE PRECISION);",
+                "CREATE TABLE test2 (v1 FLOAT4, v2 FLOAT8);",
+                "INSERT INTO test1 VALUES (10.125, 20.4), (40.875, 81.6);",
+                "INSERT INTO test2 VALUES (10.125, 20.4), (40.875, 81.6);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test1 ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", FLOAT4), Column("v2", FLOAT8)],
+                        rows: &[
+                            &[T("10.125"), T("20.4")],
+                            &[T("40.875"), T("81.6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test2 ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", FLOAT4), Column("v2", FLOAT8)],
+                        rows: &[
+                            &[T("10.125"), T("20.4")],
+                            &[T("40.875"), T("81.6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Date and time types",
+            set_up_script: &[
+                "CREATE TABLE test (v1 TIMESTAMP, v2 DATE);",
+                "INSERT INTO test VALUES ('1986-08-02 17:04:22', '2023-09-03');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", TIMESTAMP), Column("v2", DATE)],
+                        rows: &[
+                            &[T("1986-08-02 17:04:22"), T("2023-09-03")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Text types",
+            set_up_script: &[
+                "CREATE TABLE test (v1 CHARACTER VARYING(255), v2 CHARACTER(3), v3 TEXT);",
+                "INSERT INTO test VALUES ('abc', 'def', 'ghi'), ('jkl', 'mno', 'pqr');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", VARCHAR), Column("v2", BPCHAR), Column("v3", TEXT)],
+                        rows: &[
+                            &[T("abc"), T("def"), T("ghi")],
+                            &[T("jkl"), T("mno"), T("pqr")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_shell_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "shell type use cases",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TYPE undefined_type;",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1::undefined_type;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "undefined_type" is only a shell"#, position: 11, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE undefined_type;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE IF EXISTS undefined_type;",
+                    expected: Expected::Tag("DROP TYPE"),
+                    notices: &[Diagnostic { code: "00000", message: r#"type "undefined_type" does not exist, skipping"#, ..N }],
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Bigint type",
+            set_up_script: &[
+                "CREATE TABLE t_bigint (id INTEGER primary key, v1 BIGINT);",
+                "INSERT INTO t_bigint VALUES (1, 123456789012345), (2, 987654321098765);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bigint ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT8)],
+                        rows: &[
+                            &[T("1"), T("123456789012345")],
+                            &[T("2"), T("987654321098765")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 1::pg_catalog.int8;",
+                    expected: Expected::Rows {
+                        columns: &[Column("int8", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bigint key",
+            set_up_script: &[
+                "CREATE TABLE t_bigint (id BIGINT primary key, v1 BIGINT);",
+                "INSERT INTO t_bigint VALUES (1, 123456789012345), (2, 987654321098765);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bigint WHERE id = 1 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT8), Column("v1", INT8)],
+                        rows: &[
+                            &[T("1"), T("123456789012345")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bigint array type",
+            set_up_script: &[
+                "CREATE TABLE t_bigint (id INTEGER primary key, v1 BIGINT[]);",
+                "INSERT INTO t_bigint VALUES (1, ARRAY[123456789012345, NULL]), (2, ARRAY[987654321098765, 5]), (3, ARRAY[4, 5]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bigint ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT8_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{123456789012345,NULL}")],
+                            &[T("2"), T("{987654321098765,5}")],
+                            &[T("3"), T("{4,5}")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bit type",
+            set_up_script: &[
+                "CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8), v2 BIT(3));",
+                "INSERT INTO t_bit VALUES (1, B'11011010', '101'), (2, B'00101011', '000');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bit ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BIT), Column("v2", BIT)],
+                        rows: &[
+                            &[T("1"), T("11011010"), T("101")],
+                            &[T("2"), T("00101011"), T("000")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 0::bit, 1::bit, 2::bit, 3::bit, 4::bit, 5::bit(2), 6::bit(2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("bit", BIT), Column("bit", BIT), Column("bit", BIT), Column("bit", BIT), Column("bit", BIT), Column("bit", BIT), Column("bit", BIT)],
+                        rows: &[
+                            &[T("0"), T("1"), T("0"), T("1"), T("0"), T("01"), T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (-1)::bit, (-2)::bit, (-5)::bit(2), (-6::int4)::bit(2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("bit", BIT), Column("bit", BIT), Column("bit", BIT), Column("bit", BIT)],
+                        rows: &[
+                            &[T("1"), T("0"), T("11"), T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_bit VALUES (3, B'101', '111');",
+                    expected: Expected::Error(Diagnostic { code: "22026", message: "bit string length 3 does not match type bit(8)", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_bit VALUES (3, B'1001000110', '111');",
+                    expected: Expected::Error(Diagnostic { code: "22026", message: "bit string length 10 does not match type bit(8)", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_bit VALUES (3, B'10010001', '11100100');",
+                    expected: Expected::Error(Diagnostic { code: "22026", message: "bit string length 8 does not match type bit(3)", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_bit VALUES (3, B'10012345', '111');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#""2" is not a valid binary digit"#, position: 30, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_bit VALUES (3, '10012345', '111');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#""2" is not a valid binary digit"#, position: 30, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bit key",
+            set_up_script: &[
+                "CREATE TABLE t_bit (id BIT(8) primary key, v1 BIT(8));",
+                "INSERT INTO t_bit VALUES (B'11011010', B'11011010'), (B'00101011', B'00101011');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bit WHERE id = B'11011010' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", BIT), Column("v1", BIT)],
+                        rows: &[
+                            &[T("11011010"), T("11011010")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Boolean type",
+            set_up_script: &[
+                "CREATE TABLE t_boolean (id INTEGER primary key, v1 BOOLEAN);",
+                "INSERT INTO t_boolean VALUES (1, true), (2, 'false'), (3, NULL);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOOL)],
+                        rows: &[
+                            &[T("1"), T("t")],
+                            &[T("2"), T("f")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOOL)],
+                        rows: &[
+                            &[T("2"), T("f")],
+                            &[T("1"), T("t")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean WHERE v1 IS NOT NULL ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOOL)],
+                        rows: &[
+                            &[T("1"), T("t")],
+                            &[T("2"), T("f")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean WHERE v1 IS NOT NULL ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOOL)],
+                        rows: &[
+                            &[T("2"), T("f")],
+                            &[T("1"), T("t")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Boolean key",
+            set_up_script: &[
+                "CREATE TABLE t_boolean (id boolean primary key, v1 BOOLEAN);",
+                "INSERT INTO t_boolean VALUES (true, true), (false, 'false')",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean where id ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", BOOL), Column("v1", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "boolean indexes",
+            set_up_script: &[
+                "create table t (b bool);",
+                "insert into t values (false);",
+                "create table t_idx (b bool);",
+                "create index idx on t_idx(b);",
+                "insert into t_idx values (false);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "select * from t where (b in (false));",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", BOOL)],
+                        rows: &[
+                            &[T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select * from t_idx where (b in (false));",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", BOOL)],
+                        rows: &[
+                            &[T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Boolean array type",
+            set_up_script: &[
+                "CREATE TABLE t_boolean_array (id INTEGER primary key, v1 BOOLEAN[]);",
+                "INSERT INTO t_boolean_array VALUES (1, ARRAY[true, false]), (2, ARRAY[false, true]), (3, ARRAY[true, true]), (4, ARRAY[false, false]), (5, ARRAY[true]), (6, ARRAY[false]), (7, NULL);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean_array ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOOL_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{t,f}")],
+                            &[T("2"), T("{f,t}")],
+                            &[T("3"), T("{t,t}")],
+                            &[T("4"), T("{f,f}")],
+                            &[T("5"), T("{t}")],
+                            &[T("6"), T("{f}")],
+                            &[T("7"), Null],
+                        ],
+                        tag: "SELECT 7",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean_array ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOOL_ARRAY)],
+                        rows: &[
+                            &[T("6"), T("{f}")],
+                            &[T("4"), T("{f,f}")],
+                            &[T("2"), T("{f,t}")],
+                            &[T("5"), T("{t}")],
+                            &[T("1"), T("{t,f}")],
+                            &[T("3"), T("{t,t}")],
+                            &[T("7"), Null],
+                        ],
+                        tag: "SELECT 7",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean_array WHERE v1 IS NOT NULL ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOOL_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{t,f}")],
+                            &[T("2"), T("{f,t}")],
+                            &[T("3"), T("{t,t}")],
+                            &[T("4"), T("{f,f}")],
+                            &[T("5"), T("{t}")],
+                            &[T("6"), T("{f}")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_boolean_array WHERE v1 IS NOT NULL ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOOL_ARRAY)],
+                        rows: &[
+                            &[T("6"), T("{f}")],
+                            &[T("4"), T("{f,f}")],
+                            &[T("2"), T("{f,t}")],
+                            &[T("5"), T("{t}")],
+                            &[T("1"), T("{t,f}")],
+                            &[T("3"), T("{t,t}")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bigserial type",
+            set_up_script: &[
+                "CREATE TABLE t_bigserial (id INTEGER primary key, v1 BIGSERIAL);",
+                "INSERT INTO t_bigserial VALUES (1, 123456789012345), (2, 987654321098765);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bigserial ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT8)],
+                        rows: &[
+                            &[T("1"), T("123456789012345")],
+                            &[T("2"), T("987654321098765")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bigserial key",
+            set_up_script: &[
+                "CREATE TABLE t_bigserial (id BIGSERIAL primary key, v1 BIGSERIAL);",
+                "INSERT INTO t_bigserial VALUES (123456789012345, 123456789012345), (987654321098765, 987654321098765);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bigserial where ID = 987654321098765 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT8), Column("v1", INT8)],
+                        rows: &[
+                            &[T("987654321098765"), T("987654321098765")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bit varying type",
+            set_up_script: &[
+                "CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING(16));",
+                "INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bit_varying ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARBIT)],
+                        rows: &[
+                            &[T("1"), T("1101101010101010")],
+                            &[T("2"), T("0010101101010101")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_bit_varying VALUES (3, B'101010101010101010');",
+                    expected: Expected::Error(Diagnostic { code: "22001", message: "bit string too long for type bit varying(16)", ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bit varying type, unbounded",
+            set_up_script: &[
+                "CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING);",
+                "INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bit_varying ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARBIT)],
+                        rows: &[
+                            &[T("1"), T("1101101010101010")],
+                            &[T("2"), T("0010101101010101")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_bit_varying VALUES (3, B'101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bit_varying WHERE id = 3 order by 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARBIT)],
+                        rows: &[
+                            &[T("3"), T("101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Box type",
+            set_up_script: &[
+                "CREATE TABLE t_box (id INTEGER primary key, v1 BOX);",
+                "INSERT INTO t_box VALUES (1, '(1,2),(3,4)'), (2, '(5,6),(7,8)');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_box ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BOX)],
+                        rows: &[
+                            &[T("1"), T("(3,4),(1,2)")],
+                            &[T("2"), T("(7,8),(5,6)")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bytea type",
+            set_up_script: &[
+                "CREATE TABLE t_bytea (id INTEGER primary key, v1 BYTEA);",
+                r#"INSERT INTO t_bytea VALUES (1, E'\\xDEADBEEF'), (2, '\xC0FFEE'), (3, ''), (4, NULL);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_bytea ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BYTEA)],
+                        rows: &[
+                            &[T("1"), T(r#"\xdeadbeef"#)],
+                            &[T("2"), T(r#"\xc0ffee"#)],
+                            &[T("3"), T(r#"\x"#)],
+                            &[T("4"), Null],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bytea key",
+            set_up_script: &[
+                "CREATE TABLE t_bytea (id BYTEA primary key, v1 BYTEA);",
+                r#"INSERT INTO t_bytea VALUES (E'\\xCAFEBABE', E'\\xDEADBEEF'), ('\xBADD00D5', '\xC0FFEE');"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM t_bytea WHERE ID = E'\\xCAFEBABE' ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", BYTEA), Column("v1", BYTEA)],
+                        rows: &[
+                            &[T(r#"\xcafebabe"#), T(r#"\xdeadbeef"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Bytea key with mixed short and long values",
+            set_up_script: &[
+                "CREATE TABLE t_bytea_keys (id BYTEA primary key, v1 INTEGER);",
+                r#"INSERT INTO t_bytea_keys VALUES ('\x11', 1);"#,
+                r#"INSERT INTO t_bytea_keys VALUES ('\x22787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878', 2);"#,
+                r#"INSERT INTO t_bytea_keys VALUES ('\x33', 3);"#,
+                r#"INSERT INTO t_bytea_keys VALUES ('\x44797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979', 4);"#,
+                r#"INSERT INTO t_bytea_keys VALUES ('\x55', 5);"#,
+                r#"INSERT INTO t_bytea_keys VALUES ('\xff', 6);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_bytea_keys ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_bytea_keys ORDER BY id DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("6")],
+                            &[T("5")],
+                            &[T("4")],
+                            &[T("3")],
+                            &[T("2")],
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT v1 FROM t_bytea_keys WHERE id = '\x11';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT v1 FROM t_bytea_keys WHERE id = '\xff';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT v1 FROM t_bytea_keys WHERE id = '\x22787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT v1 FROM t_bytea_keys WHERE id = '\x44797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT v1 FROM t_bytea_keys WHERE id < '\x33'::bytea ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT v1 FROM t_bytea_keys WHERE id > '\x44'::bytea ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT v1 FROM t_bytea_keys WHERE id > '\x22'::bytea AND id < '\x55'::bytea ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select id from t_bytea_keys order by id",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", BYTEA)],
+                        rows: &[
+                            &[T(r#"\x11"#)],
+                            &[T(r#"\x22787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878"#)],
+                            &[T(r#"\x33"#)],
+                            &[T(r#"\x44797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979797979"#)],
+                            &[T(r#"\x55"#)],
+                            &[T(r#"\xff"#)],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "bpchar type",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "create table bptest1 (pk int primary key, c1 bpchar, c2 bpchar(12));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "insert into bptest1 values (1, '1', '1');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select * from bptest1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("c1", BPCHAR), Column("c2", BPCHAR)],
+                        rows: &[
+                            &[T("1"), T("1"), T("1           ")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '!'::bpchar;",
+                    expected: Expected::Rows {
+                        columns: &[Column("bpchar", BPCHAR)],
+                        rows: &[
+                            &[T("!")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '!'::bpchar(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("bpchar", BPCHAR)],
+                        rows: &[
+                            &[T("!")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '!'::bpchar(2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("bpchar", BPCHAR)],
+                        rows: &[
+                            &[T("! ")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character type",
+            set_up_script: &[
+                "CREATE TABLE t_character (id INTEGER primary key, v1 CHARACTER(5));",
+                "INSERT INTO t_character VALUES (1, 'abcde'), (2, 'vwxyz'), (3, 'ghi'), (4, ''), (5, NULL);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_character ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BPCHAR)],
+                        rows: &[
+                            &[T("1"), T("abcde")],
+                            &[T("2"), T("vwxyz")],
+                            &[T("3"), T("ghi  ")],
+                            &[T("4"), T("     ")],
+                            &[T("5"), Null],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT length(v1) FROM t_character ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("length", INT4)],
+                        rows: &[
+                            &[T("5")],
+                            &[T("5")],
+                            &[T("3")],
+                            &[T("0")],
+                            &[Null],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT char(20) 'characters' || ' and text' AS "Concat char to unknown type";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("Concat char to unknown type", TEXT)],
+                        rows: &[
+                            &[T("characters and text")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT true::char, false::char;",
+                    expected: Expected::Rows {
+                        columns: &[Column("bpchar", BPCHAR), Column("bpchar", BPCHAR)],
+                        rows: &[
+                            &[T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT true::character(5), false::character(5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("bpchar", BPCHAR), Column("bpchar", BPCHAR)],
+                        rows: &[
+                            &[T("true "), T("false")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT char 'c' = char 'c' AS true;",
+                    expected: Expected::Rows {
+                        columns: &[Column("true", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character key",
+            set_up_script: &[
+                "CREATE TABLE t_character (id CHAR(5) primary key, v1 CHARACTER(5));",
+                "INSERT INTO t_character VALUES ('abcde', 'fghjk'), ('vwxyz', '12345'), ('vwxy', '1234')",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_character WHERE ID = 'vwxyz' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", BPCHAR), Column("v1", BPCHAR)],
+                        rows: &[
+                            &[T("vwxyz"), T("12345")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT length(id) FROM t_character;",
+                    expected: Expected::Rows {
+                        columns: &[Column("length", INT4)],
+                        rows: &[
+                            &[T("5")],
+                            &[T("5")],
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Internal char type",
+            set_up_script: &[
+                r#"CREATE TABLE t_char (id INTEGER primary key, v1 "char");"#,
+                "INSERT INTO t_char VALUES (1, 'abcde'), (2, 'vwxyz'), (3, '123'), (4, ''), (5, NULL), (100, 'こんにちは');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_char ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", CHAR)],
+                        rows: &[
+                            &[T("1"), T("a")],
+                            &[T("2"), T("v")],
+                            &[T("3"), T("1")],
+                            &[T("4"), T("")],
+                            &[T("5"), Null],
+                            &[T("100"), T(r#"\343"#)],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_char VALUES (6, 7);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v1" is of type "char" but expression is of type integer"#, hint: "You will need to rewrite or cast the expression.", position: 31, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_char VALUES (6, true);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v1" is of type "char" but expression is of type boolean"#, hint: "You will need to rewrite or cast the expression.", position: 31, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT true::"char";"#,
+                    expected: Expected::Error(Diagnostic { code: "42846", message: r#"cannot cast type boolean to "char""#, position: 12, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 100000::bigint::"char";"#,
+                    expected: Expected::Error(Diagnostic { code: "42846", message: r#"cannot cast type bigint to "char""#, position: 22, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'abc'::"char", '123'::varchar(3)::"char";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("char", CHAR), Column("char", CHAR)],
+                        rows: &[
+                            &[T("a"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'def'::name::"char";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("char", CHAR)],
+                        rows: &[
+                            &[T("d")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v1::int, v1::text FROM t_char WHERE id < 10;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT4), Column("v1", TEXT)],
+                        rows: &[
+                            &[T("1"), T("97"), T("a")],
+                            &[T("2"), T("118"), T("v")],
+                            &[T("3"), T("49"), T("1")],
+                            &[T("4"), T("0"), T("")],
+                            &[T("5"), Null, Null],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::int FROM t_char WHERE id = 100;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("-29")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_char VALUES (6, '0123456789012345678901234567890123456789012345678901234567890123456789');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_char WHERE id=6;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", CHAR)],
+                        rows: &[
+                            &[T("6"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_char VALUES (7, 'abc'::name);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v1" is of type "char" but expression is of type name"#, hint: "You will need to rewrite or cast the expression.", position: 31, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_char VALUES (8, 'def'::text);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_char VALUES (9, 'ghi'::varchar);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_char WHERE id >= 7 AND id < 10 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", CHAR)],
+                        rows: &[
+                            &[T("8"), T("d")],
+                            &[T("9"), T("g")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character varying type",
+            set_up_script: &[
+                "CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING(10));",
+                "INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst'), (3, ''), (4, NULL);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_varchar ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARCHAR)],
+                        rows: &[
+                            &[T("1"), T("abcdefghij")],
+                            &[T("2"), T("klmnopqrst")],
+                            &[T("3"), T("")],
+                            &[T("4"), Null],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT true::character varying(10), false::character varying(10);",
+                    expected: Expected::Rows {
+                        columns: &[Column("varchar", VARCHAR), Column("varchar", VARCHAR)],
+                        rows: &[
+                            &[T("true"), T("false")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character varying type as primary key",
+            set_up_script: &[
+                "CREATE TABLE t_varchar (id INTEGER, v1 CHARACTER VARYING(10) primary key);",
+                "INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst'), (3, '');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_varchar ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARCHAR)],
+                        rows: &[
+                            &[T("1"), T("abcdefghij")],
+                            &[T("2"), T("klmnopqrst")],
+                            &[T("3"), T("")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT true::character varying(10), false::character varying(10);",
+                    expected: Expected::Rows {
+                        columns: &[Column("varchar", VARCHAR), Column("varchar", VARCHAR)],
+                        rows: &[
+                            &[T("true"), T("false")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character varying array type, with length",
+            set_up_script: &[
+                "CREATE TABLE t_varchar1 (v1 CHARACTER VARYING[]);",
+                "CREATE TABLE t_varchar2 (v1 CHARACTER VARYING(1)[]);",
+                r#"INSERT INTO t_varchar1 VALUES (ARRAY['ab''cdef', 'what', 'is,hi', 'wh"at']);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT v1::varchar(1)[] FROM t_varchar1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", VARCHAR_ARRAY)],
+                        rows: &[
+                            &[T("{a,w,i,w}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO t_varchar2 VALUES (ARRAY['ab''cdef', 'what', 'is,hi', 'wh"at']);"#,
+                    expected: Expected::Error(Diagnostic { code: "22001", message: "value too long for type character varying(1)", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_varchar2 VALUES (ARRAY['a', 'w', 'i', 'w']);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_varchar2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", VARCHAR_ARRAY)],
+                        rows: &[
+                            &[T("{a,w,i,w}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character varying type, no length",
+            set_up_script: &[
+                "CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING);",
+                "INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_varchar ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARCHAR)],
+                        rows: &[
+                            &[T("1"), T("abcdefghij")],
+                            &[T("2"), T("klmnopqrst")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character varying type, no length, as primary key",
+            set_up_script: &[
+                "CREATE TABLE t_varchar (id INTEGER, v1 CHARACTER VARYING primary key);",
+                "INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_varchar ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARCHAR)],
+                        rows: &[
+                            &[T("1"), T("abcdefghij")],
+                            &[T("2"), T("klmnopqrst")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character varying key with mixed short and long values",
+            set_up_script: &[
+                "CREATE TABLE t_varchar_keys (id VARCHAR primary key, v1 INTEGER);",
+                "INSERT INTO t_varchar_keys VALUES ('aa', 1);",
+                "INSERT INTO t_varchar_keys VALUES ('bb' || repeat('x', 10500), 2);",
+                "INSERT INTO t_varchar_keys VALUES ('cc', 3);",
+                "INSERT INTO t_varchar_keys VALUES ('dd' || repeat('y', 10500), 4);",
+                "INSERT INTO t_varchar_keys VALUES ('ee', 5);",
+                "INSERT INTO t_varchar_keys VALUES ('zz', 6);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys ORDER BY id DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("6")],
+                            &[T("5")],
+                            &[T("4")],
+                            &[T("3")],
+                            &[T("2")],
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys WHERE id = 'aa';",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys WHERE id = 'zz';",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys WHERE id = 'bb' || repeat('x', 10500);",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys WHERE id = 'dd' || repeat('y', 10500);",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys WHERE id < 'cc' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys WHERE id > 'dd' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_varchar_keys WHERE id > 'bb' AND id < 'ee' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1, length(id) FROM t_varchar_keys WHERE v1 IN (1, 2, 4) ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4), Column("length", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("2"), T("10502")],
+                            &[T("4"), T("10502")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character varying array type, no length",
+            set_up_script: &[
+                "CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING[]);",
+                r#"INSERT INTO t_varchar VALUES (1, '{abcdefghij, NULL}'), (2, ARRAY['ab''cdef', 'what', 'is,hi', 'wh"at', '}', '{', '{}']);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_varchar ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARCHAR_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{abcdefghij,NULL}")],
+                            &[T("2"), T(r#"{ab'cdef,what,"is,hi","wh\"at","}","{","{}"}"#)],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Array literal parsing preserves internal whitespace in unquoted elements",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '{2026-08-21 12:00:00,2026-08-22 13:30:00}'::timestamp[];",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamp", TIMESTAMP_ARRAY)],
+                        rows: &[
+                            &[T(r#"{"2026-08-21 12:00:00","2026-08-22 13:30:00"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('{2026-08-21 12:00:00+05:00}'::timestamptz[])[1] = '2026-08-21 07:00:00+00'::timestamptz;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{1 day 2 hours, 3 days}'::interval[];",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL_ARRAY)],
+                        rows: &[
+                            &[T(r#"{"1 day 02:00:00","3 days"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{ 1 , 2 , 3 }'::int[];",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,2,3}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{ }'::int[];",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{ NULL , 2 }'::int[];",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{NULL,2}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "2D array",
+            set_up_script: &[
+                "CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING[][]);",
+                r#"INSERT INTO t_varchar VALUES (1, '{{abcdefghij, NULL}, {1234, abc}}'), (2, ARRAY['ab''cdef', 'what', 'is,hi', 'wh"at', '}', '{', '{}']);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_varchar ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", VARCHAR_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{{abcdefghij,NULL},{1234,abc}}")],
+                            &[T("2"), T(r#"{ab'cdef,what,"is,hi","wh\"at","}","{","{}"}"#)],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Cidr type",
+            set_up_script: &[
+                "CREATE TABLE t_cidr (id INTEGER primary key, v1 CIDR);",
+                "INSERT INTO t_cidr VALUES (1, '192.168.1.0/24'), (2, '10.0.0.0/8');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_cidr ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", CIDR)],
+                        rows: &[
+                            &[T("1"), T("192.168.1.0/24")],
+                            &[T("2"), T("10.0.0.0/8")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Circle type",
+            set_up_script: &[
+                "CREATE TABLE t_circle (id INTEGER primary key, v1 CIRCLE);",
+                "INSERT INTO t_circle VALUES (1, '<(1,2),3>'), (2, '<(4,5),6>');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_circle ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", CIRCLE)],
+                        rows: &[
+                            &[T("1"), T("<(1,2),3>")],
+                            &[T("2"), T("<(4,5),6>")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Date type",
+            set_up_script: &[
+                "CREATE TABLE t_date (id INTEGER primary key, v1 DATE);",
+                "INSERT INTO t_date VALUES (1, '2023-01-01'), (2, '2023-02-02');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_date ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", DATE)],
+                        rows: &[
+                            &[T("1"), T("2023-01-01")],
+                            &[T("2"), T("2023-02-02")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2022-2-2'",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("2022-02-02")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2022-02-02'",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("2022-02-02")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select '2024-10-31'::date;",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("2024-10-31")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select '2024-OCT-31'::date;",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("2024-10-31")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select '20241031'::date;",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("2024-10-31")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select '2024Oct31'::date;",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("2024-10-31")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select '10 31 2024'::date;",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("2024-10-31")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 'Oct 31 2024'::date;",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("2024-10-31")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date 'J2451187';",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("1999-01-08")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '08-Jan-99';",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("1999-01-08")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2025-07-21' - 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", DATE)],
+                        rows: &[
+                            &[T("2025-07-20")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2025-07-21' - date '2025-07-18';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2025-07-21' - interval '2 days';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP)],
+                        rows: &[
+                            &[T("2025-07-19 00:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '1991-02-03' - time '04:05:06';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP)],
+                        rows: &[
+                            &[T("1991-02-02 19:54:54")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2025-07-21' - 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", DATE)],
+                        rows: &[
+                            &[T("2025-07-20")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '1991-02-03' - time '04:05:06';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP)],
+                        rows: &[
+                            &[T("1991-02-02 19:54:54")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2025-07-21' + 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", DATE)],
+                        rows: &[
+                            &[T("2025-07-22")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2025-07-21' + interval '2 days';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP)],
+                        rows: &[
+                            &[T("2025-07-23 00:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2025-07-21' + time '04:05:06';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP)],
+                        rows: &[
+                            &[T("2025-07-21 04:05:06")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '2025-07-21' + time '04:05:06 UTC';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP)],
+                        rows: &[
+                            &[T("2025-07-21 04:05:06")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Date key",
+            set_up_script: &[
+                "CREATE TABLE t_date (id DATE primary key, v1 DATE);",
+                "INSERT INTO t_date VALUES ('2025-01-01', '2023-01-01'), ('2026-01-01', '2023-02-02');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_date where Id = '2025-01-01' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", DATE), Column("v1", DATE)],
+                        rows: &[
+                            &[T("2025-01-01"), T("2023-01-01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Double precision type",
+            set_up_script: &[
+                "CREATE TABLE t_double_precision (id INTEGER primary key, v1 DOUBLE PRECISION);",
+                "INSERT INTO t_double_precision VALUES (1, 123.456), (2, 789.012);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_double_precision ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", FLOAT8)],
+                        rows: &[
+                            &[T("1"), T("123.456")],
+                            &[T("2"), T("789.012")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Double precision key",
+            set_up_script: &[
+                "CREATE TABLE t_double_precision (id DOUBLE PRECISION primary key, v1 DOUBLE PRECISION);",
+                "INSERT INTO t_double_precision VALUES (456.789, 123.456), (123.456, 789.012);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_double_precision WHERE id = 456.789 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", FLOAT8), Column("v1", FLOAT8)],
+                        rows: &[
+                            &[T("456.789"), T("123.456")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Double precision array type",
+            set_up_script: &[
+                "CREATE TABLE t_double_precision (id INTEGER primary key, v1 DOUBLE PRECISION[]);",
+                "INSERT INTO t_double_precision VALUES (1, ARRAY[123.456, NULL]), (2, ARRAY[789.012, 125.125]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_double_precision ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", FLOAT8_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{123.456,NULL}")],
+                            &[T("2"), T("{789.012,125.125}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Inet type",
+            set_up_script: &[
+                "CREATE TABLE t_inet (id INTEGER primary key, v1 INET);",
+                "INSERT INTO t_inet VALUES (1, '192.168.1.1'), (2, '10.0.0.1');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_inet ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INET)],
+                        rows: &[
+                            &[T("1"), T("192.168.1.1")],
+                            &[T("2"), T("10.0.0.1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Integer type",
+            set_up_script: &[
+                "CREATE TABLE t_integer (id INTEGER primary key, v1 INTEGER);",
+                "INSERT INTO t_integer VALUES (1, 123), (2, 456);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_integer ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT4)],
+                        rows: &[
+                            &[T("1"), T("123")],
+                            &[T("2"), T("456")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Integer array type",
+            set_up_script: &[
+                "CREATE TABLE t_integer (id INTEGER primary key, v1 INTEGER[]);",
+                "INSERT INTO t_integer VALUES (1, ARRAY[123,NULL]), (2, ARRAY[456,823753913]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_integer ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT4_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{123,NULL}")],
+                            &[T("2"), T("{456,823753913}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Interval type",
+            set_up_script: &[
+                "CREATE TABLE t_interval (id INTEGER primary key, v1 INTERVAL);",
+                "INSERT INTO t_interval VALUES (1, '1 day 3 hours'), (2, '23 hours 30 minutes'), (3, '@ 1 minute');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_interval ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INTERVAL)],
+                        rows: &[
+                            &[T("1"), T("1 day 03:00:00")],
+                            &[T("2"), T("23:30:00")],
+                            &[T("3"), T("00:01:00")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_interval ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INTERVAL)],
+                        rows: &[
+                            &[T("3"), T("00:01:00")],
+                            &[T("2"), T("23:30:00")],
+                            &[T("1"), T("1 day 03:00:00")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v1::char, v1::name FROM t_interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", BPCHAR), Column("v1", NAME)],
+                        rows: &[
+                            &[T("1"), T("1"), T("1 day 03:00:00")],
+                            &[T("2"), T("2"), T("23:30:00")],
+                            &[T("3"), T("0"), T("00:01:00")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("3 years 3 mons 700 days 133:17:36.789")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval::char;",
+                    expected: Expected::Rows {
+                        columns: &[Column("bpchar", BPCHAR)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::interval::text;",
+                    expected: Expected::Rows {
+                        columns: &[Column("text", TEXT)],
+                        rows: &[
+                            &[T("3 years 3 mons 700 days 133:17:36.789")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2 years 15 months 100 weeks 99 hours 123456789 milliseconds'::char::interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("00:00:02")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '13 months'::name::interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 year 1 mon")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '13 months'::bpchar::interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 year 1 mon")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '13 months'::varchar::interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 year 1 mon")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '13 months'::text::interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 year 1 mon")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '13 months'::char::interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("00:00:01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_interval VALUES (3, 7);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v1" is of type interval but expression is of type integer"#, hint: "You will need to rewrite or cast the expression.", position: 35, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_interval VALUES (3, true);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v1" is of type interval but expression is of type boolean"#, hint: "You will need to rewrite or cast the expression.", position: 35, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT CAST(interval '02:03' AS time) AS "02:03:00";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("02:03:00", TIME)],
+                        rows: &[
+                            &[T("02:03:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Interval key",
+            set_up_script: &[
+                "CREATE TABLE t_interval (id interval primary key, v1 INTERVAL);",
+                "INSERT INTO t_interval VALUES ('1 hour', '1 day 3 hours'), ('2 days', '23 hours 30 minutes');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_interval WHERE id = '1 hour' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INTERVAL), Column("v1", INTERVAL)],
+                        rows: &[
+                            &[T("01:00:00"), T("1 day 03:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Interval array type",
+            set_up_script: &[
+                "CREATE TABLE t_interval_array (id INTEGER primary key, v1 INTERVAL[]);",
+                "INSERT INTO t_interval_array VALUES (1, ARRAY['1 day 3 hours'::interval,'5 days 2 hours'::interval]), (2, ARRAY['3 years 3 mons 700 days 133:17:36.789'::interval,'200 hours'::interval]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_interval_array ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INTERVAL_ARRAY)],
+                        rows: &[
+                            &[T("1"), T(r#"{"1 day 03:00:00","5 days 02:00:00"}"#)],
+                            &[T("2"), T(r#"{"3 years 3 mons 700 days 133:17:36.789",200:00:00}"#)],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        // Changed from the Go test: json has no btree operator class in Postgres, so it cannot be a primary key; jsonb can.
+        ScriptTest {
+            name: "JSON key",
+            set_up_script: &[
+                "CREATE TABLE t_json (id JSONB primary key, v1 JSON);",
+                r#"INSERT INTO t_json VALUES ('{"key": "value"}', '{"key": "value"}');"#,
+                "INSERT INTO t_json VALUES ('123', '123');",
+                "INSERT INTO t_json VALUES ('true', 'true');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM t_json WHERE id = '{"key": "value"}' ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", JSONB), Column("v1", JSON)],
+                        rows: &[
+                            &[T(r#"{"key": "value"}"#), T(r#"{"key": "value"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "JSON type",
+            set_up_script: &[
+                "CREATE TABLE t_json (id INTEGER primary key, v1 JSON);",
+                r#"INSERT INTO t_json VALUES (1, '{"key1": {"key": "value"}}'), (2, '{"num":42}'), (3, '{"key1": "value1", "key2": "value2"}'), (4, '{"key1": {"key": [2,3]}}');"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_json ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSON)],
+                        rows: &[
+                            &[T("1"), T(r#"{"key1": {"key": "value"}}"#)],
+                            &[T("2"), T(r#"{"num":42}"#)],
+                            &[T("3"), T(r#"{"key1": "value1", "key2": "value2"}"#)],
+                            &[T("4"), T(r#"{"key1": {"key": [2,3]}}"#)],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_json ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSON)],
+                        rows: &[
+                            &[T("1"), T(r#"{"key1": {"key": "value"}}"#)],
+                            &[T("2"), T(r#"{"num":42}"#)],
+                            &[T("3"), T(r#"{"key1": "value1", "key2": "value2"}"#)],
+                            &[T("4"), T(r#"{"key1": {"key": [2,3]}}"#)],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "Insert into t_json values (100, null) returning *",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSON)],
+                        rows: &[
+                            &[T("100"), Null],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select * from t_json where id = 100",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSON)],
+                        rows: &[
+                            &[T("100"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "Insert into t_json values ($1, $2) returning *",
+                    bind_vars: &[BindVar::Str("101"), BindVar::Null],
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSON)],
+                        rows: &[
+                            &[T("101"), Null],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '5'::json;",
+                    expected: Expected::Rows {
+                        columns: &[Column("json", JSON)],
+                        rows: &[
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'false'::json;",
+                    expected: Expected::Rows {
+                        columns: &[Column("json", JSON)],
+                        rows: &[
+                            &[T("false")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"hi"'::json;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("json", JSON)],
+                        rows: &[
+                            &[T(r#""hi""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"\u0000"'::json"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("json", JSON)],
+                        rows: &[
+                            &[T(r#""\u0000""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT null::json;",
+                    expected: Expected::Rows {
+                        columns: &[Column("json", JSON)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'null'::json;",
+                    expected: Expected::Rows {
+                        columns: &[Column("json", JSON)],
+                        rows: &[
+                            &[T("null")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '{"reading": 1.230e-5}'::json;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("json", JSON)],
+                        rows: &[
+                            &[T(r#"{"reading": 1.230e-5}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"select json '{ "a":  "\ud83d\ude04\ud83d\udc36" }' -> 'a'"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", JSON)],
+                        rows: &[
+                            &[T(r#""\ud83d\ude04\ud83d\udc36""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{'::json",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "invalid input syntax for type json", detail: "The input string ended unexpectedly.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '{"key": "value"'::json"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "invalid input syntax for type json", detail: "The input string ended unexpectedly.", position: 8, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "JSON column default",
+            set_up_script: &[
+                r#"CREATE TABLE t_json (id INTEGER primary key, v1 JSON DEFAULT '{"num": 42}'::JSON);"#,
+                r#"INSERT INTO t_json VALUES (1, '{"key1": {"key": "value"}}');"#,
+                "INSERT INTO t_json (id) VALUES (2);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_json ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSON)],
+                        rows: &[
+                            &[T("1"), T(r#"{"key1": {"key": "value"}}"#)],
+                            &[T("2"), T(r#"{"num": 42}"#)],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "JSONB type",
+            set_up_script: &[
+                "CREATE TABLE t_jsonb (id INTEGER primary key, v1 JSONB);",
+                r#"INSERT INTO t_jsonb VALUES (1, '{"key": "value"}'), (2, '{"num": 42}');"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_jsonb ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSONB)],
+                        rows: &[
+                            &[T("1"), T(r#"{"key": "value"}"#)],
+                            &[T("2"), T(r#"{"num": 42}"#)],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "insert into t_jsonb values (3, null) returning *",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSONB)],
+                        rows: &[
+                            &[T("3"), Null],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "insert into t_jsonb values ($1, $2) returning *",
+                    bind_vars: &[BindVar::Str("4"), BindVar::Null],
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSONB)],
+                        rows: &[
+                            &[T("4"), Null],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '{"bar": "baz", "balance": 7.77, "active":false}'::jsonb;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[T(r#"{"bar": "baz", "active": false, "balance": 7.77}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '{"active": "baz", "active":false, "balance": 7.77}'::jsonb;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[T(r#"{"active": false, "balance": 7.77}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '{"active":false, "balance": 7.77, "bar": "baz"}'::jsonb;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[T(r#"{"bar": "baz", "active": false, "balance": 7.77}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb '{"a":null, "b":"qq"}' ? 'a';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1.3e100'::jsonb;",
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[T("13000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select '12345.05'::jsonb::int2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("int2", INT2)],
+                        rows: &[
+                            &[T("12345")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "JSONB column default",
+            set_up_script: &[
+                r#"CREATE TABLE t_json (id INTEGER primary key, v1 JSONB DEFAULT '{"num": 42}'::JSONB);"#,
+                r#"INSERT INTO t_json VALUES (1, '{"key1": {"key": "value"}}');"#,
+                "INSERT INTO t_json (id) VALUES (2);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_json ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", JSONB)],
+                        rows: &[
+                            &[T("1"), T(r#"{"key1": {"key": "value"}}"#)],
+                            &[T("2"), T(r#"{"num": 42}"#)],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "JSONB large string",
+            set_up_script: &[
+                "CREATE TABLE t_jsonl (pk INT4 PRIMARY KEY, v1 JSONB);",
+                r#"INSERT INTO t_jsonl VALUES (1, '{"key1": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"}');"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT pk, length(v1::TEXT) FROM t_jsonl;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("length", INT4)],
+                        rows: &[
+                            &[T("1"), T("4112")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "JSONB GROUP BY with equivalent numbers",
+            set_up_script: &[
+                "CREATE TABLE t (id SERIAL PRIMARY KEY, doc JSONB);",
+                r#"INSERT INTO t (doc) VALUES ('{"age":25}'), ('{"age":25}'), ('{"age":25.0}'), ('{"age":30}');"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT doc, COUNT(*) FROM t GROUP BY doc ORDER BY doc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("doc", JSONB), Column("count", INT8)],
+                        rows: &[
+                            &[T(r#"{"age": 25}"#), T("3")],
+                            &[T(r#"{"age": 30}"#), T("1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "JSONB int64 boundary values",
+            set_up_script: &[
+                "CREATE TABLE t (id SERIAL PRIMARY KEY, doc JSONB);",
+                "INSERT INTO t (doc) VALUES ('-9223372036854775808'::jsonb), ('9223372036854775807'::jsonb);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT doc FROM t ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("doc", JSONB)],
+                        rows: &[
+                            &[T("-9223372036854775808")],
+                            &[T("9223372036854775807")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT doc::text::bigint FROM t ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("doc", INT8)],
+                        rows: &[
+                            &[T("-9223372036854775808")],
+                            &[T("9223372036854775807")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Line type",
+            set_up_script: &[
+                "CREATE TABLE t_line (id INTEGER primary key, v1 LINE);",
+                "INSERT INTO t_line VALUES (1, '{1,2,3}'), (2, '{4,5,6}');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_line ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", LINE)],
+                        rows: &[
+                            &[T("1"), T("{1,2,3}")],
+                            &[T("2"), T("{4,5,6}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Lseg type",
+            set_up_script: &[
+                "CREATE TABLE t_lseg (id INTEGER primary key, v1 LSEG);",
+                "INSERT INTO t_lseg VALUES (1, '((1,2),(3,4))'), (2, '((5,6),(7,8))');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_lseg ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", LSEG)],
+                        rows: &[
+                            &[T("1"), T("[(1,2),(3,4)]")],
+                            &[T("2"), T("[(5,6),(7,8)]")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Macaddr type",
+            set_up_script: &[
+                "CREATE TABLE t_macaddr (id INTEGER primary key, v1 MACADDR);",
+                "INSERT INTO t_macaddr VALUES (1, '08:00:2b:01:02:03'), (2, '00:11:22:33:44:55');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_macaddr ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", MACADDR)],
+                        rows: &[
+                            &[T("1"), T("08:00:2b:01:02:03")],
+                            &[T("2"), T("00:11:22:33:44:55")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Money type",
+            set_up_script: &[
+                "CREATE TABLE t_money (id INTEGER primary key, v1 MONEY);",
+                "INSERT INTO t_money VALUES (1, '$100.25'), (2, '$50.50');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_money ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", MONEY)],
+                        rows: &[
+                            &[T("1"), T("$100.25")],
+                            &[T("2"), T("$50.50")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Name type",
+            set_up_script: &[
+                "CREATE TABLE t_name (id INTEGER primary key, v1 NAME);",
+                "INSERT INTO t_name VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_name ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", NAME)],
+                        rows: &[
+                            &[T("1"), T("abcdefghij")],
+                            &[T("2"), T("klmnopqrst")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_name ORDER BY v1 DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", NAME)],
+                        rows: &[
+                            &[T("2"), T("klmnopqrst")],
+                            &[T("1"), T("abcdefghij")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::char(1) FROM t_name WHERE v1='klmnopqrst';",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", BPCHAR)],
+                        rows: &[
+                            &[T("k")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t_name SET v1='tuvwxyz' WHERE id=2;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM t_name WHERE v1='abcdefghij';",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id::name, v1::text FROM t_name ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", NAME), Column("v1", TEXT)],
+                        rows: &[
+                            &[T("2"), T("tuvwxyz")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_name VALUES (3, '0123456789012345678901234567890123456789012345678901234567890123456789');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_name ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", NAME)],
+                        rows: &[
+                            &[T("2"), T("tuvwxyz")],
+                            &[T("3"), T("012345678901234567890123456789012345678901234567890123456789012")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_name VALUES (4, 12345);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_name ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", NAME)],
+                        rows: &[
+                            &[T("2"), T("tuvwxyz")],
+                            &[T("3"), T("012345678901234567890123456789012345678901234567890123456789012")],
+                            &[T("4"), T("12345")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT name 'name string' = name 'name string' AS "True";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("True", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Name key",
+            set_up_script: &[
+                "CREATE TABLE t_name (id NAME primary key, v1 NAME);",
+                "INSERT INTO t_name VALUES ('wxyz', 'abcdefghij'), ('abcd', 'klmnopqrst');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_name WHERE id = 'wxyz' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", NAME), Column("v1", NAME)],
+                        rows: &[
+                            &[T("wxyz"), T("abcdefghij")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Name type, explicit casts",
+            set_up_script: &[
+                "CREATE TABLE t_name (id INTEGER primary key, v1 NAME);",
+                "INSERT INTO t_name VALUES (1, 'abcdefghij'), (2, '12345');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_name ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", NAME)],
+                        rows: &[
+                            &[T("1"), T("abcdefghij")],
+                            &[T("2"), T("12345")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::char(1), v1::varchar(2), v1::text FROM t_name WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", BPCHAR), Column("v1", VARCHAR), Column("v1", TEXT)],
+                        rows: &[
+                            &[T("a"), T("ab"), T("abcdefghij")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::smallint, v1::integer, v1::bigint, v1::float4, v1::float8, v1::numeric FROM t_name WHERE id=2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT2), Column("v1", INT4), Column("v1", INT8), Column("v1", FLOAT4), Column("v1", FLOAT8), Column("v1", NUMERIC)],
+                        rows: &[
+                            &[T("12345"), T("12345"), T("12345"), T("12345"), T("12345"), T("12345")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::oid, v1::xid FROM t_name WHERE id=2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", OID), Column("v1", XID)],
+                        rows: &[
+                            &[T("12345"), T("12345")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::xid FROM t_name WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", XID)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('0'::name)::boolean, ('1'::name)::boolean;",
+                    expected: Expected::Rows {
+                        columns: &[Column("bool", BOOL), Column("bool", BOOL)],
+                        rows: &[
+                            &[T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::smallint FROM t_name WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type smallint: "abcdefghij""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::integer FROM t_name WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "abcdefghij""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::bigint FROM t_name WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type bigint: "abcdefghij""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::float4 FROM t_name WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type real: "abcdefghij""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::float8 FROM t_name WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type double precision: "abcdefghij""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::numeric FROM t_name WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type numeric: "abcdefghij""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::boolean FROM t_name WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type boolean: "abcdefghij""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::oid FROM t_name WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type oid: "abcdefghij""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('abc'::char(3))::name, ('abc'::varchar)::name, ('abc'::text)::name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", NAME), Column("name", NAME), Column("name", NAME)],
+                        rows: &[
+                            &[T("abc"), T("abc"), T("abc")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (10::int2)::name, (100::int4)::name, (1000::int8)::name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", NAME), Column("name", NAME), Column("name", NAME)],
+                        rows: &[
+                            &[T("10"), T("100"), T("1000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (1.1::float4)::name, (10.1::float8)::name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", NAME), Column("name", NAME)],
+                        rows: &[
+                            &[T("1.1"), T("10.1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (100.0::numeric)::name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", NAME)],
+                        rows: &[
+                            &[T("100.0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT false::name, true::name, ('0'::boolean)::name, ('1'::boolean)::name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", NAME), Column("name", NAME), Column("name", NAME), Column("name", NAME)],
+                        rows: &[
+                            &[T("f"), T("t"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('123'::xid)::name, (123::oid)::name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", NAME), Column("name", NAME)],
+                        rows: &[
+                            &[T("123"), T("123")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Name array type",
+            set_up_script: &[
+                "CREATE TABLE t_namea (id INTEGER primary key, v1 NAME[], v2 CHARACTER(100), v3 BOOLEAN);",
+                r#"INSERT INTO t_namea VALUES (1, ARRAY['ab''cdef', 'what', 'is,hi', 'wh"at'], '1234567890123456789012345678901234567890123456789012345678901234567890', true);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT v1::varchar(1)[] FROM t_namea;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", VARCHAR_ARRAY)],
+                        rows: &[
+                            &[T("{a,w,i,w}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v2::name, v3::name FROM t_namea;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v2", NAME), Column("v3", NAME)],
+                        rows: &[
+                            &[T("123456789012345678901234567890123456789012345678901234567890123"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Numeric type",
+            set_up_script: &[
+                "CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC(5,2));",
+                "INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.89), (3, 100.3);",
+                "CREATE TABLE fract_only (id int, val numeric(4,4));",
+                "CREATE TABLE num_data (id int4, val numeric(210,10));",
+                "INSERT INTO num_data VALUES (2, '-34338492.215397047');",
+                "CREATE TABLE ceil_floor_round (a numeric);",
+                "INSERT INTO ceil_floor_round VALUES ('-0.000001');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_numeric ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", NUMERIC)],
+                        rows: &[
+                            &[T("1"), T("123.45")],
+                            &[T("2"), T("67.89")],
+                            &[T("3"), T("100.30")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO fract_only VALUES (1, '0.0');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT numeric '10.00';",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("10.00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT numeric '-10.00';",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("-10.00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 0.03::numeric(3,3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("0.030")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1.03::numeric(2,2);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "numeric field overflow", detail: "A field with precision 2, scale 2 must round to an absolute value less than 1.", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1.03::float4::numeric(2,2);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "numeric field overflow", detail: "A field with precision 2, scale 2 must round to an absolute value less than 1.", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'NaN'::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("NaN")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nan'::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("NaN")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '-inf'::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("-Infinity")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '-infinity'::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("-Infinity")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'inf'::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("Infinity")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'infinity'::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("Infinity")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ' 123'::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("123")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT t1.id, t2.id, round(t1.val * t2.val, 30) FROM num_data t1, num_data t2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4), Column("round", NUMERIC)],
+                        rows: &[
+                            &[T("2"), T("2"), T("1179132047626883.596862135856320209000000000000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select sqrt(1.000000000000004::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("sqrt", NUMERIC)],
+                        rows: &[
+                            &[T("1.000000000000002")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select ln(5.80397490724e5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("ln", NUMERIC)],
+                        rows: &[
+                            &[T("13.271468476626518")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 4770999999999999999999999999999999999999999999999999999999999999999999999999999999999999 * 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", NUMERIC)],
+                        rows: &[
+                            &[T("47709999999999999999999999999999999999999999999999999999999999999999999999999999999999985229000000000000000000000000000000000000000000000000000000000000000000000000000000000001")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT floor(-0.000001);",
+                    expected: Expected::Rows {
+                        columns: &[Column("floor", NUMERIC)],
+                        rows: &[
+                            &[T("-1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select '12345'::jsonb::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("12345")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Numeric key",
+            set_up_script: &[
+                "CREATE TABLE t_numeric (id numeric(5,2) primary key, v1 NUMERIC(5,2));",
+                "INSERT INTO t_numeric VALUES (123.45, 67.89), (67.89, 100.3);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", NUMERIC), Column("v1", NUMERIC)],
+                        rows: &[
+                            &[T("123.45"), T("67.89")],
+                            &[T("67.89"), T("100.30")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_numeric order by id",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", NUMERIC), Column("v1", NUMERIC)],
+                        rows: &[
+                            &[T("67.89"), T("100.30")],
+                            &[T("123.45"), T("67.89")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_numeric WHERE ID = 123.45 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", NUMERIC), Column("v1", NUMERIC)],
+                        rows: &[
+                            &[T("123.45"), T("67.89")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Numeric type, no scale or precision",
+            set_up_script: &[
+                "CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC);",
+                "INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.875), (3, 100.3);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_numeric ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", NUMERIC)],
+                        rows: &[
+                            &[T("1"), T("123.45")],
+                            &[T("2"), T("67.875")],
+                            &[T("3"), T("100.3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Numeric array type, no scale or precision",
+            set_up_script: &[
+                "CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC[]);",
+                "INSERT INTO t_numeric VALUES (1, ARRAY[NULL,123.45]), (2, ARRAY[67.89,572903.1468]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_numeric ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", NUMERIC_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{NULL,123.45}")],
+                            &[T("2"), T("{67.89,572903.1468}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Oid type",
+            set_up_script: &[
+                "CREATE TABLE t_oid (id INTEGER primary key, v1 OID);",
+                "INSERT INTO t_oid VALUES (1, 1234), (2, 5678);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_oid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", OID)],
+                        rows: &[
+                            &[T("1"), T("1234")],
+                            &[T("2"), T("5678")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_oid ORDER BY v1 DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", OID)],
+                        rows: &[
+                            &[T("2"), T("5678")],
+                            &[T("1"), T("1234")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t_oid SET v1=9012 WHERE id=2;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM t_oid WHERE v1=1234;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_oid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", OID)],
+                        rows: &[
+                            &[T("2"), T("9012")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_oid VALUES (3, '2345');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_oid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", OID)],
+                        rows: &[
+                            &[T("2"), T("9012")],
+                            &[T("3"), T("2345")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_oid VALUES (4, 4294967295);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_oid VALUES (5, 4294967296);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "OID out of range", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_oid VALUES (6, 0);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_oid VALUES (7, -1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_oid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", OID)],
+                        rows: &[
+                            &[T("2"), T("9012")],
+                            &[T("3"), T("2345")],
+                            &[T("4"), T("4294967295")],
+                            &[T("6"), T("0")],
+                            &[T("7"), T("4294967295")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select oid '20304';",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID)],
+                        rows: &[
+                            &[T("20304")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Oidvector type",
+            set_up_script: &[
+                "CREATE TABLE t_oidvector (id INTEGER primary key, v1 oidvector);",
+                "INSERT INTO t_oidvector VALUES (1, '1234 5678 9012'), (2, '556 778 223');",
+                "CREATE TABLE t_regtype_array (v regtype[]);",
+                "INSERT INTO t_regtype_array VALUES (ARRAY['integer'::regtype]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY['character varying'::regtype]::oidvector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", OIDVECTOR)],
+                        rows: &[
+                            &[T("1043")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY['integer'::regtype, 'text'::regtype]::oidvector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", OIDVECTOR)],
+                        rows: &[
+                            &[T("23 25")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[23::oid]::oidvector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", OIDVECTOR)],
+                        rows: &[
+                            &[T("23")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ARRAY['pg_class'::regclass]::oidvector =
+					ARRAY['pg_class'::regclass::oid]::oidvector;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY['textin'::regproc]::oidvector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", OIDVECTOR)],
+                        rows: &[
+                            &[T("46")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT NULL::regtype[]::oidvector;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type regtype[] to oidvector", position: 23, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[]::regtype[]::oidvector;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type regtype[] to oidvector", position: 26, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (ARRAY['integer'::regtype]::regtype[])::oidvector;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type regtype[] to oidvector", position: 46, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v::oidvector FROM t_regtype_array;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type regtype[] to oidvector", position: 9, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (ARRAY['integer'::regtype] || ARRAY['text'::regtype])::oidvector;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type regtype[] to oidvector", position: 61, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY['integer'::regtype, NULL]::oidvector;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "array is not a valid oidvector", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[ARRAY[23::oid]]::oidvector;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "array is not a valid oidvector", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_oidvector ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", OIDVECTOR)],
+                        rows: &[
+                            &[T("1"), T("1234 5678 9012")],
+                            &[T("2"), T("556 778 223")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select ('16 17'::oidvector)[1];",
+                    expected: Expected::Rows {
+                        columns: &[Column("oidvector", OID)],
+                        rows: &[
+                            &[T("17")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select '16 17'::oidvector::oid[];",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID_ARRAY)],
+                        rows: &[
+                            &[T("[0:1]={16,17}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Oidvector array type",
+            set_up_script: &[
+                "CREATE TABLE t_oidvector (id INTEGER primary key, v1 oidvector[]);",
+                r#"INSERT INTO t_oidvector VALUES (1, '{"1234 5678 9012", "556 778 223"}');"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_oidvector ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", OIDVECTOR_ARRAY)],
+                        rows: &[
+                            &[T("1"), T(r#"{"1234 5678 9012","556 778 223"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Oid type, explicit casts",
+            set_up_script: &[
+                "CREATE TABLE t_oid (id INTEGER primary key, coid OID);",
+                "INSERT INTO t_oid VALUES (1, 1234), (2, 4294967295);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_oid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("coid", OID)],
+                        rows: &[
+                            &[T("1"), T("1234")],
+                            &[T("2"), T("4294967295")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::char(1) FROM t_oid WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("coid", BPCHAR)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::varchar(2) FROM t_oid WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("coid", VARCHAR)],
+                        rows: &[
+                            &[T("12")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::text FROM t_oid WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("coid", TEXT)],
+                        rows: &[
+                            &[T("1234")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::smallint FROM t_oid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type oid to smallint", position: 12, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::smallint FROM t_oid WHERE id=2;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type oid to smallint", position: 12, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::integer FROM t_oid WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("coid", INT4)],
+                        rows: &[
+                            &[T("1234")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::integer FROM t_oid WHERE id=2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("coid", INT4)],
+                        rows: &[
+                            &[T("-1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::bigint FROM t_oid WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("coid", INT8)],
+                        rows: &[
+                            &[T("1234")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::name FROM t_oid WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("coid", NAME)],
+                        rows: &[
+                            &[T("1234")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::bigint FROM t_oid WHERE id=2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("coid", INT8)],
+                        rows: &[
+                            &[T("4294967295")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::float4 FROM t_oid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type oid to real", position: 12, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::float8 FROM t_oid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type oid to double precision", position: 12, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::numeric FROM t_oid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type oid to numeric", position: 12, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT coid::xid FROM t_oid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type oid to xid", position: 12, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('123'::char(3))::oid, ('123'::varchar)::oid, ('0'::text)::oid, ('400'::name)::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID), Column("oid", OID), Column("oid", OID), Column("oid", OID)],
+                        rows: &[
+                            &[T("123"), T("123"), T("0"), T("400")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-1'::char(3))::oid, ('-1'::varchar)::oid, ('-1'::text)::oid, ('-1'::name)::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID), Column("oid", OID), Column("oid", OID), Column("oid", OID)],
+                        rows: &[
+                            &[T("4294967295"), T("4294967295"), T("4294967295"), T("4294967295")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-2147483648'::char(11))::oid, ('-2147483648'::varchar)::oid, ('-2147483648'::text)::oid, ('-2147483648'::name)::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID), Column("oid", OID), Column("oid", OID), Column("oid", OID)],
+                        rows: &[
+                            &[T("2147483648"), T("2147483648"), T("2147483648"), T("2147483648")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (10::int2)::oid, (10::int4)::oid, (100::int8)::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID), Column("oid", OID), Column("oid", OID)],
+                        rows: &[
+                            &[T("10"), T("10"), T("100")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (-1::int2)::oid, (-1::int4)::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID), Column("oid", OID)],
+                        rows: &[
+                            &[T("4294967295"), T("4294967295")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (-1::int8)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "OID out of range", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (922337203685477580::int8)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "OID out of range", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (1.1::float4)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type real to oid", position: 21, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (1.1::float8)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type double precision to oid", position: 21, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (1.1::decimal)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type numeric to oid", position: 22, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('922337203685477580'::text)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "922337203685477580" is out of range for type oid"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('abc'::char(3))::oid;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type oid: "abc""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-2147483649'::char(11))::oid;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "-2147483649" is out of range for type oid"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-2147483649'::varchar)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "-2147483649" is out of range for type oid"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-2147483649'::text)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "-2147483649" is out of range for type oid"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-2147483649'::name)::oid;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "-2147483649" is out of range for type oid"#, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Oid array type",
+            set_up_script: &[
+                "CREATE TABLE t_oid (id INTEGER primary key, v1 OID[], v2 CHARACTER(100), v3 BOOLEAN);",
+                "INSERT INTO t_oid VALUES (1, ARRAY[123, 456, 789, 101], '1234567890', true);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT v1::varchar(1)[] FROM t_oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", VARCHAR_ARRAY)],
+                        rows: &[
+                            &[T("{1,4,7,1}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v2::oid, v3::oid FROM t_oid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type boolean to oid", position: 19, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Path type",
+            set_up_script: &[
+                "CREATE TABLE t_path (id INTEGER primary key, v1 PATH);",
+                "INSERT INTO t_path VALUES (1, '((1,2),(3,4),(5,6))'), (2, '((7,8),(9,10),(11,12))');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_path ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", PATH)],
+                        rows: &[
+                            &[T("1"), T("((1,2),(3,4),(5,6))")],
+                            &[T("2"), T("((7,8),(9,10),(11,12))")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Pg_lsn type",
+            set_up_script: &[
+                "CREATE TABLE t_pg_lsn (id INTEGER primary key, v1 PG_LSN);",
+                "INSERT INTO t_pg_lsn VALUES (1, '16/B8E36C60'), (2, '16/B8E36C70');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_pg_lsn ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", PG_LSN)],
+                        rows: &[
+                            &[T("1"), T("16/B8E36C60")],
+                            &[T("2"), T("16/B8E36C70")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Point type",
+            set_up_script: &[
+                "CREATE TABLE t_point (id INTEGER primary key, v1 POINT);",
+                "INSERT INTO t_point VALUES (1, '(1,2)'), (2, '(3,4)');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_point ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", POINT)],
+                        rows: &[
+                            &[T("1"), T("(1,2)")],
+                            &[T("2"), T("(3,4)")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Polygon type",
+            set_up_script: &[
+                "CREATE TABLE t_polygon (id INTEGER primary key, v1 POLYGON);",
+                "INSERT INTO t_polygon VALUES (1, '((1,2),(3,4),(5,6))'), (2, '((7,8),(9,10),(11,12))');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_polygon ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", POLYGON)],
+                        rows: &[
+                            &[T("1"), T("((1,2),(3,4),(5,6))")],
+                            &[T("2"), T("((7,8),(9,10),(11,12))")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Real type",
+            set_up_script: &[
+                "CREATE TABLE t_real (id INTEGER primary key, v1 REAL);",
+                "INSERT INTO t_real VALUES (1, 123.875), (2, 67.125);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_real ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", FLOAT4)],
+                        rows: &[
+                            &[T("1"), T("123.875")],
+                            &[T("2"), T("67.125")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_real VALUES (3, 1.0e100);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#""10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" is out of range for type real"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_real VALUES (3, 1.0e100::numeric);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#""10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" is out of range for type real"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 3.4e38::float8::real, (-3.4e38)::float8::real;",
+                    expected: Expected::Rows {
+                        columns: &[Column("float4", FLOAT4), Column("float4", FLOAT4)],
+                        rows: &[
+                            &[T("3.4e+38"), T("-3.4e+38")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'Infinity'::numeric::real, '-Infinity'::numeric::real, 'Infinity'::numeric::float8;",
+                    expected: Expected::Rows {
+                        columns: &[Column("float4", FLOAT4), Column("float4", FLOAT4), Column("float8", FLOAT8)],
+                        rows: &[
+                            &[T("Infinity"), T("-Infinity"), T("Infinity")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('1' || repeat('0', 320))::numeric::float8;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#""100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" is out of range for type double precision"#, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Real key",
+            set_up_script: &[
+                "CREATE TABLE t_real (id REAL primary key, v1 REAL);",
+                "INSERT INTO t_real VALUES (123.875, 67.125), (67.125, 123.875);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_real WHERE ID = 123.875 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", FLOAT4), Column("v1", FLOAT4)],
+                        rows: &[
+                            &[T("123.875"), T("67.125")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Real array type",
+            set_up_script: &[
+                "CREATE TABLE t_real (id INTEGER primary key, v1 REAL[]);",
+                "INSERT INTO t_real VALUES (1, ARRAY[NULL,123.875]), (2, ARRAY[67.125, 84256]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_real ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", FLOAT4_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{NULL,123.875}")],
+                            &[T("2"), T("{67.125,84256}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Regclass type",
+            set_up_script: &[
+                "CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);",
+                r#"CREATE TABLE "Testing2" (pk INT primary key, v1 INT);"#,
+                "CREATE VIEW testview AS SELECT * FROM testing LIMIT 1;",
+                "CREATE SEQUENCE seq1;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'testing'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("testing")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'public.testing'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("testing")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'postgres.public.testing'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("testing")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'doesnotexist.public.testing'::regclass;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cross-database references are not implemented: "doesnotexist.public.testing""#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'testview'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("testview")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ' testing'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("testing")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'seq1'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("seq1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'Testing2'::regclass;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "testing2" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"Testing2"'::regclass;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T(r#""Testing2""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 4294967295::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("4294967295")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname FROM pg_catalog.pg_class WHERE oid = 'testing'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME)],
+                        rows: &[
+                            &[T("testing")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'public.testing'::regclass, 'public.seq1'::regclass, 'public.testview'::regclass, 'public.testing_pkey'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS), Column("regclass", REGCLASS), Column("regclass", REGCLASS), Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("testing"), T("seq1"), T("testview"), T("testing_pkey")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path = '';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'testing'::regclass;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "testing" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'public.testing'::regclass, 'public.seq1'::regclass, 'public.testview'::regclass, 'public.testing_pkey'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS), Column("regclass", REGCLASS), Column("regclass", REGCLASS), Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("public.testing"), T("public.seq1"), T("public.testview"), T("public.testing_pkey")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Regproc type",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'acos'::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("acos")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ' acos'::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("acos")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"acos"'::regproc;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("acos")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (('acos'::regproc)::oid)::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("acos")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ((('acos'::regproc)::oid)::text)::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("acos")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 4294967295::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("4294967295")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"Abs"'::regproc;"#,
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function ""Abs"" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"acos'::regproc;"#,
+                    expected: Expected::Error(Diagnostic { code: "42602", message: "invalid name syntax", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'acos"'::regproc;"#,
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function "acos"" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '""acos'::regproc;"#,
+                    expected: Expected::Error(Diagnostic { code: "42602", message: "invalid name syntax", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'pg_catalog.acos'::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("acos")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typinput = 'pg_catalog.array_in'::regproc FROM pg_catalog.pg_type WHERE typname = 'int4';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typinput = 'pg_catalog.array_in'::regproc FROM pg_catalog.pg_type WHERE typname = '_int4';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'public.acos'::regproc;",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function "public.acos" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Regtype type",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'integer'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'integer'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'integer[]'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer[]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'int4'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'float8'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("double precision")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'character varying'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("character varying")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"char"'::regtype;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T(r#""char""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'char'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("character")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'char(10)'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("character")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"char"'::regtype::oid;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID)],
+                        rows: &[
+                            &[T("18")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'char'::regtype::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID)],
+                        rows: &[
+                            &[T("1042")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"char"[]'::regtype;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T(r#""char"[]"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ' integer'::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"integer"'::regtype;"#,
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "integer" does not exist"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (('integer'::regtype)::oid)::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ((('integer'::regtype)::oid)::text)::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 4294967295::regtype;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regtype", REGTYPE)],
+                        rows: &[
+                            &[T("4294967295")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"Integer"'::regtype;"#,
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "Integer" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"integer'::regtype;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated quoted identifier at or near ""integer""#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'integer"'::regtype;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated quoted identifier at or near """"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '""integer'::regtype;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"zero-length delimited identifier at or near """""#, position: 8, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Smallint type",
+            set_up_script: &[
+                "CREATE TABLE t_smallint (id INTEGER primary key, v1 SMALLINT);",
+                "INSERT INTO t_smallint VALUES (1, 42), (2, 99);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_smallint ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT2)],
+                        rows: &[
+                            &[T("1"), T("42")],
+                            &[T("2"), T("99")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Int2vector type",
+            set_up_script: &[
+                "CREATE TABLE t_int2vector (id INTEGER primary key, v1 int2vector);",
+                "INSERT INTO t_int2vector VALUES (1, '1 2 3'), (2, '6 7 8 9');",
+                "CREATE TABLE t_int2_array (v int2[]);",
+                "INSERT INTO t_int2_array VALUES (ARRAY[1::int2]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[1, 2]::int2vector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT2VECTOR)],
+                        rows: &[
+                            &[T("1 2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[1::bigint, 2::bigint]::int2vector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT2VECTOR)],
+                        rows: &[
+                            &[T("1 2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[1.0::numeric, 2.0::numeric]::int2vector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT2VECTOR)],
+                        rows: &[
+                            &[T("1 2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[1, NULL]::int2vector;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "array is not a valid int2vector", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[ARRAY[1]]::int2vector;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "array is not a valid int2vector", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT NULL::int2[]::int2vector;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type smallint[] to int2vector", position: 20, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[]::int2[]::int2vector;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type smallint[] to int2vector", position: 23, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (ARRAY[1::int2]::int2[])::int2vector;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type smallint[] to int2vector", position: 32, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v::int2vector FROM t_int2_array;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type smallint[] to int2vector", position: 9, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (ARRAY[1::int2] || ARRAY[2::int2])::int2vector;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type smallint[] to int2vector", position: 42, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_int2vector ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT2VECTOR)],
+                        rows: &[
+                            &[T("1"), T("1 2 3")],
+                            &[T("2"), T("6 7 8 9")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT unnest(v1) FROM t_int2vector ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("unnest", INT2)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("6")],
+                            &[T("7")],
+                            &[T("8")],
+                            &[T("9")],
+                        ],
+                        tag: "SELECT 7",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Int2vector array type",
+            set_up_script: &[
+                "CREATE TABLE t_int2vector (id INTEGER primary key, v1 int2vector[]);",
+                r#"INSERT INTO t_int2vector VALUES (1, '{"1 2", "3 4"}');"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_int2vector ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT2VECTOR_ARRAY)],
+                        rows: &[
+                            &[T("1"), T(r#"{"1 2","3 4"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT unnest(v1) FROM t_int2vector ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("unnest", INT2VECTOR)],
+                        rows: &[
+                            &[T("1 2")],
+                            &[T("3 4")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT unnest(unnest(v1)) FROM t_int2vector ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("unnest", INT2)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Domains over vector types",
+            set_up_script: &[
+                "CREATE DOMAIN two_int2vector AS int2vector CHECK (array_length(VALUE, 1) = 2);",
+                "CREATE DOMAIN nonnull_oidvector AS oidvector NOT NULL CHECK (array_length(VALUE, 1) <= 2);",
+                "CREATE DOMAIN null_rejecting_int2vector AS int2vector CHECK (VALUE IS NOT NULL);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[1, 2]::two_int2vector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT2VECTOR)],
+                        rows: &[
+                            &[T("1 2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[1]::two_int2vector;",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain two_int2vector violates check constraint "two_int2vector_check""#, schema: "public", data_type: "two_int2vector", constraint: "two_int2vector_check", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[23::oid, 25::oid]::nonnull_oidvector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", OIDVECTOR)],
+                        rows: &[
+                            &[T("23 25")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[23::oid, 25::oid, 26::oid]::nonnull_oidvector;",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain nonnull_oidvector violates check constraint "nonnull_oidvector_check""#, schema: "public", data_type: "nonnull_oidvector", constraint: "nonnull_oidvector_check", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT NULL::nonnull_oidvector;",
+                    expected: Expected::Error(Diagnostic { code: "23502", message: "domain nonnull_oidvector does not allow null values", schema: "public", data_type: "nonnull_oidvector", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT NULL::null_rejecting_int2vector;",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain null_rejecting_int2vector violates check constraint "null_rejecting_int2vector_check""#, schema: "public", data_type: "null_rejecting_int2vector", constraint: "null_rejecting_int2vector_check", ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Smallint key",
+            set_up_script: &[
+                "CREATE TABLE t_smallint (id smallint primary key, v1 SMALLINT);",
+                "INSERT INTO t_smallint VALUES (1, 42), (2, 99);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_smallint WHERE ID = 1 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT2), Column("v1", INT2)],
+                        rows: &[
+                            &[T("1"), T("42")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Smallint array type",
+            set_up_script: &[
+                "CREATE TABLE t_smallint (id INTEGER primary key, v1 SMALLINT[]);",
+                "INSERT INTO t_smallint VALUES (1, ARRAY[42,NULL]), (2, ARRAY[99,126]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_smallint ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT2_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{42,NULL}")],
+                            &[T("2"), T("{99,126}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Smallserial type",
+            set_up_script: &[
+                "CREATE TABLE t_smallserial (id SERIAL primary key, v1 SMALLSERIAL);",
+                "INSERT INTO t_smallserial (v1) VALUES (42), (99);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_smallserial ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT2)],
+                        rows: &[
+                            &[T("1"), T("42")],
+                            &[T("2"), T("99")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Smallserial key",
+            set_up_script: &[
+                "CREATE TABLE t_smallserial (id smallserial primary key, v1 SMALLSERIAL);",
+                "INSERT INTO t_smallserial (v1) VALUES (42), (99);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_smallserial WHERE ID = 1 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT2), Column("v1", INT2)],
+                        rows: &[
+                            &[T("1"), T("42")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Serial type",
+            set_up_script: &[
+                "CREATE TABLE t_serial (id SERIAL primary key, v1 SERIAL);",
+                "INSERT INTO t_serial (v1) VALUES (123), (456);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_serial ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT4)],
+                        rows: &[
+                            &[T("1"), T("123")],
+                            &[T("2"), T("456")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_serial WHERE ID = 2 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", INT4)],
+                        rows: &[
+                            &[T("2"), T("456")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Text type",
+            set_up_script: &[
+                "CREATE TABLE t_text (id INTEGER primary key, v1 TEXT);",
+                "INSERT INTO t_text VALUES (1, 'Hello'), (2, 'World'), (3, ''), (4, NULL);",
+                "CREATE TABLE t_text_unique (id INTEGER primary key, v1 TEXT, v2 TEXT NOT NULL UNIQUE);",
+                "INSERT INTO t_text_unique VALUES (1, 'Hello', 'Bonjour'), (2, 'World', 'tout le monde'), (3, '', ''), (4, NULL, '!');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT text 'text' || ' and unknown';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT)],
+                        rows: &[
+                            &[T("text and unknown")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT text 'this is a text string' = text 'this is a text string' AS true;",
+                    expected: Expected::Rows {
+                        columns: &[Column("true", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_text ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TEXT)],
+                        rows: &[
+                            &[T("1"), T("Hello")],
+                            &[T("2"), T("World")],
+                            &[T("3"), T("")],
+                            &[T("4"), Null],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE UNIQUE INDEX v1_unique ON t_text(v1);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_text WHERE v1 = 'World';",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TEXT)],
+                        rows: &[
+                            &[T("2"), T("World")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_text VALUES (5, 'World');",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "v1_unique""#, detail: "Key (v1)=(World) already exists.", schema: "public", table: "t_text", constraint: "v1_unique", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_text_unique WHERE v2 = '!';",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TEXT), Column("v2", TEXT)],
+                        rows: &[
+                            &[T("4"), Null, T("!")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_text_unique WHERE v2 >= '!' ORDER BY v2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TEXT), Column("v2", TEXT)],
+                        rows: &[
+                            &[T("4"), Null, T("!")],
+                            &[T("1"), T("Hello"), T("Bonjour")],
+                            &[T("2"), T("World"), T("tout le monde")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_text_unique ORDER BY v2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TEXT), Column("v2", TEXT)],
+                        rows: &[
+                            &[T("3"), T(""), T("")],
+                            &[T("4"), Null, T("!")],
+                            &[T("1"), T("Hello"), T("Bonjour")],
+                            &[T("2"), T("World"), T("tout le monde")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_text_unique ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TEXT), Column("v2", TEXT)],
+                        rows: &[
+                            &[T("1"), T("Hello"), T("Bonjour")],
+                            &[T("2"), T("World"), T("tout le monde")],
+                            &[T("3"), T(""), T("")],
+                            &[T("4"), Null, T("!")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_text_unique VALUES (5, 'Another', 'Bonjour');",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "t_text_unique_v2_key""#, detail: "Key (v2)=(Bonjour) already exists.", schema: "public", table: "t_text_unique", constraint: "t_text_unique_v2_key", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX on t_text_unique(v1, v2);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM t_text_unique WHERE v1='Hello' and v2='Bonjour';",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t2 (pk int primary key, c1 TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX idx1 ON t2(c1);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t2 VALUES (1, 'one'), (2, 'two');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c1 from t2 order by c1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("c1", TEXT)],
+                        rows: &[
+                            &[T("one")],
+                            &[T("two")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Text key",
+            set_up_script: &[
+                "CREATE TABLE t_text (id TEXT primary key, v1 TEXT);",
+                "INSERT INTO t_text VALUES ('Hello', 'World'), ('goodbye', 'cruel world');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_text where id = 'goodbye' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", TEXT), Column("v1", TEXT)],
+                        rows: &[
+                            &[T("goodbye"), T("cruel world")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Text key with mixed short and long values",
+            set_up_script: &[
+                "CREATE TABLE t_text_keys (id TEXT primary key, v1 INTEGER);",
+                "INSERT INTO t_text_keys VALUES ('aa', 1);",
+                "INSERT INTO t_text_keys VALUES ('bb' || repeat('x', 10500), 2);",
+                "INSERT INTO t_text_keys VALUES ('cc', 3);",
+                "INSERT INTO t_text_keys VALUES ('dd' || repeat('y', 10500), 4);",
+                "INSERT INTO t_text_keys VALUES ('ee', 5);",
+                "INSERT INTO t_text_keys VALUES ('zz', 6);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys ORDER BY id DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("6")],
+                            &[T("5")],
+                            &[T("4")],
+                            &[T("3")],
+                            &[T("2")],
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys WHERE id = 'aa';",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys WHERE id = 'zz';",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys WHERE id = 'bb' || repeat('x', 10500);",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys WHERE id = 'dd' || repeat('y', 10500);",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys WHERE id < 'cc' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys WHERE id > 'dd' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1 FROM t_text_keys WHERE id > 'bb' AND id < 'ee' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1, length(id) FROM t_text_keys WHERE v1 IN (1, 2, 4) ORDER BY v1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4), Column("length", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("2"), T("10502")],
+                            &[T("4"), T("10502")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select id from t_text_keys order by id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", TEXT)],
+                        rows: &[
+                            &[T("aa")],
+                            &[T("bbxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")],
+                            &[T("cc")],
+                            &[T("ddyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")],
+                            &[T("ee")],
+                            &[T("zz")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Time without time zone type",
+            set_up_script: &[
+                "CREATE TABLE t_time_without_zone (id INTEGER primary key, v1 TIME);",
+                "INSERT INTO t_time_without_zone VALUES (1, '12:34:56'), (2, '23:45:01'), (3, '02:03 EDT');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_time_without_zone ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TIME)],
+                        rows: &[
+                            &[T("1"), T("12:34:56")],
+                            &[T("2"), T("23:45:01")],
+                            &[T("3"), T("02:03:00")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::interval FROM t_time_without_zone ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INTERVAL)],
+                        rows: &[
+                            &[T("12:34:56")],
+                            &[T("23:45:01")],
+                            &[T("02:03:00")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '00:00:00'::time;",
+                    expected: Expected::Rows {
+                        columns: &[Column("time", TIME)],
+                        rows: &[
+                            &[T("00:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '23:59:59.999999'::time;",
+                    expected: Expected::Rows {
+                        columns: &[Column("time", TIME)],
+                        rows: &[
+                            &[T("23:59:59.999999")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time without time zone '040506.789+08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("time", TIME)],
+                        rows: &[
+                            &[T("04:05:06.789")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time '04:05:06' + date '2025-07-21';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP)],
+                        rows: &[
+                            &[T("2025-07-21 04:05:06")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time without time zone '04:05:06' + interval '2 minutes';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIME)],
+                        rows: &[
+                            &[T("04:07:06")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Time without time zone key",
+            set_up_script: &[
+                "CREATE TABLE t_time_without_zone (id TIME primary key, v1 TIME);",
+                "INSERT INTO t_time_without_zone VALUES ('12:34:56', '23:45:01'), ('23:45:01', '12:34:56');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_time_without_zone WHERE ID = '12:34:56' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", TIME), Column("v1", TIME)],
+                        rows: &[
+                            &[T("12:34:56"), T("23:45:01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Time with time zone type",
+            set_up_script: &[
+                "CREATE TABLE t_time_with_zone (id INTEGER primary key, v1 TIME WITH TIME ZONE);",
+                "INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01-0200'), (3, '2025-06-03 02:03 EDT');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_time_with_zone ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TIMETZ)],
+                        rows: &[
+                            &[T("1"), T("12:34:56+00")],
+                            &[T("2"), T("23:45:01-02")],
+                            &[T("3"), T("02:03:00-04")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET TIMEZONE TO 'UTC';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '00:00:00'::timetz;",
+                    expected: Expected::Rows {
+                        columns: &[Column("timetz", TIMETZ)],
+                        rows: &[
+                            &[T("00:00:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time with time zone '04:05:06 UTC' + date '2025-07-21';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2025-07-21 04:05:06+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time with time zone '04:05:06 UTC' + interval '2 minutes';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMETZ)],
+                        rows: &[
+                            &[T("04:07:06+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET TIMEZONE TO DEFAULT;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '00:00:00-07'::timetz;",
+                    expected: Expected::Rows {
+                        columns: &[Column("timetz", TIMETZ)],
+                        rows: &[
+                            &[T("00:00:00-07")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Timestamp without time zone type",
+            set_up_script: &[
+                "CREATE TABLE t_timestamp_without_zone (id INTEGER primary key, v1 TIMESTAMP);",
+                "INSERT INTO t_timestamp_without_zone VALUES (1, '2022-01-01 12:34:56'), (2, '2022-02-01 23:45:01'), (3, 'Feb 10 5:32PM 1997'), (4, 'Feb 10 16:32:05 99');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_timestamp_without_zone ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TIMESTAMP)],
+                        rows: &[
+                            &[T("1"), T("2022-01-01 12:34:56")],
+                            &[T("2"), T("2022-02-01 23:45:01")],
+                            &[T("3"), T("1997-02-10 17:32:00")],
+                            &[T("4"), T("1999-02-10 16:32:05")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2000-01-01'::timestamp;",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamp", TIMESTAMP)],
+                        rows: &[
+                            &[T("2000-01-01 00:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2000-01-01 00:00:00'::timestamp;",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamp", TIMESTAMP)],
+                        rows: &[
+                            &[T("2000-01-01 00:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp without time zone '2025-07-21 04:05:06' + interval '2 minutes';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP)],
+                        rows: &[
+                            &[T("2025-07-21 04:07:06")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Timestamp with time zone type",
+            set_up_script: &[
+                "CREATE TABLE t_timestamp_with_zone (id INTEGER primary key, v1 TIMESTAMP WITH TIME ZONE);",
+                "INSERT INTO t_timestamp_with_zone VALUES (1, '2022-01-01 12:34:56 UTC'), (2, '2022-02-01 23:45:01 America/New_York');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET timezone TO '-04:25'",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_timestamp_with_zone ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("1"), T("2022-01-01 12:34:56+00")],
+                            &[T("2"), T("2022-02-02 04:45:01+00")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2000-01-01'::timestamptz;",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("1999-12-31 19:35:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2000-01-01 00:00:00'::timestamptz;",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("1999-12-31 19:35:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET timezone TO '-06:00'",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_timestamp_with_zone ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("1"), T("2022-01-01 12:34:56+00")],
+                            &[T("2"), T("2022-02-02 04:45:01+00")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp with time zone '2025-07-21 04:05:06 UTC' + interval '2 minutes';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2025-07-21 04:07:06+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET timezone TO default",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Tsquery type",
+            set_up_script: &[
+                "CREATE TABLE t_tsquery (id INTEGER primary key, v1 TSQUERY);",
+                "INSERT INTO t_tsquery VALUES (1, 'word'), (2, 'phrase & (another | term)');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_tsquery ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TSQUERY)],
+                        rows: &[
+                            &[T("1"), T("'word'")],
+                            &[T("2"), T("'phrase' & ( 'another' | 'term' )")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Tsvector type",
+            set_up_script: &[
+                "CREATE TABLE t_tsvector (id INTEGER primary key, v1 TSVECTOR);",
+                "INSERT INTO t_tsvector VALUES (1, 'simple'), (2, 'complex & (query | terms)');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_tsvector ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", TSVECTOR)],
+                        rows: &[
+                            &[T("1"), T("'simple'")],
+                            &[T("2"), T("'&' '(query' 'complex' 'terms)' '|'")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "tsvector unsupported error",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t_tsvector (id INTEGER primary key, v1 TSVECTOR);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    flow: Flow::Exec,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Uuid type",
+            set_up_script: &[
+                "CREATE TABLE t_uuid (id INTEGER primary key, v1 UUID);",
+                "INSERT INTO t_uuid VALUES (1, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), (2, 'f47ac10b58cc4372a567-0e02b2c3d479');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_uuid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", UUID)],
+                        rows: &[
+                            &[T("1"), T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")],
+                            &[T("2"), T("f47ac10b-58cc-4372-a567-0e02b2c3d479")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select uuid 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';",
+                    expected: Expected::Rows {
+                        columns: &[Column("uuid", UUID)],
+                        rows: &[
+                            &[T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Uuid default value",
+            set_up_script: &[
+                "CREATE TABLE t_uuid (id INTEGER primary key, v1 UUID default 'a1eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid);",
+                "INSERT INTO t_uuid VALUES (1, 'f47ac10b58cc4372a567-0e02b2c3d479');",
+                "INSERT INTO t_uuid (id) VALUES (2);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_uuid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", UUID)],
+                        rows: &[
+                            &[T("1"), T("f47ac10b-58cc-4372-a567-0e02b2c3d479")],
+                            &[T("2"), T("a1eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Uuid key",
+            set_up_script: &[
+                "CREATE TABLE t_uuid (id UUID primary key, v1 UUID);",
+                "INSERT INTO t_uuid VALUES ('f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'f47ac10b58cc4372a567-0e02b2c3d479');",
+                "create table t_uuid2 (id int primary key, v1 uuid, v2 uuid);",
+                "create index on t_uuid2(v1, v2);",
+                "insert into t_uuid2 values (1, 'f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), (2, 'dcf783c8-49c2-44b4-8b90-34ad8c52ea1e', 'f99802e8-0018-4913-806c-bcad5d246d46');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_uuid WHERE ID = 'f47ac10b58cc4372a567-0e02b2c3d479' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", UUID), Column("v1", UUID)],
+                        rows: &[
+                            &[T("f47ac10b-58cc-4372-a567-0e02b2c3d479"), T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_uuid2 WHERE v1 = 'f47ac10b58cc4372a567-0e02b2c3d479' and v2 = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", UUID), Column("v2", UUID)],
+                        rows: &[
+                            &[T("1"), T("f47ac10b-58cc-4372-a567-0e02b2c3d479"), T("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_uuid2 WHERE v1 < 'f47ac10b58cc4372a567-0e02b2c3d479' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", UUID), Column("v2", UUID)],
+                        rows: &[
+                            &[T("2"), T("dcf783c8-49c2-44b4-8b90-34ad8c52ea1e"), T("f99802e8-0018-4913-806c-bcad5d246d46")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Uuid array type",
+            set_up_script: &[
+                "CREATE TABLE t_uuid (id INTEGER primary key, v1 UUID[]);",
+                "INSERT INTO t_uuid VALUES (1, ARRAY['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, NULL]), (2, ARRAY[NULL, 'f47ac10b58cc4372a567-0e02b2c3d479'::uuid]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_uuid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", UUID_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11,NULL}")],
+                            &[T("2"), T("{NULL,f47ac10b-58cc-4372-a567-0e02b2c3d479}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xid type",
+            set_up_script: &[
+                "CREATE TABLE t_xid (id INTEGER primary key, v1 XID, v2 VARCHAR(20));",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (1, 1234, '100');",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v1" is of type xid but expression is of type integer"#, hint: "You will need to rewrite or cast the expression.", position: 30, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (1, 1234::xid, '100');",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type integer to xid", position: 34, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (1, NULL, '100');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_xid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", XID), Column("v2", VARCHAR)],
+                        rows: &[
+                            &[T("1"), Null, T("100")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (2, '100', '101');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_xid WHERE v1 IS NOT NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", XID), Column("v2", VARCHAR)],
+                        rows: &[
+                            &[T("2"), T("100"), T("101")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t_xid SET v1='9012' WHERE id=1;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM t_xid WHERE v1=100;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_xid ORDER BY v1 DESC;",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "could not identify an ordering operator for type xid", hint: "Use an explicit ordering operator or modify the query.", position: 30, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (4, '4294967295', 'a');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (5, '4294967296', 'b');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (6, '0', 'c');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (7, '-1', 'd');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (8, 'abc', 'd');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_xid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", XID), Column("v2", VARCHAR)],
+                        rows: &[
+                            &[T("1"), T("9012"), T("100")],
+                            &[T("4"), T("4294967295"), T("a")],
+                            &[T("5"), T("0"), T("b")],
+                            &[T("6"), T("0"), T("c")],
+                            &[T("7"), T("4294967295"), T("d")],
+                            &[T("8"), T("0"), T("d")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xid type, explicit casts",
+            set_up_script: &[
+                "CREATE TABLE t_xid (id INTEGER primary key, v1 XID);",
+                "INSERT INTO t_xid VALUES (1, '1234'), (2, '4294967295');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_xid ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", XID)],
+                        rows: &[
+                            &[T("1"), T("1234")],
+                            &[T("2"), T("4294967295")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::char(1), v1::varchar(2), v1::text, v1::name FROM t_xid WHERE id=1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", BPCHAR), Column("v1", VARCHAR), Column("v1", TEXT), Column("v1", NAME)],
+                        rows: &[
+                            &[T("1"), T("12"), T("1234"), T("1234")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::smallint FROM t_xid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xid to smallint", position: 10, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::integer FROM t_xid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xid to integer", position: 10, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::bigint FROM t_xid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xid to bigint", position: 10, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::oid FROM t_xid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xid to oid", position: 10, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::float4 FROM t_xid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xid to real", position: 10, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::float8 FROM t_xid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xid to double precision", position: 10, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::numeric FROM t_xid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xid to numeric", position: 10, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v1::boolean FROM t_xid WHERE id=1;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xid to boolean", position: 10, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('123'::char(3))::xid, ('123'::varchar)::xid, ('0'::text)::xid, ('400'::name)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID), Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("123"), T("123"), T("0"), T("400")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-1'::char(3))::xid, ('-1'::varchar)::xid, ('-1'::text)::xid, ('-1'::name)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID), Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("4294967295"), T("4294967295"), T("4294967295"), T("4294967295")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-2147483648'::char(11))::xid, ('-2147483648'::varchar)::xid, ('-2147483648'::text)::xid, ('-2147483648'::name)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID), Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("2147483648"), T("2147483648"), T("2147483648"), T("2147483648")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (10::int2)::xid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type smallint to xid", position: 18, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (10::boolean)::xid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type boolean to xid", position: 21, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (10::int4)::xid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type integer to xid", position: 18, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (10::int8)::xid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type bigint to xid", position: 18, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (1.1::float4)::xid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type real to xid", position: 21, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (1.1::float8)::xid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type double precision to xid", position: 21, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (1.1::decimal)::xid;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type numeric to xid", position: 22, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('4294967295'::text)::xid, ('4294967297'::text)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("4294967295"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-4294967295'::text)::xid, ('-4294967297'::text)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("1"), T("4294967295")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('4294967295'::varchar)::xid, ('4294967296232'::varchar)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("4294967295"), T("232")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('-4294967295'::varchar)::xid, ('-4294967296232'::varchar)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("1"), T("4294967064")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('4294967295'::char(11))::xid, ('4294967296'::char(11))::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("4294967295"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('4294967295'::name)::xid, ('4294967296'::name)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("4294967295"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('abc'::text)::xid, ('abc'::char(3))::xid, ('abc'::varchar)::xid, ('abc'::name)::xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xid", XID), Column("xid", XID), Column("xid", XID), Column("xid", XID)],
+                        rows: &[
+                            &[T("0"), T("0"), T("0"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xid array type",
+            set_up_script: &[
+                "CREATE TABLE t_xid (id INTEGER primary key, v1 XID[], v2 CHARACTER(100), v3 BOOLEAN);",
+                "INSERT INTO t_xid VALUES (2, '{123, 456, 789, 101}', '1234567890', true);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT v1::varchar(1)[] FROM t_xid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", VARCHAR_ARRAY)],
+                        rows: &[
+                            &[T("{1,4,7,1}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xid VALUES (2, ARRAY[123, 456, 789, 101], '1234567890', true);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v1" is of type xid[] but expression is of type integer[]"#, hint: "You will need to rewrite or cast the expression.", position: 30, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xml type",
+            set_up_script: &[
+                "CREATE TABLE t_xml (id INTEGER primary key, v1 XML);",
+                "INSERT INTO t_xml VALUES (1, '<note><to>Tove</to><from>Jani</from><body>Don''t forget me this weekend!</body></note>'), (2, '<book><title>Introduction to Golang</title><author>John Doe</author></book>');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_xml ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", XML)],
+                        rows: &[
+                            &[T("1"), T("<note><to>Tove</to><from>Jani</from><body>Don't forget me this weekend!</body></note>")],
+                            &[T("2"), T("<book><title>Introduction to Golang</title><author>John Doe</author></book>")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xml VALUES (3, '<a>');",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Premature end of data in tag a line 1
+<a>
+   ^"#, position: 30, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xml VALUES (3, 1);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v1" is of type xml but expression is of type integer"#, hint: "You will need to rewrite or cast the expression.", position: 30, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xml VALUES (3, NULL);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, pg_typeof(v1) FROM t_xml WHERE id < 3 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("1"), T("xml")],
+                            &[T("2"), T("xml")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT data_type, udt_name FROM information_schema.columns WHERE table_name = 't_xml' AND column_name = 'v1';",
+                    expected: Expected::Rows {
+                        columns: &[Column("data_type", VARCHAR), Column("udt_name", NAME)],
+                        rows: &[
+                            &[T("xml"), T("xml")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname FROM pg_catalog.pg_type WHERE oid = 142;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME)],
+                        rows: &[
+                            &[T("xml")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Polymorphic types",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT array_append(ARRAY[1], 2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array_append", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,2}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(ARRAY['abc','def'], 'ghi');",
+                    expected: Expected::Rows {
+                        columns: &[Column("array_append", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{abc,def,ghi}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(ARRAY['abc','def'], null);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array_append", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{abc,def,NULL}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(null, null);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array_append", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{NULL}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(null, 'ghi');",
+                    expected: Expected::Rows {
+                        columns: &[Column("array_append", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{ghi}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(null, 3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array_append", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{3}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(1, 2);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_append(integer, integer) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(1, ARRAY[2]);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_append(integer, integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(ARRAY[1], ARRAY[2]);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_append(integer[], integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Character comparisons ignore trailing spaces",
+            set_up_script: &[
+                "CREATE TABLE t_bpchar (id INT PRIMARY KEY, c CHAR(3), u CHAR(3) UNIQUE, v INT);",
+                "INSERT INTO t_bpchar VALUES (1, 'a', 'x', 10), (2, 'a ', 'y ', 20), (3, 'b', 'z', 30);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT id, c, COUNT(*) OVER (PARTITION BY c), SUM(v) OVER (PARTITION BY c) FROM t_bpchar ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("c", BPCHAR), Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("1"), T("a  "), T("2"), T("30")],
+                            &[T("2"), T("a  "), T("2"), T("30")],
+                            &[T("3"), T("b  "), T("1"), T("30")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c, COUNT(*), SUM(v) FROM t_bpchar GROUP BY c ORDER BY c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("c", BPCHAR), Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("a  "), T("2"), T("30")],
+                            &[T("b  "), T("1"), T("30")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DISTINCT c FROM t_bpchar ORDER BY c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("c", BPCHAR)],
+                        rows: &[
+                            &[T("a  ")],
+                            &[T("b  ")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM t_bpchar WHERE c = 'a' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM t_bpchar WHERE u = 'y';",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_bpchar VALUES (4, 'c', 'y', 40);",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "t_bpchar_u_key""#, detail: "Key (u)=(y  ) already exists.", schema: "public", table: "t_bpchar", constraint: "t_bpchar_u_key", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c::text, length(c), c || '|' FROM t_bpchar WHERE id = 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("c", TEXT), Column("length", INT4), Column("?column?", TEXT)],
+                        rows: &[
+                            &[T("a"), T("1"), T("a|")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'ab  '::char(3) = 'ab'::char(3), 'a  '::bpchar = 'a'::bpchar, length('ab  '::char(3));",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("length", INT4)],
+                        rows: &[
+                            &[T("t"), T("t"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Casting a bpchar value to another string type removes its trailing spaces",
+            set_up_script: &[
+                "CREATE TABLE t3325 (id INT PRIMARY KEY, c CHAR(2) CHECK (c::text IN ('L', 'R')));",
+                "CREATE TABLE t3325_check (c CHARACTER(2), CONSTRAINT t3325_check_check CHECK (c::text IN ('L', 'M', 'H')));",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '[' || 'L '::character(2)::text || ']' AS as_text, length('L '::character(2)::text) AS length, 'L '::character(2)::text = 'L' AS equals_l;",
+                    expected: Expected::Rows {
+                        columns: &[Column("as_text", TEXT), Column("length", INT4), Column("equals_l", BOOL)],
+                        rows: &[
+                            &[T("[L]"), T("1"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t3325_check VALUES ('L ');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[' || c::text || ']' AS as_text FROM t3325_check;",
+                    expected: Expected::Rows {
+                        columns: &[Column("as_text", TEXT)],
+                        rows: &[
+                            &[T("[L]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t3325 VALUES (1, 'L'), (2, 'R ');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, '[' || c || ']', c = 'L' FROM t3325 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("?column?", TEXT), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("1"), T("[L]"), T("t")],
+                            &[T("2"), T("[R]"), T("f")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[' || 'L'::CHAR(2) || ']', length('L'::CHAR(2)), 'L'::CHAR(2) = 'L', 'L '::CHAR(2) = 'L'::CHAR(2), 'L'::CHAR(2)::TEXT = 'L', 'L'::CHAR(2)::VARCHAR = 'L', bpcharcmp('L'::CHAR(2), 'L ');",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT), Column("length", INT4), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("bpcharcmp", INT4)],
+                        rows: &[
+                            &[T("[L]"), T("1"), T("t"), T("t"), T("t"), T("t"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[' || 'L '::char(2) || ']', upper('L '::char(2)) = 'L', 'L '::bpchar = 'L'::bpchar, 'L '::character(2)::name = 'L', 'L '::character(2)::varchar(5) = 'L', length('L '::character(2)::varchar);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("length", INT4)],
+                        rows: &[
+                            &[T("[L]"), T("t"), T("t"), T("t"), T("t"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '[' || E'L\t'::character(3)::text || ']', length(E'L\t'::character(3)::text), '[' || E'L\n'::character(3)::text || ']', '[' || E'L \t '::character(5)::text || ']', E'L\t'::character(3) = 'L', E'L\t '::character(4) = E'L\t'::character(3), bpcharcmp(E'L\t'::character(3), E'L\t '::character(4)), '[' || E'L\t'::character(3)::varchar || ']', length(E'L\t'::character(3)), E'L\t'::character(3)::text = E'L\t';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT), Column("length", INT4), Column("?column?", TEXT), Column("?column?", TEXT), Column("?column?", BOOL), Column("?column?", BOOL), Column("bpcharcmp", INT4), Column("?column?", TEXT), Column("length", INT4), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("[L\t]"), T("2"), T(r#"[L
+]"#), T("[L \t]"), T("f"), T("t"), T("0"), T("[L\t]"), T("2"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xml literals",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '<a>x</a>'::xml AS doc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("doc", XML)],
+                        rows: &[
+                            &[T("<a>x</a>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof('<a>x</a>'::xml);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("xml")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'x'::xml, ''::xml, '<a/><b/>'::xml, '<!-- c --><a/>'::xml, '<a><![CDATA[<x>]]></a>'::xml, '<a xmlns:p="urn:x"><p:b/></a>'::xml;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xml", XML), Column("xml", XML), Column("xml", XML), Column("xml", XML), Column("xml", XML), Column("xml", XML)],
+                        rows: &[
+                            &[T("x"), T(""), T("<a/><b/>"), T("<!-- c --><a/>"), T("<a><![CDATA[<x>]]></a>"), T(r#"<a xmlns:p="urn:x"><p:b/></a>"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '<?xml version="1.0"?><a/>'::xml, '<?xml version="1.0" encoding="UTF-8"?><a/>'::xml, '<?xml version="1.0" standalone="yes"?><a/>'::xml, '<?xml version="1.1"?><a/>'::xml;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xml", XML), Column("xml", XML), Column("xml", XML), Column("xml", XML)],
+                        rows: &[
+                            &[T("<a/>"), T("<a/>"), T(r#"<?xml version="1.0" standalone="yes"?><a/>"#), T(r#"<?xml version="1.1"?><a/>"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT E'<?xml version="1.0"?>\n<a/>'::xml, E'<?xml version="1.0"?>\n\n<a/>'::xml, E'<a>\n</a>'::xml;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xml", XML), Column("xml", XML), Column("xml", XML)],
+                        rows: &[
+                            &[T("<a/>"), T(r#"
+<a/>"#), T(r#"<a>
+</a>"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Premature end of data in tag a line 1
+<a>
+   ^"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'x<'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: StartTag: invalid element name
+x<
+  ^"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a>&foo;</a>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Entity 'foo' not defined
+<a>&foo;</a>
+        ^"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '<a>x</a>'::text::xml, '<a>x</a>'::xml::text, '<a>x</a>'::xml::varchar, '<a>x</a>'::xml::char(5), '<a>x</a>'::varchar::xml, '<?xml version="1.0"?><a/>'::xml::text;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xml", XML), Column("text", TEXT), Column("varchar", VARCHAR), Column("bpchar", BPCHAR), Column("xml", XML), Column("text", TEXT)],
+                        rows: &[
+                            &[T("<a>x</a>"), T("<a>x</a>"), T("<a>x</a>"), T("<a>x<"), T("<a>x</a>"), T(r#"<?xml version="1.0"?><a/>"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a>'::text::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Premature end of data in tag a line 1
+<a>
+   ^"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a/>'::xml::int;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type xml to integer", position: 19, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 1::xml;",
+                    expected: Expected::Error(Diagnostic { code: "42846", message: "cannot cast type integer to xml", position: 9, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a/>'::xml = '<a/>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "operator does not exist: xml = xml", hint: "No operator matches the given name and argument types. You might need to add explicit type casts.", position: 20, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xml document option",
+            set_up_script: &[
+                "SET xmloption TO document;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT '<a/>'::xml, '<?xml version="1.0"?><a/>'::xml, '<!-- c --><a/>'::xml, ' <a/>'::xml;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xml", XML), Column("xml", XML), Column("xml", XML), Column("xml", XML)],
+                        rows: &[
+                            &[T("<a/>"), T("<a/>"), T("<!-- c --><a/>"), T(" <a/>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'x'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200M", message: "invalid XML document", detail: r#"line 1: Start tag expected, '<' not found
+x
+^"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a/><b/>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200M", message: "invalid XML document", detail: r#"line 1: Extra content at the end of the document
+<a/><b/>
+    ^"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ''::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200M", message: "invalid XML document", detail: r#"line 1: switching encoding : no input
+
+^
+line 1: Document is empty
+
+^"#, position: 8, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xml column default",
+            set_up_script: &[
+                "CREATE TABLE t_xml (id INTEGER PRIMARY KEY, v1 XML DEFAULT '<d/>'::xml);",
+                "INSERT INTO t_xml VALUES (1, '<a>x</a>');",
+                "INSERT INTO t_xml (id) VALUES (2);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_xml ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", XML)],
+                        rows: &[
+                            &[T("1"), T("<a>x</a>")],
+                            &[T("2"), T("<d/>")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xml array type",
+            set_up_script: &[
+                "CREATE TABLE t_xml (id INTEGER PRIMARY KEY, v1 XML[]);",
+                "INSERT INTO t_xml VALUES (1, ARRAY['<a/>'::xml, '<b>x y</b>']), (2, '{<c/>,NULL}'), (3, NULL);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_xml ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", XML_ARRAY)],
+                        rows: &[
+                            &[T("1"), T(r#"{<a/>,"<b>x y</b>"}"#)],
+                            &[T("2"), T("{<c/>,NULL}")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v1[2] FROM t_xml ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v1", XML)],
+                        rows: &[
+                            &[T("1"), T("<b>x y</b>")],
+                            &[T("2"), Null],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_xml VALUES (4, '{<a>}');",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Premature end of data in tag a line 1
+<a>
+   ^"#, position: 30, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ARRAY['<a>x</a>'::xml, '<b c="1">y z</b>', 'q,"r"'];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("array", XML_ARRAY)],
+                        rows: &[
+                            &[T(r#"{<a>x</a>,"<b c=\"1\">y z</b>","q,\"r\""}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Xml schema-qualified type",
+            set_up_script: &[
+                "CREATE TABLE t3337 (id INT PRIMARY KEY, doc pg_catalog.xml, docs xml[]);",
+                "INSERT INTO t3337 VALUES (1, '<a>x</a>', ARRAY['<b/>'::xml]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '<a>x</a>'::pg_catalog.xml, pg_typeof('<a>x</a>'::pg_catalog.xml), pg_typeof(ARRAY['<a/>'::xml]);",
+                    expected: Expected::Rows {
+                        columns: &[Column("xml", XML), Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("<a>x</a>"), T("xml"), T("xml[]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, doc, docs, pg_typeof(doc), pg_typeof(docs) FROM t3337;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("doc", XML), Column("docs", XML_ARRAY), Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("1"), T("<a>x</a>"), T("{<b/>}"), T("xml"), T("xml[]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

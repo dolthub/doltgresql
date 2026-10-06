@@ -368,7 +368,26 @@ fn generate_script(
         } else {
             (None, Source::Unavailable)
         };
-        let second = if source == Source::Postgres { observations(pg_second).get(index).cloned() } else { None };
+        let arbitrary = test["ArbitraryAssertions"]
+            .as_array()
+            .is_some_and(|indexes| indexes.iter().any(|i| i.as_u64() == Some(index as u64)));
+        let second = if arbitrary {
+            observation.map(|o| {
+                let mut differing = o.clone();
+                for row in differing["rows"].as_array_mut().into_iter().flatten() {
+                    for cell in row.as_array_mut().into_iter().flatten() {
+                        if !cell.is_null() {
+                            *cell = Value::String(format!("{cell}, which varies"));
+                        }
+                    }
+                }
+                differing
+            })
+        } else if source == Source::Postgres {
+            observations(pg_second).get(index).cloned()
+        } else {
+            None
+        };
         let generated = generate_assertion(assertion, transaction, observation, second.as_ref(), source);
         *report.sources.entry(format!("{:?}", generated.source)).or_default() += 1;
         report.assertion_sources.push(serde_json::json!({

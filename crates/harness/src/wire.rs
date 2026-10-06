@@ -516,6 +516,27 @@ pub struct WireCapture {
     pub received: Vec<(usize, Vec<BackendMessage>)>,
     /// The rows of each OtherQuery step, by step index.
     pub other_rows: Vec<(usize, Vec<Vec<Option<String>>>)>,
+    /// The port the server listened on.
+    pub port: u16,
+}
+
+/// PORT_TOKEN stands for the server's port in an expected value, since every server listens on its own port.
+pub const PORT_TOKEN: &str = "{PORT}";
+
+/// expand_port replaces values that are exactly PORT_TOKEN in a DataRow with the server's port.
+fn expand_port(message: BackendMessage, port: &str) -> BackendMessage {
+    match message {
+        BackendMessage::DataRow { values } => BackendMessage::DataRow {
+            values: values
+                .into_iter()
+                .map(|value| match value {
+                    Some(bytes) if bytes == PORT_TOKEN.as_bytes() => Some(port.as_bytes().to_vec()),
+                    other => other,
+                })
+                .collect(),
+        },
+        other => other,
+    }
 }
 
 /// run_steps runs a conversation. When capturing, Receive steps record what arrives instead of checking it: they
@@ -592,7 +613,9 @@ fn run_steps(
                     messages
                 };
                 if !capture {
-                    let expected: Vec<BackendMessage> = expected.iter().map(|m| m.to_message()).collect();
+                    let port = session.server.port.to_string();
+                    let expected: Vec<BackendMessage> =
+                        expected.iter().map(|m| expand_port(m.to_message(), &port)).collect();
                     let actual: Vec<BackendMessage> = received.iter().map(normalize).collect();
                     if expected != actual {
                         failures.push(format!(
@@ -638,7 +661,10 @@ fn start(target: &Target, test: &WireTest) -> Result<(Session, RawConnection), S
 /// capture_wire_test runs a conversation against a fresh server and records what it received.
 pub fn capture_wire_test(target: &Target, test: &WireTest) -> WireCapture {
     match start(target, test) {
-        Ok((mut session, mut conn)) => run_steps(&mut session, &mut conn, test, true).0,
+        Ok((mut session, mut conn)) => {
+            let port = session.server.port;
+            WireCapture { port, ..run_steps(&mut session, &mut conn, test, true).0 }
+        }
         Err(err) => WireCapture { error: Some(err), ..WireCapture::default() },
     }
 }

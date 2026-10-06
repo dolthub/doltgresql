@@ -386,7 +386,7 @@ pub fn capture_json(target: &harness::server::Target, test: &WireTest) -> Value 
         "error": capture.error,
         "received": capture.received.iter().map(|(index, messages)| json!({
             "step": index,
-            "messages": messages.iter().map(receive_code).collect::<Vec<_>>(),
+            "messages": messages.iter().map(|m| receive_code(m, capture.port)).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "other_rows": capture.other_rows.iter().map(|(index, rows)| json!({"step": index, "rows": rows})).collect::<Vec<_>>(),
     })
@@ -427,12 +427,16 @@ pub fn send_code(message: &Send) -> String {
     }
 }
 
-/// receive_code renders a received message, normalized, as a Receive literal.
-pub fn receive_code(message: &BackendMessage) -> String {
+/// receive_code renders a received message, normalized, as a Receive literal, writing a value equal to the server's
+/// port as the port token.
+pub fn receive_code(message: &BackendMessage, port: u16) -> String {
     let message = harness::wire::normalize(message);
     let datum = |value: &Option<Vec<u8>>| match value {
         None => "Datum::Null".to_string(),
         Some(bytes) => match std::str::from_utf8(bytes) {
+            Ok(text) if port != 0 && text == port.to_string() => {
+                format!("Datum::Text({:?})", harness::wire::PORT_TOKEN)
+            }
             Ok(text) => format!("Datum::Text({})", rust::string(text)),
             Err(_) => format!("Datum::Bytes(&{bytes:?})"),
         },
