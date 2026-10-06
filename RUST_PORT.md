@@ -225,8 +225,9 @@ Findings:
 - Go fuses multiply-adds into FMA instructions on arm64 but not on amd64, so Dolt's `math.Expm1`, which decides
   where nodes end, rounds differently on the two for 25 of the 16,385 possible inputs. A boundary decision flips only
   when a key's hash falls within an ulp of the threshold, so this is very rare, but the same data can chunk
-  differently on the two architectures. The Rust chunker fuses exactly where Go does on each architecture, checked
-  exhaustively against Go on both (amd64 under Rosetta).
+  differently on the two architectures. Either shape reads correctly everywhere, but identical data can then have
+  different hashes. The Rust chunker always rounds as Go does on amd64, checked exhaustively against Go, so it is
+  deterministic across platforms and matches Go on amd64. Go on arm64 can still differ from it in these rare cases.
 - Table file indexes sort records by prefix with Go's unstable sort, so two chunks whose 8-byte prefixes collide can
   land in either order. The Rust writer keeps them in insertion order.
 - Go's GC is not deterministic: on two copies of one database, it writes the same chunks to each generation, and the

@@ -91,14 +91,13 @@ fn weibull_check(size: u32, this_size: u32, hash: u32) -> bool {
     p < (end - start) / d
 }
 
-/// mul_add returns `a * b + c`, fused into one rounding on the architectures where Go's compiler fuses it.
+/// mul_add returns `a * b + c` with two roundings, as Go computes it on amd64, which is where Go fuses on arm64.
 #[inline]
 fn mul_add(a: f64, b: f64, c: f64) -> f64 {
-    if cfg!(target_arch = "aarch64") { a.mul_add(b, c) } else { a * b + c }
+    a * b + c
 }
 
-/// expm1 returns e^x - 1 with Go's math.Expm1 algorithm, fusing the multiply-adds that Go fuses on this
-/// architecture, so that it rounds exactly as Go does.
+/// expm1 returns e^x - 1 with Go's math.Expm1 algorithm, rounding exactly as Go does on amd64 on every platform.
 #[allow(clippy::excessive_precision, clippy::approx_constant)]
 fn expm1(mut x: f64) -> f64 {
     const OTHRESHOLD: f64 = 7.09782712893383973096e+02;
@@ -502,12 +501,8 @@ mod tests {
     #[test]
     fn weibull_expm1_matches_go_for_every_chunk_size() {
         // The SHA-256 of the little-endian bits of -math.Expm1(-(size/4096)^4) for each size from 0 through
-        // 16384, from Go 1.26 on each architecture, which differ because Go fuses multiply-adds on arm64.
-        let expected = if cfg!(target_arch = "aarch64") {
-            "908847d54f378ca4606eb2fed3d9b545a710b0667397458ca114c62e8089324b"
-        } else {
-            "9955985ff0e5e25d1734ec27d55180b58fbe9c027f0c3ec230741aba4e18bf0b"
-        };
+        // 16384, from Go 1.26 on amd64.
+        let expected = "9955985ff0e5e25d1734ec27d55180b58fbe9c027f0c3ec230741aba4e18bf0b";
         let mut digest = Sha256::new();
         for size in 0..=MAX_CHUNK_SIZE {
             let pow = size as f64 / TARGET_SIZE;
