@@ -346,6 +346,9 @@ pub fn value_type(value: &Value) -> u32 {
         Value::TimestampTz(_) => oid::TIMESTAMPTZ,
         Value::Interval(_) => oid::INTERVAL,
         Value::Array(a) => a.array_type(),
+        Value::Json(_) => oid::JSON,
+        Value::Jsonb(_) => oid::JSONB,
+        Value::Record(_) => oid::RECORD,
         _ => oid::TEXT,
     }
 }

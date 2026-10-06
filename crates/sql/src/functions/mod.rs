@@ -15,6 +15,7 @@
 //! Built-in functions, and choosing among a function's overloads as Postgres does.
 
 pub mod aggregate;
+pub use array::value_type;
 pub use json::OUT_COLUMNS as JSON_OUT_COLUMNS;
 mod array;
 pub mod datetime;

@@ -152,7 +152,25 @@ impl Value {
                 let element = a.element;
                 array::send(a, &|v| v.send(element))
             }
-            Value::Record(_) | Value::Json(_) => return self.output().map(String::into_bytes),
+            Value::Record(fields) => {
+                let mut out = (fields.len() as i32).to_be_bytes().to_vec();
+                for field in fields {
+                    let field_type = match field {
+                        Value::Null => oid::UNKNOWN,
+                        other => crate::functions::value_type(other),
+                    };
+                    out.extend_from_slice(&field_type.to_be_bytes());
+                    match field.send(field_type) {
+                        Some(bytes) => {
+                            out.extend_from_slice(&(bytes.len() as i32).to_be_bytes());
+                            out.extend_from_slice(&bytes);
+                        }
+                        None => out.extend_from_slice(&(-1i32).to_be_bytes()),
+                    }
+                }
+                out
+            }
+            Value::Json(_) => return self.output().map(String::into_bytes),
             Value::Jsonb(json) => [&[1u8][..], json.to_text().as_bytes()].concat(),
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) => s.clone().into_bytes(),

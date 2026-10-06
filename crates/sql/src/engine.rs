@@ -652,18 +652,9 @@ impl Ctx<'_> {
     fn describe(&mut self, node: &NodeEnum) -> Result<Option<Vec<Column>>> {
         Ok(match node {
             NodeEnum::SelectStmt(select) => Some(Planner { ctx: self, outer: Vec::new() }.plan_query(select)?.columns),
-            NodeEnum::InsertStmt(insert) => {
-                self.plan_insert(insert)?;
-                None
-            }
-            NodeEnum::UpdateStmt(update) => {
-                self.plan_update(update)?;
-                None
-            }
-            NodeEnum::DeleteStmt(delete) => {
-                self.plan_delete(delete)?;
-                None
-            }
+            NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.returning.map(|r| r.columns),
+            NodeEnum::UpdateStmt(update) => self.plan_update(update)?.returning.map(|r| r.columns),
+            NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.returning.map(|r| r.columns),
             _ => None,
         })
     }
