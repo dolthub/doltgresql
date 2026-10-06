@@ -23,6 +23,7 @@ pub mod code {
     pub const INTERNAL_ERROR: &str = "XX000";
     pub const INVALID_PARAMETER_VALUE: &str = "22023";
     pub const INVALID_CATALOG_NAME: &str = "3D000";
+    pub const DUPLICATE_DATABASE: &str = "42P04";
 }
 
 /// PgError is an error to report to the client.

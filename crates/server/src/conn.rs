@@ -176,7 +176,8 @@ impl Conn {
             return Ok(());
         }
         let database = parameter("database").filter(|d| !d.is_empty()).unwrap_or_else(|| user.clone());
-        let mut session = match self.server.engine.session(&user, &database) {
+        let host = self.stream.peer_addr().map(|addr| addr.ip().to_string()).unwrap_or_default();
+        let mut session = match self.server.engine.session(&user, &host, &database) {
             Ok(session) => session,
             Err(err) => return self.fatal(err),
         };

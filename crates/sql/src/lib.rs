@@ -15,17 +15,20 @@
 #![forbid(unsafe_code)]
 
 //! The SQL engine. An engine serves the databases of a data directory, and each connection runs statements in a
-//! session, which parses them with Postgres' own grammar.
+//! session, which parses them with Postgres' own grammar and the Doltgres-only syntax it rejects.
 
 pub mod error;
+pub mod parse;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use pg_query::NodeEnum;
 use pg_query::protobuf::a_const::Val;
 
 pub use error::{PgError, Result, code};
+use parse::{Extras, Statement};
 
 /// DEFAULT_BRANCH is the branch a new database starts on.
 pub const DEFAULT_BRANCH: &str = "main";
@@ -60,8 +63,14 @@ pub enum Outcome {
     Empty,
 }
 
-/// Engine serves the databases in a data directory.
+/// Engine serves the databases in a data directory. Clones share the same databases.
+#[derive(Clone)]
 pub struct Engine {
+    shared: Arc<Shared>,
+}
+
+/// Shared is what every clone of an engine shares.
+struct Shared {
     data_dir: PathBuf,
 }
 
@@ -70,71 +79,143 @@ fn unix_millis() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
+/// create_times returns the clock readings of creating a database now.
+fn create_times() -> doltdb::create::CreateTimes {
+    let millis = unix_millis();
+    doltdb::create::CreateTimes {
+        init_author_millis: millis as i64,
+        init_committer_millis: millis,
+        environment_seconds: millis / 1000,
+        session_seconds: millis / 1000,
+        commit_millis: millis,
+    }
+}
+
 impl Engine {
     /// open opens the data directory, creating it and the default database, named after the superuser, when they
     /// do not exist, as the Go server does on its first start.
     pub fn open(data_dir: &Path, superuser: &str) -> Result<Engine> {
         std::fs::create_dir_all(data_dir.join(".dolt")).map_err(PgError::internal)?;
-        let database = data_dir.join(superuser);
-        if !database.join(".dolt").is_dir() {
-            let millis = unix_millis();
-            let times = doltdb::create::CreateTimes {
-                init_author_millis: millis as i64,
-                init_committer_millis: millis,
-                environment_seconds: millis / 1000,
-                session_seconds: millis / 1000,
-                commit_millis: millis,
-            };
-            doltdb::create::create_database(&database, DEFAULT_BRANCH, superuser, "localhost", &times)?;
+        let engine = Engine { shared: Arc::new(Shared { data_dir: data_dir.to_path_buf() }) };
+        if !engine.database_exists(superuser) {
+            doltdb::create::create_database(
+                &data_dir.join(superuser),
+                DEFAULT_BRANCH,
+                superuser,
+                "localhost",
+                &create_times(),
+            )?;
         }
-        Ok(Engine { data_dir: data_dir.to_path_buf() })
+        Ok(engine)
     }
 
     /// database_exists reports whether the data directory holds the database.
     pub fn database_exists(&self, name: &str) -> bool {
-        !name.is_empty() && !name.contains(['/', '\\']) && self.data_dir.join(name).join(".dolt").is_dir()
+        !name.is_empty() && !name.contains(['/', '\\']) && self.shared.data_dir.join(name).join(".dolt").is_dir()
     }
 
-    /// session starts a session for the user on the database.
-    pub fn session(&self, user: &str, database: &str) -> Result<Session> {
+    /// session starts a session on the database for the user, connected from the host.
+    pub fn session(&self, user: &str, host: &str, database: &str) -> Result<Session> {
         if !self.database_exists(database) {
             return Err(PgError::fatal(code::INVALID_CATALOG_NAME, format!("database \"{database}\" does not exist")));
         }
-        Ok(Session { user: user.to_string(), database: database.to_string() })
+        Ok(Session {
+            engine: self.clone(),
+            user: user.to_string(),
+            host: host.to_string(),
+            database: database.to_string(),
+        })
+    }
+
+    /// branch_exists reports whether the database has the branch.
+    fn branch_exists(&self, database: &str, branch: &str) -> Result<bool> {
+        let noms = self.shared.data_dir.join(database).join(".dolt/noms");
+        let mut db = doltdb::database::Database::open(&noms)?;
+        let found = db.head(&doltdb::create::branch_ref(branch))?.is_some();
+        db.close()?;
+        Ok(found)
     }
 }
 
 /// Session runs statements for one connection.
 pub struct Session {
+    engine: Engine,
     pub user: String,
+    /// The address the client connected from.
+    pub host: String,
+    /// The current database, written as `database/branch` when the session switched to a branch.
     pub database: String,
 }
 
 impl Session {
     /// execute runs the statements of a simple query, stopping at the first error, and returns what each produced.
     pub fn execute(&mut self, query: &str) -> (Vec<Outcome>, Option<PgError>) {
-        let parsed = match pg_query::parse(query) {
-            Ok(parsed) => parsed,
-            Err(err) => return (Vec::new(), Some(parse_error(err))),
+        let statements = match parse::parse(query) {
+            Ok(statements) => statements,
+            Err(err) => return (Vec::new(), Some(err)),
         };
-        if parsed.protobuf.stmts.is_empty() {
+        if statements.is_empty() {
             return (vec![Outcome::Empty], None);
         }
         let mut outcomes = Vec::new();
-        for statement in &parsed.protobuf.stmts {
-            let node = statement.stmt.as_ref().and_then(|node| node.node.as_ref());
-            match node.map(|node| self.statement(node)) {
-                Some(Ok(outcome)) => outcomes.push(outcome),
-                Some(Err(err)) => return (outcomes, Some(err)),
-                None => outcomes.push(Outcome::Empty),
+        for statement in &statements {
+            match self.statement(statement) {
+                Ok(outcome) => outcomes.push(outcome),
+                Err(err) => return (outcomes, Some(err)),
             }
         }
         (outcomes, None)
     }
 
     /// statement runs one parsed statement.
-    fn statement(&mut self, node: &NodeEnum) -> Result<Outcome> {
+    fn statement(&mut self, statement: &Statement) -> Result<Outcome> {
+        match statement {
+            Statement::Use(target) => self.use_database(target),
+            Statement::Postgres { node, extras } => self.postgres_statement(node, extras),
+            Statement::SetExpression { .. } => Err(PgError::unsupported("SET to an expression")),
+        }
+    }
+
+    /// use_database switches the session to a database, or to a branch of one, as Go's USE does.
+    fn use_database(&mut self, target: &str) -> Result<Outcome> {
+        let not_found = || PgError::new(code::INVALID_CATALOG_NAME, format!("database not found: {target}"));
+        let (database, branch) = match target.split_once('/') {
+            Some((database, branch)) => (database, Some(branch)),
+            None => (target, None),
+        };
+        if !self.engine.database_exists(database) {
+            return Err(not_found());
+        }
+        if let Some(branch) = branch
+            && !self.engine.branch_exists(database, branch)?
+        {
+            return Err(not_found());
+        }
+        self.database = target.to_string();
+        Ok(Outcome::Command { tag: "SET".into() })
+    }
+
+    /// create_database runs CREATE DATABASE, which only Doltgres allows with IF NOT EXISTS.
+    fn create_database(&mut self, name: &str, if_not_exists: bool) -> Result<Outcome> {
+        let tag = Outcome::Command { tag: "CREATE DATABASE".into() };
+        if name.contains(['/', '\\']) || name.is_empty() {
+            return Err(PgError::internal(format!("Incorrect database name '{name}'")));
+        }
+        if self.engine.database_exists(name) {
+            if if_not_exists {
+                return Ok(tag);
+            }
+            return Err(PgError::new(code::DUPLICATE_DATABASE, format!("database \"{name}\" already exists")));
+        }
+        let dir = self.engine.shared.data_dir.join(name);
+        doltdb::create::create_database(&dir, DEFAULT_BRANCH, &self.user, &self.host, &create_times())?;
+        Ok(tag)
+    }
+
+    /// postgres_statement runs a statement of Postgres' grammar.
+    fn postgres_statement(&mut self, node: &NodeEnum, extras: &Extras) -> Result<Outcome> {
         match node {
+            NodeEnum::CreatedbStmt(create) => self.create_database(&create.dbname, extras.if_not_exists),
             NodeEnum::SelectStmt(select) if select.from_clause.is_empty() => {
                 let mut columns = Vec::new();
                 let mut row = Vec::new();
@@ -162,13 +243,4 @@ impl Session {
             _ => Err(PgError::unsupported("this statement")),
         }
     }
-}
-
-/// parse_error converts a parser error to Postgres' syntax error.
-fn parse_error(err: pg_query::Error) -> PgError {
-    let message = match err {
-        pg_query::Error::Parse(message) => message,
-        other => other.to_string(),
-    };
-    PgError::new(code::SYNTAX_ERROR, message)
 }
