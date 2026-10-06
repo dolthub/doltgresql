@@ -45,6 +45,8 @@ pub enum Kind {
     Domain(Domain),
     /// An array of the element type.
     Array(u32),
+    /// A base type that an extension provides.
+    Base(&'static crate::extensions::BaseType),
 }
 
 /// Domain is a type that restricts the values of its base type.
@@ -140,6 +142,13 @@ impl UserType {
                 default: (!definition.default.is_empty())
                     .then(|| String::from_utf8_lossy(&definition.default).into_owned()),
             }),
+            _ if definition.elem.is_empty() => {
+                let send = id::segments(&definition.send_func).into_iter().nth(1).unwrap_or_default();
+                match crate::extensions::base_type(&send) {
+                    Some(base) => Kind::Base(base),
+                    None => Kind::Array(0),
+                }
+            }
             _ => Kind::Array(type_oid(&definition.elem)),
         };
         UserType {
@@ -290,6 +299,31 @@ pub fn enum_type(schema: &str, name: &str, labels: &[String]) -> SerializedType 
         .enumerate()
         .map(|(i, label)| EnumLabel { id: id::new(SECTION_ENUM_LABEL, &[&type_id, label]), sort_order: (i + 1) as f32 })
         .collect();
+    t
+}
+
+/// extension_type returns the definition Go stores for a base type that an extension provides, whose support routines
+/// share its schema and are named after it, as pgvector's are.
+pub fn extension_type(schema: &str, name: &str) -> SerializedType {
+    let own = String::from_utf8_lossy(&id::new(SECTION_TYPE, &[schema, name])).into_owned();
+    let builtin = |n: &str| String::from_utf8_lossy(&id::new(SECTION_TYPE, &["pg_catalog", n])).into_owned();
+    let routine = |suffix: &str, params: &[&str]| {
+        let routine_name = format!("{name}{suffix}");
+        let mut segments = vec![schema, &routine_name];
+        segments.extend_from_slice(params);
+        id::new(SECTION_FUNCTION, &segments)
+    };
+    let (cstring, oid, int4, internal) = (builtin("cstring"), builtin("oid"), builtin("int4"), builtin("internal"));
+    let mut t = new_type(schema, name);
+    t.typ_type = b"b".to_vec();
+    t.typ_category = b"U".to_vec();
+    t.storage = b"e".to_vec();
+    t.input_func = routine("_in", &[&cstring, &oid, &int4]);
+    t.output_func = routine("_out", &[&own]);
+    t.receive_func = routine("_recv", &[&internal, &oid, &int4]);
+    t.send_func = routine("_send", &[&own]);
+    t.mod_in_func = routine("_typmod_in", &[&builtin("_cstring")]);
+    t.compare_func = routine("_cmp", &[&own, &own]);
     t
 }
 
@@ -477,7 +511,7 @@ impl Ctx<'_> {
     }
 
     /// store_type writes a type and its array type to the working root.
-    fn store_type(&mut self, definition: SerializedType) -> Result<()> {
+    pub(crate) fn store_type(&mut self, definition: SerializedType) -> Result<()> {
         let array = array_type(&definition);
         store(self.db, &mut self.txn.root, &definition)?;
         store(self.db, &mut self.txn.root, &array)?;

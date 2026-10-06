@@ -17,11 +17,13 @@
 //! The SQL engine. An engine serves the databases of a data directory, and each connection runs statements in a
 //! session, which parses them with Postgres' own grammar and the Doltgres-only syntax it rejects.
 
+pub mod aggregates;
 mod alter;
 pub mod array;
 pub mod auth;
 pub mod binary;
 pub mod cast;
+pub mod casts;
 pub mod catalog;
 pub mod datetime;
 mod ddl;
@@ -30,10 +32,12 @@ pub mod dolt;
 mod engine;
 pub mod error;
 pub mod expr;
+pub mod extensions;
 mod foreign;
 pub mod functions;
 pub mod json;
 pub mod numeric;
+pub mod operators;
 pub mod parse;
 mod pgcatalog;
 pub mod plan;

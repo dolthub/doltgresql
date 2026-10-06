@@ -16,6 +16,7 @@
 //! that describe the working root value.
 
 mod builtin;
+mod extensions;
 mod infoschema;
 pub mod reg;
 mod routines;

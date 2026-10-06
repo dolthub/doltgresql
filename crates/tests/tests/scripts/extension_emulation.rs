@@ -189,10 +189,10 @@ fn test_extension_emulation() {
                     expected: Expected::Error(Diagnostic { code: "42883", message: "function dgtest_charcount(unknown) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres extension: Postgres also names the missing control file, which Doltgres does not have.
                 ScriptTestAssertion {
                     query: "CREATE EXTENSION doltgres_test;",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: r#"extension "doltgres_test" is not available"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"extension "doltgres_test" is not available"#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },

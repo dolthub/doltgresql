@@ -157,7 +157,7 @@ impl ColumnType {
 
 /// resolve_type returns the column type that a type name and its modifiers denote, where `position` is the 1-based
 /// position of the name for errors.
-pub fn resolve_type(names: &[String], modifiers: &[i32], array: bool, position: Option<u32>) -> Result<ColumnType> {
+pub fn resolve_type(names: &[String], modifiers: &[String], array: bool, position: Option<u32>) -> Result<ColumnType> {
     let name = match names {
         [name] => name.as_str(),
         [schema, name] if schema == "pg_catalog" => name.as_str(),
@@ -172,19 +172,30 @@ pub fn resolve_type(names: &[String], modifiers: &[i32], array: bool, position: 
         [schema, name] | [_, schema, name] => crate::usertypes::lookup(Some(schema), name),
         _ => None,
     };
-    if let Some(user_type) = user_type.filter(|t| !t.is_array()) {
-        let oid = if array { user_type.array } else { user_type.oid };
+    if let Some(user_type) = user_type {
+        let oid = match (array, user_type.is_array()) {
+            (false, _) => user_type.oid,
+            (true, false) => user_type.array,
+            (true, true) => 0,
+        };
         if oid == 0 {
             return Err(not_found());
         }
         let modifier = match &user_type.kind {
-            crate::usertypes::Kind::Domain(domain) => domain.base.modifier,
+            crate::usertypes::Kind::Domain(domain) if !array => domain.base.modifier,
+            crate::usertypes::Kind::Base(definition) if !modifiers.is_empty() => {
+                (definition.typmod_in)(modifiers).map_err(|err| PgError { position, ..err })?
+            }
             _ => -1,
         };
-        return Ok(ColumnType { oid, modifier: if array { -1 } else { modifier } });
+        return Ok(ColumnType { oid, modifier });
     }
-    let t = builtin_type_named(name).filter(|t| !t.name.starts_with('_')).ok_or_else(not_found)?;
-    let modifier = type_modifier(t.name, modifiers, position)?;
+    let t = builtin_type_named(name).ok_or_else(not_found)?;
+    let numbers = modifiers
+        .iter()
+        .map(|m| m.parse().map_err(|_| PgError { position, ..crate::cast::invalid_syntax(crate::oid::INT4, m) }))
+        .collect::<Result<Vec<i32>>>()?;
+    let modifier = type_modifier(t.name, &numbers, position)?;
     let oid = if array { t.array } else { t.oid };
     if oid == 0 {
         return Err(not_found());
@@ -255,7 +266,7 @@ mod tests {
         let int8 = ColumnType { oid: 20, modifier: -1 };
         assert!(int8.serialized().unwrap().ends_with("3823020a0470675f636174616c6f67696e7438000006626967696e74"));
         assert_eq!(int8.encoding(), encoding::INT64);
-        let varchar = resolve_type(&["pg_catalog".into(), "varchar".into()], &[10], false, None).unwrap();
+        let varchar = resolve_type(&["pg_catalog".into(), "varchar".into()], &["10".into()], false, None).unwrap();
         assert_eq!((varchar.modifier, varchar.encoding()), (14, encoding::STRING));
         let err = resolve_type(&["nope".into()], &[], false, Some(5)).unwrap_err();
         assert_eq!((err.code, err.message.as_str(), err.position), ("42704", "type \"nope\" does not exist", Some(5)));

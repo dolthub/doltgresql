@@ -653,6 +653,7 @@ impl Ctx<'_> {
             ObjectType::ObjectTrigger => self.drop_triggers(drop),
             ObjectType::ObjectType => self.drop_types(drop, false),
             ObjectType::ObjectDomain => self.drop_types(drop, true),
+            ObjectType::ObjectExtension => self.drop_extensions(drop),
             other => Err(PgError::unsupported(format!("DROP {other:?}"))),
         }
     }

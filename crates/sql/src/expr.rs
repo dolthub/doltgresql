@@ -170,6 +170,8 @@ pub enum Expr {
     /// A comparison against each element of an array, which holds for every element when the flag is set.
     AnyArray(Box<Expr>, Box<Expr>, bool),
     ArrayOp(ArrayOp, Box<Expr>, Box<Expr>),
+    /// An expression over a value computed once, which the expression refers to as the subquery value.
+    Shared(Box<Expr>, Box<Expr>),
 }
 
 /// Bound is a bound expression with its type.
@@ -309,7 +311,9 @@ pub fn resolve_type_name(type_name: &pg_query::protobuf::TypeName) -> Result<Col
     for modifier in &type_name.typmods {
         match modifier.node.as_ref() {
             Some(NodeEnum::AConst(c)) => match &c.val {
-                Some(Val::Ival(i)) => modifiers.push(i.ival),
+                Some(Val::Ival(i)) => modifiers.push(i.ival.to_string()),
+                Some(Val::Sval(s)) => modifiers.push(s.sval.clone()),
+                Some(Val::Fval(f)) => modifiers.push(f.fval.clone()),
                 _ => {
                     return Err(PgError {
                         position: position(c.location),
@@ -711,7 +715,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                 bound.push((expr, crate::usertypes::base_type(ty)));
             }
             let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
-            let (index, arg_types, ret) = functions::aggregate::resolve(name, &types, call.location)?;
+            let user = crate::aggregates::find(name, &types);
+            let (index, arg_types, ret) = match &user {
+                Some(user) => (0, user.params.clone(), user.ret.oid),
+                None => functions::aggregate::resolve(name, &types, call.location)?,
+            };
             let mut args = Vec::with_capacity(bound.len());
             for ((bound, &target), node) in bound.into_iter().zip(&arg_types).zip(&call.args) {
                 args.push(coerce(bound, typ(target), false, arg_location(node))?.0);
@@ -733,7 +741,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                 };
                 order.push((self.bind(node)?.0, descending, nulls_first));
             }
-            Ok((AggCall { index, args, distinct: call.agg_distinct, filter, order, ret }, ret))
+            Ok((AggCall { index, args, distinct: call.agg_distinct, filter, order, ret, user }, ret))
         })();
         let (agg, ret) = match result {
             Ok(r) => r,
@@ -894,6 +902,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                     ("=", |l, r| Expr::Or(Box::new(l), Box::new(r)))
                 };
                 let mut result: Option<Expr> = None;
+                let mut shared = None;
                 for item in &list.items {
                     if let (Some(left), Some(right)) = (row_items(left_node), row_items(item)) {
                         let test = self.row_compare(cmp, left, right, e.location)?;
@@ -903,7 +912,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                         });
                         continue;
                     }
-                    let left = self.bind(left_node)?;
+                    let mut left = self.bind(left_node)?;
+                    if !matches!(left.0, Expr::Column(_) | Expr::Const(_) | Expr::Param(_)) {
+                        shared = Some(left.0);
+                        left.0 = Expr::SubqueryValue;
+                    }
                     let right = self.bind(item)?;
                     let (test, _) = self.binary(cmp, left, right, e.location)?;
                     result = Some(match result {
@@ -911,7 +924,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                         None => test,
                     });
                 }
-                Ok((result.ok_or_else(|| PgError::internal("an empty IN list"))?, typ(oid::BOOL)))
+                let result = result.ok_or_else(|| PgError::internal("an empty IN list"))?;
+                match shared {
+                    Some(value) => Ok((Expr::Shared(Box::new(value), Box::new(result)), typ(oid::BOOL))),
+                    None => Ok((result, typ(oid::BOOL))),
+                }
             }
             AExprKind::AexprBetween
             | AExprKind::AexprNotBetween
@@ -1129,6 +1146,24 @@ impl<'b, 'a> Binder<'b, 'a> {
         Ok(Expr::And(Box::new(lower), Box::new(upper)))
     }
 
+    /// user_operator returns the stored operator of the name for operands of the types, where an untyped operand takes
+    /// the other operand's type.
+    fn user_operator(
+        &mut self,
+        op: &str,
+        lt: u32,
+        rt: u32,
+    ) -> Result<Option<std::sync::Arc<crate::operators::UserOperator>>> {
+        let operators = self.ctx.user_operators()?;
+        let (lt, rt) = match (lt == oid::UNKNOWN, rt == oid::UNKNOWN) {
+            (true, true) => return Ok(None),
+            (true, false) => (rt, rt),
+            (false, true) => (lt, lt),
+            (false, false) => (lt, rt),
+        };
+        Ok(operators.iter().find(|o| o.name == op && o.left == lt && o.right == rt).cloned())
+    }
+
     /// operator_call binds a binary operator that a built-in function implements.
     fn operator_call(
         &mut self,
@@ -1159,6 +1194,11 @@ impl<'b, 'a> Binder<'b, 'a> {
             left = coerce(left, right.1, false, location)?;
         }
         let (lt, rt) = (left.1.oid, right.1.oid);
+        if let Some(operator) = self.user_operator(op, lt, rt)? {
+            let left = coerce(left, typ(operator.left), false, location)?.0;
+            let right = coerce(right, typ(operator.right), false, location)?.0;
+            return Ok((Expr::Routine(operator.routine.clone(), vec![left, right]), operator.routine.ret));
+        }
         let missing = || PgError {
             position: position(location),
             hint: Some(
@@ -1769,6 +1809,10 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     let opaque = |t: u32| matches!(t, oid::BYTEA | oid::UUID | oid::BIT | oid::VARBIT);
     let bits_or_ints = |t: u32| matches!(t, oid::BIT | oid::VARBIT | oid::INT4 | oid::INT8);
     let textual = is_string(from.oid) || is_string(to.oid);
+    let context = if explicit { crate::casts::EXPLICIT } else { crate::casts::IMPLICIT };
+    if let Some(bound) = user_cast(&expr, from, to, explicit, context) {
+        return Ok(bound);
+    }
     let allowed = explicit
         && (is_array_type(from.oid) == is_array_type(to.oid) || textual)
         && (!(opaque(from.oid) || opaque(to.oid)) || textual || (bits_or_ints(from.oid) && bits_or_ints(to.oid)))
@@ -1788,6 +1832,24 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         return Ok((Expr::Const(cast_value(value.clone(), to, explicit)?), to));
     }
     Ok((Expr::Cast(Box::new(expr), to, explicit), to))
+}
+
+/// user_cast calls the routine of a stored cast from one type to the other that a context allows, passing the
+/// target's modifier and whether the cast is explicit when the routine takes them.
+fn user_cast(expr: &Expr, from: ColumnType, to: ColumnType, explicit: bool, context: u8) -> Option<Bound> {
+    let (allowed, routine) = crate::casts::find(from.oid, to.oid)?;
+    if allowed < context {
+        return None;
+    }
+    let routine = routine?;
+    let mut args = vec![expr.clone()];
+    if routine.params.len() > 1 {
+        args.push(Expr::Const(Value::Int4(to.modifier)));
+    }
+    if routine.params.len() > 2 {
+        args.push(Expr::Const(Value::Bool(explicit)));
+    }
+    Some((Expr::Routine(routine, args), to))
 }
 
 /// char_cast converts to or from the "char" type, which converts to and from integers by its byte, to the string types,
@@ -1833,6 +1895,7 @@ pub(crate) fn implicitly_converts(from: u32, to: u32) -> bool {
         || (is_oid_type(from) && is_oid_type(to) && (from == oid::OID || to == oid::OID))
         || (from == oid::RECORD && is_composite(to))
         || (matches!(from, oid::BIT | oid::VARBIT) && matches!(to, oid::BIT | oid::VARBIT))
+        || crate::casts::context(from, to) == Some(crate::casts::IMPLICIT)
 }
 
 /// is_composite reports whether a type is a user-defined composite type.
@@ -1865,6 +1928,7 @@ pub(crate) fn assignable(from: u32, to: u32) -> bool {
         || (is_oid_type(from) && matches!(to, oid::INT4 | oid::INT8))
         || (to == oid::CHAR && matches!(from, oid::TEXT | oid::VARCHAR | oid::BPCHAR))
         || (from == oid::CHAR && is_string(to))
+        || crate::casts::context(from, to).is_some_and(|c| c >= crate::casts::ASSIGNMENT)
 }
 
 /// element_type returns the element type of an array type.
@@ -1909,6 +1973,9 @@ pub fn assign(bound: Bound, to: ColumnType, column: &str, location: i32) -> Resu
     }
     if from == to.oid && to.modifier == -1 {
         return Ok((bound.0, to));
+    }
+    if let Some(bound) = user_cast(&bound.0, bound.1, to, false, crate::casts::ASSIGNMENT) {
+        return Ok(bound);
     }
     if let Expr::Const(value) = &bound.0
         && !crate::cast::is_reg_type(to.oid)
@@ -2054,6 +2121,10 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
         (Value::Bytea(l), Value::Bytea(r)) => l.cmp(r),
         (Value::Uuid(l), Value::Uuid(r)) => l.cmp(r),
         (Value::Bit(l), Value::Bit(r)) => l.cmp(r),
+        (Value::Base(l), Value::Base(r)) => match crate::types::base_type(l.type_oid) {
+            Some(definition) => (definition.compare)(&l.data, &r.data),
+            None => Ordering::Equal,
+        },
         (Value::Record(l), Value::Record(r)) => {
             for (a, b) in l.iter().zip(r) {
                 let ordering = match (a.is_null(), b.is_null()) {
@@ -2238,6 +2309,13 @@ impl Expr {
                     let indexes: Vec<i32> = bounds.iter().map(|(_, u)| u.unwrap_or(0)).collect();
                     crate::array::element(&array, &indexes).cloned().unwrap_or(Value::Null)
                 }
+            }
+            Expr::Shared(value, body) => {
+                let value = value.eval(ctx, row)?;
+                let previous = std::mem::replace(&mut ctx.subquery_value, value);
+                let result = body.eval(ctx, row);
+                ctx.subquery_value = previous;
+                result?
             }
             Expr::AnyArray(comparison, array, all) => {
                 let Value::Array(array) = array.eval(ctx, row)? else { return Ok(Value::Null) };
@@ -2450,6 +2528,10 @@ impl Expr {
                 let c = b(c);
                 Expr::AnyArray(c, b(a), all)
             }
+            Expr::Shared(value, body) => {
+                let value = b(value);
+                Expr::Shared(value, b(body))
+            }
             Expr::ArrayOp(op, l, r) => {
                 let l = b(l);
                 Expr::ArrayOp(op, l, b(r))
@@ -2476,6 +2558,7 @@ impl Expr {
             | Expr::NullIf(l, r)
             | Expr::DateTime(_, l, r)
             | Expr::AnyArray(l, r, _)
+            | Expr::Shared(l, r)
             | Expr::ArrayOp(_, l, r)
             | Expr::DistinctFrom(l, r, _) => {
                 l.visit(f);

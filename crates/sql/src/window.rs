@@ -595,6 +595,7 @@ impl WindowCall {
                     filter: self.filter.clone(),
                     order: Vec::new(),
                     ret: self.ret.oid,
+                    user: None,
                 };
                 let mut accumulator = Accumulator::new(&call);
                 for p in self.frame(ctx, part, members, position)? {

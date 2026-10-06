@@ -413,7 +413,7 @@ fn all(db: &mut Database, root: &Root) -> Result<Vec<Arc<Routine>>> {
 }
 
 /// store writes a function, or a procedure, into a root value.
-fn store(db: &mut Database, root: &mut Root, function: &Function, procedure: bool) -> Result<()> {
+pub(crate) fn store(db: &mut Database, root: &mut Root, function: &Function, procedure: bool) -> Result<()> {
     let data = if procedure {
         Procedure {
             id: function.id.clone(),
@@ -1298,7 +1298,16 @@ pub fn call(ctx: &mut Ctx<'_>, routine: &Routine, args: Vec<Value>) -> Result<Va
     let result = match &routine.body {
         Body::Sql(_) => run_sql(ctx, routine, &args),
         Body::PlPgSql(operations) => crate::plpgsql::call(ctx, routine, operations, args),
-        Body::External => Err(PgError::unsupported(format!("the function {}", routine.signature()))),
+        Body::External => {
+            let (extension, symbol) = (&routine.object.extension_name, &routine.object.extension_symbol);
+            match crate::extensions::implementation(
+                &String::from_utf8_lossy(extension),
+                &String::from_utf8_lossy(symbol),
+            ) {
+                Some(implementation) => implementation(ctx, &args, routine.ret),
+                None => Err(PgError::unsupported(format!("the function {}", routine.signature()))),
+            }
+        }
     };
     ctx.session.call_depth -= 1;
     match result {

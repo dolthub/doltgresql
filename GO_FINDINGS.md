@@ -75,8 +75,8 @@ the column panics with a nil pointer dereference in `DoltgresType.CallReceive`, 
 element type that the column's stored array type refers to is not resolved after the restart, so it has neither a
 deserialization function nor a receive function. The same session that created the type reads the column fine.
 
-Impact: any database with an array-of-enum column (and likely an array of any user-defined type) is unreadable by Go
-after a restart.
+Impact: any database with an array-of-enum column, or an array of any user-defined type (confirmed for pgvector's
+`vector[]` too), is unreadable by Go after a restart.
 
 Hard to change in Go: needs element types of stored array types resolved through the type collection on load.
 

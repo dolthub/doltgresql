@@ -108,7 +108,7 @@ pub const AGGREGATES: &[Aggregate] = &[
 
 /// exists reports whether an aggregate of the name exists.
 pub fn exists(name: &str) -> bool {
-    AGGREGATES.iter().any(|a| a.name == name)
+    AGGREGATES.iter().any(|a| a.name == name) || crate::aggregates::exists(name)
 }
 
 /// AggCall is a call of an aggregate in a grouped query, over the input rows.
@@ -122,6 +122,8 @@ pub struct AggCall {
     pub order: Vec<(Expr, bool, bool)>,
     /// The result type.
     pub ret: u32,
+    /// The stored aggregate that the call runs instead of the built-in one at `index`.
+    pub user: Option<std::sync::Arc<crate::aggregates::UserAggregate>>,
 }
 
 /// resolve chooses the aggregate overload for arguments of the types, preferring exact matches, then integer and
@@ -210,7 +212,7 @@ impl Accumulator {
     }
 
     /// finish computes the aggregate over the group.
-    pub fn finish(self, _: &mut Ctx<'_>, call: &AggCall) -> Result<Value> {
+    pub fn finish(self, ctx: &mut Ctx<'_>, call: &AggCall) -> Result<Value> {
         let aggregate = &AGGREGATES[call.index];
         let mut rows: Vec<(Vec<Value>, Vec<Value>)> = self.keys.into_iter().zip(self.rows).collect();
         if !call.order.is_empty() {
@@ -252,6 +254,9 @@ impl Accumulator {
                     row.iter().map(|v| v.output().unwrap_or_else(|| "\u{0}".into())).collect::<Vec<_>>().join("\u{1}"),
                 )
             });
+        }
+        if let Some(user) = &call.user {
+            return crate::aggregates::run(ctx, user, args);
         }
         if aggregate.kind == Kind::CountStar {
             return Ok(Value::Int8(args.len() as i64));

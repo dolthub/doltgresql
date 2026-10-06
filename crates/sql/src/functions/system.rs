@@ -23,6 +23,14 @@ use crate::types::Value;
 /// FUNCTIONS are the session and server functions.
 pub const FUNCTIONS: &[Function] = &[
     Function {
+        name: "format_type",
+        args: &[crate::oid::OID, crate::oid::INT4],
+        ret: TEXT,
+        strict: false,
+        variadic: false,
+        implementation: format_type,
+    },
+    Function {
         name: "current_setting",
         args: &[TEXT],
         ret: TEXT,
@@ -163,4 +171,22 @@ fn current_database(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
 /// current_schema returns the first schema of the search path that exists.
 fn current_schema(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     Ok(ctx.creation_schema().map(Value::Text).unwrap_or(Value::Null))
+}
+
+/// format_type returns a type's name with a type modifier, or "???" for an unknown type.
+fn format_type(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let type_oid = match &args[0] {
+        Value::Null => return Ok(Value::Null),
+        Value::Oid(oid) => *oid,
+        Value::Reg(reg) => reg.oid,
+        _ => 0,
+    };
+    let modifier = match &args[1] {
+        Value::Int4(m) => Some(*m),
+        _ => None,
+    };
+    if type_oid == 0 {
+        return Ok(Value::Text("-".into()));
+    }
+    Ok(Value::Text(crate::cast::format_type(type_oid, modifier).unwrap_or_else(|| "???".into())))
 }

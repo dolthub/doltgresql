@@ -251,6 +251,10 @@ impl Ctx<'_> {
             "pg_proc" => self.pg_proc(rows),
             "pg_enum" => self.pg_enum(rows),
             "pg_trigger" => self.pg_trigger(rows),
+            "pg_extension" => self.pg_extension(rows),
+            "pg_available_extensions" | "pg_available_extension_versions" => self.pg_available_extensions(rows),
+            "pg_am" => self.pg_am(rows),
+            "pg_opclass" => self.pg_opclass(rows),
             "pg_settings" => {
                 self.pg_settings(rows);
                 Ok(())

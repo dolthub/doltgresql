@@ -70,6 +70,15 @@ pub enum Value {
     Uuid([u8; 16]),
     /// A value of the bit and bit varying types, as its binary digits.
     Bit(String),
+    /// A value of a base type that an extension provides.
+    Base(Box<BaseValue>),
+}
+
+/// BaseValue is a value of a base type that an extension provides, as the bytes that Doltgres stores for it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BaseValue {
+    pub type_oid: u32,
+    pub data: Vec<u8>,
 }
 
 /// EnumValue is a label of an enum type, which orders labels by their position in the type.
@@ -171,6 +180,7 @@ impl Value {
             Value::Bytea(bytes) => crate::binary::format_bytea(bytes),
             Value::Uuid(uuid) => crate::binary::format_uuid(uuid),
             Value::Bit(bits) => bits.clone(),
+            Value::Base(base) => (base_type(base.type_oid)?.output)(&base.data),
         })
     }
 
@@ -252,6 +262,7 @@ impl Value {
             Value::Bit(bits) => {
                 [(bits.len() as i32).to_be_bytes().as_slice(), &crate::binary::pack_bits(bits)].concat()
             }
+            Value::Base(base) => (base_type(base.type_oid)?.send)(&base.data),
         })
     }
 
@@ -324,6 +335,14 @@ impl Value {
             oid::TEXT | oid::UNKNOWN | 0 => Ok(Value::Text(text.to_string())),
             _ => crate::cast::input(text, type_oid),
         }
+    }
+}
+
+/// base_type returns the extension's definition of a base type.
+pub fn base_type(type_oid: u32) -> Option<&'static crate::extensions::BaseType> {
+    match crate::usertypes::get(type_oid)?.kind {
+        crate::usertypes::Kind::Base(definition) => Some(definition),
+        _ => None,
     }
 }
 

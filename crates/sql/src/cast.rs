@@ -26,9 +26,9 @@ pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
         return format!("{}[]", type_display(crate::expr::element_type(type_oid))).into();
     }
     if builtin_type(type_oid).is_none()
-        && let Some(user_type) = crate::usertypes::get(type_oid)
+        && let Some(name) = format_type(type_oid, None)
     {
-        return user_type.name.clone().into();
+        return name.into();
     }
     match type_oid {
         oid::BOOL => "boolean",
@@ -51,6 +51,63 @@ pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
         _ => builtin_type(type_oid).map_or("unknown", |t| t.name),
     }
     .into()
+}
+
+/// format_type returns a type's name with its modifier as Postgres' format_type does, where a modifier of None leaves
+/// the SQL standard names of char and bit at their defaults, or None for an unknown type.
+pub fn format_type(type_oid: u32, modifier: Option<i32>) -> Option<String> {
+    if crate::array::is_array_type(type_oid) {
+        return Some(format!("{}[]", format_type(crate::expr::element_type(type_oid), modifier)?));
+    }
+    let typmod = modifier.filter(|m| *m >= 0);
+    let with = |name: &str, suffix: String| Some(format!("{name}{suffix}"));
+    let precision = |p: i32| format!("({p})");
+    match type_oid {
+        oid::BPCHAR => match (typmod, modifier) {
+            (Some(m), _) => return with("character", precision(m - 4)),
+            (None, None) => return Some("character".into()),
+            _ => {}
+        },
+        oid::VARCHAR => return with("character varying", typmod.map(|m| precision(m - 4)).unwrap_or_default()),
+        oid::BIT => match (typmod, modifier) {
+            (Some(m), _) => return with("bit", precision(m)),
+            _ => return Some("bit".into()),
+        },
+        oid::VARBIT => return with("bit varying", typmod.map(precision).unwrap_or_default()),
+        oid::NUMERIC => {
+            let suffix = typmod.map(|m| {
+                let packed = m - 4;
+                format!("({},{})", packed >> 16, ((packed & 0x7ff) ^ 1024) - 1024)
+            });
+            return with("numeric", suffix.unwrap_or_default());
+        }
+        oid::TIME | oid::TIMETZ | oid::TIMESTAMP | oid::TIMESTAMPTZ => {
+            let (name, zone) = match type_oid {
+                oid::TIME => ("time", "without"),
+                oid::TIMETZ => ("time", "with"),
+                oid::TIMESTAMP => ("timestamp", "without"),
+                _ => ("timestamp", "with"),
+            };
+            return Some(format!("{name}{} {zone} time zone", typmod.map(precision).unwrap_or_default()));
+        }
+        oid::INTERVAL => return with("interval", typmod.map(|m| precision(m & 0xffff)).unwrap_or_default()),
+        oid::BOOL | oid::INT2 | oid::INT4 | oid::INT8 | oid::FLOAT4 | oid::FLOAT8 | oid::CHAR => {
+            return Some(type_display(type_oid).into_owned());
+        }
+        _ => {}
+    }
+    let name = if let Some(builtin) = builtin_type(type_oid) {
+        builtin.name.to_string()
+    } else {
+        let user_type = crate::usertypes::get(type_oid)?;
+        let quoted = crate::engine::quote_identifier(&user_type.name);
+        let visible = crate::usertypes::lookup(None, &user_type.name).is_some_and(|t| t.oid == type_oid);
+        if visible { quoted } else { format!("{}.{quoted}", crate::engine::quote_identifier(&user_type.schema)) }
+    };
+    Some(match typmod {
+        Some(m) => format!("{name}({m})"),
+        None => name,
+    })
 }
 
 /// jsonb_scalar converts a jsonb number or boolean to a numeric or boolean type, as Postgres' jsonb casts do.
@@ -485,6 +542,10 @@ fn user_input(text: &str, user_type: &crate::usertypes::UserType) -> Result<Valu
             let parsed = crate::array::parse(text, element, &|item| input(item, element))?;
             Ok(Value::Array(Box::new(parsed)))
         }
+        Kind::Base(definition) => Ok(Value::Base(Box::new(crate::types::BaseValue {
+            type_oid: user_type.oid,
+            data: (definition.input)(text, -1)?,
+        }))),
     }
 }
 
@@ -534,9 +595,24 @@ pub fn parse_record(text: &str, columns: usize) -> Result<Vec<Option<String>>> {
 }
 
 /// cast_to_user_type converts a value to a user-defined type.
-fn cast_to_user_type(value: Value, user_type: &crate::usertypes::UserType, explicit: bool) -> Result<Value> {
+fn cast_to_user_type(
+    value: Value,
+    user_type: &crate::usertypes::UserType,
+    to: ColumnType,
+    explicit: bool,
+) -> Result<Value> {
     use crate::usertypes::Kind;
     match (&user_type.kind, value) {
+        (Kind::Base(definition), Value::Base(base)) if base.type_oid == user_type.oid => {
+            if to.modifier != -1 {
+                (definition.typmod)(&base.data, to.modifier)?;
+            }
+            Ok(Value::Base(base))
+        }
+        (Kind::Base(definition), Value::Text(text)) => Ok(Value::Base(Box::new(crate::types::BaseValue {
+            type_oid: user_type.oid,
+            data: (definition.input)(&text, to.modifier)?,
+        }))),
         (Kind::Domain(domain), value) => cast_value(value, domain.base, explicit),
         (Kind::Enum(_), Value::Enum(e)) if e.type_oid == user_type.oid => Ok(Value::Enum(e)),
         (Kind::Composite(_), Value::Composite(c)) if c.type_oid == user_type.oid => Ok(Value::Composite(c)),
@@ -577,7 +653,7 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
         && builtin_type(to.oid).is_none()
         && let Some(user_type) = crate::usertypes::get(to.oid)
     {
-        return cast_to_user_type(value, &user_type, explicit);
+        return cast_to_user_type(value, &user_type, to, explicit);
     }
     if matches!(value, Value::Enum(_) | Value::Composite(_)) && is_string_type(to.oid) {
         return cast_value(Value::Text(value.output().unwrap_or_default()), to, explicit);

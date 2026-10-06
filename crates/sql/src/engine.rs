@@ -139,6 +139,9 @@ impl Engine {
                 authenticated: user.to_string(),
                 routines: None,
                 triggers: None,
+                operators: None,
+                casts: None,
+                aggregates: None,
                 user_types: None,
                 call_depth: 0,
             },
@@ -204,6 +207,12 @@ pub struct SessionState {
     pub triggers: Option<TriggerCache>,
     /// The user-defined types last loaded, with the address of the type collection they were loaded from.
     pub user_types: Option<(Option<store::Hash>, Arc<crate::usertypes::Types>)>,
+    /// The operators last loaded, with the addresses of the collections they were loaded from.
+    pub operators: Option<crate::operators::OperatorCache>,
+    /// The casts last loaded, with the addresses of the collections they were loaded from.
+    pub casts: Option<crate::casts::CastCache>,
+    /// The aggregates last loaded, with the addresses of the collections they were loaded from.
+    pub aggregates: Option<crate::aggregates::AggregateCache>,
     /// How many function calls are running inside one another.
     pub call_depth: usize,
 }
@@ -506,6 +515,8 @@ impl Session {
             named_params: None,
         };
         ctx.install_types()?;
+        ctx.install_casts()?;
+        ctx.install_aggregates()?;
         f(&mut ctx)
     }
 
@@ -864,6 +875,7 @@ impl Ctx<'_> {
             NodeEnum::CompositeTypeStmt(stmt) => self.create_composite(stmt),
             NodeEnum::CreateDomainStmt(stmt) => self.create_domain(stmt),
             NodeEnum::AlterEnumStmt(stmt) => self.alter_enum(stmt),
+            NodeEnum::CreateExtensionStmt(stmt) => self.create_extension(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

@@ -133,7 +133,7 @@ pub fn exists(name: &str) -> bool {
 
 /// is_array reports whether a type is an array type.
 fn is_array(type_oid: u32) -> bool {
-    builtin_type(type_oid).is_some_and(|t| t.elem != 0 && t.definition.typ_category == b"A")
+    crate::array::is_array_type(type_oid)
 }
 
 /// numeric_rank orders the numeric types by implicit promotion.
@@ -165,6 +165,11 @@ pub fn implicitly_castable(from: u32, to: u32) -> bool {
         || (to == ANYARRAY && is_array(from))
         || (to == ANYNONARRAY && !is_array(from))
         || (matches!(from, oid::BIT | oid::VARBIT) && matches!(to, oid::BIT | oid::VARBIT))
+        || crate::casts::context(from, to) == Some(crate::casts::IMPLICIT)
+        || (to == oid::OID && (crate::cast::is_reg_type(from) || matches!(from, oid::INT2 | oid::INT4 | oid::INT8)))
+        || (is_array(from)
+            && is_array(to)
+            && implicitly_castable(crate::expr::element_type(from), crate::expr::element_type(to)))
 }
 
 /// is_preferred reports whether a type is the preferred type of its category.
@@ -238,7 +243,12 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
     for (&p, &t) in params.iter().zip(types) {
         match p {
             ANYELEMENT | ANYNONARRAY => element = element.or(Some(t)),
-            ANYARRAY => element = element.or_else(|| builtin_type(t).map(|b| b.elem)),
+            ANYARRAY => {
+                element = element.or_else(|| match builtin_type(t) {
+                    Some(b) => Some(b.elem),
+                    None => is_array(t).then(|| crate::expr::element_type(t)),
+                })
+            }
             _ => {}
         }
     }
@@ -248,6 +258,9 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
         .zip(types)
         .map(|(&p, &t)| match p {
             ANYELEMENT | ANYNONARRAY => element,
+            ANYARRAY if builtin_type(element).is_none() && crate::usertypes::get(element).is_some() => {
+                crate::expr::array_of(element)
+            }
             ANYARRAY => builtin_type(element).map_or(t, |b| b.array),
             ANY => t,
             _ => p,
@@ -255,6 +268,9 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
         .collect();
     let ret = match f.ret {
         ANYELEMENT | ANYNONARRAY => element,
+        ANYARRAY if builtin_type(element).is_none() && crate::usertypes::get(element).is_some() => {
+            crate::expr::array_of(element)
+        }
         ANYARRAY => builtin_type(element).map_or(oid::TEXT, |b| b.array),
         other => other,
     };

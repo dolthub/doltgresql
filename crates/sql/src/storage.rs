@@ -122,6 +122,7 @@ pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
             out
         }
         Value::Uuid(uuid) => uuid.to_vec(),
+        Value::Base(base) => base.data.clone(),
         Value::Date(d) => {
             let ts = match *d {
                 dt::DATE_NOBEGIN => dt::TIMESTAMP_NOBEGIN,
@@ -282,6 +283,9 @@ fn deserialize_user_value(field: &[u8], user_type: &crate::usertypes::UserType) 
             let element_type = ColumnType { oid: *element, modifier: -1 };
             let array = crate::array::deserialize(field, *element, &|bytes| deserialize_value(bytes, element_type))?;
             Ok(Value::Array(Box::new(array)))
+        }
+        Kind::Base(_) => {
+            Ok(Value::Base(Box::new(crate::types::BaseValue { type_oid: user_type.oid, data: field.to_vec() })))
         }
     }
 }
