@@ -21,6 +21,7 @@ mod error;
 pub mod formats;
 mod stmtcache;
 mod stream;
+pub mod tls;
 
 use std::collections::HashMap;
 
@@ -30,11 +31,13 @@ pub use args::{Arg, Time};
 pub use auth::ScramClient;
 pub use error::{ConnectAttemptError, Error, PgError};
 pub use stream::{Notification, Recorder};
+pub use tls::{SslMode, TlsSettings};
 
 use args::encode_arg;
 use auth::{SCRAM_SHA_256, md5_password};
 use stmtcache::{LruCache, statement_name};
 use stream::Stream;
+use tls::Attempt;
 
 /// The capacity of pgx's statement cache.
 const STATEMENT_CACHE_CAPACITY: usize = 512;
@@ -67,8 +70,8 @@ pub struct ConnConfig {
     pub runtime_params: Vec<(String, String)>,
     /// The mode used by query and exec.
     pub default_query_exec_mode: QueryExecMode,
-    /// Whether to first try TLS and fall back to plaintext, which is pgx's default sslmode of "prefer".
-    pub prefer_tls: bool,
+    /// The sslmode and certificates, where pgx's default sslmode is prefer.
+    pub tls: TlsSettings,
     /// Records the bytes this connection sends, when set.
     pub recorder: Option<Recorder>,
 }
@@ -108,14 +111,17 @@ impl ConnConfig {
             database: percent_decode(database),
             runtime_params: Vec::new(),
             default_query_exec_mode: QueryExecMode::CacheStatement,
-            prefer_tls: true,
+            tls: TlsSettings::default(),
             recorder: None,
         };
         for pair in query.split('&').filter(|pair| !pair.is_empty()) {
             let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
             let (name, value) = (percent_decode(name), percent_decode(value));
             match name.as_str() {
-                "sslmode" => config.prefer_tls = value != "disable",
+                "sslmode" => config.tls.mode = SslMode::parse(&value)?,
+                "sslrootcert" => config.tls.root_cert = Some(value.into()),
+                "sslcert" => config.tls.cert = Some(value.into()),
+                "sslkey" => config.tls.key = Some(value.into()),
                 "default_query_exec_mode" => {
                     config.default_query_exec_mode = match value.as_str() {
                         "cache_statement" => QueryExecMode::CacheStatement,
@@ -194,55 +200,25 @@ pub struct Conn {
     statement_cache: LruCache,
     failed_describe_statement: String,
     closed: bool,
+    binary_result_oids: Option<Vec<u32>>,
 }
 
 impl Conn {
-    /// connect mirrors pgx.ConnectConfig. With TLS preferred, pgx first sends an SSLRequest, and when the server
-    /// refuses, it opens a second connection in plaintext.
+    /// connect mirrors pgx.ConnectConfig, trying TLS and plaintext connections in the order of the sslmode.
     pub fn connect(config: ConnConfig) -> Result<Conn, Error> {
         let address = format!("{}:{}", config.host, config.port);
         let mut attempts = Vec::new();
-        let attempt_error = |stage: &str, message: String, pg_error: Option<Box<PgError>>| ConnectAttemptError {
-            address: address.clone(),
-            host: config.host.clone(),
-            stage: stage.to_string(),
-            pg_error,
-            message,
-        };
-        if config.prefer_tls {
-            match Stream::connect(&address, config.recorder.as_ref()) {
-                Err(err) => attempts.push(attempt_error("dial error", err.to_string(), None)),
-                Ok(mut stream) => {
-                    let mut request = Vec::new();
-                    request.extend_from_slice(&8i32.to_be_bytes());
-                    request.extend_from_slice(&SSL_REQUEST_CODE.to_be_bytes());
-                    let answer = stream.write_raw(&request).and_then(|_| stream.read_byte());
-                    stream.shutdown();
-                    match answer {
-                        Ok(b'S') => {
-                            return Err(Error::Other(
-                                "the server accepted TLS, which the harness does not support".into(),
-                            ));
-                        }
-                        Ok(_) => {
-                            attempts.push(attempt_error("tls error", "server refused TLS connection".into(), None))
-                        }
-                        Err(err) => attempts.push(attempt_error("tls error", err.to_string(), None)),
-                    }
-                }
+        for attempt in config.tls.attempts() {
+            match Conn::connect_one(&config, &address, *attempt == Attempt::Tls) {
+                Ok(conn) => return Ok(conn),
+                Err(err) => attempts.push(err),
             }
         }
-        match Conn::connect_one(&config, &address) {
-            Ok(conn) => Ok(conn),
-            Err(err) => {
-                attempts.push(err);
-                Err(Error::Connect { user: config.user.clone(), database: config.database.clone(), attempts })
-            }
-        }
+        Err(Error::Connect { user: config.user.clone(), database: config.database.clone(), attempts })
     }
 
-    /// connect_one mirrors pgconn's connectOne for a plaintext connection.
-    fn connect_one(config: &ConnConfig, address: &str) -> Result<Conn, ConnectAttemptError> {
+    /// connect_one mirrors pgconn's connectOne, first requesting TLS when asked to.
+    fn connect_one(config: &ConnConfig, address: &str, tls: bool) -> Result<Conn, ConnectAttemptError> {
         let attempt_error = |stage: &str, err: Error| ConnectAttemptError {
             address: address.to_string(),
             host: config.host.clone(),
@@ -255,6 +231,32 @@ impl Conn {
         };
         let mut stream = Stream::connect(address, config.recorder.as_ref())
             .map_err(|err| attempt_error("dial error", Error::from(err)))?;
+        if tls {
+            let mut request = Vec::new();
+            request.extend_from_slice(&8i32.to_be_bytes());
+            request.extend_from_slice(&SSL_REQUEST_CODE.to_be_bytes());
+            let answer = stream.write_raw(&request).and_then(|_| stream.read_byte());
+            match answer {
+                Ok(b'S') => {
+                    let started = config
+                        .tls
+                        .client_config()
+                        .and_then(|tls_config| stream.start_tls(tls_config, tls::server_name(&config.host)?));
+                    if let Err(err) = started {
+                        stream.shutdown();
+                        return Err(attempt_error("tls error", err));
+                    }
+                }
+                Ok(_) => {
+                    stream.shutdown();
+                    return Err(attempt_error("tls error", Error::Other("server refused TLS connection".into())));
+                }
+                Err(err) => {
+                    stream.shutdown();
+                    return Err(attempt_error("tls error", err));
+                }
+            }
+        }
         let mut parameters = config.runtime_params.clone();
         parameters.push(("user".to_string(), config.user.clone()));
         if !config.database.is_empty() {
@@ -296,6 +298,7 @@ impl Conn {
                         statement_cache: LruCache::new(STATEMENT_CACHE_CAPACITY),
                         failed_describe_statement: String::new(),
                         closed: false,
+                        binary_result_oids: None,
                     });
                 }
                 BackendMessage::ParameterStatus { .. }
@@ -422,6 +425,20 @@ impl Conn {
         if failed && !sql.is_empty() {
             self.statement_cache.invalidate(sql);
         }
+        result
+    }
+
+    /// query_with_result_formats_by_oid mirrors Query with a QueryResultFormatsByOID option, asking for binary results
+    /// for the given types and text for every other.
+    pub fn query_with_result_formats_by_oid(
+        &mut self,
+        sql: &str,
+        args: &[Arg],
+        binary_oids: &[u32],
+    ) -> Result<QueryResult, Error> {
+        self.binary_result_oids = Some(binary_oids.to_vec());
+        let result = self.query(sql, args);
+        self.binary_result_oids = None;
         result
     }
 
@@ -641,8 +658,14 @@ impl Conn {
             parameter_format_codes.push(encoded.format);
             parameters.push(encoded.value);
         }
-        let result_format_codes: Vec<i16> =
-            sd.fields.iter().map(|field| formats::format_code_for_oid(field.data_type_oid)).collect();
+        let result_format_codes: Vec<i16> = sd
+            .fields
+            .iter()
+            .map(|field| match &self.binary_result_oids {
+                Some(oids) => i16::from(oids.contains(&field.data_type_oid)),
+                None => formats::format_code_for_oid(field.data_type_oid),
+            })
+            .collect();
         self.stream.send(&FrontendMessage::Bind {
             destination_portal: String::new(),
             prepared_statement: sd.name.clone(),

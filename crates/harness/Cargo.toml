@@ -13,6 +13,7 @@ md-5 = "0.10"
 pbkdf2 = "0.12"
 pgproto.workspace = true
 rand = "0.8"
+rustls = "0.23"
 sha2 = "0.10"
 
 [lints]

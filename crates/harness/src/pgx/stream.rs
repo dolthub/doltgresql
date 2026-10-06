@@ -66,9 +66,38 @@ pub struct Notification {
     pub payload: String,
 }
 
+/// Socket is a plaintext or TLS connection.
+enum Socket {
+    Plain(TcpStream),
+    Tls(Box<rustls::StreamOwned<rustls::ClientConnection, TcpStream>>),
+}
+
+impl Socket {
+    fn tcp(&self) -> &TcpStream {
+        match self {
+            Socket::Plain(tcp) => tcp,
+            Socket::Tls(tls) => tls.get_ref(),
+        }
+    }
+
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Socket::Plain(tcp) => tcp.read(buffer),
+            Socket::Tls(tls) => tls.read(buffer),
+        }
+    }
+
+    fn write_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        match self {
+            Socket::Plain(tcp) => tcp.write_all(bytes),
+            Socket::Tls(tls) => tls.write_all(bytes).and_then(|_| tls.flush()),
+        }
+    }
+}
+
 /// Stream sends and receives protocol messages over a socket, tracking the state that pgx tracks for every message.
 pub(crate) struct Stream {
-    socket: TcpStream,
+    socket: Socket,
     reader: FrameReader,
     write_buffer: Vec<u8>,
     recording: Option<SharedBuffer>,
@@ -90,7 +119,7 @@ impl Stream {
         socket.set_nodelay(true)?;
         socket.set_write_timeout(Some(READ_TIMEOUT))?;
         Ok(Stream {
-            socket,
+            socket: Socket::Plain(socket),
             reader: FrameReader::new(),
             write_buffer: Vec::new(),
             recording: recorder.map(Recorder::connection),
@@ -138,8 +167,14 @@ impl Stream {
             return Ok(byte);
         }
         let mut byte = [0u8; 1];
-        self.socket.set_read_timeout(Some(READ_TIMEOUT))?;
-        self.socket.read_exact(&mut byte)?;
+        self.socket.tcp().set_read_timeout(Some(READ_TIMEOUT))?;
+        let mut read = 0;
+        while read == 0 {
+            read = self.socket.read(&mut byte)?;
+            if read == 0 {
+                return Err(Error::Other("unexpected EOF".to_string()));
+            }
+        }
         Ok(byte[0])
     }
 
@@ -154,7 +189,7 @@ impl Stream {
             if remaining.is_zero() {
                 return Err(Error::Other(format!("timed out after {READ_TIMEOUT:?} waiting for the server")));
             }
-            self.socket.set_read_timeout(Some(remaining))?;
+            self.socket.tcp().set_read_timeout(Some(remaining))?;
             let mut buffer = [0u8; 16384];
             let count = match self.socket.read(&mut buffer) {
                 Ok(count) => count,
@@ -189,6 +224,26 @@ impl Stream {
 
     /// shutdown closes the socket.
     pub(crate) fn shutdown(&mut self) {
-        let _ = self.socket.shutdown(std::net::Shutdown::Both);
+        let _ = self.socket.tcp().shutdown(std::net::Shutdown::Both);
+    }
+
+    /// start_tls performs a TLS handshake on the socket, which must be plaintext with nothing buffered.
+    pub(crate) fn start_tls(
+        &mut self,
+        config: std::sync::Arc<rustls::ClientConfig>,
+        server_name: rustls::pki_types::ServerName<'static>,
+    ) -> Result<(), Error> {
+        let Socket::Plain(tcp) = &self.socket else {
+            return Err(Error::Other("the connection already uses TLS".to_string()));
+        };
+        let mut tcp = tcp.try_clone()?;
+        tcp.set_read_timeout(Some(READ_TIMEOUT))?;
+        let mut connection =
+            rustls::ClientConnection::new(config, server_name).map_err(|e| Error::Other(e.to_string()))?;
+        while connection.is_handshaking() {
+            connection.complete_io(&mut tcp)?;
+        }
+        self.socket = Socket::Tls(Box::new(rustls::StreamOwned::new(connection, tcp)));
+        Ok(())
     }
 }

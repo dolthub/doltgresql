@@ -1,0 +1,21 @@
+[package]
+name = "driver"
+description = "Runs doltgres server processes and the go-sql-server-driver scenarios against them"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+harness = { path = "../harness" }
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"] }
+regex = "1"
+time = "0.3"
+yaml-rust2 = "0.13"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["signal"] }
+
+[lints]
+workspace = true
