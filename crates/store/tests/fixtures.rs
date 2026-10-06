@@ -17,7 +17,10 @@
 
 use std::path::{Path, PathBuf};
 
-use store::{Chunk, GenerationalStore, Hash, JOURNAL_FILE, JournalRecord, TableReader, TableWriter, read_records};
+use store::{
+    Chunk, GenerationalStore, Hash, JOURNAL_FILE, JournalRecord, MANIFEST_FILE, Manifest, TableReader, TableWriter,
+    lock_hash, read_records,
+};
 
 /// fixture returns the directory of a fixture's database, the one directory in it that holds a `.dolt` directory.
 fn fixture(name: &str) -> PathBuf {
@@ -190,6 +193,36 @@ fn table_writer_rewrites_every_table_file_go_wrote() {
         }
     }
     assert!(checked >= 4, "only {checked} table files were checked");
+    assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn manifests_format_to_the_text_go_wrote() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let (mut checked, mut failures) = (0, Vec::new());
+    for entry in std::fs::read_dir(&fixtures).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.is_dir() {
+            continue;
+        }
+        let noms = fixture(path.file_name().unwrap().to_str().unwrap()).join(".dolt/noms");
+        for dir in [noms.clone(), noms.join("oldgen")] {
+            let Ok(text) = std::fs::read_to_string(dir.join(MANIFEST_FILE)) else { continue };
+            let manifest = Manifest::parse(text.as_bytes()).unwrap();
+            checked += 1;
+            if manifest.format() != text {
+                failures.push(format!("{}: formatted as {}", dir.display(), manifest.format()));
+            }
+            if manifest.lock != lock_hash(&manifest.root, &manifest.specs, &[], b"") {
+                failures.push(format!(
+                    "{}: lock {} is not the hash of the root and files",
+                    dir.display(),
+                    manifest.lock
+                ));
+            }
+        }
+    }
+    assert!(checked > 10, "only {checked} manifests were checked");
     assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
 }
 

@@ -91,4 +91,36 @@ impl Manifest {
         }
         Ok(Manifest { version: version.to_string(), format: fields[0].to_string(), lock, root, gc_gen, specs })
     }
+
+    /// format returns the manifest's text as Dolt's writeManifest writes it.
+    pub fn format(&self) -> String {
+        let mut fields = vec![self.version.clone(), self.format.clone(), self.lock.to_string(), self.root.to_string()];
+        if self.version == "5" {
+            fields.push(self.gc_gen.to_string());
+        }
+        for spec in &self.specs {
+            fields.push(spec.name.to_string());
+            fields.push(spec.chunk_count.to_string());
+        }
+        fields.join(":")
+    }
+}
+
+/// lock_hash returns the hash of a root and the names of the files holding its chunks, as Dolt's generateLockHash
+/// computes it for a manifest's lock and GC generation.
+pub fn lock_hash(root: &Hash, specs: &[TableSpec], appendix: &[TableSpec], extra: &[u8]) -> Hash {
+    let mut bytes = root.0.to_vec();
+    for spec in appendix {
+        bytes.extend_from_slice(&spec.name.0);
+    }
+    bytes.push(0);
+    for spec in specs {
+        bytes.extend_from_slice(&spec.name.0);
+    }
+    if !extra.is_empty() {
+        bytes.push(0);
+        bytes.extend_from_slice(extra);
+    }
+    bytes.push(0);
+    Hash::of(&bytes)
 }

@@ -31,7 +31,7 @@ pub use chunk::Chunk;
 pub use error::{Error, Result};
 pub use hash::Hash;
 pub use journal::{JOURNAL_FILE, JournalRecord, read_records};
-pub use manifest::{Manifest, TableSpec};
+pub use manifest::{MANIFEST_FILE, Manifest, TableSpec, lock_hash};
 pub use store::{BlockStore, GenerationalStore};
 pub use table::{TableReader, TableWriter};
 
