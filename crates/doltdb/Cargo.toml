@@ -7,6 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+objects = { path = "../objects" }
 prolly = { path = "../prolly" }
 serial = { path = "../serial" }
 sha2 = "0.10"

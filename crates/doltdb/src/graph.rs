@@ -38,6 +38,7 @@ struct Graph<'a> {
     reader: &'a dyn ChunkReader,
     lines: Vec<String>,
     seen: HashSet<Hash>,
+    seen_objects: HashSet<Hash>,
     queue: VecDeque<Hash>,
 }
 
@@ -134,6 +135,11 @@ impl Graph<'_> {
                         self.lines.push(format!("rootvalue-entry {address} {name} {} {entry}", hex(&key)));
                         if name == "tables" {
                             self.visit(entry);
+                        } else if self.seen_objects.insert(entry) {
+                            let kind = objects::Kind::from_field(name).unwrap();
+                            let object =
+                                objects::RootObject::deserialize(kind, &prolly::read_blob(self.reader, &entry)?)?;
+                            self.lines.push(format!("object {entry} {name} {}", object.show()));
                         }
                     }
                 }
@@ -179,7 +185,13 @@ impl Graph<'_> {
 /// dump_graph renders the refs and every object reachable from them, one sorted line each, as the Go graph oracle
 /// does.
 pub fn dump_graph(reader: &dyn ChunkReader, root: Hash) -> Result<String> {
-    let mut graph = Graph { reader, lines: vec![format!("root {root}")], seen: HashSet::new(), queue: VecDeque::new() };
+    let mut graph = Graph {
+        reader,
+        lines: vec![format!("root {root}")],
+        seen: HashSet::new(),
+        seen_objects: HashSet::new(),
+        queue: VecDeque::new(),
+    };
     let chunk = reader.require(&root)?;
     if let Some(bytes) = StoreRoot::new(Message(&chunk.data))?.address_map()?.filter(|b| !b.is_empty()) {
         for (name, address) in address_map(reader, bytes)? {
