@@ -56,6 +56,7 @@ pub const FUNCTIONS: &[Function] = &[
     f("date_part", &[TEXT, INTERVAL], FLOAT8, date_part),
     f("date_trunc", &[TEXT, TIMESTAMP], TIMESTAMP, date_trunc),
     f("date_trunc", &[TEXT, TIMESTAMPTZ], TIMESTAMPTZ, date_trunc),
+    f("date_trunc", &[TEXT, TIMESTAMPTZ, TEXT], TIMESTAMPTZ, date_trunc),
     f("date_trunc", &[TEXT, INTERVAL], INTERVAL, date_trunc),
     f("age", &[TIMESTAMP, TIMESTAMP], INTERVAL, age),
     f("age", &[TIMESTAMPTZ, TIMESTAMPTZ], INTERVAL, age),
@@ -68,6 +69,11 @@ pub const FUNCTIONS: &[Function] = &[
     f("make_timestamptz", &[INT4, INT4, INT4, INT4, INT4, FLOAT8, TEXT], TIMESTAMPTZ, make_timestamptz),
     f("make_interval", &[INT4, INT4, INT4, INT4, INT4, INT4, FLOAT8], INTERVAL, make_interval),
     f("to_timestamp", &[FLOAT8], TIMESTAMPTZ, to_timestamp_epoch),
+    f("to_timestamp", &[TEXT, TEXT], TIMESTAMPTZ, to_timestamp),
+    f("to_date", &[TEXT, TEXT], DATE, to_date),
+    f("to_char", &[TIMESTAMP, TEXT], TEXT, to_char),
+    f("to_char", &[TIMESTAMPTZ, TEXT], TEXT, to_char),
+    f("to_char", &[INTERVAL, TEXT], TEXT, to_char),
     f("justify_days", &[INTERVAL], INTERVAL, justify_days),
     f("justify_hours", &[INTERVAL], INTERVAL, justify_hours),
     f("justify_interval", &[INTERVAL], INTERVAL, justify_interval),
@@ -79,6 +85,10 @@ pub const FUNCTIONS: &[Function] = &[
     f("timezone", &[TEXT, TIMESTAMP], TIMESTAMPTZ, timezone_of_timestamp),
     f("timezone", &[INTERVAL, TIMESTAMPTZ], TIMESTAMP, timezone_of_timestamptz),
     f("timezone", &[INTERVAL, TIMESTAMP], TIMESTAMPTZ, timezone_of_timestamp),
+    f("timezone", &[TEXT, TIMETZ], TIMETZ, timezone_of_timetz),
+    f("timezone", &[INTERVAL, TIMETZ], TIMETZ, timezone_of_timetz),
+    f("date_bin", &[INTERVAL, TIMESTAMP, TIMESTAMP], TIMESTAMP, date_bin),
+    f("date_bin", &[INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ], TIMESTAMPTZ, date_bin),
 ];
 
 /// now returns the transaction's start.
@@ -161,7 +171,7 @@ fn unit_name(name: &str) -> Option<&'static str> {
         "year" | "years" | "y" | "yr" | "yrs" => "year",
         "decade" | "decades" | "dec" | "decs" => "decade",
         "century" | "centuries" | "c" | "cent" => "century",
-        "millennium" | "millennia" | "mil" | "mils" => "millennium",
+        "millennium" | "millennia" | "millenniums" | "mil" | "mils" => "millennium",
         "epoch" => "epoch",
         "dow" => "dow",
         "isodow" => "isodow",
@@ -465,15 +475,20 @@ fn date_trunc(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             Ok(Value::Timestamp(dt::timestamp_of_fields(&f).ok_or_else(timestamp_out_of_range)?))
         }
         Value::TimestampTz(ts) => {
-            let mut f = dt::fields_of_timestamp(*ts + zone_offset(*ts));
+            let zone = match args.get(2) {
+                Some(name) => named_zone(text(name))?,
+                None => dt::with_format(|f| f.zone.clone()),
+            };
+            let offset = zone.offset_at(*ts).0 as i64 * USECS_PER_SEC;
+            let mut f = dt::fields_of_timestamp(*ts + offset);
             if !truncate_fields(&mut f, unit) {
                 return Err(unsupported_unit(unit_text, value));
             }
             let local = dt::timestamp_of_fields(&f).ok_or_else(timestamp_out_of_range)?;
             let utc = if matches!(unit, "hour" | "minute" | "second" | "milliseconds" | "microseconds") {
-                *ts - (*ts + zone_offset(*ts) - local)
+                *ts - (*ts + offset - local)
             } else {
-                local - local_offset(local)
+                local - zone.offset_for_local(local) as i64 * USECS_PER_SEC
             };
             Ok(Value::TimestampTz(utc))
         }
@@ -833,6 +848,56 @@ fn timezone_of_timestamp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::TimestampTz(ts - zone.offset_for_local(ts) as i64 * USECS_PER_SEC))
 }
 
+/// timezone_of_timetz converts a time with a zone to another zone, at the zone's offset at the transaction's start
+/// for a zone that has daylight saving time.
+fn timezone_of_timetz(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    if let Value::Interval(iv) = &args[0]
+        && (iv.months != 0 || iv.days != 0)
+    {
+        let shown = Value::Interval(*iv).output().unwrap_or_default();
+        return Err(PgError::new(
+            code::INVALID_PARAMETER_VALUE,
+            format!("interval time zone \"{shown}\" must not include months or days"),
+        ));
+    }
+    let zone = argument_zone(&args[0])?;
+    let Value::TimeTz(time, west) = args[1] else { return Ok(Value::Null) };
+    let new_west = -zone.offset_at(ctx.txn.started).0;
+    let time = (time + (west - new_west) as i64 * USECS_PER_SEC).rem_euclid(USECS_PER_DAY);
+    Ok(Value::TimeTz(time, new_west))
+}
+
+/// date_bin finds the start of the bin of a stride, counted from an origin, that holds a timestamp.
+fn date_bin(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let Value::Interval(stride) = &args[0] else { return Ok(Value::Null) };
+    let (Value::Timestamp(ts) | Value::TimestampTz(ts), Value::Timestamp(origin) | Value::TimestampTz(origin)) =
+        (&args[1], &args[2])
+    else {
+        return Ok(Value::Null);
+    };
+    if [*ts, *origin].iter().any(|t| *t == TIMESTAMP_NOBEGIN || *t == TIMESTAMP_NOEND) {
+        return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "timestamps cannot be binned into infinite intervals"));
+    }
+    if stride.months != 0 {
+        return Err(PgError::new(
+            code::FEATURE_NOT_SUPPORTED,
+            "timestamps cannot be binned into intervals containing months or years",
+        ));
+    }
+    let stride = stride.days as i64 * USECS_PER_DAY + stride.micros;
+    if stride <= 0 {
+        return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "stride must be greater than zero"));
+    }
+    let out_of_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
+    let difference = ts.checked_sub(*origin).ok_or_else(out_of_range)?;
+    let mut delta = difference - difference % stride;
+    if origin > ts && stride > 1 {
+        delta -= stride;
+    }
+    let result = origin.checked_add(delta).ok_or_else(timestamp_out_of_range)?;
+    Ok(if matches!(args[1], Value::TimestampTz(_)) { Value::TimestampTz(result) } else { Value::Timestamp(result) })
+}
+
 /// add_months_days adds months and days to a local timestamp as Postgres does, clamping the day to the month's end.
 pub fn add_months_days(local: i64, months: i32, days: i32) -> Result<i64> {
     let mut f = dt::fields_of_timestamp(local);
@@ -913,4 +978,35 @@ pub fn interval_multiply(iv: Interval, factor: f64, divide: bool) -> Result<Inte
         return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range"));
     }
     Ok(Interval { months, days, micros: micros as i64 })
+}
+
+/// to_timestamp reads text with a template as a timestamptz.
+fn to_timestamp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let zone = dt::with_format(|f| f.zone.clone());
+    crate::formatting::to_timestamp(text(&args[0]), text(&args[1]), &zone).map(Value::TimestampTz)
+}
+
+/// to_date reads text with a template as a date.
+fn to_date(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    crate::formatting::to_date(text(&args[0]), text(&args[1])).map(Value::Date)
+}
+
+/// to_char writes a timestamp, timestamptz, or interval with a template.
+fn to_char(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let template = text(&args[1]);
+    let written = match &args[0] {
+        Value::Timestamp(ts) => crate::formatting::timestamp_to_char(*ts, None, template)?,
+        Value::TimestampTz(ts) => {
+            let (offset, name) = dt::with_format(|f| f.zone.offset_at(*ts));
+            let local = if dt::TIMESTAMP_NOBEGIN < *ts && *ts < dt::TIMESTAMP_NOEND {
+                ts + offset as i64 * USECS_PER_SEC
+            } else {
+                *ts
+            };
+            crate::formatting::timestamp_to_char(local, Some((offset, name)), template)?
+        }
+        Value::Interval(interval) => crate::formatting::interval_to_char(interval, template)?,
+        _ => None,
+    };
+    Ok(written.map_or(Value::Null, Value::Text))
 }

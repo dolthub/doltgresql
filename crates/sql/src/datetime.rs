@@ -262,10 +262,7 @@ impl Zone {
             if offset_text.starts_with(['+', '-']) { offset_text.to_string() } else { format!("+{offset_text}") };
         let west = parse_offset(&signed)?;
         let display = name_part.trim_start_matches('<').trim_end_matches('>').to_string();
-        let display = if display.is_empty() { trimmed.to_string() } else { display };
-        // A bare offset like +05:30 is an offset east of UTC, as ISO 8601 writes it.
-        let offset = if name_part.is_empty() { west } else { -west };
-        Some(Zone::Fixed { offset, name: display })
+        Some(Zone::Fixed { offset: -west, name: display })
     }
 
     /// offset_at returns the zone's offset east of UTC, and its abbreviation, at a UTC timestamp.
@@ -817,7 +814,12 @@ fn tokens(text: &str) -> Vec<String> {
             if !current.is_empty() {
                 out.push(std::mem::take(&mut current));
             }
-        } else if (c == '+' || c == '-') && !current.is_empty() && current.contains(':') {
+        } else if (c == '+' || c == '-')
+            && !current.is_empty()
+            && (current.contains(':')
+                || c == '+'
+                || (current.matches('-').count() == 2 && current.starts_with(|d: char| d.is_ascii_digit())))
+        {
             // A zone offset right after a time, as in 12:00:00-08.
             out.push(std::mem::take(&mut current));
             current.push(c);
@@ -1158,6 +1160,10 @@ pub fn parse_time(text: &str, format: &Format) -> Result<i64> {
 /// parse_timetz reads a time of day with a zone, returning the time and the zone in seconds west of UTC.
 pub fn parse_timetz(text: &str, format: &Format, now: Now) -> Result<(i64, i32)> {
     let p = parse_datetime(text, Kind::TimeTz, format.order)?;
+    if p.special == Some("now") {
+        let offset = format.zone.offset_at(now.timestamp).0;
+        return Ok(((now.timestamp + offset as i64 * USECS_PER_SEC).rem_euclid(USECS_PER_DAY), -offset));
+    }
     if p.hour.is_none() && p.special != Some("allballs") {
         return Err(invalid(Kind::TimeTz, text));
     }
@@ -1192,6 +1198,7 @@ fn interval_unit(word: &str) -> Option<&'static str> {
 /// IntervalBuilder accumulates interval fields, cascading fractions of larger units into smaller ones.
 #[derive(Default)]
 struct IntervalBuilder {
+    years: f64,
     months: f64,
     days: f64,
     micros: f64,
@@ -1209,11 +1216,18 @@ impl IntervalBuilder {
             "d" => self.add_days(amount),
             "w" => self.add_days(amount * 7.0),
             "mon" => self.add_months(amount),
-            "y" => self.add_months(amount * 12.0),
-            "dec" => self.add_months(amount * 120.0),
-            "cent" => self.add_months(amount * 1200.0),
-            _ => self.add_months(amount * 12000.0),
+            "y" => self.add_years(amount),
+            "dec" => self.add_years(amount * 10.0),
+            "cent" => self.add_years(amount * 100.0),
+            _ => self.add_years(amount * 1000.0),
         }
+    }
+
+    /// add_years adds years, cascading a fraction into months.
+    fn add_years(&mut self, amount: f64) {
+        let whole = amount.trunc();
+        self.years += whole;
+        self.add_months((amount - whole) * 12.0);
     }
 
     /// add_days adds days, cascading a fraction into microseconds.
@@ -1230,15 +1244,22 @@ impl IntervalBuilder {
         self.add_days((amount - whole) * 30.0);
     }
 
-    /// build returns the interval, rounding microseconds.
-    fn build(&self) -> Option<Interval> {
-        let months = self.months.round();
-        let days = self.days.round();
-        let micros = self.micros.round();
-        if months.abs() > i32::MAX as f64 || days.abs() > i32::MAX as f64 || micros.abs() >= i64::MAX as f64 {
-            return None;
+    /// build returns the interval of some text, rounding microseconds, failing as Postgres does when a field or the
+    /// whole interval is out of range.
+    fn build(&self, text: &str) -> Result<Interval> {
+        let (years, months, days, micros) =
+            (self.years.round(), self.months.round(), self.days.round(), self.micros.round());
+        if [years, months, days].iter().any(|f| f.abs() > i32::MAX as f64) || micros.abs() >= i64::MAX as f64 {
+            return Err(PgError::new(
+                code::INTERVAL_FIELD_OVERFLOW,
+                format!("interval field value out of range: \"{text}\""),
+            ));
         }
-        Some(Interval { months: months as i32, days: days as i32, micros: micros as i64 })
+        let total = years * 12.0 + months;
+        if total.abs() > i32::MAX as f64 {
+            return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range"));
+        }
+        Ok(Interval { months: total as i32, days: days as i32, micros: micros as i64 })
     }
 }
 
@@ -1247,8 +1268,6 @@ impl IntervalBuilder {
 pub fn parse_interval(text: &str) -> Result<Interval> {
     let invalid =
         || PgError::new(code::INVALID_DATETIME_FORMAT, format!("invalid input syntax for type interval: \"{text}\""));
-    let overflow =
-        || PgError::new(code::DATETIME_FIELD_OVERFLOW, format!("interval field value out of range: \"{text}\""));
     let trimmed = text.trim();
     if let Some(iso) = trimmed.strip_prefix('P').or_else(|| trimmed.strip_prefix('p')) {
         return parse_iso_interval(iso).ok_or_else(invalid);
@@ -1338,7 +1357,7 @@ pub fn parse_interval(text: &str) -> Result<Interval> {
     if !seen_any {
         return Err(invalid());
     }
-    let mut iv = b.build().ok_or_else(overflow)?;
+    let mut iv = b.build(text)?;
     if ago {
         iv = Interval { months: -iv.months, days: -iv.days, micros: -iv.micros };
     }
@@ -1374,7 +1393,7 @@ fn parse_iso_interval(text: &str) -> Option<Interval> {
     if !number.is_empty() {
         return None;
     }
-    b.build()
+    b.build("").ok()
 }
 
 /// Go stores dates and timestamps as Go times, with its own times standing for the infinities.

@@ -105,6 +105,7 @@ pub mod code {
     pub const BAD_COPY_FILE_FORMAT: &str = "22P04";
     pub const UNDEFINED_FILE: &str = "58P01";
     pub const QUERY_CANCELED: &str = "57014";
+    pub const INTERVAL_FIELD_OVERFLOW: &str = "22015";
 }
 
 /// PgError is an error to report to the client.

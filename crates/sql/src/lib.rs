@@ -36,6 +36,7 @@ pub mod error;
 pub mod expr;
 pub mod extensions;
 mod foreign;
+pub mod formatting;
 pub mod functions;
 pub mod json;
 pub mod numeric;

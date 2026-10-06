@@ -13053,3 +13053,439 @@ fn test_unnest_multidimensional_arguments() {
         },
     ]);
 }
+
+#[test]
+fn test_formatting_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "to_char templates",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP '2021-09-05 07:03:04.123456', 'FMDDth FMMonth YYYY, FMHH12:MI:SS.MS pm');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("5th September 2021, 7:03:04.123 am")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT to_char(TIMESTAMP '2021-09-05 07:03:04.123456', 'Dy DD Mon YY HH24 "quoted \"text\"" US FF1 FF2 FF4 FF5');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T(r#"Sun 05 Sep 21 07 quoted "text" 123456 1 12 1234 12345"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP '2021-01-03 00:00:00', 'IYYY-IW-ID IDDD DDD WW W Q CC J');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("2020-53-7 371 003 01 1 1 21 2459218")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP '2021-12-31 23:59:59', 'RM rm FMRM SSSS SSSSS');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("XII  xii  XII 86399 86399")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP '0044-03-15 12:00:00 BC', 'YYYY BC B.C. ad a.d. CC Y,YYY');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("0044 BC B.C. bc b.c. -01 0,044")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP '2001-11-21 12:00:00', 'DDTH DDth MMTH YYYYth HH12TH');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("21ST 21st 11TH 2001st 12TH")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP '2021-09-15 21:43:56', 'TZ TZH:TZM OF');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T(" +00:00 +00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP 'infinity', 'YYYY');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP '2021-09-15 21:43:56', '');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(DATE '2020-02-29', 'Day, FMMonth FMDDth YYYY');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("Saturday , February 29th 2020")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "to_char of timestamptz and interval",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET timezone TO 'America/New_York';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMPTZ '2021-07-04 12:30:00+00', 'YYYY-MM-DD HH24:MI TZ tz OF TZH:TZM');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("2021-07-04 08:30 EDT edt -04 -04:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMPTZ '2021-01-04 12:30:00+00', 'YYYY-MM-DD HH24:MI TZ OF');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("2021-01-04 07:30 EST -05")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET timezone TO '+05:30';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMPTZ '2021-01-04 12:30:00+00', 'HH24:MI TZ OF');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("07:00  -05:30")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET timezone TO 'UTC';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(INTERVAL '1 year 2 months 3 days 04:05:06.789', 'YYYY MM DD HH24 MI SS MS US');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("0001 02 03 04 05 06 789 789000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(INTERVAL '-25 hours', 'HH24 HH12 HH');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("-25 -01 -01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(INTERVAL '15 months', 'Y RM Q');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("1 III  1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(INTERVAL '1 day', 'Day');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: "invalid format specification for an interval value", hint: "Intervals are not tied to specific calendar dates.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIME '13:14:15', 'HH12:MI:SS AM');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("01:14:15 PM")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "to_timestamp and to_date",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET timezone TO 'UTC';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021-09-05 7:03 PM', 'YYYY-MM-DD HH12:MI AM');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_timestamp", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2021-09-05 19:03:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('05 Sep 2021', 'DD Mon YYYY');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_timestamp", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2021-09-05 00:00:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021 248', 'YYYY DDD');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_timestamp", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2021-09-05 00:00:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021-09-05 12:34:56.789123', 'YYYY-MM-DD HH24:MI:SS.FF3');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_timestamp", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2021-09-05 12:34:56.789+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021-09-05 12:34 +02:30', 'YYYY-MM-DD HH24:MI TZH:TZM');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_timestamp", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2021-09-05 10:04:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('20 21', 'CC YY');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_timestamp", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("1921-01-01 00:00:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT to_date('2021-W35-7', 'IYYY-"W"IW-ID');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("to_date", DATE)],
+                        rows: &[
+                            &[T("2021-09-05")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_date('Sunday 5th September 2021', 'Day DDth Month YYYY');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_date", DATE)],
+                        rows: &[
+                            &[T("2021-09-05")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_date('XII 2021 1', 'RM YYYY DD');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_date", DATE)],
+                        rows: &[
+                            &[T("2021-12-01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_date('', '');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_date", DATE)],
+                        rows: &[
+                            &[T("0001-01-01 BC")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "to_timestamp errors",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021-13-01', 'YYYY-MM-DD');",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"date/time field value out of range: "2021-13-01""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('13:00 PM', 'HH12:MI AM');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"hour "13" is invalid for the 12-hour clock"#, hint: "Use the 24-hour clock, or give an hour between 1 and 12.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021 2022', 'YYYY YYYY');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"conflicting values for "YYYY" field in formatting string"#, detail: "This value contradicts a previous setting for the same field type.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('202', 'YYYYMM');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"source string too short for "YYYY" formatting field"#, detail: "Field requires 4 characters, but only 3 remain.", hint: r#"If your source string is not fixed-width, try using the "FM" modifier."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021-xx-01', 'YYYY-MM-DD');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid value "xx" for "MM""#, detail: "Value must be an integer.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021 Foo', 'YYYY Mon');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid value "Foo" for "Mon""#, detail: "The given value did not match any of the allowed values for this field.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021-05 3', 'YYYY-MM IW');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: "invalid combination of date conventions", hint: "Do not mix Gregorian and ISO week date conventions in a formatting template.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('12 TZ', 'HH24 TZ');",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"formatting field "TZ" is only supported in to_char"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('2021-01-01 +20', 'YYYY-MM-DD TZH');",
+                    expected: Expected::Error(Diagnostic { code: "22009", message: r#"time zone displacement out of range: "2021-01-01 +20""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('99999999999', 'YYYY');",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"value for "YYYY" in source string is out of range"#, detail: "Value must be in the range -2147483648 to 2147483647.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_timestamp('15', 'DDD');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: "cannot calculate day of year without year information", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(INTERVAL '1 day', 'TZ');",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: "invalid format specification for an interval value", hint: "Intervals are not tied to specific calendar dates.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(TIMESTAMP '2021-01-01', 'FMDDTH') ;",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("1ST")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

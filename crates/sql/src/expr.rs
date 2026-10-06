@@ -86,6 +86,7 @@ pub enum DateOp {
     TimeMinusInterval,
     TimeMinusTime,
     DatePlusTime,
+    DatePlusTimeTz,
     IntervalPlusInterval,
     IntervalMinusInterval,
     IntervalTimesFloat,
@@ -1550,7 +1551,7 @@ fn pattern_function(op: &str) -> Option<&'static str> {
 }
 
 /// implicit_datetime reports whether Postgres converts one date or time type to another without being asked.
-fn implicit_datetime(from: u32, to: u32) -> bool {
+pub(crate) fn implicit_datetime(from: u32, to: u32) -> bool {
     matches!(
         (from, to),
         (oid::DATE, oid::TIMESTAMP | oid::TIMESTAMPTZ)
@@ -1615,6 +1616,9 @@ impl<'b, 'a> Binder<'b, 'a> {
             ("-", oid::DATE, t) if int(t) => (D::DateMinusDays, oid::DATE, oid::INT4, oid::DATE),
             ("-", oid::DATE, oid::DATE) => (D::DateMinusDate, oid::DATE, oid::DATE, oid::INT4),
             ("+", oid::DATE, oid::TIME) | ("+", oid::TIME, oid::DATE) => (D::DatePlusTime, lt, rt, oid::TIMESTAMP),
+            ("+", oid::DATE, oid::TIMETZ) | ("+", oid::TIMETZ, oid::DATE) => {
+                (D::DatePlusTimeTz, lt, rt, oid::TIMESTAMPTZ)
+            }
             ("+", oid::DATE | oid::TIMESTAMP, oid::INTERVAL) => {
                 (D::TimestampPlusInterval(false), oid::TIMESTAMP, oid::INTERVAL, oid::TIMESTAMP)
             }
@@ -2625,6 +2629,10 @@ fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
         }
         (DateOp::DatePlusTime, Value::Date(d), Value::Time(t))
         | (DateOp::DatePlusTime, Value::Time(t), Value::Date(d)) => Value::Timestamp(d as i64 * USECS_PER_DAY + t),
+        (DateOp::DatePlusTimeTz, Value::Date(d), Value::TimeTz(t, west))
+        | (DateOp::DatePlusTimeTz, Value::TimeTz(t, west), Value::Date(d)) => {
+            Value::TimestampTz(d as i64 * USECS_PER_DAY + t + west as i64 * dt::USECS_PER_SEC)
+        }
         (DateOp::TimestampPlusInterval(tz), Value::Timestamp(ts) | Value::TimestampTz(ts), Value::Interval(iv))
         | (DateOp::TimestampPlusInterval(tz), Value::Interval(iv), Value::Timestamp(ts) | Value::TimestampTz(ts)) => {
             let result = timestamp_plus_interval(ts, iv, tz)?;
