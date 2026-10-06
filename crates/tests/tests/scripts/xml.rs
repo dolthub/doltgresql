@@ -2067,3 +2067,340 @@ x
         },
     ]);
 }
+
+#[test]
+fn test_xml_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "xml parse errors",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '<a></b>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Opening and ending tag mismatch: a line 1 and b
+<a></b>
+       ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '<a b="1" b="2"/>'::xml;"#,
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Attribute b redefined
+<a b="1" b="2"/>
+              ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a b=1/>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: AttValue: " or ' expected
+<a b=1/>
+     ^
+line 1: attributes construct error
+<a b=1/>
+     ^
+line 1: Couldn't find end of Start Tag a line 1
+<a b=1/>
+     ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '<a b="1"c="2"/>'::xml;"#,
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: attributes construct error
+<a b="1"c="2"/>
+        ^
+line 1: Couldn't find end of Start Tag a line 1
+<a b="1"c="2"/>
+        ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a b/>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Specification mandates value for attribute b
+<a b/>
+    ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a><!-- x'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Comment not terminated
+<a><!-- x
+         ^
+line 1: Premature end of data in tag a line 1
+<a><!-- x
+         ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a><![CDATA[x'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Unregistered error message
+<a><![CDATA[x
+             ^
+line 1: Premature end of data in tag a line 1
+<a><![CDATA[x
+             ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a>]]></a>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Sequence ']]>' not allowed in content
+<a>]]></a>
+   ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a>&#0;</a>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: xmlParseCharRef: invalid xmlChar value 0
+<a>&#0;</a>
+       ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a>&amp</a>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: EntityRef: expecting ';'
+<a>&amp</a>
+       ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT E'<a>\n<b>\n</a>'::xml;"#,
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 3: Opening and ending tag mismatch: b line 2 and a
+</a>
+    ^
+line 3: Premature end of data in tag a line 1
+</a>
+    ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '<a b="<"/>'::xml;"#,
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: Unescaped '<' not allowed in attributes values
+<a b="<"/>
+      ^
+line 1: attributes construct error
+<a b="<"/>
+      ^
+line 1: Couldn't find end of Start Tag a line 1
+<a b="<"/>
+      ^
+line 1: StartTag: invalid element name
+<a b="<"/>
+       ^"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<?pi x?><a/>'::xml, '<a><?xml x?></a>'::xml;",
+                    expected: Expected::Error(Diagnostic { code: "2200N", message: "invalid XML content", detail: r#"line 1: XML declaration allowed only at the start of the document
+<a><?xml x?></a>
+        ^"#, position: 29, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<!DOCTYPE a><a/>'::xml;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xml", XML)],
+                        rows: &[
+                            &[T("<!DOCTYPE a><a/>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<a>&#65;&#x42;&lt;&gt;&amp;&quot;&apos;</a>'::xml;",
+                    expected: Expected::Rows {
+                        columns: &[Column("xml", XML)],
+                        rows: &[
+                            &[T("<a>&#65;&#x42;&lt;&gt;&amp;&quot;&apos;</a>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xml_is_well_formed('<a xmlns:x="u"><x:b/></a>'), xml_is_well_formed('<a><b></a></b>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xml_is_well_formed", BOOL), Column("xml_is_well_formed", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "xml serialization through xpath",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('/a/*', '<a><b x="1" y="2">t</b><c/><!--k--><?p d?></a>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T(r#"{"<b x=\"1\" y=\"2\">t</b>",<c/>}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('//@*', '<a x="1"><b y="&amp;"/></a>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{1,&amp;}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('/a/b', E'<a><b>x\r\ny</b></a>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T(r#"{"<b>x
+y</b>"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT xpath('/a/b/text()', '<a><b>&#13;</b></a>');",
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{&#x0d;}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('//c', '<a xmlns:p="urn:p" xmlns="urn:d"><b><p:c/></b></a>', ARRAY[ARRAY['p','urn:p']]);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('//p:c', '<a xmlns:p="urn:p"><b><p:c p:z="1"><d/></p:c></b></a>', ARRAY[ARRAY['p','urn:p']]);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T(r#"{"<p:c xmlns:p=\"urn:p\" p:z=\"1\"><d/></p:c>"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT xpath('/a/b[2]', '<a><b>1</b><b>2</b><b>3</b></a>'), xpath('/a/b[last()]', '<a><b>1</b><b>2</b><b>3</b></a>');",
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{<b>2</b>}"), T("{<b>3</b>}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('/a/b[@x > 1]/@x', '<a><b x="1"/><b x="2"/><b x="3"/></a>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{2,3}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('sum(/a/b) + string-length("abc") * 2', '<a><b>1</b><b>2</b></a>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{9}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('normalize-space(" a  b ")', '<a/>'), xpath('translate("abc", "ab", "B")', '<a/>'), xpath('substring("12345", 2, 3)', '<a/>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T(r#"{"a b"}"#), T("{Bc}"), T("{234}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('name(/a/*[1])', '<a><x:b xmlns:x="u"/></a>'), xpath('local-name(/a/*[1])', '<a><x:b xmlns:x="u"/></a>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{x:b}"), T("{b}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT xpath('/a/b/ancestor::*', '<a><b/></a>'), xpath('/a/b/following-sibling::*', '<a><b/><c/><d/></a>'), xpath('/a/d/preceding-sibling::*[1]', '<a><b/><c/><d/></a>');",
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{<a><b/></a>}"), T("{<c/>,<d/>}"), T("{<c/>}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT xpath('count(//b | //c)', '<a><b/><c/><b/></a>'), xpath('/a/b = "x"', '<a><b>y</b><b>x</b></a>'), xpath('not(/a/z)', '<a/>');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{3}"), T("{true}"), T("{true}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT xpath('1 mod 0.3', '<a/>'), xpath('-(2)', '<a/>'), xpath('10 div 4', '<a/>'), xpath('round(2.5)', '<a/>'), xpath('floor(-1.5)', '<a/>');",
+                    expected: Expected::Rows {
+                        columns: &[Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY), Column("xpath", XML_ARRAY)],
+                        rows: &[
+                            &[T("{0.10000000000000003}"), T("{-2}"), T("{2.5}"), T("{3}"), T("{-2}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

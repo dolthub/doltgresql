@@ -52,6 +52,8 @@ pub enum Value {
     /// A json value: its text exactly as written.
     Json(String),
     Jsonb(Box<crate::json::Json>),
+    /// An xml value: its text as written, which prints without a declaration that only repeats the defaults.
+    Xml(String),
     /// A string of the text types, and the value of an untyped literal.
     Text(String),
     /// The rows of a set-returning function, which never reach a client.
@@ -171,6 +173,7 @@ impl Value {
             Value::Record(fields) => format_record(fields),
             Value::Json(text) => text.clone(),
             Value::Jsonb(json) => json.to_text(),
+            Value::Xml(text) => crate::xml::output(text),
             Value::Text(s) => s.clone(),
             Value::Set(_) => return None,
             Value::Oid(o) => o.to_string(),
@@ -225,6 +228,7 @@ impl Value {
                 out
             }
             Value::Json(_) => return self.output().map(String::into_bytes),
+            Value::Xml(text) => crate::xml::send(text).into_bytes(),
             Value::Jsonb(json) => [&[1u8][..], json.to_text().as_bytes()].concat(),
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) if type_oid == oid::CHAR => match s.strip_prefix('\\') {
@@ -316,6 +320,7 @@ impl Value {
                     Ok(Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?))
                 }
                 oid::JSON => Ok(Value::Json(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?)),
+                oid::XML => crate::cast::input(std::str::from_utf8(bytes).map_err(|_| invalid())?, oid::XML),
                 oid::BYTEA => Ok(Value::Bytea(bytes.to_vec())),
                 oid::UUID => Ok(Value::Uuid(bytes.try_into().map_err(|_| invalid())?)),
                 oid::BIT | oid::VARBIT if bytes.len() >= 4 => {

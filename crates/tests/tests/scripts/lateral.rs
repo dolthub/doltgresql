@@ -329,3 +329,101 @@ ORDER BY sametable DESC, conname;"#,
         },
     ]);
 }
+
+#[test]
+fn test_lateral_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "lateral joins",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lt (id INT PRIMARY KEY, n INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lt VALUES (1, 2), (2, 3), (3, 0);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lt.id, s.v FROM lt, LATERAL (SELECT lt.n * 10 AS v) s ORDER BY lt.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4)],
+                        rows: &[
+                            &[T("1"), T("20")],
+                            &[T("2"), T("30")],
+                            &[T("3"), T("0")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lt.id, g FROM lt, generate_series(1, lt.n) g ORDER BY lt.id, g;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("g", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("1"), T("2")],
+                            &[T("2"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("2"), T("3")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lt.id, g FROM lt LEFT JOIN LATERAL generate_series(1, lt.n) g ON true ORDER BY lt.id, g;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("g", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("1"), T("2")],
+                            &[T("2"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("2"), T("3")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lt.id, s.c FROM lt, LATERAL (SELECT count(*) AS c FROM lt l2 WHERE l2.id <= lt.id) s ORDER BY lt.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("c", INT8)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("3"), T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lt.id FROM lt, (SELECT lt.n) s;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"invalid reference to FROM-clause entry for table "lt""#, hint: r#"There is an entry for table "lt", but it cannot be referenced from this part of the query."#, position: 31, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a.id, b.id FROM lt a JOIN LATERAL (SELECT * FROM lt WHERE lt.id > a.id) b ON true ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("1"), T("3")],
+                            &[T("2"), T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -48,6 +48,7 @@ pub enum Kind {
     JsonbAgg,
     JsonObjectAgg,
     JsonbObjectAgg,
+    XmlAgg,
 }
 
 /// Aggregate is one overload of an aggregate function.
@@ -86,6 +87,7 @@ pub const AGGREGATES: &[Aggregate] = &[
     a("every", &[BOOL], BOOL, Kind::BoolAnd),
     a("bool_or", &[BOOL], BOOL, Kind::BoolOr),
     a("string_agg", &[TEXT, TEXT], TEXT, Kind::StringAgg),
+    a("xmlagg", &[crate::oid::XML], crate::oid::XML, Kind::XmlAgg),
     a("var_pop", &[NUMERIC], NUMERIC, Kind::VarPop),
     a("var_pop", &[FLOAT8], FLOAT8, Kind::VarPop),
     a("var_samp", &[NUMERIC], NUMERIC, Kind::VarSamp),
@@ -312,6 +314,13 @@ impl Accumulator {
                 .unwrap_or(Value::Null)),
             Kind::BoolAnd => Ok(Value::Bool(values.iter().all(|v| *v == Value::Bool(true)))),
             Kind::BoolOr => Ok(Value::Bool(values.contains(&Value::Bool(true)))),
+            Kind::XmlAgg => Ok(values
+                .into_iter()
+                .reduce(|a, b| match (a, b) {
+                    (Value::Xml(a), Value::Xml(b)) => Value::Xml(crate::xml::concat(&[&a, &b])),
+                    (a, _) => a,
+                })
+                .unwrap_or(Value::Null)),
             Kind::VarPop | Kind::VarSamp | Kind::StddevPop | Kind::StddevSamp => {
                 variance(&values, aggregate.kind, call.ret)
             }

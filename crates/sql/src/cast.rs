@@ -316,6 +316,11 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
         oid::CHAR => char_value(text),
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN => Value::Text(text.to_string()),
         oid::BYTEA => Value::Bytea(crate::binary::parse_bytea(text)?),
+        oid::XML => {
+            let warnings = crate::xml::check(text, crate::xml::document_option())?;
+            crate::xml::warn(warnings);
+            Value::Xml(text.to_string())
+        }
         oid::UUID => Value::Uuid(crate::binary::parse_uuid(text)?),
         oid::BIT | oid::VARBIT => Value::Bit(crate::binary::parse_bits(text)?),
         _ => return Err(PgError::unsupported(format!("reading values of type {}", type_display(type_oid)))),
@@ -745,7 +750,7 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
             let text = match value {
                 Value::Bool(b) => if b { "true" } else { "false" }.to_string(),
                 Value::Text(text) if to.oid == oid::BPCHAR => text,
-                Value::Text(text) => text,
+                Value::Text(text) | Value::Xml(text) => text,
                 other => other.output().unwrap_or_default(),
             };
             Value::Text(apply_length(text, to, explicit)?)
@@ -770,6 +775,11 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
         oid::BYTEA | oid::UUID => match value {
             Value::Text(text) => input(&text, to.oid)?,
             value @ (Value::Bytea(_) | Value::Uuid(_)) => value,
+            other => return Err(cannot_cast(&other, to.oid)),
+        },
+        oid::XML => match value {
+            Value::Xml(text) => Value::Xml(text),
+            Value::Text(text) => input(&text, to.oid)?,
             other => return Err(cannot_cast(&other, to.oid)),
         },
         oid::BIT | oid::VARBIT => {

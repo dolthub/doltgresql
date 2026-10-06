@@ -85,13 +85,17 @@ pub enum Plan {
         input: Box<Plan>,
         exprs: Vec<Expr>,
     },
-    /// The rows of both inputs side by side that meet the condition.
+    /// The rows of both inputs side by side that meet the condition, where a lateral right input runs again for
+    /// each left row, which it sees as its enclosing row.
     Join {
         left: Box<Plan>,
         right: Box<Plan>,
         kind: JoinKind,
         condition: Option<Expr>,
+        lateral: bool,
     },
+    /// The rows of an XMLTABLE.
+    XmlTable(Box<crate::xml::table::XmlTable>),
     /// One row per group of the input, with the group keys and then the aggregate results.
     Aggregate {
         input: Box<Plan>,
@@ -532,10 +536,11 @@ impl<'b, 'a> Planner<'b, 'a> {
     pub fn plan_from(&mut self, from: &[Node]) -> Result<(Plan, Scope)> {
         let mut result: Option<(Plan, Scope)> = None;
         for item in from {
-            let (plan, scope) = self.plan_from_item(item)?;
             result = Some(match result {
-                None => (plan, scope),
+                None => self.plan_from_item(item)?,
                 Some((left, mut left_scope)) => {
+                    let lateral = is_lateral(item);
+                    let (plan, scope) = self.plan_lateral_item(item, &left_scope, lateral)?;
                     check_duplicate_aliases(&left_scope, &scope)?;
                     left_scope.columns.extend(scope.columns);
                     let join = Plan::Join {
@@ -543,12 +548,118 @@ impl<'b, 'a> Planner<'b, 'a> {
                         right: Box::new(plan),
                         kind: JoinKind::Inner,
                         condition: None,
+                        lateral,
                     };
                     (join, left_scope)
                 }
             });
         }
         Ok(result.unwrap_or((Plan::OneRow, Scope::default())))
+    }
+
+    /// plan_lateral_item plans a FROM item after others, which sees their columns when it is lateral and otherwise
+    /// fails as Postgres does when it refers to one of them.
+    fn plan_lateral_item(&mut self, item: &Node, left: &Scope, lateral: bool) -> Result<(Plan, Scope)> {
+        if !lateral {
+            return self.plan_from_item(item).map_err(|err| {
+                let table = err.message.strip_prefix("missing FROM-clause entry for table \"").and_then(|t| t.strip_suffix('"'));
+                match table {
+                    Some(table) if err.code == code::UNDEFINED_TABLE && left.columns.iter().any(|c| c.table == table) => PgError {
+                        message: format!("invalid reference to FROM-clause entry for table \"{table}\""),
+                        hint: Some(format!(
+                            "There is an entry for table \"{table}\", but it cannot be referenced from this part of the query."
+                        )),
+                        ..err
+                    },
+                    _ => err,
+                }
+            });
+        }
+        self.outer.push(left.clone());
+        let planned = self.plan_from_item(item);
+        self.outer.pop();
+        planned
+    }
+
+    /// plan_xml_table plans an XMLTABLE.
+    fn plan_xml_table(&mut self, function: &pg_query::protobuf::RangeTableFunc) -> Result<(Plan, Scope)> {
+        use crate::xml::table::{XmlColumn, XmlTable};
+        let mut binder = self.binder(Scope::default());
+        let document_node =
+            function.docexpr.as_deref().ok_or_else(|| PgError::internal("XMLTABLE without a document"))?;
+        let document = binder.xml_arg(document_node, oid::XML, "XMLTABLE")?;
+        let row_node = function.rowexpr.as_deref().ok_or_else(|| PgError::internal("XMLTABLE without a row path"))?;
+        let row = binder.xml_arg(row_node, oid::TEXT, "XMLTABLE")?;
+        let mut namespaces = Vec::new();
+        for namespace in &function.namespaces {
+            let Some(NodeEnum::ResTarget(target)) = namespace.node.as_ref() else { continue };
+            if target.name.is_empty() {
+                return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "DEFAULT namespace is not supported"));
+            }
+            let value = target.val.as_deref().ok_or_else(|| PgError::internal("a namespace without a URI"))?;
+            namespaces.push((target.name.clone(), binder.xml_arg(value, oid::TEXT, "XMLTABLE")?));
+        }
+        let mut columns: Vec<XmlColumn> = Vec::new();
+        let mut ordinality = false;
+        for node in &function.columns {
+            let Some(NodeEnum::RangeTableFuncCol(column)) = node.node.as_ref() else { continue };
+            let located = |message: String| PgError {
+                position: position(column.location),
+                ..PgError::new(code::SYNTAX_ERROR, message)
+            };
+            if columns.iter().any(|c| c.name == column.colname) {
+                return Err(located(format!("column name \"{}\" is not unique", column.colname)));
+            }
+            if column.for_ordinality {
+                if ordinality {
+                    return Err(located("only one FOR ORDINALITY column is allowed".into()));
+                }
+                ordinality = true;
+                columns.push(XmlColumn {
+                    name: column.colname.clone(),
+                    ty: typ(oid::INT4),
+                    path: None,
+                    default: None,
+                    not_null: false,
+                });
+                continue;
+            }
+            let type_name = column.type_name.as_ref().ok_or_else(|| PgError::internal("a column without a type"))?;
+            binder.ctx.prepare_type(type_name)?;
+            let ty = crate::expr::resolve_type_name(type_name)?;
+            let path = match column.colexpr.as_deref() {
+                Some(path) => binder.xml_arg(path, oid::TEXT, "XMLTABLE")?,
+                None => Expr::Const(Value::Text(column.colname.clone())),
+            };
+            let default = match column.coldefexpr.as_deref() {
+                Some(default) => Some(binder.typed_arg(default, ty, "XMLTABLE")?),
+                None => None,
+            };
+            columns.push(XmlColumn {
+                name: column.colname.clone(),
+                ty,
+                path: Some(path),
+                default,
+                not_null: column.is_not_null,
+            });
+        }
+        let alias = function.alias.as_ref();
+        let table = alias.map_or("xmltable".to_string(), |a| a.aliasname.clone());
+        let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+        let scope = Scope {
+            columns: columns
+                .iter()
+                .enumerate()
+                .map(|(i, c)| ScopeColumn {
+                    table: table.clone(),
+                    name: renames.get(i).map_or(c.name.clone(), |r| r.to_string()),
+                    ty: c.ty,
+                    hidden: false,
+                    origin: (0, 0),
+                })
+                .collect(),
+        };
+        Ok((Plan::XmlTable(Box::new(XmlTable { document, row, namespaces, columns })), scope))
     }
 
     /// plan_from_item plans one FROM item.
@@ -610,6 +721,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             Some(NodeEnum::JoinExpr(join)) => self.plan_join(join),
             Some(NodeEnum::RangeSubselect(subselect)) => self.plan_subselect(subselect),
             Some(NodeEnum::RangeFunction(function)) => self.plan_range_function(function),
+            Some(NodeEnum::RangeTableFunc(function)) => self.plan_xml_table(function),
             _ => Err(PgError::unsupported("this FROM item")),
         }
     }
@@ -805,7 +917,8 @@ impl<'b, 'a> Planner<'b, 'a> {
         let left = join.larg.as_deref().ok_or_else(|| PgError::internal("a join without a left side"))?;
         let right = join.rarg.as_deref().ok_or_else(|| PgError::internal("a join without a right side"))?;
         let (left_plan, left_scope) = self.plan_from_item(left)?;
-        let (right_plan, right_scope) = self.plan_from_item(right)?;
+        let lateral = is_lateral(right);
+        let (right_plan, right_scope) = self.plan_lateral_item(right, &left_scope, lateral)?;
         check_duplicate_aliases(&left_scope, &right_scope)?;
         let kind = match JoinType::try_from(join.jointype) {
             Ok(JoinType::JoinLeft) => JoinKind::Left,
@@ -862,7 +975,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 };
                 merged.push((name.clone(), value, ty, l, width + r));
             }
-            let plan = Plan::Join { left: Box::new(left_plan), right: Box::new(right_plan), kind, condition };
+            let plan = Plan::Join { left: Box::new(left_plan), right: Box::new(right_plan), kind, condition, lateral };
             // The merged columns come first, and the joined columns they replace stay reachable only by table name.
             let mut exprs: Vec<Expr> = merged.iter().map(|m| m.1.clone()).collect();
             let mut columns: Vec<ScopeColumn> = merged
@@ -896,7 +1009,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 None => None,
             }
         };
-        let plan = Plan::Join { left: Box::new(left_plan), right: Box::new(right_plan), kind, condition };
+        let plan = Plan::Join { left: Box::new(left_plan), right: Box::new(right_plan), kind, condition, lateral };
         Ok((plan, scope))
     }
 
@@ -913,7 +1026,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             let mut binder = self.binder(scope.clone());
             binder.clause = "WHERE";
             let predicate = coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0;
-            plan = Plan::Filter { input: Box::new(plan), predicate };
+            plan = push_down(plan, predicate);
         }
         let windowed = select.target_list.iter().any(crate::window::has_window)
             || select.sort_clause.iter().any(crate::window::has_window);
@@ -1516,6 +1629,7 @@ impl Plan {
             | Plan::Limit { input, .. } => input.width(),
             Plan::Project { exprs, .. } => exprs.len(),
             Plan::Join { left, right, .. } => left.width() + right.width(),
+            Plan::XmlTable(table) => table.columns.len(),
             Plan::Aggregate { groups, aggregates, .. } => groups.len() + aggregates.len(),
             Plan::SetOp { left, .. } => left.width(),
         }
@@ -1619,7 +1733,32 @@ impl Plan {
                 }
                 out
             }
-            Plan::Join { left, right, kind, condition } => {
+            Plan::XmlTable(table) => crate::xml::table::rows(ctx, table)?,
+            Plan::Join { left, right, kind, condition, lateral: true } => {
+                let right_width = right.width();
+                let mut out = Vec::new();
+                for l in left.run(ctx)? {
+                    ctx.outer.push(l.clone());
+                    let right_rows = right.run(ctx);
+                    ctx.outer.pop();
+                    let mut matched = false;
+                    for r in right_rows? {
+                        let mut row = l.clone();
+                        row.extend(r);
+                        if condition.as_ref().map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                            matched = true;
+                            out.push(row);
+                        }
+                    }
+                    if !matched && *kind == JoinKind::Left {
+                        let mut row = l;
+                        row.extend(std::iter::repeat_n(Value::Null, right_width));
+                        out.push(row);
+                    }
+                }
+                out
+            }
+            Plan::Join { left, right, kind, condition, .. } => {
                 let (left_width, right_width) = (left.width(), right.width());
                 let left_rows = left.run(ctx)?;
                 let right_rows = right.run(ctx)?;
@@ -1809,5 +1948,56 @@ fn set_rows(ctx: &mut Ctx<'_>, call: &Expr, row: &[Value]) -> Result<Vec<Value>>
             Value::Set(values) => Ok(values),
             value => Ok(vec![value]),
         },
+    }
+}
+
+/// is_lateral reports whether a FROM item can see the items before it: a LATERAL subquery, a function, or an
+/// XMLTABLE.
+fn is_lateral(item: &Node) -> bool {
+    match item.node.as_ref() {
+        Some(NodeEnum::RangeSubselect(subselect)) => subselect.lateral,
+        Some(NodeEnum::RangeFunction(_) | NodeEnum::RangeTableFunc(_)) => true,
+        _ => false,
+    }
+}
+
+/// conjuncts splits a predicate into the conditions that AND joins.
+fn conjuncts(predicate: Expr, out: &mut Vec<Expr>) {
+    match predicate {
+        Expr::And(l, r) => {
+            conjuncts(*l, out);
+            conjuncts(*r, out);
+        }
+        other => out.push(other),
+    }
+}
+
+/// push_down filters a plan's rows by a predicate, applying the conditions that only read the left input of an inner
+/// lateral join to that input, so that the lateral side never runs for rows they reject, as Postgres plans it.
+fn push_down(plan: Plan, predicate: Expr) -> Plan {
+    let Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral: true } = plan else {
+        return Plan::Filter { input: Box::new(plan), predicate };
+    };
+    let width = left.width();
+    let mut all = Vec::new();
+    conjuncts(predicate, &mut all);
+    let (pushed, kept): (Vec<Expr>, Vec<Expr>) = all.into_iter().partition(|c| {
+        let mut left_only = true;
+        c.visit(&mut |e| match e {
+            Expr::Column(i) if *i >= width => left_only = false,
+            Expr::Exists(_) | Expr::Scalar(_) | Expr::AnySubquery(..) => left_only = false,
+            _ => {}
+        });
+        left_only
+    });
+    let and = |conditions: Vec<Expr>| conditions.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    let left = match and(pushed) {
+        Some(condition) => push_down(*left, condition),
+        None => *left,
+    };
+    let join = Plan::Join { left: Box::new(left), right, kind: JoinKind::Inner, condition, lateral: true };
+    match and(kept) {
+        Some(predicate) => Plan::Filter { input: Box::new(join), predicate },
+        None => join,
     }
 }

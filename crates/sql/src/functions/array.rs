@@ -353,6 +353,7 @@ pub fn value_type(value: &Value) -> u32 {
         Value::Interval(_) => oid::INTERVAL,
         Value::Array(a) => a.array_type(),
         Value::Json(_) => oid::JSON,
+        Value::Xml(_) => oid::XML,
         Value::Jsonb(_) => oid::JSONB,
         Value::Record(_) => oid::RECORD,
         Value::Oid(_) => oid::OID,

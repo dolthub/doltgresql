@@ -57,6 +57,7 @@ pub mod types;
 pub mod usertypes;
 pub mod views;
 pub mod window;
+pub mod xml;
 
 pub use engine::{Engine, Session};
 pub use error::{PgError, Result, code};
@@ -112,6 +113,8 @@ pub mod oid {
     pub const UUID: u32 = 2950;
     pub const BIT: u32 = 1560;
     pub const VARBIT: u32 = 1562;
+    pub const XML: u32 = 142;
+    pub const XML_ARRAY: u32 = 143;
 }
 
 /// Column describes a result column.

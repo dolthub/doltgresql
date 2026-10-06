@@ -175,6 +175,8 @@ pub enum Expr {
     ArrayOp(ArrayOp, Box<Expr>, Box<Expr>),
     /// An expression over a value computed once, which the expression refers to as the subquery value.
     Shared(Box<Expr>, Box<Expr>),
+    /// An SQL/XML expression over its arguments.
+    Xml(crate::xml::sql::XmlOp, Vec<Expr>),
 }
 
 /// Bound is a bound expression with its type.
@@ -420,6 +422,8 @@ impl<'b, 'a> Binder<'b, 'a> {
                 Ok((Expr::MinMax(greatest, args), ty))
             }
             NodeEnum::CaseExpr(c) => self.case(c),
+            NodeEnum::XmlExpr(x) => self.xml_expr(x),
+            NodeEnum::XmlSerialize(x) => self.xml_serialize(x),
             NodeEnum::BooleanTest(test) => {
                 let arg = test.arg.as_deref().ok_or_else(|| PgError::internal("no boolean test argument"))?;
                 let bound = self.bind(arg)?;
@@ -1025,6 +1029,163 @@ impl<'b, 'a> Binder<'b, 'a> {
         Ok((args, ty))
     }
 
+    /// xml_arg binds an argument of an SQL/XML expression that must be of a type, converting an untyped literal and,
+    /// for a text argument, any other value.
+    pub fn xml_arg(&mut self, node: &Node, wanted: u32, construct: &str) -> Result<Expr> {
+        let location = arg_location(node);
+        let bound = self.bind(node)?;
+        if bound.1.oid == wanted {
+            return Ok(bound.0);
+        }
+        if bound.1.oid == oid::UNKNOWN || wanted == oid::TEXT {
+            return Ok(coerce(bound, typ(wanted), true, location)?.0);
+        }
+        Err(crate::xml::sql::wrong_type(
+            construct,
+            &crate::cast::type_display(wanted),
+            &crate::cast::type_display(bound.1.oid),
+            position(location),
+        ))
+    }
+
+    /// typed_arg binds an argument of a construct that must be of a type, converting an untyped literal and any value
+    /// that converts implicitly.
+    pub fn typed_arg(&mut self, node: &Node, wanted: ColumnType, construct: &str) -> Result<Expr> {
+        let location = arg_location(node);
+        let bound = self.bind(node)?;
+        if bound.1.oid == wanted.oid
+            || bound.1.oid == oid::UNKNOWN
+            || functions::implicitly_castable(bound.1.oid, wanted.oid)
+        {
+            return Ok(coerce(bound, wanted, false, location)?.0);
+        }
+        Err(crate::xml::sql::wrong_type(
+            construct,
+            &crate::cast::type_display(wanted.oid),
+            &crate::cast::type_display(bound.1.oid),
+            position(location),
+        ))
+    }
+
+    /// xml_names binds the named arguments of XMLELEMENT's attributes or of XMLFOREST, whose names default to the
+    /// names of the columns they refer to.
+    fn xml_names(&mut self, nodes: &[Node], what: &str, unique: bool) -> Result<(Vec<String>, Vec<Expr>)> {
+        let (mut names, mut args) = (Vec::new(), Vec::new());
+        for node in nodes {
+            let Some(NodeEnum::ResTarget(target)) = node.node.as_ref() else { continue };
+            let value = target.val.as_deref().ok_or_else(|| PgError::internal("an XML argument without a value"))?;
+            let name = if target.name.is_empty() {
+                match value.node.as_ref() {
+                    Some(NodeEnum::ColumnRef(c)) => c.fields.last().and_then(node_name).unwrap_or_default().to_string(),
+                    _ => {
+                        return Err(PgError {
+                            position: position(target.location),
+                            ..PgError::new(
+                                code::SYNTAX_ERROR,
+                                format!("unnamed XML {what} value must be a column reference"),
+                            )
+                        });
+                    }
+                }
+            } else {
+                target.name.clone()
+            };
+            let name = crate::xml::sql::escape_name(&name);
+            if unique && names.contains(&name) {
+                return Err(PgError {
+                    position: position(target.location),
+                    ..PgError::new(code::SYNTAX_ERROR, format!("XML attribute name \"{name}\" appears more than once"))
+                });
+            }
+            names.push(name);
+            args.push(self.bind(value)?.0);
+        }
+        Ok((names, args))
+    }
+
+    /// xml_expr binds an SQL/XML expression.
+    fn xml_expr(&mut self, x: &pg_query::protobuf::XmlExpr) -> Result<Bound> {
+        use crate::xml::sql::XmlOp;
+        use pg_query::protobuf::{XmlExprOp, XmlOptionType};
+        let xml = typ(oid::XML);
+        Ok(match XmlExprOp::try_from(x.op) {
+            Ok(XmlExprOp::IsXmlelement) => {
+                let (attributes, mut args) = self.xml_names(&x.named_args, "attribute", true)?;
+                for arg in &x.args {
+                    args.push(self.bind(arg)?.0);
+                }
+                (Expr::Xml(XmlOp::Element { name: crate::xml::sql::escape_name(&x.name), attributes }, args), xml)
+            }
+            Ok(XmlExprOp::IsXmlforest) => {
+                let (names, args) = self.xml_names(&x.named_args, "element", false)?;
+                (Expr::Xml(XmlOp::Forest(names), args), xml)
+            }
+            Ok(XmlExprOp::IsXmlconcat) => {
+                let args = x.args.iter().map(|a| self.xml_arg(a, oid::XML, "XMLCONCAT")).collect::<Result<_>>()?;
+                (Expr::Xml(XmlOp::Concat, args), xml)
+            }
+            Ok(XmlExprOp::IsXmlparse) => {
+                let document = x.xmloption == XmlOptionType::XmloptionDocument as i32;
+                let arg = self.xml_arg(&x.args[0], oid::TEXT, "XMLPARSE")?;
+                (Expr::Xml(XmlOp::Parse { document }, vec![arg]), xml)
+            }
+            Ok(XmlExprOp::IsXmlpi) => {
+                let target = crate::xml::sql::escape_name(&x.name);
+                if target.eq_ignore_ascii_case("xml") {
+                    return Err(PgError {
+                        detail: Some(format!("XML processing instruction target name cannot be \"{target}\".")),
+                        ..PgError::new(code::SYNTAX_ERROR, "invalid XML processing instruction")
+                    });
+                }
+                let args = x.args.iter().map(|a| self.xml_arg(a, oid::TEXT, "XMLPI")).collect::<Result<_>>()?;
+                (Expr::Xml(XmlOp::Pi(target), args), xml)
+            }
+            Ok(XmlExprOp::IsXmlroot) => {
+                let value = self.xml_arg(&x.args[0], oid::XML, "XMLROOT")?;
+                let version = self.xml_arg(&x.args[1], oid::TEXT, "XMLROOT")?;
+                let standalone = match x.args.get(2).and_then(|a| a.node.as_ref()) {
+                    Some(NodeEnum::AConst(c)) => match &c.val {
+                        Some(Val::Ival(i)) => match i.ival {
+                            0 => Some(Some(true)),
+                            1 => Some(Some(false)),
+                            2 => Some(None),
+                            _ => None,
+                        },
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                (Expr::Xml(XmlOp::Root(standalone), vec![value, version]), xml)
+            }
+            Ok(XmlExprOp::IsDocument) => {
+                let arg = self.xml_arg(&x.args[0], oid::XML, "IS DOCUMENT")?;
+                (Expr::Xml(XmlOp::IsDocument, vec![arg]), typ(oid::BOOL))
+            }
+            _ => return Err(PgError::unsupported("this XML expression")),
+        })
+    }
+
+    /// xml_serialize binds XMLSERIALIZE, whose result converts to a character type.
+    fn xml_serialize(&mut self, x: &pg_query::protobuf::XmlSerialize) -> Result<Bound> {
+        use crate::xml::sql::XmlOp;
+        let arg = x.expr.as_deref().ok_or_else(|| PgError::internal("XMLSERIALIZE without a value"))?;
+        let value = self.xml_arg(arg, oid::XML, "XMLSERIALIZE")?;
+        let type_name = x.type_name.as_ref().ok_or_else(|| PgError::internal("XMLSERIALIZE without a type"))?;
+        let target = resolve_type_name(type_name)?;
+        if !matches!(target.oid, oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME) {
+            return Err(PgError {
+                position: position(x.location),
+                ..PgError::new(
+                    code::CANNOT_COERCE,
+                    format!("cannot cast XMLSERIALIZE result to {}", crate::cast::type_display(target.oid)),
+                )
+            });
+        }
+        let document = x.xmloption == pg_query::protobuf::XmlOptionType::XmloptionDocument as i32;
+        let serialized = Expr::Xml(XmlOp::Serialize { document }, vec![value]);
+        Ok((Expr::Cast(Box::new(serialized), target, false), target))
+    }
+
     /// case binds a CASE expression, whose results take their common type.
     fn case(&mut self, c: &pg_query::protobuf::CaseExpr) -> Result<Bound> {
         let mut conditions = Vec::new();
@@ -1222,6 +1383,9 @@ impl<'b, 'a> Binder<'b, 'a> {
             if lt == oid::JSON || rt == oid::JSON || !matches!(op, "=" | "<>" | "!=" | "<" | "<=" | ">" | ">=") {
                 return Err(missing());
             }
+        }
+        if (lt == oid::XML || rt == oid::XML) && matches!(op, "=" | "<>" | "!=" | "<" | "<=" | ">" | ">=") {
+            return Err(missing());
         }
         if let Some(function) = pattern_function(op)
             && lt != oid::BYTEA
@@ -1819,9 +1983,11 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     if let Some(bound) = user_cast(&expr, from, to, explicit, context) {
         return Ok(bound);
     }
+    let xml_only_textual = (from.oid == oid::XML) != (to.oid == oid::XML) && !textual;
     let allowed = explicit
         && (is_array_type(from.oid) == is_array_type(to.oid) || textual)
         && (!(opaque(from.oid) || opaque(to.oid)) || textual || (bits_or_ints(from.oid) && bits_or_ints(to.oid)))
+        && !xml_only_textual
         || implicitly_converts(from.oid, to.oid);
     if !allowed {
         return Err(PgError {
@@ -2014,6 +2180,20 @@ fn figure_name_strength(node: &Node) -> (String, u8) {
         Some(NodeEnum::FuncCall(f)) => {
             strong(f.funcname.iter().filter_map(node_name).next_back().unwrap_or("?column?"))
         }
+        Some(NodeEnum::XmlExpr(x)) => {
+            use pg_query::protobuf::XmlExprOp as X;
+            match X::try_from(x.op) {
+                Ok(X::IsXmlconcat) => strong("xmlconcat"),
+                Ok(X::IsXmlelement) => strong("xmlelement"),
+                Ok(X::IsXmlforest) => strong("xmlforest"),
+                Ok(X::IsXmlparse) => strong("xmlparse"),
+                Ok(X::IsXmlpi) => strong("xmlpi"),
+                Ok(X::IsXmlroot) => strong("xmlroot"),
+                Ok(X::IsXmlserialize) => strong("xmlserialize"),
+                _ => ("?column?".into(), 0),
+            }
+        }
+        Some(NodeEnum::XmlSerialize(_)) => strong("xmlserialize"),
         Some(NodeEnum::TypeCast(cast)) => match cast.arg.as_deref().map(figure_name_strength) {
             Some((name, strength)) if strength > 1 => (name, strength),
             _ => match cast.type_name.as_ref().and_then(|t| t.names.iter().filter_map(node_name).next_back()) {
@@ -2378,6 +2558,10 @@ impl Expr {
                     value.eval(ctx, row)?
                 }
             }
+            Expr::Xml(op, args) => {
+                let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+                crate::xml::sql::eval(op, values)?
+            }
             Expr::MinMax(greatest, args) => {
                 let mut best: Option<Value> = None;
                 for arg in args {
@@ -2542,6 +2726,7 @@ impl Expr {
                 let l = b(l);
                 Expr::ArrayOp(op, l, b(r))
             }
+            Expr::Xml(op, args) => Expr::Xml(op, args.into_iter().map(&mut *f).collect()),
             other => other,
         }
     }
@@ -2575,6 +2760,7 @@ impl Expr {
             | Expr::Coalesce(args)
             | Expr::MinMax(_, args)
             | Expr::Array(_, args, _)
+            | Expr::Xml(_, args)
             | Expr::Row(args) => args.iter().for_each(|a| a.visit(f)),
             Expr::Subscript(base, subscripts, _) => {
                 base.visit(f);

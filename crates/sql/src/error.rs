@@ -106,6 +106,11 @@ pub mod code {
     pub const UNDEFINED_FILE: &str = "58P01";
     pub const QUERY_CANCELED: &str = "57014";
     pub const INTERVAL_FIELD_OVERFLOW: &str = "22015";
+    pub const INVALID_XML_DOCUMENT: &str = "2200M";
+    pub const INVALID_XML_CONTENT: &str = "2200N";
+    pub const NOT_AN_XML_DOCUMENT: &str = "2200L";
+    pub const INVALID_XML_COMMENT: &str = "2200S";
+    pub const INVALID_XML_PROCESSING_INSTRUCTION: &str = "2200T";
 }
 
 /// PgError is an error to report to the client.

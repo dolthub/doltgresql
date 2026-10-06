@@ -42,7 +42,9 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
             field.push(0);
             field
         }
-        (Value::Text(s) | Value::Json(s), encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE) => inline(s.as_bytes()),
+        (Value::Text(s) | Value::Json(s) | Value::Xml(s), encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE) => {
+            inline(s.as_bytes())
+        }
         (Value::Jsonb(json), encoding::JSON_ADAPTIVE) => inline(json.compact().as_bytes()),
         (Value::Bytea(bytes), encoding::BYTES_ADAPTIVE) => inline(bytes),
         (value, encoding::EXTENDED) => serialize_value(value, ty)?,
@@ -82,6 +84,9 @@ pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty:
         encoding::JSON_ADAPTIVE if ty.oid == crate::oid::JSON => {
             Value::Json(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?)
         }
+        encoding::STRING_ADAPTIVE if ty.oid == crate::oid::XML => {
+            Value::Xml(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?)
+        }
         encoding::STRING_ADAPTIVE | encoding::JSON_ADAPTIVE => {
             Value::Text(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?)
         }
@@ -109,7 +114,7 @@ pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
             (if *f >= 0.0 { bits ^ (1 << 63) } else { !bits }).to_be_bytes().to_vec()
         }
         Value::Numeric(n) => numeric_gob(n)?,
-        Value::Text(s) | Value::Bit(s) => {
+        Value::Text(s) | Value::Bit(s) | Value::Xml(s) => {
             let mut out = Vec::with_capacity(s.len() + 2);
             write_uvarint(&mut out, s.len() as u64);
             out.extend_from_slice(s.as_bytes());
@@ -210,13 +215,14 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
             Value::Float8(f64::from_bits(if bits & (1 << 63) != 0 { bits ^ (1 << 63) } else { !bits }))
         }
         oid::NUMERIC => Value::Numeric(numeric_from_gob(field).ok_or_else(corrupt)?),
-        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::BIT | oid::VARBIT | oid::BYTEA => {
+        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::BIT | oid::VARBIT | oid::BYTEA | oid::XML => {
             let mut i = 0;
             let length = read_uvarint(field, &mut i).ok_or_else(corrupt)?;
             let bytes = field.get(i..i + length as usize).ok_or_else(corrupt)?;
             match ty.oid {
                 oid::BYTEA => Value::Bytea(bytes.to_vec()),
                 oid::BIT | oid::VARBIT => Value::Bit(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?),
+                oid::XML => Value::Xml(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?),
                 _ => Value::Text(String::from_utf8(bytes.to_vec()).map_err(|_| corrupt())?),
             }
         }

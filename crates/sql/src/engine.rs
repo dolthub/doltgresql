@@ -288,6 +288,7 @@ impl SessionState {
             &get("TimeZone"),
         ));
         crate::binary::install_output(&get("bytea_output"));
+        crate::xml::install_options(&get("xmloption"), &get("xmlbinary"), &get("client_encoding"));
     }
 
     /// notice records a notice for the client.
@@ -571,6 +572,9 @@ impl Session {
     /// run runs one statement with the parameter values.
     fn run(&mut self, statement: &Statement, params: &[Value]) -> Result<Outcome> {
         let result = self.run_statement(statement, params);
+        for warning in crate::xml::take_warnings() {
+            self.state.notices.push(PgError { severity: "WARNING", ..PgError::new("01000", warning) });
+        }
         self.state.sync_identity();
         result
     }

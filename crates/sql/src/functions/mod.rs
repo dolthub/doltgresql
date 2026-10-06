@@ -26,6 +26,7 @@ mod pattern;
 mod series;
 mod string;
 mod system;
+pub mod xml;
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -82,6 +83,7 @@ fn registry() -> &'static Registry {
             pattern::FUNCTIONS,
             json::FUNCTIONS,
             binary::FUNCTIONS,
+            xml::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
             crate::sequences::FUNCTIONS,
         ]
