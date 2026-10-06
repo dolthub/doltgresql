@@ -722,6 +722,14 @@ impl<'b, 'a> Planner<'b, 'a> {
                             let system = crate::dolt::tables::SystemTable::Artifacts(Box::new(table));
                             return Ok(self.plan_system(system, relation));
                         }
+                        if let Some(table) = crate::dolt::objmerge::ObjectConflictTable::lookup(
+                            self.ctx,
+                            &relation.schemaname,
+                            &relation.relname,
+                        )? {
+                            let system = crate::dolt::tables::SystemTable::ObjectConflicts(Box::new(table));
+                            return Ok(self.plan_system(system, relation));
+                        }
                         return match crate::dolt::diff::lookup(self.ctx, &relation.schemaname, &relation.relname)? {
                             Some(table) => {
                                 Ok(self.plan_system(crate::dolt::tables::SystemTable::User(Box::new(table)), relation))

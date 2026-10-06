@@ -63,6 +63,8 @@ pub enum SystemTable {
     User(Box<UserTable>),
     /// The conflicts or constraint violations of a user table.
     Artifacts(Box<crate::dolt::conflicts::ArtifactTable>),
+    /// The conflicting fields of a root object.
+    ObjectConflicts(Box<crate::dolt::objmerge::ObjectConflictTable>),
 }
 
 /// TABLES are the system tables by their names in the `dolt` schema.
@@ -221,6 +223,7 @@ impl SystemTable {
             ],
             SystemTable::User(table) => return table.columns(),
             SystemTable::Artifacts(table) => return table.columns(),
+            SystemTable::ObjectConflicts(table) => return table.columns(),
         };
         columns.into_iter().map(|(name, oid)| (name.to_string(), typ(oid))).collect()
     }
@@ -249,6 +252,7 @@ impl SystemTable {
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),
             SystemTable::User(table) => table.rows(ctx),
             SystemTable::Artifacts(table) => table.rows(ctx),
+            SystemTable::ObjectConflicts(table) => table.rows(ctx),
             SystemTable::Conflicts => crate::dolt::conflicts::summary_rows(ctx, true),
             SystemTable::ConstraintViolations => crate::dolt::conflicts::summary_rows(ctx, false),
         }

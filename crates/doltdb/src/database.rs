@@ -204,6 +204,32 @@ impl Database {
         Ok(())
     }
 
+    /// address_map builds an address map of names to addresses, writing any nodes below its root, and returns its
+    /// root node's bytes, which messages such as stash lists embed.
+    pub fn address_map(&mut self, entries: &[(String, Hash)]) -> Result<Vec<u8>> {
+        let empty = empty_node(prolly::serialize_address_map(&[], &[], &[], 0))?;
+        let mut edits: Vec<(Vec<u8>, Option<Vec<u8>>)> =
+            entries.iter().map(|(name, address)| (name.clone().into_bytes(), Some(address.0.to_vec()))).collect();
+        edits.sort();
+        let (_, map) = apply_mutations(self, empty, AddressMapSerializer, edits, &|a: &[u8], b: &[u8]| a.cmp(b))?;
+        Ok(map.bytes().to_vec())
+    }
+
+    /// address_map_entries returns the names and addresses of an address map, given its root node's bytes, in name
+    /// order.
+    pub fn address_map_entries(&mut self, bytes: &[u8]) -> Result<Vec<(String, Hash)>> {
+        if bytes.is_empty() {
+            return Ok(Vec::new());
+        }
+        let node = Node::decode(bytes.to_vec())?;
+        let mut entries = Vec::new();
+        prolly::walk_leaves(self, &node, &mut |key, value| {
+            entries.push((String::from_utf8_lossy(key).into_owned(), serial::hash(value)?));
+            Ok(())
+        })?;
+        Ok(entries)
+    }
+
     /// replace_root makes a store root already in the database current, whatever the root was, as Dolt's CommitRoot
     /// does when it syncs one database to another.
     pub fn replace_root(&mut self, root: Hash) -> Result<()> {

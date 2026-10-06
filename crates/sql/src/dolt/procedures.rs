@@ -57,6 +57,7 @@ pub const FUNCTIONS: &[Function] = &[
     v("dolt_pull", RECORD, crate::dolt::remotes::dolt_pull),
     v("dolt_clone", INT8, crate::dolt::remotes::dolt_clone),
     v("dolt_backup", INT8, crate::dolt::remotes::dolt_backup),
+    v("dolt_stash", INT8, crate::dolt::stash::dolt_stash),
     v("dolt_clean", INT8, crate::dolt::admin::dolt_clean),
     v("dolt_count_commits", RECORD, crate::dolt::admin::dolt_count_commits),
     v("dolt_commit_hash_out", TEXT, crate::dolt::admin::dolt_commit_hash_out),
@@ -177,6 +178,7 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
     ("dolt_pull", &[("fast_forward", INT8), ("conflicts", INT8), ("message", TEXT)]),
     ("dolt_clone", &[("status", INT8)]),
     ("dolt_backup", &[("status", INT8)]),
+    ("dolt_stash", &[("status", INT8)]),
     ("dolt_clean", &[("status", INT8)]),
     ("dolt_count_commits", &[("ahead", INT8), ("behind", INT8)]),
     ("dolt_commit_hash_out", &[("hash", TEXT)]),
@@ -278,6 +280,24 @@ pub fn find_table(ctx: &mut Ctx<'_>, roots: &[&Root], name: &str) -> Result<Opti
     Ok(None)
 }
 
+/// find_object finds a root object by the name that diffs show it under in the roots, searching the session's
+/// schemas for the whole name and then taking a leading part before a dot as a schema, and returns its collection and
+/// ID.
+pub fn find_object(ctx: &mut Ctx<'_>, roots: &[&Root], name: &str) -> Result<Option<(usize, Vec<u8>)>> {
+    let mut candidates: Vec<(String, String)> =
+        ctx.session.search_path().into_iter().map(|schema| (schema, name.to_string())).collect();
+    if let Some((schema, object)) = name.split_once('.') {
+        candidates.push((schema.to_string(), object.to_string()));
+    }
+    for root in roots {
+        let objects = crate::dolt::diff::object_entries(ctx.db, root)?;
+        if let Some((collection, key, _)) = candidates.iter().find_map(|candidate| objects.get(candidate)) {
+            return Ok(Some((*collection, key.clone())));
+        }
+    }
+    Ok(None)
+}
+
 /// stage_all copies every table, schema, and root object of the working root to the staged root.
 fn stage_all(ctx: &mut Ctx<'_>, respect_ignored: bool) -> Result<()> {
     let working = table_map(ctx.db, &ctx.txn.root)?;
@@ -334,17 +354,25 @@ fn ignored_tables(
     Ok(ignored)
 }
 
-/// stage_tables copies the named tables of the working root to the staged root, leaving out those that dolt_ignore
-/// ignores when staging respects it.
-fn stage_tables(ctx: &mut Ctx<'_>, names: &[String], respect_ignored: bool) -> Result<()> {
+/// stage_tables copies the named tables and root objects of the working root to the staged root, leaving out tables
+/// that dolt_ignore ignores when staging respects it.
+pub fn stage_tables(ctx: &mut Ctx<'_>, names: &[String], respect_ignored: bool) -> Result<()> {
     let mut found = Vec::new();
+    let mut objects = Vec::new();
     let mut missing = Vec::new();
     let (working, staged) = (ctx.txn.root.clone(), ctx.txn.staged.clone());
     for name in names {
-        match find_table(ctx, &[&working, &staged], name)? {
-            Some(key) => found.push(key),
-            None => missing.push(name.clone()),
+        if let Some(key) = find_table(ctx, &[&working, &staged], name)? {
+            found.push(key);
+        } else if let Some(object) = find_object(ctx, &[&working, &staged], name)? {
+            objects.push(object);
+        } else {
+            missing.push(name.clone());
         }
+    }
+    for (collection, key) in objects {
+        let address = working.objects(ctx.db, collection)?.into_iter().find(|(k, _)| *k == key).map(|(_, a)| a);
+        ctx.txn.staged.put_object(ctx.db, collection, &key, address)?;
     }
     if !missing.is_empty() {
         return Err(error(format!("error: the table(s) {} do not exist", missing.join(", "))));
@@ -379,7 +407,7 @@ fn dolt_add(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 }
 
 /// stage_modified stages the tables and root objects of the working root that the staged root also has.
-fn stage_modified(ctx: &mut Ctx<'_>) -> Result<()> {
+pub fn stage_modified(ctx: &mut Ctx<'_>) -> Result<()> {
     let working = table_map(ctx.db, &ctx.txn.root)?;
     let staged = table_map(ctx.db, &ctx.txn.staged)?;
     for (key, address) in &staged {

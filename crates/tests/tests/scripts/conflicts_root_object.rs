@@ -127,9 +127,15 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
+                // Changed from the Go test: Postgres cannot change the return type of an existing function, so it is dropped first.
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION interpreted_example(input TEXT);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
                 ScriptTestAssertion {
-                    query: "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT2 AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
+                    query: "CREATE FUNCTION interpreted_example(input TEXT) RETURNS INT2 AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Tag("CREATE FUNCTION"),
                     ..A
                 },
@@ -169,11 +175,11 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -223,10 +229,10 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("DELETE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -449,10 +455,10 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("DELETE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -669,16 +675,16 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("UPDATE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"DELETE FROM "dolt_conflicts_interpreted_example(text)" WHERE dolt_conflict_id = 'definition';"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 13, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -895,16 +901,16 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("UPDATE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"DELETE FROM "dolt_conflicts_interpreted_example(text)" WHERE dolt_conflict_id = 'definition';"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 13, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -975,9 +981,15 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
+                // Changed from the Go test: Postgres cannot change the return type of an existing function, so it is dropped first.
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION interpreted_example(input TEXT);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
                 ScriptTestAssertion {
-                    query: "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
+                    query: "CREATE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Tag("CREATE FUNCTION"),
                     ..A
                 },
@@ -1005,11 +1017,11 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1029,9 +1041,15 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
+                // Changed from the Go test: Postgres cannot change the return type of an existing function, so it is dropped first.
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION interpreted_example(input TEXT);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
                 ScriptTestAssertion {
-                    query: "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
+                    query: "CREATE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Tag("CREATE FUNCTION"),
                     ..A
                 },
@@ -1071,11 +1089,11 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -1143,10 +1161,10 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("DELETE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -1161,10 +1179,10 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT interpreted_example('123456');",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type int2: "123456""#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "123456" is out of range for type smallint"#, ..E }),
                     ..A
                 },
             ],
@@ -1324,16 +1342,16 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("UPDATE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"DELETE FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 13, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT interpreted_example('12');",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function: 'interpreted_example' not found", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function interpreted_example(unknown) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
                     ..A
                 },
             ],
@@ -1493,10 +1511,10 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("UPDATE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"DELETE FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 13, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -1668,10 +1686,10 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("UPDATE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"DELETE FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 13, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -2017,16 +2035,16 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("UPDATE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"DELETE FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 13, ..E }),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT interpreted_example('12');",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function: 'interpreted_example' not found", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function interpreted_example(unknown) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
                     ..A
                 },
             ],
@@ -2186,10 +2204,10 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("UPDATE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"DELETE FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 13, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -2249,9 +2267,15 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
+                // Changed from the Go test: Postgres cannot change the return type of an existing function, so it is dropped first.
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION interpreted_example(input TEXT);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
                 ScriptTestAssertion {
-                    query: "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
+                    query: "CREATE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Tag("CREATE FUNCTION"),
                     ..A
                 },
@@ -2267,11 +2291,11 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2291,9 +2315,15 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
+                // Changed from the Go test: Postgres cannot change the return type of an existing function, so it is dropped first.
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION interpreted_example(input TEXT);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
                 ScriptTestAssertion {
-                    query: "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
+                    query: "CREATE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Tag("CREATE FUNCTION"),
                     ..A
                 },
@@ -2309,11 +2339,11 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2364,10 +2394,10 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("UPDATE 2"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_conflicts_interpreted_example(text)\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -2439,9 +2469,15 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
+                // Changed from the Go test: Postgres cannot change the return type of an existing function, so it is dropped first.
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION interpreted_example(input TEXT);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
                 ScriptTestAssertion {
-                    query: "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
+                    query: "CREATE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Tag("CREATE FUNCTION"),
                     ..A
                 },
@@ -2457,11 +2493,11 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2481,9 +2517,15 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
+                // Changed from the Go test: Postgres cannot change the return type of an existing function, so it is dropped first.
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION interpreted_example(input TEXT);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
                 ScriptTestAssertion {
-                    query: "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
+                    query: "CREATE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
                     expected: Expected::Tag("CREATE FUNCTION"),
                     ..A
                 },
@@ -2499,11 +2541,11 @@ fn test_conflicts_root_object() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 32", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2554,10 +2596,10 @@ fn test_conflicts_root_object() {
                     expected: Expected::Tag("DELETE 2"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_conflicts_interpreted_example(text)\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.

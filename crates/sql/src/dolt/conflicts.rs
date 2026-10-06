@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use base64::Engine;
 use doltdb::root::Root;
 use pg_query::NodeEnum;
-use pg_query::protobuf::DeleteStmt;
+use pg_query::protobuf::{DeleteStmt, UpdateStmt};
 use store::Hash;
 
 use crate::Outcome;
@@ -255,7 +255,8 @@ impl ArtifactTable {
     }
 }
 
-/// summary_rows returns the tables of the working root that have conflicts, or constraint violations, with how many.
+/// summary_rows returns the tables of the working root that have conflicts, or constraint violations, with how many,
+/// and for conflicts the root objects with conflicting fields.
 pub fn summary_rows(ctx: &mut Ctx<'_>, conflicts: bool) -> Result<Vec<Vec<Value>>> {
     let mut out = Vec::new();
     for ((schema, name), _) in crate::dolt::procedures::table_map(ctx.db, &ctx.txn.root.clone())? {
@@ -268,6 +269,9 @@ pub fn summary_rows(ctx: &mut Ctx<'_>, conflicts: bool) -> Result<Vec<Vec<Value>
         if count > 0 {
             out.push(vec![Value::Text(name), Value::Numeric(crate::numeric::Numeric::from_i64(count as i64))]);
         }
+    }
+    if conflicts {
+        out.extend(crate::dolt::objmerge::summary_rows(ctx)?);
     }
     Ok(out)
 }
@@ -296,7 +300,16 @@ impl Ctx<'_> {
         if self.resolve_table(relation).is_ok() {
             return Ok(None);
         }
-        let Some(table) = lookup(self, &relation.schemaname, &relation.relname)? else { return Ok(None) };
+        let Some(table) = lookup(self, &relation.schemaname, &relation.relname)? else {
+            let Some(table) =
+                crate::dolt::objmerge::ObjectConflictTable::lookup(self, &relation.schemaname, &relation.relname)?
+            else {
+                return Ok(None);
+            };
+            let selected = self.select_rows(relation, vec![star()], delete.where_clause.clone())?;
+            let count = table.delete(self, &selected)?;
+            return Ok(Some(Outcome::command(format!("DELETE {count}"))));
+        };
         let select = pg_query::protobuf::SelectStmt {
             target_list: vec![star()],
             from_clause: vec![pg_query::Node { node: Some(NodeEnum::RangeVar(relation.clone())) }],
@@ -312,6 +325,82 @@ impl Ctx<'_> {
         remove(self, &user, &doomed)?;
         Ok(Some(Outcome::command(format!("DELETE {}", doomed.len()))))
     }
+}
+
+impl Ctx<'_> {
+    /// select_rows runs a SELECT of targets from a relation with a WHERE clause.
+    fn select_rows(
+        &mut self,
+        relation: &pg_query::protobuf::RangeVar,
+        target_list: Vec<pg_query::Node>,
+        where_clause: Option<Box<pg_query::Node>>,
+    ) -> Result<Vec<Vec<Value>>> {
+        let select = pg_query::protobuf::SelectStmt {
+            target_list,
+            from_clause: vec![pg_query::Node { node: Some(NodeEnum::RangeVar(relation.clone())) }],
+            where_clause,
+            ..Default::default()
+        };
+        let query = crate::plan::Planner { ctx: self, outer: Vec::new() }.plan_query(&select)?;
+        query.plan.run(self)
+    }
+
+    /// is_conflicts_table reports whether a DML statement's target is a table of conflicts or constraint violations
+    /// rather than a user table.
+    pub fn is_conflicts_table(&mut self, relation: Option<&pg_query::protobuf::RangeVar>) -> Result<bool> {
+        let Some(relation) = relation else { return Ok(false) };
+        if self.resolve_table(relation).is_ok() {
+            return Ok(false);
+        }
+        Ok(lookup(self, &relation.schemaname, &relation.relname)?.is_some()
+            || crate::dolt::objmerge::ObjectConflictTable::lookup(self, &relation.schemaname, &relation.relname)?
+                .is_some())
+    }
+
+    /// update_object_conflicts runs an UPDATE of a root object's conflicts table, which sets our values of the
+    /// conflicting fields its rows select, leaving alone the rows it would not change, as Go's engine does.
+    pub fn update_object_conflicts(&mut self, update: &UpdateStmt) -> Result<Option<Outcome>> {
+        let Some(relation) = update.relation.as_ref() else { return Ok(None) };
+        if self.resolve_table(relation).is_ok() {
+            return Ok(None);
+        }
+        let Some(table) =
+            crate::dolt::objmerge::ObjectConflictTable::lookup(self, &relation.schemaname, &relation.relname)?
+        else {
+            return Ok(None);
+        };
+        let our_value = update.target_list.iter().find_map(|target| match target.node.as_ref() {
+            Some(NodeEnum::ResTarget(t)) if t.name == "our_value" => t.val.as_deref().cloned(),
+            _ => None,
+        });
+        let target = |val: pg_query::Node| {
+            let target = pg_query::protobuf::ResTarget { val: Some(Box::new(val)), location: -1, ..Default::default() };
+            pg_query::Node { node: Some(NodeEnum::ResTarget(Box::new(target))) }
+        };
+        let rows = self.select_rows(
+            relation,
+            vec![
+                target(column("dolt_conflict_id")),
+                target(column("our_value")),
+                target(our_value.unwrap_or_else(|| column("our_value"))),
+            ],
+            update.where_clause.clone(),
+        )?;
+        let changes: Vec<(String, Option<String>)> = rows
+            .iter()
+            .filter(|row| row[1] != row[2])
+            .map(|row| (row[0].output().unwrap_or_default(), row[2].output()))
+            .collect();
+        table.update(self, &changes)?;
+        Ok(Some(Outcome::command(format!("UPDATE {}", rows.len()))))
+    }
+}
+
+/// column returns a reference to a column by name.
+fn column(name: &str) -> pg_query::Node {
+    let field = pg_query::Node { node: Some(NodeEnum::String(pg_query::protobuf::String { sval: name.to_string() })) };
+    let column = pg_query::protobuf::ColumnRef { fields: vec![field], location: -1 };
+    pg_query::Node { node: Some(NodeEnum::ColumnRef(column)) }
 }
 
 /// star returns the `*` target of a select list.

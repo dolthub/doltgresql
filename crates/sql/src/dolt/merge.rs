@@ -699,10 +699,8 @@ pub fn merge_roots(ctx: &mut Ctx<'_>, ours: &Root, theirs: &Root, base: &Root, c
     if merged.foreign_keys == base.foreign_keys {
         merged.foreign_keys = theirs.foreign_keys.clone();
     }
-    for collection in 0..merged.root_objects.len() {
-        if merged.root_objects[collection] == base.root_objects[collection] {
-            merged.root_objects[collection] = theirs.root_objects[collection];
-        }
+    if crate::dolt::objmerge::merge_collections(ctx, &mut merged, (ours, theirs, base), commits.theirs)? > 0 {
+        outcome.artifacts = true;
     }
     outcome.root = merged;
     Ok(outcome)

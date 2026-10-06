@@ -1155,6 +1155,8 @@ impl Ctx<'_> {
         Ok(match node {
             NodeEnum::SelectStmt(select) => Some(Planner { ctx: self, outer: Vec::new() }.plan_query(select)?.columns),
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.returning.map(|r| r.columns),
+            NodeEnum::UpdateStmt(update) if self.is_conflicts_table(update.relation.as_ref())? => None,
+            NodeEnum::DeleteStmt(delete) if self.is_conflicts_table(delete.relation.as_ref())? => None,
             NodeEnum::UpdateStmt(update) => self.plan_update(update)?.returning.map(|r| r.columns),
             NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.returning.map(|r| r.columns),
             NodeEnum::CallStmt(call) => self.call_columns(call)?,
@@ -1172,7 +1174,10 @@ impl Ctx<'_> {
                 Ok(Outcome::Rows { columns: query.columns, rows, tag })
             }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self),
-            NodeEnum::UpdateStmt(update) => self.plan_update(update)?.run(self),
+            NodeEnum::UpdateStmt(update) => match self.update_object_conflicts(update)? {
+                Some(outcome) => Ok(outcome),
+                None => self.plan_update(update)?.run(self),
+            },
             NodeEnum::DeleteStmt(delete) => match self.delete_artifacts(delete)? {
                 Some(outcome) => Ok(outcome),
                 None => self.plan_delete(delete)?.run(self),

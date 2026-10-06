@@ -27,8 +27,8 @@ use crate::types::Value;
 const CLEAN: Parser =
     Parser { command: "clean", options: &[("dry-run", "", Kind::Flag), ("x", "x", Kind::Flag)], max_args: None };
 
-/// dolt_clean deletes the working root's tables that the staged root lacks, or only the named ones, leaving out
-/// those that dolt_ignore ignores unless asked not to, as Dolt's CleanUntracked does.
+/// dolt_clean deletes the working root's tables and root objects that the staged root lacks, or only the named ones,
+/// leaving out tables that dolt_ignore ignores unless asked not to, as Dolt's CleanUntracked does.
 pub fn dolt_clean(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let parsed = CLEAN.parse(&strings(args))?;
     let working = ctx.txn.root.clone();
@@ -36,6 +36,7 @@ pub fn dolt_clean(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     for name in &parsed.args {
         match find_table(ctx, &[&working], name)? {
             Some(key) => untracked.push(key),
+            None if crate::dolt::procedures::find_object(ctx, &[&working], name)?.is_some() => {}
             None => return Err(error(format!("failed to clean; table not found: '{name}'"))),
         }
     }
@@ -52,9 +53,23 @@ pub fn dolt_clean(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     }
     let staged = table_map(ctx.db, &ctx.txn.staged.clone())?;
     untracked.retain(|key| !staged.contains_key(key));
+    let staged_objects = crate::dolt::diff::object_entries(ctx.db, &ctx.txn.staged.clone())?;
+    let mut objects = Vec::new();
+    for (name, (collection, key, _)) in crate::dolt::diff::object_entries(ctx.db, &working)? {
+        let named = parsed.args.is_empty()
+            || parsed.args.iter().any(|a| *a == name.1 || *a == format!("{}.{}", name.0, name.1));
+        if named && !staged_objects.contains_key(&name) {
+            objects.push((collection, key));
+        }
+    }
     if !parsed.has("dry-run") {
         for (schema, name) in untracked {
             ctx.txn.root.put_table(ctx.db, &schema, &name, None)?;
+            ctx.drop_table_triggers(&schema, &name)?;
+            ctx.drop_owned_sequences(&schema, &name)?;
+        }
+        for (collection, key) in objects {
+            ctx.txn.root.put_object(ctx.db, collection, &key, None)?;
         }
     }
     Ok(Value::Int8(0))

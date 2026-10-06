@@ -578,7 +578,7 @@ fn type_name(type_id: &str, schema: &str) -> String {
 /// object_name returns the schema and name that a root object's ID shows in diffs, as Go's root objects name
 /// themselves: routines with their parameter types, triggers after their tables, and casts and operators by their
 /// types.
-fn object_name(collection: usize, id: &[u8]) -> Name {
+pub fn object_name(collection: usize, id: &[u8]) -> Name {
     let segments = crate::catalog::id::segments(id);
     let segment = |i: usize| segments.get(i).cloned().unwrap_or_default();
     match collection {
@@ -610,10 +610,19 @@ fn object_name(collection: usize, id: &[u8]) -> Name {
 /// object_map returns a root's root objects by the schema and name that diffs show, which the status and diffs show
 /// alongside tables.
 pub fn object_map(db: &mut Database, root: &Root) -> Result<BTreeMap<Name, Hash>> {
+    Ok(object_entries(db, root)?.into_iter().map(|(name, (_, _, address))| (name, address)).collect())
+}
+
+/// ObjectEntry is a root object's collection, ID, and address.
+pub type ObjectEntry = (usize, Vec<u8>, Hash);
+
+/// object_entries returns a root's root objects by the schema and name that diffs show, each with its collection,
+/// ID, and address.
+pub fn object_entries(db: &mut Database, root: &Root) -> Result<BTreeMap<Name, ObjectEntry>> {
     let mut objects = BTreeMap::new();
     for &collection in COLLECTIONS {
         for (key, address) in root.objects(db, collection)? {
-            objects.insert(object_name(collection, &key), address);
+            objects.insert(object_name(collection, &key), (collection, key, address));
         }
     }
     Ok(objects)
