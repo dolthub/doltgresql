@@ -85,6 +85,13 @@ fn relations(select: &SelectStmt) -> Vec<String> {
     names
 }
 
+/// view_definition returns the query of a stored CREATE VIEW statement as text, as the catalogs show it.
+pub fn view_definition(fragment: &str) -> Result<String> {
+    let (select, _) = view_query(fragment)?;
+    let text = pg_query::NodeRef::SelectStmt(&select).deparse().map_err(PgError::internal)?;
+    Ok(format!(" {text};"))
+}
+
 /// view_query returns the query of a stored CREATE VIEW statement, with its column names.
 pub fn view_query(fragment: &str) -> Result<(SelectStmt, Vec<String>)> {
     let parsed = pg_query::parse(fragment).map_err(PgError::internal)?;

@@ -1403,6 +1403,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "crc",
  "doltdb",
  "md-5",
  "num-bigint",
@@ -1415,6 +1416,7 @@ dependencies = [
  "serial",
  "store",
  "xxhash-rust",
+ "zstd",
 ]
 
 [[package]]

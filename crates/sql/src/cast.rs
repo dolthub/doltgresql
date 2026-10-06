@@ -42,6 +42,7 @@ pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
         oid::INTERVAL => "interval",
         oid::VARCHAR => "character varying",
         oid::BPCHAR => "character",
+        oid::CHAR => "\"char\"",
         _ => builtin_type(type_oid).map_or("unknown", |t| t.name),
     }
     .into()
@@ -162,6 +163,51 @@ fn parse_bool(text: &str) -> Result<bool> {
     }
 }
 
+/// is_reg_type reports whether a type is one of the reg types, whose values name catalog objects.
+pub fn is_reg_type(type_oid: u32) -> bool {
+    matches!(
+        type_oid,
+        oid::REGPROC
+            | oid::REGPROCEDURE
+            | oid::REGOPER
+            | oid::REGOPERATOR
+            | oid::REGCLASS
+            | oid::REGTYPE
+            | oid::REGNAMESPACE
+            | oid::REGROLE
+    )
+}
+
+/// parse_oid reads an OID as Postgres' oidin does, where negative numbers wrap around.
+fn parse_oid(text: &str, type_oid: u32) -> Result<u32> {
+    let trimmed = text.trim_matches(|c: char| c.is_ascii_whitespace());
+    let digits = trimmed.strip_prefix(['-', '+']).unwrap_or(trimmed);
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(invalid_syntax(type_oid, text));
+    }
+    let value: i128 = trimmed.parse().map_err(|_| out_of_range(type_oid, text))?;
+    if !(i32::MIN as i128..=u32::MAX as i128).contains(&value) {
+        return Err(out_of_range(type_oid, text));
+    }
+    Ok(value as i64 as u32)
+}
+
+/// char_value returns the value of the "char" type for text: its first byte, written as an octal escape when it is not
+/// ASCII.
+fn char_value(text: &str) -> Value {
+    Value::Text(match text.as_bytes().first() {
+        None => String::new(),
+        Some(&b) if b.is_ascii() => (b as char).to_string(),
+        Some(&b) => format!("\\{b:03o}"),
+    })
+}
+
+/// is_char_value reports whether text is already a value of the "char" type: one ASCII character or an octal escape.
+fn is_char_value(text: &str) -> bool {
+    text.len() <= 1
+        || (text.len() == 4 && text.starts_with('\\') && text[1..].bytes().all(|b| (b'0'..=b'7').contains(&b)))
+}
+
 /// input reads a value of the type from its text format.
 pub fn input(text: &str, type_oid: u32) -> Result<Value> {
     if crate::array::is_array_type(type_oid) {
@@ -199,6 +245,8 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
                 .map(Value::TimestampTz)?
         }
         oid::INTERVAL => Value::Interval(crate::datetime::parse_interval(text)?),
+        oid::OID | oid::XID | oid::CID => Value::Oid(parse_oid(text, type_oid)?),
+        oid::CHAR => char_value(text),
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN => Value::Text(text.to_string()),
         _ => return Err(PgError::unsupported(format!("reading values of type {}", type_display(type_oid)))),
     })
@@ -238,6 +286,10 @@ fn to_integer(value: Value, type_oid: u32) -> Result<Value> {
             _ => n.to_i64().ok_or_else(|| int_out_of_range(type_oid))?,
         },
         Value::Bool(b) if type_oid == oid::INT4 => b as i64,
+        Value::Oid(o) if type_oid == oid::INT4 => o as i32 as i64,
+        Value::Reg(reg) if type_oid == oid::INT4 => reg.oid as i32 as i64,
+        Value::Oid(o) => o as i64,
+        Value::Reg(reg) => reg.oid as i64,
         Value::Text(text) => return input(&text, type_oid),
         other => return Err(cannot_cast(&other, type_oid)),
     };
@@ -462,6 +514,23 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
             };
             Value::Text(apply_length(text, to, explicit)?)
         }
+        oid::CHAR => match value {
+            Value::Text(text) if is_char_value(&text) => Value::Text(text),
+            other => char_value(&other.output().unwrap_or_default()),
+        },
+        oid::OID | oid::XID | oid::CID => match value {
+            Value::Oid(o) => Value::Oid(o),
+            Value::Reg(reg) => Value::Oid(reg.oid),
+            Value::Int2(i) => Value::Oid(i as u32),
+            Value::Int4(i) => Value::Oid(i as u32),
+            Value::Int8(i) => Value::Oid(
+                u32::try_from(i)
+                    .or_else(|_| i32::try_from(i).map(|i| i as u32))
+                    .map_err(|_| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "OID out of range"))?,
+            ),
+            Value::Text(text) => input(&text, to.oid)?,
+            other => return Err(cannot_cast(&other, to.oid)),
+        },
         _ => return Err(PgError::unsupported(format!("casts to {}", type_display(to.oid)))),
     })
 }

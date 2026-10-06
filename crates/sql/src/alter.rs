@@ -84,7 +84,7 @@ fn rename_in_expression(text: &str, old: &str, new: &str) -> Result<String> {
 }
 
 /// references reports whether a stored expression refers to a column.
-fn references(text: &str, column: &str) -> bool {
+pub(crate) fn references(text: &str, column: &str) -> bool {
     parse_expression(text).is_ok_and(|node| {
         node.node.as_ref().is_some_and(|n| {
             n.nodes().into_iter().any(|(n, ..)| {

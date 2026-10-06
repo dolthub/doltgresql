@@ -16,7 +16,7 @@
 
 use super::{ANY, Function, text};
 use crate::error::{PgError, Result, code};
-use crate::oid::{BOOL, INT4, TEXT};
+use crate::oid::{BOOL, CHAR, INT4, TEXT};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -60,6 +60,8 @@ pub const FUNCTIONS: &[Function] = &[
     f("starts_with", &[TEXT, TEXT], BOOL, starts_with),
     f("ascii", &[TEXT], INT4, ascii),
     f("chr", &[INT4], TEXT, chr),
+    f("int4", &[CHAR], INT4, char_to_int4),
+    f("char", &[INT4], CHAR, int4_to_char),
     f("md5", &[TEXT], TEXT, md5),
     f("quote_ident", &[TEXT], TEXT, quote_ident),
     f("quote_literal", &[TEXT], TEXT, quote_literal),
@@ -294,6 +296,28 @@ fn starts_with(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// ascii returns the code point of the first character.
 fn ascii(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Int4(text(&args[0]).chars().next().map_or(0, |c| c as i32)))
+}
+
+/// char_to_int4 returns the signed byte of a "char" value.
+fn char_to_int4(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let text = text(&args[0]);
+    let byte = match text.strip_prefix('\\') {
+        Some(octal) if octal.len() == 3 => u8::from_str_radix(octal, 8).unwrap_or(0),
+        _ => text.bytes().next().unwrap_or(0),
+    };
+    Ok(Value::Int4(byte as i8 as i32))
+}
+
+/// int4_to_char returns the "char" value of a signed byte.
+fn int4_to_char(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let value = int(&args[0]);
+    let byte =
+        i8::try_from(value).map_err(|_| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "\"char\" out of range"))? as u8;
+    Ok(Value::Text(match byte {
+        0 => String::new(),
+        b if b.is_ascii() => (b as char).to_string(),
+        b => format!("\\{b:03o}"),
+    }))
 }
 
 /// chr returns the character of the code point.

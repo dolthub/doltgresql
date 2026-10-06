@@ -42,6 +42,8 @@ pub struct Engine {
 /// Shared is what every clone of an engine shares.
 struct Shared {
     data_dir: PathBuf,
+    /// The superuser, whose name the default database takes.
+    superuser: String,
     databases: Mutex<HashMap<String, (DbHandle, SequenceTracker)>>,
 }
 
@@ -68,7 +70,11 @@ impl Engine {
     pub fn open(data_dir: &Path, superuser: &str) -> Result<Engine> {
         std::fs::create_dir_all(data_dir.join(".dolt")).map_err(PgError::internal)?;
         let engine = Engine {
-            shared: Arc::new(Shared { data_dir: data_dir.to_path_buf(), databases: Mutex::new(HashMap::new()) }),
+            shared: Arc::new(Shared {
+                data_dir: data_dir.to_path_buf(),
+                superuser: superuser.to_string(),
+                databases: Mutex::new(HashMap::new()),
+            }),
         };
         if !engine.database_exists(superuser) {
             let dir = data_dir.join(superuser);
@@ -115,6 +121,8 @@ impl Engine {
                 explicit: false,
                 sequence_values: HashMap::new(),
                 last_sequence: None,
+                data_dir: self.shared.data_dir.clone(),
+                superuser: self.shared.superuser.clone(),
             },
             txns: Vec::new(),
             failed: false,
@@ -156,9 +164,27 @@ pub struct SessionState {
     pub sequence_values: HashMap<Vec<u8>, i64>,
     /// The sequence ID and value of the session's most recent nextval.
     pub last_sequence: Option<(Vec<u8>, i64)>,
+    /// The directory that holds the databases.
+    pub data_dir: PathBuf,
+    pub superuser: String,
 }
 
 impl SessionState {
+    /// database_names returns the names of the databases in the data directory, in name order.
+    pub fn database_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(&self.data_dir)
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().join(".dolt").is_dir())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
     /// search_path returns the schemas that unqualified names resolve in.
     pub fn search_path(&self) -> Vec<String> {
         let path = self.settings.get("search_path").unwrap_or_default();

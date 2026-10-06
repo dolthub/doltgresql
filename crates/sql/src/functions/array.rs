@@ -349,6 +349,8 @@ pub fn value_type(value: &Value) -> u32 {
         Value::Json(_) => oid::JSON,
         Value::Jsonb(_) => oid::JSONB,
         Value::Record(_) => oid::RECORD,
+        Value::Oid(_) => oid::OID,
+        Value::Reg(reg) => reg.type_oid,
         _ => oid::TEXT,
     }
 }

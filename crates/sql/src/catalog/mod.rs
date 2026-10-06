@@ -15,6 +15,7 @@
 //! The catalog: built-in types, resolving the type names that statements use, and table definitions.
 
 pub mod id;
+pub mod oids;
 pub mod table;
 
 use std::collections::HashMap;
@@ -73,6 +74,11 @@ fn builtins() -> &'static Builtins {
         let by_id = types.iter().enumerate().map(|(i, t)| (t.definition.id.clone(), i)).collect();
         Builtins { types, by_oid, by_name, by_id }
     })
+}
+
+/// builtin_types returns every built-in type.
+pub fn builtin_types() -> &'static [BuiltinType] {
+    &builtins().types
 }
 
 /// builtin_type returns a built-in type by OID.

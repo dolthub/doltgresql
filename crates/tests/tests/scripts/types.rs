@@ -15,7 +15,7 @@
 use harness::oid::*;
 use harness::pgx::Time;
 use harness::plan::PlanFact;
-use harness::script::Cell::{Any, Null, Text as T};
+use harness::script::Cell::{Any, Null, Oid, Text as T};
 use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, ScriptTestAssertion, USER_DEFINED, run_scripts, run_scripts_repeated};
 use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};
 
@@ -3930,9 +3930,9 @@ fn test_types() {
                         rows: &[
                             &[T("2"), T("9012")],
                             &[T("3"), T("2345")],
-                            &[T("4"), T("4294967295")],
+                            &[T("4"), Oid(4294967295)],
                             &[T("6"), T("0")],
-                            &[T("7"), T("4294967295")],
+                            &[T("7"), Oid(4294967295)],
                         ],
                         tag: "SELECT 5",
                     },
@@ -3943,7 +3943,7 @@ fn test_types() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID)],
                         rows: &[
-                            &[T("20304")],
+                            &[Oid(20304)],
                         ],
                         tag: "SELECT 1",
                     },
@@ -4123,7 +4123,7 @@ fn test_types() {
                         columns: &[Column("id", INT4), Column("coid", OID)],
                         rows: &[
                             &[T("1"), T("1234")],
-                            &[T("2"), T("4294967295")],
+                            &[T("2"), Oid(4294967295)],
                         ],
                         tag: "SELECT 2",
                     },
@@ -4263,7 +4263,7 @@ fn test_types() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("oid", OID), Column("oid", OID), Column("oid", OID)],
                         rows: &[
-                            &[T("4294967295"), T("4294967295"), T("4294967295"), T("4294967295")],
+                            &[Oid(4294967295), Oid(4294967295), Oid(4294967295), Oid(4294967295)],
                         ],
                         tag: "SELECT 1",
                     },
@@ -4274,7 +4274,7 @@ fn test_types() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("oid", OID), Column("oid", OID), Column("oid", OID)],
                         rows: &[
-                            &[T("2147483648"), T("2147483648"), T("2147483648"), T("2147483648")],
+                            &[Oid(2147483648), Oid(2147483648), Oid(2147483648), Oid(2147483648)],
                         ],
                         tag: "SELECT 1",
                     },
@@ -4296,7 +4296,7 @@ fn test_types() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("oid", OID)],
                         rows: &[
-                            &[T("4294967295"), T("4294967295")],
+                            &[Oid(4294967295), Oid(4294967295)],
                         ],
                         tag: "SELECT 1",
                     },

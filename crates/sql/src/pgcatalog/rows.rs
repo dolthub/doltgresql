@@ -1,0 +1,848 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! The rows of the pg_catalog relations.
+
+use crate::array::Array;
+use crate::catalog::table::TableDef;
+use crate::catalog::{ColumnType, builtin_type, id, oids};
+use crate::error::Result;
+use crate::foreign::Rule;
+use crate::oid as types;
+use crate::pgcatalog::snapshot::{
+    Snapshot, constraint_oid, index_oid, namespace_oid, sequence_oid, table_oid, view_oid,
+};
+use crate::pgcatalog::{Rows, boolean, int2, int4, oid, text};
+use crate::query::Ctx;
+use crate::types::{Reg, Value};
+
+/// SUPERUSER is the OID of the bootstrap superuser.
+pub const SUPERUSER: u32 = 10;
+
+/// PREDEFINED_ROLES are Postgres 15's predefined roles.
+pub(crate) const PREDEFINED_ROLES: [(u32, &str); 12] = [
+    (3373, "pg_monitor"),
+    (3374, "pg_read_all_settings"),
+    (3375, "pg_read_all_stats"),
+    (3377, "pg_stat_scan_tables"),
+    (4200, "pg_signal_backend"),
+    (4544, "pg_checkpoint"),
+    (4569, "pg_read_server_files"),
+    (4570, "pg_write_server_files"),
+    (4571, "pg_execute_server_program"),
+    (6171, "pg_database_owner"),
+    (6181, "pg_read_all_data"),
+    (6182, "pg_write_all_data"),
+];
+
+/// DEFAULT_BTREE_OPCLASSES maps a type to the OID and name of its default btree operator class.
+const DEFAULT_BTREE_OPCLASSES: [(u32, u32, &str); 22] = [
+    (16, 10003, "bool_ops"),
+    (17, 10006, "bytea_ops"),
+    (18, 10007, "char_ops"),
+    (19, 10028, "name_ops"),
+    (20, 3124, "int8_ops"),
+    (21, 1979, "int2_ops"),
+    (23, 1978, "int4_ops"),
+    (25, 3126, "text_ops"),
+    (26, 1981, "oid_ops"),
+    (700, 10012, "float4_ops"),
+    (701, 3123, "float8_ops"),
+    (1042, 10004, "bpchar_ops"),
+    (1043, 3126, "text_ops"),
+    (1082, 3122, "date_ops"),
+    (1083, 10038, "time_ops"),
+    (1114, 3128, "timestamp_ops"),
+    (1184, 3127, "timestamptz_ops"),
+    (1186, 10022, "interval_ops"),
+    (1266, 10041, "timetz_ops"),
+    (1700, 3125, "numeric_ops"),
+    (2950, 10065, "uuid_ops"),
+    (3802, 10088, "jsonb_ops"),
+];
+
+/// default_opclass returns the default btree operator class of a type.
+pub fn default_opclass(type_oid: u32) -> Option<(u32, &'static str)> {
+    if crate::array::is_array_type(type_oid) {
+        return Some((10000, "array_ops"));
+    }
+    DEFAULT_BTREE_OPCLASSES.iter().find(|(t, ..)| *t == type_oid).map(|&(_, o, n)| (o, n))
+}
+
+/// is_builtin_schema reports whether a schema is one that every Postgres database has.
+pub fn is_builtin_schema(schema: &str) -> bool {
+    matches!(schema, "pg_catalog" | "pg_toast" | "information_schema" | "public")
+}
+
+/// DEFAULT_COLLATION and C_COLLATION are the OIDs of the database's default collation and of the C collation.
+const DEFAULT_COLLATION: u32 = 100;
+const C_COLLATION: u32 = 950;
+
+/// TypeInfo is what pg_attribute and pg_type repeat about a type.
+struct TypeInfo {
+    len: i16,
+    by_value: bool,
+    align: String,
+    storage: String,
+    collation: u32,
+}
+
+/// type_info returns what the catalogs show about a type.
+fn type_info(type_oid: u32) -> TypeInfo {
+    let Some(t) = builtin_type(type_oid) else {
+        return TypeInfo { len: -1, by_value: false, align: "i".into(), storage: "x".into(), collation: 0 };
+    };
+    let d = &t.definition;
+    let collation = match id::segments(&d.typ_collation).last().map(String::as_str) {
+        Some("C") => C_COLLATION,
+        Some(_) => DEFAULT_COLLATION,
+        None => 0,
+    };
+    TypeInfo {
+        len: d.typ_length,
+        by_value: d.passed_by_val,
+        align: String::from_utf8_lossy(&d.align).into_owned(),
+        storage: String::from_utf8_lossy(&d.storage).into_owned(),
+        collation,
+    }
+}
+
+/// regproc returns a regproc value for a function ID, which is 0 and prints as `-` for an empty ID.
+fn regproc(function: &[u8]) -> Value {
+    let name = id::segments(function).get(1).cloned();
+    Value::Reg(Box::new(Reg {
+        type_oid: types::REGPROC,
+        oid: if name.is_some() { oids::oid(function) } else { 0 },
+        name: name.unwrap_or_else(|| "-".into()),
+    }))
+}
+
+/// int2_array returns a smallint array.
+fn int2_array(values: impl IntoIterator<Item = i16>) -> Value {
+    Value::Array(Box::new(Array::one_dimensional(types::INT2, values.into_iter().map(Value::Int2).collect())))
+}
+
+/// vector returns the text of an int2vector or oidvector.
+fn vector<T: ToString>(values: impl IntoIterator<Item = T>) -> Value {
+    text(values.into_iter().map(|v| v.to_string()).collect::<Vec<_>>().join(" "))
+}
+
+/// row_type_oid returns the OID of a table's or view's row type.
+pub fn row_type_oid(schema: &str, name: &str) -> u32 {
+    oids::oid(&id::new(id::SECTION_TYPE, &[schema, name]))
+}
+
+/// Attribute is a column of a relation, as pg_attribute shows it.
+struct Attribute {
+    relation: u32,
+    name: String,
+    ty: ColumnType,
+    number: i16,
+    not_null: bool,
+    has_default: bool,
+}
+
+/// SYSTEM_COLUMNS are the system columns of every table, with their numbers and types.
+const SYSTEM_COLUMNS: [(&str, i16, u32); 6] = [
+    ("tableoid", -6, types::OID),
+    ("cmax", -5, types::CID),
+    ("xmax", -4, types::XID),
+    ("cmin", -3, types::CID),
+    ("xmin", -2, types::XID),
+    ("ctid", -1, 27),
+];
+
+/// index_name returns the name of a table's index, where an empty name is its primary key.
+fn index_name(table: &TableDef, index: &str) -> String {
+    if index.is_empty() { format!("{}_pkey", table.name) } else { index.to_string() }
+}
+
+/// TableIndex is an index of a table as the catalogs show it: its name, columns, and kind.
+pub struct TableIndex {
+    pub name: String,
+    pub columns: Vec<usize>,
+    pub unique: bool,
+    pub primary: bool,
+    pub descending: Vec<bool>,
+    pub nulls_first: Vec<bool>,
+}
+
+/// table_indexes returns a table's primary key index and its visible secondary indexes.
+pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
+    let mut out = Vec::new();
+    if !table.key_columns.is_empty() {
+        out.push(TableIndex {
+            name: index_name(table, ""),
+            columns: table.key_columns.clone(),
+            unique: true,
+            primary: true,
+            descending: vec![false; table.key_columns.len()],
+            nulls_first: vec![false; table.key_columns.len()],
+        });
+    }
+    for index in table.indexes.iter().filter(|i| !i.system) {
+        out.push(TableIndex {
+            name: index.name.clone(),
+            columns: index.columns.clone(),
+            unique: index.unique,
+            primary: false,
+            descending: index.descending.clone(),
+            nulls_first: index.nulls_last.iter().map(|&l| !l).collect(),
+        });
+    }
+    out
+}
+
+impl Ctx<'_> {
+    /// pg_catalog_rows fills the rows of a pg_catalog relation.
+    pub(super) fn pg_catalog_rows(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        match rows.table.name {
+            "pg_database" => self.pg_database(rows),
+            "pg_namespace" => {
+                self.pg_namespace(rows);
+                Ok(())
+            }
+            "pg_authid" | "pg_roles" | "pg_user" | "pg_shadow" => {
+                self.pg_roles(rows);
+                Ok(())
+            }
+            "pg_type" => self.pg_type(rows),
+            "pg_class" => self.pg_class(rows),
+            "pg_attribute" => self.pg_attribute(rows),
+            "pg_index" => self.pg_index(rows),
+            "pg_indexes" => self.pg_indexes(rows),
+            "pg_constraint" => self.pg_constraint(rows),
+            "pg_tables" => self.pg_tables(rows),
+            "pg_views" => self.pg_views(rows),
+            "pg_sequence" | "pg_sequences" => self.pg_sequences(rows),
+            "pg_settings" => {
+                self.pg_settings(rows);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// pg_settings lists the configuration parameters with the session's values.
+    fn pg_settings(&mut self, rows: &mut Rows<'_>) {
+        let optional = |v: &str| if v.is_empty() { Value::Null } else { text(v) };
+        for s in crate::settings::all_settings() {
+            let value = self.session.settings.get(&s.name).unwrap_or_default();
+            let enum_values = if s.enum_values.is_empty() {
+                Value::Null
+            } else {
+                Value::Array(Box::new(Array::one_dimensional(
+                    types::TEXT,
+                    s.enum_values.iter().map(|v| text(v.clone())).collect(),
+                )))
+            };
+            rows.push(vec![
+                ("source", text(if value == s.default { "default" } else { "session" })),
+                ("name", text(s.name.clone())),
+                ("setting", text(value)),
+                ("unit", optional(&s.unit)),
+                ("category", text(s.category.clone())),
+                ("short_desc", text(s.description.clone())),
+                ("extra_desc", optional(&s.extra_description)),
+                ("context", text(s.context.clone())),
+                ("vartype", text(s.kind.clone())),
+                ("min_val", optional(&s.min)),
+                ("max_val", optional(&s.max)),
+                ("enumvals", enum_values),
+                ("boot_val", text(s.default.clone())),
+                ("reset_val", text(s.default.clone())),
+                ("pending_restart", boolean(false)),
+            ]);
+        }
+    }
+
+    /// pg_database lists the databases, with the template databases that Postgres always has.
+    fn pg_database(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let mut names = self.session.database_names();
+        names.extend(["template0".to_string(), "template1".to_string()]);
+        for name in names {
+            let template = name.starts_with("template") && !self.session.database_names().contains(&name);
+            rows.push(vec![
+                ("oid", oid(oids::oid(&id::new(id::SECTION_DATABASE, &[&name])))),
+                ("datname", text(name.clone())),
+                ("datdba", oid(SUPERUSER)),
+                ("encoding", int4(6)),
+                ("datlocprovider", text("c")),
+                ("datistemplate", boolean(template)),
+                ("datallowconn", boolean(name != "template0")),
+                ("datconnlimit", int4(-1)),
+                ("datfrozenxid", oid(716)),
+                ("datminmxid", oid(1)),
+                ("dattablespace", oid(1663)),
+                ("datcollate", text("C")),
+                ("datctype", text("C")),
+            ]);
+        }
+        Ok(())
+    }
+
+    /// pg_namespace lists the schemas.
+    fn pg_namespace(&mut self, rows: &mut Rows<'_>) {
+        for schema in self.schema_names().into_iter().filter(|s| !is_builtin_schema(s)) {
+            rows.push(vec![
+                ("oid", oid(namespace_oid(&schema))),
+                ("nspname", text(schema)),
+                ("nspowner", oid(SUPERUSER)),
+            ]);
+        }
+    }
+
+    /// schema_names returns the names of the schemas of the root value, without Doltgres' own `dolt` schema.
+    pub fn schema_names(&self) -> Vec<String> {
+        let mut schemas: Vec<String> = self
+            .txn
+            .root
+            .schemas
+            .iter()
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .filter(|s| s != "dolt")
+            .collect();
+        if schemas.is_empty() {
+            schemas.push("public".into());
+        }
+        schemas.sort();
+        schemas
+    }
+
+    /// pg_roles lists the superuser and Postgres' predefined roles.
+    fn pg_roles(&mut self, rows: &mut Rows<'_>) {
+        let superuser = self.session.superuser.clone();
+        let mut roles = vec![(SUPERUSER, superuser, true)];
+        roles.extend(PREDEFINED_ROLES.iter().map(|&(o, n)| (o, n.to_string(), false)));
+        for (role, name, superuser) in roles {
+            let shared = vec![
+                ("oid", oid(role)),
+                ("rolname", text(name.clone())),
+                ("rolsuper", boolean(superuser)),
+                ("rolinherit", boolean(true)),
+                ("rolcreaterole", boolean(superuser)),
+                ("rolcreatedb", boolean(superuser)),
+                ("rolcanlogin", boolean(superuser)),
+                ("rolreplication", boolean(superuser)),
+                ("rolbypassrls", boolean(superuser)),
+                ("rolconnlimit", int4(-1)),
+                ("rolpassword", text("********")),
+                ("usename", text(name)),
+                ("usesysid", oid(role)),
+                ("usecreatedb", boolean(superuser)),
+                ("usesuper", boolean(superuser)),
+                ("userepl", boolean(superuser)),
+                ("usebypassrls", boolean(superuser)),
+                ("passwd", text("********")),
+            ];
+            if !superuser && matches!(rows.table.name, "pg_user" | "pg_shadow") {
+                continue;
+            }
+            rows.push(shared);
+        }
+    }
+
+    /// pg_type lists the row types of the user tables and views.
+    fn pg_type(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        let relations = snapshot
+            .tables
+            .iter()
+            .map(|t| (t.schema.clone(), t.name.clone(), table_oid(&t.schema, &t.name)))
+            .chain(snapshot.views.iter().map(|v| (v.schema.clone(), v.name.clone(), view_oid(&v.schema, &v.name))));
+        for (schema, name, relation) in relations {
+            rows.push(vec![
+                ("oid", oid(row_type_oid(&schema, &name))),
+                ("typname", text(name)),
+                ("typnamespace", oid(namespace_oid(&schema))),
+                ("typowner", oid(SUPERUSER)),
+                ("typlen", int2(-1)),
+                ("typbyval", boolean(false)),
+                ("typtype", text("c")),
+                ("typcategory", text("C")),
+                ("typispreferred", boolean(false)),
+                ("typisdefined", boolean(true)),
+                ("typdelim", text(",")),
+                ("typrelid", oid(relation)),
+                ("typsubscript", regproc(&[])),
+                ("typelem", oid(0)),
+                ("typarray", oid(0)),
+                ("typalign", text("d")),
+                ("typstorage", text("x")),
+                ("typnotnull", boolean(false)),
+                ("typbasetype", oid(0)),
+                ("typtypmod", int4(-1)),
+                ("typndims", int4(0)),
+                ("typcollation", oid(0)),
+            ]);
+        }
+        Ok(())
+    }
+
+    /// pg_class lists the user tables, indexes, views, and sequences.
+    fn pg_class(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            let relation = table_oid(&table.schema, &table.name);
+            let namespace = namespace_oid(&table.schema);
+            let indexes = table_indexes(table);
+            let mut row = class_row(relation, &table.name, namespace, "r", table.columns.len() as i16, 2);
+            row.extend([
+                ("reltype", oid(row_type_oid(&table.schema, &table.name))),
+                ("relfilenode", oid(relation)),
+                ("relhasindex", boolean(!indexes.is_empty())),
+                ("relchecks", int2(table.checks.len() as i16)),
+                ("relhastriggers", boolean(has_foreign_keys(&snapshot, table))),
+                ("relreplident", text("d")),
+                ("relminmxid", oid(1)),
+            ]);
+            rows.push(row);
+            for index in indexes {
+                let index_relation = index_oid(&table.schema, &table.name, &index.name);
+                let mut row = class_row(index_relation, &index.name, namespace, "i", index.columns.len() as i16, 403);
+                row.extend([
+                    ("relfilenode", oid(index_relation)),
+                    ("relpages", int4(1)),
+                    ("reltuples", Value::Float4(0.0)),
+                ]);
+                rows.push(row);
+            }
+        }
+        for view in &snapshot.views {
+            let columns = self.view_columns(&view.schema, &view.name).map_or(0, |c| c.len());
+            let mut row = class_row(
+                view_oid(&view.schema, &view.name),
+                &view.name,
+                namespace_oid(&view.schema),
+                "v",
+                columns as i16,
+                0,
+            );
+            row.extend([("reltype", oid(row_type_oid(&view.schema, &view.name))), ("relhasrules", boolean(true))]);
+            rows.push(row);
+        }
+        for sequence in &snapshot.sequences {
+            let (schema, name) = crate::sequences::schema_and_name(sequence);
+            let relation = sequence_oid(&schema, &name);
+            let mut row = class_row(relation, &name, namespace_oid(&schema), "S", 3, 0);
+            row.extend([("relfilenode", oid(relation)), ("relpages", int4(1)), ("reltuples", Value::Float4(1.0))]);
+            rows.push(row);
+        }
+        Ok(())
+    }
+
+    /// view_columns returns the names and types of a view's columns, by planning its query.
+    pub fn view_columns(&mut self, schema: &str, name: &str) -> Option<Vec<(String, ColumnType)>> {
+        let (_, fragment) = self.find_view(schema, name).ok()??;
+        let (select, aliases) = crate::views::view_query(&fragment).ok()?;
+        let query = crate::plan::Planner { ctx: self, outer: Vec::new() }.plan_query(&select).ok()?;
+        Some(
+            query
+                .columns
+                .iter()
+                .zip(&query.types)
+                .enumerate()
+                .map(|(i, (c, &ty))| (aliases.get(i).cloned().unwrap_or_else(|| c.name.clone()), ty))
+                .collect(),
+        )
+    }
+
+    /// pg_attribute lists the columns of the user relations, with the system columns of tables.
+    fn pg_attribute(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let mut attributes: Vec<Attribute> = Vec::new();
+        let system = |attributes: &mut Vec<Attribute>, relation: u32| {
+            for (name, number, type_oid) in SYSTEM_COLUMNS {
+                attributes.push(Attribute {
+                    relation,
+                    name: name.into(),
+                    ty: ColumnType { oid: type_oid, modifier: -1 },
+                    number,
+                    not_null: true,
+                    has_default: false,
+                });
+            }
+        };
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            let relation = table_oid(&table.schema, &table.name);
+            system(&mut attributes, relation);
+            for (i, column) in table.columns.iter().enumerate() {
+                attributes.push(Attribute {
+                    relation,
+                    name: column.name.clone(),
+                    ty: column.ty,
+                    number: i as i16 + 1,
+                    not_null: !column.nullable,
+                    has_default: !column.default.is_empty(),
+                });
+            }
+            for index in table_indexes(table) {
+                let index_relation = index_oid(&table.schema, &table.name, &index.name);
+                for (i, &c) in index.columns.iter().enumerate() {
+                    attributes.push(Attribute {
+                        relation: index_relation,
+                        name: table.columns[c].name.clone(),
+                        ty: table.columns[c].ty,
+                        number: i as i16 + 1,
+                        not_null: false,
+                        has_default: false,
+                    });
+                }
+            }
+        }
+        for view in &snapshot.views {
+            let relation = view_oid(&view.schema, &view.name);
+            for (i, (name, ty)) in
+                self.view_columns(&view.schema, &view.name).unwrap_or_default().into_iter().enumerate()
+            {
+                attributes.push(Attribute {
+                    relation,
+                    name,
+                    ty,
+                    number: i as i16 + 1,
+                    not_null: false,
+                    has_default: false,
+                });
+            }
+        }
+        for sequence in &snapshot.sequences {
+            let (schema, name) = crate::sequences::schema_and_name(sequence);
+            let relation = sequence_oid(&schema, &name);
+            for (i, (column, type_oid)) in
+                [("last_value", types::INT8), ("log_cnt", types::INT8), ("is_called", types::BOOL)]
+                    .into_iter()
+                    .enumerate()
+            {
+                attributes.push(Attribute {
+                    relation,
+                    name: column.into(),
+                    ty: ColumnType { oid: type_oid, modifier: -1 },
+                    number: i as i16 + 1,
+                    not_null: true,
+                    has_default: false,
+                });
+            }
+        }
+        for a in attributes {
+            let info = type_info(a.ty.oid);
+            rows.push(vec![
+                ("attrelid", oid(a.relation)),
+                ("attname", text(a.name)),
+                ("atttypid", oid(a.ty.oid)),
+                ("attstattarget", int4(-1)),
+                ("attlen", int2(info.len)),
+                ("attnum", int2(a.number)),
+                ("attndims", int4(crate::array::is_array_type(a.ty.oid) as i32)),
+                ("attcacheoff", int4(-1)),
+                ("atttypmod", int4(a.ty.modifier)),
+                ("attbyval", boolean(info.by_value)),
+                ("attalign", text(info.align)),
+                ("attstorage", text(info.storage)),
+                ("attcompression", text("")),
+                ("attnotnull", boolean(a.not_null)),
+                ("atthasdef", boolean(a.has_default)),
+                ("atthasmissing", boolean(false)),
+                ("attidentity", text("")),
+                ("attgenerated", text("")),
+                ("attisdropped", boolean(false)),
+                ("attislocal", boolean(true)),
+                ("attinhcount", int4(0)),
+                ("attcollation", oid(info.collation)),
+            ]);
+        }
+        Ok(())
+    }
+
+    /// pg_index lists the indexes of the user tables.
+    fn pg_index(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            for index in table_indexes(table) {
+                let types: Vec<u32> = index.columns.iter().map(|&c| table.columns[c].ty.oid).collect();
+                rows.push(vec![
+                    ("indexrelid", oid(index_oid(&table.schema, &table.name, &index.name))),
+                    ("indrelid", oid(table_oid(&table.schema, &table.name))),
+                    ("indnatts", int2(index.columns.len() as i16)),
+                    ("indnkeyatts", int2(index.columns.len() as i16)),
+                    ("indisunique", boolean(index.unique)),
+                    ("indnullsnotdistinct", boolean(false)),
+                    ("indisprimary", boolean(index.primary)),
+                    ("indisexclusion", boolean(false)),
+                    ("indimmediate", boolean(true)),
+                    ("indisclustered", boolean(false)),
+                    ("indisvalid", boolean(true)),
+                    ("indcheckxmin", boolean(false)),
+                    ("indisready", boolean(true)),
+                    ("indislive", boolean(true)),
+                    ("indisreplident", boolean(false)),
+                    ("indkey", vector(index.columns.iter().map(|c| c + 1))),
+                    ("indcollation", vector(types.iter().map(|&t| type_info(t).collation))),
+                    ("indclass", vector(types.iter().map(|&t| default_opclass(t).map_or(0, |o| o.0)))),
+                    (
+                        "indoption",
+                        vector(
+                            index.descending.iter().zip(&index.nulls_first).map(|(&d, &f)| d as i32 | (f as i32) << 1),
+                        ),
+                    ),
+                ]);
+            }
+        }
+        Ok(())
+    }
+
+    /// pg_indexes lists each index of the user tables with its definition.
+    fn pg_indexes(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            for index in table_indexes(table) {
+                rows.push(vec![
+                    ("schemaname", text(table.schema.clone())),
+                    ("tablename", text(table.name.clone())),
+                    ("indexname", text(index.name.clone())),
+                    ("indexdef", text(index_definition(table, &index))),
+                ]);
+            }
+        }
+        Ok(())
+    }
+
+    /// pg_constraint lists the primary key, unique, check, and foreign key constraints of the user tables.
+    fn pg_constraint(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            let relation = table_oid(&table.schema, &table.name);
+            let namespace = namespace_oid(&table.schema);
+            let base = |name: &str, kind: &str, section: u8| {
+                vec![
+                    ("oid", oid(constraint_oid(section, &table.schema, &table.name, name))),
+                    ("conname", text(name)),
+                    ("connamespace", oid(namespace)),
+                    ("contype", text(kind)),
+                    ("condeferrable", boolean(false)),
+                    ("condeferred", boolean(false)),
+                    ("convalidated", boolean(true)),
+                    ("conrelid", oid(relation)),
+                    ("contypid", oid(0)),
+                    ("conparentid", oid(0)),
+                    ("confrelid", oid(0)),
+                    ("confupdtype", text(" ")),
+                    ("confdeltype", text(" ")),
+                    ("confmatchtype", text(" ")),
+                    ("conislocal", boolean(true)),
+                    ("coninhcount", int4(0)),
+                    ("connoinherit", boolean(kind != "c")),
+                ]
+            };
+            for index in table_indexes(table).into_iter().filter(|i| i.unique) {
+                let (kind, section) = if index.primary { ("p", 23) } else { ("u", 36) };
+                let mut row = base(&index.name, kind, section);
+                row.extend([
+                    ("conindid", oid(index_oid(&table.schema, &table.name, &index.name))),
+                    ("conkey", int2_array(index.columns.iter().map(|&c| c as i16 + 1))),
+                ]);
+                rows.push(row);
+            }
+            for check in &table.checks {
+                let mut row = base(&check.name, "c", 3);
+                let columns: Vec<i16> = table
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| crate::alter::references(&check.expression, &c.name))
+                    .map(|(i, _)| i as i16 + 1)
+                    .collect();
+                row.extend([("conindid", oid(0)), ("conkey", int2_array(columns))]);
+                rows.push(row);
+            }
+            for fk in
+                snapshot.foreign_keys.iter().filter(|f| f.child_schema == table.schema && f.child_table == table.name)
+            {
+                let Some(parent) = snapshot.table(&fk.parent_schema, &fk.parent_table) else { continue };
+                let position =
+                    |t: &TableDef, c: &String| t.columns.iter().position(|col| col.name == *c).unwrap_or(0) as i16 + 1;
+                let parent_index =
+                    if fk.parent_index.is_empty() { index_name(parent, "") } else { fk.parent_index.clone() };
+                let mut row = base(&fk.name, "f", 11);
+                row.extend([
+                    ("conindid", oid(index_oid(&parent.schema, &parent.name, &parent_index))),
+                    ("confrelid", oid(table_oid(&parent.schema, &parent.name))),
+                    ("confupdtype", text(rule_letter(fk.on_update))),
+                    ("confdeltype", text(rule_letter(fk.on_delete))),
+                    ("confmatchtype", text(if fk.match_full { "f" } else { "s" })),
+                    ("convalidated", boolean(!fk.not_valid)),
+                    ("conkey", int2_array(fk.child_columns.iter().map(|c| position(table, c)))),
+                    ("confkey", int2_array(fk.parent_columns.iter().map(|c| position(parent, c)))),
+                ]);
+                rows.push(row);
+            }
+        }
+        Ok(())
+    }
+
+    /// pg_tables lists the user tables.
+    fn pg_tables(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let owner = self.session.superuser.clone();
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            rows.push(vec![
+                ("schemaname", text(table.schema.clone())),
+                ("tablename", text(table.name.clone())),
+                ("tableowner", text(owner.clone())),
+                ("hasindexes", boolean(!table_indexes(table).is_empty())),
+                ("hasrules", boolean(false)),
+                ("hastriggers", boolean(has_foreign_keys(&snapshot, table))),
+                ("rowsecurity", boolean(false)),
+            ]);
+        }
+        Ok(())
+    }
+
+    /// pg_views lists the user views.
+    fn pg_views(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let owner = self.session.superuser.clone();
+        for view in self.snapshot()?.views {
+            let definition = crate::views::view_definition(&view.statement).unwrap_or_default();
+            rows.push(vec![
+                ("schemaname", text(view.schema)),
+                ("viewname", text(view.name)),
+                ("viewowner", text(owner.clone())),
+                ("definition", text(definition)),
+            ]);
+        }
+        Ok(())
+    }
+
+    /// pg_sequences fills pg_sequence or the pg_sequences view.
+    fn pg_sequences(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let owner = self.session.superuser.clone();
+        for sequence in self.snapshot()?.sequences {
+            let (schema, name) = crate::sequences::schema_and_name(&sequence);
+            let data_type = crate::catalog::builtin_type_by_id(&sequence.data_type_id).map_or(types::INT8, |t| t.oid);
+            let display = crate::cast::type_display(data_type).into_owned();
+            rows.push(vec![
+                ("seqrelid", oid(sequence_oid(&schema, &name))),
+                ("seqtypid", oid(data_type)),
+                ("seqstart", Value::Int8(sequence.start)),
+                ("seqincrement", Value::Int8(sequence.increment)),
+                ("seqmax", Value::Int8(sequence.maximum)),
+                ("seqmin", Value::Int8(sequence.minimum)),
+                ("seqcache", Value::Int8(sequence.cache)),
+                ("seqcycle", boolean(sequence.cycle)),
+                ("schemaname", text(schema)),
+                ("sequencename", text(name)),
+                ("sequenceowner", text(owner.clone())),
+                ("data_type", Value::Reg(Box::new(Reg { type_oid: types::REGTYPE, oid: data_type, name: display }))),
+                ("start_value", Value::Int8(sequence.start)),
+                ("min_value", Value::Int8(sequence.minimum)),
+                ("max_value", Value::Int8(sequence.maximum)),
+                ("increment_by", Value::Int8(sequence.increment)),
+                ("cycle", boolean(sequence.cycle)),
+                ("cache_size", Value::Int8(sequence.cache)),
+                ("last_value", if sequence.has_been_called { Value::Int8(sequence.current) } else { Value::Null }),
+            ]);
+        }
+        Ok(())
+    }
+}
+
+/// class_row returns the pg_class columns shared by every kind of relation.
+fn class_row(
+    relation: u32,
+    name: &str,
+    namespace: u32,
+    kind: &str,
+    columns: i16,
+    access_method: u32,
+) -> Vec<(&'static str, Value)> {
+    let replica_identity = if kind == "r" { "d" } else { "n" };
+    vec![
+        ("oid", oid(relation)),
+        ("relname", text(name)),
+        ("relnamespace", oid(namespace)),
+        ("reltype", oid(0)),
+        ("reloftype", oid(0)),
+        ("relowner", oid(SUPERUSER)),
+        ("relam", oid(access_method)),
+        ("relfilenode", oid(0)),
+        ("reltablespace", oid(0)),
+        ("relpages", int4(0)),
+        ("reltuples", Value::Float4(-1.0)),
+        ("relallvisible", int4(0)),
+        ("reltoastrelid", oid(0)),
+        ("relhasindex", boolean(false)),
+        ("relisshared", boolean(false)),
+        ("relpersistence", text("p")),
+        ("relkind", text(kind)),
+        ("relnatts", int2(columns)),
+        ("relchecks", int2(0)),
+        ("relhasrules", boolean(false)),
+        ("relhastriggers", boolean(false)),
+        ("relhassubclass", boolean(false)),
+        ("relrowsecurity", boolean(false)),
+        ("relforcerowsecurity", boolean(false)),
+        ("relispopulated", boolean(true)),
+        ("relreplident", text(replica_identity)),
+        ("relispartition", boolean(false)),
+        ("relrewrite", oid(0)),
+        ("relfrozenxid", oid(0)),
+        ("relminmxid", oid(0)),
+    ]
+}
+
+/// has_foreign_keys reports whether a table refers to another or another refers to it, which Postgres enforces with
+/// triggers.
+fn has_foreign_keys(snapshot: &Snapshot, table: &TableDef) -> bool {
+    snapshot.foreign_keys.iter().any(|fk| {
+        (fk.child_schema == table.schema && fk.child_table == table.name)
+            || (fk.parent_schema == table.schema && fk.parent_table == table.name)
+    })
+}
+
+/// rule_letter returns the letter pg_constraint shows for a foreign key action.
+fn rule_letter(rule: Rule) -> &'static str {
+    match rule {
+        Rule::NoAction => "a",
+        Rule::Restrict => "r",
+        Rule::Cascade => "c",
+        Rule::SetNull => "n",
+        Rule::SetDefault => "d",
+    }
+}
+
+/// index_definition returns an index's CREATE INDEX statement as pg_get_indexdef prints it.
+pub fn index_definition(table: &TableDef, index: &TableIndex) -> String {
+    let columns: Vec<String> = index
+        .columns
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| {
+            let mut column = crate::engine::quote_identifier(&table.columns[c].name);
+            match (index.descending[i], index.nulls_first[i]) {
+                (true, true) => column.push_str(" DESC"),
+                (true, false) => column.push_str(" DESC NULLS LAST"),
+                (false, true) => column.push_str(" NULLS FIRST"),
+                (false, false) => {}
+            }
+            column
+        })
+        .collect();
+    format!(
+        "CREATE {}INDEX {} ON {}.{} USING btree ({})",
+        if index.unique { "UNIQUE " } else { "" },
+        crate::engine::quote_identifier(&index.name),
+        crate::engine::quote_identifier(&table.schema),
+        crate::engine::quote_identifier(&table.name),
+        columns.join(", ")
+    )
+}

@@ -348,7 +348,17 @@ impl<'b, 'a> Binder<'b, 'a> {
                     }
                     _ => self.bind(arg)?,
                 };
-                coerce(bound, target, true, arg_location(arg))
+                if crate::cast::is_reg_type(target.oid)
+                    && let (Expr::Const(value), oid::UNKNOWN) = (&bound.0, bound.1.oid)
+                {
+                    let value = self
+                        .ctx
+                        .reg_value(value.clone(), target.oid)
+                        .map_err(|err| PgError { position: position(arg_location(arg)), ..err })?;
+                    return Ok((Expr::Const(value), target));
+                }
+                let location = if bound.1.oid == oid::UNKNOWN { arg_location(arg) } else { cast.location };
+                coerce(bound, target, true, location)
             }
             NodeEnum::AExpr(e) => self.a_expr(e),
             NodeEnum::BoolExpr(e) => {
@@ -930,6 +940,12 @@ impl<'b, 'a> Binder<'b, 'a> {
                 (Some(_), Some(_)) => typ(oid::NUMERIC),
                 _ if is_string(lt) && is_string(rt) => typ(oid::TEXT),
                 _ if lt == rt => left.1,
+                _ if (lt == oid::CHAR && is_string(rt)) || (rt == oid::CHAR && is_string(lt)) => typ(oid::TEXT),
+                _ if (is_oid_type(lt) || numeric_rank(lt).is_some_and(|r| r <= 2))
+                    && (is_oid_type(rt) || numeric_rank(rt).is_some_and(|r| r <= 2)) =>
+                {
+                    typ(oid::OID)
+                }
                 _ => return Err(missing()),
             },
         };
@@ -1317,7 +1333,10 @@ pub fn arg_location(node: &Node) -> i32 {
         Some(NodeEnum::AConst(c)) => c.location,
         Some(NodeEnum::ColumnRef(c)) => c.location,
         Some(NodeEnum::AExpr(e)) => e.location,
-        Some(NodeEnum::TypeCast(c)) => c.location,
+        Some(NodeEnum::TypeCast(c)) => match c.arg.as_deref().map(arg_location) {
+            Some(arg) if arg >= 0 && (arg < c.location || c.location < 0) => arg,
+            _ => c.location,
+        },
         Some(NodeEnum::ParamRef(p)) => p.location,
         Some(NodeEnum::FuncCall(f)) => f.location,
         _ => -1,
@@ -1354,8 +1373,13 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     if from == to {
         return Ok((expr, to));
     }
+    if (from.oid == oid::CHAR) != (to.oid == oid::CHAR) && from.oid != oid::UNKNOWN {
+        return char_cast((expr, from), to, explicit, location);
+    }
     if from.oid == oid::UNKNOWN {
-        if let Expr::Const(value) = &expr {
+        if let Expr::Const(value) = &expr
+            && !crate::cast::is_reg_type(to.oid)
+        {
             let value = match value {
                 Value::Text(text) => cast_value(
                     crate::cast::input(text, to.oid).map_err(|err| PgError { position: position(location), ..err })?,
@@ -1383,8 +1407,38 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
             )
         });
     }
-    if let Expr::Const(value) = &expr {
+    if let Expr::Const(value) = &expr
+        && !crate::cast::is_reg_type(to.oid)
+    {
         return Ok((Expr::Const(cast_value(value.clone(), to, explicit)?), to));
+    }
+    Ok((Expr::Cast(Box::new(expr), to, explicit), to))
+}
+
+/// char_cast converts to or from the "char" type, which converts to and from integers by its byte, to the string types,
+/// and only explicitly from name.
+fn char_cast((expr, from): Bound, to: ColumnType, explicit: bool, location: i32) -> Result<Bound> {
+    let integer = if from.oid == oid::CHAR { to.oid } else { from.oid };
+    let allowed = if integer == oid::INT4 {
+        explicit
+    } else if from.oid == oid::CHAR {
+        is_string(to.oid) && (explicit || to.oid == oid::TEXT || to.oid != oid::NAME)
+    } else {
+        is_string(from.oid) && (explicit || from.oid != oid::NAME)
+    };
+    if !allowed {
+        return Err(PgError {
+            position: position(location),
+            ..PgError::new(
+                code::CANNOT_COERCE,
+                format!("cannot cast type {} to {}", type_display(from.oid), type_display(to.oid)),
+            )
+        });
+    }
+    if integer == oid::INT4 {
+        let name = if to.oid == oid::CHAR { "char" } else { "int4" };
+        let resolved = functions::resolve(name, &[from.oid], location)?;
+        return Ok((Expr::Func(resolved.index, vec![expr]), to));
     }
     Ok((Expr::Cast(Box::new(expr), to, explicit), to))
 }
@@ -1399,6 +1453,14 @@ pub(crate) fn implicitly_converts(from: u32, to: u32) -> bool {
         || numeric.is_some_and(|(f, t)| f <= t)
         || (is_string(from) && is_string(to))
         || implicit_datetime(from, to)
+        || (from == oid::CHAR && to == oid::TEXT)
+        || (matches!(from, oid::INT2 | oid::INT4 | oid::INT8) && is_oid_type(to))
+        || (is_oid_type(from) && is_oid_type(to) && (from == oid::OID || to == oid::OID))
+}
+
+/// is_oid_type reports whether a type holds an OID: oid or one of the reg types.
+pub fn is_oid_type(type_oid: u32) -> bool {
+    type_oid == oid::OID || crate::cast::is_reg_type(type_oid)
 }
 
 /// singular returns the singular of a plural clause name, as Postgres' errors name a definition.
@@ -1416,6 +1478,10 @@ pub(crate) fn assignable(from: u32, to: u32) -> bool {
         || (numeric_rank(from).is_some() && numeric_rank(to).is_some())
         || assignable_datetime(from, to)
         || (is_string(to) && !is_array_type(from))
+        || implicitly_converts(from, to)
+        || (is_oid_type(from) && matches!(to, oid::INT4 | oid::INT8))
+        || (to == oid::CHAR && matches!(from, oid::TEXT | oid::VARCHAR | oid::BPCHAR))
+        || (from == oid::CHAR && is_string(to))
 }
 
 /// element_type returns the element type of an array type.
@@ -1449,7 +1515,9 @@ pub fn assign(bound: Bound, to: ColumnType, column: &str, location: i32) -> Resu
     if from == to.oid && to.modifier == -1 {
         return Ok((bound.0, to));
     }
-    if let Expr::Const(value) = &bound.0 {
+    if let Expr::Const(value) = &bound.0
+        && !crate::cast::is_reg_type(to.oid)
+    {
         let value = match value {
             Value::Text(text) if from == oid::UNKNOWN => {
                 crate::cast::input(text, to.oid).map_err(|err| PgError { position: position(location), ..err })?
@@ -1545,6 +1613,8 @@ fn as_i64(value: &Value) -> Option<i64> {
         Value::Int2(i) => Some(*i as i64),
         Value::Int4(i) => Some(*i as i64),
         Value::Int8(i) => Some(*i),
+        Value::Oid(o) => Some(*o as i64),
+        Value::Reg(reg) => Some(reg.oid as i64),
         _ => None,
     }
 }
@@ -1624,6 +1694,9 @@ impl Expr {
             Expr::Param(i) => ctx.params.get(*i).cloned().unwrap_or(Value::Null),
             Expr::Cast(expr, ty, explicit) => {
                 let value = expr.eval(ctx, row)?;
+                if crate::cast::is_reg_type(ty.oid) {
+                    return ctx.reg_value(value, ty.oid);
+                }
                 match value {
                     Value::Text(text) if !matches!(ty.oid, oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME) => {
                         cast_value(crate::cast::input(&text, ty.oid)?, *ty, *explicit)?

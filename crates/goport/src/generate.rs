@@ -720,7 +720,7 @@ pub fn generate(
     for (file, tests) in &files {
         let mut code = String::from(rust::LICENSE_HEADER);
         code.push_str(
-            "\nuse harness::oid::*;\nuse harness::pgx::Time;\nuse harness::plan::PlanFact;\nuse harness::script::Cell::{Any, Null, Text as T};\n",
+            "\nuse harness::oid::*;\nuse harness::pgx::Time;\nuse harness::plan::PlanFact;\nuse harness::script::Cell::{Any, Null, Oid, Text as T};\n",
         );
         code.push_str(
             "use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, \

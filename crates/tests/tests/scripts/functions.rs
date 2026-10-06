@@ -15,7 +15,7 @@
 use harness::oid::*;
 use harness::pgx::Time;
 use harness::plan::PlanFact;
-use harness::script::Cell::{Any, Null, Text as T};
+use harness::script::Cell::{Any, Null, Oid, Text as T};
 use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, ScriptTestAssertion, USER_DEFINED, run_scripts, run_scripts_repeated};
 use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};
 
@@ -7785,13 +7785,13 @@ fn test_schema_visibility_inquiry_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("table_name", NAME), Column("table_schema", NAME)],
                         rows: &[
-                            &[T("16385"), T("mytable"), T("myschema")],
-                            &[T("16390"), T("myview"), T("myschema")],
-                            &[T("16402"), T("test_index"), T("testschema")],
-                            &[T("16403"), T("test_seq"), T("testschema")],
-                            &[T("16395"), T("test_table"), T("testschema")],
-                            &[T("16398"), T("test_table_pkey"), T("testschema")],
-                            &[T("16400"), T("test_table_v1_key"), T("testschema")],
+                            &[Oid(16385), T("mytable"), T("myschema")],
+                            &[Oid(16390), T("myview"), T("myschema")],
+                            &[Oid(16402), T("test_index"), T("testschema")],
+                            &[Oid(16403), T("test_seq"), T("testschema")],
+                            &[Oid(16395), T("test_table"), T("testschema")],
+                            &[Oid(16398), T("test_table_pkey"), T("testschema")],
+                            &[Oid(16400), T("test_table_v1_key"), T("testschema")],
                         ],
                         tag: "SELECT 7",
                     },
@@ -7911,14 +7911,14 @@ fn test_schema_visibility_inquiry_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("typname", NAME), Column("nspname", NAME)],
                         rows: &[
-                            &[T("16385"), T("_mydomain"), T("myschema")],
-                            &[T("16387"), T("_myenum"), T("myschema")],
-                            &[T("16396"), T("_test_domain"), T("testschema")],
-                            &[T("16398"), T("_test_enum"), T("testschema")],
-                            &[T("16386"), T("mydomain"), T("myschema")],
-                            &[T("16388"), T("myenum"), T("myschema")],
-                            &[T("16397"), T("test_domain"), T("testschema")],
-                            &[T("16399"), T("test_enum"), T("testschema")],
+                            &[Oid(16385), T("_mydomain"), T("myschema")],
+                            &[Oid(16387), T("_myenum"), T("myschema")],
+                            &[Oid(16396), T("_test_domain"), T("testschema")],
+                            &[Oid(16398), T("_test_enum"), T("testschema")],
+                            &[Oid(16386), T("mydomain"), T("myschema")],
+                            &[Oid(16388), T("myenum"), T("myschema")],
+                            &[Oid(16397), T("test_domain"), T("testschema")],
+                            &[Oid(16399), T("test_enum"), T("testschema")],
                         ],
                         tag: "SELECT 8",
                     },
@@ -10466,8 +10466,8 @@ fn test_system_catalog_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("proname", NAME)],
                         rows: &[
-                            &[T("16384"), T("alt_func1")],
-                            &[T("16390"), T("ptest5")],
+                            &[Oid(16384), T("alt_func1")],
+                            &[Oid(16390), T("ptest5")],
                         ],
                         tag: "SELECT 2",
                     },
@@ -10538,8 +10538,8 @@ fn test_system_catalog_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("proname", NAME)],
                         rows: &[
-                            &[T("16384"), T("alt_func1")],
-                            &[T("16390"), T("ptest5")],
+                            &[Oid(16384), T("alt_func1")],
+                            &[Oid(16390), T("ptest5")],
                         ],
                         tag: "SELECT 2",
                     },
@@ -10855,8 +10855,8 @@ ORDER BY i.indisprimary DESC, c2.relname;"#,
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("table_name", NAME), Column("table_schema", NAME)],
                         rows: &[
-                            &[T("16384"), T("test"), T("public")],
-                            &[T("16389"), T("test_view"), T("public")],
+                            &[Oid(16384), T("test"), T("public")],
+                            &[Oid(16389), T("test_view"), T("public")],
                         ],
                         tag: "SELECT 2",
                     },
@@ -12059,7 +12059,7 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("indexrelid", OID), Column("pg_get_expr", TEXT)],
                         rows: &[
-                            &[T("16387"), Null],
+                            &[Oid(16387), Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -12070,7 +12070,7 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("indexrelid", OID), Column("pg_get_expr", TEXT)],
                         rows: &[
-                            &[T("16387"), Null],
+                            &[Oid(16387), Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -12081,7 +12081,7 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("indexrelid", OID), Column("pg_get_expr", TEXT)],
                         rows: &[
-                            &[T("16387"), Null],
+                            &[Oid(16387), Null],
                         ],
                         tag: "SELECT 1",
                     },

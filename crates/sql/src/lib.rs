@@ -33,6 +33,7 @@ pub mod functions;
 pub mod json;
 pub mod numeric;
 pub mod parse;
+mod pgcatalog;
 pub mod plan;
 pub mod query;
 pub mod sequences;
@@ -81,6 +82,18 @@ pub mod oid {
     pub const INTERVAL: u32 = 1186;
     pub const TIMETZ: u32 = 1266;
     pub const NUMERIC: u32 = 1700;
+    pub const CHAR: u32 = 18;
+    pub const REGPROC: u32 = 24;
+    pub const OID: u32 = 26;
+    pub const XID: u32 = 28;
+    pub const CID: u32 = 29;
+    pub const REGPROCEDURE: u32 = 2202;
+    pub const REGOPER: u32 = 2203;
+    pub const REGOPERATOR: u32 = 2204;
+    pub const REGCLASS: u32 = 2205;
+    pub const REGTYPE: u32 = 2206;
+    pub const REGNAMESPACE: u32 = 4089;
+    pub const REGROLE: u32 = 4096;
 }
 
 /// Column describes a result column.

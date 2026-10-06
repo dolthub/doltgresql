@@ -15,7 +15,7 @@
 use harness::oid::*;
 use harness::pgx::Time;
 use harness::plan::PlanFact;
-use harness::script::Cell::{Any, Null, Text as T};
+use harness::script::Cell::{Any, Null, Oid, Text as T};
 use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, ScriptTestAssertion, USER_DEFINED, run_scripts, run_scripts_repeated};
 use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};
 
@@ -3797,7 +3797,7 @@ fn test_pg_attrdef() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("adrelid", OID), Column("adnum", INT2), Column("adbin", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16388"), T("16385"), T("2"), T("{CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 55 :constvalue 7 [ 28 0 0 0 104 101 121 ]}")],
+                            &[Oid(16388), Oid(16385), T("2"), T("{CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 55 :constvalue 7 [ 28 0 0 0 104 101 121 ]}")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -3818,7 +3818,7 @@ fn test_pg_attrdef() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID)],
                         rows: &[
-                            &[T("16388")],
+                            &[Oid(16388)],
                         ],
                         tag: "SELECT 1",
                     },
@@ -3849,7 +3849,7 @@ fn test_pg_attribute() {
                     expected: Expected::Rows {
                         columns: &[Column("attrelid", OID), Column("attname", NAME), Column("atttypid", OID), Column("attstattarget", INT4), Column("attlen", INT2), Column("attnum", INT2), Column("attndims", INT4), Column("attcacheoff", INT4), Column("atttypmod", INT4), Column("attbyval", BOOL), Column("attalign", CHAR), Column("attstorage", CHAR), Column("attcompression", CHAR), Column("attnotnull", BOOL), Column("atthasdef", BOOL), Column("atthasmissing", BOOL), Column("attidentity", CHAR), Column("attgenerated", CHAR), Column("attisdropped", BOOL), Column("attislocal", BOOL), Column("attinhcount", INT4), Column("attcollation", OID), Column("attacl", ACLITEM_ARRAY), Column("attoptions", TEXT_ARRAY), Column("attfdwoptions", TEXT_ARRAY), Column("attmissingval", ANYARRAY)],
                         rows: &[
-                            &[T("16385"), T("pk"), T("23"), T("-1"), T("4"), T("1"), T("0"), T("-1"), T("-1"), T("t"), T("i"), T("p"), T(""), T("t"), T("f"), T("f"), T(""), T(""), T("f"), T("t"), T("0"), T("0"), Null, Null, Null, Null],
+                            &[Oid(16385), T("pk"), T("23"), T("-1"), T("4"), T("1"), T("0"), T("-1"), T("-1"), T("t"), T("i"), T("p"), T(""), T("t"), T("f"), T("f"), T(""), T(""), T("f"), T("t"), T("0"), T("0"), Null, Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -3860,7 +3860,7 @@ fn test_pg_attribute() {
                     expected: Expected::Rows {
                         columns: &[Column("attrelid", OID), Column("attname", NAME), Column("atttypid", OID), Column("attstattarget", INT4), Column("attlen", INT2), Column("attnum", INT2), Column("attndims", INT4), Column("attcacheoff", INT4), Column("atttypmod", INT4), Column("attbyval", BOOL), Column("attalign", CHAR), Column("attstorage", CHAR), Column("attcompression", CHAR), Column("attnotnull", BOOL), Column("atthasdef", BOOL), Column("atthasmissing", BOOL), Column("attidentity", CHAR), Column("attgenerated", CHAR), Column("attisdropped", BOOL), Column("attislocal", BOOL), Column("attinhcount", INT4), Column("attcollation", OID), Column("attacl", ACLITEM_ARRAY), Column("attoptions", TEXT_ARRAY), Column("attfdwoptions", TEXT_ARRAY), Column("attmissingval", ANYARRAY)],
                         rows: &[
-                            &[T("16385"), T("v1"), T("25"), T("-1"), T("-1"), T("2"), T("0"), T("-1"), T("-1"), T("f"), T("i"), T("x"), T(""), T("f"), T("t"), T("f"), T(""), T(""), T("f"), T("t"), T("0"), T("100"), Null, Null, Null, Null],
+                            &[Oid(16385), T("v1"), T("25"), T("-1"), T("-1"), T("2"), T("0"), T("-1"), T("-1"), T("f"), T("i"), T("x"), T(""), T("f"), T("t"), T("f"), T(""), T(""), T("f"), T("t"), T("0"), T("100"), Null, Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5072,7 +5072,7 @@ fn test_pg_class() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("relname", NAME), Column("relnamespace", OID), Column("reltype", OID), Column("reloftype", OID), Column("relowner", OID), Column("relam", OID), Column("relfilenode", OID), Column("reltablespace", OID), Column("relpages", INT4), Column("reltuples", FLOAT4), Column("relallvisible", INT4), Column("reltoastrelid", OID), Column("relhasindex", BOOL), Column("relisshared", BOOL), Column("relpersistence", CHAR), Column("relkind", CHAR), Column("relnatts", INT2), Column("relchecks", INT2), Column("relhasrules", BOOL), Column("relhastriggers", BOOL), Column("relhassubclass", BOOL), Column("relrowsecurity", BOOL), Column("relforcerowsecurity", BOOL), Column("relispopulated", BOOL), Column("relreplident", CHAR), Column("relispartition", BOOL), Column("relrewrite", OID), Column("relfrozenxid", XID), Column("relminmxid", XID), Column("relacl", ACLITEM_ARRAY), Column("reloptions", TEXT_ARRAY), Column("relpartbound", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16385"), T("testing"), T("16384"), T("16387"), T("0"), T("10"), T("2"), T("16385"), T("0"), T("0"), T("-1"), T("0"), T("0"), T("t"), T("f"), T("p"), T("r"), T("2"), T("0"), T("f"), T("f"), T("f"), T("f"), T("f"), T("t"), T("d"), T("f"), T("0"), T("726"), T("1"), Null, Null, Null],
+                            &[Oid(16385), T("testing"), Oid(16384), Oid(16387), T("0"), T("10"), T("2"), Oid(16385), T("0"), T("0"), T("-1"), T("0"), T("0"), T("t"), T("f"), T("p"), T("r"), T("2"), T("0"), T("f"), T("f"), T("f"), T("f"), T("f"), T("t"), T("d"), T("f"), T("0"), T("726"), T("1"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5083,7 +5083,7 @@ fn test_pg_class() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("relname", NAME), Column("relnamespace", OID), Column("reltype", OID), Column("reloftype", OID), Column("relowner", OID), Column("relam", OID), Column("relfilenode", OID), Column("reltablespace", OID), Column("relpages", INT4), Column("reltuples", FLOAT4), Column("relallvisible", INT4), Column("reltoastrelid", OID), Column("relhasindex", BOOL), Column("relisshared", BOOL), Column("relpersistence", CHAR), Column("relkind", CHAR), Column("relnatts", INT2), Column("relchecks", INT2), Column("relhasrules", BOOL), Column("relhastriggers", BOOL), Column("relhassubclass", BOOL), Column("relrowsecurity", BOOL), Column("relforcerowsecurity", BOOL), Column("relispopulated", BOOL), Column("relreplident", CHAR), Column("relispartition", BOOL), Column("relrewrite", OID), Column("relfrozenxid", XID), Column("relminmxid", XID), Column("relacl", ACLITEM_ARRAY), Column("reloptions", TEXT_ARRAY), Column("relpartbound", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16388"), T("testing_pkey"), T("16384"), T("0"), T("0"), T("10"), T("403"), T("16388"), T("0"), T("1"), T("0"), T("0"), T("0"), T("f"), T("f"), T("p"), T("i"), T("1"), T("0"), T("f"), T("f"), T("f"), T("f"), T("f"), T("t"), T("n"), T("f"), T("0"), T("0"), T("0"), Null, Null, Null],
+                            &[Oid(16388), T("testing_pkey"), Oid(16384), T("0"), T("0"), T("10"), T("403"), Oid(16388), T("0"), T("1"), T("0"), T("0"), T("0"), T("f"), T("f"), T("p"), T("i"), T("1"), T("0"), T("f"), T("f"), T("f"), T("f"), T("f"), T("t"), T("n"), T("f"), T("0"), T("0"), T("0"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5094,7 +5094,7 @@ fn test_pg_class() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("relname", NAME), Column("relnamespace", OID), Column("reltype", OID), Column("reloftype", OID), Column("relowner", OID), Column("relam", OID), Column("relfilenode", OID), Column("reltablespace", OID), Column("relpages", INT4), Column("reltuples", FLOAT4), Column("relallvisible", INT4), Column("reltoastrelid", OID), Column("relhasindex", BOOL), Column("relisshared", BOOL), Column("relpersistence", CHAR), Column("relkind", CHAR), Column("relnatts", INT2), Column("relchecks", INT2), Column("relhasrules", BOOL), Column("relhastriggers", BOOL), Column("relhassubclass", BOOL), Column("relrowsecurity", BOOL), Column("relforcerowsecurity", BOOL), Column("relispopulated", BOOL), Column("relreplident", CHAR), Column("relispartition", BOOL), Column("relrewrite", OID), Column("relfrozenxid", XID), Column("relminmxid", XID), Column("relacl", ACLITEM_ARRAY), Column("reloptions", TEXT_ARRAY), Column("relpartbound", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16392"), T("testview"), T("16384"), T("16394"), T("0"), T("10"), T("0"), T("0"), T("0"), T("0"), T("-1"), T("0"), T("0"), T("f"), T("f"), T("p"), T("v"), T("2"), T("0"), T("t"), T("f"), T("f"), T("f"), T("f"), T("t"), T("n"), T("f"), T("0"), T("0"), T("0"), Null, Null, Null],
+                            &[Oid(16392), T("testview"), Oid(16384), Oid(16394), T("0"), T("10"), T("0"), T("0"), T("0"), T("0"), T("-1"), T("0"), T("0"), T("f"), T("f"), T("p"), T("v"), T("2"), T("0"), T("t"), T("f"), T("f"), T("f"), T("f"), T("t"), T("n"), T("f"), T("0"), T("0"), T("0"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5244,7 +5244,7 @@ fn test_pg_class() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("relname", NAME), Column("relnamespace", OID), Column("reltype", OID), Column("reloftype", OID), Column("relowner", OID), Column("relam", OID), Column("relfilenode", OID), Column("reltablespace", OID), Column("relpages", INT4), Column("reltuples", FLOAT4), Column("relallvisible", INT4), Column("reltoastrelid", OID), Column("relhasindex", BOOL), Column("relisshared", BOOL), Column("relpersistence", CHAR), Column("relkind", CHAR), Column("relnatts", INT2), Column("relchecks", INT2), Column("relhasrules", BOOL), Column("relhastriggers", BOOL), Column("relhassubclass", BOOL), Column("relrowsecurity", BOOL), Column("relforcerowsecurity", BOOL), Column("relispopulated", BOOL), Column("relreplident", CHAR), Column("relispartition", BOOL), Column("relrewrite", OID), Column("relfrozenxid", XID), Column("relminmxid", XID), Column("relacl", ACLITEM_ARRAY), Column("reloptions", TEXT_ARRAY), Column("relpartbound", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16385"), T("testing"), T("16384"), T("16387"), T("0"), T("10"), T("2"), T("16385"), T("0"), T("0"), T("-1"), T("0"), T("0"), T("t"), T("f"), T("p"), T("r"), T("2"), T("0"), T("f"), T("f"), T("f"), T("f"), T("f"), T("t"), T("d"), T("f"), T("0"), T("726"), T("1"), Null, Null, Null],
+                            &[Oid(16385), T("testing"), Oid(16384), Oid(16387), T("0"), T("10"), T("2"), Oid(16385), T("0"), T("0"), T("-1"), T("0"), T("0"), T("t"), T("f"), T("p"), T("r"), T("2"), T("0"), T("f"), T("f"), T("f"), T("f"), T("f"), T("t"), T("d"), T("f"), T("0"), T("726"), T("1"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5255,7 +5255,7 @@ fn test_pg_class() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("relname", NAME), Column("relnamespace", OID), Column("reltype", OID), Column("reloftype", OID), Column("relowner", OID), Column("relam", OID), Column("relfilenode", OID), Column("reltablespace", OID), Column("relpages", INT4), Column("reltuples", FLOAT4), Column("relallvisible", INT4), Column("reltoastrelid", OID), Column("relhasindex", BOOL), Column("relisshared", BOOL), Column("relpersistence", CHAR), Column("relkind", CHAR), Column("relnatts", INT2), Column("relchecks", INT2), Column("relhasrules", BOOL), Column("relhastriggers", BOOL), Column("relhassubclass", BOOL), Column("relrowsecurity", BOOL), Column("relforcerowsecurity", BOOL), Column("relispopulated", BOOL), Column("relreplident", CHAR), Column("relispartition", BOOL), Column("relrewrite", OID), Column("relfrozenxid", XID), Column("relminmxid", XID), Column("relacl", ACLITEM_ARRAY), Column("reloptions", TEXT_ARRAY), Column("relpartbound", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16388"), T("testing_pkey"), T("16384"), T("0"), T("0"), T("10"), T("403"), T("16388"), T("0"), T("1"), T("0"), T("0"), T("0"), T("f"), T("f"), T("p"), T("i"), T("1"), T("0"), T("f"), T("f"), T("f"), T("f"), T("f"), T("t"), T("n"), T("f"), T("0"), T("0"), T("0"), Null, Null, Null],
+                            &[Oid(16388), T("testing_pkey"), Oid(16384), T("0"), T("0"), T("10"), T("403"), Oid(16388), T("0"), T("1"), T("0"), T("0"), T("0"), T("f"), T("f"), T("p"), T("i"), T("1"), T("0"), T("f"), T("f"), T("f"), T("f"), T("f"), T("t"), T("n"), T("f"), T("0"), T("0"), T("0"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5266,7 +5266,7 @@ fn test_pg_class() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("relname", NAME), Column("relnamespace", OID), Column("reltype", OID), Column("reloftype", OID), Column("relowner", OID), Column("relam", OID), Column("relfilenode", OID), Column("reltablespace", OID), Column("relpages", INT4), Column("reltuples", FLOAT4), Column("relallvisible", INT4), Column("reltoastrelid", OID), Column("relhasindex", BOOL), Column("relisshared", BOOL), Column("relpersistence", CHAR), Column("relkind", CHAR), Column("relnatts", INT2), Column("relchecks", INT2), Column("relhasrules", BOOL), Column("relhastriggers", BOOL), Column("relhassubclass", BOOL), Column("relrowsecurity", BOOL), Column("relforcerowsecurity", BOOL), Column("relispopulated", BOOL), Column("relreplident", CHAR), Column("relispartition", BOOL), Column("relrewrite", OID), Column("relfrozenxid", XID), Column("relminmxid", XID), Column("relacl", ACLITEM_ARRAY), Column("reloptions", TEXT_ARRAY), Column("relpartbound", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16392"), T("testview"), T("16384"), T("16394"), T("0"), T("10"), T("0"), T("0"), T("0"), T("0"), T("-1"), T("0"), T("0"), T("f"), T("f"), T("p"), T("v"), T("2"), T("0"), T("t"), T("f"), T("f"), T("f"), T("f"), T("t"), T("n"), T("f"), T("0"), T("0"), T("0"), Null, Null, Null],
+                            &[Oid(16392), T("testview"), Oid(16384), Oid(16394), T("0"), T("10"), T("0"), T("0"), T("0"), T("0"), T("-1"), T("0"), T("0"), T("f"), T("f"), T("p"), T("v"), T("2"), T("0"), T("t"), T("f"), T("f"), T("f"), T("f"), T("t"), T("n"), T("f"), T("0"), T("0"), T("0"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5325,7 +5325,7 @@ ORDER BY 1;"#,
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID)],
                         rows: &[
-                            &[T("16389")],
+                            &[Oid(16389)],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5620,9 +5620,9 @@ order by 1,2"#,
                     expected: Expected::Rows {
                         columns: &[Column("relname", NAME), Column("relnamespace", OID)],
                         rows: &[
-                            &[T("t"), T("16384")],
-                            &[T("t"), T("16385")],
-                            &[T("t"), T("16386")],
+                            &[T("t"), Oid(16384)],
+                            &[T("t"), Oid(16385)],
+                            &[T("t"), Oid(16386)],
                         ],
                         tag: "SELECT 3",
                     },
@@ -5812,11 +5812,11 @@ fn test_pg_constraint() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("conname", NAME), Column("connamespace", OID), Column("contype", CHAR), Column("condeferrable", BOOL), Column("condeferred", BOOL), Column("convalidated", BOOL), Column("conrelid", OID), Column("contypid", OID), Column("conindid", OID), Column("conparentid", OID), Column("confrelid", OID), Column("confupdtype", CHAR), Column("confdeltype", CHAR), Column("confmatchtype", CHAR), Column("conislocal", BOOL), Column("coninhcount", INT4), Column("connoinherit", BOOL), Column("conkey", INT2_ARRAY), Column("confkey", INT2_ARRAY), Column("conpfeqop", OID_ARRAY), Column("conppeqop", OID_ARRAY), Column("conffeqop", OID_ARRAY), Column("confdelsetcols", INT2_ARRAY), Column("conexclop", OID_ARRAY), Column("conbin", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16388"), T("testing_pkey"), T("2200"), T("p"), T("f"), T("f"), T("t"), T("16384"), T("0"), T("16387"), T("0"), T("0"), T(" "), T(" "), T(" "), T("t"), T("0"), T("t"), T("{1}"), Null, Null, Null, Null, Null, Null, Null],
-                            &[T("16390"), T("testing_v1_key"), T("2200"), T("u"), T("f"), T("f"), T("t"), T("16384"), T("0"), T("16389"), T("0"), T("0"), T(" "), T(" "), T(" "), T("t"), T("0"), T("t"), T("{2}"), Null, Null, Null, Null, Null, Null, Null],
-                            &[T("16397"), T("testing2_pkey"), T("2200"), T("p"), T("f"), T("f"), T("t"), T("16391"), T("0"), T("16396"), T("0"), T("0"), T(" "), T(" "), T(" "), T("t"), T("0"), T("t"), T("{1}"), Null, Null, Null, Null, Null, Null, Null],
-                            &[T("16398"), T("testing2_pktesting_fkey"), T("2200"), T("f"), T("f"), T("f"), T("t"), T("16391"), T("0"), T("16387"), T("0"), T("16384"), T("a"), T("a"), T("s"), T("t"), T("0"), T("t"), T("{2}"), T("{1}"), T("{96}"), T("{96}"), T("{96}"), Null, Null, Null],
-                            &[T("16403"), T("v1_check"), T("2200"), T("c"), T("f"), T("f"), T("t"), T("16391"), T("0"), T("0"), T("0"), T("0"), T(" "), T(" "), T(" "), T("t"), T("0"), T("f"), T("{3}"), Null, Null, Null, Null, Null, Null, T("{OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({VAR :varno 1 :varattno 3 :vartype 25 :vartypmod -1 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 52} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 58 :constvalue 4 [ 16 0 0 0 ]}) :location 55}")],
+                            &[Oid(16388), T("testing_pkey"), T("2200"), T("p"), T("f"), T("f"), T("t"), Oid(16384), T("0"), Oid(16387), T("0"), T("0"), T(" "), T(" "), T(" "), T("t"), T("0"), T("t"), T("{1}"), Null, Null, Null, Null, Null, Null, Null],
+                            &[Oid(16390), T("testing_v1_key"), T("2200"), T("u"), T("f"), T("f"), T("t"), Oid(16384), T("0"), Oid(16389), T("0"), T("0"), T(" "), T(" "), T(" "), T("t"), T("0"), T("t"), T("{2}"), Null, Null, Null, Null, Null, Null, Null],
+                            &[Oid(16397), T("testing2_pkey"), T("2200"), T("p"), T("f"), T("f"), T("t"), Oid(16391), T("0"), Oid(16396), T("0"), T("0"), T(" "), T(" "), T(" "), T("t"), T("0"), T("t"), T("{1}"), Null, Null, Null, Null, Null, Null, Null],
+                            &[Oid(16398), T("testing2_pktesting_fkey"), T("2200"), T("f"), T("f"), T("f"), T("t"), Oid(16391), T("0"), Oid(16387), T("0"), Oid(16384), T("a"), T("a"), T("s"), T("t"), T("0"), T("t"), T("{2}"), T("{1}"), T("{96}"), T("{96}"), T("{96}"), Null, Null, Null],
+                            &[Oid(16403), T("v1_check"), T("2200"), T("c"), T("f"), T("f"), T("t"), Oid(16391), T("0"), T("0"), T("0"), T("0"), T(" "), T(" "), T(" "), T("t"), T("0"), T("f"), T("{3}"), Null, Null, Null, Null, Null, Null, T("{OPEXPR :opno 531 :opfuncid 157 :opresulttype 16 :opretset false :opcollid 0 :inputcollid 100 :args ({VAR :varno 1 :varattno 3 :vartype 25 :vartypmod -1 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 3 :location 52} {CONST :consttype 25 :consttypmod -1 :constcollid 100 :constlen -1 :constbyval false :constisnull false :location 58 :constvalue 4 [ 16 0 0 0 ]}) :location 55}")],
                         ],
                         tag: "SELECT 5",
                     },
@@ -5963,9 +5963,9 @@ fn test_pg_constraint() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("conname", NAME), Column("conrelid", OID), Column("relname", NAME)],
                         rows: &[
-                            &[T("16397"), T("testing2_pkey"), T("16391"), T("testing2")],
-                            &[T("16398"), T("testing2_pktesting_fkey"), T("16391"), T("testing2")],
-                            &[T("16403"), T("v1_check"), T("16391"), T("testing2")],
+                            &[Oid(16397), T("testing2_pkey"), Oid(16391), T("testing2")],
+                            &[Oid(16398), T("testing2_pktesting_fkey"), Oid(16391), T("testing2")],
+                            &[Oid(16403), T("v1_check"), Oid(16391), T("testing2")],
                         ],
                         tag: "SELECT 3",
                     },
@@ -6017,7 +6017,7 @@ fn test_pg_constraint_indexes() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("conname", NAME)],
                         rows: &[
-                            &[T("16388"), T("testing_pkey")],
+                            &[Oid(16388), T("testing_pkey")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -6028,10 +6028,10 @@ fn test_pg_constraint_indexes() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("conname", NAME)],
                         rows: &[
-                            &[T("16397"), T("testing2_pkey")],
-                            &[T("16398"), T("testing2_pktesting_fkey")],
-                            &[T("16388"), T("testing_pkey")],
-                            &[T("16390"), T("testing_v1_key")],
+                            &[Oid(16397), T("testing2_pkey")],
+                            &[Oid(16398), T("testing2_pktesting_fkey")],
+                            &[Oid(16388), T("testing_pkey")],
+                            &[Oid(16390), T("testing_v1_key")],
                         ],
                         tag: "SELECT 4",
                     },
@@ -6696,7 +6696,7 @@ fn test_pg_database() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("datname", NAME)],
                         rows: &[
-                            &[T("16384"), T("test")],
+                            &[Oid(16384), T("test")],
                             &[T("1"), T("template1")],
                             &[T("4"), T("template0")],
                             &[T("5"), T("postgres")],
@@ -6723,7 +6723,7 @@ fn test_pg_database() {
                             &[T("5"), T("postgres")],
                             &[T("4"), T("template0")],
                             &[T("1"), T("template1")],
-                            &[T("16384"), T("test")],
+                            &[Oid(16384), T("test")],
                         ],
                         tag: "SELECT 4",
                     },
@@ -6734,7 +6734,7 @@ fn test_pg_database() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("datname", NAME), Column("datdba", OID), Column("encoding", INT4), Column("datlocprovider", CHAR), Column("datistemplate", BOOL), Column("datallowconn", BOOL), Column("datconnlimit", INT4), Column("datfrozenxid", XID), Column("datminmxid", XID), Column("dattablespace", OID), Column("datcollate", TEXT), Column("datctype", TEXT), Column("daticulocale", TEXT), Column("datcollversion", TEXT), Column("datacl", ACLITEM_ARRAY)],
                         rows: &[
-                            &[T("16384"), T("test"), T("10"), T("6"), T("c"), T("f"), T("t"), T("-1"), T("717"), T("1"), T("1663"), T("C"), T("C"), Null, Null, Null],
+                            &[Oid(16384), T("test"), T("10"), T("6"), T("c"), T("f"), T("t"), T("-1"), T("717"), T("1"), T("1663"), T("C"), T("C"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -19861,9 +19861,9 @@ fn test_pg_index() {
                     expected: Expected::Rows {
                         columns: &[Column("indexrelid", OID), Column("indrelid", OID), Column("indnatts", INT2), Column("indnkeyatts", INT2), Column("indisunique", BOOL), Column("indnullsnotdistinct", BOOL), Column("indisprimary", BOOL), Column("indisexclusion", BOOL), Column("indimmediate", BOOL), Column("indisclustered", BOOL), Column("indisvalid", BOOL), Column("indcheckxmin", BOOL), Column("indisready", BOOL), Column("indislive", BOOL), Column("indisreplident", BOOL), Column("indkey", INT2VECTOR), Column("indcollation", OIDVECTOR), Column("indclass", OIDVECTOR), Column("indoption", INT2VECTOR), Column("indexprs", PG_NODE_TREE), Column("indpred", PG_NODE_TREE)],
                         rows: &[
-                            &[T("16388"), T("16385"), T("1"), T("1"), T("t"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("t"), T("f"), T("1"), T("0"), T("1978"), T("0"), Null, Null],
-                            &[T("16390"), T("16385"), T("1"), T("1"), T("t"), T("f"), T("f"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("t"), T("f"), T("2"), T("0"), T("1978"), T("0"), Null, Null],
-                            &[T("16395"), T("16392"), T("2"), T("2"), T("t"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("t"), T("f"), T("1 2"), T("0 0"), T("1978 1978"), T("0 0"), Null, Null],
+                            &[Oid(16388), Oid(16385), T("1"), T("1"), T("t"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("t"), T("f"), T("1"), T("0"), T("1978"), T("0"), Null, Null],
+                            &[Oid(16390), Oid(16385), T("1"), T("1"), T("t"), T("f"), T("f"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("t"), T("f"), T("2"), T("0"), T("1978"), T("0"), Null, Null],
+                            &[Oid(16395), Oid(16392), T("2"), T("2"), T("t"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("f"), T("t"), T("t"), T("f"), T("1 2"), T("0 0"), T("1978 1978"), T("0 0"), Null, Null],
                         ],
                         tag: "SELECT 3",
                     },
@@ -19884,9 +19884,9 @@ fn test_pg_index() {
                     expected: Expected::Rows {
                         columns: &[Column("indexrelid", OID)],
                         rows: &[
-                            &[T("16388")],
-                            &[T("16390")],
-                            &[T("16395")],
+                            &[Oid(16388)],
+                            &[Oid(16390)],
+                            &[Oid(16395)],
                         ],
                         tag: "SELECT 3",
                     },
@@ -19897,9 +19897,9 @@ fn test_pg_index() {
                     expected: Expected::Rows {
                         columns: &[Column("indexrelid", OID), Column("indrelid", OID), Column("relname", NAME), Column("relname", NAME)],
                         rows: &[
-                            &[T("16388"), T("16385"), T("testing_pkey"), T("testing")],
-                            &[T("16390"), T("16385"), T("testing_v1_key"), T("testing")],
-                            &[T("16395"), T("16392"), T("testing2_pkey"), T("testing2")],
+                            &[Oid(16388), Oid(16385), T("testing_pkey"), T("testing")],
+                            &[Oid(16390), Oid(16385), T("testing_v1_key"), T("testing")],
+                            &[Oid(16395), Oid(16392), T("testing2_pkey"), T("testing2")],
                         ],
                         tag: "SELECT 3",
                     },
@@ -20011,7 +20011,7 @@ ORDER BY 1;"#,
                     expected: Expected::Rows {
                         columns: &[Column("indrelid", OID)],
                         rows: &[
-                            &[T("16389")],
+                            &[Oid(16389)],
                         ],
                         tag: "SELECT 1",
                     },
@@ -20916,7 +20916,7 @@ fn test_pg_namespace() {
                             &[T("11"), T("pg_catalog"), T("10"), T("{postgres=UC/postgres,=U/postgres}")],
                             &[T("99"), T("pg_toast"), T("10"), Null],
                             &[T("2200"), T("public"), T("6171"), T("{pg_database_owner=UC/pg_database_owner,=U/pg_database_owner}")],
-                            &[T("16384"), T("testschema"), T("10"), Null],
+                            &[Oid(16384), T("testschema"), T("10"), Null],
                         ],
                         tag: "SELECT 5",
                     },
@@ -20931,7 +20931,7 @@ fn test_pg_namespace() {
                             &[T("11"), T("pg_catalog")],
                             &[T("99"), T("pg_toast")],
                             &[T("2200"), T("public")],
-                            &[T("16384"), T("testschema")],
+                            &[Oid(16384), T("testschema")],
                         ],
                         tag: "SELECT 5",
                     },
@@ -21168,8 +21168,8 @@ fn test_pg_namespace_index_lookups() {
                         columns: &[Column("oid", OID), Column("nspname", NAME)],
                         rows: &[
                             &[T("13679"), T("information_schema")],
-                            &[T("16384"), T("testschema1")],
-                            &[T("16385"), T("testschema2")],
+                            &[Oid(16384), T("testschema1")],
+                            &[Oid(16385), T("testschema2")],
                         ],
                         tag: "SELECT 3",
                     },
@@ -21405,10 +21405,10 @@ fn test_pg_namespace_index_lookups() {
                             &[T("11"), T("pg_catalog")],
                             &[T("99"), T("pg_toast")],
                             &[T("2200"), T("public")],
-                            &[T("16384"), T("testschema1")],
-                            &[T("16385"), T("testschema2")],
-                            &[T("16386"), T("testschema3")],
-                            &[T("16387"), T("z_schema")],
+                            &[Oid(16384), T("testschema1")],
+                            &[Oid(16385), T("testschema2")],
+                            &[Oid(16386), T("testschema3")],
+                            &[Oid(16387), T("z_schema")],
                         ],
                         tag: "SELECT 7",
                     },
@@ -21419,7 +21419,7 @@ fn test_pg_namespace_index_lookups() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("nspname", NAME)],
                         rows: &[
-                            &[T("16388"), T("a_schema")],
+                            &[Oid(16388), T("a_schema")],
                             &[T("13679"), T("information_schema")],
                             &[T("11"), T("pg_catalog")],
                             &[T("99"), T("pg_toast")],
@@ -21475,10 +21475,10 @@ fn test_pg_namespace_index_lookups() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("nspname", NAME)],
                         rows: &[
-                            &[T("16384"), T("testschema1")],
-                            &[T("16385"), T("testschema2")],
-                            &[T("16386"), T("testschema3")],
-                            &[T("16387"), T("z_schema")],
+                            &[Oid(16384), T("testschema1")],
+                            &[Oid(16385), T("testschema2")],
+                            &[Oid(16386), T("testschema3")],
+                            &[Oid(16387), T("z_schema")],
                         ],
                         tag: "SELECT 4",
                     },
@@ -24153,7 +24153,7 @@ fn test_pg_proc() {
                             &[T("3816"), T("array_typanalyze"), T("11"), T("10"), T("12"), T("1"), T("0"), T("0"), T("-"), T("f"), T("f"), T("f"), T("t"), T("f"), T("s"), T("s"), T("1"), T("0"), T("16"), T("2281"), Null, Null, Null, Null, Null, T("array_typanalyze"), Null, Null, Null, Null],
                             &[T("3817"), T("arraycontsel"), T("11"), T("10"), T("12"), T("1"), T("0"), T("0"), T("-"), T("f"), T("f"), T("f"), T("t"), T("f"), T("s"), T("s"), T("4"), T("0"), T("701"), T("2281 26 2281 23"), Null, Null, Null, Null, Null, T("arraycontsel"), Null, Null, Null, Null],
                             &[T("3818"), T("arraycontjoinsel"), T("11"), T("10"), T("12"), T("1"), T("0"), T("0"), T("-"), T("f"), T("f"), T("f"), T("t"), T("f"), T("s"), T("s"), T("5"), T("0"), T("701"), T("2281 26 2281 21 2281"), Null, Null, Null, Null, Null, T("arraycontjoinsel"), Null, Null, Null, Null],
-                            &[T("16384"), T("alt_func1"), T("2200"), T("10"), T("14"), T("100"), T("0"), T("0"), T("-"), T("f"), T("f"), T("f"), T("f"), T("f"), T("v"), T("u"), T("1"), T("0"), T("23"), T("23"), Null, Null, Null, Null, Null, T("SELECT $1 + 1"), Null, Null, Null, Null],
+                            &[Oid(16384), T("alt_func1"), T("2200"), T("10"), T("14"), T("100"), T("0"), T("0"), T("-"), T("f"), T("f"), T("f"), T("f"), T("f"), T("v"), T("u"), T("1"), T("0"), T("23"), T("23"), Null, Null, Null, Null, Null, T("SELECT $1 + 1"), Null, Null, Null, Null],
                             &[T("766"), T("int4inc"), T("11"), T("10"), T("12"), T("1"), T("0"), T("0"), T("-"), T("f"), T("f"), T("f"), T("t"), T("f"), T("i"), T("s"), T("1"), T("0"), T("23"), T("23"), Null, Null, Null, Null, Null, T("int4inc"), Null, Null, Null, Null],
                             &[T("768"), T("int4larger"), T("11"), T("10"), T("12"), T("1"), T("0"), T("0"), T("-"), T("f"), T("f"), T("f"), T("t"), T("f"), T("i"), T("s"), T("2"), T("0"), T("23"), T("23 23"), Null, Null, Null, Null, Null, T("int4larger"), Null, Null, Null, Null],
                             &[T("769"), T("int4smaller"), T("11"), T("10"), T("12"), T("1"), T("0"), T("0"), T("-"), T("f"), T("f"), T("f"), T("t"), T("f"), T("i"), T("s"), T("2"), T("0"), T("23"), T("23 23"), Null, Null, Null, Null, Null, T("int4smaller"), Null, Null, Null, Null],
@@ -30790,8 +30790,8 @@ fn test_pg_proc() {
                             &[T("14023"), T("_user_mapping_options"), T("750"), T("array_in")],
                             &[T("14029"), T("user_mappings"), T("2290"), T("record_in")],
                             &[T("14028"), T("_user_mappings"), T("750"), T("array_in")],
-                            &[T("16387"), T("cp_test"), T("2290"), T("record_in")],
-                            &[T("16386"), T("_cp_test"), T("750"), T("array_in")],
+                            &[Oid(16387), T("cp_test"), T("2290"), T("record_in")],
+                            &[Oid(16386), T("_cp_test"), T("750"), T("array_in")],
                         ],
                         tag: "SELECT 613",
                     },
@@ -38546,7 +38546,7 @@ fn test_pg_type() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("typname", NAME), Column("typnamespace", OID), Column("typowner", OID), Column("typlen", INT2), Column("typbyval", BOOL), Column("typtype", CHAR), Column("typcategory", CHAR), Column("typispreferred", BOOL), Column("typisdefined", BOOL), Column("typdelim", CHAR), Column("typrelid", OID), Column("typsubscript", REGPROC), Column("typelem", OID), Column("typarray", OID), Column("typinput", REGPROC), Column("typoutput", REGPROC), Column("typreceive", REGPROC), Column("typsend", REGPROC), Column("typmodin", REGPROC), Column("typmodout", REGPROC), Column("typanalyze", REGPROC), Column("typalign", CHAR), Column("typstorage", CHAR), Column("typnotnull", BOOL), Column("typbasetype", OID), Column("typtypmod", INT4), Column("typndims", INT4), Column("typcollation", OID), Column("typdefaultbin", PG_NODE_TREE), Column("typdefault", TEXT), Column("typacl", ACLITEM_ARRAY)],
                         rows: &[
-                            &[T("16385"), T("domain_type"), T("2200"), T("10"), T("4"), T("t"), T("d"), T("N"), T("f"), T("t"), T(","), T("0"), T("-"), T("0"), T("16384"), T("domain_in"), T("int4out"), T("domain_recv"), T("int4send"), T("-"), T("-"), T("-"), T("i"), T("p"), T("t"), T("23"), T("-1"), T("0"), T("0"), Null, Null, Null],
+                            &[Oid(16385), T("domain_type"), T("2200"), T("10"), T("4"), T("t"), T("d"), T("N"), T("f"), T("t"), T(","), T("0"), T("-"), T("0"), Oid(16384), T("domain_in"), T("int4out"), T("domain_recv"), T("int4send"), T("-"), T("-"), T("-"), T("i"), T("p"), T("t"), T("23"), T("-1"), T("0"), T("0"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -38557,7 +38557,7 @@ fn test_pg_type() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("typname", NAME), Column("typnamespace", OID), Column("typowner", OID), Column("typlen", INT2), Column("typbyval", BOOL), Column("typtype", CHAR), Column("typcategory", CHAR), Column("typispreferred", BOOL), Column("typisdefined", BOOL), Column("typdelim", CHAR), Column("typrelid", OID), Column("typsubscript", REGPROC), Column("typelem", OID), Column("typarray", OID), Column("typinput", REGPROC), Column("typoutput", REGPROC), Column("typreceive", REGPROC), Column("typsend", REGPROC), Column("typmodin", REGPROC), Column("typmodout", REGPROC), Column("typanalyze", REGPROC), Column("typalign", CHAR), Column("typstorage", CHAR), Column("typnotnull", BOOL), Column("typbasetype", OID), Column("typtypmod", INT4), Column("typndims", INT4), Column("typcollation", OID), Column("typdefaultbin", PG_NODE_TREE), Column("typdefault", TEXT), Column("typacl", ACLITEM_ARRAY)],
                         rows: &[
-                            &[T("16384"), T("_domain_type"), T("2200"), T("10"), T("-1"), T("f"), T("b"), T("A"), T("f"), T("t"), T(","), T("0"), T("array_subscript_handler"), T("16385"), T("0"), T("array_in"), T("array_out"), T("array_recv"), T("array_send"), T("-"), T("-"), T("array_typanalyze"), T("i"), T("x"), T("f"), T("0"), T("-1"), T("0"), T("0"), Null, Null, Null],
+                            &[Oid(16384), T("_domain_type"), T("2200"), T("10"), T("-1"), T("f"), T("b"), T("A"), T("f"), T("t"), T(","), T("0"), T("array_subscript_handler"), Oid(16385), T("0"), T("array_in"), T("array_out"), T("array_recv"), T("array_send"), T("-"), T("-"), T("array_typanalyze"), T("i"), T("x"), T("f"), T("0"), T("-1"), T("0"), T("0"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -38568,7 +38568,7 @@ fn test_pg_type() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("typname", NAME), Column("typnamespace", OID), Column("typowner", OID), Column("typlen", INT2), Column("typbyval", BOOL), Column("typtype", CHAR), Column("typcategory", CHAR), Column("typispreferred", BOOL), Column("typisdefined", BOOL), Column("typdelim", CHAR), Column("typrelid", OID), Column("typsubscript", REGPROC), Column("typelem", OID), Column("typarray", OID), Column("typinput", REGPROC), Column("typoutput", REGPROC), Column("typreceive", REGPROC), Column("typsend", REGPROC), Column("typmodin", REGPROC), Column("typmodout", REGPROC), Column("typanalyze", REGPROC), Column("typalign", CHAR), Column("typstorage", CHAR), Column("typnotnull", BOOL), Column("typbasetype", OID), Column("typtypmod", INT4), Column("typndims", INT4), Column("typcollation", OID), Column("typdefaultbin", PG_NODE_TREE), Column("typdefault", TEXT), Column("typacl", ACLITEM_ARRAY)],
                         rows: &[
-                            &[T("16387"), T("enum_type"), T("2200"), T("10"), T("4"), T("t"), T("e"), T("E"), T("f"), T("t"), T(","), T("0"), T("-"), T("0"), T("16386"), T("enum_in"), T("enum_out"), T("enum_recv"), T("enum_send"), T("-"), T("-"), T("-"), T("i"), T("p"), T("f"), T("0"), T("-1"), T("0"), T("0"), Null, Null, Null],
+                            &[Oid(16387), T("enum_type"), T("2200"), T("10"), T("4"), T("t"), T("e"), T("E"), T("f"), T("t"), T(","), T("0"), T("-"), T("0"), Oid(16386), T("enum_in"), T("enum_out"), T("enum_recv"), T("enum_send"), T("-"), T("-"), T("-"), T("i"), T("p"), T("f"), T("0"), T("-1"), T("0"), T("0"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -38579,7 +38579,7 @@ fn test_pg_type() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("typname", NAME), Column("typnamespace", OID), Column("typowner", OID), Column("typlen", INT2), Column("typbyval", BOOL), Column("typtype", CHAR), Column("typcategory", CHAR), Column("typispreferred", BOOL), Column("typisdefined", BOOL), Column("typdelim", CHAR), Column("typrelid", OID), Column("typsubscript", REGPROC), Column("typelem", OID), Column("typarray", OID), Column("typinput", REGPROC), Column("typoutput", REGPROC), Column("typreceive", REGPROC), Column("typsend", REGPROC), Column("typmodin", REGPROC), Column("typmodout", REGPROC), Column("typanalyze", REGPROC), Column("typalign", CHAR), Column("typstorage", CHAR), Column("typnotnull", BOOL), Column("typbasetype", OID), Column("typtypmod", INT4), Column("typndims", INT4), Column("typcollation", OID), Column("typdefaultbin", PG_NODE_TREE), Column("typdefault", TEXT), Column("typacl", ACLITEM_ARRAY)],
                         rows: &[
-                            &[T("16386"), T("_enum_type"), T("2200"), T("10"), T("-1"), T("f"), T("b"), T("A"), T("f"), T("t"), T(","), T("0"), T("array_subscript_handler"), T("16387"), T("0"), T("array_in"), T("array_out"), T("array_recv"), T("array_send"), T("-"), T("-"), T("array_typanalyze"), T("i"), T("x"), T("f"), T("0"), T("-1"), T("0"), T("0"), Null, Null, Null],
+                            &[Oid(16386), T("_enum_type"), T("2200"), T("10"), T("-1"), T("f"), T("b"), T("A"), T("f"), T("t"), T(","), T("0"), T("array_subscript_handler"), Oid(16387), T("0"), T("array_in"), T("array_out"), T("array_recv"), T("array_send"), T("-"), T("-"), T("array_typanalyze"), T("i"), T("x"), T("f"), T("0"), T("-1"), T("0"), T("0"), Null, Null, Null],
                         ],
                         tag: "SELECT 1",
                     },
@@ -40126,6 +40126,413 @@ fn test_system_tables_in_pgcatalog() {
                             &[T("4126412490"), T("parent_index"), T("23"), T("3"), T("t"), T("f"), T("f")],
                         ],
                         tag: "SELECT 319",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_catalog_rows_for_user_objects() {
+    run_scripts(&[
+        ScriptTest {
+            name: "catalogs describe user tables, indexes, constraints, and sequences",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE p (id INT PRIMARY KEY, u TEXT UNIQUE, v VARCHAR(10) DEFAULT 'x' CHECK (v <> ''), n NUMERIC(5,2) NOT NULL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c (id SERIAL PRIMARY KEY, pid INT REFERENCES p ON DELETE CASCADE);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX c_pid ON c (pid DESC);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE s;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nspname FROM pg_namespace ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("nspname", NAME)],
+                        rows: &[
+                            &[T("information_schema")],
+                            &[T("pg_catalog")],
+                            &[T("pg_toast")],
+                            &[T("public")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relkind, relnatts, relhasindex, relchecks, relhastriggers FROM pg_class WHERE relnamespace = 'public'::regnamespace ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relkind", CHAR), Column("relnatts", INT2), Column("relhasindex", BOOL), Column("relchecks", INT2), Column("relhastriggers", BOOL)],
+                        rows: &[
+                            &[T("c"), T("r"), T("2"), T("t"), T("0"), T("t")],
+                            &[T("c_id_seq"), T("S"), T("3"), T("f"), T("0"), T("f")],
+                            &[T("c_pid"), T("i"), T("1"), T("f"), T("0"), T("f")],
+                            &[T("c_pkey"), T("i"), T("1"), T("f"), T("0"), T("f")],
+                            &[T("p"), T("r"), T("4"), T("t"), T("1"), T("t")],
+                            &[T("p_pkey"), T("i"), T("1"), T("f"), T("0"), T("f")],
+                            &[T("p_u_key"), T("i"), T("1"), T("f"), T("0"), T("f")],
+                            &[T("s"), T("S"), T("3"), T("f"), T("0"), T("f")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT attname, atttypid::regtype, attnum, attnotnull, atthasdef FROM pg_attribute WHERE attrelid = 'p'::regclass ORDER BY attnum;",
+                    expected: Expected::Rows {
+                        columns: &[Column("attname", NAME), Column("atttypid", REGTYPE), Column("attnum", INT2), Column("attnotnull", BOOL), Column("atthasdef", BOOL)],
+                        rows: &[
+                            &[T("tableoid"), T("oid"), T("-6"), T("t"), T("f")],
+                            &[T("cmax"), T("cid"), T("-5"), T("t"), T("f")],
+                            &[T("xmax"), T("xid"), T("-4"), T("t"), T("f")],
+                            &[T("cmin"), T("cid"), T("-3"), T("t"), T("f")],
+                            &[T("xmin"), T("xid"), T("-2"), T("t"), T("f")],
+                            &[T("ctid"), T("tid"), T("-1"), T("t"), T("f")],
+                            &[T("id"), T("integer"), T("1"), T("t"), T("f")],
+                            &[T("u"), T("text"), T("2"), T("f"), T("f")],
+                            &[T("v"), T("character varying"), T("3"), T("f"), T("t")],
+                            &[T("n"), T("numeric"), T("4"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 10",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT conname, contype, conkey, confkey, confupdtype, confdeltype, confmatchtype FROM pg_constraint WHERE conrelid IN ('p'::regclass, 'c'::regclass) ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("conname", NAME), Column("contype", CHAR), Column("conkey", INT2_ARRAY), Column("confkey", INT2_ARRAY), Column("confupdtype", CHAR), Column("confdeltype", CHAR), Column("confmatchtype", CHAR)],
+                        rows: &[
+                            &[T("c_pid_fkey"), T("f"), T("{2}"), T("{1}"), T("a"), T("c"), T("s")],
+                            &[T("c_pkey"), T("p"), T("{1}"), Null, T(" "), T(" "), T(" ")],
+                            &[T("p_pkey"), T("p"), T("{1}"), Null, T(" "), T(" "), T(" ")],
+                            &[T("p_u_key"), T("u"), T("{2}"), Null, T(" "), T(" "), T(" ")],
+                            &[T("p_v_check"), T("c"), T("{3}"), Null, T(" "), T(" "), T(" ")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT indexrelid::regclass::text, indrelid::regclass::text, indkey, indisunique, indisprimary, indoption FROM pg_index WHERE indrelid IN ('p'::regclass, 'c'::regclass) ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("indexrelid", TEXT), Column("indrelid", TEXT), Column("indkey", INT2VECTOR), Column("indisunique", BOOL), Column("indisprimary", BOOL), Column("indoption", INT2VECTOR)],
+                        rows: &[
+                            &[T("c_pid"), T("c"), T("2"), T("f"), T("f"), T("3")],
+                            &[T("c_pkey"), T("c"), T("1"), T("t"), T("t"), T("0")],
+                            &[T("p_pkey"), T("p"), T("1"), T("t"), T("t"), T("0")],
+                            &[T("p_u_key"), T("p"), T("2"), T("t"), T("f"), T("0")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM pg_indexes WHERE schemaname = 'public' ORDER BY indexname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("schemaname", NAME), Column("tablename", NAME), Column("indexname", NAME), Column("tablespace", NAME), Column("indexdef", TEXT)],
+                        rows: &[
+                            &[T("public"), T("c"), T("c_pid"), Null, T("CREATE INDEX c_pid ON public.c USING btree (pid DESC)")],
+                            &[T("public"), T("c"), T("c_pkey"), Null, T("CREATE UNIQUE INDEX c_pkey ON public.c USING btree (id)")],
+                            &[T("public"), T("p"), T("p_pkey"), Null, T("CREATE UNIQUE INDEX p_pkey ON public.p USING btree (id)")],
+                            &[T("public"), T("p"), T("p_u_key"), Null, T("CREATE UNIQUE INDEX p_u_key ON public.p USING btree (u)")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT schemaname, tablename, hasindexes, hasrules, hastriggers, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("schemaname", NAME), Column("tablename", NAME), Column("hasindexes", BOOL), Column("hasrules", BOOL), Column("hastriggers", BOOL), Column("rowsecurity", BOOL)],
+                        rows: &[
+                            &[T("public"), T("c"), T("t"), T("f"), T("t"), T("f")],
+                            &[T("public"), T("p"), T("t"), T("f"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT table_name, column_name, data_type, is_nullable, character_maximum_length, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_schema = 'public' ORDER BY 1, ordinal_position;",
+                    expected: Expected::Rows {
+                        columns: &[Column("table_name", NAME), Column("column_name", NAME), Column("data_type", VARCHAR), Column("is_nullable", VARCHAR), Column("character_maximum_length", INT4), Column("numeric_precision", INT4), Column("numeric_scale", INT4)],
+                        rows: &[
+                            &[T("c"), T("id"), T("integer"), T("NO"), Null, T("32"), T("0")],
+                            &[T("c"), T("pid"), T("integer"), T("YES"), Null, T("32"), T("0")],
+                            &[T("p"), T("id"), T("integer"), T("NO"), Null, T("32"), T("0")],
+                            &[T("p"), T("u"), T("text"), T("YES"), Null, Null, Null],
+                            &[T("p"), T("v"), T("character varying"), T("YES"), T("10"), Null, Null],
+                            &[T("p"), T("n"), T("numeric"), T("NO"), Null, T("5"), T("2")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sequencename, data_type, start_value, last_value FROM pg_sequences ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("sequencename", NAME), Column("data_type", REGTYPE), Column("start_value", INT8), Column("last_value", INT8)],
+                        rows: &[
+                            &[T("c_id_seq"), T("integer"), T("1"), Null],
+                            &[T("s"), T("bigint"), T("1"), Null],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("table_name", NAME), Column("table_type", VARCHAR)],
+                        rows: &[
+                            &[T("c"), T("BASE TABLE")],
+                            &[T("p"), T("BASE TABLE")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT constraint_name, constraint_type FROM information_schema.table_constraints WHERE table_schema = 'public' ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("constraint_name", NAME), Column("constraint_type", VARCHAR)],
+                        rows: &[
+                            &[T("2200_16384_1_not_null"), T("CHECK")],
+                            &[T("2200_16384_4_not_null"), T("CHECK")],
+                            &[T("2200_16396_1_not_null"), T("CHECK")],
+                            &[T("c_pid_fkey"), T("FOREIGN KEY")],
+                            &[T("c_pkey"), T("PRIMARY KEY")],
+                            &[T("p_pkey"), T("PRIMARY KEY")],
+                            &[T("p_u_key"), T("UNIQUE")],
+                            &[T("p_v_check"), T("CHECK")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    skip: Some("NOT NULL constraint names embed the OIDs that Postgres gave the schema and table"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "reg types name catalog objects",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE r1 (a INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'r1'::regclass, 'pg_class'::regclass, 'int4'::regtype, 'character varying'::regtype, 'integer[]'::regtype, 'public'::regnamespace;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS), Column("regclass", REGCLASS), Column("regtype", REGTYPE), Column("regtype", REGTYPE), Column("regtype", REGTYPE), Column("regnamespace", REGNAMESPACE)],
+                        rows: &[
+                            &[T("r1"), T("pg_class"), T("integer"), T("character varying"), T("integer[]"), T("public")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'r1'::regclass = 'public.r1'::regclass, 'pg_class'::regclass::oid, 'int4'::regtype::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("oid", OID), Column("oid", OID)],
+                        rows: &[
+                            &[T("t"), T("1259"), T("23")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 1259::regclass, 23::regtype, 11::regnamespace, 0::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regclass", REGCLASS), Column("regtype", REGTYPE), Column("regnamespace", REGNAMESPACE), Column("regclass", REGCLASS)],
+                        rows: &[
+                            &[T("pg_class"), T("integer"), T("pg_catalog"), T("-")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nope'::regclass;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "nope" does not exist"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nope'::regtype;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "nope" does not exist"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nope'::regnamespace;",
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "nope" does not exist"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM pg_attribute WHERE attrelid = 'r1'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("7")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "built-in catalog rows",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT oid, typname, typlen, typbyval, typcategory FROM pg_type WHERE typname IN ('int4', 'text', 'bool', 'name') ORDER BY oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID), Column("typname", NAME), Column("typlen", INT2), Column("typbyval", BOOL), Column("typcategory", CHAR)],
+                        rows: &[
+                            &[T("16"), T("bool"), T("1"), T("t"), T("B")],
+                            &[T("19"), T("name"), T("64"), T("f"), T("S")],
+                            &[T("23"), T("int4"), T("4"), T("t"), T("N")],
+                            &[T("25"), T("text"), T("-1"), T("f"), T("S")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT amname, amtype FROM pg_am ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("amname", NAME), Column("amtype", CHAR)],
+                        rows: &[
+                            &[T("brin"), T("i")],
+                            &[T("btree"), T("i")],
+                            &[T("gin"), T("i")],
+                            &[T("gist"), T("i")],
+                            &[T("hash"), T("i")],
+                            &[T("heap"), T("t")],
+                            &[T("spgist"), T("i")],
+                        ],
+                        tag: "SELECT 7",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT attname FROM pg_attribute ORDER BY attname LIMIT 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("attname", NAME)],
+                        rows: &[
+                            &[T("abbrev")],
+                            &[T("abbrev")],
+                            &[T("action_condition")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) > 3000 FROM pg_proc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT datname, datistemplate, datallowconn FROM pg_database ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("datname", NAME), Column("datistemplate", BOOL), Column("datallowconn", BOOL)],
+                        rows: &[
+                            &[T("postgres"), T("f"), T("t")],
+                            &[T("template0"), T("t"), T("f")],
+                            &[T("template1"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "the internal char type",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT 'abc'::"char", ''::"char", 'f'::"char" = 'f', 'f'::"char" = 'f'::text, 65::"char";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("char", CHAR), Column("char", CHAR), Column("?column?", BOOL), Column("?column?", BOOL), Column("char", CHAR)],
+                        rows: &[
+                            &[T("a"), T(""), T("t"), T("t"), T("A")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT true::"char";"#,
+                    expected: Expected::Error(Diagnostic { code: "42846", message: r#"cannot cast type boolean to "char""#, position: 12, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'a'::"char"::int, 'b'::"char"::text;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("int4", INT4), Column("text", TEXT)],
+                        rows: &[
+                            &[T("97"), T("b")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE TABLE t_char (id INT PRIMARY KEY, v "char");"#,
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_char VALUES (1, 'xyz'), (2, NULL);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_char VALUES (3, 7);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "v" is of type "char" but expression is of type integer"#, hint: "You will need to rewrite or cast the expression.", position: 31, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_char ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", CHAR)],
+                        rows: &[
+                            &[T("1"), T("x")],
+                            &[T("2"), Null],
+                        ],
+                        tag: "SELECT 2",
                     },
                     ..A
                 },

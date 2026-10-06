@@ -66,6 +66,8 @@ pub enum Plan {
     Scan(Box<TableDef>),
     /// The rows of one of Dolt's system tables.
     System(crate::dolt::tables::SystemTable),
+    /// The rows of a system catalog relation.
+    Catalog(&'static crate::pgcatalog::CatalogTable),
     /// Rows of expressions, evaluated without an input row.
     Values(Vec<Vec<Expr>>),
     /// The rows a set-returning function returns for its arguments, with a row number when asked, spreading
@@ -547,6 +549,9 @@ impl<'b, 'a> Planner<'b, 'a> {
                 {
                     return Ok(self.plan_cte(cte, relation));
                 }
+                if let Some(catalog) = self.ctx.catalog_relation(&relation.schemaname, &relation.relname)? {
+                    return Ok(self.plan_catalog(catalog, relation));
+                }
                 let table = match self.ctx.resolve_table(relation) {
                     Ok(table) => table,
                     Err(err) => {
@@ -630,6 +635,29 @@ impl<'b, 'a> Planner<'b, 'a> {
             })
             .collect();
         Ok((query.plan, Scope { columns }))
+    }
+
+    /// plan_catalog plans a scan of a system catalog relation.
+    fn plan_catalog(
+        &mut self,
+        catalog: &'static crate::pgcatalog::CatalogTable,
+        relation: &pg_query::protobuf::RangeVar,
+    ) -> (Plan, Scope) {
+        let alias = relation.alias.as_ref();
+        let name = alias.map_or(relation.relname.clone(), |a| a.aliasname.clone());
+        let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+        let columns = catalog
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, column)| ScopeColumn {
+                table: name.clone(),
+                name: renames.get(i).map_or(column.name.to_string(), |r| r.to_string()),
+                ty: typ(column.type_oid),
+                hidden: false,
+            })
+            .collect();
+        (Plan::Catalog(catalog), Scope { columns })
     }
 
     /// plan_system plans a scan of one of Dolt's system tables.
@@ -1428,6 +1456,7 @@ impl Plan {
             Plan::Window { input, calls } => input.width() + calls.len(),
             Plan::ProjectSet { input, functions } => input.width() + functions.len(),
             Plan::System(system) => system.columns().len(),
+            Plan::Catalog(table) => table.columns.len(),
             Plan::Values(rows) => rows.first().map_or(0, Vec::len),
             Plan::Function { ordinality, width, .. } => width + *ordinality as usize,
             Plan::Filter { input, .. }
@@ -1500,6 +1529,7 @@ impl Plan {
                 result
             }
             Plan::System(system) => system.rows(ctx)?,
+            Plan::Catalog(table) => ctx.catalog_rows(table)?,
             Plan::Values(rows) => {
                 let mut out = Vec::with_capacity(rows.len());
                 for row in rows {

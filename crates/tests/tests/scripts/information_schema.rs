@@ -15,7 +15,7 @@
 use harness::oid::*;
 use harness::pgx::Time;
 use harness::plan::PlanFact;
-use harness::script::Cell::{Any, Null, Text as T};
+use harness::script::Cell::{Any, Null, Oid, Text as T};
 use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, ScriptTestAssertion, USER_DEFINED, run_scripts, run_scripts_repeated};
 use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};
 
@@ -228,7 +228,7 @@ fn test_info_schema_columns() {
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("table_name", NAME), Column("table_schema", NAME)],
                         rows: &[
-                            &[T("16384"), T("test_table"), T("public")],
+                            &[Oid(16384), T("test_table"), T("public")],
                         ],
                         tag: "SELECT 1",
                     },

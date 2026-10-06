@@ -14,12 +14,22 @@
 
 //! Doltgres' internal object IDs: a section byte followed by length-prefixed name segments.
 
+/// SECTION_DATABASE is the ID section of databases.
+pub const SECTION_DATABASE: u8 = 6;
+/// SECTION_FOREIGN_KEY is the ID section of foreign keys.
+pub const SECTION_FOREIGN_KEY: u8 = 11;
+/// SECTION_INDEX is the ID section of indexes.
+pub const SECTION_INDEX: u8 = 17;
+/// SECTION_NAMESPACE is the ID section of schemas.
+pub const SECTION_NAMESPACE: u8 = 18;
 /// SECTION_SEQUENCE is the ID section of sequences.
 pub const SECTION_SEQUENCE: u8 = 27;
 /// SECTION_TABLE is the ID section of tables.
 pub const SECTION_TABLE: u8 = 29;
 /// SECTION_TYPE is the ID section of types.
 pub const SECTION_TYPE: u8 = 35;
+/// SECTION_VIEW is the ID section of views.
+pub const SECTION_VIEW: u8 = 38;
 
 /// FORMAT_MASK marks an ID whose segments are separated by NULs because one is too long for a length byte.
 const FORMAT_MASK: u8 = 0x80;

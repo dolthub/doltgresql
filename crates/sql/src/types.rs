@@ -56,6 +56,19 @@ pub enum Value {
     Text(String),
     /// The rows of a set-returning function, which never reach a client.
     Set(Vec<Value>),
+    /// An object identifier, as the oid, xid, and cid types hold.
+    Oid(u32),
+    /// A value of one of the reg types, such as regclass.
+    Reg(Box<Reg>),
+}
+
+/// Reg is a value of a reg type: the type, the object's OID, and the name it prints as, which is the OID for a
+/// missing object.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Reg {
+    pub type_oid: u32,
+    pub oid: u32,
+    pub name: String,
 }
 
 /// format_float formats a float as Postgres does with the default extra_float_digits: the shortest digits that read
@@ -127,6 +140,8 @@ impl Value {
             Value::Jsonb(json) => json.to_text(),
             Value::Text(s) => s.clone(),
             Value::Set(_) => return None,
+            Value::Oid(o) => o.to_string(),
+            Value::Reg(reg) => reg.name.clone(),
         })
     }
 
@@ -173,8 +188,14 @@ impl Value {
             Value::Json(_) => return self.output().map(String::into_bytes),
             Value::Jsonb(json) => [&[1u8][..], json.to_text().as_bytes()].concat(),
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
+            Value::Text(s) if type_oid == oid::CHAR => match s.strip_prefix('\\') {
+                Some(octal) if octal.len() == 3 => vec![u8::from_str_radix(octal, 8).unwrap_or(0)],
+                _ => s.bytes().take(1).collect(),
+            },
             Value::Text(s) => s.clone().into_bytes(),
             Value::Set(_) => return None,
+            Value::Oid(o) => o.to_be_bytes().to_vec(),
+            Value::Reg(reg) => reg.oid.to_be_bytes().to_vec(),
         })
     }
 
@@ -191,6 +212,11 @@ impl Value {
         if format == BINARY_FORMAT {
             return match type_oid {
                 oid::BOOL => Ok(Value::Bool(*bytes.first().ok_or_else(invalid)? != 0)),
+                oid::CHAR => Ok(Value::Text(match bytes.first() {
+                    None => String::new(),
+                    Some(&b) if b.is_ascii() => (b as char).to_string(),
+                    Some(&b) => format!("\\{b:03o}"),
+                })),
                 oid::JSONB => match bytes.split_first() {
                     Some((1, text)) => {
                         crate::cast::input(std::str::from_utf8(text).map_err(|_| invalid())?, oid::JSONB)
@@ -200,6 +226,7 @@ impl Value {
                 oid::INT2 => Ok(Value::Int2(i16::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::INT4 => Ok(Value::Int4(i32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::INT8 => Ok(Value::Int8(i64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
+                oid::OID | oid::XID => Ok(Value::Oid(u32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::FLOAT4 => Ok(Value::Float4(f32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::FLOAT8 => Ok(Value::Float8(f64::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
                 oid::NUMERIC => Numeric::receive(bytes).map(Value::Numeric).ok_or_else(invalid),

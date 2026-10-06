@@ -181,6 +181,9 @@ pub enum Cell {
     Text(&'static str),
     /// Any value that is not NULL, for values that are inherently arbitrary such as OIDs and process IDs.
     Any,
+    /// An OID that Postgres gave a user object, which matches the OID the server gave the same object: within a
+    /// script, each expected OID matches one OID of the server, and different expected OIDs match different ones.
+    Oid(u32),
 }
 
 /// Diagnostic is an expected error or notice. Empty strings and zero positions mean the field is absent.
@@ -695,6 +698,8 @@ pub const NEWDIR_PREFIX: &str = "{NEWDIR:";
 thread_local! {
     /// SCRIPT_TEMP_DIR is the temporary directory of the session that this thread last started.
     static SCRIPT_TEMP_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+    /// OID_BINDINGS maps each expected OID of the running script to the server's OID that it matched.
+    static OID_BINDINGS: std::cell::RefCell<HashMap<u32, String>> = std::cell::RefCell::new(HashMap::new());
 }
 
 /// expand replaces TESTDATA_TOKEN with the absolute path of the testdata directory, and TEMPDIR_TOKEN and NEWDIR
@@ -870,29 +875,44 @@ fn check_columns(expected: &[Column], actual: &[(String, u32)], problems: &mut V
     }
 }
 
-/// cell_matches reports whether a value matches an expected cell.
-fn cell_matches(expected: &Cell, actual: &Option<String>) -> bool {
+/// cell_matches reports whether a value matches an expected cell, binding expected OIDs to the server's.
+fn cell_matches(expected: &Cell, actual: &Option<String>, bindings: &mut HashMap<u32, String>) -> bool {
     match (expected, actual) {
         (Cell::Null, None) => true,
         (Cell::Text(text), Some(value)) => expand(text) == value.as_str(),
         (Cell::Any, Some(_)) => true,
+        (Cell::Oid(oid), Some(value)) => match bindings.get(oid) {
+            Some(bound) => bound == value,
+            None if bindings.values().any(|v| v == value) => false,
+            None => {
+                bindings.insert(*oid, value.clone());
+                true
+            }
+        },
         _ => false,
     }
 }
 
-/// row_matches reports whether a row matches an expected row.
-fn row_matches(expected: &[Cell], actual: &[Option<String>]) -> bool {
-    expected.len() == actual.len() && expected.iter().zip(actual).all(|(e, a)| cell_matches(e, a))
+/// row_matches reports whether a row matches an expected row, keeping the OID bindings it needs only when it does.
+fn row_matches(expected: &[Cell], actual: &[Option<String>], bindings: &mut HashMap<u32, String>) -> bool {
+    let mut tentative = bindings.clone();
+    let matches =
+        expected.len() == actual.len() && expected.iter().zip(actual).all(|(e, a)| cell_matches(e, a, &mut tentative));
+    if matches {
+        *bindings = tentative;
+    }
+    matches
 }
 
 /// check_rows compares rows, in order or as a multiset.
 fn check_rows(expected: &[&[Cell]], actual: &[Vec<Option<String>>], ordered: bool, problems: &mut Vec<String>) {
+    let mut bindings = OID_BINDINGS.with(|b| b.borrow().clone());
     let matches = if ordered {
-        expected.len() == actual.len() && expected.iter().zip(actual).all(|(e, a)| row_matches(e, a))
+        expected.len() == actual.len() && expected.iter().zip(actual).all(|(e, a)| row_matches(e, a, &mut bindings))
     } else {
         let mut unmatched: Vec<&Vec<Option<String>>> = actual.iter().collect();
         expected.len() == actual.len()
-            && expected.iter().all(|e| match unmatched.iter().position(|a| row_matches(e, a)) {
+            && expected.iter().all(|e| match unmatched.iter().position(|a| row_matches(e, a, &mut bindings)) {
                 Some(index) => {
                     unmatched.swap_remove(index);
                     true
@@ -900,7 +920,9 @@ fn check_rows(expected: &[&[Cell]], actual: &[Vec<Option<String>>], ordered: boo
                 None => false,
             })
     };
-    if !matches {
+    if matches {
+        OID_BINDINGS.with(|b| *b.borrow_mut() = bindings);
+    } else {
         let mut text = format!("rows differ ({}):\n  expected:\n", if ordered { "in order" } else { "any order" });
         for row in expected {
             let _ = writeln!(text, "    {row:?}");
@@ -1013,6 +1035,7 @@ pub fn run_script(target: &Target, script: &ScriptTest, repetitions: usize) -> V
     if script.skip.is_some() {
         return failures;
     }
+    OID_BINDINGS.with(|b| b.borrow_mut().clear());
     let mut session = match Session::start(target, script.database, script.server_config) {
         Ok(session) => session,
         Err(err) => {

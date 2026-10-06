@@ -15,7 +15,7 @@
 use harness::oid::*;
 use harness::pgx::Time;
 use harness::plan::PlanFact;
-use harness::script::Cell::{Any, Null, Text as T};
+use harness::script::Cell::{Any, Null, Oid, Text as T};
 use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, ScriptTestAssertion, USER_DEFINED, run_scripts, run_scripts_repeated};
 use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};
 
@@ -65,10 +65,10 @@ fn test_domain() {
                     expected: Expected::Rows {
                         columns: &[Column("conname", NAME), Column("contype", CHAR), Column("conrelid", OID), Column("contypid", OID)],
                         rows: &[
-                            &[T("year_check"), T("c"), T("0"), T("16385")],
-                            &[T("year_check"), T("c"), T("0"), T("16388")],
-                            &[T("year_check_max"), T("c"), T("0"), T("16391")],
-                            &[T("year_check_min"), T("c"), T("0"), T("16391")],
+                            &[T("year_check"), T("c"), T("0"), Oid(16385)],
+                            &[T("year_check"), T("c"), T("0"), Oid(16388)],
+                            &[T("year_check_max"), T("c"), T("0"), Oid(16391)],
+                            &[T("year_check_min"), T("c"), T("0"), Oid(16391)],
                         ],
                         tag: "SELECT 4",
                     },
@@ -90,8 +90,8 @@ fn test_domain() {
                     expected: Expected::Rows {
                         columns: &[Column("conname", NAME), Column("contype", CHAR), Column("conrelid", OID), Column("contypid", OID)],
                         rows: &[
-                            &[T("check1"), T("c"), T("0"), T("16385")],
-                            &[T("check2"), T("c"), T("0"), T("16385")],
+                            &[T("check1"), T("c"), T("0"), Oid(16385)],
+                            &[T("check2"), T("c"), T("0"), Oid(16385)],
                         ],
                         tag: "SELECT 2",
                     },
@@ -127,8 +127,8 @@ fn test_domain() {
                     expected: Expected::Rows {
                         columns: &[Column("conname", NAME), Column("contype", CHAR), Column("conrelid", OID), Column("contypid", OID)],
                         rows: &[
-                            &[T("d2_check"), T("c"), T("0"), T("16394")],
-                            &[T("d2_check1"), T("c"), T("0"), T("16394")],
+                            &[T("d2_check"), T("c"), T("0"), Oid(16394)],
+                            &[T("d2_check1"), T("c"), T("0"), Oid(16394)],
                         ],
                         tag: "SELECT 2",
                     },
@@ -144,8 +144,8 @@ fn test_domain() {
                     expected: Expected::Rows {
                         columns: &[Column("conname", NAME), Column("contype", CHAR), Column("conrelid", OID), Column("contypid", OID)],
                         rows: &[
-                            &[T("d3_check"), T("c"), T("0"), T("16398")],
-                            &[T("d3_check1"), T("c"), T("0"), T("16398")],
+                            &[T("d3_check"), T("c"), T("0"), Oid(16398)],
+                            &[T("d3_check1"), T("c"), T("0"), Oid(16398)],
                         ],
                         tag: "SELECT 2",
                     },

@@ -47,8 +47,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -200,8 +202,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -321,8 +325,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -494,8 +500,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -695,8 +703,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -973,8 +983,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -1145,8 +1157,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -1374,8 +1388,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -1620,8 +1636,10 @@ fn test_dolt_branch() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -1858,8 +1876,10 @@ fn test_dolt_checkout() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -2253,8 +2273,10 @@ fn test_dolt_checkout() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -2499,8 +2521,10 @@ fn test_dolt_checkout() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -2806,8 +2830,10 @@ fn test_dolt_checkout() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -3096,8 +3122,10 @@ fn test_dolt_checkout() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -3572,8 +3600,10 @@ fn test_dolt_checkout() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -4139,8 +4169,10 @@ fn test_dolt_checkout() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -4485,8 +4517,10 @@ fn test_dolt_checkout() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -4675,8 +4709,10 @@ error: tablespec 'missing2' did not match any table(s) known to dolt"#, ..E }),
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -4912,8 +4948,10 @@ Use --overwrite-ignore to force.
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -5151,8 +5189,10 @@ Use --overwrite-ignore to force.
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -5362,8 +5402,10 @@ Use --overwrite-ignore to force.
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -5575,8 +5617,10 @@ Use --overwrite-ignore to force.
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -5814,8 +5858,10 @@ Use --overwrite-ignore to force.
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -5999,8 +6045,10 @@ Use --overwrite-ignore to force.
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -6213,8 +6261,10 @@ Use --overwrite-ignore to force.
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -6444,8 +6494,10 @@ fn test_dolt_commit() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -6821,8 +6873,10 @@ fn test_dolt_commit() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -6981,8 +7035,10 @@ fn test_dolt_commit() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -7134,8 +7190,10 @@ fn test_dolt_commit() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -7433,8 +7491,10 @@ fn test_dolt_conflicts_table_name_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -7738,8 +7798,10 @@ fn test_dolt_conflicts_table_name_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -8059,8 +8121,10 @@ fn test_dolt_conflicts_table_name_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -8412,8 +8476,10 @@ fn test_dolt_conflicts_table_name_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -8723,8 +8789,10 @@ fn test_dolt_conflicts_table_name_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -8985,8 +9053,10 @@ fn test_dolt_conflicts_table_name_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -9279,8 +9349,10 @@ fn test_dolt_conflicts_table_name_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -9634,8 +9706,10 @@ fn test_dolt_conflicts_table_name_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -9930,8 +10004,10 @@ fn test_dolt_help_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -10048,8 +10124,10 @@ fn test_dolt_help_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -10173,8 +10251,10 @@ fn test_dolt_help_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -10313,8 +10393,10 @@ fn test_dolt_help_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -10459,8 +10541,10 @@ fn test_dolt_help_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -10605,8 +10689,10 @@ fn test_dolt_help_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -10751,8 +10837,10 @@ fn test_dolt_help_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -10897,8 +10985,10 @@ fn test_dolt_help_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -11062,8 +11152,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -11382,8 +11474,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -11712,8 +11806,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -11983,8 +12079,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -12260,8 +12358,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -12523,8 +12623,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -12795,8 +12897,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -13071,8 +13175,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -13363,8 +13469,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -13668,8 +13776,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -14066,8 +14176,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -14487,8 +14599,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -14749,8 +14863,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -15011,8 +15127,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -15257,8 +15375,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -15570,8 +15690,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -15835,8 +15957,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -16114,8 +16238,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -16436,8 +16562,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -16721,8 +16849,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -16909,8 +17039,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -17293,8 +17425,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -17611,8 +17745,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -17890,8 +18026,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -18150,8 +18288,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -18456,8 +18596,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -18791,8 +18933,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -19060,8 +19204,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -19328,8 +19474,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -19590,8 +19738,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -19852,8 +20002,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -20120,8 +20272,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -20375,8 +20529,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -20622,8 +20778,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -20881,8 +21039,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -21120,8 +21280,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -21380,8 +21542,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -21599,8 +21763,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -21869,8 +22035,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -22169,8 +22337,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -22424,8 +22594,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -22681,8 +22853,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -22954,8 +23128,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -23209,8 +23385,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -23456,8 +23634,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -23703,8 +23883,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -23976,8 +24158,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -24249,8 +24433,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -24508,8 +24694,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -24767,8 +24955,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -25071,8 +25261,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -25322,8 +25514,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -25530,8 +25724,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -25752,8 +25948,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -25925,8 +26123,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -26085,8 +26285,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -26245,8 +26447,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -26438,8 +26642,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -26699,8 +26905,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -26967,8 +27175,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -27235,8 +27445,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -27523,8 +27735,10 @@ fn test_dolt_merge() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -27769,8 +27983,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -28345,8 +28561,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -28829,8 +29047,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -29084,8 +29304,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -29318,8 +29540,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -29552,8 +29776,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -29799,8 +30025,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -30104,8 +30332,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -30357,8 +30587,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -30619,8 +30851,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -30886,8 +31120,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -31166,8 +31402,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -31481,8 +31719,10 @@ fn test_dolt_merge_artifacts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -31728,8 +31968,10 @@ fn test_dolt_reset() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -31974,8 +32216,10 @@ fn test_dolt_reset() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -32227,8 +32471,10 @@ fn test_dolt_reset() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -32381,8 +32627,10 @@ fn test_dolt_reset() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -32535,8 +32783,10 @@ fn test_dolt_reset() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -32689,8 +32939,10 @@ fn test_dolt_reset() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -32899,8 +33151,10 @@ fn test_dolt_reset() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -33101,8 +33355,10 @@ fn test_dolt_reset() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -33321,8 +33577,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -33514,8 +33772,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -33740,8 +34000,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -33956,8 +34218,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -34161,8 +34425,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -34381,8 +34647,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -34671,8 +34939,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -34968,8 +35238,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -35321,8 +35593,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -35462,8 +35736,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -35603,8 +35879,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -35811,8 +36089,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -36053,8 +36333,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -36251,8 +36533,10 @@ fn test_dolt_revert() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -36413,8 +36697,10 @@ hint: Please commit your changes before you revert."#, ..E }),
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -36595,8 +36881,10 @@ hint: Please commit your changes before you revert."#, ..E }),
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -36802,8 +37090,10 @@ hint: Please commit your changes before you revert."#, ..E }),
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -37029,8 +37319,10 @@ hint: Please commit your changes before you revert."#, ..E }),
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -37196,8 +37488,10 @@ hint: Please commit your changes before you revert."#, ..E }),
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -37617,8 +37911,10 @@ fn test_dolt_storage_format() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -37743,8 +38039,10 @@ fn test_dolt_tag() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -37951,8 +38249,10 @@ fn test_dolt_tag() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -38203,8 +38503,10 @@ fn test_dolt_tag() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -38453,8 +38755,10 @@ fn test_dolt_tag() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -38659,8 +38963,10 @@ fn test_dolt_tag() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -38855,8 +39161,10 @@ fn test_dolt_tag() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -39033,8 +39341,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -39186,8 +39496,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -39453,8 +39765,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -39851,8 +40165,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -40113,8 +40429,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -40373,8 +40691,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -40643,8 +40963,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -40871,8 +41193,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -41105,8 +41429,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -41311,8 +41637,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -41491,8 +41819,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -41704,8 +42034,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -41917,8 +42249,10 @@ fn test_history_system_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -42233,8 +42567,10 @@ WHERE z IN (
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -42422,8 +42758,10 @@ WHERE z IN (
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -42668,8 +43006,10 @@ fn test_keyless_dolt_merge_cvs_and_conflicts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -42922,8 +43262,10 @@ fn test_keyless_dolt_merge_cvs_and_conflicts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -43206,8 +43548,10 @@ fn test_keyless_dolt_merge_cvs_and_conflicts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -43445,8 +43789,10 @@ fn test_keyless_dolt_merge_cvs_and_conflicts() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -43699,8 +44045,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -43926,8 +44274,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -44116,8 +44466,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -44277,8 +44629,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -44459,8 +44813,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -44615,8 +44971,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -44802,8 +45160,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -44937,8 +45297,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -45137,8 +45499,10 @@ fn test_nonlocal_table() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -45610,8 +45974,10 @@ fn test_versioned_queries() {
                         rows: &[
                             &[T("mydb")],
                             &[T("postgres")],
+                            &[T("template0")],
+                            &[T("template1")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 4",
                     },
                     flow: Flow::Simple,
                     ..A
