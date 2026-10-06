@@ -305,6 +305,26 @@ func TestPgAttributeViewColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Skip: true, // TODO: pg_attribute resolves a view's tables using the current search_path
+			Name: "pg_attribute includes view columns outside the search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA other;`,
+				`SET search_path = other;`,
+				`CREATE TABLE remote (id INT PRIMARY KEY, label TEXT);`,
+				`CREATE VIEW v AS SELECT id, label AS name FROM remote;`,
+				`SET search_path = public;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, a.atttypid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname = 'v' ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", uint32(23)},
+						{"name", uint32(25)},
+					},
+				},
+			},
+		},
 	})
 }
 
