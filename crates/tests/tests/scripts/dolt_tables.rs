@@ -372,7 +372,7 @@ fn test_user_space_dolt_tables() {
                     expected: Expected::Rows {
                         columns: &[Column("dolt_commit", TEXT)],
                         rows: &[
-                            &[T("urfg5vsfrg707j3vfdv39o1k2dnhn7pr")],
+                            &[Any],
                         ],
                         tag: "SELECT 1",
                     },

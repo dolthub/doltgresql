@@ -985,6 +985,7 @@ pub fn run_script(target: &Target, script: &ScriptTest, repetitions: usize) -> V
     for (index, query) in script.set_up_script.iter().enumerate() {
         if let Err(err) = session.set_up(query) {
             record_failure(script.name, &format!("setup {index}"), query, &err);
+            session.save_recording(script.name);
             return vec![format!("{}: {err}", script.name)];
         }
     }

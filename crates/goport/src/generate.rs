@@ -324,11 +324,11 @@ pub struct Report {
 /// generate_script renders one script.
 fn generate_script(
     record: &Record,
-    test_index: usize,
     test: &Value,
     pg: Option<&Value>,
     go: Option<&Value>,
     pg_second: Option<&Value>,
+    go_second: Option<&Value>,
     report: &mut Report,
 ) -> String {
     let transaction = record.runner == "RunTransactionTests";
@@ -385,6 +385,8 @@ fn generate_script(
             })
         } else if source == Source::Postgres {
             observations(pg_second).get(index).cloned()
+        } else if matches!(source, Source::DoltStatement | Source::DoltScript | Source::AfterDivergence) {
+            observations(go_second).get(index).cloned()
         } else {
             None
         };
@@ -448,7 +450,6 @@ fn generate_script(
     code.push_str("            assertions: &[\n");
     code.push_str(&body);
     code.push_str("            ],\n            ..S\n        },\n");
-    let _ = test_index;
     code
 }
 
@@ -573,7 +574,14 @@ pub fn go_file(record: &Record) -> String {
 }
 
 /// generate writes a Rust module for every Go test file, returning the report.
-pub fn generate(records: &[Record], pg: &Captures, go: &Captures, second: &Captures, out_dir: &str) -> Report {
+pub fn generate(
+    records: &[Record],
+    pg: &Captures,
+    go: &Captures,
+    second: &Captures,
+    go_second: &Captures,
+    out_dir: &str,
+) -> Report {
     let mut report = Report::default();
     let mut files: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
     for record in records {
@@ -603,11 +611,11 @@ pub fn generate(records: &[Record], pg: &Captures, go: &Captures, second: &Captu
         for (index, test) in record.tests.iter().enumerate() {
             call.push_str(&generate_script(
                 record,
-                index,
                 test,
                 pg.get(&(record.index, index)),
                 go.get(&(record.index, index)),
                 second.get(&(record.index, index)),
+                go_second.get(&(record.index, index)),
                 &mut report,
             ));
         }

@@ -1671,7 +1671,7 @@ created by golang.org/x/sync/errgroup.(*Group).Go in goroutine 212
                     expected: Expected::Rows {
                         columns: &[Column("dolt_stats_info", TEXT)],
                         rows: &[
-                            &[T(r#"{"dbCnt":4,"active":true,"storageBucketCnt":0,"cachedBucketCnt":0,"cachedBoundCnt":0,"cachedTemplateCnt":0,"statCnt":4,"backing":"memory","lastUpdate":"2026-10-05T17:32:02.479854-07:00"}"#)],
+                            &[Any],
                         ],
                         tag: "SELECT 1",
                     },
@@ -1755,7 +1755,7 @@ created by golang.org/x/sync/errgroup.(*Group).Go in goroutine 212
                     expected: Expected::Rows {
                         columns: &[Column("dolt_stats_once", TEXT)],
                         rows: &[
-                            &[T(r#"{"dbCnt":4,"bucketWrites":0,"tablesProcessed":5,"tablesSkipped":0,"lastUpdate":"2026-10-05T17:32:04.372701-07:00"}"#)],
+                            &[Any],
                         ],
                         tag: "SELECT 1",
                     },
@@ -2404,7 +2404,7 @@ created by golang.org/x/sync/errgroup.(*Group).Go in goroutine 251
                     expected: Expected::Rows {
                         columns: &[Column("dolt_stats_info", TEXT)],
                         rows: &[
-                            &[T(r#"{"dbCnt":1,"active":true,"storageBucketCnt":0,"cachedBucketCnt":0,"cachedBoundCnt":0,"cachedTemplateCnt":0,"statCnt":0,"backing":"memory","lastUpdate":"2026-10-05T17:32:00.371952-07:00"}"#)],
+                            &[Any],
                         ],
                         tag: "SELECT 1",
                     },
@@ -2488,7 +2488,7 @@ created by golang.org/x/sync/errgroup.(*Group).Go in goroutine 251
                     expected: Expected::Rows {
                         columns: &[Column("dolt_stats_once", TEXT)],
                         rows: &[
-                            &[T(r#"{"dbCnt":4,"bucketWrites":0,"tablesProcessed":5,"tablesSkipped":0,"lastUpdate":"2026-10-05T17:32:03.352378-07:00"}"#)],
+                            &[Any],
                         ],
                         tag: "SELECT 1",
                     },
