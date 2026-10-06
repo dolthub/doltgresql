@@ -1,0 +1,1162 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Planning queries into trees of scans, joins, filters, aggregates, sorts, and projections, and running them.
+
+use std::cmp::Ordering;
+use std::collections::HashSet;
+
+use pg_query::protobuf::{
+    JoinExpr, JoinType, RangeFunction, RangeSubselect, SelectStmt, SetOperation, SortByDir, SortByNulls,
+};
+use pg_query::{Node, NodeEnum};
+
+use crate::catalog::ColumnType;
+use crate::catalog::table::TableDef;
+use crate::error::{PgError, Result, code};
+use crate::expr::{
+    Binder, Expr, Scope, ScopeColumn, coerce, common_type, compare_values, figure_name, node_name, position, typ,
+};
+use crate::functions::aggregate::{Accumulator, AggCall};
+use crate::query::{Ctx, column, scan};
+use crate::types::Value;
+use crate::{Column, oid};
+
+/// JoinKind is how a join keeps rows that find no match.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JoinKind {
+    Inner,
+    Left,
+    Right,
+    Full,
+}
+
+/// SortKey is an ORDER BY key over a plan's rows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SortKey {
+    pub expr: Expr,
+    pub descending: bool,
+    pub nulls_first: bool,
+}
+
+/// SetOp is a set operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SetOp {
+    Union,
+    Intersect,
+    Except,
+}
+
+/// Plan is a node of a query plan, which produces rows.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Plan {
+    /// One row without columns, the input of a SELECT without FROM.
+    OneRow,
+    Scan(Box<TableDef>),
+    /// Rows of expressions, evaluated without an input row.
+    Values(Vec<Vec<Expr>>),
+    /// The rows a set-returning function returns for its arguments, with a row number when asked.
+    Function {
+        index: usize,
+        args: Vec<Expr>,
+        ordinality: bool,
+    },
+    Filter {
+        input: Box<Plan>,
+        predicate: Expr,
+    },
+    Project {
+        input: Box<Plan>,
+        exprs: Vec<Expr>,
+    },
+    /// The rows of both inputs side by side that meet the condition.
+    Join {
+        left: Box<Plan>,
+        right: Box<Plan>,
+        kind: JoinKind,
+        condition: Option<Expr>,
+    },
+    /// One row per group of the input, with the group keys and then the aggregate results.
+    Aggregate {
+        input: Box<Plan>,
+        groups: Vec<Expr>,
+        aggregates: Vec<AggCall>,
+    },
+    Sort {
+        input: Box<Plan>,
+        keys: Vec<SortKey>,
+    },
+    /// The first row of each run of rows with equal keys, or of equal rows without keys.
+    Distinct {
+        input: Box<Plan>,
+        keys: Option<Vec<Expr>>,
+    },
+    Limit {
+        input: Box<Plan>,
+        limit: Option<Expr>,
+        offset: Option<Expr>,
+    },
+    SetOp {
+        op: SetOp,
+        all: bool,
+        left: Box<Plan>,
+        right: Box<Plan>,
+    },
+}
+
+/// Query is a planned query: its plan and the columns of its rows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Query {
+    pub plan: Plan,
+    pub columns: Vec<Column>,
+    /// The types of the columns, with their modifiers.
+    pub types: Vec<ColumnType>,
+}
+
+/// AGGREGATES names every aggregate function, which a query must group to call.
+pub fn is_aggregate(name: &str) -> bool {
+    crate::functions::aggregate::exists(name)
+}
+
+/// has_aggregate reports whether an expression calls an aggregate outside any subquery.
+fn has_aggregate(node: &Node) -> bool {
+    match node.node.as_ref() {
+        Some(NodeEnum::FuncCall(call)) => {
+            let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default();
+            (call.over.is_none() && (is_aggregate(name) || call.agg_star)) || call.args.iter().any(has_aggregate)
+        }
+        Some(NodeEnum::SubLink(_)) | None => false,
+        Some(NodeEnum::AExpr(e)) => {
+            e.lexpr.as_deref().is_some_and(has_aggregate) || e.rexpr.as_deref().is_some_and(has_aggregate)
+        }
+        Some(NodeEnum::BoolExpr(e)) => e.args.iter().any(has_aggregate),
+        Some(NodeEnum::TypeCast(c)) => c.arg.as_deref().is_some_and(has_aggregate),
+        Some(NodeEnum::NullTest(t)) => t.arg.as_deref().is_some_and(has_aggregate),
+        Some(NodeEnum::ResTarget(t)) => t.val.as_deref().is_some_and(has_aggregate),
+        Some(NodeEnum::SortBy(s)) => s.node.as_deref().is_some_and(has_aggregate),
+        Some(NodeEnum::CaseExpr(c)) => {
+            c.arg.as_deref().is_some_and(has_aggregate)
+                || c.args.iter().any(has_aggregate)
+                || c.defresult.as_deref().is_some_and(has_aggregate)
+        }
+        Some(NodeEnum::CaseWhen(w)) => {
+            w.expr.as_deref().is_some_and(has_aggregate) || w.result.as_deref().is_some_and(has_aggregate)
+        }
+        Some(NodeEnum::CoalesceExpr(c)) => c.args.iter().any(has_aggregate),
+        Some(NodeEnum::MinMaxExpr(m)) => m.args.iter().any(has_aggregate),
+        Some(NodeEnum::List(l)) => l.items.iter().any(has_aggregate),
+        _ => false,
+    }
+}
+
+/// sort_key reads an ORDER BY item's direction and NULLS placement.
+fn sort_order(sort: &pg_query::protobuf::SortBy) -> (bool, bool) {
+    let descending = SortByDir::try_from(sort.sortby_dir) == Ok(SortByDir::SortbyDesc);
+    let nulls_first = match SortByNulls::try_from(sort.sortby_nulls) {
+        Ok(SortByNulls::SortbyNullsFirst) => true,
+        Ok(SortByNulls::SortbyNullsLast) => false,
+        _ => descending,
+    };
+    (descending, nulls_first)
+}
+
+/// replace_groups replaces the subexpressions of a grouped query's expression that equal a group key with a reference
+/// to that key in the aggregate's output, and aggregate references with theirs after the keys.
+fn replace_groups(expr: Expr, groups: &[Expr]) -> Expr {
+    if let Some(i) = groups.iter().position(|g| *g == expr) {
+        return Expr::Column(i);
+    }
+    match expr {
+        Expr::AggRef(k) => Expr::Column(groups.len() + k),
+        other => other.map_children(&mut |child| replace_groups(child, groups)),
+    }
+}
+
+/// ungrouped_column returns a column of the input row that a grouped expression still refers to.
+fn ungrouped_column(expr: &Expr) -> Option<usize> {
+    let mut found = None;
+    expr.visit(&mut |e| {
+        if let Expr::InputColumn(i) = e {
+            found = found.or(Some(*i));
+        }
+    });
+    found
+}
+
+/// mark_input turns column references into input column references, so that grouping can tell which remain.
+fn mark_input(expr: Expr) -> Expr {
+    match expr {
+        Expr::Column(i) => Expr::InputColumn(i),
+        other => other.map_children(&mut mark_input),
+    }
+}
+
+/// Planner plans the queries of a statement, with the scopes of the enclosing queries for correlated subqueries.
+pub struct Planner<'b, 'a> {
+    pub ctx: &'b mut Ctx<'a>,
+    /// The scopes of the enclosing queries, innermost last.
+    pub outer: Vec<Scope>,
+}
+
+impl<'b, 'a> Planner<'b, 'a> {
+    /// binder returns a binder over the scope inside the planner's enclosing scopes.
+    fn binder(&mut self, scope: Scope) -> Binder<'_, 'a> {
+        let mut scopes = self.outer.clone();
+        scopes.push(scope);
+        Binder::with_scopes(self.ctx, scopes)
+    }
+
+    /// plan_query plans a SELECT, VALUES, or set operation.
+    pub fn plan_query(&mut self, select: &SelectStmt) -> Result<Query> {
+        if select.with_clause.is_some() {
+            return Err(PgError::unsupported("WITH"));
+        }
+        let op = SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone);
+        let (mut query, scope) = match op {
+            SetOperation::SetopNone | SetOperation::Undefined if !select.values_lists.is_empty() => {
+                self.plan_values(select)?
+            }
+            SetOperation::SetopNone | SetOperation::Undefined => return self.plan_select(select),
+            _ => self.plan_set_operation(select, op)?,
+        };
+        // ORDER BY and LIMIT of VALUES and set operations apply to the result's columns.
+        if !select.sort_clause.is_empty() {
+            let mut keys = Vec::new();
+            for sort in &select.sort_clause {
+                let Some(NodeEnum::SortBy(sort)) = sort.node.as_ref() else { continue };
+                let node = sort.node.as_deref().ok_or_else(|| PgError::internal("ORDER BY without a key"))?;
+                let expr = match ordinal(node) {
+                    Some((n, location)) => {
+                        output_ordinal(&query.columns, n, location)?;
+                        Expr::Column(n - 1)
+                    }
+                    None => self.binder(scope.clone()).bind(node)?.0,
+                };
+                let (descending, nulls_first) = sort_order(sort);
+                keys.push(SortKey { expr, descending, nulls_first });
+            }
+            query.plan = Plan::Sort { input: Box::new(query.plan), keys };
+        }
+        query.plan = self.limit(query.plan, select)?;
+        Ok(query)
+    }
+
+    /// limit wraps a plan in its LIMIT and OFFSET.
+    fn limit(&mut self, plan: Plan, select: &SelectStmt) -> Result<Plan> {
+        if select.limit_count.is_none() && select.limit_offset.is_none() {
+            return Ok(plan);
+        }
+        let mut binder = self.binder(Scope::default());
+        let mut count = |node: Option<&Node>| -> Result<Option<Expr>> {
+            match node {
+                Some(node) => Ok(Some(coerce(binder.bind(node)?, typ(oid::INT8), false, -1)?.0)),
+                None => Ok(None),
+            }
+        };
+        let limit = count(select.limit_count.as_deref())?;
+        let offset = count(select.limit_offset.as_deref())?;
+        Ok(Plan::Limit { input: Box::new(plan), limit, offset })
+    }
+
+    /// plan_values plans a VALUES list, whose columns take the common type of their values.
+    fn plan_values(&mut self, select: &SelectStmt) -> Result<(Query, Scope)> {
+        let mut rows: Vec<Vec<(Expr, ColumnType, i32)>> = Vec::new();
+        let mut binder = self.binder(Scope::default());
+        for list in &select.values_lists {
+            let Some(NodeEnum::List(list)) = list.node.as_ref() else { continue };
+            let mut row = Vec::new();
+            for item in &list.items {
+                let (expr, ty) = binder.bind(item)?;
+                row.push((expr, ty, crate::expr::arg_location(item)));
+            }
+            if let Some(first) = rows.first()
+                && first.len() != row.len()
+            {
+                return Err(PgError {
+                    position: position(row.last().map_or(-1, |r| r.2)),
+                    ..PgError::new(code::SYNTAX_ERROR, "VALUES lists must all be the same length")
+                });
+            }
+            rows.push(row);
+        }
+        let width = rows.first().map_or(0, Vec::len);
+        let mut types = Vec::with_capacity(width);
+        for i in 0..width {
+            let column_types: Vec<(ColumnType, i32)> = rows.iter().map(|r| (r[i].1, r[i].2)).collect();
+            types.push(common_type(&column_types, "VALUES")?);
+        }
+        let mut exprs = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut out = Vec::with_capacity(width);
+            for (i, (expr, ty, location)) in row.into_iter().enumerate() {
+                out.push(coerce((expr, ty), types[i], false, location)?.0);
+            }
+            exprs.push(out);
+        }
+        let columns: Vec<Column> =
+            types.iter().enumerate().map(|(i, &t)| column(format!("column{}", i + 1), t)).collect();
+        let scope = Scope {
+            columns: columns
+                .iter()
+                .zip(&types)
+                .map(|(c, &ty)| ScopeColumn { table: String::new(), name: c.name.clone(), ty, hidden: false })
+                .collect(),
+        };
+        Ok((Query { plan: Plan::Values(exprs), columns, types }, scope))
+    }
+
+    /// plan_set_operation plans UNION, INTERSECT, or EXCEPT, whose columns take the names of the left query and the
+    /// common types of both.
+    fn plan_set_operation(&mut self, select: &SelectStmt, op: SetOperation) -> Result<(Query, Scope)> {
+        let left = select.larg.as_deref().ok_or_else(|| PgError::internal("a set operation without a left side"))?;
+        let right = select.rarg.as_deref().ok_or_else(|| PgError::internal("a set operation without a right side"))?;
+        let mut left = self.plan_query(left)?;
+        let mut right = self.plan_query(right)?;
+        let name = match op {
+            SetOperation::SetopUnion => "UNION",
+            SetOperation::SetopIntersect => "INTERSECT",
+            _ => "EXCEPT",
+        };
+        if left.columns.len() != right.columns.len() {
+            return Err(PgError::new(
+                code::SYNTAX_ERROR,
+                format!("each {name} query must have the same number of columns"),
+            ));
+        }
+        let mut types = Vec::new();
+        for (l, r) in left.types.iter().zip(&right.types) {
+            types.push(common_type(&[(*l, -1), (*r, -1)], name)?);
+        }
+        for query in [&mut left, &mut right] {
+            if query.types != types {
+                let exprs = (0..types.len())
+                    .map(|i| coerce((Expr::Column(i), query.types[i]), types[i], false, -1).map(|b| b.0))
+                    .collect::<Result<Vec<_>>>()?;
+                query.plan = Plan::Project { input: Box::new(std::mem::replace(&mut query.plan, Plan::OneRow)), exprs };
+            }
+        }
+        let columns: Vec<Column> = left.columns.iter().zip(&types).map(|(c, &t)| column(c.name.clone(), t)).collect();
+        let scope = Scope {
+            columns: columns
+                .iter()
+                .zip(&types)
+                .map(|(c, &ty)| ScopeColumn { table: String::new(), name: c.name.clone(), ty, hidden: false })
+                .collect(),
+        };
+        let op = match op {
+            SetOperation::SetopUnion => SetOp::Union,
+            SetOperation::SetopIntersect => SetOp::Intersect,
+            _ => SetOp::Except,
+        };
+        let plan = Plan::SetOp { op, all: select.all, left: Box::new(left.plan), right: Box::new(right.plan) };
+        Ok((Query { plan, columns, types }, scope))
+    }
+
+    /// plan_from plans the FROM list, joining its items, and returns the plan with its scope.
+    pub fn plan_from(&mut self, from: &[Node]) -> Result<(Plan, Scope)> {
+        let mut result: Option<(Plan, Scope)> = None;
+        for item in from {
+            let (plan, scope) = self.plan_from_item(item)?;
+            result = Some(match result {
+                None => (plan, scope),
+                Some((left, mut left_scope)) => {
+                    check_duplicate_aliases(&left_scope, &scope)?;
+                    left_scope.columns.extend(scope.columns);
+                    let join = Plan::Join {
+                        left: Box::new(left),
+                        right: Box::new(plan),
+                        kind: JoinKind::Inner,
+                        condition: None,
+                    };
+                    (join, left_scope)
+                }
+            });
+        }
+        Ok(result.unwrap_or((Plan::OneRow, Scope::default())))
+    }
+
+    /// plan_from_item plans one FROM item.
+    fn plan_from_item(&mut self, item: &Node) -> Result<(Plan, Scope)> {
+        match item.node.as_ref() {
+            Some(NodeEnum::RangeVar(relation)) => {
+                let table = self.ctx.resolve_table(relation)?;
+                let alias = relation.alias.as_ref();
+                let name = alias.map_or(table.name.clone(), |a| a.aliasname.clone());
+                let renames: Vec<&str> =
+                    alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+                let scope = Scope {
+                    columns: table
+                        .columns
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| ScopeColumn {
+                            table: name.clone(),
+                            name: renames.get(i).map_or(c.name.clone(), |r| r.to_string()),
+                            ty: c.ty,
+                            hidden: false,
+                        })
+                        .collect(),
+                };
+                Ok((Plan::Scan(Box::new(table)), scope))
+            }
+            Some(NodeEnum::JoinExpr(join)) => self.plan_join(join),
+            Some(NodeEnum::RangeSubselect(subselect)) => self.plan_subselect(subselect),
+            Some(NodeEnum::RangeFunction(function)) => self.plan_range_function(function),
+            _ => Err(PgError::unsupported("this FROM item")),
+        }
+    }
+
+    /// plan_subselect plans a subquery in FROM.
+    fn plan_subselect(&mut self, subselect: &RangeSubselect) -> Result<(Plan, Scope)> {
+        let Some(NodeEnum::SelectStmt(select)) = subselect.subquery.as_deref().and_then(|n| n.node.as_ref()) else {
+            return Err(PgError::unsupported("this subquery"));
+        };
+        let Some(alias) = subselect.alias.as_ref() else {
+            return Err(PgError {
+                hint: Some("For example, FROM (SELECT ...) [AS] foo.".into()),
+                ..PgError::new(code::SYNTAX_ERROR, "subquery in FROM must have an alias")
+            });
+        };
+        let query = Planner { ctx: self.ctx, outer: self.outer.clone() }.plan_query(select)?;
+        let renames: Vec<&str> = alias.colnames.iter().filter_map(node_name).collect();
+        let scope = Scope {
+            columns: query
+                .columns
+                .iter()
+                .zip(&query.types)
+                .enumerate()
+                .map(|(i, (c, &ty))| ScopeColumn {
+                    table: alias.aliasname.clone(),
+                    name: renames.get(i).map_or(c.name.clone(), |r| r.to_string()),
+                    ty,
+                    hidden: false,
+                })
+                .collect(),
+        };
+        Ok((query.plan, scope))
+    }
+
+    /// plan_range_function plans a set-returning function in FROM.
+    fn plan_range_function(&mut self, function: &RangeFunction) -> Result<(Plan, Scope)> {
+        let [item] = function.functions.as_slice() else { return Err(PgError::unsupported("ROWS FROM")) };
+        let Some(NodeEnum::List(list)) = item.node.as_ref() else { return Err(PgError::unsupported("this function")) };
+        let Some(NodeEnum::FuncCall(call)) = list.items.first().and_then(|n| n.node.as_ref()) else {
+            return Err(PgError::unsupported("this function in FROM"));
+        };
+        let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
+        let mut binder = self.binder(Scope::default());
+        let (expr, ty) = binder.bind(&Node { node: Some(NodeEnum::FuncCall(call.clone())) })?;
+        let Expr::Func(index, args) = expr else { return Err(PgError::unsupported("this function in FROM")) };
+        let alias = function.alias.as_ref();
+        let table = alias.map_or(name.clone(), |a| a.aliasname.clone());
+        let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+        // A function returning one column names the column after the alias when there is one.
+        let column_name =
+            renames.first().map(|r| r.to_string()).unwrap_or_else(|| alias.map_or(name, |a| a.aliasname.clone()));
+        let mut columns = vec![ScopeColumn { table: table.clone(), name: column_name, ty, hidden: false }];
+        if function.ordinality {
+            let name = renames.get(1).map_or("ordinality".to_string(), |r| r.to_string());
+            columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false });
+        }
+        Ok((Plan::Function { index, args, ordinality: function.ordinality }, Scope { columns }))
+    }
+
+    /// plan_join plans a join with its condition, merging the columns that USING or NATURAL name.
+    fn plan_join(&mut self, join: &JoinExpr) -> Result<(Plan, Scope)> {
+        let left = join.larg.as_deref().ok_or_else(|| PgError::internal("a join without a left side"))?;
+        let right = join.rarg.as_deref().ok_or_else(|| PgError::internal("a join without a right side"))?;
+        let (left_plan, left_scope) = self.plan_from_item(left)?;
+        let (right_plan, right_scope) = self.plan_from_item(right)?;
+        check_duplicate_aliases(&left_scope, &right_scope)?;
+        let kind = match JoinType::try_from(join.jointype) {
+            Ok(JoinType::JoinLeft) => JoinKind::Left,
+            Ok(JoinType::JoinRight) => JoinKind::Right,
+            Ok(JoinType::JoinFull) => JoinKind::Full,
+            _ => JoinKind::Inner,
+        };
+        let mut scope = Scope { columns: left_scope.columns.iter().chain(&right_scope.columns).cloned().collect() };
+        let width = left_scope.columns.len();
+        let using: Vec<String> = if join.is_natural {
+            left_scope
+                .columns
+                .iter()
+                .filter(|l| !l.hidden && right_scope.columns.iter().any(|r| !r.hidden && r.name == l.name))
+                .map(|l| l.name.clone())
+                .collect()
+        } else {
+            join.using_clause.iter().filter_map(node_name).map(str::to_string).collect()
+        };
+        let condition = if !using.is_empty() || join.is_natural {
+            let mut condition: Option<Expr> = None;
+            let mut merged = Vec::new();
+            for name in &using {
+                let find = |s: &Scope, side: &str| {
+                    let mut found = s.columns.iter().enumerate().filter(|(_, c)| !c.hidden && c.name == *name);
+                    match (found.next(), found.next()) {
+                        (Some((i, c)), None) => Ok((i, c.ty)),
+                        (Some(_), Some(_)) => Err(PgError::new(
+                            code::AMBIGUOUS_COLUMN,
+                            format!("common column name \"{name}\" appears more than once in {side} table"),
+                        )),
+                        _ => Err(PgError::new(
+                            code::UNDEFINED_COLUMN,
+                            format!("column \"{name}\" specified in USING clause does not exist in {side} table"),
+                        )),
+                    }
+                };
+                let (l, lt) = find(&left_scope, "left")?;
+                let (r, rt) = find(&right_scope, "right")?;
+                let mut binder = self.binder(scope.clone());
+                let (test, _) =
+                    binder.compare("=", (Expr::Column(l), lt), (Expr::Column(width + r), rt), -1)?;
+                condition = Some(match condition {
+                    Some(c) => Expr::And(Box::new(c), Box::new(test)),
+                    None => test,
+                });
+                let ty = common_type(&[(lt, -1), (rt, -1)], "JOIN/USING")?;
+                let value = match kind {
+                    JoinKind::Right => Expr::Column(width + r),
+                    JoinKind::Full => Expr::Coalesce(vec![
+                        coerce((Expr::Column(l), lt), ty, false, -1)?.0,
+                        coerce((Expr::Column(width + r), rt), ty, false, -1)?.0,
+                    ]),
+                    _ => Expr::Column(l),
+                };
+                merged.push((name.clone(), value, ty, l, width + r));
+            }
+            let plan = Plan::Join { left: Box::new(left_plan), right: Box::new(right_plan), kind, condition };
+            // The merged columns come first, and the joined columns they replace stay reachable only by table name.
+            let mut exprs: Vec<Expr> = merged.iter().map(|m| m.1.clone()).collect();
+            let mut columns: Vec<ScopeColumn> = merged
+                .iter()
+                .map(|m| ScopeColumn { table: String::new(), name: m.0.clone(), ty: m.2, hidden: false })
+                .collect();
+            let replaced: HashSet<usize> = merged.iter().flat_map(|m| [m.3, m.4]).collect();
+            for (i, c) in scope.columns.iter().enumerate() {
+                exprs.push(Expr::Column(i));
+                let mut c = c.clone();
+                if replaced.contains(&i) {
+                    c.hidden = true;
+                }
+                columns.push(c);
+            }
+            scope = Scope { columns };
+            let project = Plan::Project { input: Box::new(plan), exprs };
+            return Ok((project, scope));
+        } else {
+            match join.quals.as_deref() {
+                Some(quals) => {
+                    let mut binder = self.binder(scope.clone());
+                    Some(coerce(binder.bind(quals)?, typ(oid::BOOL), false, -1)?.0)
+                }
+                None => None,
+            }
+        };
+        let plan = Plan::Join { left: Box::new(left_plan), right: Box::new(right_plan), kind, condition };
+        Ok((plan, scope))
+    }
+
+    /// plan_select plans a simple SELECT.
+    fn plan_select(&mut self, select: &SelectStmt) -> Result<Query> {
+        let (mut plan, scope) = self.plan_from(&select.from_clause)?;
+        if let Some(node) = select.where_clause.as_deref() {
+            if has_aggregate(node) {
+                return Err(PgError {
+                    position: aggregate_location(node).and_then(position),
+                    ..PgError::new(code::GROUPING_ERROR, "aggregate functions are not allowed in WHERE")
+                });
+            }
+            let mut binder = self.binder(scope.clone());
+            let predicate = coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0;
+            plan = Plan::Filter { input: Box::new(plan), predicate };
+        }
+        let grouped = !select.group_clause.is_empty()
+            || select.having_clause.is_some()
+            || select.target_list.iter().any(has_aggregate)
+            || select.sort_clause.iter().any(has_aggregate);
+        // Bind the targets, expanding stars.
+        let mut binder = self.binder(scope.clone());
+        if grouped {
+            binder.aggregates = Some(Vec::new());
+        }
+        let mut targets: Vec<(Expr, ColumnType, String, i32)> = Vec::new();
+        for target in &select.target_list {
+            let Some(NodeEnum::ResTarget(target)) = target.node.as_ref() else { continue };
+            let value = target.val.as_deref().ok_or_else(|| PgError::internal("a target without a value"))?;
+            if let Some(NodeEnum::ColumnRef(c)) = value.node.as_ref()
+                && matches!(c.fields.last().and_then(|f| f.node.as_ref()), Some(NodeEnum::AStar(_)))
+            {
+                let table = if c.fields.len() > 1 { c.fields.first().and_then(node_name) } else { None };
+                let before = targets.len();
+                for (i, sc) in scope.columns.iter().enumerate() {
+                    if (table.is_none() && !sc.hidden) || table.is_some_and(|t| sc.table == t && !sc.table.is_empty()) {
+                        targets.push((Expr::Column(i), sc.ty, sc.name.clone(), c.location));
+                    }
+                }
+                if table.is_none() && scope.columns.is_empty() {
+                    return Err(PgError {
+                        position: position(c.location),
+                        ..PgError::new(code::SYNTAX_ERROR, "SELECT * with no tables specified is not valid")
+                    });
+                }
+                if targets.len() == before && table.is_some() {
+                    return Err(PgError {
+                        position: position(c.location),
+                        ..PgError::new(
+                            code::UNDEFINED_TABLE,
+                            format!("missing FROM-clause entry for table \"{}\"", table.unwrap_or_default()),
+                        )
+                    });
+                }
+                continue;
+            }
+            let (expr, ty) = binder.bind(value)?;
+            let name = if target.name.is_empty() { figure_name(value) } else { target.name.clone() };
+            targets.push((expr, ty, name, target.location));
+        }
+        let names: Vec<String> = targets.iter().map(|t| t.2.clone()).collect();
+        // ORDER BY keys may name output columns, refer to them by position, or be expressions of the input.
+        let mut sorts: Vec<(Expr, bool, bool)> = Vec::new();
+        for sort in &select.sort_clause {
+            let Some(NodeEnum::SortBy(sort)) = sort.node.as_ref() else { continue };
+            let node = sort.node.as_deref().ok_or_else(|| PgError::internal("ORDER BY without a key"))?;
+            let (descending, nulls_first) = sort_order(sort);
+            let expr = if let Some((n, location)) = ordinal(node) {
+                output_ordinal_named(&names, n, location)?;
+                targets[n - 1].0.clone()
+            } else if let Some(NodeEnum::ColumnRef(c)) = node.node.as_ref()
+                && c.fields.len() == 1
+                && let Some(name) = node_name(&c.fields[0])
+                && names.iter().filter(|n| *n == name).count() == 1
+            {
+                targets[names.iter().position(|n| n == name).unwrap()].0.clone()
+            } else {
+                binder.bind(node)?.0
+            };
+            sorts.push((expr, descending, nulls_first));
+        }
+        let mut having = None;
+        if let Some(node) = select.having_clause.as_deref() {
+            having = Some(coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0);
+        }
+        let aggregates = binder.aggregates.take();
+        let columns_bound = std::mem::take(&mut binder.columns);
+        drop(binder);
+        if let Some(aggregates) = aggregates {
+            // Group keys may refer to output columns by position or name, or be expressions of the input.
+            let mut groups: Vec<Expr> = Vec::new();
+            let mut binder = self.binder(scope.clone());
+            for node in &select.group_clause {
+                let expr = if let Some((n, location)) = ordinal(node) {
+                    output_ordinal_named(&names, n, location)?;
+                    targets[n - 1].0.clone()
+                } else if let Some(NodeEnum::ColumnRef(c)) = node.node.as_ref()
+                    && c.fields.len() == 1
+                    && let Some(name) = node_name(&c.fields[0])
+                    && !scope.columns.iter().any(|sc| sc.name == name)
+                    && let Some(i) = names.iter().position(|n| n == name)
+                {
+                    targets[i].0.clone()
+                } else {
+                    binder.bind(node)?.0
+                };
+                groups.push(mark_input(expr));
+            }
+            drop(binder);
+            let finish = |expr: Expr| -> Result<Expr> {
+                let expr = replace_groups(mark_input(expr), &groups);
+                if let Some(i) = ungrouped_column(&expr) {
+                    let column = &scope.columns[i];
+                    let location = columns_bound.iter().find(|(c, _)| *c == i).map_or(-1, |(_, l)| *l);
+                    let name = if column.table.is_empty() {
+                        column.name.clone()
+                    } else {
+                        format!("{}.{}", column.table, column.name)
+                    };
+                    return Err(PgError {
+                        position: position(location),
+                        ..PgError::new(
+                            code::GROUPING_ERROR,
+                            format!(
+                                "column \"{name}\" must appear in the GROUP BY clause or be used in an aggregate function"
+                            ),
+                        )
+                    });
+                }
+                Ok(expr)
+            };
+            let mut new_targets = Vec::with_capacity(targets.len());
+            for (expr, ty, name, location) in targets {
+                new_targets.push((finish(expr)?, ty, name, location));
+            }
+            targets = new_targets;
+            sorts = sorts.into_iter().map(|(e, d, n)| finish(e).map(|e| (e, d, n))).collect::<Result<_>>()?;
+            having = having.map(finish).transpose()?;
+            let groups_plan = groups.into_iter().map(|g| match g {
+                Expr::InputColumn(i) => Expr::Column(i),
+                other => unmark_input(other),
+            });
+            plan = Plan::Aggregate { input: Box::new(plan), groups: groups_plan.collect(), aggregates };
+            if let Some(predicate) = having {
+                plan = Plan::Filter { input: Box::new(plan), predicate };
+            }
+        }
+        let width = targets.len();
+        let types: Vec<ColumnType> = targets.iter().map(|t| t.1).collect();
+        let columns: Vec<Column> = targets.iter().map(|t| column(t.2.clone(), t.1)).collect();
+        let mut exprs: Vec<Expr> = targets.into_iter().map(|t| t.0).collect();
+        let distinct = !select.distinct_clause.is_empty();
+        let distinct_on: Vec<&Node> = select.distinct_clause.iter().filter(|n| n.node.is_some()).collect();
+        // Sort keys that aren't output columns travel as hidden columns after the output.
+        let mut keys = Vec::new();
+        for (expr, descending, nulls_first) in sorts {
+            let index = match exprs.iter().position(|e| *e == expr) {
+                Some(i) => i,
+                None => {
+                    if distinct && distinct_on.is_empty() {
+                        return Err(PgError::new(
+                            code::INVALID_COLUMN_REFERENCE,
+                            "for SELECT DISTINCT, ORDER BY expressions must appear in select list",
+                        ));
+                    }
+                    exprs.push(expr);
+                    exprs.len() - 1
+                }
+            };
+            keys.push(SortKey { expr: Expr::Column(index), descending, nulls_first });
+        }
+        let mut distinct_keys = None;
+        if !distinct_on.is_empty() {
+            let mut binder = self.binder(scope.clone());
+            let mut on = Vec::new();
+            for node in distinct_on {
+                let expr = if let Some((n, location)) = ordinal(node) {
+                    output_ordinal_named(&names, n, location)?;
+                    Expr::Column(n - 1)
+                } else {
+                    let expr = binder.bind(node)?.0;
+                    match exprs.iter().position(|e| *e == expr) {
+                        Some(i) => Expr::Column(i),
+                        None => {
+                            exprs.push(expr);
+                            Expr::Column(exprs.len() - 1)
+                        }
+                    }
+                };
+                on.push(expr);
+            }
+            distinct_keys = Some(on);
+        }
+        plan = Plan::Project { input: Box::new(plan), exprs };
+        if let Some(on) = &distinct_keys {
+            // DISTINCT ON keeps the first row of each group in sort order, so the keys sort first.
+            let mut sort_keys: Vec<SortKey> = Vec::new();
+            for (i, key) in on.iter().enumerate() {
+                match keys.get(i) {
+                    Some(k) if k.expr == *key => sort_keys.push(k.clone()),
+                    Some(_) => {
+                        return Err(PgError::new(
+                            code::INVALID_COLUMN_REFERENCE,
+                            "SELECT DISTINCT ON expressions must match initial ORDER BY expressions",
+                        ));
+                    }
+                    None => sort_keys.push(SortKey { expr: key.clone(), descending: false, nulls_first: false }),
+                }
+            }
+            sort_keys.extend(keys.iter().skip(on.len()).cloned());
+            plan = Plan::Sort { input: Box::new(plan), keys: sort_keys };
+            plan = Plan::Distinct { input: Box::new(plan), keys: distinct_keys };
+        } else {
+            if distinct {
+                plan = Plan::Distinct { input: Box::new(plan), keys: None };
+            }
+            if !keys.is_empty() {
+                plan = Plan::Sort { input: Box::new(plan), keys };
+            }
+        }
+        plan = self.limit(plan, select)?;
+        if matches!(&plan, Plan::Project { exprs, .. } if exprs.len() == width) {
+            return Ok(Query { plan, columns, types });
+        }
+        let visible = (0..width).map(Expr::Column).collect();
+        Ok(Query { plan: Plan::Project { input: Box::new(plan), exprs: visible }, columns, types })
+    }
+}
+
+/// unmark_input turns input column references back into column references.
+fn unmark_input(expr: Expr) -> Expr {
+    match expr {
+        Expr::InputColumn(i) => Expr::Column(i),
+        other => other.map_children(&mut unmark_input),
+    }
+}
+
+/// aggregate_location returns the location of the first aggregate call in an expression.
+fn aggregate_location(node: &Node) -> Option<i32> {
+    match node.node.as_ref() {
+        Some(NodeEnum::FuncCall(call)) if has_aggregate(node) => Some(call.location),
+        Some(NodeEnum::AExpr(e)) => {
+            e.lexpr.as_deref().and_then(aggregate_location).or_else(|| e.rexpr.as_deref().and_then(aggregate_location))
+        }
+        Some(NodeEnum::BoolExpr(e)) => e.args.iter().find_map(aggregate_location),
+        _ => None,
+    }
+}
+
+/// check_duplicate_aliases fails as Postgres does when two FROM items have the same name.
+fn check_duplicate_aliases(left: &Scope, right: &Scope) -> Result<()> {
+    let names: HashSet<&str> = left.columns.iter().filter(|c| !c.table.is_empty()).map(|c| c.table.as_str()).collect();
+    if let Some(c) = right.columns.iter().find(|c| !c.table.is_empty() && names.contains(c.table.as_str())) {
+        return Err(PgError::new(
+            code::DUPLICATE_ALIAS,
+            format!("table name \"{}\" specified more than once", c.table),
+        ));
+    }
+    Ok(())
+}
+
+/// ordinal returns the number of an integer constant used as an output column position, with its location.
+fn ordinal(node: &Node) -> Option<(usize, i32)> {
+    match node.node.as_ref() {
+        Some(NodeEnum::AConst(c)) => match &c.val {
+            Some(pg_query::protobuf::a_const::Val::Ival(i)) => Some((i.ival.max(0) as usize, c.location)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// output_ordinal checks an output column position.
+fn output_ordinal(columns: &[Column], n: usize, location: i32) -> Result<()> {
+    if n == 0 || n > columns.len() {
+        return Err(PgError {
+            position: position(location),
+            ..PgError::new(code::INVALID_COLUMN_REFERENCE, format!("ORDER BY position {n} is not in select list"))
+        });
+    }
+    Ok(())
+}
+
+/// output_ordinal_named checks an output column position against the output names.
+fn output_ordinal_named(names: &[String], n: usize, location: i32) -> Result<()> {
+    if n == 0 || n > names.len() {
+        return Err(PgError {
+            position: position(location),
+            ..PgError::new(code::INVALID_COLUMN_REFERENCE, format!("ORDER BY position {n} is not in select list"))
+        });
+    }
+    Ok(())
+}
+
+/// compare_rows orders two rows by sort keys already evaluated into them.
+fn compare_sorted(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
+    for (i, key) in keys.iter().enumerate() {
+        let ordering = match (&a[i], &b[i]) {
+            (Value::Null, Value::Null) => Ordering::Equal,
+            (Value::Null, _) => {
+                if key.nulls_first {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            }
+            (_, Value::Null) => {
+                if key.nulls_first {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                }
+            }
+            (l, r) => {
+                let ordering = compare_values(l, r);
+                if key.descending { ordering.reverse() } else { ordering }
+            }
+        };
+        if ordering != Ordering::Equal {
+            return ordering;
+        }
+    }
+    Ordering::Equal
+}
+
+/// rows_equal reports whether two rows are the same for DISTINCT and set operations, where NULLs are equal.
+pub fn rows_equal(a: &[Value], b: &[Value]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(l, r)| match (l, r) {
+            (Value::Null, Value::Null) => true,
+            (Value::Null, _) | (_, Value::Null) => false,
+            (l, r) => compare_values(l, r) == Ordering::Equal,
+        })
+}
+
+/// row_key returns a hashable key of a row for DISTINCT and set operations.
+fn row_key(row: &[Value]) -> String {
+    row.iter()
+        .map(|v| v.output().map_or("\u{0}N".to_string(), |s| format!("{}\u{1}{s}", type_tag(v))))
+        .collect::<Vec<_>>()
+        .join("\u{2}")
+}
+
+/// type_tag distinguishes values whose text is the same but which differ.
+fn type_tag(value: &Value) -> &'static str {
+    match value {
+        Value::Float4(_) | Value::Float8(_) => "f",
+        Value::Numeric(_) => "n",
+        _ => "",
+    }
+}
+
+/// limit_value evaluates a LIMIT or OFFSET, failing as Postgres does when it is negative.
+fn limit_value(expr: &Option<Expr>, ctx: &mut Ctx<'_>, what: &str, error_code: &'static str) -> Result<Option<i64>> {
+    let Some(expr) = expr else { return Ok(None) };
+    match expr.eval(ctx, &[])? {
+        Value::Int8(n) if n < 0 => Err(PgError::new(error_code, format!("{what} must not be negative"))),
+        Value::Int8(n) => Ok(Some(n)),
+        _ => Ok(None),
+    }
+}
+
+impl Plan {
+    /// width returns the number of columns of the plan's rows.
+    fn width(&self) -> usize {
+        match self {
+            Plan::OneRow => 0,
+            Plan::Scan(table) => table.columns.len(),
+            Plan::Values(rows) => rows.first().map_or(0, Vec::len),
+            Plan::Function { ordinality, .. } => 1 + *ordinality as usize,
+            Plan::Filter { input, .. }
+            | Plan::Sort { input, .. }
+            | Plan::Distinct { input, .. }
+            | Plan::Limit { input, .. } => input.width(),
+            Plan::Project { exprs, .. } => exprs.len(),
+            Plan::Join { left, right, .. } => left.width() + right.width(),
+            Plan::Aggregate { groups, aggregates, .. } => groups.len() + aggregates.len(),
+            Plan::SetOp { left, .. } => left.width(),
+        }
+    }
+
+    /// run runs the plan and returns its rows.
+    pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+        Ok(match self {
+            Plan::OneRow => vec![Vec::new()],
+            Plan::Scan(table) => scan(ctx.db, table)?,
+            Plan::Values(rows) => {
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    out.push(row.iter().map(|e| e.eval(ctx, &[])).collect::<Result<Vec<_>>>()?);
+                }
+                out
+            }
+            Plan::Function { index, args, ordinality } => {
+                let values = args.iter().map(|a| a.eval(ctx, &[])).collect::<Result<Vec<_>>>()?;
+                let rows = crate::functions::call_set(ctx, *index, &values)?;
+                rows.into_iter()
+                    .enumerate()
+                    .map(|(i, v)| if *ordinality { vec![v, Value::Int8(i as i64 + 1)] } else { vec![v] })
+                    .collect()
+            }
+            Plan::Filter { input, predicate } => {
+                let mut out = Vec::new();
+                for row in input.run(ctx)? {
+                    if predicate.is_true(ctx, &row)? {
+                        out.push(row);
+                    }
+                }
+                out
+            }
+            Plan::Project { input, exprs } => {
+                let rows = input.run(ctx)?;
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    out.push(exprs.iter().map(|e| e.eval(ctx, &row)).collect::<Result<Vec<_>>>()?);
+                }
+                out
+            }
+            Plan::Join { left, right, kind, condition } => {
+                let (left_width, right_width) = (left.width(), right.width());
+                let left_rows = left.run(ctx)?;
+                let right_rows = right.run(ctx)?;
+                let mut out = Vec::new();
+                let mut right_matched = vec![false; right_rows.len()];
+                for l in &left_rows {
+                    let mut matched = false;
+                    for (j, r) in right_rows.iter().enumerate() {
+                        let mut row = l.clone();
+                        row.extend(r.iter().cloned());
+                        if condition.as_ref().map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                            matched = true;
+                            right_matched[j] = true;
+                            out.push(row);
+                        }
+                    }
+                    if !matched && matches!(kind, JoinKind::Left | JoinKind::Full) {
+                        let mut row = l.clone();
+                        row.extend(std::iter::repeat_n(Value::Null, right_width));
+                        out.push(row);
+                    }
+                }
+                if matches!(kind, JoinKind::Right | JoinKind::Full) {
+                    for (j, r) in right_rows.iter().enumerate() {
+                        if !right_matched[j] {
+                            let mut row = vec![Value::Null; left_width];
+                            row.extend(r.iter().cloned());
+                            out.push(row);
+                        }
+                    }
+                }
+                out
+            }
+            Plan::Aggregate { input, groups, aggregates } => {
+                let rows = input.run(ctx)?;
+                let mut keys: Vec<Vec<Value>> = Vec::new();
+                let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                let mut states: Vec<Vec<Accumulator>> = Vec::new();
+                for row in &rows {
+                    let key = groups.iter().map(|g| g.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+                    let k = row_key(&key);
+                    let slot = match index.get(&k) {
+                        Some(&slot) => slot,
+                        None => {
+                            index.insert(k, keys.len());
+                            keys.push(key);
+                            states.push(aggregates.iter().map(Accumulator::new).collect());
+                            keys.len() - 1
+                        }
+                    };
+                    for (agg, state) in aggregates.iter().zip(&mut states[slot]) {
+                        state.add(ctx, agg, row)?;
+                    }
+                }
+                // Without groups, an aggregate over no rows still returns one row.
+                if groups.is_empty() && keys.is_empty() {
+                    keys.push(Vec::new());
+                    states.push(aggregates.iter().map(Accumulator::new).collect());
+                }
+                let mut out = Vec::with_capacity(keys.len());
+                for (key, state) in keys.into_iter().zip(states) {
+                    let mut row = key;
+                    for (agg, s) in aggregates.iter().zip(state) {
+                        row.push(s.finish(ctx, agg)?);
+                    }
+                    out.push(row);
+                }
+                out
+            }
+            Plan::Sort { input, keys } => {
+                let rows = input.run(ctx)?;
+                let mut keyed = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let values = keys.iter().map(|k| k.expr.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
+                    keyed.push((values, row));
+                }
+                keyed.sort_by(|a, b| compare_sorted(keys, &a.0, &b.0));
+                keyed.into_iter().map(|(_, row)| row).collect()
+            }
+            Plan::Distinct { input, keys } => {
+                let rows = input.run(ctx)?;
+                let mut out: Vec<Vec<Value>> = Vec::new();
+                match keys {
+                    Some(keys) => {
+                        let mut previous: Option<Vec<Value>> = None;
+                        for row in rows {
+                            let key = keys.iter().map(|k| k.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
+                            if previous.as_ref().is_none_or(|p| !rows_equal(p, &key)) {
+                                out.push(row);
+                            }
+                            previous = Some(key);
+                        }
+                    }
+                    None => {
+                        let mut seen = HashSet::new();
+                        for row in rows {
+                            if seen.insert(row_key(&row)) {
+                                out.push(row);
+                            }
+                        }
+                    }
+                }
+                out
+            }
+            Plan::Limit { input, limit, offset } => {
+                let offset = limit_value(offset, ctx, "OFFSET", code::INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE)?;
+                let limit = limit_value(limit, ctx, "LIMIT", code::INVALID_ROW_COUNT_IN_LIMIT_CLAUSE)?;
+                let rows = input.run(ctx)?.into_iter().skip(offset.unwrap_or(0) as usize);
+                match limit {
+                    Some(limit) => rows.take(limit as usize).collect(),
+                    None => rows.collect(),
+                }
+            }
+            Plan::SetOp { op, all, left, right } => {
+                let left_rows = left.run(ctx)?;
+                let right_rows = right.run(ctx)?;
+                set_operation(*op, *all, left_rows, right_rows)
+            }
+        })
+    }
+}
+
+/// set_operation combines two inputs' rows as UNION, INTERSECT, or EXCEPT do, keeping duplicates with ALL.
+fn set_operation(op: SetOp, all: bool, left: Vec<Vec<Value>>, right: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
+    use std::collections::HashMap;
+    let mut right_counts: HashMap<String, usize> = HashMap::new();
+    for row in &right {
+        *right_counts.entry(row_key(row)).or_default() += 1;
+    }
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    match op {
+        SetOp::Union => {
+            for row in left.into_iter().chain(right) {
+                if all || seen.insert(row_key(&row)) {
+                    out.push(row);
+                }
+            }
+        }
+        SetOp::Intersect => {
+            for row in left {
+                let key = row_key(&row);
+                let count = right_counts.get_mut(&key);
+                match count {
+                    Some(n) if *n > 0 => {
+                        if all {
+                            *n -= 1;
+                            out.push(row);
+                        } else if seen.insert(key) {
+                            out.push(row);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        SetOp::Except => {
+            for row in left {
+                let key = row_key(&row);
+                match right_counts.get_mut(&key) {
+                    Some(n) if *n > 0 => {
+                        if all {
+                            *n -= 1;
+                        }
+                    }
+                    _ => {
+                        if all || seen.insert(key) {
+                            out.push(row);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}

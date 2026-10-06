@@ -35,6 +35,8 @@ pub enum Value {
     Numeric(Numeric),
     /// A string of the text types, and the value of an untyped literal.
     Text(String),
+    /// The rows of a set-returning function, which never reach a client.
+    Set(Vec<Value>),
 }
 
 /// format_float formats a float as Postgres does with the default extra_float_digits: the shortest digits that read
@@ -92,6 +94,7 @@ impl Value {
             Value::Float8(f) => format_float(format!("{f:e}"), 15),
             Value::Numeric(n) => n.to_string(),
             Value::Text(s) => s.clone(),
+            Value::Set(_) => return None,
         })
     }
 
@@ -108,6 +111,7 @@ impl Value {
             Value::Numeric(n) => n.send(),
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
             Value::Text(s) => s.clone().into_bytes(),
+            Value::Set(_) => return None,
         })
     }
 

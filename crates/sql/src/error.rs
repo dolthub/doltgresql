@@ -54,6 +54,9 @@ pub mod code {
     pub const PROGRAM_LIMIT_EXCEEDED: &str = "54000";
     pub const SUBSTRING_ERROR: &str = "22011";
     pub const AMBIGUOUS_FUNCTION: &str = "42725";
+    pub const WRONG_OBJECT_TYPE: &str = "42809";
+    pub const CARDINALITY_VIOLATION: &str = "21000";
+    pub const DUPLICATE_ALIAS: &str = "42712";
     pub const INVALID_ARGUMENT_FOR_LOG: &str = "2201E";
     pub const INVALID_ARGUMENT_FOR_POWER: &str = "2201F";
     pub const INVALID_BINARY_REPRESENTATION: &str = "22P03";

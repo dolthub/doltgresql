@@ -323,6 +323,26 @@ impl Numeric {
         })
     }
 
+    /// sqrt returns the square root rounded half away from zero to the scale, or NaN for a negative value.
+    pub fn sqrt(&self, scale: u32) -> Numeric {
+        match self {
+            Numeric::Finite { negative: false, coefficient, scale: s } => {
+                // sqrt(c / 10^s) * 10^(scale + 1) = sqrt(c * 10^(2 * (scale + 1) - s))
+                let exponent = 2 * (scale as i64 + 1) - *s as i64;
+                let n = if exponent >= 0 {
+                    coefficient * pow10(exponent as u32)
+                } else {
+                    coefficient / pow10((-exponent) as u32)
+                };
+                let (quotient, digit) = n.sqrt().div_rem(&BigUint::from(10u32));
+                let rounded = if digit >= BigUint::from(5u32) { quotient + 1u32 } else { quotient };
+                Numeric::finite(false, rounded, scale)
+            }
+            Numeric::Infinity => Numeric::Infinity,
+            _ => Numeric::NaN,
+        }
+    }
+
     /// div_exact returns the value divided by 10 to the power, keeping every digit.
     pub fn div_exact(&self, power: u32) -> Numeric {
         match self {

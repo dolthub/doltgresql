@@ -26,7 +26,8 @@ use crate::cast::cast_value;
 use crate::catalog::table::TableDef;
 use crate::error::{PgError, Result, code};
 use crate::expr::{Binder, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
-use crate::query::{Ctx, SelectPlan, scan};
+use crate::plan::{Plan, Planner};
+use crate::query::{Ctx, scan};
 use crate::txn::Txn;
 use crate::types::Value;
 use crate::{Outcome, oid};
@@ -36,7 +37,7 @@ use crate::{Outcome, oid};
 enum InsertSource {
     /// Rows of expressions, already converted to the target columns' types.
     Values(Vec<Vec<Expr>>),
-    Select(Box<SelectPlan>),
+    Select(Box<Plan>),
 }
 
 /// InsertPlan is a planned INSERT.
@@ -71,7 +72,7 @@ fn table_scope(table: &TableDef, alias: Option<&str>) -> Scope {
         columns: table
             .columns
             .iter()
-            .map(|c| ScopeColumn { table: name.to_string(), name: c.name.clone(), ty: c.ty })
+            .map(|c| ScopeColumn { table: name.to_string(), name: c.name.clone(), ty: c.ty, hidden: false })
             .collect(),
     }
 }
@@ -243,15 +244,19 @@ impl Ctx<'_> {
             position: position(location),
             ..PgError::new(code::SYNTAX_ERROR, "INSERT has more expressions than target columns")
         };
-        let source = if select.values_lists.is_empty() {
-            let plan = self.plan_select(select)?;
-            if plan.columns.len() > targets.len() {
+        let source = if select.values_lists.is_empty() || !select.sort_clause.is_empty() || select.limit_count.is_some()
+        {
+            let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
+            if query.columns.len() > targets.len() {
                 return Err(too_many(-1));
             }
-            InsertSource::Select(Box::new(plan))
+            for (ty, &target) in query.types.iter().zip(&targets) {
+                let column = &table.columns[target];
+                assign((Expr::Column(0), *ty), column.ty, &column.name, -1)?;
+            }
+            InsertSource::Select(Box::new(query.plan))
         } else {
-            let scope = Scope::default();
-            let mut binder = Binder { scope: &scope, parameters: self.parameters };
+            let mut binder = Binder::new(self, Scope::default());
             let mut rows = Vec::new();
             for list in &select.values_lists {
                 let Some(NodeEnum::List(list)) = list.node.as_ref() else { continue };
@@ -267,9 +272,9 @@ impl Ctx<'_> {
                     }
                     let bound = binder.bind(item)?;
                     if let Expr::Param(i) = bound.0
-                        && binder.parameters[i] == 0
+                        && binder.ctx.parameters[i] == 0
                     {
-                        binder.parameters[i] = column.ty.oid;
+                        binder.ctx.parameters[i] = column.ty.oid;
                     }
                     row.push(assign(bound, column.ty, &column.name, arg_location(item))?.0);
                 }
@@ -288,7 +293,7 @@ impl Ctx<'_> {
         let relation = update.relation.as_ref().ok_or_else(|| PgError::internal("UPDATE without a table"))?;
         let table = self.resolve_table(relation)?;
         let scope = table_scope(&table, relation.alias.as_ref().map(|a| a.aliasname.as_str()));
-        let mut binder = Binder { scope: &scope, parameters: self.parameters };
+        let mut binder = Binder::new(self, scope);
         let filter = match update.where_clause.as_deref() {
             Some(node) => Some(coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0),
             None => None,
@@ -327,7 +332,7 @@ impl Ctx<'_> {
         let relation = delete.relation.as_ref().ok_or_else(|| PgError::internal("DELETE without a table"))?;
         let table = self.resolve_table(relation)?;
         let scope = table_scope(&table, relation.alias.as_ref().map(|a| a.aliasname.as_str()));
-        let mut binder = Binder { scope: &scope, parameters: self.parameters };
+        let mut binder = Binder::new(self, scope);
         let filter = match delete.where_clause.as_deref() {
             Some(node) => Some(coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0),
             None => None,

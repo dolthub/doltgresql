@@ -27,6 +27,7 @@ pub mod expr;
 pub mod functions;
 pub mod numeric;
 pub mod parse;
+pub mod plan;
 pub mod query;
 pub mod settings;
 pub mod storage;

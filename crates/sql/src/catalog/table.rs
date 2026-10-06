@@ -46,7 +46,7 @@ pub struct ColumnDef {
 }
 
 /// TableDef is a table: its columns, which of them form the primary key, and its storage.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TableDef {
     pub schema: String,
     pub name: String,

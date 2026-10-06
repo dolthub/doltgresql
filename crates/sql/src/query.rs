@@ -14,19 +14,18 @@
 
 //! Queries: planning a SELECT into scans, filters, sorts, and projections, and running the plan.
 
-use std::cmp::Ordering;
 use std::sync::Arc;
 
 use doltdb::database::Database;
-use pg_query::protobuf::{RangeVar, SelectStmt, SortByDir, SortByNulls};
-use pg_query::{Node, NodeEnum};
+use pg_query::Node;
+use pg_query::protobuf::RangeVar;
 use prolly::walk_leaves;
 
 use crate::catalog::builtin_type;
 use crate::catalog::table::TableDef;
 use crate::engine::SessionState;
 use crate::error::{PgError, Result, code};
-use crate::expr::{Binder, Expr, Scope, ScopeColumn, coerce, compare_values, figure_name, node_name, position, typ};
+use crate::expr::{Binder, Scope, position};
 use crate::txn::Txn;
 use crate::types::Value;
 use crate::{Column, oid};
@@ -41,26 +40,10 @@ pub struct Ctx<'a> {
     pub parameters: &'a mut Vec<u32>,
     /// The values of the statement's parameters, empty while only planning.
     pub params: &'a [Value],
-}
-
-/// SortKey is an ORDER BY key over the input row.
-#[derive(Clone, Debug)]
-struct SortKey {
-    expr: Expr,
-    descending: bool,
-    nulls_first: bool,
-}
-
-/// SelectPlan is a planned SELECT.
-#[derive(Clone, Debug)]
-pub struct SelectPlan {
-    pub columns: Vec<Column>,
-    from: Option<TableDef>,
-    filter: Option<Expr>,
-    targets: Vec<Expr>,
-    order: Vec<SortKey>,
-    limit: Option<Expr>,
-    offset: Option<Expr>,
+    /// The rows of the enclosing queries of a running subquery, innermost last.
+    pub outer: Vec<Vec<Value>>,
+    /// The subquery value that an ANY or ALL comparison is testing.
+    pub subquery_value: Value,
 }
 
 /// column returns the description of a result column of the type.
@@ -108,113 +91,8 @@ impl Ctx<'_> {
 
     /// constant_text evaluates an expression without columns and returns its text.
     pub fn constant_text(&mut self, node: &Node) -> Result<String> {
-        let scope = Scope::default();
-        let mut binder = Binder { scope: &scope, parameters: self.parameters };
-        let (expr, _) = binder.bind(node)?;
+        let (expr, _) = Binder::new(self, Scope::default()).bind(node)?;
         Ok(expr.eval(self, &[])?.output().unwrap_or_default())
-    }
-
-    /// plan_select plans a SELECT.
-    pub fn plan_select(&mut self, select: &SelectStmt) -> Result<SelectPlan> {
-        if !select.values_lists.is_empty() || select.larg.is_some() {
-            return Err(PgError::unsupported("this kind of SELECT"));
-        }
-        let mut scope = Scope::default();
-        let from = match select.from_clause.as_slice() {
-            [] => None,
-            [node] => match node.node.as_ref() {
-                Some(NodeEnum::RangeVar(relation)) => {
-                    let table = self.resolve_table(relation)?;
-                    let alias = relation.alias.as_ref().map_or(table.name.clone(), |a| a.aliasname.clone());
-                    for c in &table.columns {
-                        scope.columns.push(ScopeColumn { table: alias.clone(), name: c.name.clone(), ty: c.ty });
-                    }
-                    Some(table)
-                }
-                _ => return Err(PgError::unsupported("this FROM item")),
-            },
-            _ => return Err(PgError::unsupported("joins")),
-        };
-        let mut binder = Binder { scope: &scope, parameters: self.parameters };
-        let filter = match select.where_clause.as_deref() {
-            Some(node) => Some(coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0),
-            None => None,
-        };
-        let mut columns = Vec::new();
-        let mut targets = Vec::new();
-        for target in &select.target_list {
-            let Some(NodeEnum::ResTarget(target)) = target.node.as_ref() else { continue };
-            let value = target.val.as_deref().ok_or_else(|| PgError::internal("a target without a value"))?;
-            if let Some(NodeEnum::ColumnRef(c)) = value.node.as_ref()
-                && matches!(c.fields.last().and_then(|f| f.node.as_ref()), Some(NodeEnum::AStar(_)))
-            {
-                let table = c.fields.first().and_then(node_name);
-                let before = targets.len();
-                for (i, sc) in scope.columns.iter().enumerate() {
-                    if table.is_none_or(|t| sc.table == t) {
-                        targets.push(Expr::Column(i));
-                        columns.push(column(sc.name.clone(), sc.ty));
-                    }
-                }
-                if targets.len() == before && table.is_some() {
-                    return Err(PgError {
-                        position: position(c.location),
-                        ..PgError::new(
-                            code::UNDEFINED_TABLE,
-                            format!("missing FROM-clause entry for table \"{}\"", table.unwrap_or_default()),
-                        )
-                    });
-                }
-                continue;
-            }
-            let (expr, ty) = binder.bind(value)?;
-            let name = if target.name.is_empty() { figure_name(value) } else { target.name.clone() };
-            targets.push(expr);
-            columns.push(column(name, ty));
-        }
-        let mut order = Vec::new();
-        for sort in &select.sort_clause {
-            let Some(NodeEnum::SortBy(sort)) = sort.node.as_ref() else { continue };
-            let node = sort.node.as_deref().ok_or_else(|| PgError::internal("ORDER BY without a key"))?;
-            let expr = match node.node.as_ref() {
-                Some(NodeEnum::AConst(c)) if matches!(c.val, Some(pg_query::protobuf::a_const::Val::Ival(_))) => {
-                    let Some(pg_query::protobuf::a_const::Val::Ival(n)) = &c.val else { unreachable!() };
-                    targets.get((n.ival as usize).wrapping_sub(1)).cloned().ok_or_else(|| PgError {
-                        position: position(c.location),
-                        ..PgError::new(
-                            code::INVALID_COLUMN_REFERENCE,
-                            format!("ORDER BY position {} is not in select list", n.ival),
-                        )
-                    })?
-                }
-                Some(NodeEnum::ColumnRef(c))
-                    if c.fields.len() == 1
-                        && columns.iter().filter(|col| Some(col.name.as_str()) == node_name(&c.fields[0])).count()
-                            == 1
-                        && !scope.columns.iter().any(|sc| Some(sc.name.as_str()) == node_name(&c.fields[0])) =>
-                {
-                    let i = columns.iter().position(|col| Some(col.name.as_str()) == node_name(&c.fields[0])).unwrap();
-                    targets[i].clone()
-                }
-                _ => binder.bind(node)?.0,
-            };
-            let descending = SortByDir::try_from(sort.sortby_dir) == Ok(SortByDir::SortbyDesc);
-            let nulls_first = match SortByNulls::try_from(sort.sortby_nulls) {
-                Ok(SortByNulls::SortbyNullsFirst) => true,
-                Ok(SortByNulls::SortbyNullsLast) => false,
-                _ => descending,
-            };
-            order.push(SortKey { expr, descending, nulls_first });
-        }
-        let mut count = |node: Option<&Node>| -> Result<Option<Expr>> {
-            match node {
-                Some(node) => Ok(Some(coerce(binder.bind(node)?, typ(oid::INT8), false, -1)?.0)),
-                None => Ok(None),
-            }
-        };
-        let limit = count(select.limit_count.as_deref())?;
-        let offset = count(select.limit_offset.as_deref())?;
-        Ok(SelectPlan { columns, from, filter, targets, order, limit, offset })
     }
 }
 
@@ -241,74 +119,5 @@ pub fn scan(db: &mut Database, table: &TableDef) -> Result<Vec<Vec<Value>>> {
     match failure {
         Some(err) => Err(err),
         None => Ok(rows),
-    }
-}
-
-/// limit_value evaluates a LIMIT or OFFSET, failing as Postgres does when it is negative.
-fn limit_value(expr: &Option<Expr>, ctx: &mut Ctx<'_>, what: &str, error_code: &'static str) -> Result<Option<i64>> {
-    let Some(expr) = expr else { return Ok(None) };
-    match expr.eval(ctx, &[])? {
-        Value::Int8(n) if n < 0 => Err(PgError::new(error_code, format!("{what} must not be negative"))),
-        Value::Int8(n) => Ok(Some(n)),
-        _ => Ok(None),
-    }
-}
-
-impl SelectPlan {
-    /// run runs the plan and returns its rows.
-    pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
-        let input = match &self.from {
-            Some(table) => scan(ctx.db, table)?,
-            None => vec![Vec::new()],
-        };
-        let mut rows: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
-        for row in input {
-            if let Some(filter) = &self.filter
-                && !filter.is_true(ctx, &row)?
-            {
-                continue;
-            }
-            let keys = self.order.iter().map(|k| k.expr.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
-            let output = self.targets.iter().map(|t| t.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
-            rows.push((keys, output));
-        }
-        if !self.order.is_empty() {
-            rows.sort_by(|a, b| {
-                for (i, key) in self.order.iter().enumerate() {
-                    let ordering = match (&a.0[i], &b.0[i]) {
-                        (Value::Null, Value::Null) => Ordering::Equal,
-                        (Value::Null, _) => {
-                            if key.nulls_first {
-                                Ordering::Less
-                            } else {
-                                Ordering::Greater
-                            }
-                        }
-                        (_, Value::Null) => {
-                            if key.nulls_first {
-                                Ordering::Greater
-                            } else {
-                                Ordering::Less
-                            }
-                        }
-                        (l, r) => {
-                            let ordering = compare_values(l, r);
-                            if key.descending { ordering.reverse() } else { ordering }
-                        }
-                    };
-                    if ordering != Ordering::Equal {
-                        return ordering;
-                    }
-                }
-                Ordering::Equal
-            });
-        }
-        let offset = limit_value(&self.offset, ctx, "OFFSET", code::INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE)?;
-        let limit = limit_value(&self.limit, ctx, "LIMIT", code::INVALID_ROW_COUNT_IN_LIMIT_CLAUSE)?;
-        let rows = rows.into_iter().map(|(_, output)| output).skip(offset.unwrap_or(0) as usize);
-        Ok(match limit {
-            Some(limit) => rows.take(limit as usize).collect(),
-            None => rows.collect(),
-        })
     }
 }

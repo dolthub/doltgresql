@@ -26,6 +26,7 @@ use pg_query::{Node, NodeEnum};
 
 use crate::error::{PgError, Result, code};
 use crate::parse::{self, Extras, Statement};
+use crate::plan::Planner;
 use crate::query::{Ctx, column};
 use crate::settings::{Settings, setting};
 use crate::txn::{DbHandle, Txn};
@@ -360,7 +361,15 @@ impl Session {
         let txn = self.txn.as_mut().expect("an open transaction");
         let handle = txn.handle.clone();
         let mut db = lock(&handle)?;
-        let mut ctx = Ctx { db: &mut db, txn, session: &mut self.state, parameters, params };
+        let mut ctx = Ctx {
+            db: &mut db,
+            txn,
+            session: &mut self.state,
+            parameters,
+            params,
+            outer: Vec::new(),
+            subquery_value: Value::Null,
+        };
         f(&mut ctx)
     }
 
@@ -601,7 +610,7 @@ impl Ctx<'_> {
     /// describe plans a statement for its result columns, collecting its parameter types.
     fn describe(&mut self, node: &NodeEnum) -> Result<Option<Vec<Column>>> {
         Ok(match node {
-            NodeEnum::SelectStmt(select) => Some(self.plan_select(select)?.columns),
+            NodeEnum::SelectStmt(select) => Some(Planner { ctx: self, outer: Vec::new() }.plan_query(select)?.columns),
             NodeEnum::InsertStmt(insert) => {
                 self.plan_insert(insert)?;
                 None
@@ -622,10 +631,10 @@ impl Ctx<'_> {
     fn run(&mut self, node: &NodeEnum) -> Result<Outcome> {
         match node {
             NodeEnum::SelectStmt(select) => {
-                let plan = self.plan_select(select)?;
-                let rows = plan.run(self)?;
+                let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
+                let rows = query.plan.run(self)?;
                 let tag = format!("SELECT {}", rows.len());
-                Ok(Outcome::Rows { columns: plan.columns, rows, tag })
+                Ok(Outcome::Rows { columns: query.columns, rows, tag })
             }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self),
             NodeEnum::UpdateStmt(update) => self.plan_update(update)?.run(self),

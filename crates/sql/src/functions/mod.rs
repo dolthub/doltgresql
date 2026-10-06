@@ -14,7 +14,9 @@
 
 //! Built-in functions, and choosing among a function's overloads as Postgres does.
 
+pub mod aggregate;
 mod math;
+mod series;
 mod string;
 mod system;
 
@@ -64,7 +66,7 @@ fn registry() -> &'static Registry {
     static REGISTRY: OnceLock<Registry> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         let functions: Vec<&'static Function> =
-            [system::FUNCTIONS, string::FUNCTIONS, math::FUNCTIONS].into_iter().flatten().collect();
+            [system::FUNCTIONS, string::FUNCTIONS, math::FUNCTIONS, series::FUNCTIONS].into_iter().flatten().collect();
         let mut by_name: HashMap<&'static str, Vec<usize>> = HashMap::new();
         for (i, f) in functions.iter().enumerate() {
             by_name.entry(f.name).or_default().push(i);
@@ -236,6 +238,18 @@ pub fn call(ctx: &mut Ctx<'_>, index: usize, args: &[Value]) -> Result<Value> {
         return Ok(Value::Null);
     }
     (f.implementation)(ctx, args)
+}
+
+/// call_set runs a set-returning function, returning its rows' values.
+pub fn call_set(ctx: &mut Ctx<'_>, index: usize, args: &[Value]) -> Result<Vec<Value>> {
+    let f = function(index);
+    if f.strict && args.iter().any(Value::is_null) {
+        return Ok(Vec::new());
+    }
+    match (f.implementation)(ctx, args)? {
+        Value::Set(values) => Ok(values),
+        value => Ok(vec![value]),
+    }
 }
 
 /// text returns a text argument.
