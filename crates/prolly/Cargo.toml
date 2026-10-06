@@ -8,7 +8,9 @@ license.workspace = true
 
 [dependencies]
 serial = { path = "../serial" }
+sha2 = "0.10"
 store = { path = "../store" }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [lints]
 workspace = true

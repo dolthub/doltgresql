@@ -16,6 +16,8 @@
 
 use serial::Builder;
 
+use crate::NodeSerializer;
+
 /// ITEM_TYPE_TUPLE_FORMAT_ALPHA is the item type of tuples.
 const ITEM_TYPE_TUPLE_FORMAT_ALPHA: u8 = 1;
 
@@ -231,4 +233,77 @@ pub fn serialize_commit_closure(keys: &[&[u8]], addresses: &[&[u8]], subtrees: &
     b.add_u8(4, level, 0);
     let root = b.end_object();
     b.finish_message(root, serial::COMMIT_CLOSURE)
+}
+
+/// absolute_offsets returns the positions of addresses within the concatenated items, given each item's positions of
+/// addresses relative to its start.
+fn absolute_offsets(items: &[&[u8]], relative: &dyn Fn(&[u8]) -> Vec<u16>) -> Vec<u16> {
+    let mut offsets = Vec::new();
+    let mut start = 0u16;
+    for item in items {
+        offsets.extend(relative(item).into_iter().map(|o| start + o));
+        start += item.len() as u16;
+    }
+    offsets
+}
+
+/// AddressMapSerializer serializes AddressMap nodes.
+pub struct AddressMapSerializer;
+
+impl NodeSerializer for AddressMapSerializer {
+    fn serialize(&self, keys: &[&[u8]], values: &[&[u8]], subtrees: &[u64], level: u8) -> Vec<u8> {
+        serialize_address_map(keys, values, subtrees, level)
+    }
+}
+
+/// CommitClosureSerializer serializes CommitClosure nodes.
+pub struct CommitClosureSerializer;
+
+impl NodeSerializer for CommitClosureSerializer {
+    fn serialize(&self, keys: &[&[u8]], values: &[&[u8]], subtrees: &[u64], level: u8) -> Vec<u8> {
+        serialize_commit_closure(keys, values, subtrees, level)
+    }
+}
+
+/// ProllyMapSerializer serializes ProllyTreeNode nodes, given the positions of addresses within a key tuple and
+/// within a value tuple in the order Dolt writes them.
+pub struct ProllyMapSerializer<K, V> {
+    pub key_addresses: K,
+    pub value_addresses: V,
+}
+
+impl<K: Fn(&[u8]) -> Vec<u16>, V: Fn(&[u8]) -> Vec<u16>> NodeSerializer for ProllyMapSerializer<K, V> {
+    fn serialize(&self, keys: &[&[u8]], values: &[&[u8]], subtrees: &[u64], level: u8) -> Vec<u8> {
+        serialize_prolly_node(&ProllyNode {
+            keys: keys.to_vec(),
+            values: values.to_vec(),
+            subtrees: subtrees.to_vec(),
+            level,
+            key_address_offsets: absolute_offsets(keys, &self.key_addresses),
+            value_address_offsets: if level == 0 {
+                absolute_offsets(values, &self.value_addresses)
+            } else {
+                Vec::new()
+            },
+        })
+    }
+}
+
+/// MergeArtifactsSerializer serializes MergeArtifacts nodes, given the positions of addresses within a key tuple in
+/// the order Dolt writes them.
+pub struct MergeArtifactsSerializer<K> {
+    pub key_addresses: K,
+}
+
+impl<K: Fn(&[u8]) -> Vec<u16>> NodeSerializer for MergeArtifactsSerializer<K> {
+    fn serialize(&self, keys: &[&[u8]], values: &[&[u8]], subtrees: &[u64], level: u8) -> Vec<u8> {
+        let offsets = if level == 0 { absolute_offsets(keys, &self.key_addresses) } else { Vec::new() };
+        serialize_merge_artifacts(
+            keys,
+            values,
+            subtrees,
+            level,
+            Some(&offsets).filter(|o| !o.is_empty()).map(|o| &o[..]),
+        )
+    }
 }

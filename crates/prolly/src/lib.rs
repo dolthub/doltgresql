@@ -18,14 +18,16 @@
 //! an internal node holds the last key of each child with the child's address and item count.
 
 mod blob;
+mod chunker;
 mod node;
 mod serialize;
 mod tuple;
 
 pub use blob::read_blob;
+pub use chunker::{Chunker, NodeSerializer, NodeSink};
 pub use node::{ItemVisitor, Node, walk_leaves};
 pub use serialize::{
-    ProllyNode, serialize_address_map, serialize_blob, serialize_commit_closure, serialize_merge_artifacts,
-    serialize_prolly_node,
+    AddressMapSerializer, CommitClosureSerializer, MergeArtifactsSerializer, ProllyMapSerializer, ProllyNode,
+    serialize_address_map, serialize_blob, serialize_commit_closure, serialize_merge_artifacts, serialize_prolly_node,
 };
 pub use tuple::Tuple;
