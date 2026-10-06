@@ -77,7 +77,7 @@ pub struct DeletePlan {
 }
 
 /// table_scope returns the scope of a table's columns under its name or alias.
-fn table_scope(table: &TableDef, alias: Option<&str>) -> Scope {
+pub(crate) fn table_scope(table: &TableDef, alias: Option<&str>) -> Scope {
     let name = alias.unwrap_or(&table.name);
     Scope {
         columns: table
@@ -566,6 +566,17 @@ fn insert_checked_rows(ctx: &mut Ctx<'_>, table: &TableDef, rules: &RowRules, ro
     let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
     let mut edits = Edits::new(table);
     for row in &rows {
+        edits.insert(db, row)?;
+    }
+    edits.apply(db, txn)
+}
+
+/// write_rows inserts rows already in a table's column order and types, without checking them, as rebuilding a table
+/// does.
+pub fn write_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: &[Vec<Value>]) -> Result<()> {
+    let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
+    let mut edits = Edits::new(table);
+    for row in rows {
         edits.insert(db, row)?;
     }
     edits.apply(db, txn)

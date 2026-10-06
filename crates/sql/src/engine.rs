@@ -682,6 +682,8 @@ impl Ctx<'_> {
             NodeEnum::TruncateStmt(truncate) => self.truncate(truncate),
             NodeEnum::IndexStmt(stmt) => self.create_index(stmt),
             NodeEnum::CreateSeqStmt(stmt) => self.create_sequence(stmt),
+            NodeEnum::AlterTableStmt(stmt) => self.alter_table(stmt),
+            NodeEnum::RenameStmt(stmt) => self.rename(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

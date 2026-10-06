@@ -32,7 +32,7 @@ use crate::plan::Planner;
 use crate::query::Ctx;
 
 /// constraint_type returns a constraint node's type.
-fn constraint_type(constraint: &pg_query::protobuf::Constraint) -> ConstrType {
+pub(crate) fn constraint_type(constraint: &pg_query::protobuf::Constraint) -> ConstrType {
     ConstrType::try_from(constraint.contype).unwrap_or(ConstrType::Undefined)
 }
 
@@ -54,6 +54,136 @@ pub fn expression_text(expr: &Node) -> Result<String> {
     Ok(text.strip_prefix("SELECT ").unwrap_or(&text).to_string())
 }
 
+/// TableParts are what a table's definition elements add up to, before the checks and indexes are named.
+#[derive(Default)]
+pub(crate) struct TableParts {
+    pub columns: Vec<ColumnDef>,
+    pub primary_key: Vec<usize>,
+    /// Each check constraint's name, empty when unnamed, and expression.
+    pub checks: Vec<(String, Node)>,
+    /// Each unique constraint's name, empty when unnamed, and columns.
+    pub uniques: Vec<(String, Vec<usize>)>,
+    /// Each serial or identity column with its sequence's data type and options.
+    pub generated: Vec<(usize, &'static str, Vec<Node>)>,
+}
+
+impl TableParts {
+    /// add_column adds a column definition with its column constraints.
+    pub fn add_column(&mut self, table: &str, def: &pg_query::protobuf::ColumnDef) -> Result<()> {
+        if self.columns.iter().any(|c| c.name == def.colname) {
+            return Err(PgError::new(
+                code::DUPLICATE_COLUMN,
+                format!("column \"{}\" specified more than once", def.colname),
+            ));
+        }
+        let index = self.columns.len();
+        let type_name = def.type_name.as_ref().ok_or_else(|| PgError::internal("a column without a type"))?;
+        let serial = serial_type(type_name);
+        let ty = match serial {
+            Some(data_type) => crate::catalog::resolve_type(&[data_type.to_string()], &[], false, None)?,
+            None => resolve_type_name(type_name)?,
+        };
+        if let Some(data_type) = serial {
+            self.generated.push((index, data_type, Vec::new()));
+        }
+        let mut column = ColumnDef {
+            name: def.colname.clone(),
+            ty,
+            tag: 0,
+            encoding: ty.encoding(),
+            nullable: true,
+            primary_key: false,
+            default: String::new(),
+        };
+        for constraint in &def.constraints {
+            let Some(NodeEnum::Constraint(constraint)) = constraint.node.as_ref() else { continue };
+            match constraint_type(constraint) {
+                ConstrType::ConstrNotnull => column.nullable = false,
+                ConstrType::ConstrNull => column.nullable = true,
+                ConstrType::ConstrPrimary => {
+                    if !self.primary_key.is_empty() {
+                        return Err(multiple_primary_keys(table, constraint.location));
+                    }
+                    self.primary_key.push(index);
+                }
+                ConstrType::ConstrDefault => {
+                    let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty DEFAULT"))?;
+                    column.default = expression_text(expr)?;
+                }
+                ConstrType::ConstrCheck => {
+                    let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty CHECK"))?;
+                    self.checks.push((constraint.conname.clone(), expr.clone()));
+                }
+                ConstrType::ConstrUnique => self.uniques.push((constraint.conname.clone(), vec![index])),
+                ConstrType::ConstrIdentity => {
+                    let data_type = match ty.oid {
+                        crate::oid::INT2 => "int2",
+                        crate::oid::INT4 => "int4",
+                        crate::oid::INT8 => "int8",
+                        _ => {
+                            return Err(PgError::new(
+                                code::INVALID_PARAMETER_VALUE,
+                                "identity column type must be smallint, integer, or bigint",
+                            ));
+                        }
+                    };
+                    if !column.default.is_empty() {
+                        return Err(PgError {
+                            position: position(constraint.location),
+                            ..PgError::new(
+                                code::SYNTAX_ERROR,
+                                format!(
+                                    "both default and identity specified for column \"{}\" of table \"{table}\"",
+                                    def.colname
+                                ),
+                            )
+                        });
+                    }
+                    self.generated.push((index, data_type, constraint.options.clone()));
+                }
+                other => return Err(PgError::unsupported(format!("the column constraint {other:?}"))),
+            }
+        }
+        self.columns.push(column);
+        Ok(())
+    }
+
+    /// key_columns returns the columns a constraint's key names.
+    fn key_columns(&self, constraint: &pg_query::protobuf::Constraint) -> Result<Vec<usize>> {
+        let mut keys = Vec::new();
+        for key in &constraint.keys {
+            let key = node_name(key).unwrap_or_default();
+            keys.push(self.columns.iter().position(|c| c.name == key).ok_or_else(|| PgError {
+                position: position(constraint.location),
+                ..PgError::new(code::UNDEFINED_COLUMN, format!("column \"{key}\" named in key does not exist"))
+            })?);
+        }
+        Ok(keys)
+    }
+
+    /// add_constraint adds a table constraint.
+    pub fn add_constraint(&mut self, table: &str, constraint: &pg_query::protobuf::Constraint) -> Result<()> {
+        match constraint_type(constraint) {
+            ConstrType::ConstrPrimary => {
+                if !self.primary_key.is_empty() {
+                    return Err(multiple_primary_keys(table, constraint.location));
+                }
+                self.primary_key = self.key_columns(constraint)?;
+            }
+            ConstrType::ConstrCheck => {
+                let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty CHECK"))?;
+                self.checks.push((constraint.conname.clone(), expr.clone()));
+            }
+            ConstrType::ConstrUnique => {
+                let keys = self.key_columns(constraint)?;
+                self.uniques.push((constraint.conname.clone(), keys));
+            }
+            other => return Err(PgError::unsupported(format!("the table constraint {other:?}"))),
+        }
+        Ok(())
+    }
+}
+
 /// serial_type returns the integer type of a serial pseudo-type name, or None for any other type.
 fn serial_type(type_name: &pg_query::protobuf::TypeName) -> Option<&'static str> {
     if !type_name.array_bounds.is_empty() {
@@ -70,7 +200,7 @@ fn serial_type(type_name: &pg_query::protobuf::TypeName) -> Option<&'static str>
 
 /// check_column returns the column a check expression references when it references exactly one, which Postgres
 /// names an unnamed check constraint after.
-fn check_column(expr: &Node) -> Option<String> {
+pub(crate) fn check_column(expr: &Node) -> Option<String> {
     let node = expr.node.as_ref()?;
     let mut names: Vec<String> = Vec::new();
     for (node, ..) in node.nodes() {
@@ -110,136 +240,15 @@ impl Ctx<'_> {
             }
             return Err(PgError::new(code::DUPLICATE_TABLE, message));
         }
-        let mut columns: Vec<ColumnDef> = Vec::new();
-        let mut primary_key: Vec<usize> = Vec::new();
-        let mut pending_checks: Vec<(String, Node)> = Vec::new();
-        let mut uniques: Vec<(String, Vec<usize>)> = Vec::new();
-        let mut generated: Vec<(usize, &'static str, Vec<Node>)> = Vec::new();
+        let mut parts = TableParts::default();
         for element in &create.table_elts {
             match element.node.as_ref() {
-                Some(NodeEnum::ColumnDef(def)) => {
-                    if columns.iter().any(|c| c.name == def.colname) {
-                        return Err(PgError::new(
-                            code::DUPLICATE_COLUMN,
-                            format!("column \"{}\" specified more than once", def.colname),
-                        ));
-                    }
-                    let type_name =
-                        def.type_name.as_ref().ok_or_else(|| PgError::internal("a column without a type"))?;
-                    let serial = serial_type(type_name);
-                    let ty = match serial {
-                        Some(data_type) => crate::catalog::resolve_type(&[data_type.to_string()], &[], false, None)?,
-                        None => resolve_type_name(type_name)?,
-                    };
-                    if let Some(data_type) = serial {
-                        generated.push((columns.len(), data_type, Vec::new()));
-                    }
-                    let mut column = ColumnDef {
-                        name: def.colname.clone(),
-                        ty,
-                        tag: 0,
-                        encoding: ty.encoding(),
-                        nullable: true,
-                        primary_key: false,
-                        default: String::new(),
-                    };
-                    for constraint in &def.constraints {
-                        let Some(NodeEnum::Constraint(constraint)) = constraint.node.as_ref() else { continue };
-                        match constraint_type(constraint) {
-                            ConstrType::ConstrNotnull => column.nullable = false,
-                            ConstrType::ConstrNull => column.nullable = true,
-                            ConstrType::ConstrPrimary => {
-                                if !primary_key.is_empty() {
-                                    return Err(multiple_primary_keys(name, constraint.location));
-                                }
-                                primary_key.push(columns.len());
-                            }
-                            ConstrType::ConstrDefault => {
-                                let expr = constraint
-                                    .raw_expr
-                                    .as_deref()
-                                    .ok_or_else(|| PgError::internal("an empty DEFAULT"))?;
-                                column.default = expression_text(expr)?;
-                            }
-                            ConstrType::ConstrCheck => {
-                                let expr = constraint
-                                    .raw_expr
-                                    .as_deref()
-                                    .ok_or_else(|| PgError::internal("an empty CHECK"))?;
-                                pending_checks.push((constraint.conname.clone(), expr.clone()));
-                            }
-                            ConstrType::ConstrUnique => uniques.push((constraint.conname.clone(), vec![columns.len()])),
-                            ConstrType::ConstrIdentity => {
-                                let data_type = match ty.oid {
-                                    crate::oid::INT2 => "int2",
-                                    crate::oid::INT4 => "int4",
-                                    crate::oid::INT8 => "int8",
-                                    _ => {
-                                        return Err(PgError::new(
-                                            code::INVALID_PARAMETER_VALUE,
-                                            "identity column type must be smallint, integer, or bigint",
-                                        ));
-                                    }
-                                };
-                                if !column.default.is_empty() {
-                                    return Err(PgError {
-                                        position: position(constraint.location),
-                                        ..PgError::new(
-                                            code::SYNTAX_ERROR,
-                                            format!(
-                                                "both default and identity specified for column \"{}\" of table \"{name}\"",
-                                                def.colname
-                                            ),
-                                        )
-                                    });
-                                }
-                                generated.push((columns.len(), data_type, constraint.options.clone()));
-                            }
-                            other => return Err(PgError::unsupported(format!("the column constraint {other:?}"))),
-                        }
-                    }
-                    columns.push(column);
-                }
-                Some(NodeEnum::Constraint(constraint)) => match constraint_type(constraint) {
-                    ConstrType::ConstrPrimary => {
-                        if !primary_key.is_empty() {
-                            return Err(multiple_primary_keys(name, constraint.location));
-                        }
-                        for key in &constraint.keys {
-                            let key = node_name(key).unwrap_or_default();
-                            let i = columns.iter().position(|c| c.name == key).ok_or_else(|| PgError {
-                                position: position(constraint.location),
-                                ..PgError::new(
-                                    code::UNDEFINED_COLUMN,
-                                    format!("column \"{key}\" named in key does not exist"),
-                                )
-                            })?;
-                            primary_key.push(i);
-                        }
-                    }
-                    ConstrType::ConstrCheck => {
-                        let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty CHECK"))?;
-                        pending_checks.push((constraint.conname.clone(), expr.clone()));
-                    }
-                    ConstrType::ConstrUnique => {
-                        let mut keys = Vec::new();
-                        for key in &constraint.keys {
-                            let key = node_name(key).unwrap_or_default();
-                            keys.push(columns.iter().position(|c| c.name == key).ok_or_else(|| PgError {
-                                position: position(constraint.location),
-                                ..PgError::new(
-                                    code::UNDEFINED_COLUMN,
-                                    format!("column \"{key}\" named in key does not exist"),
-                                )
-                            })?);
-                        }
-                        uniques.push((constraint.conname.clone(), keys));
-                    }
-                    other => return Err(PgError::unsupported(format!("the table constraint {other:?}"))),
-                },
+                Some(NodeEnum::ColumnDef(def)) => parts.add_column(name, def)?,
+                Some(NodeEnum::Constraint(constraint)) => parts.add_constraint(name, constraint)?,
                 _ => return Err(PgError::unsupported("this table element")),
             }
         }
+        let TableParts { mut columns, primary_key, checks: pending_checks, uniques, generated } = parts;
         for &i in &primary_key {
             columns[i].primary_key = true;
             columns[i].nullable = false;
@@ -561,7 +570,7 @@ impl Ctx<'_> {
 
     /// constraint_names returns the names of the constraints of every table in a schema, which new constraints must
     /// avoid.
-    fn constraint_names(&mut self, schema: &str) -> Result<Vec<String>> {
+    pub(crate) fn constraint_names(&mut self, schema: &str) -> Result<Vec<String>> {
         let mut names = Vec::new();
         let prefix = doltdb::root::table_key(schema, "");
         for (key, address) in self.txn.root.tables(self.db)? {
@@ -724,7 +733,7 @@ impl Ctx<'_> {
 }
 
 /// new_index returns an index of the columns, ascending with NULLs last, whose root the caller sets.
-fn new_index(name: String, columns: Vec<usize>, unique: bool) -> IndexDef {
+pub(crate) fn new_index(name: String, columns: Vec<usize>, unique: bool) -> IndexDef {
     let count = columns.len();
     IndexDef {
         name,
