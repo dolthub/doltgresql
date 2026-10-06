@@ -106,3 +106,8 @@ fn reads_constraints_and_indexes() {
 fn reads_blobs_of_every_size() {
     check_fixture("blobs");
 }
+
+#[test]
+fn reads_a_new_database() {
+    check_fixture("empty");
+}

@@ -376,3 +376,8 @@ fn go_reads_journals_and_indexes_rust_wrote() {
     let after = std::fs::read(dir.join(JOURNAL_INDEX_FILE)).unwrap();
     assert!(after.starts_with(&index), "Go rewrote the index ({} bytes, then {})", index.len(), after.len());
 }
+
+#[test]
+fn reads_a_new_database() {
+    check_fixture("empty");
+}

@@ -16,6 +16,8 @@
 
 //! A Doltgres database's version-controlled data, read from its chunk store.
 
+pub mod create;
+pub mod database;
 mod graph;
 mod rows;
 
