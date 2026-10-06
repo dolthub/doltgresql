@@ -75,6 +75,7 @@ fn registry() -> &'static Registry {
             datetime::FUNCTIONS,
             array::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
+            crate::sequences::FUNCTIONS,
         ]
         .into_iter()
         .flatten()

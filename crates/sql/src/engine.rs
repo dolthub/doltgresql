@@ -29,7 +29,7 @@ use crate::parse::{self, Extras, Statement};
 use crate::plan::Planner;
 use crate::query::{Ctx, column};
 use crate::settings::{Settings, setting};
-use crate::txn::{DbHandle, Txn};
+use crate::txn::{DbHandle, SequenceTracker, Txn};
 use crate::types::Value;
 use crate::{Column, DEFAULT_BRANCH, Outcome, Prepared};
 
@@ -42,7 +42,7 @@ pub struct Engine {
 /// Shared is what every clone of an engine shares.
 struct Shared {
     data_dir: PathBuf,
-    databases: Mutex<HashMap<String, DbHandle>>,
+    databases: Mutex<HashMap<String, (DbHandle, SequenceTracker)>>,
 }
 
 /// create_times returns the clock readings of creating a database now.
@@ -84,13 +84,19 @@ impl Engine {
 
     /// database returns the shared handle of a database, opening it on first use.
     fn database(&self, name: &str) -> Result<DbHandle> {
+        Ok(self.open_database(name)?.0)
+    }
+
+    /// open_database returns the shared handle and sequence tracker of a database, opening it on first use.
+    fn open_database(&self, name: &str) -> Result<(DbHandle, SequenceTracker)> {
         let mut databases = lock(&self.shared.databases)?;
-        if let Some(handle) = databases.get(name) {
-            return Ok(handle.clone());
+        if let Some(entry) = databases.get(name) {
+            return Ok(entry.clone());
         }
         let handle = Arc::new(Mutex::new(Database::open(&self.shared.data_dir.join(name).join(".dolt/noms"))?));
-        databases.insert(name.to_string(), handle.clone());
-        Ok(handle)
+        let entry = (handle, SequenceTracker::default());
+        databases.insert(name.to_string(), entry.clone());
+        Ok(entry)
     }
 
     /// session starts a session for the user, connected from the host, on a database or a branch of one written as
@@ -107,6 +113,8 @@ impl Engine {
                 notices: Vec::new(),
                 settings: Settings::new(startup).map_err(|err| PgError { severity: "FATAL", ..err })?,
                 explicit: false,
+                sequence_values: HashMap::new(),
+                last_sequence: None,
             },
             txns: Vec::new(),
             failed: false,
@@ -144,6 +152,10 @@ pub struct SessionState {
     pub settings: Settings,
     /// Whether the open transaction began with BEGIN.
     pub explicit: bool,
+    /// The last value nextval returned for each sequence in this session, by sequence ID.
+    pub sequence_values: HashMap<Vec<u8>, i64>,
+    /// The sequence ID and value of the session's most recent nextval.
+    pub last_sequence: Option<(Vec<u8>, i64)>,
 }
 
 impl SessionState {
@@ -371,8 +383,8 @@ impl Session {
         let index = match self.txns.iter().position(|t| t.database == *database && t.branch == *branch) {
             Some(index) => index,
             None => {
-                let handle = self.engine.database(database)?;
-                let mut txn = Txn::begin(handle, database, branch)?;
+                let (handle, tracker) = self.engine.open_database(database)?;
+                let mut txn = Txn::begin(handle, tracker, database, branch)?;
                 if let Some(first) = self.txns.first() {
                     txn.started = first.started;
                 }
@@ -669,6 +681,7 @@ impl Ctx<'_> {
             NodeEnum::DropStmt(drop) => self.drop(drop),
             NodeEnum::TruncateStmt(truncate) => self.truncate(truncate),
             NodeEnum::IndexStmt(stmt) => self.create_index(stmt),
+            NodeEnum::CreateSeqStmt(stmt) => self.create_sequence(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

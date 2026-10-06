@@ -457,6 +457,16 @@ fn table_deltas(
         .collect()
 }
 
+/// object_map returns a root's sequences by schema and name, which the status shows alongside tables.
+fn object_map(ctx: &mut Ctx<'_>, root: &Root) -> Result<BTreeMap<(String, String), Hash>> {
+    let mut objects = BTreeMap::new();
+    for (key, address) in root.objects(ctx.db, crate::sequences::COLLECTION)? {
+        let mut parts = crate::catalog::id::segments(&key).into_iter();
+        objects.insert((parts.next().unwrap_or_default(), parts.next().unwrap_or_default()), address);
+    }
+    Ok(objects)
+}
+
 /// schema_deltas returns the schemas added to or dropped from a root.
 fn schema_deltas(from: &Root, to: &Root) -> Vec<(String, &'static str)> {
     let name = |s: &Vec<u8>| String::from_utf8_lossy(s).into_owned();
@@ -474,10 +484,19 @@ fn status_rows(ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
     let staged_tables = table_map(ctx.db, &staged)?;
     let working_tables = table_map(ctx.db, &working)?;
     let mut rows = Vec::new();
-    for (name, status) in table_deltas(&head_tables, &staged_tables) {
+    let head_objects = object_map(ctx, &head)?;
+    let staged_objects = object_map(ctx, &staged)?;
+    let working_objects = object_map(ctx, &working)?;
+    let mut staged_deltas = table_deltas(&head_tables, &staged_tables);
+    staged_deltas.extend(table_deltas(&head_objects, &staged_objects));
+    staged_deltas.sort();
+    let mut unstaged_deltas = table_deltas(&staged_tables, &working_tables);
+    unstaged_deltas.extend(table_deltas(&staged_objects, &working_objects));
+    unstaged_deltas.sort();
+    for (name, status) in staged_deltas {
         rows.push(vec![text(name), Value::Bool(true), text(status)]);
     }
-    for (name, status) in table_deltas(&staged_tables, &working_tables) {
+    for (name, status) in unstaged_deltas {
         rows.push(vec![text(name), Value::Bool(false), text(status)]);
     }
     for (name, status) in schema_deltas(&head, &staged) {

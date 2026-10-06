@@ -489,6 +489,11 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
         let resolved = functions::resolve(name, &types, call.location)?;
+        if matches!(name, "nextval" | "currval" | "setval")
+            && let Some((Expr::Const(Value::Text(text)), _)) = bound.first()
+        {
+            self.ctx.resolve_sequence(text, arg_location(&call.args[0]))?;
+        }
         let mut args = Vec::with_capacity(bound.len());
         for (((expr, ty), &target), node) in bound.into_iter().zip(&resolved.arg_types).zip(&call.args) {
             if let Expr::Param(i) = expr

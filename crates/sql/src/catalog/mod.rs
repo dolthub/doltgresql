@@ -14,6 +14,7 @@
 
 //! The catalog: built-in types, resolving the type names that statements use, and table definitions.
 
+pub mod id;
 pub mod table;
 
 use std::collections::HashMap;

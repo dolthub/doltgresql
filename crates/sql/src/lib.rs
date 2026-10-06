@@ -32,6 +32,7 @@ pub mod numeric;
 pub mod parse;
 pub mod plan;
 pub mod query;
+pub mod sequences;
 pub mod settings;
 pub mod storage;
 pub mod txn;

@@ -101,6 +101,35 @@ impl Root {
         Ok(self.tables(db)?.into_iter().find(|(k, _)| *k == key).map(|(_, address)| address))
     }
 
+    /// objects returns the ID and address of every object in a root object collection, by the collection's position
+    /// in the root value, in ID order.
+    pub fn objects(&self, db: &mut Database, collection: usize) -> Result<Vec<(Vec<u8>, Hash)>> {
+        let Some(address) = self.root_objects[collection] else { return Ok(Vec::new()) };
+        let node = db.read(&address)?;
+        let mut objects = Vec::new();
+        walk_leaves(db, &node, &mut |key, value| {
+            objects.push((key.to_vec(), serial::hash(value)?));
+            Ok(())
+        })?;
+        Ok(objects)
+    }
+
+    /// put_object sets an object's address in a root object collection, or removes the object without one.
+    pub fn put_object(&mut self, db: &mut Database, collection: usize, id: &[u8], address: Option<Hash>) -> Result<()> {
+        let node = match self.root_objects[collection] {
+            Some(root) => db.read(&root)?,
+            None => {
+                let empty = prolly::serialize_address_map(&[], &[], &[], 0);
+                db.write(Hash::of(&empty), empty)?
+            }
+        };
+        let edit = (id.to_vec(), address.map(|a| a.0.to_vec()));
+        let (hash, _) =
+            apply_mutations(db as &mut dyn NodeStore, node, AddressMapSerializer, [edit], &|a, b| a.cmp(b))?;
+        self.root_objects[collection] = Some(hash);
+        Ok(())
+    }
+
     /// put_table sets a table's address, or removes the table without one, writing the new tables map.
     pub fn put_table(&mut self, db: &mut Database, schema: &str, name: &str, address: Option<Hash>) -> Result<()> {
         let node = Arc::new(Node::decode(self.tables.clone())?);

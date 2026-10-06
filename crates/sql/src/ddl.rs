@@ -54,6 +54,20 @@ pub fn expression_text(expr: &Node) -> Result<String> {
     Ok(text.strip_prefix("SELECT ").unwrap_or(&text).to_string())
 }
 
+/// serial_type returns the integer type of a serial pseudo-type name, or None for any other type.
+fn serial_type(type_name: &pg_query::protobuf::TypeName) -> Option<&'static str> {
+    if !type_name.array_bounds.is_empty() {
+        return None;
+    }
+    let names: Vec<&str> = type_name.names.iter().filter_map(node_name).collect();
+    match names.as_slice() {
+        ["smallserial" | "serial2"] | ["pg_catalog", "smallserial" | "serial2"] => Some("int2"),
+        ["serial" | "serial4"] | ["pg_catalog", "serial" | "serial4"] => Some("int4"),
+        ["bigserial" | "serial8"] | ["pg_catalog", "bigserial" | "serial8"] => Some("int8"),
+        _ => None,
+    }
+}
+
 /// check_column returns the column a check expression references when it references exactly one, which Postgres
 /// names an unnamed check constraint after.
 fn check_column(expr: &Node) -> Option<String> {
@@ -88,7 +102,7 @@ impl Ctx<'_> {
         let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
         let schema = self.target_schema(&relation.schemaname, relation.location)?;
         let name = relation.relname.as_str();
-        if self.txn.root.table(self.db, &schema, name)?.is_some() {
+        if self.relation_names(&schema)?.iter().any(|n| n == name) {
             let message = format!("relation \"{name}\" already exists");
             if create.if_not_exists {
                 self.session.notice(PgError::notice(code::DUPLICATE_TABLE, format!("{message}, skipping")));
@@ -100,6 +114,7 @@ impl Ctx<'_> {
         let mut primary_key: Vec<usize> = Vec::new();
         let mut pending_checks: Vec<(String, Node)> = Vec::new();
         let mut uniques: Vec<(String, Vec<usize>)> = Vec::new();
+        let mut generated: Vec<(usize, &'static str, Vec<Node>)> = Vec::new();
         for element in &create.table_elts {
             match element.node.as_ref() {
                 Some(NodeEnum::ColumnDef(def)) => {
@@ -111,7 +126,14 @@ impl Ctx<'_> {
                     }
                     let type_name =
                         def.type_name.as_ref().ok_or_else(|| PgError::internal("a column without a type"))?;
-                    let ty = resolve_type_name(type_name)?;
+                    let serial = serial_type(type_name);
+                    let ty = match serial {
+                        Some(data_type) => crate::catalog::resolve_type(&[data_type.to_string()], &[], false, None)?,
+                        None => resolve_type_name(type_name)?,
+                    };
+                    if let Some(data_type) = serial {
+                        generated.push((columns.len(), data_type, Vec::new()));
+                    }
                     let mut column = ColumnDef {
                         name: def.colname.clone(),
                         ty,
@@ -147,6 +169,32 @@ impl Ctx<'_> {
                                 pending_checks.push((constraint.conname.clone(), expr.clone()));
                             }
                             ConstrType::ConstrUnique => uniques.push((constraint.conname.clone(), vec![columns.len()])),
+                            ConstrType::ConstrIdentity => {
+                                let data_type = match ty.oid {
+                                    crate::oid::INT2 => "int2",
+                                    crate::oid::INT4 => "int4",
+                                    crate::oid::INT8 => "int8",
+                                    _ => {
+                                        return Err(PgError::new(
+                                            code::INVALID_PARAMETER_VALUE,
+                                            "identity column type must be smallint, integer, or bigint",
+                                        ));
+                                    }
+                                };
+                                if !column.default.is_empty() {
+                                    return Err(PgError {
+                                        position: position(constraint.location),
+                                        ..PgError::new(
+                                            code::SYNTAX_ERROR,
+                                            format!(
+                                                "both default and identity specified for column \"{}\" of table \"{name}\"",
+                                                def.colname
+                                            ),
+                                        )
+                                    });
+                                }
+                                generated.push((columns.len(), data_type, constraint.options.clone()));
+                            }
                             other => return Err(PgError::unsupported(format!("the column constraint {other:?}"))),
                         }
                     }
@@ -218,6 +266,12 @@ impl Ctx<'_> {
         if !primary_key.is_empty() {
             taken.push(format!("{name}_pkey"));
         }
+        for (column, data_type, options) in generated {
+            let column_name = columns[column].name.clone();
+            columns[column].default =
+                self.create_owned_sequence(&schema, name, &column_name, data_type, &options, &mut taken)?;
+            columns[column].nullable = false;
+        }
         let mut indexes = Vec::new();
         for (constraint, keys) in uniques {
             let index_name = if constraint.is_empty() {
@@ -235,7 +289,7 @@ impl Ctx<'_> {
 
     /// target_schema returns the schema a new object goes in: the named one, which must exist, or the first existing
     /// schema of the search path.
-    fn target_schema(&self, named: &str, location: i32) -> Result<String> {
+    pub(crate) fn target_schema(&self, named: &str, location: i32) -> Result<String> {
         if named.is_empty() {
             return self.creation_schema();
         }
@@ -362,6 +416,7 @@ impl Ctx<'_> {
             ObjectType::ObjectTable => self.drop_tables(drop),
             ObjectType::ObjectSchema => self.drop_schemas(drop, cascade),
             ObjectType::ObjectIndex => self.drop_indexes(drop),
+            ObjectType::ObjectSequence => self.drop_sequences(drop),
             other => Err(PgError::unsupported(format!("DROP {other:?}"))),
         }
     }
@@ -394,6 +449,7 @@ impl Ctx<'_> {
         }
         for (schema, name) in doomed {
             self.txn.root.put_table(self.db, &schema, &name, None)?;
+            self.drop_owned_sequences(&schema, &name)?;
         }
         Ok(Outcome::command("DROP TABLE"))
     }
@@ -479,8 +535,9 @@ impl Ctx<'_> {
 }
 
 impl Ctx<'_> {
-    /// relation_names returns the names of the tables and indexes in a schema, which new relations must avoid.
-    fn relation_names(&mut self, schema: &str) -> Result<Vec<String>> {
+    /// relation_names returns the names of the tables, indexes, and sequences in a schema, which new relations must
+    /// avoid.
+    pub(crate) fn relation_names(&mut self, schema: &str) -> Result<Vec<String>> {
         let mut names = Vec::new();
         let prefix = doltdb::root::table_key(schema, "");
         for (key, address) in self.txn.root.tables(self.db)? {
@@ -492,6 +549,12 @@ impl Ctx<'_> {
                 names.push(format!("{name}_pkey"));
             }
             names.push(name);
+        }
+        for sequence in crate::sequences::all(self.db, &self.txn.root)? {
+            let (sequence_schema, name) = crate::sequences::schema_and_name(&sequence);
+            if sequence_schema == schema {
+                names.push(name);
+            }
         }
         Ok(names)
     }
@@ -707,7 +770,7 @@ fn make_object_name(name1: &str, name2: &str, label: &str) -> String {
 
 /// choose_relation_name returns a name from two names and a label that no existing relation takes, adding a number
 /// to the label when needed, as Postgres' ChooseRelationName does.
-fn choose_relation_name(name1: &str, name2: &str, label: &str, taken: &[String]) -> String {
+pub(crate) fn choose_relation_name(name1: &str, name2: &str, label: &str, taken: &[String]) -> String {
     let mut name = make_object_name(name1, name2, label);
     let mut pass = 0;
     while taken.contains(&name) {

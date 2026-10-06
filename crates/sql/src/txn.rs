@@ -14,7 +14,7 @@
 
 //! Transactions: a session's view of a branch's working root, written back to the branch's working set on commit.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -31,11 +31,16 @@ use crate::error::{PgError, Result, code};
 /// DbHandle is an open database that sessions share, one statement at a time.
 pub type DbHandle = Arc<Mutex<Database>>;
 
+/// SequenceTracker holds the latest state of each of a database's sequences across every branch and transaction,
+/// since sequence values are never handed out twice.
+pub type SequenceTracker = Arc<Mutex<HashMap<Vec<u8>, objects::Sequence>>>;
+
 /// Txn is an open transaction on a branch of a database.
 pub struct Txn {
     pub database: String,
     pub branch: String,
     pub handle: DbHandle,
+    pub sequences: SequenceTracker,
     /// The working set's address when the transaction began.
     working_set: Hash,
     /// The branch's head commit and its root value.
@@ -76,7 +81,7 @@ fn merge_state_fields(state: &MergeState<'_>) -> Result<MergeStateFields> {
 
 impl Txn {
     /// begin starts a transaction on the branch, reading its working set.
-    pub fn begin(handle: DbHandle, database: &str, branch: &str) -> Result<Txn> {
+    pub fn begin(handle: DbHandle, sequences: SequenceTracker, database: &str, branch: &str) -> Result<Txn> {
         let mut db = handle.lock().map_err(|_| PgError::internal("a database lock was poisoned"))?;
         let not_found = || PgError::new(code::INVALID_CATALOG_NAME, format!("database not found: {database}/{branch}"));
         let head = db.head(&branch_ref(branch))?.ok_or_else(not_found)?;
@@ -101,6 +106,7 @@ impl Txn {
             database: database.to_string(),
             branch: branch.to_string(),
             handle,
+            sequences,
             working_set,
             head,
             head_root,
