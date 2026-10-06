@@ -10,9 +10,9 @@ end state contains only Rust code.
 ## Goals
 
 1. Client I/O identical to the Go version: wire messages, rows, errors and SQLSTATEs, notices, tags.
-2. Storage byte-identical and bidirectional: the same operations produce the same chunks and hashes, and
-   Go and Rust read, write, push, and pull each other's repositories and remotes, including every legacy
-   format the Go version can still read.
+2. Storage bidirectional: Go and Rust read, write, push, and pull each other's repositories and remotes, including
+   every legacy format the Go version can still read, with the same behavior (merges and diffs included). Bytes and
+   hashes may differ from Go's wherever readers cannot tell, so internals follow the fastest design rather than Go's.
 3. Performance equal to or better than Go on the sysbench workloads in `scripts/quick_sysbench.sh`.
 4. The ported script tests (`testing/go`, extensions) assert real Postgres 15 output, and the Rust server
    must pass all of them, including assertions the Go server fails. The other suites (regression replay,
