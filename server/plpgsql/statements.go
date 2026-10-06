@@ -679,6 +679,16 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 		return "", nil, err
 	}
 
+	// Comments are whitespace, so remove them before checking token adjacency for record fields and
+	// function calls. Rebuilding a line comment with a space would make it consume the following SQL.
+	tokens := scanResult.Tokens[:0]
+	for _, token := range scanResult.Tokens {
+		if token.Token != pg_query.Token_SQL_COMMENT && token.Token != pg_query.Token_C_COMMENT {
+			tokens = append(tokens, token)
+		}
+	}
+	scanResult.Tokens = tokens
+
 	varMap := stack.ListVariables()
 	for i := 0; i < len(scanResult.Tokens); i++ {
 		token := scanResult.Tokens[i]
