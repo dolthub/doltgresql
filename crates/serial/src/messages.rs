@@ -402,6 +402,22 @@ pub struct Index<'a> {
     pub descending: Vec<bool>,
     pub nulls_last: Vec<bool>,
     pub op_classes: Vec<&'a [u8]>,
+    pub fulltext_info: Option<FulltextInfo<'a>>,
+    /// The distance type of a vector index.
+    pub vector_distance: Option<u8>,
+}
+
+/// FulltextInfo is the pseudo-index tables and key of a full-text index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FulltextInfo<'a> {
+    pub config_table: &'a [u8],
+    pub position_table: &'a [u8],
+    pub doc_count_table: &'a [u8],
+    pub global_count_table: &'a [u8],
+    pub row_count_table: &'a [u8],
+    pub key_type: u8,
+    pub key_name: &'a [u8],
+    pub key_positions: Vec<u16>,
 }
 
 /// CheckConstraint is a check constraint of a table schema.
@@ -469,6 +485,20 @@ impl<'a> TableSchema<'a> {
             descending: bool_list(&t, 15)?,
             nulls_last: bool_list(&t, 16)?,
             op_classes,
+            fulltext_info: match t.table(11)? {
+                Some(f) => Some(FulltextInfo {
+                    config_table: f.string(0)?.unwrap_or_default(),
+                    position_table: f.string(1)?.unwrap_or_default(),
+                    doc_count_table: f.string(2)?.unwrap_or_default(),
+                    global_count_table: f.string(3)?.unwrap_or_default(),
+                    row_count_table: f.string(4)?.unwrap_or_default(),
+                    key_type: f.u8(5, 0)?,
+                    key_name: f.string(6)?.unwrap_or_default(),
+                    key_positions: u16_list(&f, 7)?,
+                }),
+                None => None,
+            },
+            vector_distance: t.table(13)?.map(|v| v.u8(0, 0)).transpose()?,
         })
     }
 

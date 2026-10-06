@@ -123,6 +123,49 @@ pub fn serialize_prolly_node(node: &ProllyNode<'_>) -> Vec<u8> {
     b.finish_message(root, serial::PROLLY_TREE_NODE)
 }
 
+/// serialize_merge_artifacts serializes a MergeArtifacts node as Dolt's MergeArtifactSerializer does, taking the
+/// positions of addresses within the key items of a leaf, which older Dolt versions wrote even when empty.
+pub fn serialize_merge_artifacts(
+    keys: &[&[u8]],
+    values: &[&[u8]],
+    subtrees: &[u64],
+    level: u8,
+    key_address_offsets: Option<&[u16]>,
+) -> Vec<u8> {
+    let mut b = Builder::new(0);
+    let key_items = write_item_bytes(&mut b, keys);
+    b.start_vector(2, keys.len() + 1, 2);
+    let key_offsets = write_item_offsets(&mut b, keys);
+    let (mut value_items, mut value_offsets, mut key_addresses, mut address_array, mut counts) = (0, 0, 0, 0, 0);
+    if level == 0 {
+        value_items = write_item_bytes(&mut b, values);
+        b.start_vector(2, values.len() + 1, 2);
+        value_offsets = write_item_offsets(&mut b, values);
+        if let Some(offsets) = key_address_offsets {
+            key_addresses = write_u16_vector(&mut b, offsets);
+        }
+    } else {
+        address_array = write_item_bytes(&mut b, values);
+        counts = b.create_byte_vector(&encode_counts(subtrees));
+    }
+    b.start_object(9);
+    b.add_offset(0, key_items);
+    b.add_offset(1, key_offsets);
+    if level == 0 {
+        b.add_offset(3, value_items);
+        b.add_offset(4, value_offsets);
+        b.add_u64(7, keys.len() as u64, 0);
+        b.add_offset(2, key_addresses);
+    } else {
+        b.add_offset(5, address_array);
+        b.add_offset(6, counts);
+        b.add_u64(7, subtrees.iter().sum(), 0);
+    }
+    b.add_u8(8, level, 0);
+    let root = b.end_object();
+    b.finish_message(root, serial::MERGE_ARTIFACTS)
+}
+
 /// serialize_address_map serializes an AddressMap node as Dolt's AddressMapSerializer does.
 pub fn serialize_address_map(keys: &[&[u8]], addresses: &[&[u8]], subtrees: &[u64], level: u8) -> Vec<u8> {
     let mut b = Builder::new(0);

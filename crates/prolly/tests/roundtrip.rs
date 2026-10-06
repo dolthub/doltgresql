@@ -17,7 +17,8 @@
 use std::path::Path;
 
 use prolly::{
-    Node, ProllyNode, serialize_address_map, serialize_blob, serialize_commit_closure, serialize_prolly_node,
+    Node, ProllyNode, serialize_address_map, serialize_blob, serialize_commit_closure, serialize_merge_artifacts,
+    serialize_prolly_node,
 };
 use serial::{Blob, Message};
 use store::{Chunk, GenerationalStore};
@@ -46,7 +47,9 @@ fn reserialize(chunk: &Chunk) -> Option<Vec<u8>> {
             serialize_blob(&addresses, &sizes, level)
         });
     }
-    if ![serial::PROLLY_TREE_NODE, serial::ADDRESS_MAP, serial::COMMIT_CLOSURE].contains(&file_id) {
+    if ![serial::PROLLY_TREE_NODE, serial::ADDRESS_MAP, serial::COMMIT_CLOSURE, serial::MERGE_ARTIFACTS]
+        .contains(&file_id)
+    {
         return None;
     }
     let node = Node::decode(chunk.data.clone()).unwrap();
@@ -63,6 +66,17 @@ fn reserialize(chunk: &Chunk) -> Option<Vec<u8>> {
             value_address_offsets: u16s(message, 6),
         }),
         serial::ADDRESS_MAP => serialize_address_map(&keys, &values, &subtrees, node.level()),
+        serial::MERGE_ARTIFACTS => {
+            let present = message.root().unwrap().vector(2, 2).unwrap().is_some();
+            let key_address_offsets = u16s(message, 2);
+            serialize_merge_artifacts(
+                &keys,
+                &values,
+                &subtrees,
+                node.level(),
+                present.then_some(&key_address_offsets[..]),
+            )
+        }
         _ => serialize_commit_closure(&keys, &values, &subtrees, node.level()),
     })
 }

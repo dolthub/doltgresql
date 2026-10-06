@@ -96,3 +96,8 @@ fn reads_doltgres_0_57() {
 fn reads_doltgres_1_0() {
     check_fixture("doltgres-v1.0.0");
 }
+
+#[test]
+fn reads_constraints_and_indexes() {
+    check_fixture("schemas");
+}

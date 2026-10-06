@@ -18,10 +18,16 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serial::write::{
-    CommitFields, MergeStateFields, Meta, RebaseStateFields, StashFields, WorkingSetFields, write_commit, write_stash,
-    write_stash_list, write_store_root, write_tag, write_working_set,
+    CheckFields, ColumnFields, CommitFields, ForeignKeyFields, IndexFields, KEYLESS_CARDINALITY_TAG,
+    KEYLESS_ROW_ID_TAG, MergeStateFields, Meta, ROOT_OBJECT_COLLECTIONS, RebaseStateFields, RootValueFields,
+    SchemaFields, StashFields, TableFields, WorkingSetFields, mutate_root_scalar, write_commit, write_foreign_keys,
+    write_root_value, write_schema, write_stash, write_stash_list, write_store_root, write_table, write_tag,
+    write_working_set,
 };
-use serial::{Commit, MergeState, Message, RebaseState, Stash, StashList, StoreRoot, Tag, WorkingSet};
+use serial::{
+    Commit, DoltgresRootValue, MergeState, Message, RebaseState, Stash, StashList, StoreRoot, TableMessage,
+    TableSchema, Tag, WorkingSet,
+};
 use store::{Chunk, GenerationalStore};
 
 /// owned copies a list of byte strings.
@@ -121,8 +127,176 @@ fn rewrite(chunk: &Chunk) -> Option<Vec<u8>> {
             })
         }
         serial::STASH_LIST => write_stash_list(StashList::new(message).unwrap().address_map().unwrap()),
+        serial::TABLE => rewrite_table(message),
+        serial::FOREIGN_KEY_COLLECTION => rewrite_foreign_keys(message),
+        serial::TABLE_SCHEMA => rewrite_schema(message),
+        serial::DOLTGRES_ROOT_VALUE => rewrite_root_value(message, &chunk.data),
         _ => return None,
     })
+}
+
+/// rewrite_table writes a Table again, setting an auto-increment value of zero in place as Dolt does when the field
+/// already exists.
+fn rewrite_table(message: Message<'_>) -> Vec<u8> {
+    let t = TableMessage::new(message).unwrap();
+    let conflicts = t.conflicts().unwrap().unwrap();
+    let auto_increment = t.auto_increment().unwrap();
+    let zeroed = auto_increment == 0 && t.0.offset(3).unwrap().is_some();
+    let mut bytes = write_table(&TableFields {
+        schema: t.schema().unwrap(),
+        primary_index: t.primary_index().unwrap(),
+        secondary_indexes: t.secondary_indexes().unwrap().unwrap(),
+        auto_increment: if zeroed { 1 } else { auto_increment },
+        conflicts_data: conflicts.bytes(0).unwrap().unwrap(),
+        conflicts_ours: conflicts.bytes(1).unwrap().unwrap(),
+        conflicts_theirs: conflicts.bytes(2).unwrap().unwrap(),
+        conflicts_ancestor: conflicts.bytes(3).unwrap().unwrap(),
+        violations: t.violations().unwrap().unwrap(),
+        artifacts: t.artifacts().unwrap().unwrap(),
+    });
+    if zeroed {
+        assert!(mutate_root_scalar(&mut bytes, 3, &0u64.to_le_bytes()).unwrap());
+    }
+    bytes
+}
+
+/// rewrite_foreign_keys writes a ForeignKeyCollection again.
+fn rewrite_foreign_keys(message: Message<'_>) -> Vec<u8> {
+    let tables = message.root().unwrap().vector(0, 4).unwrap();
+    let keys = serial::foreign_keys(message).unwrap();
+    let fields: Vec<ForeignKeyFields<'_>> = keys
+        .iter()
+        .enumerate()
+        .map(|(i, fk)| {
+            let t = tables.as_ref().unwrap().table(i).unwrap();
+            ForeignKeyFields {
+                name: fk.name,
+                child_table_name: fk.child_table_name,
+                child_table_index: fk.child_table_index,
+                child_table_columns: fk.child_table_columns.clone(),
+                parent_table_name: fk.parent_table_name,
+                parent_table_index: fk.parent_table_index,
+                parent_table_columns: fk.parent_table_columns.clone(),
+                on_update: fk.on_update,
+                on_delete: fk.on_delete,
+                unresolved_child_columns: t.vector(9, 4).unwrap().map(|_| owned(fk.unresolved_child_columns.clone())),
+                unresolved_parent_columns: t
+                    .vector(10, 4)
+                    .unwrap()
+                    .map(|_| owned(fk.unresolved_parent_columns.clone())),
+                is_not_valid: fk.is_not_valid,
+                match_type: fk.match_type,
+            }
+        })
+        .collect();
+    write_foreign_keys(&fields)
+}
+
+/// rewrite_schema writes a TableSchema again.
+fn rewrite_schema(message: Message<'_>) -> Vec<u8> {
+    let s = TableSchema::new(message).unwrap();
+    let mut columns = s.columns().unwrap();
+    let count = columns.len();
+    let keyless =
+        count >= 2 && columns[count - 2].tag == KEYLESS_ROW_ID_TAG && columns[count - 1].tag == KEYLESS_CARDINALITY_TAG;
+    if keyless {
+        columns.truncate(count - 2);
+    }
+    let clustered = s.clustered_index().unwrap();
+    write_schema(&SchemaFields {
+        columns: columns
+            .iter()
+            .map(|c| {
+                assert_eq!(c.uses_adaptive_encoding, c.adaptive_encoding_breaking_change);
+                ColumnFields {
+                    name: c.name,
+                    sql_type: c.sql_type,
+                    default_value: c.default_value,
+                    comment: c.comment,
+                    on_update: c.on_update_value,
+                    tag: c.tag,
+                    encoding: c.encoding,
+                    primary_key: c.primary_key,
+                    auto_increment: c.auto_increment,
+                    nullable: c.nullable,
+                    generated: c.generated,
+                    is_virtual: c.is_virtual,
+                    adaptive_encoding: c.uses_adaptive_encoding,
+                    hidden: c.hidden,
+                    hidden_system: c.hidden_system,
+                }
+            })
+            .collect(),
+        keyless,
+        key_columns: clustered.key_columns,
+        value_columns: clustered.value_columns,
+        indexes: s
+            .secondary_indexes()
+            .unwrap()
+            .into_iter()
+            .map(|i| IndexFields {
+                name: i.name,
+                comment: i.comment,
+                predicate: i.predicate,
+                index_columns: i.index_columns,
+                key_columns: i.key_columns,
+                prefix_lengths: i.prefix_lengths,
+                descending: i.descending,
+                nulls_last: i.nulls_last,
+                op_classes: i.op_classes,
+                unique: i.unique_key,
+                system_defined: i.system_defined,
+                spatial: i.spatial_key,
+                fulltext: i.fulltext_info,
+                vector_distance: i.vector_distance,
+            })
+            .collect(),
+        checks: s
+            .checks()
+            .unwrap()
+            .into_iter()
+            .map(|c| CheckFields {
+                name: c.name,
+                expression: c.expression,
+                enforced: c.enforced,
+                is_not_valid: c.is_not_valid,
+            })
+            .collect(),
+        collation: s.collation().unwrap(),
+        comment: s.comment().unwrap(),
+        target_row_size: s.target_row_size().unwrap(),
+    })
+}
+
+/// rewrite_root_value writes a Doltgres root value again, also trying each root object collection as the one added
+/// after the others, and returns the first rewrite that matches or else the plain one.
+fn rewrite_root_value(message: Message<'_>, original: &[u8]) -> Vec<u8> {
+    let r = DoltgresRootValue::new(message).unwrap();
+    let mut root_objects = [None; ROOT_OBJECT_COLLECTIONS];
+    for (i, (_, address)) in r.root_object_maps().unwrap().into_iter().enumerate() {
+        root_objects[i] = address.map(|a| serial::hash(a).unwrap());
+    }
+    let mut fields = RootValueFields {
+        feature_version: r.feature_version().unwrap(),
+        collation: r.collation().unwrap(),
+        tables: r.tables().unwrap().unwrap(),
+        schemas: r.schemas().unwrap(),
+        foreign_keys: r.foreign_keys().unwrap().unwrap(),
+        root_objects,
+        added_root_object: None,
+    };
+    let plain = write_root_value(&fields);
+    if plain == original {
+        return plain;
+    }
+    for i in (0..ROOT_OBJECT_COLLECTIONS).filter(|&i| root_objects[i].is_some()) {
+        fields.added_root_object = Some(i);
+        let bytes = write_root_value(&fields);
+        if bytes == original {
+            return bytes;
+        }
+    }
+    plain
 }
 
 #[test]
@@ -157,9 +331,18 @@ fn version_control_messages_write_the_bytes_go_wrote() {
             }
         }
     }
-    for kind in
-        [serial::STORE_ROOT, serial::COMMIT, serial::TAG, serial::WORKING_SET, serial::STASH, serial::STASH_LIST]
-    {
+    for kind in [
+        serial::STORE_ROOT,
+        serial::COMMIT,
+        serial::TAG,
+        serial::WORKING_SET,
+        serial::STASH,
+        serial::STASH_LIST,
+        serial::TABLE,
+        serial::FOREIGN_KEY_COLLECTION,
+        serial::TABLE_SCHEMA,
+        serial::DOLTGRES_ROOT_VALUE,
+    ] {
         assert!(checked.contains_key(kind), "no {kind} messages were checked: {checked:?}");
     }
     assert!(failures.is_empty(), "{} differ ({checked:?}):\n{}", failures.len(), failures.join("\n"));

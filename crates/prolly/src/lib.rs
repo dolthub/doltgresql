@@ -25,6 +25,7 @@ mod tuple;
 pub use blob::read_blob;
 pub use node::{ItemVisitor, Node, walk_leaves};
 pub use serialize::{
-    ProllyNode, serialize_address_map, serialize_blob, serialize_commit_closure, serialize_prolly_node,
+    ProllyNode, serialize_address_map, serialize_blob, serialize_commit_closure, serialize_merge_artifacts,
+    serialize_prolly_node,
 };
 pub use tuple::Tuple;

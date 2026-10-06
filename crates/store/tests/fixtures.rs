@@ -113,3 +113,8 @@ fn hash_strings_round_trip() {
     assert_eq!(Hash::parse(text).unwrap().to_string(), text);
     assert_eq!(Hash::parse("b45a39lbakbo1lvppskat4cd0nd5bp9w"), None);
 }
+
+#[test]
+fn reads_constraints_and_indexes() {
+    check_fixture("schemas");
+}
