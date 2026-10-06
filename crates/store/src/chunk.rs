@@ -54,4 +54,11 @@ impl Chunk {
             .map_err(|err| corrupt(format!("cannot decompress chunk {hash}: {err}")))?;
         Ok(Chunk { hash, data })
     }
+    /// to_record encodes the chunk as a compressed chunk record.
+    pub fn to_record(&self) -> Vec<u8> {
+        let mut record = snap::raw::Encoder::new().compress_vec(&self.data).expect("chunks fit in snappy's limit");
+        let checksum = crc(&record);
+        record.extend_from_slice(&checksum.to_be_bytes());
+        record
+    }
 }

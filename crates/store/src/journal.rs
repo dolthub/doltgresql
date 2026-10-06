@@ -183,6 +183,16 @@ impl Journal {
         }
     }
 
+    /// for_each_record calls the function with the address and compressed record of every chunk in the order they
+    /// were written.
+    pub fn for_each_record(&self, f: &mut dyn FnMut(Hash, &[u8]) -> Result<()>) -> Result<()> {
+        for hash in &self.order {
+            let (offset, len) = self.chunks[hash];
+            f(*hash, &read_at(&self.file, offset, len as usize)?)?;
+        }
+        Ok(())
+    }
+
     /// for_each calls the function with every chunk in the order they were written.
     pub fn for_each(&self, f: &mut dyn FnMut(Chunk) -> Result<()>) -> Result<()> {
         for hash in &self.order {

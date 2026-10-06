@@ -137,6 +137,19 @@ impl BlockStore {
         }
         Ok(())
     }
+
+    /// for_each_record calls the function with the address and compressed record of every chunk in a table file or
+    /// the journal, which store chunks as records.
+    pub fn for_each_record(&self, f: &mut dyn FnMut(Hash, &[u8]) -> Result<()>) -> Result<()> {
+        for source in &self.sources {
+            match source {
+                Source::Table(table) => table.for_each_record(f)?,
+                Source::Journal(journal) => journal.for_each_record(f)?,
+                Source::Archive(_) => {}
+            }
+        }
+        Ok(())
+    }
 }
 
 /// GenerationalStore reads a database's chunks from its new generation, which holds the journal and recent files, and

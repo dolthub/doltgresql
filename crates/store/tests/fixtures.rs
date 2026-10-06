@@ -17,7 +17,7 @@
 
 use std::path::{Path, PathBuf};
 
-use store::Hash;
+use store::{Chunk, GenerationalStore, Hash};
 
 /// fixture returns the directory of a fixture's database, the one directory in it that holds a `.dolt` directory.
 fn fixture(name: &str) -> PathBuf {
@@ -122,4 +122,31 @@ fn reads_constraints_and_indexes() {
 #[test]
 fn reads_blobs_of_every_size() {
     check_fixture("blobs");
+}
+
+#[test]
+fn snappy_compresses_every_chunk_as_go_did() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let (mut checked, mut failures) = (0, Vec::new());
+    for entry in std::fs::read_dir(&fixtures).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.is_dir() {
+            continue;
+        }
+        let noms = fixture(path.file_name().unwrap().to_str().unwrap()).join(".dolt/noms");
+        let store = GenerationalStore::open(&noms).unwrap();
+        for generation in [&store.new_gen, &store.old_gen] {
+            generation
+                .for_each_record(&mut |hash, record| {
+                    checked += 1;
+                    if Chunk::from_record(hash, record)?.to_record() != record {
+                        failures.push(format!("{}: {hash}", noms.display()));
+                    }
+                    Ok(())
+                })
+                .unwrap();
+        }
+    }
+    assert!(checked > 1000, "only {checked} records were checked");
+    assert!(failures.is_empty(), "{} of {checked} differ:\n{}", failures.len(), failures.join("\n"));
 }

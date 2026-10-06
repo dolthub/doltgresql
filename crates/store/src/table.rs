@@ -156,14 +156,28 @@ impl TableReader {
         Chunk::from_record(hash, &record)
     }
 
-    /// for_each calls the function with every chunk in file order.
-    pub fn for_each(&self, f: &mut dyn FnMut(Chunk) -> Result<()>) -> Result<()> {
+    /// hashes returns the address of each chunk in file order.
+    fn hashes(&self) -> Vec<Hash> {
         let mut hashes = vec![Hash::default(); self.count()];
         for (&prefix, &ordinal) in self.prefixes.iter().zip(&self.ordinals) {
             hashes[ordinal as usize] = Hash::from_parts(prefix, self.suffix(ordinal as usize));
         }
-        for (ordinal, hash) in hashes.into_iter().enumerate() {
+        hashes
+    }
+
+    /// for_each calls the function with every chunk in file order.
+    pub fn for_each(&self, f: &mut dyn FnMut(Chunk) -> Result<()>) -> Result<()> {
+        for (ordinal, hash) in self.hashes().into_iter().enumerate() {
             f(self.read(hash, ordinal)?)?;
+        }
+        Ok(())
+    }
+
+    /// for_each_record calls the function with the address and compressed record of every chunk in file order.
+    pub fn for_each_record(&self, f: &mut dyn FnMut(Hash, &[u8]) -> Result<()>) -> Result<()> {
+        for (ordinal, hash) in self.hashes().into_iter().enumerate() {
+            let start = self.offsets[ordinal];
+            f(hash, &read_at(&self.file, start, (self.offsets[ordinal + 1] - start) as usize)?)?;
         }
         Ok(())
     }
