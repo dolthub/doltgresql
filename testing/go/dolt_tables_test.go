@@ -3213,5 +3213,43 @@ WHERE to_commit = dolt_hashof('HEAD')
 				},
 			},
 		},
+		{
+			Name: "dolt blame catalog columns outside search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA other`,
+				`CREATE TABLE other.remote (id INT PRIMARY KEY)`,
+				`INSERT INTO other.remote VALUES (11)`,
+				`SELECT dolt_commit('-Am', 'add remote')`,
+				`SET dolt_show_system_tables = 1`,
+				`SET search_path = public`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT id FROM other.dolt_blame_remote`,
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Skip: true, // TODO: pg_attribute resolves a view's tables using the current search_path
+					Query: `SELECT a.attname
+						FROM pg_attribute a
+						JOIN pg_class c ON a.attrelid = c.oid
+						WHERE c.relname = 'dolt_blame_remote'
+							AND a.attname = 'id'`,
+					Expected: []sql.Row{{"id"}},
+				},
+				{
+					Query:    `SET search_path = other`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT a.attname
+						FROM pg_attribute a
+						JOIN pg_class c ON a.attrelid = c.oid
+						WHERE c.relname = 'dolt_blame_remote'
+							AND a.attname = 'id'`,
+					Expected: []sql.Row{{"id"}},
+				},
+			},
+		},
 	})
 }
