@@ -26,6 +26,8 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	coreextensions "github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions"
 )
 
@@ -88,6 +90,17 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 	schemaName, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
+	}
+	db, err := core.GetSqlDatabaseFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	if schemaDb, ok := db.(sql.SchemaDatabase); ok {
+		if _, ok, err = schemaDb.GetSchema(ctx, schemaName); err != nil {
+			return nil, err
+		} else if !ok {
+			return nil, pgerror.Newf(pgcode.UndefinedSchema, `schema "%s" does not exist`, schemaName)
+		}
 	}
 	if err = extensions.CreateObjects(ctx, ext, schemaName); err != nil {
 		return nil, err
