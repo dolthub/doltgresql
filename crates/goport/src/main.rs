@@ -18,6 +18,7 @@
 
 mod dump;
 mod generate;
+mod recordings;
 mod rust;
 mod wire;
 
@@ -50,6 +51,50 @@ fn main() {
             text.push_str(&report.notes.join("\n"));
             std::fs::write(&args[6], text).unwrap();
             eprintln!("{:#?}", report.sources);
+        }
+        Some("show-recording") if args.len() == 3 => match recordings::read_recording(std::path::Path::new(&args[2])) {
+            Ok(connections) => {
+                for (index, messages) in connections.iter().enumerate() {
+                    println!("connection {index}:");
+                    for message in messages {
+                        println!("  {message}");
+                    }
+                }
+            }
+            Err(err) => eprintln!("{err}"),
+        },
+        Some("compare-recordings") if args.len() == 6 => {
+            let records = dump::read_dump(&args[2]);
+            let mut names = std::collections::BTreeMap::new();
+            let mut seen = std::collections::HashMap::<String, usize>::new();
+            for record in &records {
+                if !matches!(record.runner.as_str(), "RunScripts" | "RunTransactionTests") {
+                    continue;
+                }
+                let test = record.test.split('/').next().unwrap();
+                for script in &record.tests {
+                    let name: String = script["Name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .chars()
+                        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                        .collect();
+                    let base = format!("{test}__{name}");
+                    let count = seen.entry(base.clone()).or_default();
+                    *count += 1;
+                    let suffix = if *count > 1 { format!("__{count}") } else { String::new() };
+                    let skipped = script["Skip"].as_bool() == Some(true)
+                        || script["Assertions"]
+                            .as_array()
+                            .is_some_and(|a| a.iter().any(|a| a["Skip"].as_bool() == Some(true)));
+                    if !skipped && *count == 1 {
+                        names.insert(format!("{base}{suffix}"), format!("{}__{name}{suffix}", rust::snake_case(test)));
+                    }
+                }
+            }
+            let report = recordings::compare(&args[3], &args[4], &names);
+            std::fs::write(&args[5], &report).unwrap();
+            eprintln!("{}", report.lines().next().unwrap_or_default());
         }
         _ => {
             eprintln!("usage: goport capture <dump.jsonl> <target> <out.jsonl> [jobs] [test name filter]");
@@ -85,17 +130,23 @@ fn capture(dump_path: &str, target: &str, out_path: &str, jobs: usize, filter: O
         let transaction = record.runner == "RunTransactionTests";
         let repetitions = record.extra.get("n").and_then(Value::as_u64).unwrap_or(1) as usize;
         match record.runner.as_str() {
-            "RunScripts" | "RunTransactionTests" | "RunScriptN" | "RunWireScripts" | "RunMessageFlowTests" => {}
+            "RunScripts"
+            | "RunTransactionTests"
+            | "RunScriptN"
+            | "RunWireScripts"
+            | "RunMessageFlowTests"
+            | "RunRecording" => {}
             _ => continue,
         }
         if let Some(filter) = &filter
-            && !record.test.contains(filter.as_str())
+            && !filter.split(',').any(|name| record.test.split('/').next() == Some(name))
         {
             continue;
         }
         for (test, value) in record.tests.iter().enumerate() {
             let work = match record.runner.as_str() {
                 "RunWireScripts" => Work::Wire(wire::from_wire_script(value)),
+                "RunRecording" => Work::Wire(wire::recording_test(value)),
                 "RunMessageFlowTests" => Work::Wire(wire::from_message_flow(value)),
                 _ => Work::Script(dump::to_script(value, transaction), repetitions),
             };

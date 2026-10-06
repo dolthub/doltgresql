@@ -37,6 +37,8 @@ pub enum Source {
     AfterDivergence,
     /// Neither capture can produce an expectation.
     Unavailable,
+    /// An EXPLAIN whose plan facts are not ported yet.
+    Plan,
 }
 
 /// Captures holds the capture of every script, by record and test index.
@@ -208,10 +210,28 @@ fn generate_assertion(
     if converted.close_client {
         fields.push("close_client: true".to_string());
     }
-    if source == Source::Unavailable {
+    let is_explain = converted.query.trim_start().to_uppercase().starts_with("EXPLAIN");
+    if is_explain {
+        source = Source::Plan;
+        note = Some("plan assertion pending".to_string());
+        fields.push("skip: Some(\"plan assertion pending\")".to_string());
+    } else if source == Source::Unavailable {
         fields.push(format!("skip: Some({})", rust::string(note.as_deref().unwrap_or("no expectation"))));
     }
-    let mut code = String::from("                ScriptTestAssertion {\n");
+    let mut code = String::new();
+    match source {
+        Source::DoltStatement | Source::DoltScript => {
+            code.push_str("                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.\n");
+        }
+        Source::AfterDivergence => {
+            code.push_str(
+                "                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go \
+                 server's output is expected.\n",
+            );
+        }
+        _ => {}
+    }
+    code.push_str("                ScriptTestAssertion {\n");
     for field in fields {
         let _ = writeln!(code, "                    {field},");
     }
@@ -288,10 +308,20 @@ fn generate_script(
         }
         body.push_str(&generated.code);
     }
-    let mut code = String::from("        ScriptTest {\n");
+    let mut code = String::new();
+    if pg.is_some_and(|pg| pg["postgres_version"].as_u64() == Some(17)) {
+        code.push_str("        // Expectations from Postgres 17, since Postgres 15 lacks this feature.\n");
+    }
+    for reason in test["Overrides"].as_array().cloned().unwrap_or_default() {
+        let _ = writeln!(code, "        // Changed from the Go test: {}.", reason.as_str().unwrap_or_default());
+    }
+    code.push_str("        ScriptTest {\n");
     let _ = writeln!(code, "            name: {},", rust::string(name));
     if let Some(database) = test["Database"].as_str().filter(|d| !d.is_empty()) {
         let _ = writeln!(code, "            database: {},", rust::string(database));
+    }
+    if let Some(config) = test["ServerConfigYAML"].as_str() {
+        let _ = writeln!(code, "            server_config: {},", rust::string(config));
     }
     let set_up: Vec<&str> =
         test["SetUpScript"].as_array().map(|s| s.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
@@ -330,6 +360,7 @@ fn generate_wire_test(
     let name = test["Name"].as_str().unwrap_or_default();
     let converted = match record.runner.as_str() {
         "RunWireScripts" => crate::wire::from_wire_script(test),
+        "RunRecording" => crate::wire::recording_test(test),
         _ => crate::wire::from_message_flow(test),
     };
     let converted = match converted {
@@ -378,6 +409,9 @@ fn generate_wire_test(
             let _ = writeln!(code, "                {},", rust::string(statement));
         }
         code.push_str("            ],\n");
+    }
+    if converted.startup == harness::wire::PGX_STARTUP {
+        code.push_str("            startup: PGX_STARTUP,\n");
     }
     if source == "WireUnavailable" {
         let _ = writeln!(
@@ -433,7 +467,7 @@ pub fn generate(records: &[Record], pg: &Captures, go: &Captures, out_dir: &str)
     let mut report = Report::default();
     let mut files: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
     for record in records {
-        if matches!(record.runner.as_str(), "RunWireScripts" | "RunMessageFlowTests") {
+        if matches!(record.runner.as_str(), "RunWireScripts" | "RunMessageFlowTests" | "RunRecording") {
             let mut call = String::from("run_wire_tests(&[\n");
             for (index, test) in record.tests.iter().enumerate() {
                 call.push_str(&generate_wire_test(
@@ -486,7 +520,7 @@ pub fn generate(records: &[Record], pg: &Captures, go: &Captures, out_dir: &str)
              ScriptTestAssertion, USER_DEFINED, run_scripts, run_scripts_repeated};\n",
         );
         code.push_str(
-            "use harness::wire::{Datum, F, Field, Fields, Receive, Send, Step, W, WireTest, run_wire_tests};\n",
+            "use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};\n",
         );
         for (test, calls) in tests {
             let _ = write!(code, "\n#[test]\nfn {}() {{\n", rust::snake_case(test));

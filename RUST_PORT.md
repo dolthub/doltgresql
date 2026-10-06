@@ -87,6 +87,20 @@ normalization hides type mistakes such as int4 versus int8. The Rust tests inste
   type and shape. Deliberate Doltgres differences (version strings, Doltgres-only catalog entries) keep
   the Go server's value and are documented as Doltgres-specific.
 
+Where a Go test's input does not work in Postgres, the input is changed minimally and the generated test says so
+in a `// Changed from the Go test:` comment:
+
+- Setup that Postgres rejects only because Doltgres is lenient is rewritten to valid Postgres (for example
+  `gen_random_uuid()` without `public.`, `jsonb` where `json` cannot be indexed, a quoted mixed-case schema).
+- Setup that a test expects to be rejected (unknown types, non-boolean trigger conditions, schema-qualified type
+  aliases) becomes assertions, since Postgres rejects it at creation instead of at use.
+- PL/pgSQL loops over an uninitialized variable, which never end in Postgres, initialize it, and a separate
+  assertion checks that an uninitialized variable stays NULL.
+- Features beyond Postgres 15 (JSON_TABLE) take their expectations from Postgres 17.
+
+Tests whose Go version is custom code over a single pgx connection (the binding tests, application settings) are
+ported by recording the exact bytes pgx sent and replaying them as wire conversations.
+
 ### Harness
 
 The Rust harness spawns a fresh `doltgres` binary per script (path from an environment variable) on a

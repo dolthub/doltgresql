@@ -27,6 +27,8 @@ use crate::server::Target;
 
 /// How long a receive waits for a message before deciding that the server has nothing more to send.
 const QUIET_TIMEOUT: Duration = Duration::from_millis(500);
+/// The error a receive returns when the server closes the connection.
+const CONNECTION_CLOSED: &str = "connection closed";
 /// How long a receive waits for a message that a test expects.
 const RECEIVE_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -43,10 +45,27 @@ pub struct WireTest {
     pub focus: bool,
     /// Skips the test for the given reason.
     pub skip: Option<&'static str>,
+    /// The StartupMessage parameters of the conversation's connection.
+    pub startup: &'static [(&'static str, &'static str)],
 }
 
+/// PG_REGRESS_STARTUP are the startup parameters of the Go suite's raw wire connection, which mimics pg_regress.
+pub const PG_REGRESS_STARTUP: &[(&str, &str)] = &[
+    ("timezone", "PST8PDT"),
+    ("user", "postgres"),
+    ("database", "postgres"),
+    ("options", " -c intervalstyle=postgres_verbose"),
+    ("application_name", "pg_regress"),
+    ("client_encoding", "WIN1252"),
+    ("datestyle", "Postgres, MDY"),
+];
+
+/// PGX_STARTUP are the startup parameters of the Go suite's pgx connections.
+pub const PGX_STARTUP: &[(&str, &str)] = &[("DateStyle", "ISO, MDY"), ("database", "postgres"), ("user", "postgres")];
+
 /// W is a WireTest with every field at its default, for use with struct update syntax.
-pub const W: WireTest = WireTest { name: "", set_up_script: &[], steps: &[], focus: false, skip: None };
+pub const W: WireTest =
+    WireTest { name: "", set_up_script: &[], steps: &[], focus: false, skip: None, startup: PG_REGRESS_STARTUP };
 
 /// Step is one step of a conversation.
 #[derive(Clone, Copy, Debug)]
@@ -364,28 +383,18 @@ impl Receive {
     }
 }
 
-/// RawConnection is a protocol connection that starts up like the Go suite's raw wire connection, which mimics
-/// pg_regress.
+/// RawConnection is a protocol connection for wire tests.
 pub struct RawConnection {
     socket: TcpStream,
     reader: FrameReader,
 }
 
 impl RawConnection {
-    /// connect connects as postgres and authenticates, discarding the startup messages.
-    pub fn connect(port: u16) -> Result<RawConnection, String> {
+    /// connect connects with the startup parameters, authenticating as postgres, and discards the startup messages.
+    pub fn connect(port: u16, parameters: &[(&str, &str)]) -> Result<RawConnection, String> {
         let socket = TcpStream::connect(("127.0.0.1", port)).map_err(|err| err.to_string())?;
         socket.set_nodelay(true).map_err(|err| err.to_string())?;
         let mut conn = RawConnection { socket, reader: FrameReader::new() };
-        let parameters = [
-            ("timezone", "PST8PDT"),
-            ("user", "postgres"),
-            ("database", "postgres"),
-            ("options", " -c intervalstyle=postgres_verbose"),
-            ("application_name", "pg_regress"),
-            ("client_encoding", "WIN1252"),
-            ("datestyle", "Postgres, MDY"),
-        ];
         conn.send(&[FrontendMessage::StartupMessage {
             protocol_version: PROTOCOL_VERSION_3 as u32,
             parameters: parameters.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
@@ -445,7 +454,7 @@ impl RawConnection {
             self.socket.set_read_timeout(Some(timeout)).map_err(|err| err.to_string())?;
             let mut buffer = [0u8; 16384];
             match self.socket.read(&mut buffer) {
-                Ok(0) => return Err("connection closed".to_string()),
+                Ok(0) => return Err(CONNECTION_CLOSED.to_string()),
                 Ok(count) => self.reader.extend(&buffer[..count]),
                 Err(err) if matches!(err.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
                     return Ok(None);
@@ -464,7 +473,11 @@ impl RawConnection {
         let mut messages = Vec::new();
         loop {
             let timeout = if stop.is_some() { RECEIVE_TIMEOUT } else { QUIET_TIMEOUT };
-            match self.receive(timeout)? {
+            let received = match self.receive(timeout) {
+                Err(err) if err == CONNECTION_CLOSED => return Ok(messages),
+                received => received?,
+            };
+            match received {
                 Some(message) => {
                     let done = stop.as_mut().is_some_and(|stop| stop(&message));
                     messages.push(message);
@@ -480,8 +493,18 @@ impl RawConnection {
 }
 
 /// expected_ready_count returns how many ReadyForQuery messages a batch of messages draws: one per Query and Sync.
-pub fn expected_ready_count(messages: &[FrontendMessage]) -> usize {
-    messages.iter().filter(|m| matches!(m, FrontendMessage::Query { .. } | FrontendMessage::Sync)).count()
+/// Within COPY FROM STDIN the server ignores Sync and Flush, so a Sync only counts after the copy ends.
+pub fn expected_ready_count(messages: &[FrontendMessage], in_copy: &mut bool) -> usize {
+    let mut count = 0;
+    for message in messages {
+        match message {
+            FrontendMessage::CopyDone | FrontendMessage::CopyFail { .. } => *in_copy = false,
+            FrontendMessage::Query { .. } => count += 1,
+            FrontendMessage::Sync if !*in_copy => count += 1,
+            _ => {}
+        }
+    }
+    count
 }
 
 /// WireCapture is everything a conversation received.
@@ -507,11 +530,12 @@ fn run_steps(
     let mut result = WireCapture::default();
     let mut failures = Vec::new();
     let mut pending_ready = 0;
+    let mut in_copy = false;
     for (index, step) in test.steps.iter().enumerate() {
         match step {
             Step::Send(messages) => {
                 let messages: Vec<FrontendMessage> = messages.iter().map(|m| m.to_message()).collect();
-                pending_ready += expected_ready_count(&messages);
+                pending_ready += expected_ready_count(&messages, &mut in_copy);
                 if let Err(err) = conn.send(&messages) {
                     result.error = Some(format!("step {index}: {err}"));
                     return (result, failures);
@@ -576,6 +600,9 @@ fn run_steps(
                         ));
                     }
                 }
+                if received.iter().any(|m| matches!(m, BackendMessage::CopyInResponse { .. })) {
+                    in_copy = true;
+                }
                 result.received.push((index, received));
             }
             Step::OtherQuery { query, rows } => {
@@ -604,7 +631,7 @@ fn start(target: &Target, test: &WireTest) -> Result<(Session, RawConnection), S
     for query in test.set_up_script {
         session.set_up(query)?;
     }
-    let conn = RawConnection::connect(session.server.port)?;
+    let conn = RawConnection::connect(session.server.port, test.startup)?;
     Ok((session, conn))
 }
 

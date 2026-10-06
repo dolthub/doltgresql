@@ -123,6 +123,31 @@ pub fn send(message: &Value) -> Result<Send, String> {
     })
 }
 
+/// between returns the text between the first start marker and the following end marker.
+fn between(text: &str, start: &str, end: &str) -> Option<String> {
+    let begin = text.find(start)? + start.len();
+    let length = text[begin..].find(end)?;
+    Some(text[begin..begin + length].to_string())
+}
+
+/// go_byte_slices reads every []uint8{...} literal in a Go rendering, in order.
+fn go_byte_slices(text: &str) -> Vec<Vec<u8>> {
+    let mut slices = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("[]uint8{0x") {
+        let body = &rest[start + "[]uint8{".len()..];
+        let end = body.find('}').unwrap_or(body.len());
+        slices.push(
+            body[..end]
+                .split(',')
+                .filter_map(|b| u8::from_str_radix(b.trim().trim_start_matches("0x"), 16).ok())
+                .collect(),
+        );
+        rest = &body[end..];
+    }
+    slices
+}
+
 /// hex_bytes decodes hexadecimal text.
 fn hex_bytes(hex: &str) -> Result<Vec<u8>, String> {
     (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).map_err(|err| err.to_string())).collect()
@@ -214,6 +239,59 @@ pub fn from_message_flow(test: &Value) -> Result<WireTest, String> {
                 flush(&mut batch, &mut steps);
                 steps.push(Step::Receive(&[]));
             }
+            "_go.extendedCopy" => {
+                flush(&mut batch, &mut steps);
+                let text = value["$unexported"].as_str().unwrap_or_default();
+                let query = between(text, "query:\"", "\"").ok_or("cannot read the extended copy query")?;
+                steps.push(Step::Send(leak_slice(vec![
+                    Send::Parse { name: "", query: leak(&query), parameter_oids: &[] },
+                    Send::Bind {
+                        portal: "",
+                        statement: "",
+                        parameter_formats: &[],
+                        parameters: &[],
+                        result_formats: &[],
+                    },
+                    Send::Execute("", 0),
+                ])));
+                steps.push(Step::Receive(&[]));
+                let mut sends: Vec<Send> =
+                    go_byte_slices(text).into_iter().map(|chunk| Send::CopyData(leak_slice(chunk))).collect();
+                match between(text, "FailMessage:\"", "\"") {
+                    Some(message) if !message.is_empty() => sends.push(Send::CopyFail(leak(&message))),
+                    _ => sends.push(Send::CopyDone),
+                }
+                sends.push(Send::Sync);
+                steps.push(Step::Send(leak_slice(sends)));
+                steps.push(Step::Receive(&[]));
+            }
+            "_go.fatalCopyMessage" => {
+                flush(&mut batch, &mut steps);
+                let text = value["$unexported"].as_str().unwrap_or_default();
+                if text.contains("extended:true") {
+                    steps.push(Step::Send(leak_slice(vec![
+                        Send::Parse { name: "", query: "COPY test3 FROM STDIN", parameter_oids: &[] },
+                        Send::Bind {
+                            portal: "",
+                            statement: "",
+                            parameter_formats: &[],
+                            parameters: &[],
+                            result_formats: &[],
+                        },
+                        Send::Execute("", 0),
+                    ])));
+                } else {
+                    steps.push(Step::Send(leak_slice(vec![Send::Query("COPY test3 FROM STDIN")])));
+                }
+                steps.push(Step::Receive(&[]));
+                let unexpected = if text.contains("pgproto3.Parse") {
+                    Send::Parse { name: "", query: "SELECT 2", parameter_oids: &[] }
+                } else {
+                    Send::Query("SELECT 2")
+                };
+                steps.push(Step::Send(leak_slice(vec![Send::CopyData(b"1\n"), unexpected])));
+                steps.push(Step::Receive(&[]));
+            }
             "_go.QueryOnOtherConnection" => {
                 flush(&mut batch, &mut steps);
                 steps.push(Step::OtherQuery { query: text(value, "Query"), rows: &[] });
@@ -223,6 +301,81 @@ pub fn from_message_flow(test: &Value) -> Result<WireTest, String> {
     }
     flush(&mut batch, &mut steps);
     Ok(WireTest { name: text(test, "Name"), set_up_script: set_up(test), steps: leak_slice(steps), ..W })
+}
+
+/// recording_test converts a RunRecording dump record's test, whose Recording names the recording file, using its
+/// last connection, which is the custom test's main pgx connection.
+pub fn recording_test(test: &Value) -> Result<WireTest, String> {
+    let path = test["Recording"].as_str().ok_or("missing recording")?;
+    let connections = crate::recordings::read_raw(std::path::Path::new(path))?;
+    let main = connections.last().ok_or("empty recording")?;
+    from_recording(test["Name"].as_str().unwrap_or_default(), main)
+}
+
+/// from_recording converts the messages a custom Go test's main pgx connection sent into a conversation that sends
+/// them with the same startup parameters, receiving after each Sync and Query, and before each COPY's data.
+pub fn from_recording(name: &str, messages: &[pgproto::FrontendMessage]) -> Result<WireTest, String> {
+    use pgproto::FrontendMessage as M;
+    let mut steps = Vec::new();
+    let mut batch: Vec<Send> = Vec::new();
+    for message in messages {
+        let send = match message {
+            M::Query { query } => Send::Query(leak(query)),
+            M::Parse { name, query, parameter_oids } => {
+                Send::Parse { name: leak(name), query: leak(query), parameter_oids: leak_slice(parameter_oids.clone()) }
+            }
+            M::Bind {
+                destination_portal,
+                prepared_statement,
+                parameter_format_codes,
+                parameters,
+                result_format_codes,
+            } => Send::Bind {
+                portal: leak(destination_portal),
+                statement: leak(prepared_statement),
+                parameter_formats: leak_slice(parameter_format_codes.clone()),
+                parameters: leak_slice(
+                    parameters
+                        .iter()
+                        .map(|p| match p {
+                            None => Datum::Null,
+                            Some(bytes) => match String::from_utf8(bytes.clone()) {
+                                Ok(text) => Datum::Text(leak(&text)),
+                                Err(_) => Datum::Bytes(leak_slice(bytes.clone())),
+                            },
+                        })
+                        .collect(),
+                ),
+                result_formats: leak_slice(result_format_codes.clone()),
+            },
+            M::Describe { object_type, name } => Send::Describe(*object_type, leak(name)),
+            M::Execute { portal, max_rows } => Send::Execute(leak(portal), *max_rows),
+            M::Close { object_type, name } => Send::Close(*object_type, leak(name)),
+            M::Sync => Send::Sync,
+            M::Flush => Send::Flush,
+            M::CopyData { data } => Send::CopyData(leak_slice(data.clone())),
+            M::CopyDone => Send::CopyDone,
+            M::CopyFail { message } => Send::CopyFail(leak(message)),
+            M::Terminate => continue,
+            other => return Err(format!("unsupported recorded message {other:?}")),
+        };
+        let is_copy = matches!(send, Send::CopyData(_) | Send::CopyDone | Send::CopyFail(_));
+        if is_copy && batch.is_empty() && matches!(steps.last(), Some(Step::Receive(_))) {
+            batch.push(send);
+            continue;
+        }
+        let ends_batch = matches!(send, Send::Sync | Send::Query(_) | Send::CopyDone | Send::CopyFail(_));
+        batch.push(send);
+        if ends_batch {
+            steps.push(Step::Send(leak_slice(std::mem::take(&mut batch))));
+            steps.push(Step::Receive(&[]));
+        }
+    }
+    if !batch.is_empty() {
+        steps.push(Step::Send(leak_slice(batch)));
+        steps.push(Step::Receive(&[]));
+    }
+    Ok(WireTest { name: leak(name), steps: leak_slice(steps), startup: harness::wire::PGX_STARTUP, ..W })
 }
 
 /// capture_json captures a conversation and converts it into JSON, recording each received message as the Rust

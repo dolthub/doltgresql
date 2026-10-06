@@ -379,7 +379,8 @@ impl Session {
     /// DOLTGRES_RECORD_DIR named after the running test and script, when recording is enabled.
     pub fn save_recording(&self, script_name: &str) {
         let (Some(recorder), Some(dir)) = (&self.recorder, std::env::var_os(RECORD_DIR_ENV)) else { return };
-        let test = std::thread::current().name().unwrap_or("unknown").rsplit("::").next().unwrap_or("unknown").to_string();
+        let test =
+            std::thread::current().name().unwrap_or("unknown").rsplit("::").next().unwrap_or("unknown").to_string();
         let base = format!("{test}__{}", sanitize(script_name));
         let mut path = PathBuf::from(&dir).join(format!("{base}.hex"));
         let mut counter = 1;

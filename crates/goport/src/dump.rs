@@ -141,8 +141,9 @@ pub fn to_assertion(assertion: &Value, transaction: bool) -> Result<ScriptTestAs
 /// to_script converts a Go script into a runnable one. Every assertion runs, including those the Go test skips.
 pub fn to_script(test: &Value, transaction: bool) -> Result<ScriptTest, String> {
     if test.get("ServerConfig").is_some() {
-        return Err("ServerConfig is not converted yet".to_string());
+        return Err("ServerConfig has no YAML override".to_string());
     }
+    let server_config = leak(test.get("ServerConfigYAML").and_then(Value::as_str).unwrap_or_default());
     let assertions = match test.get("Assertions").and_then(Value::as_array) {
         Some(assertions) => assertions.iter().map(|a| to_assertion(a, transaction)).collect::<Result<Vec<_>, _>>()?,
         None => Vec::new(),
@@ -152,6 +153,7 @@ pub fn to_script(test: &Value, transaction: bool) -> Result<ScriptTest, String> 
         database: leak(&string_field(test, "Database")),
         set_up_script: leak_slice(strings_field(test, "SetUpScript").iter().map(|s| leak(s)).collect()),
         assertions: leak_slice(assertions),
+        server_config,
         ..S
     })
 }
