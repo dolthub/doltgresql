@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+exclude = ["third_party"]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,3 +14,7 @@ unsafe_code = "forbid"
 
 [workspace.dependencies]
 pgproto = { path = "crates/pgproto" }
+
+# pg_query with `parse_with_cursor`, which reports the position of parse errors.
+[patch.crates-io]
+pg_query = { path = "third_party/pg_query" }

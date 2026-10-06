@@ -44,9 +44,9 @@ pub struct Extras {
 
 /// parse parses the statements of a query.
 pub fn parse(query: &str) -> Result<Vec<Statement>> {
-    match pg_query::parse(query) {
+    match pg_query::parse_with_cursor(query) {
         Ok(result) => Ok(postgres_statements(result, Extras::default())),
-        Err(err) => extended(query).ok_or_else(|| syntax_error(query, err)),
+        Err((err, cursor)) => extended(query).ok_or_else(|| syntax_error(err, cursor)),
     }
 }
 
@@ -61,28 +61,13 @@ fn postgres_statements(result: pg_query::ParseResult, extras: Extras) -> Vec<Sta
         .collect()
 }
 
-/// syntax_error converts a parser error to Postgres' error, with the position Postgres reports.
-fn syntax_error(query: &str, err: pg_query::Error) -> PgError {
+/// syntax_error converts a parser error, with the 1-based character position it reported, to Postgres' error.
+fn syntax_error(err: pg_query::Error, cursor: i32) -> PgError {
     let message = match err {
         pg_query::Error::Parse(message) => message,
         other => other.to_string(),
     };
-    let position = error_position(query, &message);
-    PgError { position, ..PgError::new(code::SYNTAX_ERROR, message) }
-}
-
-/// error_position returns the 1-based character position of a syntax error. The parser reports only the text of the
-/// token it failed at, and the shortest prefix of the query that fails with the same message ends with that token.
-fn error_position(query: &str, message: &str) -> Option<u32> {
-    let chars = |text: &str| text.chars().count() as u32;
-    if message.ends_with(" at end of input") {
-        return Some(chars(query) + 1);
-    }
-    let near = message.split_once(" at or near \"")?.1.strip_suffix('"')?;
-    let ends: Vec<usize> = query.char_indices().map(|(i, _)| i).skip(1).chain([query.len()]).collect();
-    let fails = |end: usize| matches!(pg_query::parse(&query[..end]), Err(pg_query::Error::Parse(m)) if m == message);
-    let end = *ends.get(ends.partition_point(|&end| !fails(end)))?;
-    Some(chars(&query[..end.checked_sub(near.len())?]) + 1)
+    PgError { position: u32::try_from(cursor).ok().filter(|&p| p > 0), ..PgError::new(code::SYNTAX_ERROR, message) }
 }
 
 /// extended parses a query that has Doltgres-only syntax, returning None when some statement is in neither grammar.
@@ -328,10 +313,13 @@ mod tests {
             ("SELECT \"\"", r#"zero-length delimited identifier at or near """""#, 8),
             ("DESC t1", r#"syntax error at or near "DESC""#, 1),
             ("USE a b", r#"syntax error at or near "USE""#, 1),
+            ("SET CONSTRAINTS a.b.c.d IMMEDIATE;", "improper qualified name (too many dotted names): a.b.c.d", 17),
         ] {
             let err = error(query);
             assert_eq!((err.code, err.message.as_str(), err.position), (code::SYNTAX_ERROR, message, Some(position)));
         }
+        let err = error("CREATE TABLE b6 (x INTEGER, CHECK (x > 0) DEFERRABLE);");
+        assert_eq!((err.message.as_str(), err.position), ("CHECK constraints cannot be marked DEFERRABLE", None));
     }
 
     #[test]
