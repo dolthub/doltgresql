@@ -24,6 +24,12 @@ pub mod code {
     pub const INVALID_PARAMETER_VALUE: &str = "22023";
     pub const INVALID_CATALOG_NAME: &str = "3D000";
     pub const DUPLICATE_DATABASE: &str = "42P04";
+    pub const INVALID_BINARY_REPRESENTATION: &str = "22P03";
+    pub const CHARACTER_NOT_IN_REPERTOIRE: &str = "22021";
+    pub const PROTOCOL_VIOLATION: &str = "08P01";
+    pub const INVALID_SQL_STATEMENT_NAME: &str = "26000";
+    pub const INVALID_CURSOR_NAME: &str = "34000";
+    pub const DUPLICATE_PREPARED_STATEMENT: &str = "42P05";
 }
 
 /// PgError is an error to report to the client.

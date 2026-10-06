@@ -19,6 +19,7 @@
 
 pub mod error;
 pub mod parse;
+pub mod types;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,6 +30,7 @@ use pg_query::protobuf::a_const::Val;
 
 pub use error::{PgError, Result, code};
 use parse::{Extras, Statement};
+pub use types::Value;
 
 /// DEFAULT_BRANCH is the branch a new database starts on.
 pub const DEFAULT_BRANCH: &str = "main";
@@ -36,6 +38,8 @@ pub const DEFAULT_BRANCH: &str = "main";
 /// Type OIDs the engine returns.
 pub mod oid {
     pub const BOOL: u32 = 16;
+    pub const INT8: u32 = 20;
+    pub const INT2: u32 = 21;
     pub const INT4: u32 = 23;
     pub const TEXT: u32 = 25;
     pub const UNKNOWN: u32 = 705;
@@ -53,14 +57,24 @@ pub struct Column {
 }
 
 /// Outcome is what one statement produced.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Outcome {
-    /// Rows, in text format, with the command tag that ends them.
-    Rows { columns: Vec<Column>, rows: Vec<Vec<Option<Vec<u8>>>>, tag: String },
+    /// Rows, with the command tag that ends them.
+    Rows { columns: Vec<Column>, rows: Vec<Vec<Value>>, tag: String },
     /// A command without rows.
     Command { tag: String },
     /// An empty query.
     Empty,
+}
+
+/// Prepared is a parsed statement, ready to bind parameters to and execute.
+#[derive(Clone, Debug)]
+pub struct Prepared {
+    /// The statement, or None for an empty query.
+    pub statement: Option<Statement>,
+    pub parameter_types: Vec<u32>,
+    /// The result columns, or None when the statement returns no rows.
+    pub columns: Option<Vec<Column>>,
 }
 
 /// Engine serves the databases in a data directory. Clones share the same databases.
@@ -167,6 +181,30 @@ impl Session {
         (outcomes, None)
     }
 
+    /// prepare parses a query of at most one statement and describes its parameters and results.
+    pub fn prepare(&mut self, query: &str, parameter_types: &[u32]) -> Result<Prepared> {
+        let mut statements = parse::parse(query)?;
+        if statements.len() > 1 {
+            return Err(PgError::new(code::SYNTAX_ERROR, "cannot insert multiple commands into a prepared statement"));
+        }
+        let statement = statements.pop();
+        let columns = match &statement {
+            Some(Statement::Postgres { node: NodeEnum::SelectStmt(select), .. }) if select.from_clause.is_empty() => {
+                Some(select_constants(select)?.0)
+            }
+            _ => None,
+        };
+        Ok(Prepared { statement, parameter_types: parameter_types.to_vec(), columns })
+    }
+
+    /// execute_prepared runs a prepared statement with the parameter values.
+    pub fn execute_prepared(&mut self, prepared: &Prepared, _parameters: &[Value]) -> Result<Outcome> {
+        match &prepared.statement {
+            Some(statement) => self.statement(statement),
+            None => Ok(Outcome::Empty),
+        }
+    }
+
     /// statement runs one parsed statement.
     fn statement(&mut self, statement: &Statement) -> Result<Outcome> {
         match statement {
@@ -217,30 +255,36 @@ impl Session {
         match node {
             NodeEnum::CreatedbStmt(create) => self.create_database(&create.dbname, extras.if_not_exists),
             NodeEnum::SelectStmt(select) if select.from_clause.is_empty() => {
-                let mut columns = Vec::new();
-                let mut row = Vec::new();
-                for target in &select.target_list {
-                    let Some(NodeEnum::ResTarget(target)) = target.node.as_ref() else {
-                        return Err(PgError::unsupported("this target"));
-                    };
-                    let value = target.val.as_ref().and_then(|v| v.node.as_ref());
-                    let (type_oid, type_size, text) = match value {
-                        Some(NodeEnum::AConst(c)) => match &c.val {
-                            Some(Val::Ival(i)) => (oid::INT4, 4, Some(i.ival.to_string())),
-                            Some(Val::Sval(s)) => (oid::UNKNOWN, -2, Some(s.sval.clone())),
-                            Some(Val::Boolval(b)) => (oid::BOOL, 1, Some(if b.boolval { "t" } else { "f" }.into())),
-                            None if c.isnull => (oid::UNKNOWN, -2, None),
-                            _ => return Err(PgError::unsupported("this constant")),
-                        },
-                        _ => return Err(PgError::unsupported("this expression")),
-                    };
-                    let name = if target.name.is_empty() { "?column?".to_string() } else { target.name.clone() };
-                    columns.push(Column { name, type_oid, type_size, type_modifier: -1 });
-                    row.push(text.map(String::into_bytes));
-                }
+                let (columns, row) = select_constants(select)?;
                 Ok(Outcome::Rows { columns, rows: vec![row], tag: "SELECT 1".into() })
             }
             _ => Err(PgError::unsupported("this statement")),
         }
     }
+}
+
+/// select_constants returns the columns and the row of a SELECT of constants.
+fn select_constants(select: &pg_query::protobuf::SelectStmt) -> Result<(Vec<Column>, Vec<Value>)> {
+    let mut columns = Vec::new();
+    let mut row = Vec::new();
+    for target in &select.target_list {
+        let Some(NodeEnum::ResTarget(target)) = target.node.as_ref() else {
+            return Err(PgError::unsupported("this target"));
+        };
+        let value = target.val.as_ref().and_then(|v| v.node.as_ref());
+        let (type_oid, type_size, value) = match value {
+            Some(NodeEnum::AConst(c)) => match &c.val {
+                Some(Val::Ival(i)) => (oid::INT4, 4, Value::Int4(i.ival)),
+                Some(Val::Sval(s)) => (oid::UNKNOWN, -2, Value::Text(s.sval.clone())),
+                Some(Val::Boolval(b)) => (oid::BOOL, 1, Value::Bool(b.boolval)),
+                None if c.isnull => (oid::UNKNOWN, -2, Value::Null),
+                _ => return Err(PgError::unsupported("this constant")),
+            },
+            _ => return Err(PgError::unsupported("this expression")),
+        };
+        let name = if target.name.is_empty() { "?column?".to_string() } else { target.name.clone() };
+        columns.push(Column { name, type_oid, type_size, type_modifier: -1 });
+        row.push(value);
+    }
+    Ok((columns, row))
 }

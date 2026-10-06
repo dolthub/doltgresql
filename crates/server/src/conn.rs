@@ -14,12 +14,13 @@
 
 //! One client connection: the startup handshake, authentication, and the message loop.
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
 
 use pgproto::{BackendMessage, ErrorFields, FieldDescription, FrameReader, FrontendMessage, PasswordKind};
-use sql::{Outcome, PgError, Session};
+use sql::{Column, Outcome, PgError, Prepared, Session, Value, code};
 
 use crate::Server;
 use crate::scram::Exchange;
@@ -248,12 +249,19 @@ impl Conn {
 
     /// serve runs the message loop.
     fn serve(&mut self, session: &mut Session) -> Result<(), ConnError> {
+        let mut extended = Extended::default();
         loop {
-            match self.read(PasswordKind::Password)? {
+            let message = self.read(PasswordKind::Password)?;
+            if extended.failed && !matches!(message, FrontendMessage::Sync | FrontendMessage::Terminate) {
+                continue;
+            }
+            match message {
                 FrontendMessage::Query { query } => {
+                    extended.statements.remove("");
+                    extended.portals.remove("");
                     let (outcomes, error) = session.execute(&query);
                     for outcome in outcomes {
-                        self.queue_outcome(outcome);
+                        self.queue_outcome(outcome, None);
                     }
                     if let Some(err) = error {
                         self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
@@ -261,33 +269,127 @@ impl Conn {
                     self.queue(BackendMessage::ReadyForQuery { tx_status: b'I' });
                     self.flush()?;
                 }
-                FrontendMessage::Terminate => return Ok(()),
-                other => {
-                    let err = PgError::unsupported(format!("the {} message", message_name(&other)));
-                    self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                FrontendMessage::Sync => {
+                    extended.failed = false;
                     self.queue(BackendMessage::ReadyForQuery { tx_status: b'I' });
                     self.flush()?;
+                }
+                FrontendMessage::Flush => self.flush()?,
+                FrontendMessage::Terminate => return Ok(()),
+                message => {
+                    if let Err(err) = self.extended_message(session, &mut extended, message) {
+                        self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                        extended.failed = true;
+                    }
                 }
             }
         }
     }
 
-    /// queue_outcome queues the messages of one statement's outcome.
-    fn queue_outcome(&mut self, outcome: Outcome) {
+    /// extended_message handles a message of the extended query protocol other than Sync and Flush.
+    fn extended_message(
+        &mut self,
+        session: &mut Session,
+        extended: &mut Extended,
+        message: FrontendMessage,
+    ) -> Result<(), PgError> {
+        match message {
+            FrontendMessage::Parse { name, query, parameter_oids } => {
+                if !name.is_empty() && extended.statements.contains_key(&name) {
+                    return Err(PgError::new(
+                        code::DUPLICATE_PREPARED_STATEMENT,
+                        format!("prepared statement \"{name}\" already exists"),
+                    ));
+                }
+                let prepared = session.prepare(&query, &parameter_oids)?;
+                extended.statements.insert(name, Arc::new(prepared));
+                self.queue(BackendMessage::ParseComplete);
+            }
+            FrontendMessage::Bind {
+                destination_portal,
+                prepared_statement,
+                parameter_format_codes,
+                parameters,
+                result_format_codes,
+            } => {
+                let prepared = extended.statement(&prepared_statement)?;
+                if parameters.len() != prepared.parameter_types.len() {
+                    return Err(PgError::new(
+                        code::PROTOCOL_VIOLATION,
+                        format!(
+                            "bind message supplies {} parameters, but prepared statement \"{prepared_statement}\" \
+                             requires {}",
+                            parameters.len(),
+                            prepared.parameter_types.len()
+                        ),
+                    ));
+                }
+                let values = parameters
+                    .iter()
+                    .enumerate()
+                    .map(|(i, value)| {
+                        Value::decode(prepared.parameter_types[i], format(&parameter_format_codes, i), value.as_deref())
+                    })
+                    .collect::<sql::Result<Vec<Value>>>()?;
+                let portal = Portal { prepared, parameters: values, result_formats: result_format_codes };
+                extended.portals.insert(destination_portal, portal);
+                self.queue(BackendMessage::BindComplete);
+            }
+            FrontendMessage::Describe { object_type: b'S', name } => {
+                let prepared = extended.statement(&name)?;
+                self.queue(BackendMessage::ParameterDescription { parameter_oids: prepared.parameter_types.clone() });
+                self.queue_description(prepared.columns.as_deref(), &[]);
+            }
+            FrontendMessage::Describe { name, .. } => {
+                let portal = extended.portal(&name)?;
+                let (prepared, formats) = (portal.prepared.clone(), portal.result_formats.clone());
+                self.queue_description(prepared.columns.as_deref(), &formats);
+            }
+            FrontendMessage::Execute { portal, .. } => {
+                let portal = extended.portal(&portal)?;
+                let (prepared, formats) = (portal.prepared.clone(), portal.result_formats.clone());
+                let outcome = session.execute_prepared(&prepared, &portal.parameters.clone())?;
+                self.queue_outcome(outcome, Some(&formats));
+            }
+            FrontendMessage::Close { object_type, name } => {
+                if object_type == b'S' {
+                    extended.statements.remove(&name);
+                } else {
+                    extended.portals.remove(&name);
+                }
+                self.queue(BackendMessage::CloseComplete);
+            }
+            other => return Err(PgError::unsupported(format!("the {} message", message_name(&other)))),
+        }
+        Ok(())
+    }
+
+    /// queue_description queues the RowDescription of the columns in the formats, or NoData without columns.
+    fn queue_description(&mut self, columns: Option<&[Column]>, formats: &[i16]) {
+        match columns {
+            Some(columns) => self.queue(BackendMessage::RowDescription { fields: fields(columns, formats) }),
+            None => self.queue(BackendMessage::NoData),
+        }
+    }
+
+    /// queue_outcome queues the messages of one statement's outcome, with rows in the formats. Without formats, as
+    /// for a simple query, it describes the rows first and sends them as text.
+    fn queue_outcome(&mut self, outcome: Outcome, formats: Option<&[i16]>) {
         match outcome {
             Outcome::Rows { columns, rows, tag } => {
-                let fields = columns
-                    .into_iter()
-                    .map(|c| FieldDescription {
-                        name: c.name,
-                        data_type_oid: c.type_oid,
-                        data_type_size: c.type_size,
-                        type_modifier: c.type_modifier,
-                        ..FieldDescription::default()
-                    })
-                    .collect();
-                self.queue(BackendMessage::RowDescription { fields });
-                for values in rows {
+                let formats = match formats {
+                    Some(formats) => formats,
+                    None => {
+                        self.queue(BackendMessage::RowDescription { fields: fields(&columns, &[]) });
+                        &[]
+                    }
+                };
+                for row in rows {
+                    let values = row
+                        .iter()
+                        .enumerate()
+                        .map(|(i, value)| value.encode(columns[i].type_oid, format(formats, i)))
+                        .collect();
                     self.queue(BackendMessage::DataRow { values });
                 }
                 self.queue(BackendMessage::CommandComplete { command_tag: tag });
@@ -296,6 +398,64 @@ impl Conn {
             Outcome::Empty => self.queue(BackendMessage::EmptyQueryResponse),
         }
     }
+}
+
+/// Extended is the state of the extended query protocol: the prepared statements, the portals, and whether an error
+/// is discarding messages until the next Sync.
+#[derive(Default)]
+struct Extended {
+    statements: HashMap<String, Arc<Prepared>>,
+    portals: HashMap<String, Portal>,
+    failed: bool,
+}
+
+impl Extended {
+    /// statement returns a prepared statement by name.
+    fn statement(&self, name: &str) -> Result<Arc<Prepared>, PgError> {
+        self.statements.get(name).cloned().ok_or_else(|| {
+            PgError::new(code::INVALID_SQL_STATEMENT_NAME, format!("prepared statement \"{name}\" does not exist"))
+        })
+    }
+
+    /// portal returns a portal by name.
+    fn portal(&self, name: &str) -> Result<&Portal, PgError> {
+        self.portals
+            .get(name)
+            .ok_or_else(|| PgError::new(code::INVALID_CURSOR_NAME, format!("portal \"{name}\" does not exist")))
+    }
+}
+
+/// Portal is a prepared statement bound to parameter values and result formats.
+struct Portal {
+    prepared: Arc<Prepared>,
+    parameters: Vec<Value>,
+    result_formats: Vec<i16>,
+}
+
+/// format returns the format code of the value at the index: the only code when there is one, and text when there
+/// are none.
+fn format(codes: &[i16], index: usize) -> i16 {
+    match codes {
+        [] => 0,
+        [code] => *code,
+        codes => codes.get(index).copied().unwrap_or(0),
+    }
+}
+
+/// fields describes the columns, with the result formats.
+fn fields(columns: &[Column], formats: &[i16]) -> Vec<FieldDescription> {
+    columns
+        .iter()
+        .enumerate()
+        .map(|(i, c)| FieldDescription {
+            name: c.name.clone(),
+            data_type_oid: c.type_oid,
+            data_type_size: c.type_size,
+            type_modifier: c.type_modifier,
+            format: format(formats, i),
+            ..FieldDescription::default()
+        })
+        .collect()
 }
 
 /// message_name names a frontend message for errors.
