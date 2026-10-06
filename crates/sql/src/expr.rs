@@ -153,6 +153,8 @@ pub enum Expr {
     Default(usize),
     /// A date and time operator.
     DateTime(DateOp, Box<Expr>, Box<Expr>),
+    /// A window function call's result, by its position among the select list's window calls.
+    WindowRef(usize),
     /// An ARRAY constructor of the element type, whose items are themselves arrays when it is multidimensional.
     Array(u32, Vec<Expr>, bool),
     /// Subscripts of an array, as lower and upper bounds, which select a slice when the flag is set.
@@ -174,6 +176,12 @@ pub struct Binder<'b, 'a> {
     pub aggregates: Option<Vec<AggCall>>,
     /// The current scope's columns that were referred to, with the locations of the references.
     pub columns: Vec<(usize, i32)>,
+    /// The window function calls of the select list, or None where window functions aren't allowed.
+    pub windows: Option<Vec<crate::window::WindowCall>>,
+    /// The named windows of the query's WINDOW clause.
+    pub named_windows: Vec<pg_query::protobuf::WindowDef>,
+    /// The clause being bound, which errors about window functions name.
+    pub clause: &'static str,
 }
 
 impl<'b, 'a> Binder<'b, 'a> {
@@ -184,7 +192,15 @@ impl<'b, 'a> Binder<'b, 'a> {
 
     /// with_scopes returns a binder over the last scope inside the others.
     pub fn with_scopes(ctx: &'b mut Ctx<'a>, scopes: Vec<Scope>) -> Binder<'b, 'a> {
-        Binder { ctx, scopes, aggregates: None, columns: Vec::new() }
+        Binder {
+            ctx,
+            scopes,
+            aggregates: None,
+            columns: Vec::new(),
+            windows: None,
+            named_windows: Vec::new(),
+            clause: "this context",
+        }
     }
 
     /// compare binds a comparison of two bound expressions.
@@ -469,7 +485,13 @@ impl<'b, 'a> Binder<'b, 'a> {
             }
         };
         if call.over.is_some() {
-            return Err(PgError::unsupported("window functions"));
+            return self.window_call(name, call);
+        }
+        if crate::window::is_window_function(name) {
+            return Err(PgError {
+                position: position(call.location),
+                ..PgError::new(code::WRONG_OBJECT_TYPE, format!("window function {name} requires an OVER clause"))
+            });
         }
         if call.agg_star || functions::aggregate::exists(name) {
             return self.aggregate_call(name, call);
@@ -1543,6 +1565,7 @@ impl Expr {
                 ctx.outer[level].get(*i).cloned().unwrap_or(Value::Null)
             }
             Expr::InputColumn(_) | Expr::AggRef(_) => return Err(PgError::internal("an ungrouped expression")),
+            Expr::WindowRef(_) => return Err(PgError::internal("a window call outside its window")),
             Expr::Default(_) => return Err(PgError::internal("a default outside a written row")),
             Expr::DateTime(op, left, right) => {
                 let (l, r) = (left.eval(ctx, row)?, right.eval(ctx, row)?);

@@ -39,6 +39,7 @@ pub mod storage;
 pub mod txn;
 pub mod types;
 pub mod views;
+pub mod window;
 
 pub use engine::{Engine, Session};
 pub use error::{PgError, Result, code};

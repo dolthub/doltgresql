@@ -1,0 +1,618 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Window functions: functions over a row's partition and frame, which a Window plan node computes for every row.
+
+use std::cmp::Ordering;
+
+use pg_query::protobuf::{FuncCall, WindowDef};
+use pg_query::{Node, NodeEnum};
+
+use crate::catalog::ColumnType;
+use crate::error::{PgError, Result, code};
+use crate::expr::{Binder, Expr, arg_location, coerce, compare_values, position, typ};
+use crate::functions::aggregate::{Accumulator, AggCall};
+use crate::oid;
+use crate::plan::SortKey;
+use crate::query::Ctx;
+use crate::types::Value;
+
+/// Frame option bits of a window definition, as Postgres' parser sets them.
+mod frame {
+    pub const RANGE: i32 = 0x2;
+    pub const ROWS: i32 = 0x4;
+    pub const GROUPS: i32 = 0x8;
+    pub const END_UNBOUNDED_FOLLOWING: i32 = 0x100;
+    pub const START_CURRENT_ROW: i32 = 0x200;
+    pub const START_OFFSET_PRECEDING: i32 = 0x800;
+    pub const END_OFFSET_PRECEDING: i32 = 0x1000;
+    pub const START_OFFSET_FOLLOWING: i32 = 0x2000;
+    pub const END_OFFSET_FOLLOWING: i32 = 0x4000;
+    pub const EXCLUDE_CURRENT_ROW: i32 = 0x8000;
+    pub const EXCLUDE_GROUP: i32 = 0x10000;
+    pub const EXCLUDE_TIES: i32 = 0x20000;
+}
+
+/// WindowKind is what a window function computes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowKind {
+    RowNumber,
+    Rank,
+    DenseRank,
+    PercentRank,
+    CumeDist,
+    Ntile,
+    Lag,
+    Lead,
+    FirstValue,
+    LastValue,
+    NthValue,
+    /// An aggregate over the frame, by its index among the aggregates.
+    Aggregate(usize),
+}
+
+/// Bound is a bound of a window frame.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Bound {
+    UnboundedPreceding,
+    Preceding(Expr),
+    CurrentRow,
+    Following(Expr),
+    UnboundedFollowing,
+}
+
+/// WindowCall is a window function call: its function, arguments, partition, order, and frame, all over the rows the
+/// window node reads.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowCall {
+    pub kind: WindowKind,
+    pub args: Vec<Expr>,
+    pub distinct: bool,
+    pub filter: Option<Expr>,
+    pub partition: Vec<Expr>,
+    pub order: Vec<SortKey>,
+    /// The frame's mode bits, start, and end.
+    pub options: i32,
+    pub start: Bound,
+    pub end: Bound,
+    pub ret: ColumnType,
+}
+
+/// window_kind returns the window function of a name, or None for a name that is not one.
+fn window_kind(name: &str) -> Option<(WindowKind, &'static [u32], u32)> {
+    Some(match name {
+        "row_number" => (WindowKind::RowNumber, &[], oid::INT8),
+        "rank" => (WindowKind::Rank, &[], oid::INT8),
+        "dense_rank" => (WindowKind::DenseRank, &[], oid::INT8),
+        "percent_rank" => (WindowKind::PercentRank, &[], oid::FLOAT8),
+        "cume_dist" => (WindowKind::CumeDist, &[], oid::FLOAT8),
+        "ntile" => (WindowKind::Ntile, &[oid::INT4], oid::INT4),
+        "lag" => (WindowKind::Lag, &[], 0),
+        "lead" => (WindowKind::Lead, &[], 0),
+        "first_value" => (WindowKind::FirstValue, &[], 0),
+        "last_value" => (WindowKind::LastValue, &[], 0),
+        "nth_value" => (WindowKind::NthValue, &[], 0),
+        _ => return None,
+    })
+}
+
+/// is_window_function reports whether a name is a window function.
+pub fn is_window_function(name: &str) -> bool {
+    window_kind(name).is_some()
+}
+
+/// has_window reports whether an expression calls a window function.
+pub fn has_window(node: &Node) -> bool {
+    node.node.as_ref().is_some_and(|n| {
+        n.nodes().into_iter().any(|(n, ..)| matches!(n, pg_query::NodeRef::FuncCall(f) if f.over.is_some()))
+    })
+}
+
+impl<'b, 'a> Binder<'b, 'a> {
+    /// window_definition returns a call's window, resolving a named window and merging a window it refers to.
+    fn window_definition(&self, over: &WindowDef) -> Result<WindowDef> {
+        let named = |name: &str| {
+            self.named_windows.iter().find(|w| w.name == name).cloned().ok_or_else(|| PgError {
+                position: position(over.location),
+                ..PgError::new(code::UNDEFINED_OBJECT, format!("window \"{name}\" does not exist"))
+            })
+        };
+        if !over.name.is_empty() && over.partition_clause.is_empty() && over.order_clause.is_empty() {
+            return named(&over.name);
+        }
+        if over.refname.is_empty() {
+            return Ok(over.clone());
+        }
+        let base = named(&over.refname)?;
+        if !over.partition_clause.is_empty() {
+            return Err(PgError {
+                position: position(over.location),
+                ..PgError::new(
+                    code::WINDOWING_ERROR,
+                    format!("cannot override PARTITION BY clause of window \"{}\"", over.refname),
+                )
+            });
+        }
+        if !over.order_clause.is_empty() && !base.order_clause.is_empty() {
+            return Err(PgError {
+                position: position(over.location),
+                ..PgError::new(
+                    code::WINDOWING_ERROR,
+                    format!("cannot override ORDER BY clause of window \"{}\"", over.refname),
+                )
+            });
+        }
+        if base.frame_options & 1 != 0 {
+            return Err(PgError {
+                position: position(over.location),
+                ..PgError::new(
+                    code::WINDOWING_ERROR,
+                    format!("cannot copy window \"{}\" because it has a frame clause", over.refname),
+                )
+            });
+        }
+        Ok(WindowDef {
+            partition_clause: base.partition_clause,
+            order_clause: if over.order_clause.is_empty() { base.order_clause } else { over.order_clause.clone() },
+            ..over.clone()
+        })
+    }
+
+    /// window_call binds a call with an OVER clause.
+    pub fn window_call(&mut self, name: &str, call: &FuncCall) -> Result<(Expr, ColumnType)> {
+        let Some(mut windows) = self.windows.take() else {
+            return Err(PgError {
+                position: position(call.location),
+                ..PgError::new(code::WINDOWING_ERROR, format!("window functions are not allowed in {}", self.clause))
+            });
+        };
+        let result = self.window_call_inner(name, call);
+        let (window, ty) = match result {
+            Ok(r) => r,
+            Err(err) => {
+                self.windows = Some(windows);
+                return Err(err);
+            }
+        };
+        windows.push(window);
+        let k = windows.len() - 1;
+        self.windows = Some(windows);
+        Ok((Expr::WindowRef(k), ty))
+    }
+
+    /// window_call_inner binds a window call's function, arguments, and window.
+    fn window_call_inner(&mut self, name: &str, call: &FuncCall) -> Result<(WindowCall, ColumnType)> {
+        let over = call.over.as_deref().ok_or_else(|| PgError::internal("a window call without OVER"))?;
+        let over = self.window_definition(over)?;
+        let mut bound = Vec::with_capacity(call.args.len());
+        for arg in &call.args {
+            if has_window(arg) {
+                return Err(PgError {
+                    position: position(arg_location(arg)),
+                    ..PgError::new(code::WINDOWING_ERROR, "window function calls cannot be nested")
+                });
+            }
+            bound.push(self.bind(arg)?);
+        }
+        let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
+        let (kind, args, ret) = match window_kind(name) {
+            Some((kind, params, ret)) => {
+                let mut args = Vec::new();
+                let ret = match kind {
+                    WindowKind::Lag
+                    | WindowKind::Lead
+                    | WindowKind::FirstValue
+                    | WindowKind::LastValue
+                    | WindowKind::NthValue => {
+                        let expected = match kind {
+                            WindowKind::Lag | WindowKind::Lead => 1..=3,
+                            WindowKind::NthValue => 2..=2,
+                            _ => 1..=1,
+                        };
+                        if !expected.contains(&bound.len()) {
+                            return Err(missing_function(name, &types, call.location));
+                        }
+                        let value_type = if types[0] == oid::UNKNOWN { typ(oid::TEXT) } else { bound[0].1 };
+                        for (i, (b, node)) in bound.into_iter().zip(&call.args).enumerate() {
+                            let target = if i == 0 || (i == 2 && kind != WindowKind::NthValue) {
+                                value_type
+                            } else {
+                                typ(oid::INT4)
+                            };
+                            args.push(coerce(b, target, false, arg_location(node))?.0);
+                        }
+                        value_type
+                    }
+                    _ => {
+                        if bound.len() != params.len() {
+                            return Err(missing_function(name, &types, call.location));
+                        }
+                        for ((b, node), &p) in bound.into_iter().zip(&call.args).zip(params) {
+                            args.push(coerce(b, typ(p), false, arg_location(node))?.0);
+                        }
+                        typ(ret)
+                    }
+                };
+                (kind, args, ret)
+            }
+            None if call.agg_star || crate::functions::aggregate::exists(name) => {
+                let (index, arg_types, ret) = crate::functions::aggregate::resolve(name, &types, call.location)?;
+                let mut args = Vec::new();
+                for ((b, &t), node) in bound.into_iter().zip(&arg_types).zip(&call.args) {
+                    args.push(coerce(b, typ(t), false, arg_location(node))?.0);
+                }
+                (WindowKind::Aggregate(index), args, typ(ret))
+            }
+            None => {
+                return Err(PgError {
+                    position: position(call.location),
+                    ..PgError::new(
+                        code::WRONG_OBJECT_TYPE,
+                        format!("OVER specified, but {name} is not a window function nor an aggregate function"),
+                    )
+                });
+            }
+        };
+        if call.agg_distinct {
+            return Err(PgError {
+                position: position(call.location),
+                ..PgError::new(code::FEATURE_NOT_SUPPORTED, "DISTINCT is not implemented for window functions")
+            });
+        }
+        let filter = match call.agg_filter.as_deref() {
+            Some(node) => Some(coerce(self.bind(node)?, typ(oid::BOOL), false, -1)?.0),
+            None => None,
+        };
+        let mut partition = Vec::new();
+        for node in &over.partition_clause {
+            partition.push(self.bind(node)?.0);
+        }
+        let mut order = Vec::new();
+        for sort in &over.order_clause {
+            let Some(NodeEnum::SortBy(sort)) = sort.node.as_ref() else { continue };
+            let node = sort.node.as_deref().ok_or_else(|| PgError::internal("ORDER BY without a key"))?;
+            let descending = pg_query::protobuf::SortByDir::try_from(sort.sortby_dir)
+                == Ok(pg_query::protobuf::SortByDir::SortbyDesc);
+            let nulls_first = match pg_query::protobuf::SortByNulls::try_from(sort.sortby_nulls) {
+                Ok(pg_query::protobuf::SortByNulls::SortbyNullsFirst) => true,
+                Ok(pg_query::protobuf::SortByNulls::SortbyNullsLast) => false,
+                _ => descending,
+            };
+            order.push(SortKey { expr: self.bind(node)?.0, descending, nulls_first });
+        }
+        let options = over.frame_options;
+        let mut offset = |node: &Option<Box<Node>>| -> Result<Expr> {
+            let node = node.as_deref().ok_or_else(|| PgError::internal("a frame offset without a value"))?;
+            Ok(coerce(self.bind(node)?, typ(oid::INT8), false, arg_location(node))?.0)
+        };
+        let start = if options & frame::START_CURRENT_ROW != 0 {
+            Bound::CurrentRow
+        } else if options & frame::START_OFFSET_PRECEDING != 0 {
+            Bound::Preceding(offset(&over.start_offset)?)
+        } else if options & frame::START_OFFSET_FOLLOWING != 0 {
+            Bound::Following(offset(&over.start_offset)?)
+        } else {
+            Bound::UnboundedPreceding
+        };
+        let end = if options & frame::END_UNBOUNDED_FOLLOWING != 0 {
+            Bound::UnboundedFollowing
+        } else if options & frame::END_OFFSET_PRECEDING != 0 {
+            Bound::Preceding(offset(&over.end_offset)?)
+        } else if options & frame::END_OFFSET_FOLLOWING != 0 {
+            Bound::Following(offset(&over.end_offset)?)
+        } else {
+            Bound::CurrentRow
+        };
+        if options & frame::RANGE != 0
+            && (matches!(start, Bound::Preceding(_) | Bound::Following(_))
+                || matches!(end, Bound::Preceding(_) | Bound::Following(_)))
+        {
+            return Err(PgError::unsupported("RANGE frames with offsets"));
+        }
+        Ok((WindowCall { kind, args, distinct: false, filter, partition, order, options, start, end, ret }, ret))
+    }
+}
+
+/// missing_function returns Postgres' error for a window function called with the wrong arguments.
+fn missing_function(name: &str, types: &[u32], location: i32) -> PgError {
+    PgError {
+        position: position(location),
+        hint: Some(
+            "No function matches the given name and argument types. You might need to add explicit type casts.".into(),
+        ),
+        ..PgError::new(
+            code::UNDEFINED_FUNCTION,
+            format!(
+                "function {name}({}) does not exist",
+                types.iter().map(|&t| crate::cast::type_display(t)).collect::<Vec<_>>().join(", ")
+            ),
+        )
+    }
+}
+
+/// compare_keys orders rows by sort key values, as ORDER BY does.
+fn compare_keys(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
+    for (i, key) in keys.iter().enumerate() {
+        let ordering = match (&a[i], &b[i]) {
+            (Value::Null, Value::Null) => Ordering::Equal,
+            (Value::Null, _) => {
+                if key.nulls_first {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            }
+            (_, Value::Null) => {
+                if key.nulls_first {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                }
+            }
+            (l, r) => {
+                let o = compare_values(l, r);
+                if key.descending { o.reverse() } else { o }
+            }
+        };
+        if ordering != Ordering::Equal {
+            return ordering;
+        }
+    }
+    Ordering::Equal
+}
+
+/// offset evaluates a frame offset, which must not be NULL or negative.
+fn offset(ctx: &mut Ctx<'_>, expr: &Expr, row: &[Value]) -> Result<usize> {
+    match expr.eval(ctx, row)? {
+        Value::Int8(n) if n >= 0 => Ok(n as usize),
+        Value::Null => Err(PgError::new(code::NULL_VALUE_NOT_ALLOWED, "frame starting offset must not be null")),
+        _ => Err(PgError::new(code::INVALID_PRECEDING_OR_FOLLOWING_SIZE, "frame starting offset must not be negative")),
+    }
+}
+
+impl WindowCall {
+    /// compute returns the call's value for each row of the input, in input order.
+    pub fn compute(&self, ctx: &mut Ctx<'_>, rows: &[Vec<Value>]) -> Result<Vec<Value>> {
+        let mut keyed: Vec<(Vec<Value>, Vec<Value>, usize)> = Vec::with_capacity(rows.len());
+        for (i, row) in rows.iter().enumerate() {
+            let partition = self.partition.iter().map(|e| e.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+            let order = self.order.iter().map(|k| k.expr.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+            keyed.push((partition, order, i));
+        }
+        let partition_keys: Vec<SortKey> =
+            self.partition.iter().map(|e| SortKey { expr: e.clone(), descending: false, nulls_first: false }).collect();
+        keyed.sort_by(|a, b| {
+            compare_keys(&partition_keys, &a.0, &b.0).then_with(|| compare_keys(&self.order, &a.1, &b.1))
+        });
+        let mut out = vec![Value::Null; rows.len()];
+        let mut start = 0;
+        while start < keyed.len() {
+            let mut end = start + 1;
+            while end < keyed.len() && compare_keys(&partition_keys, &keyed[start].0, &keyed[end].0) == Ordering::Equal
+            {
+                end += 1;
+            }
+            let part = &keyed[start..end];
+            let members: Vec<&Vec<Value>> = part.iter().map(|k| &rows[k.2]).collect();
+            for (position, entry) in part.iter().enumerate() {
+                out[entry.2] = self.value(ctx, part, &members, position)?;
+            }
+            start = end;
+        }
+        Ok(out)
+    }
+
+    /// peers returns the first and last positions of the rows that sort equal to a row of a partition.
+    fn peers(&self, part: &[(Vec<Value>, Vec<Value>, usize)], position: usize) -> (usize, usize) {
+        if self.order.is_empty() {
+            return (0, part.len() - 1);
+        }
+        let same = |i: usize| compare_keys(&self.order, &part[i].1, &part[position].1) == Ordering::Equal;
+        let mut first = position;
+        while first > 0 && same(first - 1) {
+            first -= 1;
+        }
+        let mut last = position;
+        while last + 1 < part.len() && same(last + 1) {
+            last += 1;
+        }
+        (first, last)
+    }
+
+    /// frame returns the positions of the rows in a row's frame.
+    fn frame(
+        &self,
+        ctx: &mut Ctx<'_>,
+        part: &[(Vec<Value>, Vec<Value>, usize)],
+        members: &[&Vec<Value>],
+        position: usize,
+    ) -> Result<Vec<usize>> {
+        let n = part.len();
+        let rows_mode = self.options & frame::ROWS != 0;
+        let groups_mode = self.options & frame::GROUPS != 0;
+        let (peer_first, peer_last) = self.peers(part, position);
+        let row = members[position];
+        let group_starts: Vec<usize> = if groups_mode {
+            (0..n)
+                .filter(|&i| i == 0 || compare_keys(&self.order, &part[i - 1].1, &part[i].1) != Ordering::Equal)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let group_of = |i: usize| group_starts.iter().rposition(|&s| s <= i).unwrap_or(0);
+        let group_end = |g: usize| group_starts.get(g + 1).map_or(n, |&s| s) - 1;
+        let start = match &self.start {
+            Bound::UnboundedPreceding => 0,
+            Bound::CurrentRow if rows_mode => position,
+            Bound::CurrentRow => peer_first,
+            Bound::Preceding(e) => {
+                let k = offset(ctx, e, row)?;
+                if groups_mode {
+                    group_starts[group_of(position).saturating_sub(k)]
+                } else {
+                    position.saturating_sub(k)
+                }
+            }
+            Bound::Following(e) => {
+                let k = offset(ctx, e, row)?;
+                if groups_mode { group_starts.get(group_of(position) + k).copied().unwrap_or(n) } else { position + k }
+            }
+            Bound::UnboundedFollowing => n,
+        };
+        let end = match &self.end {
+            Bound::UnboundedFollowing => n as isize - 1,
+            Bound::CurrentRow if rows_mode => position as isize,
+            Bound::CurrentRow => peer_last as isize,
+            Bound::Preceding(e) => {
+                let k = offset(ctx, e, row)? as isize;
+                if groups_mode {
+                    let g = group_of(position) as isize - k;
+                    if g < 0 { -1 } else { group_end(g as usize) as isize }
+                } else {
+                    position as isize - k
+                }
+            }
+            Bound::Following(e) => {
+                let k = offset(ctx, e, row)?;
+                if groups_mode {
+                    let g = group_of(position) + k;
+                    if g >= group_starts.len() { n as isize - 1 } else { group_end(g) as isize }
+                } else {
+                    (position + k).min(n - 1) as isize
+                }
+            }
+            Bound::UnboundedPreceding => -1,
+        };
+        let mut positions: Vec<usize> =
+            if end < start as isize { Vec::new() } else { (start..=(end as usize).min(n - 1)).collect() };
+        if self.options & frame::EXCLUDE_CURRENT_ROW != 0 {
+            positions.retain(|&i| i != position);
+        } else if self.options & frame::EXCLUDE_GROUP != 0 {
+            positions.retain(|&i| i < peer_first || i > peer_last);
+        } else if self.options & frame::EXCLUDE_TIES != 0 {
+            positions.retain(|&i| i == position || i < peer_first || i > peer_last);
+        }
+        Ok(positions)
+    }
+
+    /// value computes the call for the row at a position of a sorted partition.
+    fn value(
+        &self,
+        ctx: &mut Ctx<'_>,
+        part: &[(Vec<Value>, Vec<Value>, usize)],
+        members: &[&Vec<Value>],
+        position: usize,
+    ) -> Result<Value> {
+        let n = part.len();
+        let row = members[position];
+        let rank = |p: usize| self.peers(part, p).0 + 1;
+        Ok(match self.kind {
+            WindowKind::RowNumber => Value::Int8(position as i64 + 1),
+            WindowKind::Rank => Value::Int8(rank(position) as i64),
+            WindowKind::DenseRank => {
+                let mut groups = 1;
+                for i in 1..=position {
+                    if compare_keys(&self.order, &part[i - 1].1, &part[i].1) != Ordering::Equal {
+                        groups += 1;
+                    }
+                }
+                Value::Int8(groups)
+            }
+            WindowKind::PercentRank => {
+                Value::Float8(if n <= 1 { 0.0 } else { (rank(position) - 1) as f64 / (n - 1) as f64 })
+            }
+            WindowKind::CumeDist => Value::Float8((self.peers(part, position).1 + 1) as f64 / n as f64),
+            WindowKind::Ntile => {
+                let buckets = match self.args[0].eval(ctx, row)? {
+                    Value::Int4(b) if b > 0 => b as usize,
+                    Value::Null => return Ok(Value::Null),
+                    _ => {
+                        return Err(PgError::new(
+                            code::INVALID_ARGUMENT_FOR_NTILE,
+                            "argument of ntile must be greater than zero",
+                        ));
+                    }
+                };
+                let (size, extra) = (n / buckets, n % buckets);
+                let big = (size + 1) * extra;
+                let bucket =
+                    if position < big { position / (size + 1) } else { extra + (position - big) / size.max(1) };
+                Value::Int4(bucket as i32 + 1)
+            }
+            WindowKind::Lag | WindowKind::Lead => {
+                let k = match self.args.get(1).map(|e| e.eval(ctx, row)).transpose()? {
+                    Some(Value::Int4(k)) => k as i64,
+                    Some(_) => return Ok(Value::Null),
+                    None => 1,
+                };
+                let target = if self.kind == WindowKind::Lag { position as i64 - k } else { position as i64 + k };
+                if target >= 0 && (target as usize) < n {
+                    self.args[0].eval(ctx, members[target as usize])?
+                } else {
+                    match self.args.get(2) {
+                        Some(default) => default.eval(ctx, row)?,
+                        None => Value::Null,
+                    }
+                }
+            }
+            WindowKind::FirstValue | WindowKind::LastValue | WindowKind::NthValue => {
+                let positions = self.frame(ctx, part, members, position)?;
+                let chosen = match self.kind {
+                    WindowKind::FirstValue => positions.first().copied(),
+                    WindowKind::LastValue => positions.last().copied(),
+                    _ => match self.args[1].eval(ctx, row)? {
+                        Value::Int4(k) if k > 0 => positions.get(k as usize - 1).copied(),
+                        Value::Null => None,
+                        _ => {
+                            return Err(PgError::new(
+                                code::INVALID_ARGUMENT_FOR_NTH_VALUE,
+                                "argument of nth_value must be greater than zero",
+                            ));
+                        }
+                    },
+                };
+                match chosen {
+                    Some(p) => self.args[0].eval(ctx, members[p])?,
+                    None => Value::Null,
+                }
+            }
+            WindowKind::Aggregate(index) => {
+                let call = AggCall {
+                    index,
+                    args: self.args.clone(),
+                    distinct: self.distinct,
+                    filter: self.filter.clone(),
+                    order: Vec::new(),
+                    ret: self.ret.oid,
+                };
+                let mut accumulator = Accumulator::new(&call);
+                for p in self.frame(ctx, part, members, position)? {
+                    accumulator.add(ctx, &call, members[p])?;
+                }
+                accumulator.finish(ctx, &call)?
+            }
+        })
+    }
+}
+
+/// window_names returns the named windows of a SELECT's WINDOW clause.
+pub fn window_names(clause: &[Node]) -> Vec<WindowDef> {
+    clause
+        .iter()
+        .filter_map(|n| match n.node.as_ref() {
+            Some(NodeEnum::WindowDef(w)) => Some((**w).clone()),
+            _ => None,
+        })
+        .collect()
+}

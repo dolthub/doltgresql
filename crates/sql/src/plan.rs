@@ -127,6 +127,11 @@ pub enum Plan {
     },
     /// The rows of the previous round of a recursive WITH query.
     WorkTable(usize),
+    /// The input's rows, each followed by the value of every window call for it.
+    Window {
+        input: Box<Plan>,
+        calls: Vec<crate::window::WindowCall>,
+    },
 }
 
 /// Cte is a WITH query in scope: its name, its columns, and its plan, or the ID of its working table while its
@@ -810,9 +815,12 @@ impl<'b, 'a> Planner<'b, 'a> {
                 });
             }
             let mut binder = self.binder(scope.clone());
+            binder.clause = "WHERE";
             let predicate = coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0;
             plan = Plan::Filter { input: Box::new(plan), predicate };
         }
+        let windowed = select.target_list.iter().any(crate::window::has_window)
+            || select.sort_clause.iter().any(crate::window::has_window);
         let grouped = !select.group_clause.is_empty()
             || select.having_clause.is_some()
             || select.target_list.iter().any(has_aggregate)
@@ -822,6 +830,10 @@ impl<'b, 'a> Planner<'b, 'a> {
         if grouped {
             binder.aggregates = Some(Vec::new());
         }
+        if windowed {
+            binder.windows = Some(Vec::new());
+        }
+        binder.named_windows = crate::window::window_names(&select.window_clause);
         let mut targets: Vec<(Expr, ColumnType, String, i32)> = Vec::new();
         for target in &select.target_list {
             let Some(NodeEnum::ResTarget(target)) = target.node.as_ref() else { continue };
@@ -878,17 +890,21 @@ impl<'b, 'a> Planner<'b, 'a> {
             };
             sorts.push((expr, descending, nulls_first));
         }
+        let windows = binder.windows.take();
         let mut having = None;
         if let Some(node) = select.having_clause.as_deref() {
+            binder.clause = "HAVING";
             having = Some(coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0);
         }
         let aggregates = binder.aggregates.take();
         let columns_bound = std::mem::take(&mut binder.columns);
         drop(binder);
+        let mut windows = windows;
         if let Some(aggregates) = aggregates {
             // Group keys may refer to output columns by position or name, or be expressions of the input.
             let mut groups: Vec<Expr> = Vec::new();
             let mut binder = self.binder(scope.clone());
+            binder.clause = "GROUP BY";
             for node in &select.group_clause {
                 let expr = if let Some((n, location)) = ordinal(node) {
                     output_ordinal_named(&names, n, location)?;
@@ -935,6 +951,16 @@ impl<'b, 'a> Planner<'b, 'a> {
             targets = new_targets;
             sorts = sorts.into_iter().map(|(e, d, n)| finish(e).map(|e| (e, d, n))).collect::<Result<_>>()?;
             having = having.map(finish).transpose()?;
+            if let Some(windows) = windows.as_mut() {
+                for call in windows.iter_mut() {
+                    call.args = call.args.drain(..).map(finish).collect::<Result<_>>()?;
+                    call.partition = call.partition.drain(..).map(finish).collect::<Result<_>>()?;
+                    call.filter = call.filter.take().map(finish).transpose()?;
+                    for key in &mut call.order {
+                        key.expr = finish(key.expr.clone())?;
+                    }
+                }
+            }
             let groups_plan = groups.into_iter().map(|g| match g {
                 Expr::InputColumn(i) => Expr::Column(i),
                 other => unmark_input(other),
@@ -943,6 +969,13 @@ impl<'b, 'a> Planner<'b, 'a> {
             if let Some(predicate) = having {
                 plan = Plan::Filter { input: Box::new(plan), predicate };
             }
+        }
+        if let Some(calls) = windows.filter(|calls| !calls.is_empty()) {
+            let input_width = plan.width();
+            let place = |expr: Expr| replace_windows(expr, input_width);
+            targets = targets.into_iter().map(|(e, t, n, l)| (place(e), t, n, l)).collect();
+            sorts = sorts.into_iter().map(|(e, d, n)| (place(e), d, n)).collect();
+            plan = Plan::Window { input: Box::new(plan), calls };
         }
         let width = targets.len();
         let types: Vec<ColumnType> = targets.iter().map(|t| t.1).collect();
@@ -1122,6 +1155,14 @@ fn compare_sorted(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
     Ordering::Equal
 }
 
+/// replace_windows replaces window call references with the columns that a window node appends after its input's.
+fn replace_windows(expr: Expr, input_width: usize) -> Expr {
+    match expr {
+        Expr::WindowRef(k) => Expr::Column(input_width + k),
+        other => other.map_children(&mut |child| replace_windows(child, input_width)),
+    }
+}
+
 /// dedupe drops rows that equal an earlier row or a row of the existing rows.
 fn dedupe(rows: Vec<Vec<Value>>, existing: &[Vec<Value>]) -> Vec<Vec<Value>> {
     let mut seen: std::collections::HashSet<String> = existing.iter().map(|r| row_key(r)).collect();
@@ -1202,6 +1243,7 @@ impl Plan {
             Plan::Scan(table) => table.columns.len(),
             Plan::Recursive { anchor, .. } => anchor.width(),
             Plan::WorkTable(_) => 0,
+            Plan::Window { input, calls } => input.width() + calls.len(),
             Plan::System(system) => system.columns().len(),
             Plan::Values(rows) => rows.first().map_or(0, Vec::len),
             Plan::Function { ordinality, width, .. } => width + *ordinality as usize,
@@ -1222,6 +1264,16 @@ impl Plan {
             Plan::OneRow => vec![Vec::new()],
             Plan::Scan(table) => scan(ctx.db, table)?,
             Plan::WorkTable(id) => ctx.work_tables.get(id).cloned().unwrap_or_default(),
+            Plan::Window { input, calls } => {
+                let mut rows = input.run(ctx)?;
+                for call in calls {
+                    let values = call.compute(ctx, &rows)?;
+                    for (row, value) in rows.iter_mut().zip(values) {
+                        row.push(value);
+                    }
+                }
+                rows
+            }
             Plan::Recursive { work_table, anchor, step, all } => {
                 let mut result = anchor.run(ctx)?;
                 if !*all {
