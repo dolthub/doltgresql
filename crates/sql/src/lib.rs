@@ -22,6 +22,7 @@ pub mod aggregates;
 mod alter;
 pub mod array;
 pub mod auth;
+pub mod basetypes;
 pub mod binary;
 pub mod cast;
 pub mod casts;

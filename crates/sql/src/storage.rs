@@ -204,6 +204,9 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
     {
         return deserialize_user_value(field, &user_type);
     }
+    if crate::basetypes::get(ty.oid).is_some() {
+        return Ok(Value::Base(Box::new(crate::types::BaseValue { type_oid: ty.oid, data: field.to_vec() })));
+    }
     Ok(match ty.oid {
         oid::JSON => Value::Json(String::from_utf8(field.to_vec()).map_err(|_| corrupt())?),
         oid::JSONB => {

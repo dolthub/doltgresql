@@ -352,8 +352,11 @@ impl Value {
     }
 }
 
-/// base_type returns the extension's definition of a base type.
+/// base_type returns the definition of a base type that a built-in type Go lacks or an extension provides.
 pub fn base_type(type_oid: u32) -> Option<&'static crate::extensions::BaseType> {
+    if let Some(definition) = crate::basetypes::get(type_oid) {
+        return Some(definition);
+    }
     match crate::usertypes::get(type_oid)?.kind {
         crate::usertypes::Kind::Base(definition) => Some(definition),
         _ => None,

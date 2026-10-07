@@ -8282,3 +8282,281 @@ eHh4"#)],
         },
     ]);
 }
+
+#[test]
+fn test_builtin_base_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "geometric, network, money, and pg_lsn input and output",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '(1,2)'::point, ' ( 1.5 , -2e3 ) '::point, '1,2'::point;",
+                    expected: Expected::Rows {
+                        columns: &[Column("point", POINT), Column("point", POINT), Column("point", POINT)],
+                        rows: &[
+                            &[T("(1,2)"), T("(1.5,-2000)"), T("(1,2)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '((1,2),(3,4))'::lseg, '[(1,2),(3,4)]'::lseg, '1,2,3,4'::lseg;",
+                    expected: Expected::Rows {
+                        columns: &[Column("lseg", LSEG), Column("lseg", LSEG), Column("lseg", LSEG)],
+                        rows: &[
+                            &[T("[(1,2),(3,4)]"), T("[(1,2),(3,4)]"), T("[(1,2),(3,4)]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '(1,2),(3,4)'::box, '((5,6),(7,8))'::box, '(3,1),(1,3)'::box;",
+                    expected: Expected::Rows {
+                        columns: &[Column("box", BOX), Column("box", BOX), Column("box", BOX)],
+                        rows: &[
+                            &[T("(3,4),(1,2)"), T("(7,8),(5,6)"), T("(3,3),(1,1)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '((1,2),(3,4),(5,6))'::path, '[(1,2),(3,4)]'::path, '(1,2),(3,4)'::path;",
+                    expected: Expected::Rows {
+                        columns: &[Column("path", PATH), Column("path", PATH), Column("path", PATH)],
+                        rows: &[
+                            &[T("((1,2),(3,4),(5,6))"), T("[(1,2),(3,4)]"), T("((1,2),(3,4))")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '((1,2),(3,4),(5,6))'::polygon, '(1,2),(3,4)'::polygon;",
+                    expected: Expected::Rows {
+                        columns: &[Column("polygon", POLYGON), Column("polygon", POLYGON)],
+                        rows: &[
+                            &[T("((1,2),(3,4),(5,6))"), T("((1,2),(3,4))")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{1,2,3}'::line, '[(0,0),(1,1)]'::line, '((0,0),(0,1))'::line, '((0,5),(1,5))'::line;",
+                    expected: Expected::Rows {
+                        columns: &[Column("line", LINE), Column("line", LINE), Column("line", LINE), Column("line", LINE)],
+                        rows: &[
+                            &[T("{1,2,3}"), T("{1,-1,0}"), T("{-1,0,0}"), T("{0,-1,5}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<(1,2),3>'::circle, '((1,2),3)'::circle, '(1,2),3'::circle, '1,2,3'::circle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("circle", CIRCLE), Column("circle", CIRCLE), Column("circle", CIRCLE), Column("circle", CIRCLE)],
+                        rows: &[
+                            &[T("<(1,2),3>"), T("<(1,2),3>"), T("<(1,2),3>"), T("<(1,2),3>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '192.168.1.1'::inet, '10.0.0.0/8'::inet, '::1'::inet, '2001:db8::1/64'::inet, '::ffff:1.2.3.4'::inet, 'fe80::1:0:0:1'::inet;",
+                    expected: Expected::Rows {
+                        columns: &[Column("inet", INET), Column("inet", INET), Column("inet", INET), Column("inet", INET), Column("inet", INET), Column("inet", INET)],
+                        rows: &[
+                            &[T("192.168.1.1"), T("10.0.0.0/8"), T("::1"), T("2001:db8::1/64"), T("::ffff:1.2.3.4"), T("fe80::1:0:0:1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '192.168.1.0/24'::cidr, '10/8'::cidr, '10.1'::cidr, '192.168'::cidr, '2001:db8::/32'::cidr;",
+                    expected: Expected::Rows {
+                        columns: &[Column("cidr", CIDR), Column("cidr", CIDR), Column("cidr", CIDR), Column("cidr", CIDR), Column("cidr", CIDR)],
+                        rows: &[
+                            &[T("192.168.1.0/24"), T("10.0.0.0/8"), T("10.1.0.0/16"), T("192.168.0.0/24"), T("2001:db8::/32")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '08:00:2b:01:02:03'::macaddr, '08-00-2b-01-02-03'::macaddr, '08002b:010203'::macaddr, '0800.2b01.0203'::macaddr, '08002b010203'::macaddr;",
+                    expected: Expected::Rows {
+                        columns: &[Column("macaddr", MACADDR), Column("macaddr", MACADDR), Column("macaddr", MACADDR), Column("macaddr", MACADDR), Column("macaddr", MACADDR)],
+                        rows: &[
+                            &[T("08:00:2b:01:02:03"), T("08:00:2b:01:02:03"), T("08:00:2b:01:02:03"), T("08:00:2b:01:02:03"), T("08:00:2b:01:02:03")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '$100.25'::money, '1234.567'::money, '-$1,234.50'::money, '($5)'::money, '0.01'::money, '12'::money;",
+                    expected: Expected::Rows {
+                        columns: &[Column("money", MONEY), Column("money", MONEY), Column("money", MONEY), Column("money", MONEY), Column("money", MONEY), Column("money", MONEY)],
+                        rows: &[
+                            &[T("$100.25"), T("$1,234.57"), T("-$1,234.50"), T("-$5.00"), T("$0.01"), T("$12.00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '16/B8E36C60'::pg_lsn, '0/0'::pg_lsn, 'FFFFFFFF/FFFFFFFF'::pg_lsn;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_lsn", PG_LSN), Column("pg_lsn", PG_LSN), Column("pg_lsn", PG_LSN)],
+                        rows: &[
+                            &[T("16/B8E36C60"), T("0/0"), T("FFFFFFFF/FFFFFFFF")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'x'::point;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type point: "x""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{0,0,1}'::line;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "invalid line specification: A and B cannot both be zero", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '192.168.1.1/24'::cidr;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid cidr value: "192.168.1.1/24""#, detail: "Value has bits set to right of mask.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1.2.3'::inet;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type inet: "1.2.3""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'zz:00:2b:01:02:03'::macaddr;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type macaddr: "zz:00:2b:01:02:03""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'abc'::money;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type money: "abc""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '16/'::pg_lsn;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type pg_lsn: "16/""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '<(1,2),-3>'::circle;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type circle: "<(1,2),-3>""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE gt (id INT PRIMARY KEY, p POINT, b BOX, i INET, m MONEY, l PG_LSN, c CIDR, mac MACADDR, pa PATH, po POLYGON, ci CIRCLE, li LINE, ls LSEG);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO gt VALUES (1, '(1,2)', '(1,2),(3,4)', '10.0.0.1', '$5.25', '1/2', '10.0.0.0/8', '08:00:2b:01:02:03', '[(1,2),(3,4)]', '((1,2),(3,4),(5,6))', '<(1,2),3>', '{1,2,3}', '[(1,2),(3,4)]');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO gt VALUES (2, '(5,6)', '(0,0),(1,1)', '::1', '-$1.00', 'A/B', '2001:db8::/32', '00-11-22-33-44-55', '((0,0),(1,1))', '((0,0),(1,0),(0,1))', '<(0,0),1>', '{0,1,2}', '[(0,0),(0,1)]');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM gt ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("p", POINT), Column("b", BOX), Column("i", INET), Column("m", MONEY), Column("l", PG_LSN), Column("c", CIDR), Column("mac", MACADDR), Column("pa", PATH), Column("po", POLYGON), Column("ci", CIRCLE), Column("li", LINE), Column("ls", LSEG)],
+                        rows: &[
+                            &[T("1"), T("(1,2)"), T("(3,4),(1,2)"), T("10.0.0.1"), T("$5.25"), T("1/2"), T("10.0.0.0/8"), T("08:00:2b:01:02:03"), T("[(1,2),(3,4)]"), T("((1,2),(3,4),(5,6))"), T("<(1,2),3>"), T("{1,2,3}"), T("[(1,2),(3,4)]")],
+                            &[T("2"), T("(5,6)"), T("(1,1),(0,0)"), T("::1"), T("-$1.00"), T("A/B"), T("2001:db8::/32"), T("00:11:22:33:44:55"), T("((0,0),(1,1))"), T("((0,0),(1,0),(0,1))"), T("<(0,0),1>"), T("{0,1,2}"), T("[(0,0),(0,1)]")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(p), pg_typeof(i), pg_typeof(m) FROM gt ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("point"), T("inet"), T("money")],
+                            &[T("point"), T("inet"), T("money")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM gt WHERE i = '10.0.0.1';",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT m FROM gt ORDER BY m;",
+                    expected: Expected::Rows {
+                        columns: &[Column("m", MONEY)],
+                        rows: &[
+                            &[T("-$1.00")],
+                            &[T("$5.25")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT i FROM gt ORDER BY i;",
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INET)],
+                        rows: &[
+                            &[T("10.0.0.1")],
+                            &[T("::1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l FROM gt ORDER BY l DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("l", PG_LSN)],
+                        rows: &[
+                            &[T("A/B")],
+                            &[T("1/2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

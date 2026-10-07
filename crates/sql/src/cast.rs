@@ -313,6 +313,9 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
     {
         return user_input(text, &user_type);
     }
+    if let Some(base) = crate::basetypes::get(type_oid) {
+        return Ok(Value::Base(Box::new(crate::types::BaseValue { type_oid, data: (base.input)(text, -1)? })));
+    }
     Ok(match type_oid {
         oid::JSON => {
             crate::json::parse(text, false)?;
@@ -727,6 +730,13 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
                 })?;
                 Ok(Value::Array(Box::new(parsed)))
             }
+            other => Err(cannot_cast(&other, to.oid)),
+        };
+    }
+    if crate::basetypes::get(to.oid).is_some() {
+        return match value {
+            Value::Base(base) if base.type_oid == to.oid => Ok(Value::Base(base)),
+            Value::Text(text) => input(&text, to.oid),
             other => Err(cannot_cast(&other, to.oid)),
         };
     }
