@@ -10482,6 +10482,7 @@ fn test_system_catalog_information_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("the OID literal names a Doltgres routine, and Postgres assigns its routines other OIDs"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -10493,6 +10494,7 @@ fn test_system_catalog_information_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("the OID literal names a Doltgres routine, and Postgres assigns its routines other OIDs"),
                     ..A
                 },
             ],
@@ -10531,6 +10533,7 @@ fn test_system_catalog_information_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("the OID literal names a Doltgres routine, and Postgres assigns its routines other OIDs"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -10554,6 +10557,7 @@ fn test_system_catalog_information_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("the OID literal names a Doltgres routine, and Postgres assigns its routines other OIDs"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -10565,6 +10569,7 @@ fn test_system_catalog_information_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("the OID literal names a Doltgres routine, and Postgres assigns its routines other OIDs"),
                     ..A
                 },
             ],
@@ -13904,6 +13909,301 @@ fn test_builtin_functions() {
                 ScriptTestAssertion {
                     query: "DROP ROLE limited;",
                     expected: Expected::Tag("DROP ROLE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_definition_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "pg_get_functiondef and the pg_get_function family",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE cp_test (a int, b text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f2(a int, b text DEFAULT 'x', c numeric DEFAULT 1, d varchar(10) DEFAULT 'y') RETURNS SETOF text IMMUTABLE STRICT LANGUAGE sql AS $$SELECT b$$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f3(IN a int, OUT b int, INOUT c text) LANGUAGE plpgsql AS $$BEGIN b := a; END$$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f4(VARIADIC xs int[]) RETURNS TABLE(n int, t text) STABLE PARALLEL SAFE COST 5 ROWS 10 LANGUAGE sql AS $$SELECT 1, 'a'$$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f5() RETURNS SETOF cp_test SECURITY DEFINER LEAKPROOF SET search_path = public, pg_temp SET work_mem = '64MB' LANGUAGE sql AS $$SELECT * FROM cp_test$$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f6(a int, b int) RETURNS int RETURN a + b;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION f7(x int) RETURNS int LANGUAGE plpgsql AS $function$BEGIN RETURN x; END$function$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE PROCEDURE p1(a int, b text, c int default 100) LANGUAGE sql AS $$INSERT INTO cp_test VALUES (a, b)$$;",
+                    expected: Expected::Tag("CREATE PROCEDURE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE PROCEDURE p2(INOUT a int, OUT b text) LANGUAGE plpgsql AS $$BEGIN b := 'x'; END$$;",
+                    expected: Expected::Tag("CREATE PROCEDURE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT proname, pg_get_function_arguments(oid) AS args, pg_get_function_identity_arguments(oid) AS ident, pg_get_function_result(oid) AS res FROM pg_proc WHERE pronamespace = 'public'::regnamespace ORDER BY proname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("proname", NAME), Column("args", TEXT), Column("ident", TEXT), Column("res", TEXT)],
+                        rows: &[
+                            &[T("f1"), T("integer"), T("integer"), T("integer")],
+                            &[T("f2"), T("a integer, b text DEFAULT 'x'::text, c numeric DEFAULT 1, d character varying DEFAULT 'y'::character varying"), T("a integer, b text, c numeric, d character varying"), T("SETOF text")],
+                            &[T("f3"), T("a integer, OUT b integer, INOUT c text"), T("a integer, OUT b integer, INOUT c text"), T("record")],
+                            &[T("f4"), T("VARIADIC xs integer[]"), T("VARIADIC xs integer[]"), T("TABLE(n integer, t text)")],
+                            &[T("f5"), T(""), T(""), T("SETOF cp_test")],
+                            &[T("f6"), T("a integer, b integer"), T("a integer, b integer"), T("integer")],
+                            &[T("f7"), T("x integer"), T("x integer"), T("integer")],
+                            &[T("p1"), T("IN a integer, IN b text, IN c integer DEFAULT 100"), T("IN a integer, IN b text, IN c integer"), Null],
+                            &[T("p2"), T("INOUT a integer, OUT b text"), T("INOUT a integer, OUT b text"), Null],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_functiondef(oid) FROM pg_proc WHERE pronamespace = 'public'::regnamespace ORDER BY proname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_functiondef", TEXT)],
+                        rows: &[
+                            &[T(r#"CREATE OR REPLACE FUNCTION public.f1(integer)
+ RETURNS integer
+ LANGUAGE sql
+AS $function$SELECT $1 + 1$function$
+"#)],
+                            &[T(r#"CREATE OR REPLACE FUNCTION public.f2(a integer, b text DEFAULT 'x'::text, c numeric DEFAULT 1, d character varying DEFAULT 'y'::character varying)
+ RETURNS SETOF text
+ LANGUAGE sql
+ IMMUTABLE STRICT
+AS $function$SELECT b$function$
+"#)],
+                            &[T(r#"CREATE OR REPLACE FUNCTION public.f3(a integer, OUT b integer, INOUT c text)
+ RETURNS record
+ LANGUAGE plpgsql
+AS $function$BEGIN b := a; END$function$
+"#)],
+                            &[T(r#"CREATE OR REPLACE FUNCTION public.f4(VARIADIC xs integer[])
+ RETURNS TABLE(n integer, t text)
+ LANGUAGE sql
+ STABLE PARALLEL SAFE COST 5 ROWS 10
+AS $function$SELECT 1, 'a'$function$
+"#)],
+                            &[T(r#"CREATE OR REPLACE FUNCTION public.f5()
+ RETURNS SETOF cp_test
+ LANGUAGE sql
+ SECURITY DEFINER LEAKPROOF
+ SET search_path TO 'public', 'pg_temp'
+ SET work_mem TO '64MB'
+AS $function$SELECT * FROM cp_test$function$
+"#)],
+                            &[T(r#"CREATE OR REPLACE FUNCTION public.f6(a integer, b integer)
+ RETURNS integer
+ LANGUAGE sql
+RETURN (a + b)
+"#)],
+                            &[T(r#"CREATE OR REPLACE FUNCTION public.f7(x integer)
+ RETURNS integer
+ LANGUAGE plpgsql
+AS $function$BEGIN RETURN x; END$function$
+"#)],
+                            &[T(r#"CREATE OR REPLACE PROCEDURE public.p1(IN a integer, IN b text, IN c integer DEFAULT 100)
+ LANGUAGE sql
+AS $procedure$INSERT INTO cp_test VALUES (a, b)$procedure$
+"#)],
+                            &[T(r#"CREATE OR REPLACE PROCEDURE public.p2(INOUT a integer, OUT b text)
+ LANGUAGE plpgsql
+AS $procedure$BEGIN b := 'x'; END$procedure$
+"#)],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_functiondef('abs'::regproc), pg_get_function_arguments('make_interval'::regproc), pg_get_function_result('generate_series'::regproc), pg_get_function_arguments('generate_series'::regproc), pg_get_functiondef('jsonb_path_exists'::regproc);",
+                    expected: Expected::Error(Diagnostic { code: "42725", message: r#"more than one function named "abs""#, position: 27, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_functiondef('pg_get_keywords'::regproc), pg_get_function_result('pg_get_keywords'::regproc);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_functiondef", TEXT), Column("pg_get_function_result", TEXT)],
+                        rows: &[
+                            &[T(r#"CREATE OR REPLACE FUNCTION pg_catalog.pg_get_keywords(OUT word text, OUT catcode "char", OUT barelabel boolean, OUT catdesc text, OUT baredesc text)
+ RETURNS SETOF record
+ LANGUAGE internal
+ STABLE PARALLEL SAFE STRICT COST 10 ROWS 500
+AS $function$pg_get_keywords$function$
+"#), T("SETOF record")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_function_arguments(0), pg_get_function_sqlbody('f6'::regproc), pg_get_function_sqlbody('f1'::regproc);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_function_arguments", TEXT), Column("pg_get_function_sqlbody", TEXT), Column("pg_get_function_sqlbody", TEXT)],
+                        rows: &[
+                            &[Null, T("RETURN (a + b)"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_functiondef('sum'::regproc);",
+                    expected: Expected::Error(Diagnostic { code: "42725", message: r#"more than one function named "sum""#, position: 27, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "pg_get_triggerdef",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"CREATE TABLE tt (a int, b text, "C d" int);"#,
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION trig_fn() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RETURN NEW; END$$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER t1 BEFORE INSERT ON tt FOR EACH ROW EXECUTE FUNCTION trig_fn();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER t2 AFTER UPDATE OF b, a OR DELETE OR INSERT ON tt FOR EACH ROW EXECUTE FUNCTION trig_fn('x', 'it''s');",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER t3 AFTER TRUNCATE ON tt FOR EACH STATEMENT EXECUTE PROCEDURE trig_fn();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE TRIGGER t5 BEFORE UPDATE ON tt FOR EACH ROW WHEN (new.a > 0 AND new."C d" < 5) EXECUTE FUNCTION trig_fn();"#,
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER t6 BEFORE UPDATE ON tt FOR EACH ROW WHEN (old.* IS DISTINCT FROM new.*) EXECUTE FUNCTION trig_fn();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT tgname, pg_get_triggerdef(oid), pg_get_triggerdef(oid, true) FROM pg_trigger WHERE tgrelid = 'tt'::regclass ORDER BY tgname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tgname", NAME), Column("pg_get_triggerdef", TEXT), Column("pg_get_triggerdef", TEXT)],
+                        rows: &[
+                            &[T("t1"), T("CREATE TRIGGER t1 BEFORE INSERT ON public.tt FOR EACH ROW EXECUTE FUNCTION trig_fn()"), T("CREATE TRIGGER t1 BEFORE INSERT ON tt FOR EACH ROW EXECUTE FUNCTION trig_fn()")],
+                            &[T("t2"), T("CREATE TRIGGER t2 AFTER INSERT OR DELETE OR UPDATE OF b, a ON public.tt FOR EACH ROW EXECUTE FUNCTION trig_fn('x', 'it''s')"), T("CREATE TRIGGER t2 AFTER INSERT OR DELETE OR UPDATE OF b, a ON tt FOR EACH ROW EXECUTE FUNCTION trig_fn('x', 'it''s')")],
+                            &[T("t3"), T("CREATE TRIGGER t3 AFTER TRUNCATE ON public.tt FOR EACH STATEMENT EXECUTE FUNCTION trig_fn()"), T("CREATE TRIGGER t3 AFTER TRUNCATE ON tt FOR EACH STATEMENT EXECUTE FUNCTION trig_fn()")],
+                            &[T("t5"), T(r#"CREATE TRIGGER t5 BEFORE UPDATE ON public.tt FOR EACH ROW WHEN (((new.a > 0) AND (new."C d" < 5))) EXECUTE FUNCTION trig_fn()"#), T(r#"CREATE TRIGGER t5 BEFORE UPDATE ON tt FOR EACH ROW WHEN (new.a > 0 AND new."C d" < 5) EXECUTE FUNCTION trig_fn()"#)],
+                            &[T("t6"), T("CREATE TRIGGER t6 BEFORE UPDATE ON public.tt FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION trig_fn()"), T("CREATE TRIGGER t6 BEFORE UPDATE ON tt FOR EACH ROW WHEN (old.* IS DISTINCT FROM new.*) EXECUTE FUNCTION trig_fn()")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"ALTER TABLE tt RENAME COLUMN b TO "B2";"#,
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = 't2';",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_triggerdef", TEXT)],
+                        rows: &[
+                            &[T(r#"CREATE TRIGGER t2 AFTER INSERT OR DELETE OR UPDATE OF "B2", a ON public.tt FOR EACH ROW EXECUTE FUNCTION trig_fn('x', 'it''s')"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_triggerdef(0);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_triggerdef", TEXT)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "pg_get_triggerdef with transition tables",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tt (a int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION trig_fn() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RETURN NULL; END$$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER t4 AFTER INSERT ON tt REFERENCING NEW TABLE AS newtab FOR EACH STATEMENT EXECUTE FUNCTION trig_fn();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    skip: Some("trigger transition tables (REFERENCING) are not supported yet"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_triggerdef(oid, true) FROM pg_trigger WHERE tgname = 't4';",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_triggerdef", TEXT)],
+                        rows: &[
+                            &[T("CREATE TRIGGER t4 AFTER INSERT ON tt REFERENCING NEW TABLE AS newtab FOR EACH STATEMENT EXECUTE FUNCTION trig_fn()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("trigger transition tables (REFERENCING) are not supported yet"),
                     ..A
                 },
             ],

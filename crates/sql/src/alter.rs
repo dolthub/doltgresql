@@ -817,6 +817,7 @@ impl Ctx<'_> {
                 let fks = self.foreign_keys()?;
                 self.finish_alteration(alteration)?;
                 self.rename_in_foreign_keys(fks, &schema, &name, &name)?;
+                self.rename_trigger_column(&schema, &name, &stmt.subname, &stmt.newname)?;
                 return Ok(Outcome::command(tag));
             }
             ObjectType::ObjectTabconstraint => {

@@ -54,13 +54,19 @@ fn array(element: u32, values: Vec<Value>) -> Value {
     Value::Array(Box::new(Array::one_dimensional(element, values)))
 }
 
-/// source returns a routine's body as pg_proc's prosrc shows it: the SQL or PL/pgSQL text after AS.
-fn source(routine: &Routine) -> String {
+/// create_statement returns the CREATE FUNCTION or CREATE PROCEDURE statement a routine was defined by.
+pub(super) fn create_statement(routine: &Routine) -> Option<pg_query::protobuf::CreateFunctionStmt> {
     let definition = String::from_utf8_lossy(&routine.object.definition);
-    let parsed = pg_query::parse(&definition).ok();
-    let body = parsed.and_then(|result| {
-        let raw = result.protobuf.stmts.into_iter().next()?;
-        let Some(NodeEnum::CreateFunctionStmt(create)) = raw.stmt?.node else { return None };
+    let raw = pg_query::parse(&definition).ok()?.protobuf.stmts.into_iter().next()?;
+    match raw.stmt?.node? {
+        NodeEnum::CreateFunctionStmt(create) => Some(*create),
+        _ => None,
+    }
+}
+
+/// source returns a routine's body as pg_proc's prosrc shows it: the SQL or PL/pgSQL text after AS.
+pub(super) fn source(routine: &Routine) -> String {
+    let body = create_statement(routine).and_then(|create| {
         create.options.iter().find_map(|option| {
             let Some(NodeEnum::DefElem(def)) = option.node.as_ref() else { return None };
             let Some(NodeEnum::List(list)) = def.arg.as_deref()?.node.as_ref() else { return None };

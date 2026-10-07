@@ -174,6 +174,13 @@ pub const FUNCTIONS: &[Function] = &[
     f("has_database_privilege", &[OID, OID, TEXT], BOOL, has_database_privilege),
     f("has_database_privilege", &[TEXT, TEXT], BOOL, has_database_privilege),
     f("has_database_privilege", &[OID, TEXT], BOOL, has_database_privilege),
+    f("pg_get_functiondef", &[OID], TEXT, pg_get_functiondef),
+    f("pg_get_function_arguments", &[OID], TEXT, pg_get_function_arguments),
+    f("pg_get_function_identity_arguments", &[OID], TEXT, pg_get_function_identity_arguments),
+    f("pg_get_function_result", &[OID], TEXT, pg_get_function_result),
+    f("pg_get_function_sqlbody", &[OID], TEXT, pg_get_function_sqlbody),
+    f("pg_get_triggerdef", &[OID], TEXT, pg_get_triggerdef),
+    f("pg_get_triggerdef", &[OID, BOOL], TEXT, pg_get_triggerdef),
 ];
 
 /// current_schemas returns the schemas of the search path that exist, with the ones searched implicitly when asked.
@@ -436,4 +443,44 @@ fn has_privilege(ctx: &mut Ctx<'_>, args: &[Value], names: &[(&str, &str)]) -> R
         Some(object) => Ok(Value::Bool(ctx.has_privilege(role, &object, &wanted)?)),
         None => Ok(Value::Null),
     }
+}
+
+/// pg_get_functiondef prints the CREATE OR REPLACE statement of a function or procedure, or returns NULL for an OID
+/// that none has.
+fn pg_get_functiondef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    match ctx.routine_def(oid_arg(&args[0]))? {
+        Some(def) => Ok(Value::Text(def.definition()?)),
+        None => Ok(Value::Null),
+    }
+}
+
+/// pg_get_function_arguments prints the parameters of a function or procedure with their defaults, or returns NULL
+/// for an OID that none has.
+fn pg_get_function_arguments(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(ctx.routine_def(oid_arg(&args[0]))?.map_or(Value::Null, |def| Value::Text(def.arguments(true))))
+}
+
+/// pg_get_function_identity_arguments prints the parameters that identify a function or procedure, or returns NULL
+/// for an OID that none has.
+fn pg_get_function_identity_arguments(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(ctx.routine_def(oid_arg(&args[0]))?.map_or(Value::Null, |def| Value::Text(def.arguments(false))))
+}
+
+/// pg_get_function_result prints the result type of a function, or returns NULL for a procedure or an OID that no
+/// function has.
+fn pg_get_function_result(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(ctx.routine_def(oid_arg(&args[0]))?.and_then(|def| def.result()).map_or(Value::Null, Value::Text))
+}
+
+/// pg_get_function_sqlbody prints the SQL-standard body of a function or procedure, or returns NULL for one without
+/// such a body or an OID that none has.
+fn pg_get_function_sqlbody(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(ctx.routine_def(oid_arg(&args[0]))?.and_then(|def| def.sql_body()).map_or(Value::Null, Value::Text))
+}
+
+/// pg_get_triggerdef prints a trigger's CREATE TRIGGER statement, prettily when asked, or returns NULL for an OID
+/// that no trigger has.
+fn pg_get_triggerdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let pretty = matches!(args.get(1), Some(Value::Bool(true)));
+    Ok(ctx.trigger_definition_of(oid_arg(&args[0]), pretty)?.map_or(Value::Null, Value::Text))
 }

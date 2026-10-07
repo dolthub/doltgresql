@@ -402,6 +402,25 @@ impl Ctx<'_> {
         Ok(())
     }
 
+    /// rename_trigger_column follows a column rename in the UPDATE OF columns of the table's triggers.
+    pub fn rename_trigger_column(&mut self, schema: &str, table: &str, old: &str, new: &str) -> Result<()> {
+        for trigger in self.triggers()?.iter() {
+            let (s, t, _) = names(trigger);
+            let names_column = |e: &TriggerEvent| e.column_names.iter().any(|c| c == old.as_bytes());
+            if s != schema || t != table || !trigger.events.iter().any(names_column) {
+                continue;
+            }
+            let mut renamed = (**trigger).clone();
+            for column in renamed.events.iter_mut().flat_map(|e| &mut e.column_names) {
+                if column == old.as_bytes() {
+                    *column = new.as_bytes().to_vec();
+                }
+            }
+            store(self.db, &mut self.txn.root, &renamed)?;
+        }
+        Ok(())
+    }
+
     /// trigger_dependents returns the triggers that run a function, as `trigger t on table x`.
     pub fn trigger_dependents(&mut self, routine: &Routine) -> Result<Vec<String>> {
         let mut dependents = Vec::new();

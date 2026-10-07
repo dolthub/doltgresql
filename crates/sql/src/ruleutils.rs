@@ -29,7 +29,9 @@ use crate::query::Ctx;
 /// TExpr is an analyzed expression, shaped as Postgres' parse analysis shapes it.
 #[derive(Clone, Debug)]
 enum TExpr {
-    Var(String, ColumnType),
+    /// A column, with the relation name that qualifies it in a trigger's condition, or a whole row of a trigger's
+    /// `old` or `new` as the column `*` of type record.
+    Var(Option<String>, String, ColumnType),
     /// A constant's text in its type's output format, or None for NULL.
     Const(Option<String>, ColumnType),
     Param(usize),
@@ -72,7 +74,7 @@ impl TExpr {
     /// ty returns the expression's type.
     fn ty(&self) -> ColumnType {
         match self {
-            TExpr::Var(_, t) | TExpr::Const(_, t) | TExpr::Cast(_, t, _) => *t,
+            TExpr::Var(_, _, t) | TExpr::Const(_, t) | TExpr::Cast(_, t, _) => *t,
             TExpr::Op(_, _, t)
             | TExpr::Func(_, _, t)
             | TExpr::Keyword(_, t)
@@ -122,12 +124,20 @@ fn is_comparison(op: &str) -> bool {
 pub struct Analyzer<'c, 'a> {
     ctx: &'c mut Ctx<'a>,
     columns: Vec<(String, ColumnType)>,
+    /// The relation names that may qualify columns, which a trigger's condition gives as `old` and `new`.
+    qualifiers: &'static [&'static str],
 }
 
 impl<'c, 'a> Analyzer<'c, 'a> {
     /// new returns an analyzer over columns.
     pub fn new(ctx: &'c mut Ctx<'a>, columns: Vec<(String, ColumnType)>) -> Analyzer<'c, 'a> {
-        Analyzer { ctx, columns }
+        Analyzer { ctx, columns, qualifiers: &[] }
+    }
+
+    /// trigger returns an analyzer over the columns of a trigger's table, which its condition names through `old`
+    /// and `new`.
+    pub fn trigger(ctx: &'c mut Ctx<'a>, columns: Vec<(String, ColumnType)>) -> Analyzer<'c, 'a> {
+        Analyzer { ctx, columns, qualifiers: &["old", "new"] }
     }
 
     /// deparse prints an expression's text as Postgres' deparse_expression does, at the top level where implicit casts
@@ -275,10 +285,18 @@ impl<'c, 'a> Analyzer<'c, 'a> {
         let Some(inner) = node.node.as_ref() else { return Ok(raw()) };
         Ok(match inner {
             NodeEnum::ColumnRef(column) => {
-                let name = column.fields.iter().filter_map(node_name).next_back().unwrap_or_default();
+                let names: Vec<&str> = column.fields.iter().filter_map(node_name).collect();
+                let (qualifier, name) = match names.as_slice() {
+                    [relation, name] if self.qualifiers.contains(relation) => (Some(relation.to_string()), *name),
+                    _ => (None, names.last().copied().unwrap_or_default()),
+                };
+                let star = column.fields.len() == names.len() + 1;
                 match self.columns.iter().find(|(n, _)| n == name) {
-                    Some((n, t)) => TExpr::Var(n.clone(), *t),
-                    None => raw(),
+                    _ if star && names.len() == 1 && self.qualifiers.contains(&name) => {
+                        TExpr::Var(Some(name.to_string()), "*".into(), typ(oid::RECORD))
+                    }
+                    Some((n, t)) if !star => TExpr::Var(qualifier, n.clone(), *t),
+                    _ => raw(),
                 }
             }
             NodeEnum::AConst(c) => match &c.val {
@@ -641,7 +659,10 @@ impl Printer {
     /// print prints an expression as Postgres' get_rule_expr does.
     fn print(&mut self, e: &TExpr, parent: Option<&TExpr>, showimplicit: bool) -> String {
         match e {
-            TExpr::Var(name, _) => crate::engine::quote_identifier(name),
+            TExpr::Var(qualifier, name, ty) => {
+                let name = if ty.oid == oid::RECORD { name.clone() } else { crate::engine::quote_identifier(name) };
+                qualifier.as_ref().map_or(name.clone(), |q| format!("{}.{name}", crate::engine::quote_identifier(q)))
+            }
             TExpr::Const(text, ty) => Self::constant(text.as_deref(), *ty, true),
             TExpr::Param(n) => format!("${n}"),
             TExpr::Raw(text) => text.clone(),

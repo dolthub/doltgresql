@@ -94,7 +94,14 @@ impl Ctx<'_> {
             types::REGNAMESPACE => self.namespaces().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n),
             types::REGROLE => self.roles().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n),
             types::REGPROC | types::REGPROCEDURE => {
-                builtin_column("pg_proc", "proname").into_iter().find(|(o, _)| *o == oid).map(|(_, n)| text_of(&n))
+                match builtin_column("pg_proc", "proname").into_iter().find(|(o, _)| *o == oid) {
+                    Some((_, name)) => Some(text_of(&name)),
+                    None => self
+                        .routines()?
+                        .iter()
+                        .find(|r| crate::pgcatalog::routines::routine_oid(r) == oid)
+                        .map(|r| r.name.clone()),
+                }
             }
             _ => {
                 builtin_column("pg_operator", "oprname").into_iter().find(|(o, _)| *o == oid).map(|(_, n)| text_of(&n))
@@ -159,12 +166,27 @@ impl Ctx<'_> {
             }
             types::REGPROC | types::REGPROCEDURE => {
                 let name = text.split('(').next().unwrap_or(text).trim();
-                let name = crate::sequences::parse_qualified_name(name)?.pop().unwrap_or_default();
-                let matches: Vec<u32> = builtin_column("pg_proc", "proname")
-                    .into_iter()
-                    .filter(|(_, n)| text_of(n) == name)
-                    .map(|(o, _)| o)
-                    .collect();
+                let mut names = crate::sequences::parse_qualified_name(name)?;
+                let name = names.pop().unwrap_or_default();
+                let schemas = match names.pop() {
+                    Some(schema) => vec![schema],
+                    None => self.effective_search_path(),
+                };
+                let mut matches: Vec<u32> = Vec::new();
+                if schemas.iter().any(|s| s == "pg_catalog") {
+                    matches.extend(
+                        builtin_column("pg_proc", "proname")
+                            .into_iter()
+                            .filter(|(_, n)| text_of(n) == name)
+                            .map(|(o, _)| o),
+                    );
+                }
+                matches.extend(
+                    self.routines()?
+                        .iter()
+                        .filter(|r| r.name == name && schemas.contains(&r.schema))
+                        .map(|r| crate::pgcatalog::routines::routine_oid(r)),
+                );
                 match matches.as_slice() {
                     [oid] => Ok(Reg { type_oid, oid: *oid, name }),
                     [] => Err(PgError::new(code::UNDEFINED_FUNCTION, format!("function \"{text}\" does not exist"))),

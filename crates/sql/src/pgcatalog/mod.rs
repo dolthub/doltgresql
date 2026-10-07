@@ -16,10 +16,11 @@
 //! that describe the working root value.
 
 mod builtin;
+mod definitions;
 mod extensions;
 mod infoschema;
 pub mod reg;
-mod routines;
+pub(crate) mod routines;
 mod rows;
 pub mod snapshot;
 

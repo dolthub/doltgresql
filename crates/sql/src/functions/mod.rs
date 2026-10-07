@@ -179,6 +179,8 @@ pub fn implicitly_castable(from: u32, to: u32) -> bool {
         || crate::casts::context(from, to) == Some(crate::casts::IMPLICIT)
         || crate::expr::implicit_datetime(from, to)
         || (to == oid::OID && (crate::cast::is_reg_type(from) || matches!(from, oid::INT2 | oid::INT4 | oid::INT8)))
+        || (crate::cast::is_reg_type(to) && matches!(from, oid::OID | oid::INT2 | oid::INT4 | oid::INT8))
+        || (to == oid::REGCLASS && matches!(from, oid::TEXT | oid::VARCHAR))
         || (is_array(from)
             && is_array(to)
             && implicitly_castable(crate::expr::element_type(from), crate::expr::element_type(to)))

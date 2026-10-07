@@ -472,7 +472,7 @@ fn options(nodes: &[Node]) -> Result<Options> {
     let mut seen = Vec::new();
     for node in nodes {
         let Some(NodeEnum::DefElem(def)) = node.node.as_ref() else { continue };
-        if seen.contains(&def.defname) {
+        if def.defname != "set" && seen.contains(&def.defname) {
             return Err(PgError {
                 position: position(def.location),
                 ..PgError::new(code::SYNTAX_ERROR, "conflicting or redundant options")
