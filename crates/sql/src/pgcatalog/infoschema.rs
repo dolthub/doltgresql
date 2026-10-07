@@ -175,6 +175,14 @@ impl Ctx<'_> {
         }
         for (schema, table, columns) in relations {
             for (i, (name, ty, nullable, default, generated)) in columns.into_iter().enumerate() {
+                let generation = match generated {
+                    true => text(self.expression_definition(
+                        &default,
+                        super::snapshot::table_oid(&schema, &table),
+                        false,
+                    )?),
+                    false => Value::Null,
+                };
                 let l = lengths(ty);
                 let udt = builtin_type(ty.oid).map_or("unknown", |t| t.name);
                 rows.push(vec![
@@ -203,7 +211,7 @@ impl Ctx<'_> {
                     ("is_identity", yes_no(false)),
                     ("identity_cycle", yes_no(false)),
                     ("is_generated", text(if generated { "ALWAYS" } else { "NEVER" })),
-                    ("generation_expression", if generated { text(default) } else { Value::Null }),
+                    ("generation_expression", generation),
                     ("is_updatable", yes_no(true)),
                 ]);
             }

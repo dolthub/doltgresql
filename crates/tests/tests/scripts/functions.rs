@@ -14357,3 +14357,228 @@ fn test_numeric_math() {
         },
     ]);
 }
+
+#[test]
+fn test_catalog_encoding_and_ordering_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Catalog, encoding, ordering, and dependency rules",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT convert_from('\x41a4'::BYTEA, 'EUC_JP');"#,
+                    expected: Expected::Error(Diagnostic { code: "22021", message: r#"invalid byte sequence for encoding "EUC_JP": 0xa4"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT convert_from('\xa4a2ff'::BYTEA, 'EUC_JP');"#,
+                    expected: Expected::Error(Diagnostic { code: "22021", message: r#"invalid byte sequence for encoding "EUC_JP": 0xff"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT convert_from('\xa4a241'::BYTEA, 'EUC_JP');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("convert_from", TEXT)],
+                        rows: &[
+                            &[T("あA")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT name FROM pg_show_all_settings() WHERE name LIKE 'bytea%';",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT)],
+                        rows: &[
+                            &[T("bytea_output")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT set_config('bytea_output','hex',false) FROM pg_show_all_settings() WHERE name = 'bytea_output';",
+                    expected: Expected::Rows {
+                        columns: &[Column("set_config", TEXT)],
+                        rows: &[
+                            &[T("hex")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE gen (a int, s text, b int GENERATED ALWAYS AS (a + 1) STORED, c text GENERATED ALWAYS AS (upper(s)) STORED);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT column_name, is_generated, generation_expression FROM information_schema.columns WHERE table_name = 'gen' ORDER BY ordinal_position;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column_name", NAME), Column("is_generated", VARCHAR), Column("generation_expression", VARCHAR)],
+                        rows: &[
+                            &[T("a"), T("NEVER"), Null],
+                            &[T("s"), T("NEVER"), Null],
+                            &[T("b"), T("ALWAYS"), T("(a + 1)")],
+                            &[T("c"), T("ALWAYS"), T("upper(s)")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE test (id INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO test VALUES (1), (3), (2);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT *, (SELECT id from test where id = 2) FROM test order by id;",
+                    expected: Expected::Error(Diagnostic { code: "42702", message: r#"ORDER BY "id" is ambiguous"#, position: 65, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, id FROM test ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("3"), T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 OPERATOR(myschema.+) 1;",
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "myschema" does not exist"#, position: 10, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 OPERATOR(pg_catalog.+) 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE agg (pk INT PRIMARY KEY, v INT[]);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO agg VALUES (1, ARRAY[1,2]), (2, ARRAY[3,4]), (3, ARRAY[5]), (4, NULL), (5, '{}');",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_agg(v ORDER BY pk) FROM agg WHERE pk IN (1, 5);",
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "cannot accumulate arrays of different dimensionality", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_agg(v ORDER BY pk) FROM agg WHERE pk IN (5, 1);",
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "cannot accumulate arrays of different dimensionality", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_agg(v ORDER BY pk) FROM agg WHERE pk IN (1, 4);",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "cannot accumulate null arrays", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY(SELECT v FROM agg ORDER BY pk);",
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "cannot accumulate arrays of different dimensionality", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY(SELECT v FROM agg WHERE pk < 3 ORDER BY pk);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2},{3,4}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY(SELECT v FROM agg WHERE false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(ARRAY(SELECT v FROM agg WHERE false));",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("integer[]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tt (id INT4 PRIMARY KEY, name TEXT, data TEXT, other TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION tf() RETURNS TRIGGER AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER tr1 BEFORE UPDATE OF name, data ON tt FOR EACH ROW EXECUTE FUNCTION tf();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE tt DROP COLUMN data;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop column data of table tt because other objects depend on it", detail: "trigger tr1 on table tt depends on column data of table tt", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE tt DROP COLUMN data CASCADE;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to trigger tr1 on table tt", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT tgname FROM pg_trigger WHERE tgrelid = 'tt'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tgname", NAME)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

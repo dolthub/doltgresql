@@ -413,14 +413,20 @@ fn json_aggregate(kind: Kind, rows: Vec<Vec<Value>>) -> Result<Value> {
     })
 }
 
-/// array_agg_arrays stacks arrays of matching dimensions into an array with one more dimension.
-fn array_agg_arrays(element: u32, values: Vec<Value>) -> Result<Value> {
+/// array_agg_arrays stacks arrays of matching dimensions into an array with one more dimension, checking them in
+/// order against the first as Postgres' accumArrayResultArr does.
+pub(crate) fn array_agg_arrays(element: u32, values: Vec<Value>) -> Result<Value> {
     let error = |message: &str| PgError::new(code::ARRAY_SUBSCRIPT_ERROR, message);
+    let mut first = None;
     for value in &values {
-        match value {
-            Value::Array(a) if a.dims.is_empty() => return Err(error("cannot accumulate empty arrays")),
-            Value::Array(_) => {}
-            _ => return Err(PgError::new(code::NULL_VALUE_NOT_ALLOWED, "cannot accumulate null arrays")),
+        let Value::Array(a) = value else {
+            return Err(PgError::new(code::NULL_VALUE_NOT_ALLOWED, "cannot accumulate null arrays"));
+        };
+        match first {
+            None if a.dims.is_empty() => return Err(error("cannot accumulate empty arrays")),
+            None => first = Some(&a.dims),
+            Some(dims) if *dims != a.dims => return Err(error("cannot accumulate arrays of different dimensionality")),
+            Some(_) => {}
         }
     }
     crate::array::nest(element, values)

@@ -222,10 +222,16 @@ impl Encoding {
         match self.codec().ok_or_else(|| self.unsupported())? {
             Codec::Utf8 => String::from_utf8(bytes.to_vec()).map_err(|e| invalid(e.utf8_error().valid_up_to())),
             Codec::Latin1 => Ok(bytes.iter().map(|&b| b as char).collect()),
-            Codec::Table(table) => match table.decode_without_bom_handling_and_without_replacement(bytes) {
-                Some(text) => Ok(text.into_owned()),
-                None => Err(invalid(0)),
-            },
+            Codec::Table(table) => {
+                let mut decoder = table.new_decoder_without_bom_handling();
+                let mut text = String::with_capacity(bytes.len() * 3);
+                match decoder.decode_to_string_without_replacement(bytes, &mut text, true) {
+                    (encoding_rs::DecoderResult::Malformed(length, after), read) => {
+                        Err(invalid(read - after as usize - length as usize))
+                    }
+                    _ => Ok(text),
+                }
+            }
         }
     }
 }

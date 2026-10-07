@@ -996,7 +996,8 @@ impl<'b, 'a> Planner<'b, 'a> {
         Ok((query.plan, scope))
     }
 
-    /// plan_range_function plans a set-returning function in FROM.
+    /// plan_range_function plans a set-returning function in FROM, where pg_show_all_settings() reads pg_settings, the
+    /// view Postgres defines over it.
     fn plan_range_function(&mut self, function: &RangeFunction) -> Result<(Plan, Scope)> {
         let calls = rows_from_calls(function)?;
         if calls.len() > 1 {
@@ -1015,6 +1016,14 @@ impl<'b, 'a> Planner<'b, 'a> {
             let relation =
                 pg_query::protobuf::RangeVar { relname: name, alias: function.alias.clone(), ..Default::default() };
             return Ok(self.plan_system(crate::dolt::tables::SystemTable::Artifacts(Box::new(table)), &relation));
+        }
+        if name == "pg_show_all_settings"
+            && call.args.is_empty()
+            && let Some(catalog) = self.ctx.catalog_relation("pg_catalog", "pg_settings")?
+        {
+            let relation =
+                pg_query::protobuf::RangeVar { relname: name, alias: function.alias.clone(), ..Default::default() };
+            return Ok(self.plan_catalog(catalog, &relation));
         }
         if name == "dolt_query_diff" {
             let args = call.args.iter().map(|arg| self.ctx.constant_text(arg)).collect::<Result<Vec<_>>>()?;
@@ -1328,9 +1337,16 @@ impl<'b, 'a> Planner<'b, 'a> {
             } else if let Some(NodeEnum::ColumnRef(c)) = node.node.as_ref()
                 && c.fields.len() == 1
                 && let Some(name) = node_name(&c.fields[0])
-                && names.iter().filter(|n| *n == name).count() == 1
+                && names.iter().any(|n| n == name)
             {
-                let target = &targets[names.iter().position(|n| n == name).unwrap()];
+                let mut matching = names.iter().enumerate().filter(|(_, n)| *n == name).map(|(i, _)| &targets[i]);
+                let target = matching.next().expect("a target has the name");
+                if matching.any(|other| other.0 != target.0) {
+                    return Err(PgError {
+                        position: position(c.location),
+                        ..PgError::new(code::AMBIGUOUS_COLUMN, format!("ORDER BY \"{name}\" is ambiguous"))
+                    });
+                }
                 (target.0.clone(), target.1)
             } else {
                 binder.bind(node)?

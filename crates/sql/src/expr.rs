@@ -998,6 +998,16 @@ impl<'b, 'a> Binder<'b, 'a> {
         let kind = AExprKind::try_from(e.kind).unwrap_or(AExprKind::Undefined);
         let op = e.name.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
         match kind {
+            AExprKind::AexprOp
+                if let [schema, _] = e.name.iter().filter_map(node_name).collect::<Vec<_>>().as_slice()
+                    && !matches!(*schema, "pg_catalog" | "information_schema" | "pg_toast")
+                    && !self.ctx.schema_names().iter().any(|s| s == schema) =>
+            {
+                Err(PgError {
+                    position: position(e.location),
+                    ..PgError::new(code::INVALID_SCHEMA_NAME, format!("schema \"{schema}\" does not exist"))
+                })
+            }
             AExprKind::AexprOp => {
                 if e.lexpr.is_none() {
                     let right = self.bind(operand(&e.rexpr)?)?;
@@ -1467,7 +1477,8 @@ impl<'b, 'a> Binder<'b, 'a> {
                     });
                 }
                 let element = query.types[0].oid;
-                Ok((Expr::ArraySubquery(Box::new(query.plan), element), typ(array_of(element))))
+                let result = if is_array_type(element) { element } else { array_of(element) };
+                Ok((Expr::ArraySubquery(Box::new(query.plan), element), typ(result)))
             }
             _ => Err(PgError::unsupported("this kind of subquery")),
         }
@@ -3009,8 +3020,13 @@ impl Expr {
                 ctx.outer.push(row.to_vec());
                 let rows = plan.run(ctx);
                 ctx.outer.pop();
-                let values = rows?.into_iter().map(|r| r.into_iter().next().unwrap_or(Value::Null)).collect();
-                Value::Array(Box::new(crate::array::Array::one_dimensional(*element, values)))
+                let values: Vec<Value> =
+                    rows?.into_iter().map(|r| r.into_iter().next().unwrap_or(Value::Null)).collect();
+                if is_array_type(*element) && !values.is_empty() {
+                    return crate::functions::aggregate::array_agg_arrays(element_type(*element), values);
+                }
+                let element = if is_array_type(*element) { element_type(*element) } else { *element };
+                Value::Array(Box::new(crate::array::Array::one_dimensional(element, values)))
             }
             Expr::AnySubquery(comparison, plan, all) => {
                 ctx.outer.push(row.to_vec());

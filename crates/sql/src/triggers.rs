@@ -425,6 +425,38 @@ impl Ctx<'_> {
         Ok(())
     }
 
+    /// drop_trigger_column fails as Postgres does when triggers of the table name a dropped column in UPDATE OF, or
+    /// drops those triggers with a notice for CASCADE.
+    pub fn drop_trigger_column(&mut self, schema: &str, table: &str, column: &str, cascade: bool) -> Result<()> {
+        let mut dependents = Vec::new();
+        for trigger in self.triggers()?.iter() {
+            let (s, t, name) = names(trigger);
+            let names_column = |e: &TriggerEvent| e.column_names.iter().any(|c| c == column.as_bytes());
+            if s == schema && t == table && trigger.events.iter().any(names_column) {
+                dependents.push((trigger.id.clone(), format!("trigger {name} on table {table}")));
+            }
+        }
+        if dependents.is_empty() {
+            return Ok(());
+        }
+        if !cascade {
+            let detail = dependents.iter().map(|(_, d)| format!("{d} depends on column {column} of table {table}"));
+            return Err(PgError {
+                detail: Some(detail.collect::<Vec<_>>().join("\n")),
+                hint: Some("Use DROP ... CASCADE to drop the dependent objects too.".into()),
+                ..PgError::new(
+                    code::DEPENDENT_OBJECTS_STILL_EXIST,
+                    format!("cannot drop column {column} of table {table} because other objects depend on it"),
+                )
+            });
+        }
+        for (id, dependent) in dependents {
+            self.session.notice(PgError::notice("00000", format!("drop cascades to {dependent}")));
+            self.txn.root.put_object(self.db, COLLECTION, &id, None)?;
+        }
+        Ok(())
+    }
+
     /// trigger_dependents returns the triggers that run a function, as `trigger t on table x`.
     pub fn trigger_dependents(&mut self, routine: &Routine) -> Result<Vec<String>> {
         let mut dependents = Vec::new();

@@ -425,6 +425,8 @@ impl Ctx<'_> {
             return Err(column_missing(&alteration.table, &cmd.name));
         };
         let cascade = DropBehavior::try_from(cmd.behavior) == Ok(DropBehavior::DropCascade);
+        let (schema, table) = (alteration.table.schema.clone(), alteration.table.name.clone());
+        self.drop_trigger_column(&schema, &table, &cmd.name, cascade)?;
         self.drop_column_foreign_keys(&mut alteration.table, &cmd.name, cascade)?;
         self.rows(alteration)?;
         let table = &mut alteration.table;
