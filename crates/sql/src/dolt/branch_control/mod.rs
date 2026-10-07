@@ -753,8 +753,12 @@ impl Ctx<'_> {
         Identity { user: self.session.user.clone(), host: self.session.host.clone(), superuser: self.is_superuser() }
     }
 
-    /// check_branch_access fails as Dolt's CheckAccess does unless the session holds permissions on its branch.
+    /// check_branch_access fails as Dolt's CheckAccess does unless the session holds permissions on its branch, which a
+    /// detached revision lacks.
     pub fn check_branch_access(&mut self, wanted: u64) -> Result<()> {
+        if self.txn.detached {
+            return Err(PgError::internal("this operation is not supported while in a detached head state"));
+        }
         let (database, branch) = (self.session.database.clone(), self.session.branch.clone());
         let identity = self.identity();
         let permissions = self.branch_controller()?.permissions(&database, &branch, &identity.user, &identity.host);

@@ -299,7 +299,7 @@ impl Ctx<'_> {
 
     /// information_schema_triggers lists each event of each user trigger.
     pub(super) fn information_schema_triggers(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        let database = self.session.database.clone();
+        let database = self.session.display.clone();
         let triggers = self.triggers()?;
         let mut entries: Vec<(String, String, String, u8, u8, &objects::Trigger)> = Vec::new();
         for trigger in triggers.iter() {

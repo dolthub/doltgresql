@@ -160,8 +160,11 @@ const fn f(
     Function { name, args, ret, strict: true, variadic: false, implementation }
 }
 
-/// active_branch returns the session's branch.
+/// active_branch returns the session's branch, or NULL for a revision that is not a branch.
 fn active_branch(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    if ctx.txn.detached {
+        return Ok(Value::Null);
+    }
     Ok(Value::Text(ctx.session.branch.clone()))
 }
 

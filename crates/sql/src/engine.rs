@@ -665,9 +665,13 @@ impl Session {
         };
         let branch = branch.as_str();
         let handle = self.state.engine.database(database)?;
-        if lock(&handle)?.head(&doltdb::create::branch_ref(branch))?.is_none() {
+        let mut db = lock(&handle)?;
+        if db.head(&doltdb::create::branch_ref(branch))?.is_none()
+            && crate::dolt::history::resolve(&mut db, store::Hash::default(), branch).is_err()
+        {
             return Err(not_found());
         }
+        drop(db);
         if !self.state.display.is_empty() && !self.state.display.contains('/') {
             self.state.checked_out.insert(self.state.database.clone(), self.state.branch.clone());
         }
@@ -1521,6 +1525,9 @@ impl Ctx<'_> {
                 | NodeEnum::IndexStmt(_)
                 | NodeEnum::ViewStmt(_)
         );
+        if writes && self.txn.detached {
+            return Err(PgError::internal(format!("Database {} is read-only.", self.session.display)));
+        }
         if writes && !self.is_branch_control_dml(node)? {
             self.check_branch_write()?;
         }

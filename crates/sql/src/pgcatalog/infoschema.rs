@@ -106,7 +106,7 @@ impl Ctx<'_> {
     pub(super) fn information_schema_rows(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         match rows.table.name {
             "schemata" => {
-                let database = self.session.database.clone();
+                let database = self.session.display.clone();
                 for schema in self.schema_names().into_iter().filter(|s| !is_builtin_schema(s)) {
                     let owner = self.session.superuser.clone();
                     rows.push(vec![
@@ -131,7 +131,7 @@ impl Ctx<'_> {
 
     /// information_schema_tables lists the user tables and views.
     fn information_schema_tables(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        let database = self.session.database.clone();
+        let database = self.session.display.clone();
         let mut push = |schema: &str, name: &str, view: bool| {
             rows.push(vec![
                 ("table_catalog", text(database.clone())),
@@ -154,7 +154,7 @@ impl Ctx<'_> {
 
     /// information_schema_columns lists the columns of the user tables and views.
     fn information_schema_columns(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        let database = self.session.database.clone();
+        let database = self.session.display.clone();
         let snapshot = self.snapshot()?;
         let mut relations: Vec<(String, String, Vec<InfoColumn>)> = Vec::new();
         for table in &snapshot.tables {
@@ -213,7 +213,7 @@ impl Ctx<'_> {
 
     /// information_schema_views lists the user views.
     fn information_schema_views(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        let database = self.session.database.clone();
+        let database = self.session.display.clone();
         for view in self.snapshot()?.views {
             let definition = self.view_definition(&view.statement, false, 0).unwrap_or_default();
             rows.push(vec![
@@ -234,7 +234,7 @@ impl Ctx<'_> {
 
     /// information_schema_sequences lists the sequences.
     fn information_schema_sequences(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        let database = self.session.database.clone();
+        let database = self.session.display.clone();
         for sequence in self.snapshot()?.sequences {
             let (schema, name) = crate::sequences::schema_and_name(&sequence);
             let data_type = crate::catalog::builtin_type_by_id(&sequence.data_type_id).map_or(types::INT8, |t| t.oid);
@@ -263,7 +263,7 @@ impl Ctx<'_> {
 
     /// information_schema_table_constraints lists the constraints of the user tables.
     fn information_schema_table_constraints(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        let database = self.session.database.clone();
+        let database = self.session.display.clone();
         let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
             let mut constraints: Vec<(String, &str, (bool, bool))> = Vec::new();
@@ -305,7 +305,7 @@ impl Ctx<'_> {
 
     /// information_schema_referential_constraints lists the foreign keys with the unique constraints they refer to.
     fn information_schema_referential_constraints(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        let database = self.session.database.clone();
+        let database = self.session.display.clone();
         let snapshot = self.snapshot()?;
         let rule = |rule: crate::foreign::Rule| match rule {
             crate::foreign::Rule::NoAction => "NO ACTION",
@@ -338,7 +338,7 @@ impl Ctx<'_> {
 
     /// information_schema_key_column_usage lists the columns of the primary key, unique, and foreign key constraints.
     fn information_schema_key_column_usage(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        let database = self.session.database.clone();
+        let database = self.session.display.clone();
         let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
             let mut keys: Vec<(String, Vec<String>, Option<Vec<usize>>)> = Vec::new();

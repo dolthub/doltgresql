@@ -316,12 +316,12 @@ impl Ctx<'_> {
         let mut rows = Rows::new(table);
         rows.rows = builtin::rows(table);
         if table.schema == "information_schema" {
-            let database = Value::Text(self.session.database.clone());
+            let database = Value::Text(self.session.display.clone());
             let catalogs: Vec<usize> = table
                 .columns
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| c.name.ends_with("_catalog"))
+                .filter(|(_, c)| c.name.ends_with("_catalog") || c.name == "catalog_name")
                 .map(|(i, _)| i)
                 .collect();
             for row in &mut rows.rows {

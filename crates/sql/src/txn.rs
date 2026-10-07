@@ -60,6 +60,8 @@ pub struct Txn {
     original_rebase: Option<RebaseStateFields>,
     /// When the transaction began, as a UTC timestamp.
     pub started: i64,
+    /// Whether the transaction reads a revision that is not a branch, such as a tag, which it cannot change.
+    pub detached: bool,
 }
 
 /// read returns the message at the address, failing when the database lacks it.
@@ -106,7 +108,8 @@ impl Txn {
         Txn::begin_locked(&mut db, handle, sequences, database, branch)
     }
 
-    /// begin_locked starts a transaction on the branch of a database whose lock the caller holds.
+    /// begin_locked starts a transaction on the branch of a database whose lock the caller holds, or a detached one on
+    /// the commit of another revision, as Dolt's revision databases are.
     pub fn begin_locked(
         db: &mut Database,
         handle: DbHandle,
@@ -116,10 +119,14 @@ impl Txn {
     ) -> Result<Txn> {
         let not_found =
             || PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{database}/{branch}\" does not exist"));
-        let head = db.head(&branch_ref(branch))?.ok_or_else(not_found)?;
+        let (head, detached) = match db.head(&branch_ref(branch))? {
+            Some(head) => (head, false),
+            None => (crate::dolt::history::resolve(db, Hash::default(), branch).map_err(|_| not_found())?, true),
+        };
         let commit = read(db, &head)?;
         let head_root = Commit::new(Message(&commit))?.root()?;
-        let (working_set, working, staged, merge, rebase) = match db.head(&working_set_ref(branch))? {
+        let working_set = if detached { None } else { db.head(&working_set_ref(branch))? };
+        let (working_set, working, staged, merge, rebase) = match working_set {
             Some(address) => {
                 let data = read(db, &address)?;
                 let ws = WorkingSet::new(Message(&data))?;
@@ -151,6 +158,7 @@ impl Txn {
             original_rebase: rebase.clone(),
             rebase,
             started: crate::datetime::clock(),
+            detached,
         })
     }
 
@@ -182,10 +190,11 @@ impl Txn {
     /// commit writes the working and staged roots back to the working set when the transaction changed them, as the
     /// user connected from the host.
     pub fn commit(self, db: &mut Database, user: &str, host: &str) -> Result<()> {
-        if self.root.encode() == self.original
-            && self.staged.encode() == self.original_staged
-            && self.merge == self.original_merge
-            && self.rebase == self.original_rebase
+        if self.detached
+            || self.root.encode() == self.original
+                && self.staged.encode() == self.original_staged
+                && self.merge == self.original_merge
+                && self.rebase == self.original_rebase
         {
             return Ok(());
         }

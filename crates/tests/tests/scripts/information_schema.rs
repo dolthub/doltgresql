@@ -440,11 +440,11 @@ fn test_info_schema_revision_db() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows the Go server's rows with Postgres' column type.
                 ScriptTestAssertion {
                     query: "select column_name from information_schema.columns where table_catalog = 'postgres' and table_name = 't' order by 1;",
                     expected: Expected::Rows {
-                        columns: &[Column("column_name", VARCHAR)],
+                        columns: &[Column("column_name", NAME)],
                         rows: &[
                             &[T("a")],
                             &[T("b")],
@@ -472,11 +472,11 @@ fn test_info_schema_revision_db() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows the Go server's rows with Postgres' column type.
                 ScriptTestAssertion {
                     query: "select column_name from information_schema.columns where table_catalog = 'postgres' and table_name = 't' order by 1;",
                     expected: Expected::Rows {
-                        columns: &[Column("column_name", VARCHAR)],
+                        columns: &[Column("column_name", NAME)],
                         rows: &[
                             &[T("a")],
                             &[T("b")],
@@ -505,11 +505,11 @@ fn test_info_schema_revision_db() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows the Go server's rows with Postgres' column type.
                 ScriptTestAssertion {
                     query: "select column_name from information_schema.columns where table_catalog = 'postgres' and table_name = 't' order by 1;",
                     expected: Expected::Rows {
-                        columns: &[Column("column_name", VARCHAR)],
+                        columns: &[Column("column_name", NAME)],
                         rows: &[
                             &[T("a")],
                             &[T("b")],
@@ -552,11 +552,11 @@ fn test_info_schema_revision_db() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows the Go server's rows with Postgres' column type.
                 ScriptTestAssertion {
                     query: "select column_name from information_schema.columns where table_catalog = 'postgres' and table_name = 't' order by 1;",
                     expected: Expected::Rows {
-                        columns: &[Column("column_name", VARCHAR)],
+                        columns: &[Column("column_name", NAME)],
                         rows: &[
                             &[T("a")],
                             &[T("b")],
@@ -584,11 +584,11 @@ fn test_info_schema_revision_db() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows the Go server's rows with Postgres' column type.
                 ScriptTestAssertion {
                     query: "select column_name from information_schema.columns where table_catalog = 'postgres/t2' and table_name = 't' order by 1;",
                     expected: Expected::Rows {
-                        columns: &[Column("column_name", VARCHAR)],
+                        columns: &[Column("column_name", NAME)],
                         rows: &[
                             &[T("a")],
                             &[T("b")],
@@ -617,11 +617,11 @@ fn test_info_schema_revision_db() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows the Go server's rows with Postgres' column type.
                 ScriptTestAssertion {
                     query: "select column_name from information_schema.columns where table_catalog = 'postgres/t3' and table_name = 't' order by 1;",
                     expected: Expected::Rows {
-                        columns: &[Column("column_name", VARCHAR)],
+                        columns: &[Column("column_name", NAME)],
                         rows: &[
                             &[T("a")],
                             &[T("b")],
