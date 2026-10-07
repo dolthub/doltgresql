@@ -5808,3 +5808,54 @@ fn test_dolt_verify_constraints() {
         },
     ]);
 }
+
+#[test]
+fn test_writes_after_dolt_gc() {
+    run_scripts(&[
+        ScriptTest {
+            name: "writes after DOLT_GC reference chunks in the old generation",
+            set_up_script: &[
+                "CREATE TABLE t (a INT4 PRIMARY KEY);",
+                "INSERT INTO t VALUES (1);",
+                "SELECT DOLT_COMMIT('-A', '-m', 'first');",
+            ],
+            assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_GC();",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_gc", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (2);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t2 (b INT4);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

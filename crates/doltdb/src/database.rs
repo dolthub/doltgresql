@@ -331,11 +331,14 @@ impl Database {
         self.store.root()
     }
 
-    /// put adds a chunk with the addresses its message refers to.
+    /// put adds a chunk with the addresses its message refers to, leaving out the ones the old generation holds, which
+    /// the store cannot see.
     fn put(&mut self, chunk: Chunk) -> store::Result<()> {
         let mut refs = Vec::new();
         serial::walk::walk_addrs(Message(&chunk.data), &mut |address| {
-            refs.push(address);
+            if !self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&address)) {
+                refs.push(address);
+            }
             Ok(())
         })?;
         self.store.put(chunk, refs)
