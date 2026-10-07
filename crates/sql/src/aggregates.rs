@@ -182,9 +182,9 @@ fn def_text(arg: Option<&pg_query::protobuf::Node>) -> String {
 }
 
 impl Ctx<'_> {
-    /// aggregate_function returns the routine of an aggregate's support function, which takes exactly the types and,
-    /// when asked, returns the state type, as Postgres' lookup_agg_function checks.
-    fn aggregate_function(
+    /// support_function returns the routine of an aggregate's or operator's support function, which takes exactly the
+    /// types and, when asked, returns the state type, as Postgres' lookup_agg_function checks.
+    pub(crate) fn support_function(
         &mut self,
         names: &[String],
         inputs: &[ColumnType],
@@ -267,7 +267,7 @@ impl Ctx<'_> {
         }
         let mut inputs = vec![state];
         inputs.extend(&params);
-        let transition = self.aggregate_function(&functions.transition, &inputs, Some(("transition", state)))?;
+        let transition = self.support_function(&functions.transition, &inputs, Some(("transition", state)))?;
         if transition.strict && init_cond.is_none() && (params.len() != 1 || params[0].oid != state.oid) {
             return Err(PgError::new(
                 code::INVALID_FUNCTION_DEFINITION,
@@ -277,17 +277,14 @@ impl Ctx<'_> {
         let mut ret = state;
         let mut final_function = Vec::new();
         if !functions.final_function.is_empty() {
-            let routine = self.aggregate_function(&functions.final_function, &[state], None)?;
+            let routine = self.support_function(&functions.final_function, &[state], None)?;
             ret = routine.ret;
             final_function = routine.object.id.clone();
         }
         let mut combine = Vec::new();
         if !functions.combine.is_empty() {
-            combine = self
-                .aggregate_function(&functions.combine, &[state, state], Some(("combine", state)))?
-                .object
-                .id
-                .clone();
+            combine =
+                self.support_function(&functions.combine, &[state, state], Some(("combine", state)))?.object.id.clone();
         }
         let aggregate_id = crate::routines::function_id(&schema, &name, &params, false);
         let duplicate = || {

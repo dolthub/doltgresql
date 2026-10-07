@@ -255,6 +255,7 @@ impl Ctx<'_> {
             "pg_proc" => self.pg_proc(rows),
             "pg_cast" => self.pg_cast(rows),
             "pg_aggregate" => self.pg_aggregate(rows),
+            "pg_operator" => self.pg_operator(rows),
             "pg_enum" => self.pg_enum(rows),
             "pg_trigger" => self.pg_trigger(rows),
             "pg_extension" => self.pg_extension(rows),

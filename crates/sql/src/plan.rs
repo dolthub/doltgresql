@@ -754,6 +754,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 let renames: Vec<&str> =
                     alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
                 let table_oid = crate::pgcatalog::snapshot::table_oid(&table.schema, &table.name);
+                crate::usertypes::register(crate::usertypes::row_type(&table));
                 let scope = Scope {
                     columns: table
                         .columns

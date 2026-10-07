@@ -441,5 +441,87 @@ fn test_create_operator() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "CREATE OPERATOR prefix operators, options, and DROP OPERATOR errors",
+            set_up_script: &[
+                r#"CREATE FUNCTION op_prefix_neg(b int4) RETURNS int4
+					AS $$ SELECT -b $$ LANGUAGE SQL;"#,
+                r#"CREATE FUNCTION op_prefix_sub(a int4, b int4) RETURNS int4
+					AS $$ SELECT a - b $$ LANGUAGE SQL;"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "DROP OPERATOR <-> (int4, int4);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "operator does not exist: integer <-> integer", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP OPERATOR IF EXISTS <-> (int4, int4);",
+                    expected: Expected::Tag("DROP OPERATOR"),
+                    notices: &[Diagnostic { code: "00000", message: "operator <-> does not exist, skipping", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OPERATOR <-> (RIGHTARG = int4, FUNCTION = op_prefix_neg, COMMUTATOR = <->);",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "only binary operators can have commutators", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OPERATOR <-> (RIGHTARG = int4, FUNCTION = op_prefix_neg, HASHES);",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "only binary operators can hash", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OPERATOR <-> (LEFTARG = int4, RIGHTARG = int4, FUNCTION = op_prefix_sub, NEGATOR = <>);",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "only boolean operators can have negators", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OPERATOR <-> (LEFTARG = int4, RIGHTARG = int4, PROCEDURE = op_prefix_sub, BOGUS);",
+                    expected: Expected::Tag("CREATE OPERATOR"),
+                    notices: &[Diagnostic { severity: "WARNING", code: "42601", message: r#"operator attribute "bogus" not recognized"#, ..E }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OPERATOR <-> (RIGHTARG = int4, FUNCTION = op_prefix_neg);",
+                    expected: Expected::Tag("CREATE OPERATOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT <-> 5, 7 <-> 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4), Column("?column?", INT4)],
+                        rows: &[
+                            &[T("-5"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT oprkind, oprleft, oprright, oprresult, oprowner, oprcode::text, oprrest::text, oprjoin::text FROM pg_operator WHERE oprname = '<->' AND oprnamespace = 'public'::regnamespace ORDER BY oprkind;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oprkind", CHAR), Column("oprleft", OID), Column("oprright", OID), Column("oprresult", OID), Column("oprowner", OID), Column("oprcode", TEXT), Column("oprrest", TEXT), Column("oprjoin", TEXT)],
+                        rows: &[
+                            &[T("b"), T("23"), T("23"), T("23"), T("10"), T("op_prefix_sub"), T("-"), T("-")],
+                            &[T("l"), T("0"), T("23"), T("23"), T("10"), T("op_prefix_neg"), T("-"), T("-")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP OPERATOR <-> (none, int4);",
+                    expected: Expected::Tag("DROP OPERATOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP OPERATOR <-> (int4, int4);",
+                    expected: Expected::Tag("DROP OPERATOR"),
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

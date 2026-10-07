@@ -182,6 +182,17 @@ pub fn register(definition: SerializedType) -> u32 {
     oid
 }
 
+/// table_row_type returns the OID of the registered row type of the table with the OID.
+pub fn table_row_type(table_oid: u32) -> Option<u32> {
+    REGISTRY.with(|r| {
+        r.borrow()
+            .types
+            .values()
+            .find(|t| !t.definition.rel_id.is_empty() && oids::oid(&t.definition.rel_id) == table_oid)
+            .map(|t| t.oid)
+    })
+}
+
 /// install makes the types and search path those of the statement starting on this thread.
 pub fn install(types: &Types, search_path: Vec<String>) {
     REGISTRY.with(|r| *r.borrow_mut() = Registry { types: types.clone(), search_path });

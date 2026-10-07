@@ -178,6 +178,38 @@ impl Ctx<'_> {
         Ok(())
     }
 
+    /// pg_operator lists the operators of the operator collection, as Go's pg_operator does.
+    pub(super) fn pg_operator(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let operators = self.user_operators()?;
+        let linked = |name: &[u8], left: u32, right: u32, schema: &str| {
+            operators
+                .iter()
+                .find(|o| o.name.as_bytes() == name && o.left == left && o.right == right && o.schema == schema)
+                .map_or(0, |o| oids::oid(&o.stored.id))
+        };
+        for operator in operators.iter() {
+            let stored = &operator.stored;
+            rows.push(vec![
+                ("oid", oid(oids::oid(&stored.id))),
+                ("oprname", text(operator.name.clone())),
+                ("oprnamespace", oid(namespace_oid(&operator.schema))),
+                ("oprowner", oid(10)),
+                ("oprkind", text(if operator.left == 0 { "l" } else { "b" })),
+                ("oprcanmerge", boolean(stored.merges)),
+                ("oprcanhash", boolean(stored.hashes)),
+                ("oprleft", oid(operator.left)),
+                ("oprright", oid(operator.right)),
+                ("oprresult", oid(operator.routine.ret.oid)),
+                ("oprcom", oid(linked(&stored.commutator, operator.right, operator.left, &operator.schema))),
+                ("oprnegate", oid(linked(&stored.negator, operator.left, operator.right, &operator.schema))),
+                ("oprcode", regproc(&stored.function)),
+                ("oprrest", regproc(&[])),
+                ("oprjoin", regproc(&[])),
+            ]);
+        }
+        Ok(())
+    }
+
     /// pg_aggregate lists the aggregates of the aggregate collection, as Go's pg_aggregate does.
     pub(super) fn pg_aggregate(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         for aggregate in self.user_aggregates()?.iter() {

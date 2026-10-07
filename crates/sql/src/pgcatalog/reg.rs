@@ -30,7 +30,7 @@ struct Relation {
 }
 
 /// builtin_column returns a column of a built-in catalog's rows by name, as pairs of OID and value.
-pub(super) fn builtin_column(catalog: &str, column: &str) -> Vec<(u32, Value)> {
+pub(crate) fn builtin_column(catalog: &str, column: &str) -> Vec<(u32, Value)> {
     let Some(table) = lookup("pg_catalog", catalog) else { return Vec::new() };
     let (Some(oid), Some(i)) = (table.column("oid"), table.column(column)) else { return Vec::new() };
     builtin::rows(table)

@@ -514,7 +514,10 @@ impl<'b, 'a> Binder<'b, 'a> {
             let columns = self.whole_row_columns(name);
             if !columns.is_empty() {
                 let types: Vec<(String, ColumnType)> = columns.iter().map(|(n, _, t)| (n.clone(), *t)).collect();
-                let type_oid = crate::usertypes::transient(name, &types);
+                let type_oid = match self.whole_row_table(name).and_then(crate::usertypes::table_row_type) {
+                    Some(type_oid) => type_oid,
+                    None => crate::usertypes::transient(name, &types),
+                };
                 let row = Expr::Row(columns.into_iter().map(|(_, e, _)| e).collect());
                 return Ok((Expr::Cast(Box::new(row), typ(type_oid), false), typ(type_oid)));
             }
@@ -583,6 +586,16 @@ impl<'b, 'a> Binder<'b, 'a> {
                 .collect();
         }
         Vec::new()
+    }
+
+    /// whole_row_table returns the OID of the table whose every column, in order, a whole-row reference covers.
+    fn whole_row_table(&self, table: &str) -> Option<u32> {
+        let scope = self.scopes.iter().rev().find(|s| s.columns.iter().any(|c| c.table == table && !c.hidden))?;
+        let origins: Vec<(u32, u16)> =
+            scope.columns.iter().filter(|c| c.table == table && !c.hidden).map(|c| c.origin).collect();
+        let table_oid = origins.first()?.0;
+        let in_order = origins.iter().enumerate().all(|(i, o)| o.0 == table_oid && usize::from(o.1) == i + 1);
+        (table_oid != 0 && in_order).then_some(table_oid)
     }
 
     /// func_call binds a call of a built-in function.
@@ -871,6 +884,10 @@ impl<'b, 'a> Binder<'b, 'a> {
             AExprKind::AexprOp => {
                 if e.lexpr.is_none() {
                     let right = self.bind(operand(&e.rexpr)?)?;
+                    if let Some(operator) = self.user_operator(&op, 0, right.1.oid)? {
+                        let right = coerce(right, typ(operator.right), false, e.location)?.0;
+                        return Ok((Expr::Routine(operator.routine.clone(), vec![right]), operator.routine.ret));
+                    }
                     return unary(&op, right, e.location);
                 }
                 if let (Some(left), Some(right)) = (row_items(operand(&e.lexpr)?), row_items(operand(&e.rexpr)?)) {
@@ -1331,8 +1348,10 @@ impl<'b, 'a> Binder<'b, 'a> {
         Ok(Expr::And(Box::new(lower), Box::new(upper)))
     }
 
-    /// user_operator returns the stored operator of the name for operands of the types, where an untyped operand takes
-    /// the other operand's type.
+    /// user_operator returns the visible stored operator of the name for operands of the types, where the left type
+    /// is 0 for a prefix operator. An untyped operand first takes the other operand's type, and for operators that
+    /// Postgres lacks it then matches any type, preferring text when several operators match, as Postgres'
+    /// oper_select_candidate does.
     fn user_operator(
         &mut self,
         op: &str,
@@ -1340,13 +1359,28 @@ impl<'b, 'a> Binder<'b, 'a> {
         rt: u32,
     ) -> Result<Option<std::sync::Arc<crate::operators::UserOperator>>> {
         let operators = self.ctx.user_operators()?;
-        let (lt, rt) = match (lt == oid::UNKNOWN, rt == oid::UNKNOWN) {
-            (true, true) => return Ok(None),
+        let named: Vec<_> = operators
+            .iter()
+            .filter(|o| o.name == op && (o.left == 0) == (lt == 0) && crate::usertypes::in_search_path(&o.schema))
+            .collect();
+        let (exact_left, exact_right) = match (lt == oid::UNKNOWN, rt == oid::UNKNOWN) {
             (true, false) => (rt, rt),
             (false, true) => (lt, lt),
-            (false, false) => (lt, rt),
+            _ => (lt, rt),
         };
-        Ok(operators.iter().find(|o| o.name == op && o.left == lt && o.right == rt).cloned())
+        if let Some(found) = named.iter().find(|o| o.left == exact_left && o.right == exact_right) {
+            return Ok(Some((*found).clone()));
+        }
+        if crate::operators::is_builtin(op) {
+            return Ok(None);
+        }
+        let fits = |given: u32, operand: u32| given == operand || given == oid::UNKNOWN;
+        let candidates: Vec<_> = named.into_iter().filter(|o| fits(lt, o.left) && fits(rt, o.right)).collect();
+        let preferred = |given: u32, operand: u32| given != oid::UNKNOWN || operand == oid::TEXT;
+        Ok(match candidates.as_slice() {
+            [only] => Some((*only).clone()),
+            _ => candidates.iter().find(|o| preferred(lt, o.left) && preferred(rt, o.right)).map(|o| (*o).clone()),
+        })
     }
 
     /// operator_call binds a binary operator that a built-in function implements.
@@ -1395,6 +1429,9 @@ impl<'b, 'a> Binder<'b, 'a> {
                 format!("operator does not exist: {} {op} {}", type_display(lt), type_display(rt)),
             )
         };
+        if !crate::operators::is_builtin(op) && op != "!=" {
+            return Err(missing());
+        }
         if [lt, rt].iter().any(|t| matches!(*t, oid::JSON | oid::JSONB)) {
             if functions::exists(op)
                 && let Ok(resolved) = functions::resolve(op, &[lt, rt], location)

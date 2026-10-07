@@ -665,6 +665,7 @@ impl Ctx<'_> {
             ObjectType::ObjectTrigger => self.drop_triggers(drop),
             ObjectType::ObjectCast => self.drop_casts(drop),
             ObjectType::ObjectAggregate => self.drop_aggregates(drop),
+            ObjectType::ObjectOperator => self.drop_operators(drop),
             ObjectType::ObjectType => self.drop_types(drop, false),
             ObjectType::ObjectDomain => self.drop_types(drop, true),
             ObjectType::ObjectExtension => self.drop_extensions(drop),
