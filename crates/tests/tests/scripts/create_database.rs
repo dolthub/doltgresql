@@ -83,10 +83,10 @@ fn test_create_database() {
                     flow: Flow::Query,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, and the failed CREATE DATABASE above creates nothing, as in Postgres.
                 ScriptTestAssertion {
                     query: "USE testdb",
-                    expected: Expected::Tag("SET"),
+                    expected: Expected::Error(Diagnostic { code: "3D000", message: r#"database "testdb" does not exist"#, ..E }),
                     ..A
                 },
             ],

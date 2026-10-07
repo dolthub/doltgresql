@@ -258,10 +258,10 @@ fn test_getting_started_guide() {
                     expected: Expected::Tag("DROP TABLE"),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "select count(*) from employees_teams;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: employees_teams", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"employees_teams\" does not exist", position: 22, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

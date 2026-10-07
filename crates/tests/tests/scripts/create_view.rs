@@ -137,10 +137,10 @@ fn test_create_view_statements() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "select * from myview order by pk; /* err */",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: myview", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"myview\" does not exist", position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {

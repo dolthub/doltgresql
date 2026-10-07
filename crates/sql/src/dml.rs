@@ -486,12 +486,25 @@ impl<'a> Edits<'a> {
         Ok(get(db, root, key, &|a, b| self.table.compare_keys(a, b))?)
     }
 
-    /// insert adds a row, failing on a duplicate primary key, and adding to the cardinality of a keyless row.
+    /// insert adds a row, failing on a duplicate primary key, and adding to the cardinality of a keyless row unless a
+    /// unique index holds it.
     fn insert(&mut self, ctx: &mut Ctx<'_>, row: &[Value]) -> Result<()> {
         let (key, mut value) = self.table.encode_row(ctx.db, row)?;
         if let Some(existing) = self.current(ctx.db, &key)? {
             if !self.table.keyless() {
                 return Err(duplicate_key(self.table, row));
+            }
+            let (indexed, held) = self.rules.indexed(ctx, row)?;
+            for (i, index) in self.table.indexes.iter().enumerate().filter(|(i, index)| held[*i] && index.unique) {
+                let values: Vec<Value> =
+                    index.columns.iter().map(|&c| indexed[self.table.row_position(c)].clone()).collect();
+                if values.iter().any(Value::is_null) {
+                    continue;
+                }
+                if !self.deferred[i] {
+                    return Err(unique_violation(self.table, &self.rules, index, &indexed));
+                }
+                self.deferred_checks.push((i, values));
             }
             value = with_cardinality(&existing, cardinality(&existing) + 1);
         } else {
@@ -999,6 +1012,19 @@ fn bind_assignments(
         let value = target.val.as_deref().ok_or_else(|| PgError::internal("an assignment without a value"))?;
         let column = &table.columns[i];
         if !target.indirection.is_empty() {
+            let subscripted = matches!(target.indirection[0].node, Some(NodeEnum::AIndices(_)));
+            if subscripted && !crate::array::is_array_type(column.ty.oid) {
+                return Err(PgError {
+                    position: position(target.location),
+                    ..PgError::new(
+                        code::DATATYPE_MISMATCH,
+                        format!(
+                            "cannot subscript type {} because it does not support subscripting",
+                            crate::cast::type_display(column.ty.oid)
+                        ),
+                    )
+                });
+            }
             if !crate::array::is_array_type(column.ty.oid) {
                 return Err(PgError::unsupported("this assignment"));
             }

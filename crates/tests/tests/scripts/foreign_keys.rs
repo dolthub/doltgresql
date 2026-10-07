@@ -1558,11 +1558,11 @@ fn test_foreign_keys() {
                     flow: Flow::Exec,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 1;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 1", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2139,11 +2139,11 @@ Type: Foreign Key Constraint Violation
                 "SELECT DOLT_COMMIT('-Am', 'GET /manage/tenants/default/projects/my-weather-project/tools via API');",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2182,11 +2182,11 @@ Type: Foreign Key Constraint Violation
                 "SELECT DOLT_COMMIT('-Am', '4');",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2225,11 +2225,11 @@ Type: Foreign Key Constraint Violation
                 "SELECT DOLT_COMMIT('-Am', '4');",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2258,11 +2258,11 @@ Type: Foreign Key Constraint Violation
                 "set dolt_force_transaction_commit=1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("f")],
                         ],
@@ -2317,11 +2317,11 @@ Type: Foreign Key Constraint Violation
                 "set dolt_force_transaction_commit=1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("f")],
                         ],
@@ -2374,11 +2374,11 @@ Type: Foreign Key Constraint Violation
                 "SELECT DOLT_COMMIT('-Am', '4');",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2430,11 +2430,11 @@ Type: Foreign Key Constraint Violation
                 "set dolt_force_transaction_commit=1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("f")],
                         ],
@@ -2486,11 +2486,11 @@ Type: Foreign Key Constraint Violation
                 "SELECT DOLT_COMMIT('-Am', '4');",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -2540,11 +2540,11 @@ Type: Foreign Key Constraint Violation
                 "set dolt_force_transaction_commit=1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("f")],
                         ],
@@ -2597,11 +2597,11 @@ Type: Foreign Key Constraint Violation
                 "set dolt_force_transaction_commit=1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("f")],
                         ],
@@ -2656,11 +2656,11 @@ Type: Foreign Key Constraint Violation
                 "set dolt_force_transaction_commit=1;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
                     expected: Expected::Rows {
-                        columns: &[Column("strpos > 0", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("f")],
                         ],

@@ -304,6 +304,9 @@ impl Numeric {
 
     /// div returns the quotient at the scale Postgres chooses, failing on division by zero.
     pub fn div(&self, other: &Numeric) -> Result<Numeric> {
+        if matches!(self, Numeric::NaN) || matches!(other, Numeric::NaN) {
+            return Ok(Numeric::NaN);
+        }
         if other.is_zero() {
             return Err(PgError::new(code::DIVISION_BY_ZERO, "division by zero"));
         }
@@ -385,6 +388,9 @@ impl Numeric {
 
     /// rem returns the remainder of truncating division, failing on division by zero.
     pub fn rem(&self, other: &Numeric) -> Result<Numeric> {
+        if matches!(self, Numeric::NaN) || matches!(other, Numeric::NaN) {
+            return Ok(Numeric::NaN);
+        }
         if other.is_zero() {
             return Err(PgError::new(code::DIVISION_BY_ZERO, "division by zero"));
         }

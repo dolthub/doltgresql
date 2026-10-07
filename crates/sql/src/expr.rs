@@ -774,11 +774,23 @@ impl<'b, 'a> Binder<'b, 'a> {
             return self.aggregate_call(schema, name, call);
         }
         if call.agg_distinct || call.agg_filter.is_some() || !call.agg_order.is_empty() {
+            let plain = pg_query::protobuf::FuncCall {
+                agg_distinct: false,
+                agg_filter: None,
+                agg_order: Vec::new(),
+                ..call.clone()
+            };
+            self.bind(&Node { node: Some(NodeEnum::FuncCall(Box::new(plain))) })?;
+            let clause = match (call.agg_distinct, call.agg_order.is_empty()) {
+                (true, _) => "DISTINCT",
+                (false, false) => "ORDER BY",
+                (false, true) => "FILTER",
+            };
             return Err(PgError {
                 position: position(call.location),
                 ..PgError::new(
                     code::WRONG_OBJECT_TYPE,
-                    format!("DISTINCT specified, but {name} is not an aggregate function"),
+                    format!("{clause} specified, but {name} is not an aggregate function"),
                 )
             });
         }
@@ -1838,6 +1850,7 @@ impl<'b, 'a> Binder<'b, 'a> {
         if ty.oid == oid::JSONB {
             return self.jsonb_subscripts((base, ty), items, arg_location(arg));
         }
+        let ty = if is_array_type(ty.oid) { ty } else { crate::usertypes::base_type(ty) };
         let (subscripts, slice) = self.subscripts(items)?;
         if !is_array_type(ty.oid) {
             return Err(PgError {

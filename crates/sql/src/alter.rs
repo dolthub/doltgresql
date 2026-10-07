@@ -124,7 +124,7 @@ impl Ctx<'_> {
             Err(err) => return Err(PgError { position: None, ..err }),
         };
         self.require_owner(&crate::auth::Object::Table(table.schema.clone(), table.name.clone()))?;
-        let before: Vec<u64> = table.columns.iter().map(|c| c.tag).collect();
+        let before: Vec<(u64, String)> = table.columns.iter().map(|c| (c.tag, c.name.clone())).collect();
         let mut alteration = Alteration::new(table);
         for cmd in &stmt.cmds {
             let Some(NodeEnum::AlterTableCmd(cmd)) = cmd.node.as_ref() else { continue };
@@ -486,15 +486,16 @@ impl Ctx<'_> {
     }
 
     /// update_row_type_users rewrites the columns of other tables that hold a table's row type after the table's
-    /// columns changed, keeping the fields of the columns that the table still has and leaving new ones NULL, as Go's
-    /// AfterTableAddColumn and AfterTableDropColumn do.
-    fn update_row_type_users(&mut self, schema: &str, name: &str, before: &[u64]) -> Result<()> {
+    /// columns, given as their tags and names, changed, keeping the fields of the columns that the table still has and
+    /// leaving new ones NULL, as Go's AfterTableAddColumn and AfterTableDropColumn do.
+    fn update_row_type_users(&mut self, schema: &str, name: &str, columns: &[(u64, String)]) -> Result<()> {
         let table =
             self.txn.table(self.db, schema, name)?.ok_or_else(|| PgError::internal("an altered table vanished"))?;
-        let after: Vec<u64> = table.columns.iter().map(|c| c.tag).collect();
-        if after == before {
+        if table.columns.iter().map(|c| (c.tag, c.name.clone())).eq(columns.iter().cloned()) {
             return Ok(());
         }
+        let before: Vec<u64> = columns.iter().map(|(tag, _)| *tag).collect();
+        let after: Vec<u64> = table.columns.iter().map(|c| c.tag).collect();
         let row_type = crate::pgcatalog::row_type_oid(schema, name);
         for ((other_schema, other_name), address) in
             crate::dolt::procedures::table_map(self.db, &self.txn.root.clone())?
@@ -531,6 +532,12 @@ impl Ctx<'_> {
         let i = self.column_index(&alteration.table, &cmd.name)?;
         let type_name = def.type_name.as_ref().ok_or_else(|| PgError::internal("ALTER COLUMN TYPE without a type"))?;
         let ty = resolve_type_name(type_name)?;
+        if ty.oid == crate::oid::RECORD {
+            return Err(PgError::new(
+                code::INVALID_TABLE_DEFINITION,
+                format!("column \"{}\" has pseudo-type record", cmd.name),
+            ));
+        }
         let old = alteration.table.columns[i].clone();
         let scope = table_scope(&alteration.table, None);
         let expr = match def.raw_default.as_deref() {
@@ -917,6 +924,8 @@ impl Ctx<'_> {
                 return Ok(Outcome::command(tag));
             }
             ObjectType::ObjectColumn => {
+                let before: Vec<(u64, String)> =
+                    alteration.table.columns.iter().map(|c| (c.tag, c.name.clone())).collect();
                 let i = self.column_index(&alteration.table, &stmt.subname)?;
                 if alteration.table.columns.iter().any(|c| c.name == stmt.newname) {
                     return Err(PgError::new(
@@ -940,6 +949,7 @@ impl Ctx<'_> {
                 self.finish_alteration(alteration)?;
                 self.rename_in_foreign_keys(fks, &schema, &name, &name)?;
                 self.rename_trigger_column(&schema, &name, &stmt.subname, &stmt.newname)?;
+                self.update_row_type_users(&schema, &name, &before)?;
                 return Ok(Outcome::command(tag));
             }
             ObjectType::ObjectTabconstraint => {

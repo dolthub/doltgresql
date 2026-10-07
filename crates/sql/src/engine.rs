@@ -1203,7 +1203,22 @@ impl Session {
             }
             NodeEnum::CreatedbStmt(create) => {
                 let mut parameters = Vec::new();
-                self.with_ctx(&mut parameters, params, |ctx| ctx.require_create_db())?;
+                self.with_ctx(&mut parameters, params, |ctx| {
+                    ctx.require_create_db()?;
+                    for option in &create.options {
+                        let Some(NodeEnum::DefElem(def)) = option.node.as_ref() else { continue };
+                        if def.defname == "owner"
+                            && let Some(NodeEnum::String(owner)) = def.arg.as_deref().and_then(|a| a.node.as_ref())
+                        {
+                            ctx.check_new_owner(Some(&pg_query::protobuf::RoleSpec {
+                                roletype: pg_query::protobuf::RoleSpecType::RolespecCstring as i32,
+                                rolename: owner.sval.clone(),
+                                location: -1,
+                            }))?;
+                        }
+                    }
+                    Ok(())
+                })?;
                 return self.create_database(&create.dbname, extras.if_not_exists);
             }
             NodeEnum::CreateRoleStmt(create) => {

@@ -1621,3 +1621,290 @@ fn test_jsonb_subscript_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_unique_clause_and_rename_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Keyless unique indexes and repeated rows",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (iid uuid, slug text, UNIQUE(iid, slug));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES ('11111111-1111-1111-1111-111111111111', 'hello');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES ('11111111-1111-1111-1111-111111111111', 'hello');",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "t_iid_slug_key""#, detail: "Key (iid, slug)=(11111111-1111-1111-1111-111111111111, hello) already exists.", schema: "public", table: "t", constraint: "t_iid_slug_key", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t2 (iid uuid, slug text, UNIQUE(iid, slug));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t2 VALUES ('11111111-1111-1111-1111-111111111111', 'hello');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t2 VALUES ('22222222-2222-2222-2222-222222222222', 'hello');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t2 VALUES ('11111111-1111-1111-1111-111111111111', 'hello');",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "t2_iid_slug_key""#, detail: "Key (iid, slug)=(11111111-1111-1111-1111-111111111111, hello) already exists.", schema: "public", table: "t2", constraint: "t2_iid_slug_key", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t3 (a int, slug text, UNIQUE(a, slug));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t3 VALUES (1, 'hello'), (2, 'hello');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t3 VALUES (1, 'hello');",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "t3_a_slug_key""#, detail: "Key (a, slug)=(1, hello) already exists.", schema: "public", table: "t3", constraint: "t3_a_slug_key", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Clause, domain, and subscript rules",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'a' || '2020-01-01 00:00:00'::timestamp;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT)],
+                        rows: &[
+                            &[T("a2020-01-01 00:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT now()::date || 'x';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT)],
+                        rows: &[
+                            &[T("2026-10-07x")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'x' || 1.5::numeric || 'y' || true;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT)],
+                        rows: &[
+                            &[T("x1.5ytrue")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nan'::numeric / '0'::numeric, 'nan'::numeric % '0'::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", NUMERIC), Column("?column?", NUMERIC)],
+                        rows: &[
+                            &[T("NaN"), T("NaN")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM current_schema;",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_schema", NAME)],
+                        rows: &[
+                            &[T("public")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM current_user AS u;",
+                    expected: Expected::Rows {
+                        columns: &[Column("u", NAME)],
+                        rows: &[
+                            &[T("postgres")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT group_concat(1 ORDER BY 1);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function group_concat(integer) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lower('a' ORDER BY 1);",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "ORDER BY specified, but lower is not an aggregate function", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lower(DISTINCT 'a');",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "DISTINCT specified, but lower is not an aggregate function", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lower('a') FILTER (WHERE true);",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "FILTER specified, but lower is not an aggregate function", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t2 (c1 int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t2 ALTER COLUMN c1 TYPE RECORD;",
+                    expected: Expected::Error(Diagnostic { code: "42P16", message: r#"column "c1" has pseudo-type record"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION IF EXISTS public.tax_job_trans(t public.trans);",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    notices: &[Diagnostic { code: "00000", message: r#"type "public.trans" does not exist, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN domint4arr AS int4[];",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE domarr (pk int primary key, i domint4arr);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO domarr VALUES (1, '{1,2,3}');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT i[2], pg_typeof(i[2]), i[1:2] FROM domarr;",
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INT4), Column("pg_typeof", REGTYPE), Column("i", INT4_ARRAY)],
+                        rows: &[
+                            &[T("2"), T("integer"), T("{1,2}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t_scalar (n int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t_scalar SET n[1]=7;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "cannot subscript type integer because it does not support subscripting", position: 21, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jorder (val jsonb);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO jorder VALUES ('null'), ('[]'), ('{}'), ('"a"'), ('1'), ('true'), ('[1]'), ('false'), ('{"a":1}');"#,
+                    expected: Expected::Tag("INSERT 0 9"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT val FROM jorder ORDER BY val;",
+                    expected: Expected::Rows {
+                        columns: &[Column("val", JSONB)],
+                        rows: &[
+                            &[T("[]")],
+                            &[T("null")],
+                            &[T(r#""a""#)],
+                            &[T("1")],
+                            &[T("false")],
+                            &[T("true")],
+                            &[T("[1]")],
+                            &[T("{}")],
+                            &[T(r#"{"a": 1}"#)],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Renamed columns of row types in use",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t1a (a INT4, b VARCHAR(3));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t2 (id SERIAL, t1a t1a);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t2 (t1a) VALUES (ROW(1, 'abc'));",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t1a RENAME COLUMN a TO z;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (t1a).a FROM t2;",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "a" not found in data type t1a"#, position: 9, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (t1a).z, t1a FROM t2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("z", INT4), Column("t1a", USER_DEFINED)],
+                        rows: &[
+                            &[T("1"), T("(1,abc)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

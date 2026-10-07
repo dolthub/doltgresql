@@ -999,6 +999,21 @@ impl<'b, 'a> Planner<'b, 'a> {
     /// plan_range_function plans a set-returning function in FROM, where pg_show_all_settings() reads pg_settings, the
     /// view Postgres defines over it.
     fn plan_range_function(&mut self, function: &RangeFunction) -> Result<(Plan, Scope)> {
+        if let [item] = function.functions.as_slice()
+            && let Some(NodeEnum::List(list)) = item.node.as_ref()
+            && let Some(node) = list.items.first()
+            && matches!(node.node, Some(NodeEnum::SqlvalueFunction(_)))
+        {
+            let (expr, ty) = self.binder(Scope::default()).bind(node)?;
+            let alias = function.alias.as_ref();
+            let figured = crate::expr::figure_name(node);
+            let table = alias.map_or(figured.clone(), |a| a.aliasname.clone());
+            let name = alias
+                .and_then(|a| a.colnames.first().and_then(node_name).map(str::to_string).or(Some(a.aliasname.clone())))
+                .unwrap_or(figured);
+            let column = ScopeColumn { table, name, ty, hidden: false, origin: (0, 0) };
+            return Ok((Plan::Values(vec![vec![expr]]), Scope { columns: vec![column] }));
+        }
         let calls = rows_from_calls(function)?;
         if calls.len() > 1 {
             return self.plan_rows_from(function, &calls);

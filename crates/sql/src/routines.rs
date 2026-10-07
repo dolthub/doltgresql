@@ -950,7 +950,18 @@ impl Ctx<'_> {
             });
             if output != Some(true) {
                 self.prepare_type(type_name)?;
-                types.push(crate::expr::resolve_type_name(type_name)?.oid);
+                match crate::expr::resolve_type_name(type_name) {
+                    Ok(ty) => types.push(ty.oid),
+                    Err(err) if missing_ok && err.code == code::UNDEFINED_OBJECT => {
+                        let written: Vec<&str> = type_name.names.iter().filter_map(node_name).collect();
+                        self.session.notice(PgError::notice(
+                            "00000",
+                            format!("type \"{}\" does not exist, skipping", written.join(".")),
+                        ));
+                        return Ok(None);
+                    }
+                    Err(err) => return Err(err),
+                }
             }
         }
         let found = all.into_iter().find(|r| r.inputs().map(|p| p.ty.oid).eq(types.iter().copied()));

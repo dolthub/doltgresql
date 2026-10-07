@@ -2306,11 +2306,11 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_merge('other')::text) = 57;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 57", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
