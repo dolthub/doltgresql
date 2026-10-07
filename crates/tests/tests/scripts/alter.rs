@@ -168,3 +168,127 @@ fn test_alter_statements() {
         },
     ]);
 }
+
+#[test]
+fn test_owner_to_relations() {
+    run_scripts(&[
+        ScriptTest {
+            name: "owner to on sequences, views, and predefined roles",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE ROLE r1;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE s1;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t1 (a int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW v1 AS SELECT * FROM t1;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE s1 OWNER TO r1;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE v1 OWNER TO r1;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE public.s1 OWNER TO postgres;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SCHEMA public OWNER TO pg_database_owner;",
+                    expected: Expected::Tag("ALTER SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;",
+                    expected: Expected::Tag("CREATE EXTENSION"),
+                    notices: &[Diagnostic { code: "42710", message: r#"extension "plpgsql" already exists, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE EXTENSION plpgsql;",
+                    expected: Expected::Error(Diagnostic { code: "42710", message: r#"extension "plpgsql" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE s1 OWNER TO r1;",
+                    expected: Expected::Tag("ALTER SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER VIEW v1 OWNER TO r1;",
+                    expected: Expected::Tag("ALTER VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE v1 OWNER TO r1;",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#""v1" is not a sequence"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER VIEW s1 OWNER TO r1;",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#""s1" is not a view"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET statement_timeout = -1;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"-1 ms is outside the valid range for parameter "statement_timeout" (0 .. 2147483647)"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET lock_timeout = '-5s';",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"-5000 ms is outside the valid range for parameter "lock_timeout" (0 .. 2147483647)"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET work_mem = 10;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"10 kB is outside the valid range for parameter "work_mem" (64 .. 2147483647)"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP VIEW v1;",
+                    expected: Expected::Tag("DROP VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP SEQUENCE s1;",
+                    expected: Expected::Tag("DROP SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE t1;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP ROLE r1;",
+                    expected: Expected::Tag("DROP ROLE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

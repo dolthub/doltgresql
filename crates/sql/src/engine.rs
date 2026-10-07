@@ -1987,6 +1987,7 @@ impl Ctx<'_> {
     /// describe plans a statement for its result columns, collecting its parameter types.
     pub(crate) fn describe(&mut self, node: &NodeEnum) -> Result<Option<Vec<Column>>> {
         Ok(match node {
+            NodeEnum::SelectStmt(select) if select.into_clause.is_some() => None,
             NodeEnum::SelectStmt(select) => Some(Planner { ctx: self, outer: Vec::new() }.plan_query(select)?.columns),
             NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
                 if let Some(columns) = self.on_target_branch(node, |ctx, node| ctx.describe(node))? =>
@@ -2089,6 +2090,19 @@ impl Ctx<'_> {
             self.check_branch_write()?;
         }
         match node {
+            NodeEnum::SelectStmt(select) if select.into_clause.is_some() => {
+                self.create_table_as(&pg_query::protobuf::CreateTableAsStmt {
+                    query: Some(Box::new(Node {
+                        node: Some(NodeEnum::SelectStmt(Box::new(pg_query::protobuf::SelectStmt {
+                            into_clause: None,
+                            ..*select.clone()
+                        }))),
+                    })),
+                    into: select.into_clause.clone(),
+                    objtype: pg_query::protobuf::ObjectType::ObjectTable as i32,
+                    ..Default::default()
+                })
+            }
             NodeEnum::SelectStmt(select) => {
                 let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
                 let rows = query.plan.run(self)?;

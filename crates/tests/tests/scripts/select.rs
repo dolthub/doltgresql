@@ -1009,3 +1009,94 @@ fn test_equality_join_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_select_into() {
+    run_scripts(&[
+        ScriptTest {
+            name: "select into",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE src (f1 int4);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO src VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT f1 INTO newt FROM src;",
+                    expected: Expected::Tag("SELECT 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM newt;",
+                    expected: Expected::Rows {
+                        columns: &[Column("f1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (SELECT f1 INTO x FROM src) s;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "SELECT ... INTO is not allowed here", position: 31, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE int4_tbl (f1 int4);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO int4_tbl SELECT 1 INTO f;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "SELECT ... INTO is not allowed here", position: 36, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM int4_tbl;",
+                    expected: Expected::Rows {
+                        columns: &[Column("f1", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 1 AS a INTO TEMP tmp1;",
+                    expected: Expected::Tag("SELECT 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM tmp1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 2 AS b INTO UNLOGGED u1;",
+                    expected: Expected::Tag("SELECT 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * INTO newt FROM src;",
+                    expected: Expected::Error(Diagnostic { code: "42P07", message: r#"relation "newt" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

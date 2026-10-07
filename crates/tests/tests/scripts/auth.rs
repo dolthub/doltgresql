@@ -5546,3 +5546,56 @@ privileges for sequence mysch.seq"#, ..E }),
         },
     ]);
 }
+
+#[test]
+fn test_grants_on_quoted_sequences() {
+    run_scripts(&[
+        ScriptTest {
+            name: "grants on quoted sequences",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"CREATE ROLE "shop-admin";"#,
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE SEQUENCE public."Mixed_seq";"#,
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"GRANT SELECT,USAGE ON SEQUENCE public."Mixed_seq" TO "shop-admin";"#,
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"GRANT USAGE ON SEQUENCE "Mixed_seq" TO "shop-admin";"#,
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"GRANT USAGE ON SEQUENCE mixed_seq TO "shop-admin";"#,
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "mixed_seq" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"REVOKE USAGE ON SEQUENCE "Mixed_seq" FROM "shop-admin";"#,
+                    expected: Expected::Tag("REVOKE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"DROP SEQUENCE "Mixed_seq";"#,
+                    expected: Expected::Tag("DROP SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"DROP ROLE "shop-admin";"#,
+                    expected: Expected::Tag("DROP ROLE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

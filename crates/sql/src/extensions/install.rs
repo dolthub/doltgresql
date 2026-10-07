@@ -193,7 +193,7 @@ impl Ctx<'_> {
     pub fn create_extension(&mut self, stmt: &CreateExtensionStmt) -> Result<Outcome> {
         let name = stmt.extname.as_str();
         let extension_id = id::new(SECTION_EXTENSION, &[name]);
-        if self.installed_extensions()?.iter().any(|e| e.ext_name == extension_id) {
+        if name == "plpgsql" || self.installed_extensions()?.iter().any(|e| e.ext_name == extension_id) {
             if stmt.if_not_exists {
                 self.session.notice(PgError::notice(
                     code::DUPLICATE_OBJECT,

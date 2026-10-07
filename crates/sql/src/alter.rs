@@ -112,6 +112,27 @@ impl Ctx<'_> {
             }
             return Ok(Outcome::command("ALTER VIEW"));
         }
+        if ObjectType::try_from(stmt.objtype) == Ok(ObjectType::ObjectView)
+            && (self.resolve_table(relation).is_ok() || self.find_sequence(relation)?.is_some())
+        {
+            return Err(PgError::new(code::WRONG_OBJECT_TYPE, format!("\"{}\" is not a view", relation.relname)));
+        }
+        let owner_only = stmt.cmds.iter().all(|cmd| {
+            matches!(cmd.node.as_ref(), Some(NodeEnum::AlterTableCmd(cmd))
+                if AlterTableType::try_from(cmd.subtype) == Ok(AlterTableType::AtChangeOwner))
+        });
+        if owner_only
+            && ObjectType::try_from(stmt.objtype) == Ok(ObjectType::ObjectTable)
+            && (self.find_sequence(relation)?.is_some()
+                || self.find_view(&relation.schemaname, &relation.relname)?.is_some())
+        {
+            for cmd in &stmt.cmds {
+                if let Some(NodeEnum::AlterTableCmd(cmd)) = cmd.node.as_ref() {
+                    self.check_new_owner(cmd.newowner.as_ref())?;
+                }
+            }
+            return Ok(Outcome::command("ALTER TABLE"));
+        }
         let table = match self.resolve_table(relation) {
             Ok(table) => table,
             Err(_) if stmt.missing_ok => {
@@ -160,6 +181,14 @@ impl Ctx<'_> {
         relation: &pg_query::protobuf::RangeVar,
     ) -> Result<Outcome> {
         if self.find_sequence(relation)?.is_none() {
+            if self.resolve_table(relation).is_ok()
+                || self.find_view(&relation.schemaname, &relation.relname)?.is_some()
+            {
+                return Err(PgError::new(
+                    code::WRONG_OBJECT_TYPE,
+                    format!("\"{}\" is not a sequence", relation.relname),
+                ));
+            }
             let message = format!("relation \"{}\" does not exist", relation.relname);
             if stmt.missing_ok {
                 self.session.notice(PgError::notice("00000", format!("{message}, skipping")));

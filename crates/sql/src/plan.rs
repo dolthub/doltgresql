@@ -305,6 +305,12 @@ impl<'b, 'a> Planner<'b, 'a> {
 
     /// plan_query plans a SELECT, VALUES, or set operation, with the WITH queries it defines in scope.
     pub fn plan_query(&mut self, select: &SelectStmt) -> Result<Query> {
+        if let Some(into) = &select.into_clause {
+            return Err(PgError {
+                position: position(into.rel.as_ref().map_or(-1, |r| r.location)),
+                ..PgError::new(code::SYNTAX_ERROR, "SELECT ... INTO is not allowed here")
+            });
+        }
         let Some(with) = select.with_clause.as_ref() else { return self.plan_query_body(select) };
         let depth = self.ctx.ctes.len();
         let result = self.plan_with(with).and_then(|_| self.plan_query_body(select));

@@ -23,7 +23,7 @@ pub mod reg;
 pub(crate) mod routines;
 mod rows;
 
-pub(crate) use rows::row_type_oid;
+pub(crate) use rows::{PREDEFINED_ROLES, row_type_oid};
 pub mod snapshot;
 
 use std::collections::HashMap;

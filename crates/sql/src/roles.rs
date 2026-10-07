@@ -126,7 +126,8 @@ impl Ctx<'_> {
         let Some(owner) = owner else { return Ok(()) };
         let named = pg_query::protobuf::RoleSpecType::try_from(owner.roletype)
             == Ok(pg_query::protobuf::RoleSpecType::RolespecCstring);
-        if named && self.auth()?.role(&owner.rolename).is_none() {
+        let predefined = crate::pgcatalog::PREDEFINED_ROLES.iter().any(|(_, name)| *name == owner.rolename);
+        if named && !predefined && self.auth()?.role(&owner.rolename).is_none() {
             return Err(role_does_not_exist(&owner.rolename));
         }
         Ok(())
@@ -529,12 +530,13 @@ impl Ctx<'_> {
             match object.node.as_ref() {
                 Some(NodeEnum::RangeVar(relation)) => {
                     if object_type == ObjectType::ObjectSequence {
+                        let quote = crate::engine::quote_identifier;
                         let text = if relation.schemaname.is_empty() {
-                            relation.relname.clone()
+                            quote(&relation.relname)
                         } else {
-                            format!("{}.{}", relation.schemaname, relation.relname)
+                            format!("{}.{}", quote(&relation.schemaname), quote(&relation.relname))
                         };
-                        let sequence = self.resolve_sequence(&text, relation.location)?;
+                        let sequence = self.resolve_sequence(&text, -1)?;
                         let (schema, name) = crate::sequences::schema_and_name(&sequence);
                         objects.push(Object::Sequence(schema, name));
                     } else if let Some((schema, _)) = self.find_view(&relation.schemaname, &relation.relname)? {

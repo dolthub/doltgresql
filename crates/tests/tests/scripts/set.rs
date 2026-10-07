@@ -17501,3 +17501,47 @@ fn test_set_statements() {
         },
     ]);
 }
+
+#[test]
+fn test_transaction_timeout() {
+    run_scripts(&[
+        ScriptTest {
+            name: "transaction timeout",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET transaction_timeout = 0;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW transaction_timeout;",
+                    expected: Expected::Rows {
+                        columns: &[Column("transaction_timeout", TEXT)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET transaction_timeout = '5s';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW transaction_timeout;",
+                    expected: Expected::Rows {
+                        columns: &[Column("transaction_timeout", TEXT)],
+                        rows: &[
+                            &[T("5s")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

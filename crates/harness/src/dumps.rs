@@ -87,6 +87,10 @@ pub fn import(test: &ImportTest) -> Result<(), String> {
     for statement in test.set_up_script {
         conn.exec(statement, &[]).map_err(|e| format!("setup {statement}: {e}"))?;
     }
+    let text = std::fs::read_to_string(dumps_dir().join(test.sql_filename)).map_err(|e| e.to_string())?;
+    for role in dump_roles(&text) {
+        let _ = conn.exec(&format!("CREATE ROLE \"{}\"", role.replace('"', "\"\"")), &[]);
+    }
     conn.close();
     let errors = Arc::new(Mutex::new(Vec::new()));
     let proxy = Proxy::start(server.port, test.skip_queries, errors.clone())?;
@@ -126,6 +130,41 @@ pub fn import(test: &ImportTest) -> Result<(), String> {
         text.push_str(&format!("\nQUERY: {}\nERROR: {}", error.query, error.error));
     }
     Err(text)
+}
+
+/// dump_roles returns the roles that a dump names as owners, grantees, or session roles, which a restore into
+/// Postgres creates beforehand from the cluster's globals.
+fn dump_roles(text: &str) -> Vec<String> {
+    let mut roles: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let upper = line.to_ascii_uppercase();
+        let mut starts: Vec<usize> = ["OWNER TO ", "AUTHORIZATION ", "SET ROLE "]
+            .iter()
+            .flat_map(|keyword| upper.match_indices(keyword).map(|(i, k)| i + k.len()))
+            .collect();
+        if (upper.starts_with("GRANT ") || upper.starts_with("REVOKE ")) && upper.contains(" TO ") {
+            starts.push(upper.rfind(" TO ").map_or(0, |i| i + 4));
+        }
+        for start in starts {
+            for name in line[start..].split(',') {
+                let name = name.trim().trim_end_matches(';').trim_start_matches('\'');
+                let name = match name.strip_prefix('"') {
+                    Some(quoted) => quoted.split('"').next().unwrap_or_default(),
+                    None => {
+                        name.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$')).next().unwrap_or_default()
+                    }
+                };
+                let builtin = matches!(
+                    name.to_ascii_lowercase().as_str(),
+                    "" | "postgres" | "public" | "current_user" | "session_user" | "current_role" | "default"
+                ) || name.starts_with("pg_");
+                if !builtin && !roles.iter().any(|r| r == name) {
+                    roles.push(name.to_string());
+                }
+            }
+        }
+    }
+    roles
 }
 
 /// Proxy sits between psql and the server, recording every error with the statement that caused it.

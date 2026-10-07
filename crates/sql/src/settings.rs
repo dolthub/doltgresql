@@ -134,6 +134,21 @@ fn definitions() -> &'static Definitions {
             max: String::new(),
             enum_values: Vec::new(),
         });
+        settings.push(Setting {
+            name: "transaction_timeout".into(),
+            default: "0".into(),
+            unit: "ms".into(),
+            category: "Client Connection Defaults / Statement Behavior".into(),
+            description: "Sets the maximum allowed duration of any transaction within a session (not a prepared \
+                          transaction)."
+                .into(),
+            extra_description: "A value of 0 turns off the timeout.".into(),
+            context: "user".into(),
+            kind: "integer".into(),
+            min: "0".into(),
+            max: "2147483647".into(),
+            enum_values: Vec::new(),
+        });
         let by_name = settings.iter().enumerate().map(|(i, s)| (s.name.to_ascii_lowercase(), i)).collect();
         Definitions { settings, shown, by_name }
     })
@@ -300,8 +315,11 @@ pub fn normalize(definition: &Setting, value: &str) -> Result<String> {
                 return Err(PgError::new(
                     code::INVALID_PARAMETER_VALUE,
                     format!(
-                        "{trimmed} is outside the valid range for parameter \"{name}\" ({} .. {})",
-                        definition.min, definition.max
+                        "{}{} is outside the valid range for parameter \"{name}\" ({} .. {})",
+                        number as i64,
+                        if definition.unit.is_empty() { String::new() } else { format!(" {}", definition.unit) },
+                        definition.min,
+                        definition.max
                     ),
                 ));
             }

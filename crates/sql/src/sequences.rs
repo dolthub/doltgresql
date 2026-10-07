@@ -597,6 +597,8 @@ impl Ctx<'_> {
                 self.drop_default(&schema, table, column)?;
             }
             self.txn.root.put_object(self.db, COLLECTION, &sequence.id, None)?;
+            let (schema, name) = schema_and_name(&sequence);
+            self.forget_object(&crate::auth::Object::Sequence(schema, name))?;
         }
         Ok(Outcome::command("DROP SEQUENCE"))
     }
@@ -639,6 +641,8 @@ impl Ctx<'_> {
         for sequence in all(self.db, &self.txn.root)? {
             if sequence.owner_table == owner {
                 self.txn.root.put_object(self.db, COLLECTION, &sequence.id, None)?;
+                let (schema, name) = schema_and_name(&sequence);
+                self.forget_object(&crate::auth::Object::Sequence(schema, name))?;
             }
         }
         Ok(())
