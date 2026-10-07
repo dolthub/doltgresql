@@ -1100,7 +1100,8 @@ impl Ctx<'_> {
         Ok(None)
     }
 
-    /// pg_constraint lists the primary key, unique, check, and foreign key constraints of the user tables.
+    /// pg_constraint lists the primary key, unique, check, and foreign key constraints of the user tables, and the
+    /// check constraints of the user domains.
     fn pg_constraint(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
@@ -1168,6 +1169,31 @@ impl Ctx<'_> {
                     ("confkey", int2_array(fk.parent_columns.iter().map(|c| position(parent, c)))),
                 ]);
                 rows.push(row);
+            }
+        }
+        for user_type in self.user_types()?.values() {
+            let crate::usertypes::Kind::Domain(domain) = &user_type.kind else { continue };
+            for (name, _) in &domain.checks {
+                rows.push(vec![
+                    ("oid", oid(constraint_oid(3, &user_type.schema, "", name))),
+                    ("conname", text(name)),
+                    ("connamespace", oid(namespace_oid(&user_type.schema))),
+                    ("contype", text("c")),
+                    ("condeferrable", boolean(false)),
+                    ("condeferred", boolean(false)),
+                    ("convalidated", boolean(true)),
+                    ("conrelid", oid(0)),
+                    ("contypid", oid(user_type.oid)),
+                    ("conindid", oid(0)),
+                    ("conparentid", oid(0)),
+                    ("confrelid", oid(0)),
+                    ("confupdtype", text(" ")),
+                    ("confdeltype", text(" ")),
+                    ("confmatchtype", text(" ")),
+                    ("conislocal", boolean(true)),
+                    ("coninhcount", int4(0)),
+                    ("connoinherit", boolean(false)),
+                ]);
             }
         }
         Ok(())

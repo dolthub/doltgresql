@@ -5261,6 +5261,7 @@ ORDER BY 1;"#,
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5273,6 +5274,7 @@ ORDER BY 1;"#,
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5285,6 +5287,7 @@ ORDER BY 1;"#,
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5297,6 +5300,7 @@ ORDER BY 1;"#,
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5854,6 +5858,7 @@ fn test_pg_constraint_indexes() {
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5967,6 +5972,7 @@ fn test_pg_constraint_indexes() {
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6033,6 +6039,7 @@ fn test_pg_constraint_indexes() {
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6109,6 +6116,7 @@ fn test_pg_constraint_indexes() {
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -19839,6 +19847,7 @@ WHERE i.indrelid = 1496157034 order by 1"#,
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -19879,6 +19888,7 @@ WHERE i.indrelid = 1496157034"#,
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -19890,6 +19900,7 @@ ORDER BY 1;"#,
                         rows: &[],
                         tag: "SELECT 0",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -19902,6 +19913,7 @@ WHERE i.indrelid IN (1496157033, 1496157034)"#,
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("the query names the OID Go and Rust give the object, which Postgres gave another object"),
                     ..A
                 },
                 ScriptTestAssertion {

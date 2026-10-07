@@ -134,6 +134,25 @@ pub fn all_settings() -> &'static [Setting] {
     &definitions().settings
 }
 
+/// valid_custom_name reports whether a placeholder parameter's name is two or more simple identifiers separated by
+/// dots, as Postgres' valid_custom_variable_name decides.
+fn valid_custom_name(name: &str) -> bool {
+    let (mut saw_separator, mut name_start) = (false, true);
+    for c in name.chars() {
+        if c == '.' {
+            if name_start {
+                return false;
+            }
+            (saw_separator, name_start) = (true, true);
+        } else if c.is_ascii_alphabetic() || c == '_' || !c.is_ascii() {
+            name_start = false;
+        } else if name_start || !(c.is_ascii_digit() || c == '$') {
+            return false;
+        }
+    }
+    saw_separator && !name_start
+}
+
 /// unrecognized returns Postgres' error for an unknown parameter.
 pub fn unrecognized(name: &str) -> PgError {
     PgError::new(code::UNDEFINED_OBJECT, format!("unrecognized configuration parameter \"{name}\""))
@@ -452,11 +471,13 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// new returns the settings a connection starts with, given the startup parameters it sent, failing as
-    /// Postgres does on an unknown parameter or a value its parameter rejects.
-    pub fn new(startup: &[(String, String)]) -> Result<Settings> {
+    /// new returns the settings a connection starts with, given the startup parameters it sent and the port the
+    /// server listens on, failing as Postgres does on an unknown parameter or a value its parameter rejects.
+    pub fn new(startup: &[(String, String)], port: u16) -> Result<Settings> {
         let mut settings = Settings::default();
         settings.values.insert("timezone".into(), local_timezone());
+        settings.values.insert("port".into(), port.to_string());
+        settings.startup.insert("port".into(), port.to_string());
         for (name, value) in startup {
             let definition = setting(name).ok_or_else(|| unrecognized(name))?;
             let value = normalize(definition, value)?;
@@ -524,7 +545,17 @@ impl Settings {
                 }
                 value.map(|v| normalize(definition, v)).transpose()?
             }
-            None if name.contains('.') => value.map(str::to_string),
+            None if name.contains('.') => {
+                if !valid_custom_name(name) {
+                    return Err(PgError {
+                        detail: Some(
+                            "Custom parameter names must be two or more simple identifiers separated by dots.".into(),
+                        ),
+                        ..PgError::new(code::INVALID_NAME, format!("invalid configuration parameter name \"{name}\""))
+                    });
+                }
+                value.map(str::to_string)
+            }
             None => return Err(unrecognized(name)),
         };
         let value = match value {
@@ -566,14 +597,16 @@ impl Settings {
         };
     }
 
-    /// reset_all resets every parameter the session can change.
+    /// reset_all resets every parameter the session can change, leaving placeholder parameters empty.
     pub fn reset_all(&mut self, in_transaction: bool) {
         let keys: Vec<String> = self.values.keys().cloned().collect();
         for key in keys {
             if in_transaction {
                 self.transaction_undo.push((key.clone(), self.values.get(&key).cloned()));
             }
-            if !matches!(key.as_str(), "timezone" | "role" | "session_authorization") {
+            if key.contains('.') && setting(&key).is_none() {
+                self.values.insert(key, String::new());
+            } else if !matches!(key.as_str(), "timezone" | "role" | "session_authorization") {
                 self.values.remove(&key);
             }
         }

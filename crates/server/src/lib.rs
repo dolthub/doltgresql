@@ -46,6 +46,7 @@ impl Server {
             config.branch_control_file.as_deref(),
         )
         .map_err(|err| err.to_string())?;
+        engine.set_port(config.port);
         Ok(Server { engine, next_process_id: AtomicU32::new(1) })
     }
 

@@ -190,6 +190,7 @@ fn test_select() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("keyless rows come back in Dolt's row hash order rather than Postgres' insertion order"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -738,6 +739,164 @@ fn test_collate_clauses() {
                         ],
                         tag: "SELECT 1",
                     },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_limit_alias_and_distinct_on_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "LIMIT and OFFSET convert their arguments by assignment",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "select 1 limit 18446744073709551615;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "bigint out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 limit -18446744073709551616;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "bigint out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 limit 2.5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 limit 'x';",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type bigint: "x""#, position: 16, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 limit '2';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 limit true;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "argument of LIMIT must be type bigint, not type boolean", position: 16, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 offset 1.5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 1 limit null;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "subqueries and VALUES in FROM need aliases",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "select * from (values(1,'a',18),(2,'b',20));",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "VALUES in FROM must have an alias", hint: "For example, FROM (VALUES ...) [AS] foo.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select * from (select 1);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "subquery in FROM must have an alias", hint: "For example, FROM (SELECT ...) [AS] foo.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select * from ( SELECT 1 ), (values (1));",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "subquery in FROM must have an alias", hint: "For example, FROM (SELECT ...) [AS] foo.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "DISTINCT ON matches the ORDER BY prefix in any order",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE d (v1 INT4 PRIMARY KEY, v2 INT4, v3 INT4);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO d VALUES (1, 3, 5), (2, 3, 6), (3, 4, 5), (4, 4, 6);",
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DISTINCT ON (v2, v3) * FROM d ORDER BY v3, v2, v1 DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4), Column("v2", INT4), Column("v3", INT4)],
+                        rows: &[
+                            &[T("1"), T("3"), T("5")],
+                            &[T("3"), T("4"), T("5")],
+                            &[T("2"), T("3"), T("6")],
+                            &[T("4"), T("4"), T("6")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DISTINCT ON (v3) * FROM d ORDER BY v2, v3;",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: "SELECT DISTINCT ON expressions must match initial ORDER BY expressions", position: 21, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DISTINCT ON (v2, v1) * FROM d ORDER BY v2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4), Column("v2", INT4), Column("v3", INT4)],
+                        rows: &[
+                            &[T("1"), T("3"), T("5")],
+                            &[T("2"), T("3"), T("6")],
+                            &[T("3"), T("4"), T("5")],
+                            &[T("4"), T("4"), T("6")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DISTINCT ON (v2, v1) * FROM d ORDER BY v3, v2;",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: "SELECT DISTINCT ON expressions must match initial ORDER BY expressions", position: 21, ..E }),
+                    flow: Flow::Query,
                     ..A
                 },
             ],

@@ -48,6 +48,8 @@ struct Shared {
     auth: Arc<Mutex<crate::auth::AuthDb>>,
     /// The branch control tables.
     branch_control: Mutex<crate::dolt::branch_control::Controller>,
+    /// The port the server listens on, which the `port` parameter shows.
+    port: std::sync::atomic::AtomicU16,
     databases: Mutex<HashMap<String, (DbHandle, SequenceTracker)>>,
     /// The advisory locks that sessions hold.
     advisory: Arc<crate::advisory::AdvisoryLocks>,
@@ -125,6 +127,7 @@ impl Engine {
                 superuser: superuser.to_string(),
                 auth: Arc::new(Mutex::new(auth)),
                 branch_control: Mutex::new(branch_control),
+                port: std::sync::atomic::AtomicU16::new(5432),
                 databases: Mutex::new(HashMap::new()),
                 advisory: Arc::default(),
                 started: crate::datetime::clock(),
@@ -138,6 +141,11 @@ impl Engine {
             doltdb::create::create_database(&dir, DEFAULT_BRANCH, superuser, "localhost", &create_times())?;
         }
         Ok(engine)
+    }
+
+    /// set_port records the port the server listens on.
+    pub fn set_port(&self, port: u16) {
+        self.shared.port.store(port, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// branch_control returns the branch control tables.
@@ -316,8 +324,10 @@ impl Engine {
                 database: String::new(),
                 branch: DEFAULT_BRANCH.to_string(),
                 display: String::new(),
+                source: String::new(),
                 notices: Vec::new(),
-                settings: Settings::new(startup).map_err(|err| PgError { severity: "FATAL", ..err })?,
+                settings: Settings::new(startup, self.shared.port.load(std::sync::atomic::Ordering::Relaxed))
+                    .map_err(|err| PgError { severity: "FATAL", ..err })?,
                 explicit: false,
                 sequence_values: HashMap::new(),
                 last_sequence: None,
@@ -391,6 +401,8 @@ pub struct SessionState {
     pub branch: String,
     /// The current database as the session named it, which includes the branch when one was named.
     pub display: String,
+    /// The text of the query running, which statement locations point into.
+    pub source: String,
     pub notices: Vec<PgError>,
     pub settings: Settings,
     /// Whether the open transaction began with BEGIN.
@@ -521,7 +533,7 @@ impl SessionState {
                 } else {
                     s.to_ascii_lowercase()
                 };
-                if s == "$user" { self.user.clone() } else { s }
+                if s == "$user" { self.role.clone() } else { s }
             })
             .filter(|s| self.can_use_schema(s) && seen.insert(s.clone()))
             .collect()
@@ -666,8 +678,11 @@ impl Session {
     }
 
     /// report_activity records the statement that the session runs, or that it went idle after its last statement
-    /// for None.
+    /// for None, keeping the statement's text as the session's source.
     fn report_activity(&mut self, query: Option<&str>) {
+        if let Some(query) = query {
+            self.state.source = query.to_string();
+        }
         let state = &self.state;
         state.engine.update_activity(state.id, |activity| {
             activity.database.clone_from(&state.database);
@@ -743,6 +758,7 @@ impl Session {
 
     /// prepare parses a query of at most one statement and describes its parameters and results.
     pub fn prepare(&mut self, query: &str, parameter_types: &[u32]) -> Result<Prepared> {
+        self.state.source = query.to_string();
         let mut statements = parse::parse(query)?;
         if statements.len() > 1 {
             return Err(PgError::new(code::SYNTAX_ERROR, "cannot insert multiple commands into a prepared statement"));
@@ -751,6 +767,9 @@ impl Session {
         let mut parameters = parameter_types.to_vec();
         let mut columns = None;
         if let Some(Statement::Postgres { node: NodeEnum::VariableShowStmt(show), .. }) = &statement {
+            if show.name != "all" {
+                self.state.settings.show(&show.name)?;
+            }
             columns = Some(show_columns(&show.name));
         } else if let Some(Statement::Describe { .. }) = &statement {
             columns = Some(crate::listing::describe_columns());
@@ -1258,6 +1277,7 @@ impl Session {
         let tag = if kind == VariableSetKind::VarReset { "RESET" } else { "SET" };
         let mut parameters = Vec::new();
         let explicit = self.state.explicit;
+        self.warn_set_local(set);
         if set.name == "session_authorization" {
             let user = name.filter(|n| kind == VariableSetKind::VarSetValue && n != "default");
             let user = user.unwrap_or_else(|| self.state.authenticated.clone());
@@ -1271,6 +1291,16 @@ impl Session {
         }
         self.state.sync_identity();
         Ok(Outcome::command(tag))
+    }
+
+    /// warn_set_local warns as Postgres does about SET LOCAL outside a transaction block, where it has no effect.
+    fn warn_set_local(&mut self, set: &VariableSetStmt) {
+        if set.is_local && !self.state.explicit {
+            self.state.notices.push(PgError {
+                severity: "WARNING",
+                ..PgError::new(code::NO_ACTIVE_SQL_TRANSACTION, "SET LOCAL can only be used in transaction blocks")
+            });
+        }
     }
 
     /// set runs SET and RESET.
@@ -1292,6 +1322,7 @@ impl Session {
                 )
             });
         }
+        self.warn_set_local(set);
         let local = set.is_local || transactional;
         match kind {
             VariableSetKind::VarSetValue => {

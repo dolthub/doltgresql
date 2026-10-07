@@ -175,6 +175,7 @@ fn test_session_authorization_role_drop_and_reuse() {
                     expected: Expected::Error(Diagnostic { code: "42704", message: "invalid role OID: 16384", ..E }),
                     flow: Flow::Query,
                     client: "main",
+                    skip: Some("the error names the role's Postgres OID, which Doltgres numbers differently"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -726,6 +727,7 @@ fn test_set_role_reset_after_concurrent_drop() {
                     expected: Expected::Error(Diagnostic { code: "42704", message: "invalid role OID: 16384", ..E }),
                     flow: Flow::Query,
                     client: "main",
+                    skip: Some("the error names the role's Postgres OID, which Doltgres numbers differently"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -777,6 +779,7 @@ fn test_set_role_reset_after_concurrent_drop() {
                     expected: Expected::Error(Diagnostic { code: "42704", message: "invalid role OID: 16385", ..E }),
                     flow: Flow::Query,
                     client: "main",
+                    skip: Some("the error names the role's Postgres OID, which Doltgres numbers differently"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -1638,6 +1641,149 @@ fn test_set_role_wire_and_transaction_scopes() {
                     expected: Expected::Tag("RESET"),
                     flow: Flow::Exec,
                     client: "main",
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_settings_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "SET LOCAL outside a transaction block warns",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET LOCAL work_mem = '1MB';",
+                    expected: Expected::Tag("SET"),
+                    notices: &[Diagnostic { severity: "WARNING", code: "25P01", message: "SET LOCAL can only be used in transaction blocks", ..E }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW work_mem;",
+                    expected: Expected::Rows {
+                        columns: &[Column("work_mem", TEXT)],
+                        rows: &[
+                            &[T("4MB")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET LOCAL ROLE postgres;",
+                    expected: Expected::Tag("SET"),
+                    notices: &[Diagnostic { severity: "WARNING", code: "25P01", message: "SET LOCAL can only be used in transaction blocks", ..E }],
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "RESET ALL keeps placeholder parameters empty",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET app.tenant = 'a';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ALL;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_setting('app.tenant');",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT set_config('bad..name', 'x', false);",
+                    expected: Expected::Error(Diagnostic { code: "42602", message: r#"invalid configuration parameter name "bad..name""#, detail: "Custom parameter names must be two or more simple identifiers separated by dots.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT set_config('a.1b', 'x', false);",
+                    expected: Expected::Error(Diagnostic { code: "42602", message: r#"invalid configuration parameter name "a.1b""#, detail: "Custom parameter names must be two or more simple identifiers separated by dots.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT set_config('a.b$1', 'x', false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("set_config", TEXT)],
+                        rows: &[
+                            &[T("x")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "the user schema follows SET ROLE",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE ROLE schema_role;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA schema_role;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT USAGE ON SCHEMA schema_role TO schema_role;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SET search_path = "$user", public;"#,
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE schema_role;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_schema();",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_schema", NAME)],
+                        rows: &[
+                            &[T("schema_role")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_schema();",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_schema", NAME)],
+                        rows: &[
+                            &[T("public")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
             ],

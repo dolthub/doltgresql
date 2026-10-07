@@ -325,6 +325,9 @@ impl Conn {
                         format!("prepared statement \"{name}\" already exists"),
                     ));
                 }
+                if name.is_empty() {
+                    extended.statements.remove("");
+                }
                 let prepared = session.prepare(&query, &parameter_oids)?;
                 extended.statements.insert(name, Arc::new(prepared));
                 self.queue(BackendMessage::ParseComplete);
@@ -564,10 +567,14 @@ impl Extended {
         }
     }
 
-    /// statement returns a prepared statement by name.
+    /// statement returns a prepared statement by name, or the unnamed one for an empty name.
     fn statement(&self, name: &str) -> Result<Arc<Prepared>, PgError> {
         self.statements.get(name).cloned().ok_or_else(|| {
-            PgError::new(code::INVALID_SQL_STATEMENT_NAME, format!("prepared statement \"{name}\" does not exist"))
+            let message = match name {
+                "" => "unnamed prepared statement does not exist".to_string(),
+                name => format!("prepared statement \"{name}\" does not exist"),
+            };
+            PgError::new(code::INVALID_SQL_STATEMENT_NAME, message)
         })
     }
 

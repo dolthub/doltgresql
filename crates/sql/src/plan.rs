@@ -429,7 +429,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             return Ok(plan);
         }
         let mut binder = self.binder(Scope::default());
-        let mut count = |node: Option<&Node>| -> Result<Option<Expr>> {
+        let mut count = |node: Option<&Node>, clause: &str| -> Result<Option<Expr>> {
             let Some(node) = node else { return Ok(None) };
             let bound = binder.bind(node)?;
             if let Expr::Param(i) = bound.0
@@ -437,10 +437,23 @@ impl<'b, 'a> Planner<'b, 'a> {
             {
                 binder.ctx.parameters[i] = oid::INT8;
             }
-            Ok(Some(coerce(bound, typ(oid::INT8), false, -1)?.0))
+            let location = crate::expr::arg_location(node);
+            if !crate::expr::assignable(bound.1.oid, oid::INT8) {
+                return Err(PgError {
+                    position: position(location),
+                    ..PgError::new(
+                        code::DATATYPE_MISMATCH,
+                        format!(
+                            "argument of {clause} must be type bigint, not type {}",
+                            crate::cast::type_display(bound.1.oid)
+                        ),
+                    )
+                });
+            }
+            Ok(Some(crate::expr::assign(bound, typ(oid::INT8), "", location)?.0))
         };
-        let limit = count(select.limit_count.as_deref())?;
-        let offset = count(select.limit_offset.as_deref())?;
+        let limit = count(select.limit_count.as_deref(), "LIMIT")?;
+        let offset = count(select.limit_offset.as_deref(), "OFFSET")?;
         Ok(Plan::Limit { input: Box::new(plan), limit, offset })
     }
 
@@ -953,9 +966,14 @@ impl<'b, 'a> Planner<'b, 'a> {
             return Err(PgError::unsupported("this subquery"));
         };
         let Some(alias) = subselect.alias.as_ref() else {
+            let (what, example) = match select.values_lists.is_empty() {
+                true => ("subquery", "SELECT"),
+                false => ("VALUES", "VALUES"),
+            };
             return Err(PgError {
-                hint: Some("For example, FROM (SELECT ...) [AS] foo.".into()),
-                ..PgError::new(code::SYNTAX_ERROR, "subquery in FROM must have an alias")
+                hint: Some(format!("For example, FROM ({example} ...) [AS] foo.")),
+                position: opening_paren(&self.ctx.session.source, first_location(select)).and_then(position),
+                ..PgError::new(code::SYNTAX_ERROR, format!("{what} in FROM must have an alias"))
             });
         };
         let query = Planner { ctx: self.ctx, outer: self.outer.clone() }.plan_query(select)?;
@@ -1043,7 +1061,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         let alias = function.alias.as_ref();
         let table = alias.map_or(name.clone(), |a| a.aliasname.clone());
         let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
-        // A function returning one column names the column after the alias when there is one.
+        // A function returning one column, or one OUT parameter, names the column after the alias when there is one.
         let column_name = renames
             .first()
             .map(|r| r.to_string())
@@ -1059,7 +1077,17 @@ impl<'b, 'a> Planner<'b, 'a> {
             .find(|(n, _)| *n == name)
             .map(|(_, c)| c.iter().map(|(n, t)| (n.to_string(), typ(*t))).collect())
             .or((!routine_columns.is_empty()).then_some(routine_columns));
+        let dolt_procedure = crate::dolt::procedures::OUT_COLUMNS.iter().any(|(n, _)| *n == name);
         let mut columns = match out_columns {
+            Some(out) if out.len() == 1 && alias.is_some() && !dolt_procedure => {
+                vec![ScopeColumn {
+                    table: table.clone(),
+                    name: column_name,
+                    ty: out[0].1,
+                    hidden: false,
+                    origin: (0, 0),
+                }]
+            }
             Some(out) => out
                 .iter()
                 .enumerate()
@@ -1463,10 +1491,12 @@ impl<'b, 'a> Planner<'b, 'a> {
             keys.push(SortKey { expr: Expr::Column(index), descending, nulls_first });
         }
         let mut distinct_keys = None;
+        let mut on_locations = Vec::new();
         if !distinct_on.is_empty() {
             let mut binder = self.binder(scope.clone());
             let mut on = Vec::new();
             for node in distinct_on {
+                on_locations.push(crate::expr::arg_location(node));
                 let expr = if let Some((n, location)) = ordinal(node) {
                     output_ordinal_named(&names, n, location)?;
                     Expr::Column(n - 1)
@@ -1486,21 +1516,36 @@ impl<'b, 'a> Planner<'b, 'a> {
         }
         plan = Plan::Project { input: Box::new(plan), exprs };
         if let Some(on) = &distinct_keys {
-            // DISTINCT ON keeps the first row of each group in sort order, so the keys sort first.
+            let mismatch = |location: i32| PgError {
+                position: position(location),
+                ..PgError::new(
+                    code::INVALID_COLUMN_REFERENCE,
+                    "SELECT DISTINCT ON expressions must match initial ORDER BY expressions",
+                )
+            };
+            let location_of = |expr: &Expr| on.iter().position(|o| o == expr).map_or(-1, |i| on_locations[i]);
             let mut sort_keys: Vec<SortKey> = Vec::new();
-            for (i, key) in on.iter().enumerate() {
-                match keys.get(i) {
-                    Some(k) if k.expr == *key => sort_keys.push(k.clone()),
-                    Some(_) => {
-                        return Err(PgError::new(
-                            code::INVALID_COLUMN_REFERENCE,
-                            "SELECT DISTINCT ON expressions must match initial ORDER BY expressions",
-                        ));
-                    }
-                    None => sort_keys.push(SortKey { expr: key.clone(), descending: false, nulls_first: false }),
+            let mut skipped = false;
+            for key in &keys {
+                if !on.contains(&key.expr) {
+                    skipped = true;
+                } else if skipped {
+                    return Err(mismatch(location_of(&key.expr)));
+                } else if !sort_keys.iter().any(|k| k.expr == key.expr) {
+                    sort_keys.push(key.clone());
                 }
             }
-            sort_keys.extend(keys.iter().skip(on.len()).cloned());
+            let prefix = sort_keys.len();
+            for (key, &location) in on.iter().zip(&on_locations) {
+                if sort_keys.iter().any(|k| k.expr == *key) {
+                    continue;
+                }
+                if skipped {
+                    return Err(mismatch(location));
+                }
+                sort_keys.push(SortKey { expr: key.clone(), descending: false, nulls_first: false });
+            }
+            sort_keys.extend(keys.iter().skip(prefix).cloned());
             plan = Plan::Sort { input: Box::new(plan), keys: sort_keys };
             plan = Plan::Distinct { input: Box::new(plan), keys: distinct_keys };
         } else {
@@ -1518,6 +1563,33 @@ impl<'b, 'a> Planner<'b, 'a> {
         let visible = (0..width).map(Expr::Column).collect();
         Ok(Query { plan: Plan::Project { input: Box::new(plan), exprs: visible }, columns, types })
     }
+}
+
+/// first_location returns the location of a SELECT's first value or target, or -1 without one.
+fn first_location(select: &SelectStmt) -> i32 {
+    let first = match select.values_lists.first().and_then(|l| l.node.as_ref()) {
+        Some(NodeEnum::List(list)) => list.items.first().map(crate::expr::arg_location),
+        _ => select.target_list.first().and_then(|t| match t.node.as_ref() {
+            Some(NodeEnum::ResTarget(target)) => Some(target.location),
+            _ => None,
+        }),
+    };
+    first.unwrap_or(-1)
+}
+
+/// opening_paren returns the location of the parenthesis that opens a subquery whose first value or target is at a
+/// location, the leftmost one before it with only keywords, spaces, and parentheses between.
+fn opening_paren(source: &str, location: i32) -> Option<i32> {
+    let end = usize::try_from(location).ok().filter(|&l| l <= source.len())?;
+    let mut found = None;
+    for (i, c) in source[..end].char_indices().rev() {
+        match c {
+            '(' => found = Some(i as i32),
+            c if c.is_alphabetic() || c.is_whitespace() => {}
+            _ => break,
+        }
+    }
+    found
 }
 
 /// unmark_input turns input column references back into column references.
