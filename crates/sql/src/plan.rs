@@ -985,6 +985,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         let out_columns: Option<Vec<(String, ColumnType)>> = crate::dolt::procedures::OUT_COLUMNS
             .iter()
             .chain(crate::functions::JSON_OUT_COLUMNS)
+            .chain(crate::functions::CATALOG_OUT_COLUMNS)
             .find(|(n, _)| *n == name)
             .map(|(_, c)| c.iter().map(|(n, t)| (n.to_string(), typ(*t))).collect())
             .or((!routine_columns.is_empty()).then_some(routine_columns));

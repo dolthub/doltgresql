@@ -1240,6 +1240,8 @@ impl Ctx<'_> {
             NodeEnum::CreateExtensionStmt(stmt) => self.create_extension(stmt),
             NodeEnum::CopyStmt(stmt) => self.copy(stmt),
             NodeEnum::ConstraintsSetStmt(stmt) => self.set_constraints(stmt),
+            NodeEnum::AlterSeqStmt(stmt) => self.alter_sequence(stmt),
+            NodeEnum::AlterOwnerStmt(stmt) => self.alter_owner(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

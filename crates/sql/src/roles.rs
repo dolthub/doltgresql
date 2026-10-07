@@ -57,6 +57,82 @@ fn privilege_letter(name: &str) -> Option<&'static str> {
     })
 }
 
+impl Ctx<'_> {
+    /// alter_owner runs ALTER ... OWNER TO for the objects whose ownership Doltgres does not record, checking the new
+    /// owner and then the object as Postgres' ExecAlterOwnerStmt does.
+    pub fn alter_owner(&mut self, stmt: &pg_query::protobuf::AlterOwnerStmt) -> Result<crate::Outcome> {
+        use pg_query::protobuf::ObjectType as O;
+        self.check_new_owner(stmt.newowner.as_ref())?;
+        let kind = O::try_from(stmt.object_type).unwrap_or(O::Undefined);
+        let object = stmt.object.as_deref().and_then(|o| o.node.as_ref());
+        let names: Vec<String> = match object {
+            Some(pg_query::NodeEnum::String(s)) => vec![s.sval.clone()],
+            Some(pg_query::NodeEnum::List(list)) => {
+                list.items.iter().filter_map(crate::expr::node_name).map(str::to_string).collect()
+            }
+            _ => Vec::new(),
+        };
+        let name = names.last().cloned().unwrap_or_default();
+        let tag = match kind {
+            O::ObjectDatabase => {
+                if !self.session.engine.database_exists(&name) {
+                    return Err(PgError::new(
+                        code::INVALID_CATALOG_NAME,
+                        format!("database \"{name}\" does not exist"),
+                    ));
+                }
+                "ALTER DATABASE"
+            }
+            O::ObjectSchema => {
+                if !self.txn.root.schemas.iter().any(|s| *s == name.as_bytes()) {
+                    return Err(PgError::new(code::INVALID_SCHEMA_NAME, format!("schema \"{name}\" does not exist")));
+                }
+                "ALTER SCHEMA"
+            }
+            O::ObjectType | O::ObjectDomain => {
+                let schema = (names.len() > 1).then(|| names[names.len() - 2].as_str());
+                if crate::usertypes::lookup(schema, &name).is_none()
+                    && crate::catalog::builtin_type_named(&name).is_none()
+                {
+                    return Err(PgError::new(
+                        code::UNDEFINED_OBJECT,
+                        format!("type \"{}\" does not exist", names.join(".")),
+                    ));
+                }
+                if kind == O::ObjectType { "ALTER TYPE" } else { "ALTER DOMAIN" }
+            }
+            O::ObjectFunction | O::ObjectProcedure | O::ObjectRoutine => {
+                if let Some(pg_query::NodeEnum::ObjectWithArgs(target)) = object {
+                    let procedures = match kind {
+                        O::ObjectFunction => Some(false),
+                        O::ObjectProcedure => Some(true),
+                        _ => None,
+                    };
+                    self.find_routine(target, false, procedures)?;
+                }
+                match kind {
+                    O::ObjectFunction => "ALTER FUNCTION",
+                    O::ObjectProcedure => "ALTER PROCEDURE",
+                    _ => "ALTER ROUTINE",
+                }
+            }
+            _ => return Err(PgError::unsupported("this ALTER OWNER")),
+        };
+        Ok(crate::Outcome::command(tag))
+    }
+
+    /// check_new_owner fails as Postgres does when OWNER TO names a role that does not exist.
+    pub(crate) fn check_new_owner(&mut self, owner: Option<&pg_query::protobuf::RoleSpec>) -> Result<()> {
+        let Some(owner) = owner else { return Ok(()) };
+        let named = pg_query::protobuf::RoleSpecType::try_from(owner.roletype)
+            == Ok(pg_query::protobuf::RoleSpecType::RolespecCstring);
+        if named && self.auth()?.role(&owner.rolename).is_none() {
+            return Err(role_does_not_exist(&owner.rolename));
+        }
+        Ok(())
+    }
+}
+
 /// role_does_not_exist returns Postgres' error for a missing role.
 fn role_does_not_exist(name: &str) -> PgError {
     PgError::new(code::UNDEFINED_OBJECT, format!("role \"{name}\" does not exist"))

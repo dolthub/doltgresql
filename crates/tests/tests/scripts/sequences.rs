@@ -4459,5 +4459,196 @@ ORDER BY 1,2;"#,
             ],
             ..S
         },
+        ScriptTest {
+            name: "ALTER SEQUENCE options",
+            set_up_script: &[
+                "CREATE SEQUENCE alt_s;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT nextval('alt_s'), nextval('alt_s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8), Column("nextval", INT8)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s INCREMENT BY 10;",
+                    expected: Expected::Tag("ALTER SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('alt_s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("12")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s RESTART;",
+                    expected: Expected::Tag("ALTER SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('alt_s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s RESTART WITH 50;",
+                    expected: Expected::Tag("ALTER SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('alt_s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("50")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s MAXVALUE 40;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"RESTART value (50) cannot be greater than MAXVALUE (40)"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s MINVALUE 100;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"START value (1) cannot be less than MINVALUE (100)"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s START WITH 5 MINVALUE 6;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"START value (5) cannot be less than MINVALUE (6)"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s AS smallint;",
+                    expected: Expected::Tag("ALTER SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT seqtypid::regtype::text, seqmax FROM pg_sequence WHERE seqrelid = 'alt_s'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("seqtypid", TEXT), Column("seqmax", INT8)],
+                        rows: &[
+                            &[T("smallint"), T("32767")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_nope RESTART;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "alt_nope" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE IF EXISTS alt_nope RESTART;",
+                    expected: Expected::Tag("ALTER SEQUENCE"),
+                    notices: &[Diagnostic { code: "00000", message: r#"relation "alt_nope" does not exist, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s OWNED BY alt_nope;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"invalid OWNED BY option"#, hint: "Specify OWNED BY table.column or OWNED BY NONE.", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s OWNER TO alt_nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "alt_nobody" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s CACHE 0;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"CACHE (0) must be greater than zero"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s INCREMENT 0;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"INCREMENT must not be zero"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SEQUENCE alt_s RESTART WITH 0;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"RESTART value (0) cannot be less than MINVALUE (1)"#, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "ALTER COLUMN ADD GENERATED AS IDENTITY checks",
+            set_up_script: &[
+                "CREATE TABLE ai (id INT, n INT NOT NULL, d INT DEFAULT 1 NOT NULL);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "ALTER TABLE ai ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY;",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: r#"column "id" of relation "ai" must be declared NOT NULL before identity can be added"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE ai ALTER COLUMN d ADD GENERATED ALWAYS AS IDENTITY;",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: r#"column "d" of relation "ai" already has a default value"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE ai ALTER COLUMN n ADD GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME ai_custom START WITH 5);",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE ai ALTER COLUMN nope ADD GENERATED BY DEFAULT AS IDENTITY;",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "nope" of relation "ai" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ai (id, d) VALUES (1, 1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM ai;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("n", INT4), Column("d", INT4)],
+                        rows: &[
+                            &[T("1"), T("5"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_serial_sequence('ai', 'n'), nextval('ai_custom'::regclass);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_serial_sequence", TEXT), Column("nextval", INT8)],
+                        rows: &[
+                            &[T("public.ai_custom"), T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

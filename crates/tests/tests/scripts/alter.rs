@@ -125,5 +125,46 @@ fn test_alter_statements() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "OWNER TO checks the role before the object",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "ALTER DATABASE alt_nope OWNER TO alt_nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "alt_nobody" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TYPE alt_nope OWNER TO alt_nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "alt_nobody" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SCHEMA alt_nope OWNER TO alt_nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "alt_nobody" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER VIEW alt_nope OWNER TO alt_nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "alt_nope" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER FUNCTION alt_nope() OWNER TO alt_nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "alt_nobody" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER SCHEMA alt_nope OWNER TO postgres;",
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "alt_nope" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TYPE alt_nope OWNER TO postgres;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "alt_nope" does not exist"#, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

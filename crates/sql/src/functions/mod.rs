@@ -16,6 +16,7 @@
 
 pub mod aggregate;
 pub use array::value_type;
+pub use catalog::OUT_COLUMNS as CATALOG_OUT_COLUMNS;
 pub use json::OUT_COLUMNS as JSON_OUT_COLUMNS;
 mod advisory;
 mod array;
@@ -128,6 +129,7 @@ const SET_RETURNING: &[&str] = &[
     "json_each",
     "jsonb_each_text",
     "json_each_text",
+    "pg_partition_ancestors",
 ];
 
 /// returns_set reports whether a function returns rows.

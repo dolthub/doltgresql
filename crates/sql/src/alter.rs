@@ -97,6 +97,21 @@ impl Ctx<'_> {
     /// alter_table runs ALTER TABLE.
     pub fn alter_table(&mut self, stmt: &AlterTableStmt) -> Result<Outcome> {
         let relation = stmt.relation.as_ref().ok_or_else(|| PgError::internal("ALTER TABLE without a table"))?;
+        if ObjectType::try_from(stmt.objtype) == Ok(ObjectType::ObjectSequence) {
+            return self.alter_sequence_commands(stmt, relation);
+        }
+        if ObjectType::try_from(stmt.objtype) == Ok(ObjectType::ObjectView)
+            && self.find_view(&relation.schemaname, &relation.relname)?.is_some()
+        {
+            for cmd in &stmt.cmds {
+                let Some(NodeEnum::AlterTableCmd(cmd)) = cmd.node.as_ref() else { continue };
+                if AlterTableType::try_from(cmd.subtype) != Ok(AlterTableType::AtChangeOwner) {
+                    return Err(PgError::unsupported("this ALTER VIEW"));
+                }
+                self.check_new_owner(cmd.newowner.as_ref())?;
+            }
+            return Ok(Outcome::command("ALTER VIEW"));
+        }
         let table = match self.resolve_table(relation) {
             Ok(table) => table,
             Err(_) if stmt.missing_ok => {
@@ -136,6 +151,31 @@ impl Ctx<'_> {
         Ok(Outcome::command("ALTER TABLE"))
     }
 
+    /// alter_sequence_commands runs the ALTER SEQUENCE forms that the ALTER TABLE grammar parses, such as OWNER TO.
+    fn alter_sequence_commands(
+        &mut self,
+        stmt: &AlterTableStmt,
+        relation: &pg_query::protobuf::RangeVar,
+    ) -> Result<Outcome> {
+        if self.find_sequence(relation)?.is_none() {
+            let message = format!("relation \"{}\" does not exist", relation.relname);
+            if stmt.missing_ok {
+                self.session.notice(PgError::notice("00000", format!("{message}, skipping")));
+                return Ok(Outcome::command("ALTER SEQUENCE"));
+            }
+            return Err(PgError::new(code::UNDEFINED_TABLE, message));
+        }
+        for cmd in &stmt.cmds {
+            let Some(NodeEnum::AlterTableCmd(cmd)) = cmd.node.as_ref() else { continue };
+            match AlterTableType::try_from(cmd.subtype) {
+                Ok(AlterTableType::AtChangeOwner) => self.check_new_owner(cmd.newowner.as_ref())?,
+                Ok(other) => return Err(PgError::unsupported(format!("ALTER SEQUENCE {other:?}"))),
+                Err(_) => return Err(PgError::unsupported("this ALTER SEQUENCE")),
+            }
+        }
+        Ok(Outcome::command("ALTER SEQUENCE"))
+    }
+
     /// rows returns the altered table's rows, scanning them on first use.
     fn rows<'r>(&mut self, alteration: &'r mut Alteration) -> Result<&'r mut Vec<Vec<Value>>> {
         if alteration.rows.is_none() {
@@ -150,6 +190,7 @@ impl Ctx<'_> {
         match kind {
             AlterTableType::AtAddColumn => self.add_column(alteration, cmd),
             AlterTableType::AtDropColumn => self.drop_column(alteration, cmd),
+            AlterTableType::AtAddIdentity => self.add_identity(alteration, cmd),
             AlterTableType::AtColumnDefault => {
                 let i = self.column_index(&alteration.table, &cmd.name)?;
                 alteration.table.columns[i].default = match cmd.def.as_deref() {
@@ -205,8 +246,8 @@ impl Ctx<'_> {
                 let cascade = DropBehavior::try_from(cmd.behavior) == Ok(DropBehavior::DropCascade);
                 self.drop_constraint(alteration, &cmd.name, cmd.missing_ok, cascade)
             }
-            AlterTableType::AtChangeOwner
-            | AlterTableType::AtEnableTrig
+            AlterTableType::AtChangeOwner => self.check_new_owner(cmd.newowner.as_ref()),
+            AlterTableType::AtEnableTrig
             | AlterTableType::AtDisableTrig
             | AlterTableType::AtEnableTrigAll
             | AlterTableType::AtDisableTrigAll
@@ -220,6 +261,44 @@ impl Ctx<'_> {
     /// column_index returns a column's position, failing as Postgres does when the table lacks it.
     fn column_index(&self, table: &TableDef, name: &str) -> Result<usize> {
         table.columns.iter().position(|c| c.name == name).ok_or_else(|| column_missing(table, name))
+    }
+
+    /// add_identity runs ALTER COLUMN ADD GENERATED AS IDENTITY, which gives a column an owned sequence as its default.
+    fn add_identity(&mut self, alteration: &mut Alteration, cmd: &AlterTableCmd) -> Result<()> {
+        let i = self.column_index(&alteration.table, &cmd.name)?;
+        let (table, column) = (alteration.table.name.clone(), alteration.table.columns[i].clone());
+        let state = |problem: &str| {
+            PgError::new(
+                code::OBJECT_NOT_IN_PREREQUISITE_STATE,
+                format!("column \"{}\" of relation \"{table}\" {problem}", column.name),
+            )
+        };
+        if column.nullable {
+            return Err(state("must be declared NOT NULL before identity can be added"));
+        }
+        if !column.default.is_empty() {
+            return Err(state("already has a default value"));
+        }
+        let data_type = match column.ty.oid {
+            crate::oid::INT2 => "int2",
+            crate::oid::INT4 => "int4",
+            crate::oid::INT8 => "int8",
+            _ => {
+                return Err(PgError::new(
+                    code::INVALID_PARAMETER_VALUE,
+                    "identity column type must be smallint, integer, or bigint",
+                ));
+            }
+        };
+        let options = match cmd.def.as_deref().and_then(|d| d.node.as_ref()) {
+            Some(NodeEnum::Constraint(constraint)) => constraint.options.clone(),
+            _ => Vec::new(),
+        };
+        let schema = alteration.table.schema.clone();
+        let mut taken = self.relation_names(&schema)?;
+        let default = self.create_owned_sequence(&schema, &table, &column.name, data_type, &options, &mut taken)?;
+        alteration.table.columns[i].default = default;
+        Ok(())
     }
 
     /// add_column runs ADD COLUMN, filling existing rows with the column's default.

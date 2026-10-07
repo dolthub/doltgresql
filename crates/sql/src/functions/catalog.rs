@@ -55,6 +55,7 @@ pub const FUNCTIONS: &[Function] = &[
     f("col_description", &[OID, INT4], TEXT, col_description),
     f("shobj_description", &[OID, NAME], TEXT, obj_description),
     f("pg_get_serial_sequence", &[TEXT, TEXT], TEXT, pg_get_serial_sequence),
+    f("pg_partition_ancestors", &[REGCLASS], REGCLASS, pg_partition_ancestors),
     f("hashtext", &[TEXT], INT4, hashtext),
     f("min_scale", &[NUMERIC], INT4, min_scale),
     Function {
@@ -74,6 +75,15 @@ pub const FUNCTIONS: &[Function] = &[
         implementation: num_nonnulls,
     },
 ];
+
+/// OUT_COLUMNS are the result columns of the catalog functions that return rows.
+pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[("pg_partition_ancestors", &[("relid", REGCLASS)])];
+
+/// pg_partition_ancestors returns the partitioned tables a partition belongs to, which are none, since Doltgres has
+/// no partitioned tables.
+fn pg_partition_ancestors(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Set(Vec::new()))
+}
 
 /// text returns the text of a string argument.
 fn text(value: &Value) -> &str {

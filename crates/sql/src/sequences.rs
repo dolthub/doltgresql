@@ -17,7 +17,7 @@
 use doltdb::database::Database;
 use doltdb::root::Root;
 use objects::Sequence;
-use pg_query::protobuf::{CreateSeqStmt, DefElem, DropBehavior, DropStmt};
+use pg_query::protobuf::{AlterSeqStmt, CreateSeqStmt, DefElem, DropBehavior, DropStmt};
 use pg_query::{Node, NodeEnum};
 use store::Hash;
 
@@ -25,7 +25,7 @@ use crate::Outcome;
 use crate::catalog::id::{self, SECTION_SEQUENCE, SECTION_TABLE, SECTION_TYPE};
 use crate::error::{PgError, Result, code};
 use crate::expr::{node_name, position};
-use crate::oid::{BOOL, INT8, TEXT};
+use crate::oid::{BOOL, INT8, REGCLASS, TEXT};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -138,12 +138,13 @@ fn int_option(def: &DefElem) -> Result<Option<i64>> {
     }
 }
 
-/// apply_options applies CREATE SEQUENCE options to a new sequence and checks them as Postgres' init_params does,
-/// returning the OWNED BY names.
-fn apply_options(sequence: &mut Sequence, options: &[Node]) -> Result<Option<Vec<String>>> {
-    let mut data_type = data_type_name(sequence);
-    let (mut increment, mut minimum, mut maximum, mut start, mut cache) = (None, None, None, None, None);
-    let (mut min_given, mut max_given) = (false, false);
+/// apply_options applies CREATE SEQUENCE options to a new sequence, or ALTER SEQUENCE options to an existing one, and
+/// checks them as Postgres' init_params does, returning the OWNED BY names.
+fn apply_options(sequence: &mut Sequence, options: &[Node], init: bool) -> Result<Option<Vec<String>>> {
+    let old_type = data_type_name(sequence);
+    let mut data_type = old_type.clone();
+    let mut increment = None;
+    let (mut minimum, mut maximum, mut start, mut restart, mut cache) = (None, None, None, None, None);
     let mut owned_by = None;
     for option in options {
         let Some(NodeEnum::DefElem(def)) = option.node.as_ref() else { continue };
@@ -160,15 +161,10 @@ fn apply_options(sequence: &mut Sequence, options: &[Node]) -> Result<Option<Vec
                 .to_string();
             }
             "increment" => increment = int_option(def)?,
-            "minvalue" => {
-                min_given = true;
-                minimum = int_option(def)?;
-            }
-            "maxvalue" => {
-                max_given = true;
-                maximum = int_option(def)?;
-            }
+            "minvalue" => minimum = Some(int_option(def)?),
+            "maxvalue" => maximum = Some(int_option(def)?),
             "start" => start = int_option(def)?,
+            "restart" => restart = Some(int_option(def)?),
             "cache" => cache = int_option(def)?,
             "cycle" => {
                 sequence.cycle = matches!(
@@ -183,39 +179,92 @@ fn apply_options(sequence: &mut Sequence, options: &[Node]) -> Result<Option<Vec
             _ => {}
         }
     }
-    let increment = increment.unwrap_or(1);
+    let last = match (sequence.has_been_called, sequence.is_at_end) {
+        (true, false) => sequence.current - sequence.increment,
+        _ => sequence.current,
+    };
+    let (old_min, old_max) = type_range(&old_type);
+    let changed = data_type != old_type;
+    let increment = increment.unwrap_or(if init { 1 } else { sequence.increment });
     if increment == 0 {
         return Err(invalid("INCREMENT must not be zero".into()));
     }
     let (type_min, type_max) = type_range(&data_type);
     let maximum = match maximum {
-        Some(m) => m,
-        None if increment > 0 => type_max,
-        None => -1,
+        Some(Some(m)) => m,
+        Some(None) => {
+            if increment > 0 {
+                type_max
+            } else {
+                -1
+            }
+        }
+        None if init || changed && sequence.maximum == old_max => {
+            if increment > 0 {
+                type_max
+            } else {
+                -1
+            }
+        }
+        None => sequence.maximum,
     };
     let minimum = match minimum {
-        Some(m) => m,
-        None if increment > 0 => 1,
-        None => type_min,
+        Some(Some(m)) => m,
+        Some(None) => {
+            if increment > 0 {
+                1
+            } else {
+                type_min
+            }
+        }
+        None if init || changed && sequence.minimum == old_min => {
+            if increment > 0 {
+                1
+            } else {
+                type_min
+            }
+        }
+        None => sequence.minimum,
     };
     let type_name = type_display_name(&data_type);
-    if max_given && (maximum < type_min || maximum > type_max) {
+    if maximum < type_min || maximum > type_max {
         return Err(invalid(format!("MAXVALUE ({maximum}) is out of range for sequence data type {type_name}")));
     }
-    if min_given && (minimum < type_min || minimum > type_max) {
+    if minimum < type_min || minimum > type_max {
         return Err(invalid(format!("MINVALUE ({minimum}) is out of range for sequence data type {type_name}")));
     }
     if minimum >= maximum {
         return Err(invalid(format!("MINVALUE ({minimum}) must be less than MAXVALUE ({maximum})")));
     }
-    let start = start.unwrap_or(if increment > 0 { minimum } else { maximum });
+    let start = match start {
+        Some(start) => start,
+        None if init => {
+            if increment > 0 {
+                minimum
+            } else {
+                maximum
+            }
+        }
+        None => sequence.start,
+    };
     if start < minimum {
         return Err(invalid(format!("START value ({start}) cannot be less than MINVALUE ({minimum})")));
     }
     if start > maximum {
         return Err(invalid(format!("START value ({start}) cannot be greater than MAXVALUE ({maximum})")));
     }
-    let cache = cache.unwrap_or(1);
+    let (last, called) = match restart {
+        Some(value) => (value.unwrap_or(start), false),
+        None if init => (start, false),
+        None => (last, sequence.has_been_called),
+    };
+    if last < minimum {
+        return Err(invalid(format!("RESTART value ({last}) cannot be less than MINVALUE ({minimum})")));
+    }
+    if last > maximum {
+        return Err(invalid(format!("RESTART value ({last}) cannot be greater than MAXVALUE ({maximum})")));
+    }
+    let cache = cache.unwrap_or(if init { 1 } else { sequence.cache });
     if cache < 1 {
         return Err(invalid(format!("CACHE ({cache}) must be greater than zero")));
     }
@@ -224,8 +273,13 @@ fn apply_options(sequence: &mut Sequence, options: &[Node]) -> Result<Option<Vec
     sequence.minimum = minimum;
     sequence.maximum = maximum;
     sequence.start = start;
-    sequence.current = start;
     sequence.cache = cache;
+    sequence.current = last;
+    sequence.is_at_end = false;
+    sequence.has_been_called = called;
+    if called {
+        advance(sequence)?;
+    }
     Ok(owned_by)
 }
 
@@ -391,7 +445,7 @@ impl Ctx<'_> {
             return Err(PgError::new(code::DUPLICATE_TABLE, message));
         }
         let mut sequence = new_sequence(&schema, &name, "int8");
-        if let Some(owned_by) = apply_options(&mut sequence, &stmt.options)? {
+        if let Some(owned_by) = apply_options(&mut sequence, &stmt.options, true)? {
             self.set_owner(&mut sequence, &schema, &owned_by)?;
         }
         store(self.db, &mut self.txn.root, &sequence)?;
@@ -399,29 +453,78 @@ impl Ctx<'_> {
         Ok(Outcome::command("CREATE SEQUENCE"))
     }
 
-    /// set_owner links a sequence to the table column that OWNED BY names, so that dropping the table drops it.
+    /// set_owner links a sequence to the table column that OWNED BY names, so that dropping the table drops it, or
+    /// unlinks it for OWNED BY NONE, failing as Postgres' process_owned_by does.
     fn set_owner(&mut self, sequence: &mut Sequence, schema: &str, owned_by: &[String]) -> Result<()> {
-        let (table, column) = match owned_by {
-            [none] if none == "none" => return Ok(()),
-            [table, column] => (table.clone(), column.clone()),
-            [_, table, column] => (table.clone(), column.clone()),
+        let (table_schema, table, column) = match owned_by {
+            [none] if none == "none" => {
+                sequence.owner_table.clear();
+                sequence.owner_column.clear();
+                return Ok(());
+            }
+            [table, column] => (String::new(), table.clone(), column.clone()),
+            [.., table_schema, table, column] if owned_by.len() <= 4 => {
+                (table_schema.clone(), table.clone(), column.clone())
+            }
             _ => {
-                return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "invalid OWNED BY option"));
+                return Err(PgError {
+                    hint: Some("Specify OWNED BY table.column or OWNED BY NONE.".into()),
+                    ..PgError::new(code::SYNTAX_ERROR, "invalid OWNED BY option")
+                });
             }
         };
-        let def = self
-            .txn
-            .table(self.db, schema, &table)?
-            .ok_or_else(|| PgError::new(code::UNDEFINED_TABLE, format!("relation \"{table}\" does not exist")))?;
+        let relation =
+            pg_query::protobuf::RangeVar { schemaname: table_schema, relname: table, inh: true, ..Default::default() };
+        let def = self.resolve_table(&relation).map_err(|err| PgError { position: None, ..err })?;
+        if def.schema != schema {
+            return Err(PgError::new(
+                code::OBJECT_NOT_IN_PREREQUISITE_STATE,
+                "sequence must be in same schema as table it is linked to",
+            ));
+        }
         if !def.columns.iter().any(|c| c.name == column) {
             return Err(PgError::new(
                 code::UNDEFINED_COLUMN,
-                format!("column \"{column}\" of relation \"{table}\" does not exist"),
+                format!("column \"{column}\" of relation \"{}\" does not exist", def.name),
             ));
         }
-        sequence.owner_table = id::new(SECTION_TABLE, &[schema, &table]);
+        sequence.owner_table = id::new(SECTION_TABLE, &[schema, &def.name]);
         sequence.owner_column = column.into_bytes();
         Ok(())
+    }
+
+    /// find_sequence returns the sequence a relation names, in its schema or else the first schema of the search path
+    /// that has it.
+    pub(crate) fn find_sequence(&mut self, relation: &pg_query::protobuf::RangeVar) -> Result<Option<Sequence>> {
+        let schemas =
+            if relation.schemaname.is_empty() { self.session.search_path() } else { vec![relation.schemaname.clone()] };
+        for schema in schemas {
+            if let Some(sequence) = find(self.db, &self.txn.root, &schema, &relation.relname)? {
+                return Ok(Some(sequence));
+            }
+        }
+        Ok(None)
+    }
+
+    /// alter_sequence runs ALTER SEQUENCE, changing an existing sequence's options.
+    pub fn alter_sequence(&mut self, stmt: &AlterSeqStmt) -> Result<Outcome> {
+        let relation = stmt.sequence.as_ref().ok_or_else(|| PgError::internal("ALTER SEQUENCE without a name"))?;
+        let Some(sequence) = self.find_sequence(relation)? else {
+            let message = format!("relation \"{}\" does not exist", relation.relname);
+            if stmt.missing_ok {
+                self.session.notice(PgError::notice("00000", format!("{message}, skipping")));
+                return Ok(Outcome::command("ALTER SEQUENCE"));
+            }
+            return Err(PgError::new(code::UNDEFINED_TABLE, message));
+        };
+        let (schema, name) = schema_and_name(&sequence);
+        self.require_owner(&crate::auth::Object::Sequence(schema.clone(), name))?;
+        let mut sequence = self.latest(sequence)?;
+        if let Some(owned_by) = apply_options(&mut sequence, &stmt.options, false)? {
+            self.set_owner(&mut sequence, &schema, &owned_by)?;
+        }
+        self.save(&sequence)?;
+        Ok(Outcome::command("ALTER SEQUENCE"))
     }
 
     /// drop_sequences runs DROP SEQUENCE, refusing a sequence that a column default uses unless it cascades.
@@ -543,10 +646,22 @@ impl Ctx<'_> {
         options: &[Node],
         taken: &mut Vec<String>,
     ) -> Result<String> {
-        let name = crate::ddl::choose_relation_name(table, column, "seq", taken);
+        let named = options.iter().find_map(|option| match option.node.as_ref() {
+            Some(NodeEnum::DefElem(def)) if def.defname == "sequence_name" => {
+                match def.arg.as_deref()?.node.as_ref()? {
+                    NodeEnum::List(list) => list.items.iter().filter_map(node_name).next_back().map(str::to_string),
+                    _ => None,
+                }
+            }
+            _ => None,
+        });
+        let name = match named {
+            Some(name) => name,
+            None => crate::ddl::choose_relation_name(table, column, "seq", taken),
+        };
         taken.push(name.clone());
         let mut sequence = new_sequence(schema, &name, data_type);
-        apply_options(&mut sequence, options)?;
+        apply_options(&mut sequence, options, true)?;
         sequence.owner_table = id::new(SECTION_TABLE, &[schema, table]);
         sequence.owner_column = column.as_bytes().to_vec();
         store(self.db, &mut self.txn.root, &sequence)?;
@@ -563,6 +678,10 @@ pub const FUNCTIONS: &[crate::functions::Function] = &[
     f("lastval", &[], lastval),
     f("setval", &[TEXT, INT8], setval),
     f("setval", &[TEXT, INT8, BOOL], setval),
+    f("nextval", &[REGCLASS], nextval),
+    f("currval", &[REGCLASS], currval),
+    f("setval", &[REGCLASS, INT8], setval),
+    f("setval", &[REGCLASS, INT8, BOOL], setval),
 ];
 
 /// f declares a strict sequence function returning bigint.
