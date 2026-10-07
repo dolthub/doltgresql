@@ -928,6 +928,15 @@ impl Ctx<'_> {
                     targets[position] = target.val.as_deref().cloned().unwrap_or_else(|| column_ref(names[position]));
                 }
                 let old = self.select_rows(relation, vec![star()], update.where_clause.clone())?;
+                let targets = targets
+                    .into_iter()
+                    .map(|val| pg_query::Node {
+                        node: Some(NodeEnum::ResTarget(Box::new(pg_query::protobuf::ResTarget {
+                            val: Some(Box::new(val)),
+                            ..Default::default()
+                        }))),
+                    })
+                    .collect();
                 let new = self.select_rows(relation, targets, update.where_clause.clone())?;
                 let changes: Vec<_> = old.into_iter().zip(new).map(|(o, n)| (Some(o), Some(n))).collect();
                 let tag = format!("UPDATE {}", changes.len());
