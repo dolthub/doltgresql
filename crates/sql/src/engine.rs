@@ -784,7 +784,8 @@ impl Session {
         } else if let Some(Statement::Postgres { node, .. }) = &statement
             && describable(node)
         {
-            columns = self.with_ctx(&mut parameters, &[], |ctx| ctx.describe(node))?;
+            columns = self
+                .in_named_database(node, |session| session.with_ctx(&mut parameters, &[], |ctx| ctx.describe(node)))?;
         }
         for parameter in &mut parameters {
             if *parameter == 0 {
@@ -1192,8 +1193,60 @@ impl Session {
         Ok(Outcome::command("DROP DATABASE"))
     }
 
-    /// postgres runs a statement of Postgres' grammar.
+    /// postgres runs a statement of Postgres' grammar, in the other database that its relations name when they name
+    /// one, as Go runs such statements.
     fn postgres(&mut self, node: &NodeEnum, extras: &Extras, params: &[Value]) -> Result<Outcome> {
+        self.in_named_database(node, |session| session.postgres_here(node, extras, params))
+    }
+
+    /// in_named_database runs a function with the session in the other database that a statement's relations name,
+    /// or in its own database when they name none.
+    fn in_named_database<T>(&mut self, node: &NodeEnum, f: impl FnOnce(&mut Session) -> Result<T>) -> Result<T> {
+        let Some(database) = self.other_database(node)? else { return f(self) };
+        let saved = (self.state.database.clone(), self.state.branch.clone(), self.state.display.clone());
+        self.state.branch = self.state.checked_out_branch(&database);
+        self.state.database = database.clone();
+        self.state.display = database;
+        let result = f(self);
+        (self.state.database, self.state.branch, self.state.display) = saved;
+        result
+    }
+
+    /// other_database returns the database other than the session's that a statement's database-qualified relations
+    /// name, failing as Postgres does for a database that does not exist, at the relation for a query.
+    fn other_database(&self, node: &NodeEnum) -> Result<Option<String>> {
+        let mut found = None;
+        for (item, ..) in node.nodes() {
+            let pg_query::NodeRef::RangeVar(relation) = item else { continue };
+            let database = relation.catalogname.split('/').next().unwrap_or_default();
+            if database.is_empty() || database == self.state.database {
+                continue;
+            }
+            if !self.state.engine.database_exists(database) {
+                let parts = [relation.catalogname.as_str(), relation.schemaname.as_str(), relation.relname.as_str()];
+                let name = parts.iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join(".");
+                let query = matches!(
+                    node,
+                    NodeEnum::SelectStmt(_)
+                        | NodeEnum::InsertStmt(_)
+                        | NodeEnum::UpdateStmt(_)
+                        | NodeEnum::DeleteStmt(_)
+                );
+                return Err(PgError {
+                    position: if query { crate::expr::position(relation.location) } else { None },
+                    ..PgError::new(
+                        code::FEATURE_NOT_SUPPORTED,
+                        format!("cross-database references are not implemented: \"{name}\""),
+                    )
+                });
+            }
+            found = Some(database.to_string());
+        }
+        Ok(found)
+    }
+
+    /// postgres_here runs a statement of Postgres' grammar in the session's database.
+    fn postgres_here(&mut self, node: &NodeEnum, extras: &Extras, params: &[Value]) -> Result<Outcome> {
         self.state.as_of = extras.as_of.clone();
         match node {
             NodeEnum::DropdbStmt(drop) => {

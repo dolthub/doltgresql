@@ -174,7 +174,16 @@ impl Ctx<'_> {
             ));
         }
         for (schema, table, columns) in relations {
+            let types: Vec<(String, ColumnType)> = columns.iter().map(|(name, ty, ..)| (name.clone(), *ty)).collect();
             for (i, (name, ty, nullable, default, generated)) in columns.into_iter().enumerate() {
+                let column_default = match default.is_empty() || generated {
+                    true => Value::Null,
+                    false => {
+                        let mut analyzer = crate::ruleutils::Analyzer::new(self, types.clone());
+                        let shown = analyzer.deparse(&default, Some(ty), false)?;
+                        if shown == "NULL" || shown.starts_with("NULL::") { Value::Null } else { text(shown) }
+                    }
+                };
                 let generation = match generated {
                     true => text(self.expression_definition(
                         &default,
@@ -191,10 +200,7 @@ impl Ctx<'_> {
                     ("table_name", text(table.clone())),
                     ("column_name", text(name)),
                     ("ordinal_position", int4(i as i32 + 1)),
-                    (
-                        "column_default",
-                        if default.is_empty() || generated { Value::Null } else { text(default.clone()) },
-                    ),
+                    ("column_default", column_default),
                     ("is_nullable", yes_no(nullable)),
                     ("data_type", text(data_type(ty.oid))),
                     ("character_maximum_length", optional(l.character_maximum)),

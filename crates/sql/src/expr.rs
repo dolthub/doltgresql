@@ -1162,6 +1162,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                 let mut right = self.bind(operand(&e.rexpr)?)?;
                 if right.1.oid == oid::UNKNOWN {
                     let array_type = if left.1.oid == oid::UNKNOWN { oid::TEXT_ARRAY } else { array_of(left.1.oid) };
+                    if let Expr::Param(i) = right.0
+                        && self.ctx.parameters[i] == 0
+                    {
+                        self.ctx.parameters[i] = array_type;
+                    }
                     right = coerce(right, typ(array_type), false, e.location)?;
                 }
                 if !is_array_type(right.1.oid) {

@@ -407,3 +407,287 @@ fn test_set_local() {
         },
     ]);
 }
+
+#[test]
+fn test_set_local_and_order_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "SET after SET LOCAL",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET LOCAL enable_hashjoin = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET enable_hashjoin = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW enable_hashjoin;",
+                    expected: Expected::Rows {
+                        columns: &[Column("enable_hashjoin", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET enable_hashjoin = on;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET LOCAL enable_hashjoin = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET enable_hashjoin = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW enable_hashjoin;",
+                    expected: Expected::Rows {
+                        columns: &[Column("enable_hashjoin", TEXT)],
+                        rows: &[
+                            &[T("on")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET enable_hashjoin = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET LOCAL enable_hashjoin = on;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW enable_hashjoin;",
+                    expected: Expected::Rows {
+                        columns: &[Column("enable_hashjoin", TEXT)],
+                        rows: &[
+                            &[T("on")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW enable_hashjoin;",
+                    expected: Expected::Rows {
+                        columns: &[Column("enable_hashjoin", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET LOCAL work_mem = '1MB';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET work_mem = '2MB';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET LOCAL work_mem = '3MB';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW work_mem;",
+                    expected: Expected::Rows {
+                        columns: &[Column("work_mem", TEXT)],
+                        rows: &[
+                            &[T("3MB")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW work_mem;",
+                    expected: Expected::Rows {
+                        columns: &[Column("work_mem", TEXT)],
+                        rows: &[
+                            &[T("2MB")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "jsonb index order",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jorder (id int primary key, val jsonb);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX jorder_val ON jorder (val);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO jorder VALUES (1,'null'), (2,'[]'), (3,'{}'), (4,'"a"'), (5,'1'), (6,'true'), (7,'[1]'), (8,'false'), (9,'{"a":1}'), (10, '10'), (11, '9');"#,
+                    expected: Expected::Tag("INSERT 0 11"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT val FROM jorder WHERE val < '2' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("val", JSONB)],
+                        rows: &[
+                            &[T("null")],
+                            &[T("[]")],
+                            &[T(r#""a""#)],
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT val FROM jorder WHERE val > '"a"' ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("val", JSONB)],
+                        rows: &[
+                            &[T("{}")],
+                            &[T("1")],
+                            &[T("true")],
+                            &[T("[1]")],
+                            &[T("false")],
+                            &[T(r#"{"a": 1}"#)],
+                            &[T("10")],
+                            &[T("9")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT val FROM jorder WHERE val BETWEEN '1' AND '10' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("val", JSONB)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("10")],
+                            &[T("9")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT val FROM jorder WHERE val = '10' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("val", JSONB)],
+                        rows: &[
+                            &[T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT val FROM jorder ORDER BY val;",
+                    expected: Expected::Rows {
+                        columns: &[Column("val", JSONB)],
+                        rows: &[
+                            &[T("[]")],
+                            &[T("null")],
+                            &[T(r#""a""#)],
+                            &[T("1")],
+                            &[T("9")],
+                            &[T("10")],
+                            &[T("false")],
+                            &[T("true")],
+                            &[T("[1]")],
+                            &[T("{}")],
+                            &[T(r#"{"a": 1}"#)],
+                        ],
+                        tag: "SELECT 11",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "References to missing databases",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM no_such_db.public.tbl;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cross-database references are not implemented: "no_such_db.public.tbl""#, position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO no_such_db.public.tbl VALUES (1);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cross-database references are not implemented: "no_such_db.public.tbl""#, position: 13, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

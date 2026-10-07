@@ -622,14 +622,19 @@ impl Settings {
         self.values.get(name).cloned()
     }
 
-    /// store stores a value, remembering the previous one for the transaction to restore.
+    /// store stores a value, remembering the previous one for the transaction to restore, where a SET after a SET
+    /// LOCAL of the parameter keeps its value past the transaction, as Postgres does.
     fn store(&mut self, key: String, value: Option<String>, local: bool, in_transaction: bool) {
-        let previous = self.values.get(&key).cloned();
+        let mut previous = self.values.get(&key).cloned();
         if local {
             if in_transaction {
                 self.local_undo.push((key.clone(), previous));
             }
         } else if in_transaction {
+            if let Some(first) = self.local_undo.iter().position(|(k, _)| *k == key) {
+                previous = self.local_undo[first].1.clone();
+                self.local_undo.retain(|(k, _)| *k != key);
+            }
             self.transaction_undo.push((key.clone(), previous));
         }
         if local && !in_transaction {

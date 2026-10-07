@@ -896,7 +896,8 @@ fn hash_ordered(table: &TableDef, index: Option<usize>) -> bool {
 }
 
 /// provides reports whether reading an index in a direction gives the sort keys' order for the index's columns at the
-/// positions given, returning the direction it must read in, where NULL placement only matters for a nullable column.
+/// positions given, returning the direction it must read in, where NULL placement only matters for a nullable column
+/// and json columns, whose keys sort by their text, give no order.
 fn provides(
     table: &TableDef,
     columns: &[usize],
@@ -905,6 +906,9 @@ fn provides(
 ) -> Option<bool> {
     let mut reverse = None;
     for &(position, _, key) in keys {
+        if matches!(table.columns[columns[position]].ty.oid, crate::oid::JSON | crate::oid::JSONB) {
+            return None;
+        }
         let (descending, nulls_first) = orders[position];
         let flip = key.descending != descending;
         if reverse.is_some_and(|r| r != flip) {

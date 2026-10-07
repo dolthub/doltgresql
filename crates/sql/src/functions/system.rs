@@ -197,6 +197,7 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_get_viewdef", &[TEXT], TEXT, pg_get_viewdef),
     f("pg_get_viewdef", &[TEXT, BOOL], TEXT, pg_get_viewdef),
     f("load_file", &[TEXT], TEXT, load_file),
+    f("pg_get_statisticsobjdef_columns", &[OID], TEXT, pg_get_statisticsobjdef_columns),
 ];
 
 /// current_schemas returns the schemas of the search path that exist, with the ones searched implicitly when asked.
@@ -545,6 +546,11 @@ fn pg_get_viewdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         Some(view) => Ok(Value::Text(ctx.view_definition(&view.statement, pretty, wrap)?)),
         None => Ok(crate::pgcatalog::builtin_view_definition(relation).map_or(Value::Null, |d| Value::Text(d.into()))),
     }
+}
+
+/// pg_get_statisticsobjdef_columns returns NULL, since no extended statistics object exists for an OID to name.
+fn pg_get_statisticsobjdef_columns(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Null)
 }
 
 /// pg_get_ruledef prints the `_RETURN` rule of a view as a CREATE RULE statement, prettily when asked, or returns NULL
