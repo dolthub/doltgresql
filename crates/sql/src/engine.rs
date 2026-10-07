@@ -55,6 +55,8 @@ struct Shared {
     statistics: Mutex<HashMap<(String, String), Vec<crate::stats::Statistic>>>,
     /// What each open session is doing, by session ID.
     activity: Mutex<std::collections::BTreeMap<u64, Activity>>,
+    /// The sessions that a garbage collection ended because they had a transaction open, by session ID.
+    ended: Mutex<std::collections::HashSet<u64>>,
 }
 
 /// Activity is what a session is doing, as pg_stat_activity shows it.
@@ -68,6 +70,8 @@ pub struct Activity {
     pub query: String,
     /// When the running statement began, as a UTC timestamp, or None when the session is idle.
     pub started: Option<i64>,
+    /// Whether the session has an explicit transaction open.
+    pub in_transaction: bool,
 }
 
 /// undrop_hint lists the dropped databases that dolt_undrop can restore, as Dolt's CreateUndropErrorMessage does.
@@ -115,6 +119,7 @@ impl Engine {
                 started: crate::datetime::clock(),
                 statistics: Mutex::default(),
                 activity: Mutex::default(),
+                ended: Mutex::default(),
             }),
         };
         if !engine.database_exists(superuser) {
@@ -161,6 +166,25 @@ impl Engine {
     fn forget_activity(&self, id: u64) {
         let Ok(mut all) = self.shared.activity.lock() else { return };
         all.remove(&id);
+    }
+
+    /// collected records a garbage collection of a database, which ends the other sessions that use it with a
+    /// transaction open, since the collection may have removed chunks that only their transactions refer to.
+    pub fn collected(&self, database: &str, caller: u64) {
+        let in_transaction: Vec<u64> = self
+            .activity()
+            .into_iter()
+            .filter(|(id, a)| *id != caller && a.database == database && a.in_transaction)
+            .map(|(id, _)| id)
+            .collect();
+        if let Ok(mut ended) = self.shared.ended.lock() {
+            ended.extend(in_transaction);
+        }
+    }
+
+    /// ended reports whether a garbage collection ended a session.
+    fn ended(&self, id: u64) -> bool {
+        self.shared.ended.lock().is_ok_and(|ended| ended.contains(&id))
     }
 
     /// started returns when the engine opened, as a UTC timestamp.
@@ -369,6 +393,7 @@ pub struct SessionState {
     /// The schema of the view whose query is being planned, which its unqualified names search first, as if they
     /// were bound when the view was created.
     pub view_schema: Option<String>,
+
     /// The functions and procedures last loaded, with the addresses of the collections they were loaded from.
     pub routines: Option<RoutineCache>,
     /// The triggers last loaded, with the address of the trigger collection they were loaded from.
@@ -402,6 +427,9 @@ impl Drop for Session {
     fn drop(&mut self) {
         self.state.advisory.release_all(self.state.id, false, true);
         self.state.engine.forget_activity(self.state.id);
+        if let Ok(mut ended) = self.state.engine.shared.ended.lock() {
+            ended.remove(&self.state.id);
+        }
     }
 }
 
@@ -617,6 +645,7 @@ impl Session {
                 activity.query = query.to_string();
             }
             activity.started = query.map(|_| crate::datetime::clock());
+            activity.in_transaction = state.explicit;
         });
     }
 
@@ -856,6 +885,13 @@ impl Session {
 
     /// run runs one statement with the parameter values.
     fn run(&mut self, statement: &Statement, params: &[Value]) -> Result<Outcome> {
+        if self.state.engine.ended(self.state.id) {
+            return Err(PgError::fatal(
+                code::INTERNAL_ERROR,
+                "this connection was established when this server performed an online garbage collection. this \
+                 connection can no longer be used. please reconnect.",
+            ));
+        }
         let result = self.run_statement(statement, params);
         for warning in crate::xml::take_warnings() {
             self.state.notices.push(PgError { severity: "WARNING", ..PgError::new("01000", warning) });

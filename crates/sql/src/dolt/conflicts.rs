@@ -625,19 +625,32 @@ fn preview(
 /// that merging the second branch into the first would leave in a table.
 pub fn preview_function(ctx: &mut Ctx<'_>, args: &[String]) -> Result<ArtifactTable> {
     let [left, right, table] = args else {
-        return Err(error(format!(
-            "function 'dolt_preview_merge_conflicts' expected 3 arguments, {} received",
-            args.len()
-        )));
+        return Err(crate::dolt::args::argument_count("dolt_preview_merge_conflicts", 3, args.len()));
     };
     if table.is_empty() {
         return Err(error("table name cannot be empty"));
     }
-    let (_, commits) = preview(ctx, left, right)?;
+    let (outcome, commits) = preview(ctx, left, right)?;
     let (schema, name) = match table.split_once('.') {
         Some((schema, name)) => (schema.to_string(), name.to_string()),
-        None => (ctx.creation_schema()?, table.clone()),
+        None => {
+            let mut schemas = ctx.session.search_path();
+            schemas.extend(crate::dolt::procedures::table_map(ctx.db, &outcome.root)?.into_keys().map(|(s, _)| s));
+            let mut found = None;
+            for schema in schemas {
+                for commit in [commits.ours, commits.theirs, commits.base] {
+                    if found.is_none() && commit_table(ctx, commit, &schema, table)?.is_some() {
+                        found = Some(schema.clone());
+                    }
+                }
+            }
+            (found.unwrap_or(ctx.creation_schema()?), table.clone())
+        }
     };
+    let conflicts = outcome.schema_conflicts.iter().filter(|c| c.0 == schema && c.1 == name).count();
+    if conflicts > 0 {
+        return Err(error(format!("schema conflicts found: {conflicts}")));
+    }
     let columns = |ctx: &mut Ctx<'_>, commit: Hash| -> Result<Option<Vec<ColumnDef>>> {
         Ok(commit_table(ctx, commit, &schema, &name)?.map(|t| ordered(&t)))
     };
@@ -657,15 +670,23 @@ pub fn preview_function(ctx: &mut Ctx<'_>, args: &[String]) -> Result<ArtifactTa
     })
 }
 
+/// null_argument returns go-mysql-server's error for a table function given a NULL argument.
+pub fn null_argument(function: &str) -> crate::error::PgError {
+    crate::error::PgError::new(
+        crate::error::code::INVALID_PARAMETER_VALUE,
+        format!("Invalid argument to {function}: NULL"),
+    )
+}
+
 /// dolt_preview_merge_conflicts_summary returns each table that merging the second branch into the first would leave
 /// with conflicts, with how many rows conflict, or how many schemas conflict, as rows of records.
 pub fn dolt_preview_merge_conflicts_summary(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    if args.iter().any(Value::is_null) {
+        return Err(null_argument("dolt_preview_merge_conflicts_summary"));
+    }
     let args: Vec<String> = args.iter().map(|a| a.output().unwrap_or_default()).collect();
     let [left, right] = args.as_slice() else {
-        return Err(error(format!(
-            "function 'dolt_preview_merge_conflicts_summary' expected 2 arguments, {} received",
-            args.len()
-        )));
+        return Err(crate::dolt::args::argument_count("dolt_preview_merge_conflicts_summary", 2, args.len()));
     };
     if left.is_empty() {
         return Err(error("left branch name cannot be empty"));
@@ -674,17 +695,18 @@ pub fn dolt_preview_merge_conflicts_summary(ctx: &mut Ctx<'_>, args: &[Value]) -
         return Err(error("right branch name cannot be empty"));
     }
     let (outcome, _) = preview(ctx, left, right)?;
+    let number = |n: usize| Value::Numeric(crate::numeric::Numeric::from_i64(n as i64));
     let mut rows = Vec::new();
     for (schema, name) in &outcome.schema_conflicts {
         let full = crate::dolt::diff::full_name(&(schema.clone(), name.clone()));
-        rows.push(Value::Record(vec![Value::Text(full), Value::Null, Value::Int8(1)]));
+        rows.push(Value::Record(vec![Value::Text(full), Value::Null, number(1)]));
     }
     for ((schema, name), address) in crate::dolt::procedures::table_map(ctx.db, &outcome.root)? {
         let table = TableDef::load(ctx.db, &schema, &name, address)?;
         let count = artifacts::read(ctx.db, &table)?.iter().filter(|a| a.kind == artifacts::CONFLICT).count();
         if count > 0 {
             let full = crate::dolt::diff::full_name(&(schema, name));
-            rows.push(Value::Record(vec![Value::Text(full), Value::Int8(count as i64), Value::Int8(0)]));
+            rows.push(Value::Record(vec![Value::Text(full), number(count), number(0)]));
         }
     }
     Ok(Value::Set(rows))

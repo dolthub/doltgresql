@@ -308,6 +308,27 @@ impl JournalStore {
         Ok(true)
     }
 
+    /// dir returns the store's noms directory.
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// rewrite replaces the store's files with the table files given, as garbage collection does: chunks not yet
+    /// written are dropped, the journal is closed, the manifest names only those files at the current root, and the
+    /// files it no longer names are deleted. The next write starts a new journal.
+    pub fn rewrite(&mut self, specs: Vec<TableSpec>) -> Result<()> {
+        self.memtable = MemTable::default();
+        if let Some(journal) = self.journal.take() {
+            journal.close()?;
+        }
+        let manifest = crate::gc::replace_files(&self.dir, self.upstream.root, &self.upstream.format, specs)?;
+        self.sources =
+            manifest.specs.iter().map(|spec| Source::open_file(&self.dir, &spec.name)).collect::<Result<_>>()?;
+        self.pending.clear();
+        self.upstream = manifest;
+        Ok(())
+    }
+
     /// close writes out the journal's buffered records and index.
     pub fn close(self) -> Result<()> {
         match self.journal {
@@ -318,7 +339,7 @@ impl JournalStore {
 }
 
 /// write_manifest replaces the manifest through a synced temporary file, as Dolt's file manifest does.
-fn write_manifest(dir: &Path, manifest: &Manifest) -> Result<()> {
+pub(crate) fn write_manifest(dir: &Path, manifest: &Manifest) -> Result<()> {
     let temp = dir.join(format!("nbs_manifest_{}", Hash::of(manifest.format().as_bytes())));
     std::fs::write(&temp, manifest.format())?;
     File::open(&temp)?.sync_all()?;

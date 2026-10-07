@@ -62,7 +62,17 @@ pub const FUNCTIONS: &[Function] = &[
     v("dolt_count_commits", RECORD, crate::dolt::admin::dolt_count_commits),
     v("dolt_commit_hash_out", TEXT, crate::dolt::admin::dolt_commit_hash_out),
     v("dolt_rm", INT8, crate::dolt::admin::dolt_rm),
+    v("dolt_gc", INT8, crate::dolt::admin::dolt_gc),
     v("dolt_update_column_tag", INT8, crate::dolt::admin::dolt_update_column_tag),
+    v("dolt_verify_constraints", INT8, crate::dolt::admin::dolt_verify_constraints),
+    v("dolt_stats_info", TEXT, crate::dolt::admin::dolt_stats_info),
+    v("dolt_stats_wait", TEXT, crate::dolt::admin::dolt_stats_ok),
+    v("dolt_stats_flush", TEXT, crate::dolt::admin::dolt_stats_ok),
+    v("dolt_stats_gc", TEXT, crate::dolt::admin::dolt_stats_ok),
+    v("dolt_stats_purge", TEXT, crate::dolt::admin::dolt_stats_ok),
+    v("dolt_stats_restart", TEXT, crate::dolt::admin::dolt_stats_ok),
+    v("dolt_stats_stop", TEXT, crate::dolt::admin::dolt_stats_ok),
+    v("dolt_stats_once", TEXT, crate::dolt::admin::dolt_stats_once),
     Function {
         name: "dolt_undrop",
         args: &[TEXT],
@@ -103,6 +113,30 @@ pub const FUNCTIONS: &[Function] = &[
         strict: false,
         variadic: true,
         implementation: crate::dolt::diff::dolt_diff_summary,
+    },
+    Function {
+        name: "dolt_schema_diff",
+        args: &[TEXT],
+        ret: RECORD,
+        strict: false,
+        variadic: true,
+        implementation: crate::dolt::patch::dolt_schema_diff,
+    },
+    Function {
+        name: "dolt_patch",
+        args: &[TEXT],
+        ret: RECORD,
+        strict: false,
+        variadic: true,
+        implementation: crate::dolt::patch::dolt_patch,
+    },
+    Function {
+        name: "dolt_branch_status",
+        args: &[TEXT],
+        ret: RECORD,
+        strict: false,
+        variadic: true,
+        implementation: crate::dolt::admin::dolt_branch_status,
     },
     Function {
         name: "dolt_diff_stat",
@@ -181,6 +215,30 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
     ("dolt_stash", &[("status", INT8)]),
     ("dolt_clean", &[("status", INT8)]),
     ("dolt_count_commits", &[("ahead", INT8), ("behind", INT8)]),
+    (
+        "dolt_schema_diff",
+        &[
+            ("from_table_name", TEXT),
+            ("to_table_name", TEXT),
+            ("from_create_statement", TEXT),
+            ("to_create_statement", TEXT),
+        ],
+    ),
+    (
+        "dolt_patch",
+        &[
+            ("statement_order", crate::oid::NUMERIC),
+            ("from_commit_hash", TEXT),
+            ("to_commit_hash", TEXT),
+            ("table_name", TEXT),
+            ("diff_type", TEXT),
+            ("statement", TEXT),
+        ],
+    ),
+    (
+        "dolt_branch_status",
+        &[("branch", TEXT), ("commits_ahead", crate::oid::NUMERIC), ("commits_behind", crate::oid::NUMERIC)],
+    ),
     ("dolt_commit_hash_out", &[("hash", TEXT)]),
     ("dolt_rm", &[("status", INT8)]),
     ("dolt_update_column_tag", &[("status", INT8)]),
@@ -206,7 +264,7 @@ pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
     ),
     (
         "dolt_preview_merge_conflicts_summary",
-        &[("table", TEXT), ("num_data_conflicts", INT8), ("num_schema_conflicts", INT8)],
+        &[("table", TEXT), ("num_data_conflicts", crate::oid::NUMERIC), ("num_schema_conflicts", crate::oid::NUMERIC)],
     ),
     (
         "dolt_diff_summary",
@@ -805,11 +863,16 @@ fn dolt_checkout(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         return Ok(record(0, format!("Already on branch '{first}'")));
     }
     let is_branch = branch_exists(ctx.db, &first)?;
-    if parsed.args.len() == 1 && !is_branch {
-        let tags = history::refs(ctx.db, "refs/tags/")?;
-        if history::is_hash(&first) || tags.iter().any(|(t, _)| *t == first) {
+    if parsed.args.len() == 1 {
+        let is_tag = history::refs(ctx.db, "refs/tags/")?.iter().any(|(t, _)| *t == first);
+        if is_tag || history::is_hash(&first) {
+            let what = if is_tag { "tag, run: " } else { "commit instead, run:" };
+            let command = match parsed.has("move") {
+                true => format!("dolt checkout {first} -b {{new_branch_name}}"),
+                false => format!("CALL DOLT_CHECKOUT('{first}', '-b', <new_branch_name>)"),
+            };
             return Err(error(format!(
-                "dolt does not support a detached head state. To create a branch at this ref, run:\n\tdolt checkout {first} -b {{new_branch_name}}"
+                "dolt does not support a detached head state. To create a branch at this {what}\n\t{command}"
             )));
         }
     }
@@ -846,19 +909,25 @@ fn checkout_tables(ctx: &mut Ctx<'_>, names: &[String]) -> Result<()> {
             }
         }
     }
-    let mut unknown = false;
+    let mut unknown = Vec::new();
     for (schema, table) in &keys {
-        let address = match staged.table(ctx.db, schema, table)? {
-            Some(address) => Some(address),
-            None => head.table(ctx.db, schema, table)?,
+        let source = match staged.table(ctx.db, schema, table)? {
+            Some(address) => Some((address, &staged)),
+            None => head.table(ctx.db, schema, table)?.map(|address| (address, &head)),
         };
-        match address {
-            Some(address) => ctx.txn.root.put_table(ctx.db, schema, table, Some(address))?,
-            None => unknown = true,
+        match source {
+            Some((address, root)) => {
+                ctx.txn.root.put_table(ctx.db, schema, table, Some(address))?;
+                ctx.txn.root.foreign_keys = root.foreign_keys.clone();
+            }
+            None => unknown.push((schema, table)),
         }
     }
-    if unknown {
-        return Err(error("error: given tables do not exist"));
+    for (schema, table) in unknown {
+        if working.table(ctx.db, schema, table)?.is_none() {
+            return Err(error("error: given tables do not exist"));
+        }
+        ctx.txn.root.put_table(ctx.db, schema, table, None)?;
     }
     if !keys.is_empty() {
         flush(ctx)?;

@@ -64,6 +64,15 @@ pub fn error(message: impl std::fmt::Display) -> PgError {
     PgError::internal(message)
 }
 
+/// argument_count returns go-mysql-server's error for a table function given the wrong number of arguments, which
+/// Doltgres reports as an undefined function.
+pub fn argument_count(function: &str, expected: impl std::fmt::Display, received: usize) -> PgError {
+    PgError::new(
+        crate::error::code::UNDEFINED_FUNCTION,
+        format!("function '{function}' expected {expected} arguments, {received} received"),
+    )
+}
+
 impl Parser {
     /// names returns the option names and abbreviations of one kind, longest first.
     fn names(&self, flags: bool) -> Vec<(&'static str, &'static Opt)> {

@@ -79,6 +79,8 @@ pub enum Plan {
         ordinality: bool,
         width: usize,
     },
+    /// The rows that differ between two queries' results, with a row number when asked.
+    QueryDiff(Box<crate::dolt::querydiff::QueryDiff>, bool),
     Filter {
         input: Box<Plan>,
         predicate: Expr,
@@ -975,11 +977,40 @@ impl<'b, 'a> Planner<'b, 'a> {
         let call = &calls[0];
         let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
         if name == "dolt_preview_merge_conflicts" {
+            for arg in &call.args {
+                if matches!(self.binder(Scope::default()).bind(arg)?, (Expr::Const(Value::Null), _)) {
+                    return Err(crate::dolt::conflicts::null_argument(&name));
+                }
+            }
             let args = call.args.iter().map(|arg| self.ctx.constant_text(arg)).collect::<Result<Vec<_>>>()?;
             let table = crate::dolt::conflicts::preview_function(self.ctx, &args)?;
             let relation =
                 pg_query::protobuf::RangeVar { relname: name, alias: function.alias.clone(), ..Default::default() };
             return Ok(self.plan_system(crate::dolt::tables::SystemTable::Artifacts(Box::new(table)), &relation));
+        }
+        if name == "dolt_query_diff" {
+            let args = call.args.iter().map(|arg| self.ctx.constant_text(arg)).collect::<Result<Vec<_>>>()?;
+            let (diff, diff_columns) = self.ctx.plan_query_diff(&args)?;
+            let alias = function.alias.as_ref();
+            let table = alias.map_or(name.clone(), |a| a.aliasname.clone());
+            let renames: Vec<&str> =
+                alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+            let mut columns: Vec<ScopeColumn> = diff_columns
+                .into_iter()
+                .enumerate()
+                .map(|(i, (n, ty))| ScopeColumn {
+                    table: table.clone(),
+                    name: renames.get(i).map_or(n, |r| r.to_string()),
+                    ty,
+                    hidden: false,
+                    origin: (0, 0),
+                })
+                .collect();
+            if function.ordinality {
+                let name = renames.get(columns.len()).map_or("ordinality".to_string(), |r| r.to_string());
+                columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false, origin: (0, 0) });
+            }
+            return Ok((Plan::QueryDiff(Box::new(diff), function.ordinality), Scope { columns }));
         }
         if name == "dolt_diff" {
             let args = call.args.iter().map(|arg| self.ctx.constant_text(arg)).collect::<Result<Vec<_>>>()?;
@@ -1812,6 +1843,7 @@ impl Plan {
             Plan::XmlTable(table) => table.columns.len(),
             Plan::JsonTable(table) => table.columns.len(),
             Plan::RowsFrom { calls, ordinality } => calls.len() + *ordinality as usize,
+            Plan::QueryDiff(diff, ordinality) => diff.from_width + diff.to_width + 1 + *ordinality as usize,
             Plan::Aggregate { groups, aggregates, .. } => groups.len() + aggregates.len(),
             Plan::SetOp { left, .. } => left.width(),
         }
@@ -1880,6 +1912,15 @@ impl Plan {
                     out.push(row.iter().map(|e| e.eval(ctx, &[])).collect::<Result<Vec<_>>>()?);
                 }
                 out
+            }
+            Plan::QueryDiff(diff, ordinality) => {
+                let mut rows = diff.run(ctx)?;
+                if *ordinality {
+                    for (i, row) in rows.iter_mut().enumerate() {
+                        row.push(Value::Int8(i as i64 + 1));
+                    }
+                }
+                rows
             }
             Plan::Function { call, ordinality, width } => {
                 let rows = set_rows(ctx, call, &[])?;

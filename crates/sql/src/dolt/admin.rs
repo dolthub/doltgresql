@@ -17,7 +17,7 @@
 
 use crate::dolt::args::{Kind, Parser, error};
 use crate::dolt::history;
-use crate::dolt::procedures::{find_table, strings, table_map};
+use crate::dolt::procedures::{find_object, find_table, strings, table_map};
 use crate::error::{PgError, Result};
 use crate::query::Ctx;
 use crate::txn::read;
@@ -111,6 +111,32 @@ pub fn dolt_count_commits(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Record(vec![Value::Int8(ahead), Value::Int8(behind)]))
 }
 
+/// dolt_branch_status counts, for each branch after the first, the commits it has that the first lacks and the
+/// commits the first has that it lacks, as Dolt's dolt_branch_status does.
+pub fn dolt_branch_status(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let specs = strings(args);
+    if specs.is_empty() {
+        return Err(crate::dolt::args::argument_count("dolt_branch_status", "at least 1", 0));
+    }
+    let commits = specs.iter().map(|s| history::resolve(ctx.db, ctx.txn.head, s)).collect::<Result<Vec<_>>>()?;
+    let ancestors = |ctx: &mut Ctx<'_>, commit| -> Result<std::collections::HashSet<store::Hash>> {
+        Ok(history::log(ctx.db, &[commit])?.into_iter().map(|c| c.hash).collect())
+    };
+    let base = ancestors(ctx, commits[0])?;
+    let mut rows = Vec::new();
+    for (spec, &commit) in specs.iter().zip(&commits).skip(1) {
+        let (ahead, behind) = if commit == commits[0] {
+            (0, 0)
+        } else {
+            let branch = ancestors(ctx, commit)?;
+            (branch.difference(&base).count(), base.difference(&branch).count())
+        };
+        let count = |n: usize| Value::Numeric(crate::numeric::Numeric::from_i64(n as i64));
+        rows.push(Value::Record(vec![Value::Text(spec.clone()), count(ahead), count(behind)]));
+    }
+    Ok(Value::Set(rows))
+}
+
 /// dolt_commit_hash_out commits as dolt_commit does with the remaining arguments and stores the new commit's hash in
 /// the session variable that the first argument names.
 pub fn dolt_commit_hash_out(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
@@ -145,15 +171,19 @@ pub fn dolt_rm(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let (staged, working) = (ctx.txn.staged.clone(), ctx.txn.root.clone());
     let (mut found, mut missing, mut missing_staged, mut unstaged) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for name in &parsed.args {
-        let in_head = find_table(ctx, &[&head], name)?;
-        let in_staged = find_table(ctx, &[&staged], name)?;
+        let mut in_head = find_table(ctx, &[&head], name)?.map(Target::Table);
+        let mut in_staged = find_table(ctx, &[&staged], name)?.map(Target::Table);
+        if in_head.is_none() && in_staged.is_none() {
+            in_head = find_object(ctx, &[&head], name)?.map(Target::Object);
+            in_staged = find_object(ctx, &[&staged], name)?.map(Target::Object);
+        }
         if !cached {
             let key = in_staged.clone().or_else(|| in_head.clone());
             let changed = match &key {
-                Some((schema, table)) => {
-                    let current = working.table(ctx.db, schema, table)?;
-                    let from_staged = staged.table(ctx.db, schema, table)?;
-                    let from_head = head.table(ctx.db, schema, table)?;
+                Some(target) => {
+                    let current = target.address(ctx, &working)?;
+                    let from_staged = target.address(ctx, &staged)?;
+                    let from_head = target.address(ctx, &head)?;
                     (in_staged.is_some() || in_head.is_none()) && current != from_staged
                         || (in_head.is_some() || in_staged.is_none()) && current != from_head
                 }
@@ -181,13 +211,83 @@ pub fn dolt_rm(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     if !missing_staged.is_empty() {
         return Err(table_error(&missing_staged, "have changes saved in the index. Use --cached or commit."));
     }
-    for (schema, table) in &found {
-        ctx.txn.staged.put_table(ctx.db, schema, table, None)?;
+    for target in &found {
+        let mut staged = ctx.txn.staged.clone();
+        target.remove(ctx, &mut staged)?;
+        ctx.txn.staged = staged;
         if !cached {
-            ctx.txn.root.put_table(ctx.db, schema, table, None)?;
+            let mut working = ctx.txn.root.clone();
+            target.remove(ctx, &mut working)?;
+            ctx.txn.root = working;
         }
     }
     crate::dolt::procedures::flush(ctx)?;
+    Ok(Value::Int8(0))
+}
+
+/// Target is what dolt_rm removes: a table by schema and name, or a root object by collection and ID.
+#[derive(Clone)]
+enum Target {
+    Table((String, String)),
+    Object((usize, Vec<u8>)),
+}
+
+impl Target {
+    /// address returns the target's address in a root, or None when the root lacks it.
+    fn address(&self, ctx: &mut Ctx<'_>, root: &doltdb::root::Root) -> Result<Option<store::Hash>> {
+        Ok(match self {
+            Target::Table((schema, table)) => root.table(ctx.db, schema, table)?,
+            Target::Object((collection, id)) => {
+                root.objects(ctx.db, *collection)?.into_iter().find(|(k, _)| k == id).map(|(_, a)| a)
+            }
+        })
+    }
+
+    /// remove removes the target from a root.
+    fn remove(&self, ctx: &mut Ctx<'_>, root: &mut doltdb::root::Root) -> Result<()> {
+        match self {
+            Target::Table((schema, table)) => root.put_table(ctx.db, schema, table, None)?,
+            Target::Object((collection, id)) => root.put_object(ctx.db, *collection, id, None)?,
+        }
+        Ok(())
+    }
+}
+
+/// GC parses dolt_gc's arguments.
+const GC: Parser = Parser {
+    command: "gc",
+    options: &[
+        ("shallow", "s", Kind::Flag),
+        ("full", "f", Kind::Flag),
+        ("archive-level", "", Kind::Value),
+        ("incremental-file-size", "", Kind::Value),
+    ],
+    max_args: Some(0),
+};
+
+/// dolt_gc removes the chunks that nothing reachable from the database's store root refers to, as Dolt's dolt_gc
+/// does, ending the other sessions that use the database with a transaction open.
+pub fn dolt_gc(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    crate::dolt::procedures::require_admin(ctx)?;
+    let parsed = GC.parse(&strings(args))?;
+    if parsed.has("shallow") && parsed.has("full") {
+        return Err(error("cannot supply both --shallow and --full to dolt_gc: error: invalid usage"));
+    }
+    if let Some(level) = parsed.value("archive-level") {
+        match level.parse::<i64>() {
+            Ok(0 | 1) => {}
+            Ok(level) => return Err(error(format!("invalid value for archive-level: {level}"))),
+            Err(_) => return Err(error(format!("parse error for value for archive-level: {level}"))),
+        }
+    }
+    let mode = match (parsed.has("shallow"), parsed.has("full")) {
+        (true, _) => doltdb::database::GcMode::Shallow,
+        (_, true) => doltdb::database::GcMode::Full,
+        _ => doltdb::database::GcMode::Default,
+    };
+    crate::dolt::procedures::flush(ctx)?;
+    ctx.db.gc(mode)?;
+    ctx.session.engine.collected(&ctx.session.database, ctx.session.id);
     Ok(Value::Int8(0))
 }
 
@@ -242,4 +342,76 @@ pub fn dolt_thread_dump(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     crate::dolt::procedures::require_admin(ctx)?;
     let current = std::thread::current();
     Ok(Value::Text(format!("thread {:?} [running]: {}\n", current.id(), current.name().unwrap_or("connection"))))
+}
+
+/// dolt_stats_info returns Dolt's JSON summary of the statistics coordinator, which collects nothing in this server.
+pub fn dolt_stats_info(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Text(format!(
+        r#"{{"dbCnt":{},"active":false,"storageBucketCnt":0,"cachedBucketCnt":0,"cachedBoundCnt":0,"cachedTemplateCnt":0,"statCnt":0,"backing":"memory","lastUpdate":"0001-01-01T00:00:00Z"}}"#,
+        ctx.session.database_names().len()
+    )))
+}
+
+/// dolt_stats_once returns Dolt's JSON summary of a statistics update, which finds nothing to do in this server.
+pub fn dolt_stats_once(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Text(format!(
+        r#"{{"dbCnt":{},"bucketWrites":0,"tablesProcessed":0,"tablesSkipped":0,"lastUpdate":"0001-01-01T00:00:00Z"}}"#,
+        ctx.session.database_names().len()
+    )))
+}
+
+/// dolt_stats_ok returns Dolt's `Ok` result for the statistics functions, which have no work to do in this server.
+pub fn dolt_stats_ok(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Text("Ok".into()))
+}
+
+/// VERIFY_CONSTRAINTS parses dolt_verify_constraints's arguments.
+const VERIFY_CONSTRAINTS: Parser = Parser {
+    command: "verify-constraints",
+    options: &[("all", "a", Kind::Flag), ("output-only", "o", Kind::Flag)],
+    max_args: None,
+};
+
+/// dolt_verify_constraints records the working root's foreign key violations among the rows changed since the head
+/// commit, or among all rows, and returns 1 when a checked table has constraint violations, as Dolt's
+/// doDoltConstraintsVerify does.
+pub fn dolt_verify_constraints(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let parsed = VERIFY_CONSTRAINTS.parse(&strings(args))?;
+    let working = ctx.txn.root.clone();
+    let mut checked = Vec::new();
+    for name in &parsed.args {
+        match find_table(ctx, &[&working], name)? {
+            Some(key) => checked.push(key),
+            None => return Err(PgError::new("42P01", format!("table not found: {name}"))),
+        }
+    }
+    let comparing = match parsed.has("all") {
+        true => doltdb::root::Root::decode(&doltdb::create::empty_root_value(&[]))?,
+        false => doltdb::root::Root::decode(&read(ctx.db, &ctx.txn.head_root)?)?,
+    };
+    let rootish = ctx.db.write_value(working.encode())?;
+    let mut verified = working.clone();
+    crate::dolt::merge::check_foreign_keys(ctx, &mut verified, &comparing, rootish)?;
+    let tables = table_map(ctx.db, &verified)?;
+    if !checked.is_empty() {
+        let original = table_map(ctx.db, &working)?;
+        for (key, address) in &tables {
+            if !checked.contains(key) && original.get(key) != Some(address) {
+                verified.put_table(ctx.db, &key.0, &key.1, original.get(key).copied())?;
+            }
+        }
+    } else {
+        checked = tables.keys().filter(|key| key.0 == "public").cloned().collect();
+    }
+    let mut violated = false;
+    for key in checked {
+        let Some(&address) = tables.get(&key) else { continue };
+        let table = crate::catalog::table::TableDef::load(ctx.db, &key.0, &key.1, address)?;
+        violated |=
+            crate::dolt::artifacts::read(ctx.db, &table)?.iter().any(|a| a.kind != crate::dolt::artifacts::CONFLICT);
+    }
+    if !parsed.has("output-only") {
+        ctx.txn.root = verified;
+    }
+    Ok(Value::Int8(i64::from(violated)))
 }

@@ -105,3 +105,25 @@ vector is 0, where pgvector's is NaN, so the zero vector sorts first instead of 
 Hard to change in Go: the first needs a cost model for vector indexes, the second changes stored index order.
 
 Rust: matches Go, with the Postgres expectations kept as skipped assertions.
+
+## DOLT_PATCH writes MySQL statements (confirmed)
+
+Dolt's sqlfmt writes the patch's string literals with MySQL's backslash escapes (`'it\'s'`, `'{\"a\": 1}'`), booleans
+as `'1'`, and schema changes as MySQL statements (`RENAME TABLE`, `MODIFY COLUMN`, `DROP PRIMARY KEY`, `ADD INDEX`,
+`DROP FOREIGN KEY`), none of which Postgres runs as written.
+
+Hard to change in Go: the statements come from Dolt's shared formatter, which Doltgres only partly overrides.
+
+Rust: writes Postgres statements (`''` quoting, `ALTER TABLE ... RENAME TO`, `ALTER COLUMN ... TYPE`, `DROP CONSTRAINT`,
+`CREATE INDEX`), keeping Go's text where Go's is already valid Postgres; the one test that showed the escapes expects
+the Postgres form.
+
+## DOLT_VERIFY_CONSTRAINTS without table names checks nothing (confirmed)
+
+With no table arguments, Dolt's parseTablesToCheck lists the tables of the default schema `""` (its TODO notes the
+missing search path), which holds no Doltgres tables, so the procedure returns 0 even when `public` tables have
+constraint violations. Violations are still recorded, since the merge records them for every table.
+
+Small fix in Go, but in Dolt's shared procedure rather than Doltgres.
+
+Rust: checks the `public` tables and returns 1 when one has violations.

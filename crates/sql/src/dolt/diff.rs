@@ -207,7 +207,7 @@ fn timestamp(millis: Option<i64>) -> Value {
 
 /// project arranges a row of a table as the target columns, matching columns by tag, with NULL for a column the
 /// table lacks and for a value that cannot take the target column's type.
-fn project(table: &TableDef, row: &[Value], target: &[ColumnDef]) -> Vec<Value> {
+pub(crate) fn project(table: &TableDef, row: &[Value], target: &[ColumnDef]) -> Vec<Value> {
     target
         .iter()
         .map(|column| match table.columns.iter().position(|c| c.tag == column.tag) {
@@ -238,7 +238,11 @@ fn diffable(from: &TableDef, to: &TableDef) -> bool {
 
 /// changes returns the row changes between two versions of a table in key order, with a removed or added row for
 /// each copy of a keyless row whose count changed, or None when the versions have different primary keys.
-fn changes(db: &mut Database, from: Option<&TableDef>, to: Option<&TableDef>) -> Result<Option<Vec<Change>>> {
+pub(crate) fn changes(
+    db: &mut Database,
+    from: Option<&TableDef>,
+    to: Option<&TableDef>,
+) -> Result<Option<Vec<Change>>> {
     if let (Some(f), Some(t)) = (from, to)
         && !diffable(f, t)
     {
@@ -498,6 +502,9 @@ impl UserTable {
             )));
         };
         let to = self.commit_side(ctx, to, &(self.schema.clone(), self.name.clone()))?;
+        if self.kind == Kind::CommitDiff && to.table.is_none() {
+            return Ok(Vec::new());
+        }
         let from = self.commit_side(ctx, from, &self.from_table)?;
         let table = |s: &Side| s.table.as_ref().map(|(_, t)| t.clone());
         let changes = changes(ctx.db, table(&from).as_ref(), table(&to).as_ref())?.unwrap_or_default();
@@ -535,7 +542,7 @@ impl UserTable {
 }
 
 /// Name is a table or root object by schema and name.
-type Name = (String, String);
+pub(crate) type Name = (String, String);
 
 /// Delta is a table or root object that differs between two roots: its name and address in each root that has it.
 #[derive(Clone, Debug)]
@@ -909,7 +916,7 @@ fn expected(counts: &std::ops::RangeInclusive<usize>) -> String {
 /// diff_refs returns the revisions that a diff table function's arguments compare, with the remaining arguments,
 /// from two revisions or from one argument of the form `from..to`, or `from...to` to compare with their merge base,
 /// each form taking the given numbers of arguments.
-fn diff_refs(
+pub(crate) fn diff_refs(
     ctx: &mut Ctx<'_>,
     args: &[String],
     function: &str,
@@ -917,7 +924,7 @@ fn diff_refs(
     dotted: std::ops::RangeInclusive<usize>,
 ) -> Result<(String, String, Vec<String>)> {
     let count_error = |counts: &std::ops::RangeInclusive<usize>| {
-        error(format!("function '{function}' expected {} arguments, {} received", expected(counts), args.len()))
+        crate::dolt::args::argument_count(function, expected(counts), args.len())
     };
     match args.first().map(|a| a.split_once("...").or_else(|| a.split_once(".."))) {
         Some(Some((from, to))) => {
@@ -939,7 +946,7 @@ fn diff_refs(
 }
 
 /// ref_root returns the root that a revision names: the working or staged root, or a commit's.
-fn ref_root(ctx: &mut Ctx<'_>, name: &str) -> Result<Root> {
+pub(crate) fn ref_root(ctx: &mut Ctx<'_>, name: &str) -> Result<Root> {
     match name {
         "WORKING" => Ok(ctx.txn.root.clone()),
         "STAGED" => Ok(ctx.txn.staged.clone()),
@@ -952,7 +959,7 @@ fn ref_root(ctx: &mut Ctx<'_>, name: &str) -> Result<Root> {
 
 /// matches reports whether a delta is of the table that a diff table function's argument names, comparing only the
 /// table's name without its schema, as Dolt's findMatchingDelta does.
-fn matches(side: &Option<(Name, Hash)>, table: &str) -> bool {
+pub(crate) fn matches(side: &Option<(Name, Hash)>, table: &str) -> bool {
     side.as_ref().is_some_and(|(name, _)| name.1.eq_ignore_ascii_case(table))
 }
 

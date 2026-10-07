@@ -199,6 +199,7 @@ impl Printer {
             }
             Plan::Values(_) => ("Values Scan on \"*VALUES*\"".into(), vec![], vec![]),
             Plan::Function { .. } | Plan::RowsFrom { .. } => ("Function Scan".into(), vec![], vec![]),
+            Plan::QueryDiff(diff, _) => ("Query Diff".into(), vec![], vec![&diff.from, &diff.to]),
             Plan::XmlTable(_) | Plan::JsonTable(_) => ("Table Function Scan".into(), vec![], vec![]),
             Plan::Catalog(table) => (format!("Seq Scan on {}", table.name), vec![], vec![]),
             Plan::System(_) => ("Seq Scan on a Dolt system table".into(), vec![], vec![]),

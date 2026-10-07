@@ -113,6 +113,14 @@ fn empty_node(bytes: Vec<u8>) -> Result<Arc<Node>> {
     Ok(Arc::new(Node::decode(bytes)?))
 }
 
+/// GcMode is which garbage collection dolt_gc runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GcMode {
+    Default,
+    Full,
+    Shallow,
+}
+
 /// Database is a chunk store whose store root names its datasets.
 pub struct Database {
     store: JournalStore,
@@ -201,6 +209,51 @@ impl Database {
             })?;
             loaded.insert(hash, chunk);
         }
+        Ok(())
+    }
+
+    /// gc keeps only the chunks reachable from the store root, as Dolt's garbage collection does: a shallow collection
+    /// rewrites the new generation's chunks to one table file, and the others move the new generation's chunks to the
+    /// old generation, where a full collection also rewrites the old generation's chunks.
+    pub fn gc(&mut self, mode: GcMode) -> Result<()> {
+        let root = self.root();
+        let (mut new_chunks, mut old_chunks) = (Vec::new(), Vec::new());
+        let mut seen = std::collections::HashSet::new();
+        let mut stack = vec![root];
+        while let Some(hash) = stack.pop() {
+            if hash.is_empty() || !seen.insert(hash) {
+                continue;
+            }
+            let chunk = self.require(&hash)?;
+            serial::walk::walk_addrs(Message(&chunk.data), &mut |child| {
+                stack.push(child);
+                Ok(())
+            })?;
+            match self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&hash)) {
+                true => old_chunks.push(chunk),
+                false => new_chunks.push(chunk),
+            }
+        }
+        let dir = self.store.dir().to_path_buf();
+        if mode == GcMode::Shallow {
+            let spec = store::write_table(&dir, &new_chunks)?;
+            self.store.rewrite(spec.into_iter().collect())?;
+        } else {
+            let old_dir = dir.join("oldgen");
+            let mut specs = match (mode, store::Manifest::read(&old_dir)?) {
+                (GcMode::Default, Some(manifest)) => manifest.specs,
+                _ => Vec::new(),
+            };
+            if mode == GcMode::Full {
+                new_chunks.append(&mut old_chunks);
+            }
+            specs.extend(store::write_table(&old_dir, &new_chunks)?);
+            self.old_gen = None;
+            store::replace_files(&old_dir, root, "__DOLT__", specs)?;
+            self.old_gen = Some(BlockStore::open(&old_dir)?);
+            self.store.rewrite(Vec::new())?;
+        }
+        self.nodes.clear();
         Ok(())
     }
 

@@ -21,6 +21,7 @@ mod archive;
 mod chunk;
 mod error;
 mod file;
+mod gc;
 mod hash;
 mod journal;
 mod journal_store;
@@ -31,6 +32,7 @@ mod table;
 
 pub use chunk::Chunk;
 pub use error::{Error, Result};
+pub use gc::{replace_files, write_table};
 pub use hash::Hash;
 pub use journal::{JOURNAL_FILE, JournalRecord, read_records};
 pub use journal_store::JournalStore;
