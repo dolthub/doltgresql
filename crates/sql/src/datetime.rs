@@ -849,6 +849,7 @@ fn tokens(text: &str) -> Vec<String> {
             && !current.is_empty()
             && (current.contains(':')
                 || c == '+'
+                || concatenated(&current)
                 || (current.matches('-').count() == 2 && current.starts_with(|d: char| d.is_ascii_digit())))
         {
             // A zone offset right after a time, as in 12:00:00-08.
@@ -858,7 +859,7 @@ fn tokens(text: &str) -> Vec<String> {
             && !current.is_empty()
             && current.chars().last().is_some_and(|l| l.is_ascii_digit())
             && chars.get(i + 1).is_some_and(|n| n.is_ascii_digit())
-            && current.contains('-')
+            && (current.contains('-') || concatenated(&current))
         {
             out.push(std::mem::take(&mut current));
         } else if c == 'Z' && !current.is_empty() && current.contains(':') && i + 1 == chars.len() {
@@ -885,6 +886,14 @@ fn tokens(text: &str) -> Vec<String> {
     out
 }
 
+/// concatenated reports whether a word is a run of six or more digits, perhaps after a Julian day's J or a time's T
+/// and before a fraction, which Postgres reads as concatenated date or time fields or a Julian day.
+fn concatenated(word: &str) -> bool {
+    let digits = word.strip_prefix(['j', 'J', 't', 'T']).unwrap_or(word);
+    let whole = digits.split_once('.').map_or(digits, |(whole, _)| whole);
+    whole.len() >= 6 && digits.bytes().all(|b| b.is_ascii_digit() || b == b'.')
+}
+
 /// parse_datetime reads the fields of a date, time, or timestamp in Postgres' input formats.
 fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
     let mut p = Parsed::default();
@@ -893,6 +902,10 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
         return Err(invalid(kind, text));
     }
     for (index, word) in words.iter().enumerate() {
+        let word = match word.strip_prefix(['t', 'T']) {
+            Some(rest) if rest.starts_with(|c: char| c.is_ascii_digit()) => rest,
+            _ => word.as_str(),
+        };
         let lower = word.to_ascii_lowercase();
         match lower.as_str() {
             "epoch" | "infinity" | "-infinity" | "+infinity" | "now" | "today" | "tomorrow" | "yesterday"
@@ -981,6 +994,22 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
             p.zone = Some(zone);
             continue;
         }
+        if let Some((year, day)) = word.split_once('.')
+            && day.len() == 3
+            && (year.len() + day.len() + 1 == word.len())
+            && year.bytes().chain(day.bytes()).all(|b| b.is_ascii_digit())
+            && p.year.is_none()
+            && p.month.is_none()
+            && p.day.is_none()
+        {
+            let (year, day): (i64, i64) = (year.parse().map_err(|_| invalid(kind, text))?, day.parse().unwrap_or(0));
+            if !(1..=366).contains(&day) {
+                return Err(out_of_range(text, false));
+            }
+            let (_, month, day) = j2date(date2j(year, 1, 1) + day - 1);
+            (p.year, p.month, p.day) = (Some(year), Some(month), Some(day));
+            continue;
+        }
         if word.contains(['-', '/', '.']) && word.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) {
             let parts: Vec<&str> = word.split(['-', '/', '.']).collect();
             if parts.len() == 3 && parts.iter().all(|s| !s.is_empty()) {
@@ -1002,10 +1031,11 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
             }
         }
         if word.bytes().all(|b| b.is_ascii_digit()) {
-            if p.year.is_none() && p.month.is_none() && word.len() == 8 {
-                p.year = word[..4].parse().ok();
-                p.month = word[4..6].parse().ok();
-                p.day = word[6..].parse().ok();
+            if p.year.is_none() && p.month.is_none() && word.len() >= 8 {
+                let year = word.len() - 4;
+                p.year = word[..year].parse().ok();
+                p.month = word[year..year + 2].parse().ok();
+                p.day = word[year + 2..].parse().ok();
                 continue;
             }
             let time_only = matches!(kind, Kind::Time | Kind::TimeTz);
@@ -1406,15 +1436,20 @@ pub fn parse_interval_with_modifier(text: &str, modifier: i32) -> Result<Interva
             i += 1;
             continue;
         }
-        // SQL standard year-month, like 1-2.
-        if let Some((y, m)) = word.split_once('-').filter(|(y, m)| {
+        // SQL standard year-month, like 1-2, whose sign applies to both fields.
+        let (sign, unsigned) = match word.as_bytes()[0] {
+            b'-' => (-1.0, &word[1..]),
+            b'+' => (1.0, &word[1..]),
+            _ => (1.0, &word[..]),
+        };
+        if let Some((y, m)) = unsigned.split_once('-').filter(|(y, m)| {
             !y.is_empty()
                 && !m.is_empty()
                 && y.bytes().all(|c| c.is_ascii_digit())
                 && m.bytes().all(|c| c.is_ascii_digit())
         }) {
-            b.add(y.parse::<f64>().map_err(|_| invalid())?, "y");
-            b.add(m.parse::<f64>().map_err(|_| invalid())?, "mon");
+            b.add(sign * y.parse::<f64>().map_err(|_| invalid())?, "y");
+            b.add(sign * m.parse::<f64>().map_err(|_| invalid())?, "mon");
             seen_any = true;
             i += 1;
             continue;

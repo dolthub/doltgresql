@@ -8840,3 +8840,187 @@ fn test_interval_modifier_and_precision_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_numeric_datetime_input_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "numeric datetime input forms",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET timezone = 'America/Los_Angeles';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date '1999.008';",
+                    expected: Expected::Rows {
+                        columns: &[Column("date", DATE)],
+                        rows: &[
+                            &[T("1999-01-08")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp '1997.041 17:32:01 UTC';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamp", TIMESTAMP)],
+                        rows: &[
+                            &[T("1997-02-10 17:32:01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamptz '1997.041 17:32:01 UTC';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("1997-02-10 17:32:01+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time without time zone '040506.789-08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("time", TIME)],
+                        rows: &[
+                            &[T("04:05:06.789")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time without time zone 'T040506.789+08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("time", TIME)],
+                        rows: &[
+                            &[T("04:05:06.789")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time without time zone 'T040506.789-08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("time", TIME)],
+                        rows: &[
+                            &[T("04:05:06.789")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp with time zone '20011227 040506-08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2001-12-27 12:05:06+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp with time zone '20011227 040506.789-08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2001-12-27 12:05:06.789+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp with time zone '20011227T040506-08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2001-12-27 12:05:06+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp with time zone '20011227T040506.789+08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2001-12-26 20:05:06.789+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp with time zone 'J2452271-08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2001-12-27 08:00:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamptz '1000000312 23:58:48 IST';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("100000-03-12 21:58:48+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("the zone's daylight saving rules are not extended past the last year that tzdata lists"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamptz '100000312 23:58:48 IST';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("10000-03-12 21:58:48+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("the zone's daylight saving rules are not extended past the last year that tzdata lists"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT interval '+1 -1:00:00', interval '-1 +1:00:00';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 day -01:00:00"), T("-1 days +01:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT interval '+1-2 -3 +4:05:06.789', interval '-1-2 +3 -4:05:06.789';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 year 2 mons -3 days +04:05:06.789"), T("-1 years -2 mons +3 days -04:05:06.789")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
