@@ -140,6 +140,7 @@ func Init() {
 	initFactorial()
 	initFloor()
 	initForeachSlice()
+	initFormat()
 	initFormatType()
 	initGcd()
 	initGenRandomUuid()
