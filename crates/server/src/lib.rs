@@ -29,7 +29,7 @@ use sql::Engine;
 pub use config::Config;
 use scram::Verifier;
 
-/// Server is what every connection shares: the engine and the process IDs it hands out.
+/// Server is what every connection shares: the engine and the numbers that name connections in its log.
 pub struct Server {
     pub engine: Engine,
     next_process_id: AtomicU32,
@@ -72,7 +72,7 @@ pub fn serve(config: &Config) -> Result<(), String> {
         let server = server.clone();
         let process_id = server.next_process_id.fetch_add(1, Ordering::Relaxed);
         let spawned = std::thread::Builder::new().stack_size(CONNECTION_STACK_SIZE).spawn(move || {
-            if let Err(err) = conn::Conn::new(stream, server, process_id).run()
+            if let Err(err) = conn::Conn::new(stream, server).run()
                 && !matches!(&err, conn::ConnError::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof)
             {
                 eprintln!("connection {process_id} ended: {err}");

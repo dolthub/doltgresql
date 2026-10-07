@@ -89,6 +89,31 @@ pub const FUNCTIONS: &[Function] = &[
     f("lcm", &[INT4, INT4], INT4, lcm),
     f("lcm", &[INT8, INT8], INT8, lcm),
     f("div", &[NUMERIC, NUMERIC], NUMERIC, div),
+    f("acos", &[FLOAT8], FLOAT8, acos),
+    f("asin", &[FLOAT8], FLOAT8, asin),
+    f("atan", &[FLOAT8], FLOAT8, atan),
+    f("atan2", &[FLOAT8, FLOAT8], FLOAT8, atan2),
+    f("cot", &[FLOAT8], FLOAT8, cot),
+    f("sind", &[FLOAT8], FLOAT8, sind),
+    f("cosd", &[FLOAT8], FLOAT8, cosd),
+    f("tand", &[FLOAT8], FLOAT8, tand),
+    f("cotd", &[FLOAT8], FLOAT8, cotd),
+    f("asind", &[FLOAT8], FLOAT8, asind),
+    f("acosd", &[FLOAT8], FLOAT8, acosd),
+    f("atand", &[FLOAT8], FLOAT8, atand),
+    f("atan2d", &[FLOAT8, FLOAT8], FLOAT8, atan2d),
+    f("sinh", &[FLOAT8], FLOAT8, sinh),
+    f("cosh", &[FLOAT8], FLOAT8, cosh),
+    f("tanh", &[FLOAT8], FLOAT8, tanh),
+    f("asinh", &[FLOAT8], FLOAT8, asinh),
+    f("acosh", &[FLOAT8], FLOAT8, acosh),
+    f("atanh", &[FLOAT8], FLOAT8, atanh),
+    f("factorial", &[INT8], NUMERIC, factorial),
+    f("scale", &[NUMERIC], INT4, scale),
+    f("trim_scale", &[NUMERIC], NUMERIC, trim_scale),
+    f("width_bucket", &[FLOAT8, FLOAT8, FLOAT8, INT4], INT4, width_bucket_float),
+    f("width_bucket", &[NUMERIC, NUMERIC, NUMERIC, INT4], INT4, width_bucket_numeric),
+    Function { name: "random", args: &[], ret: FLOAT8, strict: false, variadic: false, implementation: random },
 ];
 
 /// float returns a float8 argument.
@@ -445,4 +470,345 @@ fn div(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let (l, r) = (numeric(&args[0]), numeric(&args[1]));
     let quotient = l.div(&r)?;
     Ok(Value::Numeric(truncate_to_integer(&quotient)))
+}
+
+/// trig_input fails as Postgres does for an infinite trigonometric input.
+fn trig_input(value: f64) -> Result<f64> {
+    if value.is_infinite() {
+        return Err(PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "input is out of range"));
+    }
+    Ok(value)
+}
+
+/// inverse_input fails as Postgres does for an inverse sine or cosine input outside -1 to 1.
+fn inverse_input(value: f64) -> Result<f64> {
+    if !(-1.0..=1.0).contains(&value) {
+        return Err(PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "input is out of range"));
+    }
+    Ok(value)
+}
+
+/// acos returns the inverse cosine in radians.
+fn acos(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = float(&args[0]);
+    if f.is_nan() {
+        return Ok(Value::Float8(f64::NAN));
+    }
+    Ok(Value::Float8(inverse_input(f)?.acos()))
+}
+
+/// asin returns the inverse sine in radians.
+fn asin(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = float(&args[0]);
+    if f.is_nan() {
+        return Ok(Value::Float8(f64::NAN));
+    }
+    Ok(Value::Float8(inverse_input(f)?.asin()))
+}
+
+/// atan returns the inverse tangent in radians.
+fn atan(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Float8(float(&args[0]).atan()))
+}
+
+/// atan2 returns the inverse tangent of `y/x` in radians.
+fn atan2(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Float8(float(&args[0]).atan2(float(&args[1]))))
+}
+
+/// cot returns the cotangent.
+fn cot(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = float(&args[0]);
+    if f.is_nan() {
+        return Ok(Value::Float8(f64::NAN));
+    }
+    Ok(Value::Float8(1.0 / trig_input(f)?.tan()))
+}
+
+/// sind_0_to_30 returns the sine of degrees from 0 to 30, exact at 30, as Postgres computes it.
+fn sind_0_to_30(x: f64) -> f64 {
+    (x.to_radians().sin() / 30f64.to_radians().sin()) / 2.0
+}
+
+/// cosd_0_to_60 returns the cosine of degrees from 0 to 60, exact at 60, as Postgres computes it.
+fn cosd_0_to_60(x: f64) -> f64 {
+    1.0 - ((1.0 - x.to_radians().cos()) / (1.0 - 60f64.to_radians().cos())) / 2.0
+}
+
+/// sind_q1 returns the sine of degrees from 0 to 90.
+fn sind_q1(x: f64) -> f64 {
+    if x <= 30.0 { sind_0_to_30(x) } else { cosd_0_to_60(90.0 - x) }
+}
+
+/// cosd_q1 returns the cosine of degrees from 0 to 90.
+fn cosd_q1(x: f64) -> f64 {
+    if x <= 60.0 { cosd_0_to_60(x) } else { sind_0_to_30(90.0 - x) }
+}
+
+/// first_quadrant reduces degrees to 0 through 90, returning them with the signs that the sine and cosine of the
+/// original angle take.
+fn first_quadrant(degrees: f64) -> (f64, f64, f64) {
+    let (mut x, mut sin_sign, mut cos_sign) = (degrees % 360.0, 1.0, 1.0);
+    if x < 0.0 {
+        x = -x;
+        sin_sign = -sin_sign;
+    }
+    if x > 180.0 {
+        x = 360.0 - x;
+        sin_sign = -sin_sign;
+    }
+    if x > 90.0 {
+        x = 180.0 - x;
+        cos_sign = -cos_sign;
+    }
+    (x, sin_sign, cos_sign)
+}
+
+/// degree_input returns a degree argument, or the NaN result it gives, failing for an infinity.
+fn degree_input(value: &Value) -> Result<std::result::Result<f64, Value>> {
+    let f = float(value);
+    if f.is_nan() {
+        return Ok(Err(Value::Float8(f64::NAN)));
+    }
+    trig_input(f).map(Ok)
+}
+
+/// sind returns the sine of degrees, exact at multiples of 30 and 90.
+fn sind(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = match degree_input(&args[0])? {
+        Ok(f) => f,
+        Err(nan) => return Ok(nan),
+    };
+    let (x, sin_sign, _) = first_quadrant(f);
+    Ok(Value::Float8(sin_sign * sind_q1(x)))
+}
+
+/// cosd returns the cosine of degrees, exact at multiples of 60 and 90.
+fn cosd(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = match degree_input(&args[0])? {
+        Ok(f) => f,
+        Err(nan) => return Ok(nan),
+    };
+    let (x, _, cos_sign) = first_quadrant(f);
+    Ok(Value::Float8(cos_sign * cosd_q1(x)))
+}
+
+/// tand returns the tangent of degrees, exact at multiples of 45, without negative zero.
+fn tand(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = match degree_input(&args[0])? {
+        Ok(f) => f,
+        Err(nan) => return Ok(nan),
+    };
+    let (x, sin_sign, cos_sign) = first_quadrant(f);
+    let result = sin_sign * cos_sign * ((sind_q1(x) / cosd_q1(x)) / (sind_q1(45.0) / cosd_q1(45.0)));
+    Ok(Value::Float8(if result == 0.0 { 0.0 } else { result }))
+}
+
+/// cotd returns the cotangent of degrees, exact at multiples of 45, without negative zero.
+fn cotd(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = match degree_input(&args[0])? {
+        Ok(f) => f,
+        Err(nan) => return Ok(nan),
+    };
+    let (x, sin_sign, cos_sign) = first_quadrant(f);
+    let result = sin_sign * cos_sign * ((cosd_q1(x) / sind_q1(x)) / (cosd_q1(45.0) / sind_q1(45.0)));
+    Ok(Value::Float8(if result == 0.0 { 0.0 } else { result }))
+}
+
+/// asind_q1 returns the inverse sine in degrees of a value from 0 to 1, exact at 0.5 and 1.
+fn asind_q1(x: f64) -> f64 {
+    if x <= 0.5 { (x.asin() / 0.5f64.asin()) * 30.0 } else { 90.0 - (x.acos() / 0.5f64.acos()) * 60.0 }
+}
+
+/// acosd_q1 returns the inverse cosine in degrees of a value from 0 to 1, exact at 0.5 and 1.
+fn acosd_q1(x: f64) -> f64 {
+    if x <= 0.5 { 90.0 - (x.asin() / 0.5f64.asin()) * 30.0 } else { (x.acos() / 0.5f64.acos()) * 60.0 }
+}
+
+/// asind returns the inverse sine in degrees.
+fn asind(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = float(&args[0]);
+    if f.is_nan() {
+        return Ok(Value::Float8(f64::NAN));
+    }
+    let f = inverse_input(f)?;
+    Ok(Value::Float8(if f >= 0.0 { asind_q1(f) } else { -asind_q1(-f) }))
+}
+
+/// acosd returns the inverse cosine in degrees.
+fn acosd(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = float(&args[0]);
+    if f.is_nan() {
+        return Ok(Value::Float8(f64::NAN));
+    }
+    let f = inverse_input(f)?;
+    Ok(Value::Float8(if f >= 0.0 { acosd_q1(f) } else { 90.0 + asind_q1(-f) }))
+}
+
+/// atand returns the inverse tangent in degrees, exact at 1.
+fn atand(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Float8((float(&args[0]).atan() / 1f64.atan()) * 45.0))
+}
+
+/// atan2d returns the inverse tangent of `y/x` in degrees.
+fn atan2d(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Float8((float(&args[0]).atan2(float(&args[1])) / 1f64.atan()) * 45.0))
+}
+
+/// sinh returns the hyperbolic sine.
+fn sinh(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Float8(float(&args[0]).sinh()))
+}
+
+/// cosh returns the hyperbolic cosine.
+fn cosh(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Float8(float(&args[0]).cosh()))
+}
+
+/// tanh returns the hyperbolic tangent.
+fn tanh(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Float8(float(&args[0]).tanh()))
+}
+
+/// asinh returns the inverse hyperbolic sine.
+fn asinh(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Float8(float(&args[0]).asinh()))
+}
+
+/// acosh returns the inverse hyperbolic cosine, which only inputs of at least 1 have.
+fn acosh(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = float(&args[0]);
+    if f < 1.0 {
+        return Err(PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "input is out of range"));
+    }
+    Ok(Value::Float8(f.acosh()))
+}
+
+/// atanh returns the inverse hyperbolic tangent, which only inputs from -1 to 1 have.
+fn atanh(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let f = float(&args[0]);
+    if f.is_nan() {
+        return Ok(Value::Float8(f64::NAN));
+    }
+    Ok(Value::Float8(inverse_input(f)?.atanh()))
+}
+
+/// factorial returns the product of the integers from 1 to the argument.
+fn factorial(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let n = int(&args[0]);
+    if n < 0 {
+        return Err(PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "factorial of a negative number is undefined"));
+    }
+    if n > 32177 {
+        return Err(PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "value overflows numeric format"));
+    }
+    let product = (2..=n.max(1)).fold(num_bigint::BigUint::from(1u32), |acc, i| acc * i as u64);
+    Ok(Value::Numeric(Numeric::Finite { negative: false, coefficient: product, scale: 0 }))
+}
+
+/// scale returns the display scale of a finite numeric, and NULL for NaN and the infinities.
+fn scale(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(match numeric(&args[0]) {
+        Numeric::Finite { scale, .. } => Value::Int4(scale as i32),
+        _ => Value::Null,
+    })
+}
+
+/// trim_scale removes a numeric's trailing fractional zeroes.
+fn trim_scale(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let n = numeric(&args[0]);
+    let Numeric::Finite { coefficient, scale, .. } = &n else { return Ok(Value::Numeric(n)) };
+    let mut trimmed = *scale;
+    let ten = num_bigint::BigUint::from(10u32);
+    let mut c = coefficient.clone();
+    while trimmed > 0 && (&c % &ten) == num_bigint::BigUint::ZERO {
+        c /= &ten;
+        trimmed -= 1;
+    }
+    Ok(Value::Numeric(n.with_scale(trimmed)))
+}
+
+/// bucket_error returns Postgres' error for invalid width_bucket arguments.
+fn bucket_error(message: &str) -> PgError {
+    PgError::new(code::INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION, message)
+}
+
+/// last_bucket returns the bucket past the last, for operands beyond the upper bound.
+fn last_bucket(count: i32) -> Result<Value> {
+    let bucket =
+        count.checked_add(1).ok_or_else(|| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "integer out of range"))?;
+    Ok(Value::Int4(bucket))
+}
+
+/// width_bucket_float returns the bucket of an operand among `count` equal-width buckets between the bounds.
+fn width_bucket_float(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let (operand, bound1, bound2, count) = (float(&args[0]), float(&args[1]), float(&args[2]), int(&args[3]) as i32);
+    if count <= 0 {
+        return Err(bucket_error("count must be greater than zero"));
+    }
+    if operand.is_nan() || bound1.is_nan() || bound2.is_nan() {
+        return Err(bucket_error("operand, lower bound, and upper bound cannot be NaN"));
+    }
+    if bound1.is_infinite() || bound2.is_infinite() {
+        return Err(bucket_error("lower and upper bounds must be finite"));
+    }
+    if bound1 == bound2 {
+        return Err(bucket_error("lower bound cannot equal upper bound"));
+    }
+    let (operand, low, high) = if bound1 < bound2 { (operand, bound1, bound2) } else { (-operand, -bound1, -bound2) };
+    if operand < low {
+        return Ok(Value::Int4(0));
+    }
+    if operand >= high {
+        return last_bucket(count);
+    }
+    let fraction = if (high - low).is_finite() {
+        (operand - low) / (high - low)
+    } else {
+        (operand / 2.0 - low / 2.0) / (high / 2.0 - low / 2.0)
+    };
+    let bucket = ((count as f64 * fraction) as i32).min(count - 1);
+    Ok(Value::Int4(bucket + 1))
+}
+
+/// width_bucket_numeric returns the bucket of an operand among `count` equal-width buckets between the bounds.
+fn width_bucket_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let (operand, bound1, bound2, count) =
+        (numeric(&args[0]), numeric(&args[1]), numeric(&args[2]), int(&args[3]) as i32);
+    if count <= 0 {
+        return Err(bucket_error("count must be greater than zero"));
+    }
+    if [&operand, &bound1, &bound2].iter().any(|n| matches!(n, Numeric::NaN)) {
+        return Err(bucket_error("operand, lower bound, and upper bound cannot be NaN"));
+    }
+    if [&bound1, &bound2].iter().any(|n| !matches!(n, Numeric::Finite { .. })) {
+        return Err(bucket_error("lower and upper bounds must be finite"));
+    }
+    let (operand, low, high) = match bound1.cmp_numeric(&bound2) {
+        std::cmp::Ordering::Equal => return Err(bucket_error("lower bound cannot equal upper bound")),
+        std::cmp::Ordering::Less => (operand, bound1, bound2),
+        std::cmp::Ordering::Greater => (operand.negate(), bound1.negate(), bound2.negate()),
+    };
+    if operand.cmp_numeric(&low).is_lt() {
+        return Ok(Value::Int4(0));
+    }
+    if operand.cmp_numeric(&high).is_ge() {
+        return last_bucket(count);
+    }
+    let (
+        Numeric::Finite { coefficient: a, scale: a_scale, .. },
+        Numeric::Finite { coefficient: b, scale: b_scale, .. },
+    ) = (operand.sub(&low), high.sub(&low))
+    else {
+        return Ok(Value::Null);
+    };
+    let ten = num_bigint::BigUint::from(10u32);
+    let bucket = (a * count as u64 * ten.pow(b_scale)) / (b * ten.pow(a_scale));
+    let bucket = i32::try_from(bucket).unwrap_or(count).min(count - 1);
+    Ok(Value::Int4(bucket + 1))
+}
+
+/// random returns a uniformly random value from 0 up to 1.
+fn random(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Float8(rand::random::<f64>()))
 }

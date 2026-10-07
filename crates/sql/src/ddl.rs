@@ -852,8 +852,10 @@ impl Ctx<'_> {
             for table in tables {
                 self.txn.root.put_table(self.db, &name, &table, None)?;
                 self.drop_table_triggers(&name, &table)?;
+                self.forget_object(&Object::Table(name.clone(), table))?;
             }
             self.txn.root.schemas.retain(|s| s != name.as_bytes());
+            self.forget_object(&Object::Schema(name))?;
         }
         Ok(Outcome::command("DROP SCHEMA"))
     }

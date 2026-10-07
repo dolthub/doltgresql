@@ -477,6 +477,22 @@ impl AuthDb {
         })
     }
 
+    /// holds_option reports whether a role holds a privilege on an object with the option to grant it, itself or
+    /// through a role it inherits from, where superusers hold every privilege with it.
+    pub fn holds_option(&self, role: u64, object: &Object, privilege: &str) -> bool {
+        if self.roles.get(&role).is_some_and(|r| r.superuser) {
+            return true;
+        }
+        let mut candidates = vec![role, self.public_id()];
+        candidates.extend(self.groups(role, true));
+        candidates.iter().any(|&r| {
+            self.privileges
+                .get(&(r, object.clone()))
+                .and_then(|p| p.get(privilege))
+                .is_some_and(|grants| grants.values().any(|&option| option))
+        })
+    }
+
     /// grant gives a role a privilege on an object, as granted by another role.
     pub fn grant(&mut self, role: u64, object: Object, privilege: &str, granted_by: u64, option: bool) {
         let grants = self.privileges.entry((role, object)).or_default().entry(privilege.to_string()).or_default();

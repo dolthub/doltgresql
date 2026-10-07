@@ -77,15 +77,14 @@ pub struct Conn {
     frames: FrameReader,
     out: Vec<u8>,
     server: Arc<Server>,
-    process_id: u32,
     /// The encoding that text values go to the client in.
     client_encoding: sql::encodings::Encoding,
 }
 
 impl Conn {
-    pub fn new(stream: TcpStream, server: Arc<Server>, process_id: u32) -> Conn {
+    pub fn new(stream: TcpStream, server: Arc<Server>) -> Conn {
         let client_encoding = sql::encodings::UTF8;
-        Conn { stream, frames: FrameReader::new(), out: Vec::new(), server, process_id, client_encoding }
+        Conn { stream, frames: FrameReader::new(), out: Vec::new(), server, client_encoding }
     }
 
     /// queue adds a message to the output buffer.
@@ -196,7 +195,7 @@ impl Conn {
         };
         self.queue(BackendMessage::AuthenticationOk);
         self.queue_parameters(&mut session);
-        self.queue(BackendMessage::BackendKeyData { process_id: self.process_id, secret_key: vec![0; 4] });
+        self.queue(BackendMessage::BackendKeyData { process_id: session.state.id as u32, secret_key: vec![0; 4] });
         self.queue(BackendMessage::ReadyForQuery { tx_status: b'I' });
         self.flush()?;
         self.serve(&mut session)

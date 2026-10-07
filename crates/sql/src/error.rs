@@ -89,6 +89,7 @@ pub mod code {
     pub const INVALID_TIME_ZONE_DISPLACEMENT: &str = "22009";
     pub const INVALID_ARGUMENT_FOR_LOG: &str = "2201E";
     pub const INVALID_ARGUMENT_FOR_POWER: &str = "2201F";
+    pub const INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION: &str = "2201G";
     pub const INVALID_BINARY_REPRESENTATION: &str = "22P03";
     pub const CHARACTER_NOT_IN_REPERTOIRE: &str = "22021";
     pub const PROTOCOL_VIOLATION: &str = "08P01";

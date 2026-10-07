@@ -16,7 +16,7 @@
 
 use super::{ANY, Function, text};
 use crate::error::{PgError, Result, code};
-use crate::oid::{BOOL, CHAR, INT4, TEXT};
+use crate::oid::{BOOL, CHAR, INT4, INT8, TEXT};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -28,6 +28,8 @@ const fn f(name: &'static str, args: &'static [u32], ret: u32, implementation: s
 /// FUNCTIONS are the string functions.
 pub const FUNCTIONS: &[Function] = &[
     f("length", &[TEXT], INT4, length),
+    f("to_hex", &[INT4], TEXT, to_hex),
+    f("to_hex", &[INT8], TEXT, to_hex),
     f("char_length", &[TEXT], INT4, length),
     f("character_length", &[TEXT], INT4, length),
     f("octet_length", &[TEXT], INT4, octet_length),
@@ -364,4 +366,13 @@ fn concat_ws(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let Some(separator) = args[0].output() else { return Ok(Value::Null) };
     let parts: Vec<String> = args[1..].iter().filter_map(Value::output).collect();
     Ok(Value::Text(parts.join(&separator)))
+}
+
+/// to_hex prints an integer in hexadecimal, a negative one as its two's complement.
+fn to_hex(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Text(match args[0] {
+        Value::Int4(i) => format!("{:x}", i as u32),
+        Value::Int8(i) => format!("{:x}", i as u64),
+        _ => String::new(),
+    }))
 }

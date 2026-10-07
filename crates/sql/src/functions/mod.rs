@@ -313,14 +313,44 @@ pub fn best_candidates<C>(types: &[u32], candidates: Vec<(C, Vec<u32>)>) -> Vec<
     };
     keep_best(&mut candidates, &|params| params.iter().zip(types).filter(|(p, t)| *p == *t).count());
     keep_best(&mut candidates, &|params| {
-        params.iter().zip(types).filter(|(p, t)| *p != *t && is_preferred(**p)).count()
+        params
+            .iter()
+            .zip(types)
+            .filter(|(p, t)| **t != oid::UNKNOWN && *p != *t && is_preferred(**p) && category(**p) == category(**t))
+            .count()
     });
     if candidates.len() > 1 {
-        keep_best(&mut candidates, &|params| {
-            params.iter().zip(types).filter(|(p, t)| **t == oid::UNKNOWN && is_string(**p)).count()
-        });
+        keep_unknown_categories(types, &mut candidates);
     }
     candidates
+}
+
+/// category returns the category letter of a type.
+fn category(type_oid: u32) -> Option<u8> {
+    builtin_type(type_oid).and_then(|t| t.definition.typ_category.first().copied())
+}
+
+/// keep_unknown_categories keeps the candidates whose parameters for untyped arguments are all in the category chosen
+/// for each, which is the string category when any candidate takes a string there and otherwise the one category
+/// every candidate takes, and are the preferred type of that category when some candidate takes it, as Postgres'
+/// func_select_candidate does. It keeps every candidate when some untyped argument has no such category.
+fn keep_unknown_categories<C>(types: &[u32], candidates: &mut Vec<(C, Vec<u32>)>) {
+    let mut chosen = Vec::new();
+    for (i, _) in types.iter().enumerate().filter(|(_, t)| **t == oid::UNKNOWN) {
+        let categories: Vec<Option<u8>> = candidates.iter().map(|(_, p)| category(p[i])).collect();
+        let selected = if categories.contains(&Some(b'S')) {
+            Some(b'S')
+        } else if categories.windows(2).all(|w| w[0] == w[1]) {
+            categories[0]
+        } else {
+            return;
+        };
+        let preferred = candidates.iter().any(|(_, p)| category(p[i]) == selected && is_preferred(p[i]));
+        chosen.push((i, selected, preferred));
+    }
+    candidates.retain(|(_, p)| {
+        chosen.iter().all(|&(i, selected, preferred)| category(p[i]) == selected && (!preferred || is_preferred(p[i])))
+    });
 }
 
 /// call runs a function on arguments already converted to its parameter types.

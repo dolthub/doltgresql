@@ -13489,3 +13489,425 @@ fn test_formatting_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_builtin_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "trigonometric functions in degrees and inverse and hyperbolic functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT sind(30), sind(-30), sind(90), sind(180), sind(210), sind(270), sind(360), sind(45);",
+                    expected: Expected::Rows {
+                        columns: &[Column("sind", FLOAT8), Column("sind", FLOAT8), Column("sind", FLOAT8), Column("sind", FLOAT8), Column("sind", FLOAT8), Column("sind", FLOAT8), Column("sind", FLOAT8), Column("sind", FLOAT8)],
+                        rows: &[
+                            &[T("0.5"), T("-0.5"), T("1"), T("0"), T("-0.5"), T("-1"), T("0"), T("0.7071067811865475")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT cosd(60), cosd(90), cosd(120), cosd(180), cosd(-60), cosd(300), cosd(45);",
+                    expected: Expected::Rows {
+                        columns: &[Column("cosd", FLOAT8), Column("cosd", FLOAT8), Column("cosd", FLOAT8), Column("cosd", FLOAT8), Column("cosd", FLOAT8), Column("cosd", FLOAT8), Column("cosd", FLOAT8)],
+                        rows: &[
+                            &[T("0.5"), T("0"), T("-0.5"), T("-1"), T("0.5"), T("0.5"), T("0.7071067811865475")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT tand(45), tand(90), tand(135), tand(180), tand(-45), tand(225), tand(30);",
+                    expected: Expected::Rows {
+                        columns: &[Column("tand", FLOAT8), Column("tand", FLOAT8), Column("tand", FLOAT8), Column("tand", FLOAT8), Column("tand", FLOAT8), Column("tand", FLOAT8), Column("tand", FLOAT8)],
+                        rows: &[
+                            &[T("1"), T("Infinity"), T("-1"), T("0"), T("-1"), T("1"), T("0.5773502691896257")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT cotd(45), cotd(90), cotd(0), cotd(135), cotd(-45);",
+                    expected: Expected::Rows {
+                        columns: &[Column("cotd", FLOAT8), Column("cotd", FLOAT8), Column("cotd", FLOAT8), Column("cotd", FLOAT8), Column("cotd", FLOAT8)],
+                        rows: &[
+                            &[T("1"), T("0"), T("Infinity"), T("-1"), T("-1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT asind(0.5), asind(-0.5), asind(1), acosd(0.5), acosd(-0.5), acosd(1), acosd(-1), atand(1), atand(-1), atan2d(1, 1), atan2d(1, -1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("asind", FLOAT8), Column("asind", FLOAT8), Column("asind", FLOAT8), Column("acosd", FLOAT8), Column("acosd", FLOAT8), Column("acosd", FLOAT8), Column("acosd", FLOAT8), Column("atand", FLOAT8), Column("atand", FLOAT8), Column("atan2d", FLOAT8), Column("atan2d", FLOAT8)],
+                        rows: &[
+                            &[T("30"), T("-30"), T("90"), T("60"), T("120"), T("0"), T("180"), T("45"), T("-45"), T("45"), T("135")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT acos(0.5), asin(0.5), atan(1), atan2(1, 2), cot(1), sinh(1), cosh(1), tanh(1), asinh(1), acosh(2), atanh(0.5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("acos", FLOAT8), Column("asin", FLOAT8), Column("atan", FLOAT8), Column("atan2", FLOAT8), Column("cot", FLOAT8), Column("sinh", FLOAT8), Column("cosh", FLOAT8), Column("tanh", FLOAT8), Column("asinh", FLOAT8), Column("acosh", FLOAT8), Column("atanh", FLOAT8)],
+                        rows: &[
+                            &[T("1.0471975511965976"), T("0.5235987755982988"), T("0.7853981633974483"), T("0.4636476090008061"), T("0.6420926159343308"), T("1.1752011936438014"), T("1.5430806348152437"), T("0.7615941559557649"), T("0.881373587019543"), T("1.3169578969248166"), T("0.5493061443340549")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sind('NaN'), acos('NaN'), atanh('NaN'), atanh(1), atanh(-1), cosh('Infinity'), sinh('-Infinity');",
+                    expected: Expected::Rows {
+                        columns: &[Column("sind", FLOAT8), Column("acos", FLOAT8), Column("atanh", FLOAT8), Column("atanh", FLOAT8), Column("atanh", FLOAT8), Column("cosh", FLOAT8), Column("sinh", FLOAT8)],
+                        rows: &[
+                            &[T("NaN"), T("NaN"), T("NaN"), T("Infinity"), T("-Infinity"), T("Infinity"), T("-Infinity")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sind('Infinity');",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "input is out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT acos(2);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "input is out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT acosh(0.5);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "input is out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT atanh(2);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "input is out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT cot(0);",
+                    expected: Expected::Rows {
+                        columns: &[Column("cot", FLOAT8)],
+                        rows: &[
+                            &[T("Infinity")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "factorial, scale, trim_scale, width_bucket, and to_hex",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT factorial(0), factorial(1), factorial(5), factorial(20), factorial(25);",
+                    expected: Expected::Rows {
+                        columns: &[Column("factorial", NUMERIC), Column("factorial", NUMERIC), Column("factorial", NUMERIC), Column("factorial", NUMERIC), Column("factorial", NUMERIC)],
+                        rows: &[
+                            &[T("1"), T("1"), T("120"), T("2432902008176640000"), T("15511210043330985984000000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT factorial(-1);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "factorial of a negative number is undefined", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT factorial(40000);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "value overflows numeric format", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT scale(1.230), scale(5), scale('NaN'::numeric), scale('Infinity'::numeric), trim_scale(1.2300), trim_scale(10.000), trim_scale('NaN'::numeric), trim_scale(-0.00);",
+                    expected: Expected::Rows {
+                        columns: &[Column("scale", INT4), Column("scale", INT4), Column("scale", INT4), Column("scale", INT4), Column("trim_scale", NUMERIC), Column("trim_scale", NUMERIC), Column("trim_scale", NUMERIC), Column("trim_scale", NUMERIC)],
+                        rows: &[
+                            &[T("3"), T("0"), Null, Null, T("1.23"), T("10"), T("NaN"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT width_bucket(5.35, 0.024, 10.06, 5), width_bucket(5.35::float8, 0.024, 10.06, 5), width_bucket(-1, 0, 10, 5), width_bucket(10, 0, 10, 5), width_bucket(5, 10, 0, 5), width_bucket(0, 10, 0, 5), width_bucket(11, 10, 0, 5), width_bucket(9.999999999, 0, 10, 5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("width_bucket", INT4), Column("width_bucket", INT4), Column("width_bucket", INT4), Column("width_bucket", INT4), Column("width_bucket", INT4), Column("width_bucket", INT4), Column("width_bucket", INT4), Column("width_bucket", INT4)],
+                        rows: &[
+                            &[T("3"), T("3"), T("0"), T("6"), T("3"), T("6"), T("0"), T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT width_bucket(5, 0, 10, 0);",
+                    expected: Expected::Error(Diagnostic { code: "2201G", message: "count must be greater than zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT width_bucket('NaN'::float8, 0, 10, 5);",
+                    expected: Expected::Error(Diagnostic { code: "2201G", message: "operand, lower bound, and upper bound cannot be NaN", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT width_bucket(5::float8, '-Infinity', 10, 5);",
+                    expected: Expected::Error(Diagnostic { code: "2201G", message: "lower and upper bounds must be finite", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT width_bucket(5, 5, 5, 5);",
+                    expected: Expected::Error(Diagnostic { code: "2201G", message: "lower bound cannot equal upper bound", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT width_bucket(5::numeric, 'Infinity', 10, 5);",
+                    expected: Expected::Error(Diagnostic { code: "2201G", message: "lower and upper bounds must be finite", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT width_bucket(10, 0, 10, 2147483647);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "integer out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT width_bucket('Infinity'::numeric, 0, 10, 5), width_bucket('-Infinity'::float8, 0, 10, 5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("width_bucket", INT4), Column("width_bucket", INT4)],
+                        rows: &[
+                            &[T("6"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_hex(255), to_hex(-1), to_hex(-1::bigint), to_hex(0), to_hex(9223372036854775807);",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_hex", TEXT), Column("to_hex", TEXT), Column("to_hex", TEXT), Column("to_hex", TEXT), Column("to_hex", TEXT)],
+                        rows: &[
+                            &[T("ff"), T("ffffffff"), T("ffffffffffffffff"), T("0"), T("7fffffffffffffff")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "server status and relation functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT random() >= 0 AND random() < 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_sleep(0.01), pg_sleep_for('10 milliseconds'), pg_sleep(-1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_sleep", VOID), Column("pg_sleep_for", VOID), Column("pg_sleep", VOID)],
+                        rows: &[
+                            &[T(""), T(""), T("")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(pg_backend_pid()), pg_typeof(txid_current()), pg_typeof(pg_postmaster_start_time()), pg_postmaster_start_time() <= now(), pg_is_in_recovery();",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE), Column("?column?", BOOL), Column("pg_is_in_recovery", BOOL)],
+                        rows: &[
+                            &[T("integer"), T("bigint"), T("timestamp with time zone"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_is_wal_replay_paused();",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: "recovery is not in progress", hint: "Recovery control functions can only be executed during recovery.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE sz (a int primary key);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_relation_size('sz'), pg_table_size('sz'), pg_relation_size('sz', 'main') >= 0, pg_relation_size(1::oid::regclass);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_relation_size", INT8), Column("pg_table_size", INT8), Column("?column?", BOOL), Column("pg_relation_size", INT8)],
+                        rows: &[
+                            &[T("0"), T("0"), T("t"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_relation_size('sz', 'bogus');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "invalid fork name", hint: r#"Valid fork names are "main", "fsm", "vm", and "init"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_relation_is_publishable('sz'), pg_relation_is_publishable('pg_class'), pg_relation_is_publishable(1::oid::regclass), pg_get_partkeydef('sz'::regclass), pg_tablespace_location(1663), pg_stat_get_numscans(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_relation_is_publishable", BOOL), Column("pg_relation_is_publishable", BOOL), Column("pg_relation_is_publishable", BOOL), Column("pg_get_partkeydef", TEXT), Column("pg_tablespace_location", TEXT), Column("pg_stat_get_numscans", INT8)],
+                        rows: &[
+                            &[T("t"), T("f"), Null, Null, T(""), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "has_schema_privilege and has_database_privilege",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT has_schema_privilege('public', 'USAGE'), has_schema_privilege('public', 'CREATE'), has_schema_privilege('postgres', 'public', 'usage, create'), has_schema_privilege('public', 'USAGE WITH GRANT OPTION'), has_schema_privilege(1::oid, 'USAGE'), has_schema_privilege('pg_catalog', ' usage ');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("t"), T("t"), Null, T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_schema_privilege('nosuch', 'USAGE');",
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "nosuch" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_schema_privilege('nobody', 'public', 'USAGE');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "nobody" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_schema_privilege('public', 'SELECT');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized privilege type: "SELECT""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_schema_privilege(1::oid, 'SELECT');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized privilege type: "SELECT""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_database_privilege('postgres', 'CONNECT'), has_database_privilege('postgres', 'temp, create'), has_database_privilege('template1', 'CONNECT'), has_database_privilege(1::oid, 'CONNECT');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_database_privilege", BOOL), Column("has_database_privilege", BOOL), Column("has_database_privilege", BOOL), Column("has_database_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_database_privilege('nosuch', 'CONNECT');",
+                    expected: Expected::Error(Diagnostic { code: "3D000", message: r#"database "nosuch" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_database_privilege('postgres', 'USAGE');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized privilege type: "USAGE""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE limited;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_schema_privilege('limited', 'public', 'USAGE'), has_schema_privilege('limited', 'public', 'CREATE'), has_schema_privilege('limited', 'pg_catalog', 'USAGE'), has_database_privilege('limited', 'postgres', 'CONNECT'), has_database_privilege('limited', 'postgres', 'CREATE'), has_database_privilege('public', 'postgres', 'TEMP');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_database_privilege", BOOL), Column("has_database_privilege", BOOL), Column("has_database_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t"), T("t"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA s2;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT USAGE ON SCHEMA s2 TO limited WITH GRANT OPTION;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_schema_privilege('limited', 's2', 'USAGE WITH GRANT OPTION'), has_schema_privilege('limited', 's2', 'CREATE'), has_schema_privilege('limited', 's2', 'USAGE');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP SCHEMA s2 CASCADE;",
+                    expected: Expected::Tag("DROP SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP ROLE limited;",
+                    expected: Expected::Tag("DROP ROLE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

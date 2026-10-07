@@ -49,6 +49,8 @@ struct Shared {
     databases: Mutex<HashMap<String, (DbHandle, SequenceTracker)>>,
     /// The advisory locks that sessions hold.
     advisory: Arc<crate::advisory::AdvisoryLocks>,
+    /// When the engine opened, as a UTC timestamp.
+    started: i64,
 }
 
 /// undrop_hint lists the dropped databases that dolt_undrop can restore, as Dolt's CreateUndropErrorMessage does.
@@ -93,6 +95,7 @@ impl Engine {
                 auth: Arc::new(Mutex::new(auth)),
                 databases: Mutex::new(HashMap::new()),
                 advisory: Arc::default(),
+                started: crate::datetime::clock(),
             }),
         };
         if !engine.database_exists(superuser) {
@@ -100,6 +103,11 @@ impl Engine {
             doltdb::create::create_database(&dir, DEFAULT_BRANCH, superuser, "localhost", &create_times())?;
         }
         Ok(engine)
+    }
+
+    /// started returns when the engine opened, as a UTC timestamp.
+    pub fn started(&self) -> i64 {
+        self.shared.started
     }
 
     /// login returns the stored password of a role and whether it may log in, or None when the role does not exist.

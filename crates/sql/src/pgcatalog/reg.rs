@@ -242,6 +242,21 @@ impl Ctx<'_> {
             .map(|row| text_of(&row[text]))
     }
 
+    /// relation_exists reports whether a relation has the OID.
+    pub fn relation_exists(&mut self, oid: u32) -> Result<bool> {
+        Ok(self.relations()?.iter().any(|r| r.oid == oid))
+    }
+
+    /// is_publishable reports whether the relation with the OID is a user table, which logical replication can
+    /// publish, or None when no relation has the OID.
+    pub fn is_publishable(&mut self, oid: u32) -> Result<Option<bool>> {
+        if !self.relation_exists(oid)? {
+            return Ok(None);
+        }
+        let snapshot = self.snapshot()?;
+        Ok(Some(snapshot.tables.iter().any(|t| table_oid(&t.schema, &t.name) == oid)))
+    }
+
     /// role_of_oid returns the name of the role of an OID.
     pub fn role_of_oid(&self, oid: u32) -> Option<String> {
         self.roles().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n)
@@ -332,7 +347,7 @@ impl Ctx<'_> {
     }
 
     /// namespaces returns the name and OID of every schema.
-    fn namespaces(&self) -> Vec<(String, u32)> {
+    pub(crate) fn namespaces(&self) -> Vec<(String, u32)> {
         let mut out: Vec<(String, u32)> = ["pg_toast", "pg_catalog", "information_schema"]
             .iter()
             .map(|s| (s.to_string(), namespace_oid(s)))

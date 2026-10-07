@@ -704,6 +704,20 @@ impl Ctx<'_> {
             || auth.owner(&object) == Some(role)
     }
 
+    /// has_privilege reports whether a role holds any of the privileges on a schema or database, each with its grant
+    /// option when asked, as has_schema_privilege and has_database_privilege do.
+    pub fn has_privilege(&self, role: u64, object: &Object, privileges: &[(&str, bool)]) -> Result<bool> {
+        let auth = self.auth()?;
+        if auth.owner(object) == Some(role) || auth.roles.get(&role).is_some_and(|r| r.superuser) {
+            return Ok(true);
+        }
+        Ok(privileges.iter().any(|&(privilege, option)| match object {
+            _ if option => auth.holds_option(role, object, privilege),
+            Object::Schema(schema) => self.holds_schema(&auth, role, schema, privilege),
+            _ => auth.holds(role, object, privilege) || matches!(privilege, "c" | "T"),
+        }))
+    }
+
     /// require_create_db fails unless the current role may create databases.
     pub fn require_create_db(&self) -> Result<()> {
         let role = self.current_role()?;

@@ -24,7 +24,7 @@ use crate::error::Result;
 use crate::foreign::Rule;
 use crate::oid as types;
 use crate::pgcatalog::snapshot::{
-    Snapshot, constraint_oid, index_oid, namespace_oid, sequence_oid, table_oid, view_oid,
+    Snapshot, constraint_oid, database_oid, index_oid, namespace_oid, sequence_oid, table_oid, view_oid,
 };
 use crate::pgcatalog::{Rows, boolean, int2, int4, oid, text};
 use crate::query::Ctx;
@@ -314,14 +314,19 @@ impl Ctx<'_> {
         }
     }
 
-    /// pg_database lists the databases, with the template databases that Postgres always has.
-    fn pg_database(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+    /// catalog_database_names returns the databases, with the template databases that Postgres always has.
+    pub(crate) fn catalog_database_names(&self) -> Vec<String> {
         let mut names = self.session.database_names();
         names.extend(["template0".to_string(), "template1".to_string()]);
-        for name in names {
+        names
+    }
+
+    /// pg_database lists the databases, with the template databases that Postgres always has.
+    fn pg_database(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        for name in self.catalog_database_names() {
             let template = name.starts_with("template") && !self.session.database_names().contains(&name);
             rows.push(vec![
-                ("oid", oid(oids::oid(&id::new(id::SECTION_DATABASE, &[&name])))),
+                ("oid", oid(database_oid(&name))),
                 ("datname", text(name.clone())),
                 ("datdba", oid(SUPERUSER)),
                 ("encoding", int4(6)),

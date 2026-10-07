@@ -17,7 +17,7 @@
 use super::{ANY, Function};
 use crate::error::{PgError, Result, code};
 use crate::oid::{
-    BOOL, INT4, NAME, NUMERIC, OID, REGCLASS, REGNAMESPACE, REGPROC, REGPROCEDURE, REGROLE, REGTYPE, TEXT,
+    BOOL, INT4, INT8, NAME, NUMERIC, OID, REGCLASS, REGNAMESPACE, REGPROC, REGPROCEDURE, REGROLE, REGTYPE, TEXT,
 };
 use crate::query::Ctx;
 use crate::types::Value;
@@ -58,6 +58,15 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_partition_ancestors", &[REGCLASS], REGCLASS, pg_partition_ancestors),
     f("hashtext", &[TEXT], INT4, hashtext),
     f("min_scale", &[NUMERIC], INT4, min_scale),
+    f("pg_relation_size", &[REGCLASS], INT8, relation_size),
+    f("pg_relation_size", &[REGCLASS, TEXT], INT8, relation_size),
+    f("pg_table_size", &[REGCLASS], INT8, relation_size),
+    f("pg_indexes_size", &[REGCLASS], INT8, relation_size),
+    f("pg_total_relation_size", &[REGCLASS], INT8, relation_size),
+    f("pg_relation_is_publishable", &[REGCLASS], BOOL, pg_relation_is_publishable),
+    f("pg_get_partkeydef", &[OID], TEXT, pg_get_partkeydef),
+    f("pg_tablespace_location", &[OID], TEXT, pg_tablespace_location),
+    f("pg_stat_get_numscans", &[OID], INT8, pg_stat_get_numscans),
     Function {
         name: "num_nulls",
         args: &[ANY, ANY],
@@ -310,4 +319,41 @@ fn num_nulls(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// num_nonnulls counts its arguments that are not NULL.
 fn num_nonnulls(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Int4(args.iter().filter(|v| !v.is_null()).count() as i32))
+}
+
+/// relation_size returns the disk space a relation uses, which Doltgres reports as 0 since its storage is shared
+/// between tables, or NULL for an OID that no relation has.
+fn relation_size(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    if let Some(fork) = args.get(1)
+        && !matches!(text(fork), "main" | "fsm" | "vm" | "init")
+    {
+        return Err(PgError {
+            hint: Some("Valid fork names are \"main\", \"fsm\", \"vm\", and \"init\".".into()),
+            ..PgError::new(code::INVALID_PARAMETER_VALUE, "invalid fork name")
+        });
+    }
+    Ok(if ctx.relation_exists(oid(&args[0]))? { Value::Int8(0) } else { Value::Null })
+}
+
+/// pg_relation_is_publishable reports whether a relation is a user table, or returns NULL for an OID that no relation
+/// has.
+fn pg_relation_is_publishable(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(ctx.is_publishable(oid(&args[0]))?.map_or(Value::Null, Value::Bool))
+}
+
+/// pg_get_partkeydef returns a partitioned table's partition key, which is always NULL, since Doltgres has no
+/// partitioned tables.
+fn pg_get_partkeydef(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Null)
+}
+
+/// pg_tablespace_location returns a tablespace's directory, which is empty for the built-in tablespaces that are
+/// the only ones Doltgres has.
+fn pg_tablespace_location(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Text(String::new()))
+}
+
+/// pg_stat_get_numscans returns how many scans used a relation, which Doltgres does not count.
+fn pg_stat_get_numscans(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Int8(0))
 }

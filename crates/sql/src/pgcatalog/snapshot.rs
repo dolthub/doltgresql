@@ -67,6 +67,11 @@ pub fn index_oid(schema: &str, table: &str, index: &str) -> u32 {
     oids::oid(&id::new(id::SECTION_INDEX, &[schema, table, index]))
 }
 
+/// database_oid returns the OID of a database.
+pub fn database_oid(name: &str) -> u32 {
+    oids::oid(&id::new(id::SECTION_DATABASE, &[name]))
+}
+
 /// namespace_oid returns the OID of a schema.
 pub fn namespace_oid(schema: &str) -> u32 {
     oids::oid(&id::new(id::SECTION_NAMESPACE, &[schema]))
