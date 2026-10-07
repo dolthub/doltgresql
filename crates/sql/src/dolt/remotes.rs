@@ -248,8 +248,17 @@ fn file_path(url: &str) -> Option<PathBuf> {
     url.strip_prefix("file://").map(PathBuf::from)
 }
 
-/// open_remote opens the database at a remote's URL, which must be a file remote.
+/// open_remote opens the database at a remote's URL: a file remote, or one that a server serves over http or https.
 fn open_remote(remote: &Remote) -> Result<Database> {
+    if remote.url.starts_with("http://") || remote.url.starts_with("https://") {
+        let store = remotes::client::RemoteStore::open(&remote.url).map_err(|err| {
+            error(format!(
+                "failed to get remote db; the remote: {} '{}' could not be accessed; {err}",
+                remote.name, remote.url
+            ))
+        })?;
+        return Ok(Database::with_store(Box::new(store)));
+    }
     let Some(path) = file_path(&remote.url) else {
         return Err(PgError::unsupported(format!("remotes at {}", remote.url)));
     };

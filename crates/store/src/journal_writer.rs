@@ -351,6 +351,17 @@ impl JournalWriter {
         self.range(hash).is_some()
     }
 
+    /// locate returns where the chunk's record is in the journal file, when the journal holds it.
+    pub fn locate(&self, hash: &Hash) -> Option<crate::Location> {
+        let range = self.range(hash)?;
+        Some(crate::Location {
+            file: crate::journal::JOURNAL_FILE.to_string(),
+            offset: range.offset,
+            length: range.len,
+            dictionary: None,
+        })
+    }
+
     /// get returns the chunk when the journal holds it, reading buffered records from memory.
     pub fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
         let Some(range) = self.range(hash) else { return Ok(None) };

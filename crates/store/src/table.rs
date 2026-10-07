@@ -46,6 +46,8 @@ fn index_len(count: u64) -> u64 {
 /// TableReader reads the chunks of a table file, keeping its index in memory.
 pub struct TableReader {
     file: File,
+    /// The file's name.
+    name: String,
     /// The hash prefix of each prefix map entry, in prefix order.
     prefixes: Vec<u64>,
     /// The ordinal of each prefix map entry, in prefix order.
@@ -97,7 +99,8 @@ impl TableReader {
             offset += length;
             offsets.push(offset);
         }
-        let reader = TableReader { file, prefixes, ordinals, offsets, suffixes: index[suffixes_at..].to_vec() };
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let reader = TableReader { file, name, prefixes, ordinals, offsets, suffixes: index[suffixes_at..].to_vec() };
         reader.validate(path, size - FOOTER_LEN as u64 - index_len)?;
         Ok(reader)
     }
@@ -134,6 +137,13 @@ impl TableReader {
             .take_while(|&i| self.prefixes[i] == prefix)
             .map(|i| self.ordinals[i] as usize)
             .find(|&ordinal| self.suffix(ordinal) == hash.suffix())
+    }
+
+    /// locate returns where the chunk's record is, when the table holds it.
+    pub fn locate(&self, hash: &Hash) -> Option<crate::Location> {
+        let ordinal = self.find(hash)?;
+        let (start, end) = (self.offsets[ordinal], self.offsets[ordinal + 1]);
+        Some(crate::Location { file: self.name.clone(), offset: start, length: (end - start) as u32, dictionary: None })
     }
 
     /// has reports whether the table holds the chunk.

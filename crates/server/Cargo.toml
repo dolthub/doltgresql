@@ -17,6 +17,7 @@ hmac = "0.12"
 pbkdf2 = "0.12"
 pgproto.workspace = true
 rand = "0.8"
+remotes = { path = "../remotes" }
 rustls = "0.23"
 sha2 = "0.10"
 signal-hook = "0.3"

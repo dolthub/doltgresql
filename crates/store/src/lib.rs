@@ -42,6 +42,17 @@ pub use manifest::{MANIFEST_FILE, Manifest, TableSpec, lock_hash};
 pub use store::{BlockStore, GenerationalStore};
 pub use table::{TableReader, TableWriter};
 
+/// Location is where a chunk's compressed bytes are in a store's files: the file's name, the offset and length of the
+/// chunk's record or data span, and for an archive chunk compressed with a dictionary, the offset and length of the
+/// dictionary's span.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Location {
+    pub file: String,
+    pub offset: u64,
+    pub length: u32,
+    pub dictionary: Option<(u64, u32)>,
+}
+
 /// ChunkReader reads chunks by address.
 pub trait ChunkReader {
     /// get returns the chunk when the reader holds it.
@@ -50,6 +61,67 @@ pub trait ChunkReader {
     /// require returns the chunk, failing when the reader lacks it.
     fn require(&self, hash: &Hash) -> Result<Chunk> {
         self.get(hash)?.ok_or_else(|| Error::Corrupt(format!("chunk {hash} is missing")))
+    }
+
+    /// get_many returns each chunk the reader holds, in the order asked for, which a remote reader fetches together.
+    fn get_many(&self, hashes: &[Hash]) -> Result<Vec<Option<Chunk>>> {
+        hashes.iter().map(|hash| self.get(hash)).collect()
+    }
+}
+
+/// ChunkStore is a writable chunk store whose root a compare-and-set commit moves: a local journaling store, or a
+/// remote reached over the network.
+pub trait ChunkStore: ChunkReader + Send {
+    /// has reports whether the store holds the chunk.
+    fn has(&self, hash: &Hash) -> bool;
+
+    /// has_many reports whether the store holds each chunk, in the order asked for, which a remote store answers
+    /// together.
+    fn has_many(&self, hashes: &[Hash]) -> Vec<bool> {
+        hashes.iter().map(|hash| self.has(hash)).collect()
+    }
+
+    /// put adds a chunk with the addresses it refers to, which becomes durable when a later commit succeeds.
+    fn put(&mut self, chunk: Chunk, refs: Vec<Hash>) -> Result<()>;
+
+    /// commit moves the root from the last root to the current one, reporting false when another writer moved it
+    /// first.
+    fn commit(&mut self, current: Hash, last: Hash) -> Result<bool>;
+
+    /// root returns the store's root.
+    fn root(&self) -> Hash;
+
+    /// journal returns the store as a local journaling store, which only local stores are.
+    fn journal(&mut self) -> Option<&mut JournalStore> {
+        None
+    }
+}
+
+impl ChunkReader for JournalStore {
+    fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
+        JournalStore::get(self, hash)
+    }
+}
+
+impl ChunkStore for JournalStore {
+    fn has(&self, hash: &Hash) -> bool {
+        JournalStore::has(self, hash)
+    }
+
+    fn put(&mut self, chunk: Chunk, refs: Vec<Hash>) -> Result<()> {
+        JournalStore::put(self, chunk, refs)
+    }
+
+    fn commit(&mut self, current: Hash, last: Hash) -> Result<bool> {
+        JournalStore::commit(self, current, last)
+    }
+
+    fn root(&self) -> Hash {
+        JournalStore::root(self)
+    }
+
+    fn journal(&mut self) -> Option<&mut JournalStore> {
+        Some(self)
     }
 }
 

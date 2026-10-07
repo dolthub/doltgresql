@@ -44,6 +44,8 @@ const SNAPPY_VERSION: u8 = 2;
 /// ArchiveReader reads the chunks of an archive, keeping its index in memory.
 pub struct ArchiveReader {
     file: File,
+    /// The file's name.
+    name: String,
     version: u8,
     /// The end offset of each span, in span id order starting from id 1.
     span_ends: Vec<u64>,
@@ -102,8 +104,10 @@ impl ArchiveReader {
         {
             return Err(corrupt(format!("{}: corrupt archive index", path.display())));
         }
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         Ok(ArchiveReader {
             file,
+            name,
             version,
             span_ends,
             prefixes,
@@ -143,6 +147,21 @@ impl ArchiveReader {
             Some(id) => self.read(*hash, id).map(Some),
             None => Ok(None),
         }
+    }
+
+    /// span_range returns the offset and length of the span with the id.
+    fn span_range(&self, id: u32) -> (u64, u32) {
+        let index = id as usize - 1;
+        let start = if index == 0 { 0 } else { self.span_ends[index - 1] };
+        (start, (self.span_ends[index] - start) as u32)
+    }
+
+    /// locate returns where the chunk's data span is, and its dictionary's span, when the archive holds it.
+    pub fn locate(&self, hash: &Hash) -> Option<crate::Location> {
+        let (dictionary, data) = self.refs[self.find(hash)?];
+        let (offset, length) = self.span_range(data);
+        let dictionary = (dictionary != 0).then(|| self.span_range(dictionary));
+        Some(crate::Location { file: self.name.clone(), offset, length, dictionary })
     }
 
     /// span reads the span with the id.

@@ -46,6 +46,9 @@ pub struct Config {
     pub auto_gc: bool,
     /// Whether the server refuses every write, from behavior.read_only.
     pub read_only: bool,
+    /// The port that serves the remotes API, from remotesapi.port, with whether it refuses writes, from
+    /// remotesapi.read_only.
+    pub remotesapi: Option<(u16, bool)>,
     /// Whether automatic garbage collection writes archives, from behavior.auto_gc_behavior.archive_level.
     pub auto_gc_archive: bool,
     /// The size of automatic garbage collection's incremental files, or 0 for none, from
@@ -180,6 +183,7 @@ impl Config {
             skip_integrity_check: false,
             auto_gc: true,
             read_only: false,
+            remotesapi: None,
             auto_gc_archive: true,
             auto_gc_incremental_file_size: 0,
         };
@@ -206,6 +210,10 @@ impl Config {
         }
         if let Some(size) = doc["behavior"]["auto_gc_behavior"]["incremental_file_size"].as_i64() {
             self.auto_gc_incremental_file_size = size.max(0) as u64;
+        }
+        if let Some(port) = doc["remotesapi"]["port"].as_i64() {
+            let read_only = doc["remotesapi"]["read_only"].as_bool().unwrap_or(false);
+            self.remotesapi = Some((port as u16, read_only));
         }
         if let Some(read_only) = doc["behavior"]["read_only"].as_bool() {
             self.read_only = read_only;

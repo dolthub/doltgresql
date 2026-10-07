@@ -91,6 +91,15 @@ fn tls_config(cert: &std::path::Path, key: &std::path::Path) -> Result<rustls::S
         .map_err(|err| format!("invalid TLS certificate or key: {err}"))
 }
 
+/// EngineDatabases serves the engine's databases to the remotes API.
+struct EngineDatabases(sql::Engine);
+
+impl remotes::server::Databases for EngineDatabases {
+    fn database(&self, name: &str) -> Option<Arc<std::sync::Mutex<doltdb::database::Database>>> {
+        self.0.database_handle(name)
+    }
+}
+
 /// LOG is the file the server writes its log to, when the command line names one.
 static LOG: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
 
@@ -172,6 +181,15 @@ pub fn serve(config: &Config) -> Result<(), String> {
         }
     });
     let host = if config.host == "localhost" { "127.0.0.1" } else { config.host.as_str() };
+    if let Some((port, read_only)) = config.remotesapi {
+        let listener = bind(host, port)?;
+        let databases: Arc<dyn remotes::server::Databases> = Arc::new(EngineDatabases(server.engine.clone()));
+        std::thread::spawn(move || {
+            if let Err(err) = remotes::server::serve(listener, databases, read_only) {
+                log(&format!("remotesapi server failed: {err}"));
+            }
+        });
+    }
     let listener = bind(host, config.port)?;
     log(&format!("Server ready. Accepting connections on {host}:{}.", config.port));
     for stream in listener.incoming() {

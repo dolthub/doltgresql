@@ -1,0 +1,28 @@
+[package]
+name = "remotes"
+description = "Dolt's remotes API: the chunk store service and table file transfers, as a server and as a client store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+axum = "0.8"
+base64 = "0.22"
+doltdb = { path = "../doltdb" }
+hmac = "0.12"
+md-5 = "0.10"
+prost = "0.13"
+prost-types = "0.13"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serial = { path = "../serial" }
+sha2 = "0.10"
+store = { path = "../store" }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync"] }
+tokio-stream = "0.1"
+tonic = "0.13"
+zstd = "0.13"
+
+[lints]
+workspace = true

@@ -164,6 +164,18 @@ impl JournalStore {
         Ok(None)
     }
 
+    /// locate returns where a committed chunk is in the store's files, writing out the journal's buffered records first
+    /// so that its file holds them.
+    pub fn locate(&mut self, hash: &Hash) -> Result<Option<crate::Location>> {
+        if let Some(journal) = self.journal.as_mut() {
+            journal.flush()?;
+            if let Some(location) = journal.locate(hash) {
+                return Ok(Some(location));
+            }
+        }
+        Ok(self.sources.iter().find_map(|source| source.locate(hash)))
+    }
+
     /// has reports whether the store holds the chunk, including chunks put but not yet committed.
     pub fn has(&self, hash: &Hash) -> bool {
         self.memtable.chunks.contains_key(hash) || self.has_persisted(hash)
@@ -257,6 +269,24 @@ impl JournalStore {
     }
 
     /// specs returns the files holding the store's chunks, sorted by name, as Dolt's tableSet.toSpecs does.
+    /// table_files returns the files the manifest names, with the journal as it is now, as Dolt's Sources lists them.
+    pub fn table_files(&self) -> Vec<TableSpec> {
+        self.specs()
+    }
+
+    /// add_table_files adds table files or archives already written to the store's directory, which the next commit's
+    /// manifest names, failing for a file that is missing.
+    pub fn add_table_files(&mut self, specs: &[TableSpec]) -> Result<()> {
+        for spec in specs {
+            if self.specs().iter().any(|existing| existing.name == spec.name) {
+                continue;
+            }
+            self.sources.push(Source::open_file(&self.dir, &spec.name)?);
+            self.pending.push(*spec);
+        }
+        Ok(())
+    }
+
     fn specs(&self) -> Vec<TableSpec> {
         let journal_name = Hash::parse(JOURNAL_FILE).unwrap();
         let mut specs: Vec<TableSpec> =

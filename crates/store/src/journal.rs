@@ -197,6 +197,12 @@ impl Journal {
         self.chunks.contains_key(hash)
     }
 
+    /// locate returns where the chunk's record is, when the journal holds it.
+    pub fn locate(&self, hash: &Hash) -> Option<crate::Location> {
+        let &(offset, length) = self.chunks.get(hash)?;
+        Some(crate::Location { file: JOURNAL_FILE.to_string(), offset, length, dictionary: None })
+    }
+
     /// get returns the chunk when the journal holds it.
     pub fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
         match self.chunks.get(hash) {

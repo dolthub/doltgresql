@@ -23,7 +23,7 @@ use std::sync::Arc;
 use prolly::{AddressMapSerializer, CommitClosureSerializer, Node, NodeStore, apply_mutations};
 use serial::write::{CommitFields, WorkingSetFields, write_commit, write_store_root, write_working_set};
 use serial::{Commit, Message, StoreRoot};
-use store::{BlockStore, Chunk, ChunkReader, Hash, JournalStore};
+use store::{BlockStore, Chunk, ChunkReader, ChunkStore, Hash, JournalStore};
 
 /// Error is a failure of a database operation.
 #[derive(Debug)]
@@ -165,7 +165,7 @@ pub struct GcConfig {
 
 /// Database is a chunk store whose store root names its datasets.
 pub struct Database {
-    store: JournalStore,
+    store: Box<dyn ChunkStore>,
     old_gen: Option<BlockStore>,
     nodes: HashMap<Hash, Arc<Node>>,
 }
@@ -179,6 +179,18 @@ impl ChunkReader for Database {
             Some(old_gen) => old_gen.get(hash),
             None => Ok(None),
         }
+    }
+
+    fn get_many(&self, hashes: &[Hash]) -> store::Result<Vec<Option<Chunk>>> {
+        let mut chunks = self.store.get_many(hashes)?;
+        for (hash, chunk) in hashes.iter().zip(chunks.iter_mut()) {
+            if chunk.is_none()
+                && let Some(old_gen) = &self.old_gen
+            {
+                *chunk = old_gen.get(hash)?;
+            }
+        }
+        Ok(chunks)
     }
 }
 
@@ -203,7 +215,7 @@ impl NodeStore for Database {
 impl Database {
     /// open opens the database in a noms directory for writing, with its old generation for reading.
     pub fn open(noms: &Path) -> Result<Database> {
-        let store = JournalStore::open(noms, "__DOLT__")?;
+        let store = Box::new(JournalStore::open(noms, "__DOLT__")?);
         let old_gen_dir = noms.join("oldgen");
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
@@ -213,12 +225,64 @@ impl Database {
     /// open_remote opens a file remote or backup in a directory for writing, as Dolt's FileFactory does: each commit
     /// writes its new chunks to a table file, and a missing old generation directory is made.
     pub fn open_remote(dir: &Path) -> Result<Database> {
-        let store = JournalStore::open_tables(dir, "__DOLT__")?;
+        let store = Box::new(JournalStore::open_tables(dir, "__DOLT__")?);
         let old_gen_dir = dir.join("oldgen");
         std::fs::create_dir_all(&old_gen_dir).map_err(store::Error::from)?;
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
         Ok(Database { store, old_gen, nodes: HashMap::new() })
+    }
+
+    /// with_store opens a database over another kind of chunk store, such as a remote, with no old generation.
+    pub fn with_store(store: Box<dyn ChunkStore>) -> Database {
+        Database { store, old_gen: None, nodes: HashMap::new() }
+    }
+
+    /// journal returns the database's local journaling store, failing for a database over another kind of store.
+    fn journal(&mut self) -> Result<&mut JournalStore> {
+        self.store.journal().ok_or_else(|| Error::Invalid("not a local database".into()))
+    }
+
+    /// noms_dir returns the directory of the database's local store.
+    pub fn noms_dir(&mut self) -> Result<std::path::PathBuf> {
+        Ok(self.journal()?.dir().to_path_buf())
+    }
+
+    /// locate returns where a committed chunk is in the files of the local store, by its path relative to the store's
+    /// directory, as Dolt's GetChunkLocationsWithPaths finds it.
+    pub fn locate(&mut self, hash: &Hash) -> Result<Option<store::Location>> {
+        if let Some(location) = self.journal()?.locate(hash)? {
+            return Ok(Some(location));
+        }
+        Ok(self
+            .old_gen
+            .as_ref()
+            .and_then(|old_gen| old_gen.locate(hash))
+            .map(|location| store::Location { file: format!("oldgen/{}", location.file), ..location }))
+    }
+
+    /// table_files returns the root and the files of both generations, by their paths relative to the store's
+    /// directory, with their chunk counts, as Dolt's Sources lists them.
+    pub fn table_files(&mut self) -> Result<(Hash, Vec<(String, u32)>)> {
+        let root = self.root();
+        let dir = self.noms_dir()?;
+        let name = |dir: &Path, spec: &store::TableSpec| match dir.join(format!("{}.darc", spec.name)).exists() {
+            true => format!("{}.darc", spec.name),
+            false => spec.name.to_string(),
+        };
+        let mut files: Vec<(String, u32)> =
+            self.journal()?.table_files().iter().map(|spec| (name(&dir, spec), spec.chunk_count)).collect();
+        let old_dir = dir.join("oldgen");
+        for spec in store::Manifest::read(&old_dir)?.map(|m| m.specs).unwrap_or_default() {
+            files.push((format!("oldgen/{}", name(&old_dir, &spec)), spec.chunk_count));
+        }
+        Ok((root, files))
+    }
+
+    /// add_table_files adds uploaded table files or archives in the local store's directory to the files the next
+    /// commit names.
+    pub fn add_table_files(&mut self, specs: &[store::TableSpec]) -> Result<()> {
+        Ok(self.journal()?.add_table_files(specs)?)
     }
 
     /// has reports whether the database holds the chunk.
@@ -231,27 +295,45 @@ impl Database {
     /// Dolt's puller does.
     pub fn pull(&mut self, from: &Database, address: Hash) -> Result<()> {
         let mut seen = std::collections::HashSet::new();
-        let mut stack = vec![(address, false)];
-        let mut loaded: HashMap<Hash, Chunk> = HashMap::new();
-        while let Some((hash, expanded)) = stack.pop() {
-            if expanded {
-                if let Some(chunk) = loaded.remove(&hash) {
-                    self.put(chunk)?;
-                }
-                continue;
+        let mut levels = Vec::new();
+        let mut frontier = vec![address];
+        while !frontier.is_empty() {
+            frontier.retain(|hash| !hash.is_empty() && seen.insert(*hash));
+            let present = self.has_many(&frontier);
+            let wanted: Vec<Hash> = frontier.iter().zip(present).filter(|(_, held)| !held).map(|(h, _)| *h).collect();
+            let mut next = Vec::new();
+            let mut level = Vec::with_capacity(wanted.len());
+            for (hash, chunk) in wanted.iter().zip(from.get_many(&wanted)?) {
+                let chunk = chunk.ok_or_else(|| store::Error::Corrupt(format!("chunk {hash} is missing")))?;
+                serial::walk::walk_addrs(Message(&chunk.data), &mut |child| {
+                    next.push(child);
+                    Ok(())
+                })?;
+                level.push(chunk);
             }
-            if hash.is_empty() || !seen.insert(hash) || self.has(&hash) {
-                continue;
-            }
-            let chunk = from.require(&hash)?;
-            stack.push((hash, true));
-            serial::walk::walk_addrs(Message(&chunk.data), &mut |child| {
-                stack.push((child, false));
-                Ok(())
-            })?;
-            loaded.insert(hash, chunk);
+            levels.push(level);
+            frontier = next;
+        }
+        for chunk in levels.into_iter().rev().flatten() {
+            self.put(chunk)?;
         }
         Ok(())
+    }
+
+    /// has_many reports whether the database holds each chunk, in the order asked for.
+    pub fn has_many(&self, hashes: &[Hash]) -> Vec<bool> {
+        let held = self.store.has_many(hashes);
+        hashes
+            .iter()
+            .zip(held)
+            .map(|(hash, held)| held || self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(hash)))
+            .collect()
+    }
+
+    /// commit_root moves the store root from the last root to the current one, reporting false when it moved first,
+    /// as a remote's Commit request asks.
+    pub fn commit_root(&mut self, current: Hash, last: Hash) -> Result<bool> {
+        Ok(self.store.commit(current, last)?)
     }
 
     /// gc keeps only the chunks reachable from the store root, as Dolt's garbage collection does, starting from the old
@@ -263,7 +345,7 @@ impl Database {
     pub fn gc(&mut self, config: GcConfig, keep: Vec<Hash>) -> Result<()> {
         let mode = config.mode;
         let root = self.root();
-        let old_dir = self.store.dir().join("oldgen");
+        let old_dir = self.journal()?.dir().join("oldgen");
         if old_dir.join(store::MANIFEST_FILE).exists() {
             self.old_gen = Some(BlockStore::open(&old_dir)?);
         }
@@ -288,12 +370,12 @@ impl Database {
                 false => working.push(chunk),
             }
         }
-        let dir = self.store.dir().to_path_buf();
+        let dir = self.journal()?.dir().to_path_buf();
         if mode == GcMode::Shallow {
             moved.append(&mut working);
             let moved: Vec<store::Chunk> = moved.into_iter().map(|(chunk, _)| chunk).collect();
             let spec = store::write_table(&dir, &moved)?;
-            self.store.rewrite(spec.into_iter().collect())?;
+            self.journal()?.rewrite(spec.into_iter().collect())?;
         } else {
             let mut specs = match (mode, store::Manifest::read(&old_dir)?) {
                 (GcMode::Default, Some(manifest)) => manifest.specs,
@@ -324,7 +406,7 @@ impl Database {
             store::replace_files(&old_dir, root, "__DOLT__", specs)?;
             self.old_gen = Some(BlockStore::open(&old_dir)?);
             let specs = store::write_files(&dir, working, archive, size, &mut |_| Ok(()))?;
-            self.store.rewrite(specs)?;
+            self.journal()?.rewrite(specs)?;
         }
         self.nodes.clear();
         Ok(())
@@ -657,12 +739,15 @@ impl Database {
 
     /// sync writes out the store's buffered journal records, leaving the database open.
     pub fn sync(&mut self) -> Result<()> {
-        Ok(self.store.sync()?)
+        match self.store.journal() {
+            Some(journal) => Ok(journal.sync()?),
+            None => Ok(()),
+        }
     }
 
     /// close writes out the store's buffered journal records.
-    pub fn close(self) -> Result<()> {
-        Ok(self.store.close()?)
+    pub fn close(mut self) -> Result<()> {
+        self.sync()
     }
 }
 

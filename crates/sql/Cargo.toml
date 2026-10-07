@@ -12,6 +12,7 @@ chrono = "0.4"
 chrono-tz = "0.10"
 crc = "3"
 doltdb = { path = "../doltdb" }
+remotes = { path = "../remotes" }
 encoding_rs = "0.8"
 hmac = "0.12"
 md-5 = "0.10"

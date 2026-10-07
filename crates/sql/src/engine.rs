@@ -486,6 +486,15 @@ impl Engine {
     }
 
     /// open_database returns the shared handle and sequence tracker of a database, opening it on first use.
+    /// database_handle returns the open database with the name, opening it when it exists, as the remotes API serves
+    /// it.
+    pub fn database_handle(&self, name: &str) -> Option<DbHandle> {
+        if !self.database_exists(name) {
+            return None;
+        }
+        self.open_database(name).ok().map(|(handle, _)| handle)
+    }
+
     fn open_database(&self, name: &str) -> Result<(DbHandle, SequenceTracker)> {
         let mut databases = lock(&self.shared.databases)?;
         if let Some(entry) = databases.get(name) {

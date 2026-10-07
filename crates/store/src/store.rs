@@ -53,6 +53,14 @@ impl Source {
         }
     }
 
+    pub(crate) fn locate(&self, hash: &Hash) -> Option<crate::Location> {
+        match self {
+            Source::Table(table) => table.locate(hash),
+            Source::Archive(archive) => archive.locate(hash),
+            Source::Journal(journal) => journal.locate(hash),
+        }
+    }
+
     pub(crate) fn has(&self, hash: &Hash) -> bool {
         match self {
             Source::Table(table) => table.has(hash),
@@ -130,6 +138,11 @@ impl BlockStore {
             }
         }
         Ok(None)
+    }
+
+    /// locate returns where the chunk is in the store's files, when the store holds it.
+    pub fn locate(&self, hash: &Hash) -> Option<crate::Location> {
+        self.sources.iter().find_map(|source| source.locate(hash))
     }
 
     /// has reports whether the store holds the chunk.
