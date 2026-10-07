@@ -67,6 +67,8 @@ pub struct UserTable {
     pub commits: Option<(Expr, Expr)>,
     /// Whether rows end with their row number, as WITH ORDINALITY asks of the DOLT_DIFF function.
     pub ordinality: bool,
+    /// The commit a history table starts from instead of the session's head, which AS OF names.
+    pub head: Option<Hash>,
 }
 
 /// Change is a row's change between two versions of a table: the row before and the row after, one of which is
@@ -135,6 +137,7 @@ pub fn lookup(ctx: &mut Ctx<'_>, schema: &str, name: &str) -> Result<Option<User
             from,
             commits: None,
             ordinality: false,
+            head: None,
         }));
     }
     let exists = |s: &str| ctx.txn.root.schemas.iter().any(|existing| existing == s.as_bytes());
@@ -153,6 +156,7 @@ pub fn lookup(ctx: &mut Ctx<'_>, schema: &str, name: &str) -> Result<Option<User
             from: Vec::new(),
             commits: None,
             ordinality: false,
+            head: None,
         }),
         _ => None,
     })
@@ -214,6 +218,18 @@ pub(crate) fn project(table: &TableDef, row: &[Value], target: &[ColumnDef]) -> 
             Some(i) if table.columns[i].ty == column.ty => row[i].clone(),
             Some(i) => crate::cast::cast_value(row[i].clone(), column.ty, false).unwrap_or(Value::Null),
             None => Value::Null,
+        })
+        .collect()
+}
+
+/// project_by_name returns a row's values for target columns matched by name, with NULL for a column whose type
+/// changed, as Dolt's history tables match them.
+fn project_by_name(table: &TableDef, row: &[Value], target: &[ColumnDef]) -> Vec<Value> {
+    target
+        .iter()
+        .map(|column| match table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(&column.name)) {
+            Some(i) if table.columns[i].ty == column.ty => row[i].clone(),
+            _ => Value::Null,
         })
         .collect()
 }
@@ -402,14 +418,14 @@ impl UserTable {
     fn history_rows(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
         let mut scanned: HashMap<Hash, Vec<Vec<Value>>> = HashMap::new();
         let mut out = Vec::new();
-        for commit in history::log(ctx.db, &[ctx.txn.head])? {
+        for commit in history::log(ctx.db, &[self.head.unwrap_or(ctx.txn.head)])? {
             let root = commit_root(ctx.db, &commit)?;
             let Some((address, table)) = load(ctx.db, &root, &self.schema, &self.name)? else { continue };
             let rows = match scanned.entry(address) {
                 std::collections::hash_map::Entry::Occupied(rows) => rows.into_mut(),
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     let rows = crate::query::scan(ctx.db, &table)?;
-                    entry.insert(rows.iter().map(|row| project(&table, row, &self.to)).collect())
+                    entry.insert(rows.iter().map(|row| project_by_name(&table, row, &self.to)).collect())
                 }
             };
             for row in rows.iter() {
@@ -1049,6 +1065,7 @@ pub fn diff_function(ctx: &mut Ctx<'_>, args: &[String]) -> Result<UserTable> {
         to,
         commits: Some((Expr::Const(Value::Text(to_ref)), Expr::Const(Value::Text(from_ref)))),
         ordinality: false,
+        head: None,
     })
 }
 

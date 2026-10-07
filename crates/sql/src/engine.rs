@@ -323,6 +323,7 @@ impl Engine {
                 pending_copy: None,
                 as_of: Vec::new(),
                 deferred: crate::deferred::Deferred::default(),
+                checked_out: HashMap::new(),
             },
             txns: Vec::new(),
             pending: None,
@@ -418,6 +419,9 @@ pub struct SessionState {
     pub as_of: Vec<(i32, pg_query::Node)>,
     /// The transaction's constraint modes and the checks its deferred constraints owe.
     pub deferred: crate::deferred::Deferred,
+    /// The branch the session last had checked out in each database it left, which a USE of the database without a
+    /// branch returns to.
+    pub checked_out: HashMap<String, String>,
 }
 
 /// NEXT_SESSION numbers the sessions of the process.
@@ -440,6 +444,18 @@ impl SessionState {
         self.settings.end_transaction(committed);
         self.deferred = crate::deferred::Deferred::default();
         self.advisory.release_all(self.id, true, false);
+    }
+
+    /// checked_out_branch returns the branch the session last had checked out in a database it left, or the
+    /// database's default branch.
+    pub fn checked_out_branch(&self, database: &str) -> String {
+        if let Some(branch) = self.checked_out.get(database) {
+            return branch.clone();
+        }
+        crate::dolt::remotes::RepoState::load(&self.data_dir.join(database))
+            .ok()
+            .and_then(|state| state.head.strip_prefix("refs/heads/").map(str::to_string))
+            .unwrap_or_else(|| DEFAULT_BRANCH.to_string())
     }
 
     /// sync_identity sets the session user and the current role from the parameters that SET SESSION AUTHORIZATION
@@ -616,16 +632,16 @@ impl Session {
             return Err(not_found());
         }
         let branch = match branch.is_empty() {
-            true => crate::dolt::remotes::RepoState::load(&self.state.data_dir.join(database))
-                .ok()
-                .and_then(|state| state.head.strip_prefix("refs/heads/").map(str::to_string))
-                .unwrap_or_else(|| DEFAULT_BRANCH.to_string()),
+            true => self.state.checked_out_branch(database),
             false => branch,
         };
         let branch = branch.as_str();
         let handle = self.state.engine.database(database)?;
         if lock(&handle)?.head(&doltdb::create::branch_ref(branch))?.is_none() {
             return Err(not_found());
+        }
+        if !self.state.display.is_empty() && !self.state.display.contains('/') {
+            self.state.checked_out.insert(self.state.database.clone(), self.state.branch.clone());
         }
         self.state.database = database.to_string();
         self.state.branch = branch.to_string();
@@ -1367,7 +1383,10 @@ impl Ctx<'_> {
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self),
             NodeEnum::UpdateStmt(update) => match self.update_object_conflicts(update)? {
                 Some(outcome) => Ok(outcome),
-                None => self.plan_update(update)?.run(self),
+                None => match self.update_table_conflicts(update)? {
+                    Some(outcome) => Ok(outcome),
+                    None => self.plan_update(update)?.run(self),
+                },
             },
             NodeEnum::DeleteStmt(delete) => match self.delete_artifacts(delete)? {
                 Some(outcome) => Ok(outcome),

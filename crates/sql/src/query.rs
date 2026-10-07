@@ -91,6 +91,11 @@ impl Ctx<'_> {
         let Some(root) = self.revision_root(&revision)? else {
             return Err(undefined_table(relation));
         };
+        self.resolve_table_in(relation, &root)
+    }
+
+    /// resolve_table_in loads the table that a range variable names from a root value.
+    pub fn resolve_table_in(&mut self, relation: &RangeVar, root: &doltdb::root::Root) -> Result<TableDef> {
         let schemas: Vec<String> =
             if relation.schemaname.is_empty() { self.session.search_path() } else { vec![relation.schemaname.clone()] };
         for schema in &schemas {
@@ -99,6 +104,43 @@ impl Ctx<'_> {
             }
         }
         Err(undefined_table(relation))
+    }
+
+    /// catalog_root returns the working root of the branch that a range variable's database names, either as
+    /// `database/branch` or as a database whose checked-out branch the session is not on, or None for the session's
+    /// own branch.
+    pub fn catalog_root(&mut self, relation: &RangeVar) -> Result<Option<doltdb::root::Root>> {
+        let (database, branch) = match relation.catalogname.split_once('/') {
+            Some((database, branch)) => (database, branch.to_string()),
+            None if relation.catalogname.is_empty() || !self.session.display.contains('/') => return Ok(None),
+            None => (relation.catalogname.as_str(), self.session.checked_out_branch(&relation.catalogname)),
+        };
+        if database != self.session.database || branch == self.session.branch {
+            return Ok(None);
+        }
+        match self.branch_root(&branch)? {
+            Some(root) => Ok(Some(root)),
+            None => Err(PgError::new(
+                code::INVALID_CATALOG_NAME,
+                format!("database \"{}\" does not exist", relation.catalogname),
+            )),
+        }
+    }
+
+    /// branch_root returns the working root of a branch of the session's database as its working set last stored
+    /// it, or None for a missing branch.
+    pub fn branch_root(&mut self, branch: &str) -> Result<Option<doltdb::root::Root>> {
+        let address = match self.db.head(&doltdb::create::working_set_ref(branch))? {
+            Some(address) => {
+                let data = crate::txn::read(self.db, &address)?;
+                serial::WorkingSet::new(serial::Message(&data))?.working_root()?
+            }
+            None => match self.db.head(&doltdb::create::branch_ref(branch))? {
+                Some(head) => crate::dolt::history::load(self.db, head)?.root,
+                None => return Ok(None),
+            },
+        };
+        Ok(Some(doltdb::root::Root::decode(&crate::txn::read(self.db, &address)?)?))
     }
 
     /// revision_root returns the root value at a revision, or None for a time before the branch's first commit.

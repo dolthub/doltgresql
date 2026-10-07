@@ -84,6 +84,7 @@ pub const FUNCTIONS: &[Function] = &[
     f("dolt_undrop", &[], INT8, crate::dolt::admin::dolt_undrop),
     f("dolt_purge_dropped_databases", &[], INT8, crate::dolt::admin::dolt_purge_dropped_databases),
     f("dolt_thread_dump", &[], TEXT, crate::dolt::admin::dolt_thread_dump),
+    f("dolt_storage_format", &[], TEXT, crate::dolt::admin::dolt_storage_format),
     Function {
         name: "dolt_preview_merge_conflicts_summary",
         args: &[TEXT],
@@ -536,18 +537,32 @@ pub fn now_millis() -> i64 {
 }
 
 /// commit_meta returns the metadata of a new commit by the session's user, now.
-pub fn commit_meta(ctx: &Ctx<'_>, description: &str) -> CommitMeta {
+pub fn commit_meta(ctx: &Ctx<'_>, description: &str) -> Result<CommitMeta> {
+    let setting = |name: &str| ctx.session.settings.get(name).filter(|value| !value.is_empty());
+    let user = &ctx.session.user;
+    let address = format!("{user}@{}", ctx.session.host);
+    let (name, email) = (
+        setting("dolt_author_name").unwrap_or_else(|| user.clone()),
+        setting("dolt_author_email").unwrap_or_else(|| address.clone()),
+    );
+    let committer_set = setting("dolt_committer_name").is_some() || setting("dolt_committer_email").is_some();
+    let (committer_name, committer_email) = (
+        setting("dolt_committer_name").unwrap_or_else(|| user.clone()),
+        setting("dolt_committer_email").unwrap_or(address),
+    );
+    let separate = committer_set && (committer_name != name || committer_email != email);
     let millis = now_millis();
-    CommitMeta {
-        name: ctx.session.user.clone(),
-        email: format!("{}@{}", ctx.session.user, ctx.session.host),
+    let date = |name: &str| setting(name).map_or(Ok(millis), |date| parse_date(&date));
+    Ok(CommitMeta {
+        name,
+        email,
         description: description.to_string(),
-        author_millis: millis,
-        committer_millis: millis as u64,
+        author_millis: date("dolt_author_date")?,
+        committer_millis: date("dolt_committer_date")? as u64,
         signature: String::new(),
-        committer_name: None,
-        committer_email: None,
-    }
+        committer_name: separate.then_some(committer_name),
+        committer_email: separate.then_some(committer_email),
+    })
 }
 
 /// dolt_commit commits the staged tables.
@@ -576,7 +591,7 @@ pub fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         None if amend => head.description.clone(),
         None => return Err(error("Must provide commit message.")),
     };
-    let mut meta = commit_meta(ctx, &message);
+    let mut meta = commit_meta(ctx, &message)?;
     if let Some(author) = parsed.value("author") {
         let (name, email) = parse_author(author)?;
         meta.name = name;
@@ -666,6 +681,16 @@ pub fn branch_exists(db: &mut Database, name: &str) -> Result<bool> {
     Ok(db.head(&branch_ref(name))?.is_some())
 }
 
+/// case_conflict returns an existing ref under a prefix, `refs/heads/` or `refs/tags/`, whose name differs from a new
+/// name only by case, leaving out an excepted name, as Dolt's failOnCaseConflict finds it.
+fn case_conflict(db: &mut Database, prefix: &str, name: &str, except: &str) -> Result<Option<String>> {
+    Ok(db
+        .datasets()?
+        .into_iter()
+        .filter_map(|(id, _)| id.strip_prefix(prefix).map(str::to_string))
+        .find(|existing| existing != name && existing != except && existing.eq_ignore_ascii_case(name)))
+}
+
 /// BRANCH parses dolt_branch's arguments.
 const BRANCH: Parser = Parser {
     command: "branch",
@@ -727,6 +752,9 @@ fn create_branch(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> 
 
 /// create_branch_at creates a branch at the commit a spec names, as Dolt's CreateBranchWithStartPt does.
 pub fn create_branch_at(ctx: &mut Ctx<'_>, name: &str, start: &str, force: bool) -> Result<()> {
+    if let Some(existing) = case_conflict(ctx.db, "refs/heads/", name, "")? {
+        return Err(error(format!("fatal: A branch named '{existing}' already exists.")));
+    }
     if !force && branch_exists(ctx.db, name)? {
         return Err(error(format!("fatal: A branch named '{name}' already exists.")));
     }
@@ -747,6 +775,9 @@ fn copy_branch(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> {
     let Some(commit) = ctx.db.head(&branch_ref(source))? else {
         return Err(error(format!("fatal: A branch named '{source}' not found")));
     };
+    if let Some(existing) = case_conflict(ctx.db, "refs/heads/", dest, "")? {
+        return Err(error(format!("fatal: A branch named '{existing}' already exists.")));
+    }
     if !force && branch_exists(ctx.db, dest)? {
         return Err(error(format!("fatal: A branch named '{dest}' already exists.")));
     }
@@ -767,6 +798,9 @@ fn rename_branch(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> 
     }
     flush(ctx)?;
     let Some(commit) = ctx.db.head(&branch_ref(old))? else { return Err(error("branch not found")) };
+    if let Some(existing) = case_conflict(ctx.db, "refs/heads/", new, old)? {
+        return Err(error(format!("fatal: A branch named '{existing}' already exists.")));
+    }
     if !force && branch_exists(ctx.db, new)? {
         return Err(error(format!("fatal: A branch named '{new}' already exists.")));
     }
@@ -835,6 +869,10 @@ fn dolt_checkout(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     if parsed.has("b") && parsed.has("B") {
         return Err(error("Improper usage. Cannot use both -b and -B."));
     }
+    if parsed.has("overwrite-ignore") && parsed.has("no-overwrite-ignore") {
+        return Err(error("error: --overwrite-ignore and --no-overwrite-ignore are mutually exclusive"));
+    }
+    let keep_ignored = parsed.has("no-overwrite-ignore");
     let new_branch = parsed.value("b").or(parsed.value("B"));
     if new_branch == Some("") {
         return Err(error("error: cannot checkout empty string"));
@@ -846,6 +884,11 @@ fn dolt_checkout(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     }
     if let Some(name) = new_branch {
         let start = parsed.args.first().map_or("head", String::as_str);
+        if keep_ignored {
+            let commit = history::resolve(ctx.db, ctx.txn.head, start)?;
+            let target = Root::decode(&read(ctx.db, &history::load(ctx.db, commit)?.root)?)?;
+            check_ignored_overwrite(ctx, &target)?;
+        }
         create_branch_at(ctx, name, start, parsed.has("B"))?;
         flush(ctx)?;
         ctx.session.branch = name.to_string();
@@ -877,15 +920,42 @@ fn dolt_checkout(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         }
     }
     if is_branch && parsed.args.len() == 1 {
+        if keep_ignored && let Some(target) = ctx.branch_root(&first)? {
+            check_ignored_overwrite(ctx, &target)?;
+        }
         ctx.session.branch = first.clone();
         return Ok(record(0, format!("Switched to branch '{first}'")));
     }
-    if parsed.args.len() > 1 && is_branch {
+    if parsed.args.len() > 1 && (is_branch || find_table(ctx, &[&ctx.txn.root.clone()], &first)?.is_none()) {
         checkout_tables_from(ctx, &first, &parsed.args[1..])?;
         return Ok(record(0, ""));
     }
     checkout_tables(ctx, &parsed.args)?;
     Ok(record(0, ""))
+}
+
+/// check_ignored_overwrite fails when a checkout would replace an ignored table of the working root with a
+/// different version that the target root has, as Dolt's CheckOverwrittenIgnoredTables does.
+fn check_ignored_overwrite(ctx: &mut Ctx<'_>, target: &Root) -> Result<()> {
+    let working = ctx.txn.root.clone();
+    let mut overwritten = Vec::new();
+    for ((schema, name), address) in table_map(ctx.db, &working)? {
+        let patterns = crate::dolt::ignore::patterns(ctx, &working, &schema)?;
+        if !crate::dolt::ignore::is_ignored(&patterns, &name)? {
+            continue;
+        }
+        if target.table(ctx.db, &schema, &name)?.is_some_and(|other| other != address) {
+            overwritten.push(format!("{schema}.{name}"));
+        }
+    }
+    if overwritten.is_empty() {
+        return Ok(());
+    }
+    Err(error(format!(
+        "The following ignored tables would be overwritten by checkout:\n\t{}\nPlease move or remove them before you \
+         switch branches.\nUse --overwrite-ignore to force.\n",
+        overwritten.join("\n\t")
+    )))
 }
 
 /// checkout_tables restores tables of the working root from the staged root, or from the head for tables the
@@ -990,10 +1060,13 @@ fn dolt_tag(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         return Err(error("not a valid user tag name"));
     }
     if ctx.db.head(&format!("refs/tags/{name}"))?.is_some() {
-        return Err(error(format!("tag '{name}' already exists")));
+        return Err(error(format!("fatal: A tag named '{name}' already exists.")));
+    }
+    if let Some(existing) = case_conflict(ctx.db, "refs/tags/", &name, "")? {
+        return Err(error(format!("fatal: A tag named '{existing}' already exists.")));
     }
     let commit = history::resolve(ctx.db, ctx.txn.head, &start)?;
-    let mut meta = commit_meta(ctx, parsed.value("message").unwrap_or_default());
+    let mut meta = commit_meta(ctx, parsed.value("message").unwrap_or_default())?;
     if let Some(author) = parsed.value("author") {
         let (name, email) = parse_author(author)?;
         meta.name = name;

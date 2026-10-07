@@ -740,9 +740,10 @@ impl<'b, 'a> Planner<'b, 'a> {
                 }
                 let as_of =
                     self.ctx.session.as_of.iter().find(|(l, _)| *l == relation.location).map(|(_, r)| r.clone());
-                let resolved = match &as_of {
-                    Some(revision) => self.ctx.resolve_table_as_of(relation, revision),
-                    None => self.ctx.resolve_table(relation),
+                let resolved = match (&as_of, self.ctx.catalog_root(relation)?) {
+                    (Some(revision), _) => self.ctx.resolve_table_as_of(relation, revision),
+                    (None, Some(root)) => self.ctx.resolve_table_in(relation, &root),
+                    (None, None) => self.ctx.resolve_table(relation),
                 };
                 let table = match resolved {
                     Ok(table) => table,
@@ -790,7 +791,12 @@ impl<'b, 'a> Planner<'b, 'a> {
                             return Ok(self.plan_system(system, relation));
                         }
                         return match crate::dolt::diff::lookup(self.ctx, &relation.schemaname, &relation.relname)? {
-                            Some(table) => {
+                            Some(mut table) => {
+                                if let Some(revision) = &as_of {
+                                    let revision = self.ctx.constant_text(revision)?;
+                                    let head = self.ctx.txn.head;
+                                    table.head = Some(crate::dolt::history::resolve(self.ctx.db, head, &revision)?);
+                                }
                                 Ok(self.plan_system(crate::dolt::tables::SystemTable::User(Box::new(table)), relation))
                             }
                             None => Err(err),

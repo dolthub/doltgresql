@@ -415,3 +415,8 @@ pub fn dolt_verify_constraints(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Valu
     }
     Ok(Value::Int8(i64::from(violated)))
 }
+
+/// dolt_storage_format returns the name of the storage format, which Doltgres databases always use.
+pub fn dolt_storage_format(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Text("NEW ( __DOLT__ )".into()))
+}

@@ -318,7 +318,7 @@ fn revert_one(
     if Hash::of(&ctx.txn.staged.encode()) == ctx.txn.head_root {
         return Err(error("nothing to commit"));
     }
-    let mut meta = commit_meta(ctx, &format!("Revert {}", go_quote(&commit.description)));
+    let mut meta = commit_meta(ctx, &format!("Revert {}", go_quote(&commit.description)))?;
     if let Some((name, email)) = author {
         meta.name = name;
         meta.email = email;
@@ -343,7 +343,7 @@ fn continue_revert(ctx: &mut Ctx<'_>, author: Option<(String, String)>) -> Resul
     let reverted = history::load(ctx.db, merge.from_commit)?;
     let series_head = merge.pre_merge_head_commit.unwrap_or(ctx.txn.head);
     ctx.txn.merge = None;
-    let mut meta = commit_meta(ctx, &format!("Revert {}", go_quote(&reverted.description)));
+    let mut meta = commit_meta(ctx, &format!("Revert {}", go_quote(&reverted.description)))?;
     if let Some((_, email)) = author.as_ref().filter(|(name, email)| !name.is_empty() && !email.is_empty()) {
         meta.committer_name = Some(email.clone());
         meta.committer_email = Some(meta.email.clone());
@@ -442,20 +442,22 @@ pub fn dolt_cherry_pick(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     if !empty && Hash::of(&ctx.txn.staged.encode()) == ctx.txn.head_root {
         return Err(error("nothing to commit"));
     }
-    let hash = commit_staged(ctx, Vec::new(), picked_meta(ctx, &commit))?;
+    let hash = commit_staged(ctx, Vec::new(), picked_meta(ctx, &commit)?)?;
     Ok(outcome(&hash.to_string(), Counts::default()))
 }
 
 /// picked_meta returns the metadata of a cherry-picked commit, which keeps the original's author, date, and
 /// message, with the session's user as its committer.
-fn picked_meta(ctx: &Ctx<'_>, original: &CommitInfo) -> doltdb::database::CommitMeta {
-    let mut meta = commit_meta(ctx, &original.description);
-    if (original.name.as_str(), original.email.as_str()) != (meta.name.as_str(), meta.email.as_str()) {
-        meta.committer_name = Some(std::mem::replace(&mut meta.name, original.name.clone()));
-        meta.committer_email = Some(std::mem::replace(&mut meta.email, original.email.clone()));
+fn picked_meta(ctx: &Ctx<'_>, original: &CommitInfo) -> Result<doltdb::database::CommitMeta> {
+    let mut meta = commit_meta(ctx, &original.description)?;
+    let name = meta.committer_name.take().unwrap_or_else(|| meta.name.clone());
+    let email = meta.committer_email.take().unwrap_or_else(|| meta.email.clone());
+    (meta.name, meta.email) = (original.name.clone(), original.email.clone());
+    if (original.name.as_str(), original.email.as_str()) != (name.as_str(), email.as_str()) {
+        (meta.committer_name, meta.committer_email) = (Some(name), Some(email));
     }
     meta.author_millis = original.author_millis;
-    meta
+    Ok(meta)
 }
 
 /// continue_cherry_pick commits a cherry-pick whose conflicts have been resolved, as Dolt's ContinueCherryPick does.
@@ -475,6 +477,6 @@ fn continue_cherry_pick(ctx: &mut Ctx<'_>) -> Result<Value> {
         return Err(error("error: no changes to commit"));
     }
     ctx.txn.merge = None;
-    let hash = commit_staged(ctx, Vec::new(), picked_meta(ctx, &original))?;
+    let hash = commit_staged(ctx, Vec::new(), picked_meta(ctx, &original)?)?;
     Ok(outcome(&hash.to_string(), Counts::default()))
 }

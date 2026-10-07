@@ -31,7 +31,7 @@ use crate::dolt::artifacts::{self, Artifact};
 use crate::dolt::history;
 use crate::error::Result;
 use crate::expr::typ;
-use crate::oid::{INT8, JSON, NUMERIC, TEXT, VARCHAR};
+use crate::oid::{JSON, NUMERIC, TEXT, VARCHAR};
 use crate::query::Ctx;
 use crate::txn::read;
 use crate::types::Value;
@@ -175,7 +175,7 @@ impl ArtifactTable {
                 out.push(("dolt_conflict_id".into(), typ(TEXT)));
                 if self.keyless {
                     for side in ["base", "our", "their"] {
-                        out.push((format!("{side}_cardinality"), typ(INT8)));
+                        out.push((format!("{side}_cardinality"), typ(NUMERIC)));
                     }
                 }
             }
@@ -241,7 +241,8 @@ impl ArtifactTable {
             row.push(Value::Text(conflict_id(&artifact.key, artifact.rootish)));
             if self.keyless {
                 for side in [&base, &mine, &theirs] {
-                    row.push(side.as_ref().map_or(Value::Null, |(_, count)| Value::Int8(*count as i64)));
+                    let count = side.as_ref().map_or(0, |(_, count)| *count as i64);
+                    row.push(Value::Numeric(crate::numeric::Numeric::from_i64(count)));
                 }
             }
             out.push((row, artifact));
@@ -394,6 +395,107 @@ impl Ctx<'_> {
         table.update(self, &changes)?;
         Ok(Some(Outcome::command(format!("UPDATE {}", rows.len()))))
     }
+}
+
+impl Ctx<'_> {
+    /// update_table_conflicts runs an UPDATE of a table's conflicts table, which writes the changed our columns of
+    /// the rows it selects to the table, as Dolt's prollyConflictOurTableUpdater does, or returns None when the UPDATE
+    /// is of another table.
+    pub fn update_table_conflicts(&mut self, update: &UpdateStmt) -> Result<Option<Outcome>> {
+        let Some(relation) = update.relation.as_ref() else { return Ok(None) };
+        if self.resolve_table(relation).is_ok() {
+            return Ok(None);
+        }
+        let Some(table) = lookup(self, &relation.schemaname, &relation.relname)?.filter(|t| t.kind == Kind::Conflicts)
+        else {
+            return Ok(None);
+        };
+        let assigned: HashMap<String, pg_query::Node> = update
+            .target_list
+            .iter()
+            .filter_map(|target| match target.node.as_ref() {
+                Some(NodeEnum::ResTarget(t)) => Some((t.name.clone(), t.val.as_deref().cloned()?)),
+                _ => None,
+            })
+            .collect();
+        let target = |val: pg_query::Node| {
+            let target = pg_query::protobuf::ResTarget { val: Some(Box::new(val)), location: -1, ..Default::default() };
+            pg_query::Node { node: Some(NodeEnum::ResTarget(Box::new(target))) }
+        };
+        let names: Vec<String> = table.ours.iter().map(|c| format!("our_{}", c.name)).collect();
+        let mut targets: Vec<pg_query::Node> = names.iter().map(|n| target(column(n))).collect();
+        targets.extend(names.iter().map(|n| target(assigned.get(n).cloned().unwrap_or_else(|| column(n)))));
+        let rows = self.select_rows(relation, targets, update.where_clause.clone())?;
+        let user = self.txn.table(self.db, &table.schema, &table.name)?.ok_or_else(|| error("table not found"))?;
+        let mut stored: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        if table.keyless {
+            let node = prolly::Node::decode(user.table.primary_index.clone())?;
+            prolly::walk_leaves(self.db, &node, &mut |key, value| {
+                stored.insert(key.to_vec(), value.to_vec());
+                Ok(())
+            })?;
+        }
+        let mut edits: Vec<(Vec<u8>, Option<Vec<u8>>)> = Vec::new();
+        for row in &rows {
+            let (old, new) = row.split_at(names.len());
+            if old == new {
+                continue;
+            }
+            if let Some((name, _)) =
+                names.iter().zip(&table.ours).zip(new).find(|((_, c), v)| !c.nullable && v.is_null())
+            {
+                return Err(crate::error::PgError::new(
+                    crate::error::code::NOT_NULL_VIOLATION,
+                    format!("column name '{}' is non-nullable but attempted to set a value of null", name.0),
+                ));
+            }
+            let full = |values: &[Value]| -> Result<Vec<Value>> {
+                user.columns
+                    .iter()
+                    .map(|c| match table.ours.iter().position(|o| o.tag == c.tag) {
+                        Some(i) => crate::cast::cast_value(values[i].clone(), c.ty, false),
+                        None => Ok(Value::Null),
+                    })
+                    .collect()
+            };
+            let present = !old.iter().all(Value::is_null);
+            let (old_key, old_value) = user.encode_row(self.db, &full(old)?)?;
+            let (new_key, new_value) = user.encode_row(self.db, &full(new)?)?;
+            if table.keyless {
+                if present {
+                    edits.push(adjust_cardinality(&mut stored, old_key, old_value, false));
+                }
+                edits.push(adjust_cardinality(&mut stored, new_key, new_value, true));
+                continue;
+            }
+            if present {
+                edits.push((old_key, None));
+            }
+            edits.push((new_key, Some(new_value)));
+        }
+        crate::dolt::merge::apply_to_working(self, &user, edits)?;
+        Ok(Some(Outcome::command(format!("UPDATE {}", rows.len()))))
+    }
+}
+
+/// adjust_cardinality adds or removes one copy of a keyless row among the stored rows, dropping the row when none
+/// remain, and returns the edit that stores the change.
+fn adjust_cardinality(
+    stored: &mut HashMap<Vec<u8>, Vec<u8>>,
+    key: Vec<u8>,
+    value: Vec<u8>,
+    add: bool,
+) -> (Vec<u8>, Option<Vec<u8>>) {
+    let count = stored.get(&key).map_or(0, |v| u64::from_le_bytes(v[..8].try_into().unwrap_or_default()));
+    let count = if add { count + 1 } else { count.saturating_sub(1) };
+    if count == 0 {
+        stored.remove(&key);
+        return (key, None);
+    }
+    let mut value = stored.get(&key).cloned().unwrap_or(value);
+    value[..8].copy_from_slice(&count.to_le_bytes());
+    stored.insert(key.clone(), value.clone());
+    (key, Some(value))
 }
 
 /// column returns a reference to a column by name.

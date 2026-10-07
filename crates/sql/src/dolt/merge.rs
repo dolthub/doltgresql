@@ -568,13 +568,14 @@ fn merge_rows(
     theirs: &[Entry],
     base: &[Entry],
     commits: Commits,
+    brought: bool,
 ) -> Result<TableOutcome> {
     let left = changes(table, base, ours);
     let right = changes(table, base, theirs);
     let mut merger = RowMerger {
         table,
         commits,
-        merged: Merged { artifacts: artifacts::read(db, table)?, ..Merged::default() },
+        merged: Merged { artifacts: artifacts::read(db, table)?, new_artifacts: brought, ..Merged::default() },
         uniques: unique_indexes(table, ours),
         current: BTreeMap::new(),
         ours,
@@ -626,7 +627,8 @@ fn merge_table(
         let (_, def) = theirs.as_ref().ok_or_else(|| error("missing table"))?;
         return Ok(TableOutcome::Put(Box::new(def.table.clone()), false));
     }
-    let (Some((_, ours)), Some((_, theirs))) = (ours, theirs) else { return Ok(TableOutcome::Keep) };
+    let (Some((_, mut ours)), Some((_, theirs))) = (ours, theirs) else { return Ok(TableOutcome::Keep) };
+    let brought = carry_artifacts(ctx.db, &mut ours, &theirs, base.as_ref().map(|(_, b)| b))?;
     let base = match base {
         Some((_, base)) => base,
         None => {
@@ -642,21 +644,41 @@ fn merge_table(
             true => base_rows,
             false => convert(ctx, &base, &ours, &base_rows)?,
         };
-        return merge_rows(ctx.db, &ours, &our_rows, &their_rows, &base_rows, commits);
+        return merge_rows(ctx.db, &ours, &our_rows, &their_rows, &base_rows, commits, brought);
     }
     if ours.table.schema == base.table.schema {
         let our_rows = convert(ctx, &ours, &theirs, &our_rows)?;
         let base_rows = convert(ctx, &base, &theirs, &base_rows)?;
         let mut target = theirs.clone();
         target.table.artifacts = ours.table.artifacts.clone();
-        return merge_rows(ctx.db, &target, &their_rows, &our_rows, &base_rows, commits);
+        return merge_rows(ctx.db, &target, &their_rows, &our_rows, &base_rows, commits, brought);
     }
     if theirs.table.schema == base.table.schema {
         let their_rows = convert(ctx, &theirs, &ours, &their_rows)?;
         let base_rows = convert(ctx, &base, &ours, &base_rows)?;
-        return merge_rows(ctx.db, &ours, &our_rows, &their_rows, &base_rows, commits);
+        return merge_rows(ctx.db, &ours, &our_rows, &their_rows, &base_rows, commits, brought);
     }
     Ok(TableOutcome::SchemaConflict)
+}
+
+/// carry_artifacts adds to our table the conflicts and constraint violations that their side added since the merge
+/// base, and drops the ones their side resolved, as Dolt's mergeTableArtifacts does, reporting whether it added any.
+fn carry_artifacts(db: &mut Database, ours: &mut TableDef, theirs: &TableDef, base: Option<&TableDef>) -> Result<bool> {
+    let (mut mine, their) = (artifacts::read(db, ours)?, artifacts::read(db, theirs)?);
+    let ancestor = match base {
+        Some(base) => artifacts::read(db, base)?,
+        None => Vec::new(),
+    };
+    let added: Vec<Artifact> = their.iter().filter(|a| !ancestor.contains(a) && !mine.contains(a)).cloned().collect();
+    let count = mine.len();
+    mine.retain(|a| !ancestor.contains(a) || their.contains(a));
+    if added.is_empty() && mine.len() == count {
+        return Ok(false);
+    }
+    let brought = !added.is_empty();
+    mine.extend(added);
+    ours.table.artifacts = artifacts::write(db, ours, mine)?;
+    Ok(brought)
 }
 
 /// merge_roots merges their root into ours, given the merge base's root, as Dolt's MergeRoots does, without the
