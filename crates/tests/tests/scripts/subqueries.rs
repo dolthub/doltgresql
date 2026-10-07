@@ -479,3 +479,82 @@ ORDER BY 1;"#,
         },
     ]);
 }
+
+#[test]
+fn test_array_subqueries() {
+    run_scripts(&[
+        ScriptTest {
+            name: "ARRAY subqueries",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (a int, b text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (1, 'x'), (2, 'y'), (3, NULL);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY(SELECT a FROM t ORDER BY a DESC), ARRAY(SELECT b FROM t WHERE a > 5), ARRAY(SELECT b FROM t ORDER BY a);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT4_ARRAY), Column("array", TEXT_ARRAY), Column("array", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{3,2,1}"), T("{}"), T("{x,y,NULL}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, ARRAY(SELECT t2.a FROM t t2 WHERE t2.a < t.a) FROM t ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("array", INT4_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{}")],
+                            &[T("2"), T("{1}")],
+                            &[T("3"), T("{1,2}")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY(SELECT a, b FROM t);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "subquery must return only one column", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(ARRAY(SELECT b FROM t));",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("text[]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW av AS SELECT ARRAY(SELECT 1) AS arr;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_viewdef('av');",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_viewdef", TEXT)],
+                        rows: &[
+                            &[T(" SELECT ARRAY( SELECT 1) AS arr;")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

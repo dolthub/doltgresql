@@ -621,7 +621,26 @@ impl Session {
     /// until the next Sync.
     pub fn execute_prepared(&mut self, prepared: &Prepared, parameters: &[Value]) -> Result<Outcome> {
         let Some(statement) = &prepared.statement else { return Ok(Outcome::Empty) };
-        self.run(statement, parameters).map_err(|err| self.fail(err))
+        let parameters = self.reg_parameters(&prepared.parameter_types, parameters).map_err(|err| self.fail(err))?;
+        self.run(statement, &parameters).map_err(|err| self.fail(err))
+    }
+
+    /// reg_parameters looks up the objects that the text of reg-typed parameters names.
+    fn reg_parameters(&mut self, types: &[u32], parameters: &[Value]) -> Result<Vec<Value>> {
+        if !types.iter().any(|&t| crate::cast::is_reg_type(t)) {
+            return Ok(parameters.to_vec());
+        }
+        let mut scratch = Vec::new();
+        self.with_ctx(&mut scratch, &[], |ctx| {
+            parameters
+                .iter()
+                .zip(types)
+                .map(|(value, &ty)| match value {
+                    Value::Text(_) if crate::cast::is_reg_type(ty) => ctx.reg_value(value.clone(), ty),
+                    other => Ok(other.clone()),
+                })
+                .collect()
+        })
     }
 
     /// sync commits the implicit transaction of the extended protocol's messages since the last Sync.

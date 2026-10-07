@@ -97,6 +97,39 @@ pub fn lookup(schema: &str, name: &str) -> Option<&'static CatalogTable> {
     c.by_name.get(&(schema, name)).map(|&i| &c.tables[i])
 }
 
+/// builtin_view_definition returns the definition of a view of pg_catalog or information_schema, as pg_views shows
+/// it, by its OID.
+pub fn builtin_view_definition(oid: u32) -> Option<&'static str> {
+    static VIEWS: OnceLock<HashMap<u32, String>> = OnceLock::new();
+    let views = VIEWS.get_or_init(|| {
+        let (Some(class), Some(views)) = (lookup("pg_catalog", "pg_class"), lookup("pg_catalog", "pg_views")) else {
+            return HashMap::new();
+        };
+        let text = |v: &Value| v.output().unwrap_or_default();
+        let (Some(schema), Some(view), Some(definition)) =
+            (views.column("schemaname"), views.column("viewname"), views.column("definition"))
+        else {
+            return HashMap::new();
+        };
+        let mut definitions: HashMap<(String, String), String> =
+            builtin::rows(views).iter().map(|r| ((text(&r[schema]), text(&r[view])), text(&r[definition]))).collect();
+        let (Some(oid), Some(name), Some(namespace)) =
+            (class.column("oid"), class.column("relname"), class.column("relnamespace"))
+        else {
+            return HashMap::new();
+        };
+        builtin::rows(class)
+            .iter()
+            .filter_map(|r| {
+                let Value::Oid(oid) = r[oid] else { return None };
+                let schema = if r[namespace] == Value::Oid(11) { "pg_catalog" } else { "information_schema" };
+                Some((oid, definitions.remove(&(schema.to_string(), text(&r[name])))?))
+            })
+            .collect()
+    });
+    views.get(&oid).map(String::as_str)
+}
+
 /// is_immutable reports whether an expression calls only functions that have an immutable form, as pg_proc's
 /// provolatile shows them.
 pub fn is_immutable(expr: &pg_query::Node) -> bool {

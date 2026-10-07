@@ -215,7 +215,7 @@ impl Ctx<'_> {
     fn information_schema_views(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let database = self.session.database.clone();
         for view in self.snapshot()?.views {
-            let definition = crate::views::view_definition(&view.statement).unwrap_or_default();
+            let definition = self.view_definition(&view.statement, false, 0).unwrap_or_default();
             rows.push(vec![
                 ("table_catalog", text(database.clone())),
                 ("table_schema", text(view.schema)),

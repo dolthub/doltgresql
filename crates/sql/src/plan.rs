@@ -2158,7 +2158,7 @@ fn push_down(plan: Plan, predicate: Expr) -> Plan {
         c.visit(&mut |e| match e {
             Expr::Column(i) if *i >= width => reads_right = true,
             Expr::Column(_) => reads_left = true,
-            Expr::Exists(_) | Expr::Scalar(_) | Expr::AnySubquery(..) => subquery = true,
+            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => subquery = true,
             _ => {}
         });
         match (reads_left, reads_right, subquery) {

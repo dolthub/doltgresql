@@ -152,6 +152,8 @@ pub enum Expr {
     Exists(Box<Plan>),
     /// The one value the subquery returns, or NULL without rows.
     Scalar(Box<Plan>),
+    /// An array of the element type holding the values the subquery returns.
+    ArraySubquery(Box<Plan>, u32),
     /// Whether the comparison holds for any, or for all, of the subquery's values.
     AnySubquery(Box<Expr>, Box<Plan>, bool),
     /// The subquery value a comparison of AnySubquery tests.
@@ -358,6 +360,24 @@ impl<'b, 'a> Binder<'b, 'a> {
                 let target = resolve_type_name(type_name)?;
                 let arg = cast.arg.as_deref().ok_or_else(|| PgError::internal("no cast argument"))?;
                 let bound = match arg.node.as_ref() {
+                    Some(NodeEnum::AArrayExpr(array))
+                        if crate::array::is_vector_type(crate::usertypes::base_type(target).oid) =>
+                    {
+                        let vector = crate::usertypes::base_type(target);
+                        let (expr, ty) = self.array_expr(array, Some(vector.oid))?;
+                        let (element, from) = (typ(element_type(vector.oid)), typ(element_type(ty.oid)));
+                        let expr = match expr {
+                            Expr::Array(_, items, false) => {
+                                let items = items
+                                    .into_iter()
+                                    .map(|item| coerce((item, from), element, true, cast.location).map(|b| b.0))
+                                    .collect::<Result<Vec<_>>>()?;
+                                Expr::Array(element.oid, items, false)
+                            }
+                            other => other,
+                        };
+                        return coerce((Expr::Cast(Box::new(expr), vector, true), vector), target, true, cast.location);
+                    }
                     Some(NodeEnum::AArrayExpr(array)) if is_array_type(target.oid) => {
                         self.array_expr(array, Some(target.oid))?
                     }
@@ -470,8 +490,41 @@ impl<'b, 'a> Binder<'b, 'a> {
                 let negated = NullTestType::try_from(test.nulltesttype) == Ok(NullTestType::IsNotNull);
                 Ok((Expr::IsNull(Box::new(expr), negated), typ(oid::BOOL)))
             }
+            NodeEnum::CollateClause(collate) => self.collate(collate),
             _ => Err(PgError::unsupported(format!("the expression {}", node_kind(node)))),
         }
+    }
+
+    /// collate binds an expression with a COLLATE clause, which keeps its value and type, since every collation
+    /// sorts as C does, after checking that the collation exists and that the type has collations.
+    fn collate(&mut self, collate: &pg_query::protobuf::CollateClause) -> Result<Bound> {
+        let arg = collate.arg.as_deref().ok_or_else(|| PgError::internal("no collated value"))?;
+        let bound = self.bind(arg)?;
+        let name = collate.collname.iter().filter_map(node_name).next_back().unwrap_or_default();
+        let known = crate::pgcatalog::reg::builtin_column("pg_collation", "collname")
+            .iter()
+            .any(|(_, n)| n.output().is_some_and(|n| n == name));
+        if !known {
+            return Err(PgError {
+                position: position(collate.location),
+                ..PgError::new(
+                    code::UNDEFINED_OBJECT,
+                    format!("collation \"{name}\" for encoding \"UTF8\" does not exist"),
+                )
+            });
+        }
+        let base = crate::usertypes::base_type(bound.1).oid;
+        let element = if is_array_type(base) { element_type(base) } else { base };
+        if !is_string(element) && element != oid::UNKNOWN {
+            return Err(PgError {
+                position: position(collate.location),
+                ..PgError::new(
+                    code::DATATYPE_MISMATCH,
+                    format!("collations are not supported by type {}", type_display(bound.1.oid)),
+                )
+            });
+        }
+        Ok(bound)
     }
 
     /// column binds a column reference.
@@ -1340,6 +1393,16 @@ impl<'b, 'a> Binder<'b, 'a> {
                     typ(oid::BOOL),
                 ))
             }
+            T::ArraySublink => {
+                if query.columns.len() != 1 {
+                    return Err(PgError {
+                        position: position(link.location),
+                        ..PgError::new(code::SYNTAX_ERROR, "subquery must return only one column")
+                    });
+                }
+                let element = query.types[0].oid;
+                Ok((Expr::ArraySubquery(Box::new(query.plan), element), typ(array_of(element))))
+            }
             _ => Err(PgError::unsupported("this kind of subquery")),
         }
     }
@@ -1542,6 +1605,7 @@ impl<'b, 'a> Binder<'b, 'a> {
         };
         infer(self, &left, domain);
         infer(self, &right, domain);
+        let domain = if domain.oid == oid::BPCHAR { typ(oid::TEXT) } else { domain };
         let cmp = match op {
             "=" => Some(CmpOp::Eq),
             "<>" | "!=" => Some(CmpOp::Ne),
@@ -1851,6 +1915,9 @@ impl<'b, 'a> Binder<'b, 'a> {
             ("-", oid::DATE, t) if int(t) => (D::DateMinusDays, oid::DATE, oid::INT4, oid::DATE),
             ("-", oid::DATE, oid::DATE) => (D::DateMinusDate, oid::DATE, oid::DATE, oid::INT4),
             ("+", oid::DATE, oid::TIME) | ("+", oid::TIME, oid::DATE) => (D::DatePlusTime, lt, rt, oid::TIMESTAMP),
+            ("-", oid::DATE, oid::TIME) => {
+                (D::TimestampMinusInterval(false), oid::TIMESTAMP, oid::INTERVAL, oid::TIMESTAMP)
+            }
             ("+", oid::DATE, oid::TIMETZ) | ("+", oid::TIMETZ, oid::DATE) => {
                 (D::DatePlusTimeTz, lt, rt, oid::TIMESTAMPTZ)
             }
@@ -2062,13 +2129,15 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         && !textual;
     let composite =
         |t: u32| crate::usertypes::get(t).is_some_and(|u| matches!(u.kind, crate::usertypes::Kind::Composite(_)));
-    let allowed = explicit
+    let allowed = (explicit
         && (is_array_type(from.oid) == is_array_type(to.oid) || textual)
         && !(composite(from.oid) && composite(to.oid))
         && (!(opaque(from.oid) || opaque(to.oid)) || textual || (bits_or_ints(from.oid) && bits_or_ints(to.oid)))
         && !xml_only_textual
         && !transaction_id
-        || implicitly_converts(from.oid, to.oid);
+        && !oid_without_cast(from.oid, to.oid)
+        || implicitly_converts(from.oid, to.oid))
+        && !(crate::array::is_vector_type(to.oid) && is_array_type(from.oid));
     if !allowed {
         return Err(PgError {
             position: position(location),
@@ -2078,12 +2147,26 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
             )
         });
     }
+    if from.oid == oid::BPCHAR && matches!(to.oid, oid::TEXT | oid::VARCHAR | oid::NAME) {
+        let trimmed = match expr {
+            Expr::Const(Value::Text(text)) => Expr::Const(Value::Text(text.trim_end_matches(' ').to_string())),
+            other => Expr::Func(functions::resolve("rtrim", &[oid::TEXT], location)?.index, vec![other]),
+        };
+        return coerce((trimmed, typ(oid::TEXT)), to, explicit, location);
+    }
     if let Expr::Const(value) = &expr
         && !crate::cast::is_reg_type(to.oid)
     {
         return Ok((Expr::Const(cast_value(value.clone(), to, explicit)?), to));
     }
     Ok((Expr::Cast(Box::new(expr), to, explicit), to))
+}
+
+/// oid_without_cast reports whether Postgres has no cast between oid and a numeric type: from oid to smallint or a
+/// non-integer type, or from a non-integer type to oid.
+fn oid_without_cast(from: u32, to: u32) -> bool {
+    let fractional = |t: u32| matches!(t, oid::FLOAT4 | oid::FLOAT8 | oid::NUMERIC);
+    (from == oid::OID && (to == oid::INT2 || fractional(to))) || (to == oid::OID && fractional(from))
 }
 
 /// user_cast calls the routine of a stored cast from one type to the other that a context allows, passing the
@@ -2277,6 +2360,10 @@ fn figure_name_strength(node: &Node) -> (String, u8) {
             }
         }
         Some(NodeEnum::XmlSerialize(_)) => strong("xmlserialize"),
+        Some(NodeEnum::CollateClause(collate)) => match collate.arg.as_deref() {
+            Some(arg) => figure_name_strength(arg),
+            None => ("?column?".into(), 0),
+        },
         Some(NodeEnum::TypeCast(cast)) => match cast.arg.as_deref().map(figure_name_strength) {
             Some((name, strength)) if strength > 1 => (name, strength),
             _ => match cast.type_name.as_ref().and_then(|t| t.names.iter().filter_map(node_name).next_back()) {
@@ -2702,6 +2789,13 @@ impl Expr {
                     Some(r) => r.into_iter().next().unwrap_or(Value::Null),
                     None => Value::Null,
                 }
+            }
+            Expr::ArraySubquery(plan, element) => {
+                ctx.outer.push(row.to_vec());
+                let rows = plan.run(ctx);
+                ctx.outer.pop();
+                let values = rows?.into_iter().map(|r| r.into_iter().next().unwrap_or(Value::Null)).collect();
+                Value::Array(Box::new(crate::array::Array::one_dimensional(*element, values)))
             }
             Expr::AnySubquery(comparison, plan, all) => {
                 ctx.outer.push(row.to_vec());

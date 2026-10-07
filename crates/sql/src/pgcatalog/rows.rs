@@ -1134,7 +1134,7 @@ impl Ctx<'_> {
     fn pg_views(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let owner = self.session.superuser.clone();
         for view in self.snapshot()?.views {
-            let definition = crate::views::view_definition(&view.statement).unwrap_or_default();
+            let definition = self.view_definition(&view.statement, false, 0).unwrap_or_default();
             rows.push(vec![
                 ("schemaname", text(view.schema)),
                 ("viewname", text(view.name)),

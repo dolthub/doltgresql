@@ -426,11 +426,7 @@ fn float_to_i64(value: f64, type_oid: u32) -> Result<i64> {
 fn cannot_cast(value: &Value, type_oid: u32) -> PgError {
     PgError::new(
         code::CANNOT_COERCE,
-        format!(
-            "cannot cast {} to {}",
-            format!("{value:?}").split('(').next().unwrap_or_default(),
-            type_display(type_oid)
-        ),
+        format!("cannot cast type {} to {}", type_display(crate::functions::value_type(value)), type_display(type_oid)),
     )
 }
 
@@ -698,6 +694,12 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
         let element_type = ColumnType { oid: element, modifier: to.modifier };
         if crate::array::is_vector_type(to.oid) {
             let array = match value {
+                Value::Array(array) if array.dims.len() > 1 || array.values.iter().any(Value::is_null) => {
+                    return Err(PgError::new(
+                        code::DATATYPE_MISMATCH,
+                        format!("array is not a valid {}", type_display(to.oid)),
+                    ));
+                }
                 Value::Array(array) => crate::array::Array::one_dimensional(element, array.values),
                 Value::Text(text) => crate::array::parse_vector(&text, to.oid, &|item| {
                     input(item, element).and_then(|v| cast_value(v, element_type, explicit))
@@ -807,9 +809,7 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
             Value::Int2(i) => Value::Oid(i as u32),
             Value::Int4(i) => Value::Oid(i as u32),
             Value::Int8(i) => Value::Oid(
-                u32::try_from(i)
-                    .or_else(|_| i32::try_from(i).map(|i| i as u32))
-                    .map_err(|_| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "OID out of range"))?,
+                u32::try_from(i).map_err(|_| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "OID out of range"))?,
             ),
             Value::Text(text) => input(&text, to.oid)?,
             other => return Err(cannot_cast(&other, to.oid)),

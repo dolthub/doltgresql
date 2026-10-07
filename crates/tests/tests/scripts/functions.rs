@@ -10876,6 +10876,7 @@ ORDER BY i.indisprimary DESC, c2.relname;"#,
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("the OID literal names a Doltgres view, and Postgres assigns its views other OIDs"),
                     ..A
                 },
             ],

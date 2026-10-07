@@ -16,7 +16,7 @@
 
 use super::{ANY, Function, text};
 use crate::error::{PgError, Result, code};
-use crate::oid::{BOOL, CHAR, INT4, INT8, TEXT};
+use crate::oid::{BOOL, BPCHAR, CHAR, INT4, INT8, TEXT};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -30,6 +30,7 @@ pub const FUNCTIONS: &[Function] = &[
     f("length", &[TEXT], INT4, length),
     f("to_hex", &[INT4], TEXT, to_hex),
     f("to_hex", &[INT8], TEXT, to_hex),
+    f("bpcharcmp", &[BPCHAR, BPCHAR], INT4, bpcharcmp),
     f("char_length", &[TEXT], INT4, length),
     f("character_length", &[TEXT], INT4, length),
     f("octet_length", &[TEXT], INT4, octet_length),
@@ -375,4 +376,10 @@ fn to_hex(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         Value::Int8(i) => format!("{:x}", i as u64),
         _ => String::new(),
     }))
+}
+
+/// bpcharcmp compares two character values without their trailing spaces, returning -1, 0, or 1.
+fn bpcharcmp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let ordering = text(&args[0]).trim_end_matches(' ').cmp(text(&args[1]).trim_end_matches(' '));
+    Ok(Value::Int4(ordering as i32))
 }

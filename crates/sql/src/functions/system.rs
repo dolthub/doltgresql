@@ -181,6 +181,11 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_get_function_sqlbody", &[OID], TEXT, pg_get_function_sqlbody),
     f("pg_get_triggerdef", &[OID], TEXT, pg_get_triggerdef),
     f("pg_get_triggerdef", &[OID, BOOL], TEXT, pg_get_triggerdef),
+    f("pg_get_viewdef", &[OID], TEXT, pg_get_viewdef),
+    f("pg_get_viewdef", &[OID, BOOL], TEXT, pg_get_viewdef),
+    f("pg_get_viewdef", &[OID, INT4], TEXT, pg_get_viewdef),
+    f("pg_get_viewdef", &[TEXT], TEXT, pg_get_viewdef),
+    f("pg_get_viewdef", &[TEXT, BOOL], TEXT, pg_get_viewdef),
 ];
 
 /// current_schemas returns the schemas of the search path that exist, with the ones searched implicitly when asked.
@@ -483,4 +488,28 @@ fn pg_get_function_sqlbody(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 fn pg_get_triggerdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let pretty = matches!(args.get(1), Some(Value::Bool(true)));
     Ok(ctx.trigger_definition_of(oid_arg(&args[0]), pretty)?.map_or(Value::Null, Value::Text))
+}
+
+/// pg_get_viewdef prints a view's query, prettily when asked or when given a column to wrap its lists after, where a
+/// view of pg_catalog or information_schema prints as pg_views shows it, or returns NULL for a relation that is not
+/// a view.
+fn pg_get_viewdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let relation = match &args[0] {
+        Value::Text(name) => match ctx.reg_value(Value::Text(name.clone()), crate::oid::REGCLASS)? {
+            Value::Reg(reg) => reg.oid,
+            _ => 0,
+        },
+        other => oid_arg(other),
+    };
+    let (pretty, wrap) = match args.get(1) {
+        Some(Value::Bool(pretty)) => (*pretty, 0),
+        Some(Value::Int4(wrap)) => (true, *wrap),
+        _ => (false, 0),
+    };
+    let snapshot = ctx.snapshot()?;
+    let view = snapshot.views.iter().find(|v| crate::pgcatalog::snapshot::view_oid(&v.schema, &v.name) == relation);
+    match view {
+        Some(view) => Ok(Value::Text(ctx.view_definition(&view.statement, pretty, wrap)?)),
+        None => Ok(crate::pgcatalog::builtin_view_definition(relation).map_or(Value::Null, |d| Value::Text(d.into()))),
+    }
 }

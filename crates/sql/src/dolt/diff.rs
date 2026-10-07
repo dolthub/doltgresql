@@ -353,7 +353,12 @@ impl UserTable {
             value.visit(&mut |e| {
                 if matches!(
                     e,
-                    Expr::Column(_) | Expr::Outer(..) | Expr::Exists(_) | Expr::Scalar(_) | Expr::AnySubquery(..)
+                    Expr::Column(_)
+                        | Expr::Outer(..)
+                        | Expr::Exists(_)
+                        | Expr::Scalar(_)
+                        | Expr::ArraySubquery(..)
+                        | Expr::AnySubquery(..)
                 ) {
                     constant = false;
                 }

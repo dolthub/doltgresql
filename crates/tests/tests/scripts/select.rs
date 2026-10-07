@@ -675,3 +675,73 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'"#,
         },
     ]);
 }
+
+#[test]
+fn test_collate_clauses() {
+    run_scripts(&[
+        ScriptTest {
+            name: "COLLATE clauses",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT 'a' COLLATE "C", 'b' COLLATE pg_catalog.default, 'c' COLLATE "POSIX", pg_typeof('a' COLLATE "C");"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT), Column("?column?", TEXT), Column("?column?", TEXT), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("a"), T("b"), T("c"), T("unknown")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'a' COLLATE "nope";"#,
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"collation "nope" for encoding "UTF8" does not exist"#, position: 12, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 1 COLLATE "C";"#,
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "collations are not supported by type integer", position: 10, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'b' < 'a' COLLATE "C", 'B' < 'a' COLLATE "C";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT x FROM (VALUES ('b'), ('A'), ('a')) v(x) ORDER BY x COLLATE "C";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("x", TEXT)],
+                        rows: &[
+                            &[T("A")],
+                            &[T("a")],
+                            &[T("b")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'a' COLLATE ucs_basic, 'a'::name COLLATE "C", ARRAY['a'] COLLATE "C";"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT), Column("name", NAME), Column("array", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("a"), T("a"), T("{a}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

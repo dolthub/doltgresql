@@ -88,13 +88,6 @@ fn relations(select: &SelectStmt) -> Vec<String> {
     names
 }
 
-/// view_definition returns the query of a stored CREATE VIEW statement as text, as the catalogs show it.
-pub fn view_definition(fragment: &str) -> Result<String> {
-    let (select, _) = view_query(fragment)?;
-    let text = pg_query::NodeRef::SelectStmt(&select).deparse().map_err(PgError::internal)?;
-    Ok(format!(" {text};"))
-}
-
 /// view_query returns the query of a stored CREATE VIEW statement, with its column names.
 pub fn view_query(fragment: &str) -> Result<(SelectStmt, Vec<String>)> {
     let parsed = pg_query::parse(fragment).map_err(PgError::internal)?;
@@ -109,6 +102,19 @@ pub fn view_query(fragment: &str) -> Result<(SelectStmt, Vec<String>)> {
 }
 
 impl Ctx<'_> {
+    /// view_definition returns the query of a stored CREATE VIEW statement as pg_get_viewdef prints it, prettily when
+    /// asked, wrapping its target and FROM lists after `wrap` columns, or as pg_query deparses it when its relations
+    /// cannot be found.
+    pub fn view_definition(&mut self, fragment: &str, pretty: bool, wrap: i32) -> Result<String> {
+        let (select, aliases) = view_query(fragment)?;
+        let text =
+            match crate::ruleutils::Analyzer::new(self, Vec::new()).deparse_query(&select, &aliases, pretty, wrap) {
+                Ok(text) => text,
+                Err(_) => format!(" {}", pg_query::NodeRef::SelectStmt(&select).deparse().map_err(PgError::internal)?),
+            };
+        Ok(format!("{text};"))
+    }
+
     /// views returns the name and statement of each view in a schema.
     pub fn views(&mut self, schema: &str) -> Result<Vec<(String, String)>> {
         let Some(table) = self.txn.table(self.db, schema, DOLT_SCHEMAS)? else { return Ok(Vec::new()) };

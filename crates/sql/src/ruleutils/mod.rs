@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Postgres' ruleutils for expressions: shaping a parsed expression with the casts that Postgres' parse analysis adds
-//! for the common built-in types, and printing it as pg_get_expr, pg_get_constraintdef, and EXPLAIN print theirs,
-//! with or without pretty-printing.
+//! Postgres' ruleutils: shaping a parsed expression or query with the casts that Postgres' parse analysis adds for the
+//! common built-in types, and printing it as pg_get_expr, pg_get_constraintdef, pg_get_viewdef, and EXPLAIN print
+//! theirs, with or without pretty-printing.
+
+mod query;
 
 use pg_query::protobuf::a_const::Val;
 use pg_query::protobuf::{AExprKind, BoolExprType, BoolTestType, MinMaxOp, NullTestType, SqlValueFunctionOp};
@@ -54,15 +56,32 @@ enum TExpr {
     /// A comparison with each element of an array, holding for any element, or for all when the flag is unset.
     ArrayOp(String, bool, Box<TExpr>, Box<TExpr>),
     Array(Vec<TExpr>, u32),
-    /// CASE with its test value, conditions and results, and default.
-    Case(Option<Box<TExpr>>, Vec<(TExpr, TExpr)>, Option<Box<TExpr>>, u32),
+    /// CASE with its test value, the conditions or test values and results of its WHEN clauses, and default.
+    Case(Option<Box<TExpr>>, Vec<(TExpr, TExpr)>, Box<TExpr>, u32),
     Coalesce(Vec<TExpr>, u32),
     /// GREATEST, or LEAST when the flag is unset.
     MinMax(bool, Vec<TExpr>, u32),
     NullIf(Box<TExpr>, Box<TExpr>, u32),
     Row(Vec<TExpr>),
+    /// A subquery of a kind, with the value and operator that ANY and ALL compare its rows with, and its type.
+    Sub(SubKind, Option<Box<TExpr>>, String, Box<query::TQuery>, u32),
+    /// An aggregate or window function call with its modifiers.
+    Agg(Box<query::Agg>),
+    /// A function that the SQL standard spells with keywords, such as EXTRACT, by its function name, and its type.
+    Syntax(String, Vec<TExpr>, u32),
     /// An expression this module does not shape, as pg_query deparses it.
     Raw(String),
+}
+
+/// SubKind is the kind of a subquery in an expression.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum SubKind {
+    Exists,
+    Any,
+    All,
+    /// The one value of a subquery's one row.
+    Value,
+    Array,
 }
 
 /// typ returns a column type without a modifier.
@@ -82,7 +101,10 @@ impl TExpr {
             | TExpr::Case(.., t)
             | TExpr::Coalesce(_, t)
             | TExpr::MinMax(_, _, t)
-            | TExpr::NullIf(_, _, t) => typ(*t),
+            | TExpr::NullIf(_, _, t)
+            | TExpr::Sub(.., t)
+            | TExpr::Syntax(_, _, t) => typ(*t),
+            TExpr::Agg(agg) => typ(agg.ret),
             TExpr::Bool(..)
             | TExpr::Not(_)
             | TExpr::NullTest(..)
@@ -126,18 +148,22 @@ pub struct Analyzer<'c, 'a> {
     columns: Vec<(String, ColumnType)>,
     /// The relation names that may qualify columns, which a trigger's condition gives as `old` and `new`.
     qualifiers: &'static [&'static str],
+    /// The FROM items that a query's column references resolve against, for each enclosing query, innermost last.
+    scopes: Vec<Vec<query::Rte>>,
+    /// The common table expressions in scope with their columns, innermost last.
+    ctes: Vec<(String, Vec<(String, ColumnType)>)>,
 }
 
 impl<'c, 'a> Analyzer<'c, 'a> {
     /// new returns an analyzer over columns.
     pub fn new(ctx: &'c mut Ctx<'a>, columns: Vec<(String, ColumnType)>) -> Analyzer<'c, 'a> {
-        Analyzer { ctx, columns, qualifiers: &[] }
+        Analyzer { ctx, columns, qualifiers: &[], scopes: Vec::new(), ctes: Vec::new() }
     }
 
     /// trigger returns an analyzer over the columns of a trigger's table, which its condition names through `old`
     /// and `new`.
     pub fn trigger(ctx: &'c mut Ctx<'a>, columns: Vec<(String, ColumnType)>) -> Analyzer<'c, 'a> {
-        Analyzer { ctx, columns, qualifiers: &["old", "new"] }
+        Analyzer { ctx, columns, qualifiers: &["old", "new"], scopes: Vec::new(), ctes: Vec::new() }
     }
 
     /// deparse prints an expression's text as Postgres' deparse_expression does, at the top level where implicit casts
@@ -148,7 +174,7 @@ impl<'c, 'a> Analyzer<'c, 'a> {
         if let Some(target) = target {
             analyzed = self.coerce(analyzed, target);
         }
-        Ok(Printer { pretty, indents: true, indent: 0 }.print(&analyzed, None, false))
+        Ok(Printer { pretty, indents: true, level: 0, wrap: 0 }.print(&analyzed, None, false))
     }
 
     /// constant returns a constant of a type, normalizing its text through the type's input and output when it can.
@@ -291,6 +317,9 @@ impl<'c, 'a> Analyzer<'c, 'a> {
                     _ => (None, names.last().copied().unwrap_or_default()),
                 };
                 let star = column.fields.len() == names.len() + 1;
+                if let Some(var) = self.resolve_column(&names, star) {
+                    return Ok(var);
+                }
                 match self.columns.iter().find(|(n, _)| n == name) {
                     _ if star && names.len() == 1 && self.qualifiers.contains(&name) => {
                         TExpr::Var(Some(name.to_string()), "*".into(), typ(oid::RECORD))
@@ -381,32 +410,8 @@ impl<'c, 'a> Analyzer<'c, 'a> {
                 Ok(SqlValueFunctionOp::SvfopCurrentSchema) => TExpr::Keyword("CURRENT_SCHEMA", oid::NAME),
                 _ => raw(),
             },
-            NodeEnum::FuncCall(call) => {
-                let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default().to_string();
-                if call.agg_star {
-                    return Ok(TExpr::Func(format!("{name}(*)"), Vec::new(), oid::INT8));
-                }
-                let mut args = Vec::with_capacity(call.args.len());
-                for arg in &call.args {
-                    args.push(self.analyze(arg)?);
-                }
-                if matches!(name.as_str(), "nextval" | "currval" | "setval") && !args.is_empty() {
-                    let first = args.remove(0);
-                    args.insert(0, self.coerce(first, typ(oid::REGCLASS)));
-                }
-                let types: Vec<u32> = args.iter().map(|a| a.ty().oid).collect();
-                match crate::functions::resolve(&name, &types, -1) {
-                    Ok(resolved) => {
-                        let mut coerced = Vec::with_capacity(args.len());
-                        for (arg, &target) in args.into_iter().zip(&resolved.arg_types) {
-                            let target = if target == crate::functions::ANY { arg.ty().oid } else { target };
-                            coerced.push(self.coerce(arg, typ(target)));
-                        }
-                        TExpr::Func(name, coerced, resolved.ret)
-                    }
-                    Err(_) => TExpr::Func(name, args, oid::UNKNOWN),
-                }
-            }
+            NodeEnum::FuncCall(call) => return self.call(call),
+            NodeEnum::SubLink(link) => return self.sublink(link),
             NodeEnum::CoalesceExpr(c) => {
                 let items = c.args.iter().map(|a| self.analyze(a)).collect::<Result<Vec<_>>>()?;
                 let common = Self::common_type(&items);
@@ -431,20 +436,24 @@ impl<'c, 'a> Analyzer<'c, 'a> {
             }
             NodeEnum::RowExpr(row) => TExpr::Row(row.args.iter().map(|a| self.analyze(a)).collect::<Result<Vec<_>>>()?),
             NodeEnum::CaseExpr(case) => {
-                let arg = match case.arg.as_deref() {
-                    Some(arg) => Some(Box::new(self.analyze(arg)?)),
+                let mut arg = match case.arg.as_deref() {
+                    Some(arg) => Some(self.analyze(arg)?),
                     None => None,
                 };
                 let mut whens = Vec::new();
                 for when in &case.args {
                     let Some(NodeEnum::CaseWhen(w)) = when.node.as_ref() else { continue };
                     let (Some(condition), Some(result)) = (w.expr.as_deref(), w.result.as_deref()) else { continue };
-                    let condition = self.analyze(condition)?;
-                    let condition = match &arg {
-                        Some(arg) => self.binary("=", (**arg).clone(), condition),
-                        None => condition,
-                    };
-                    whens.push((condition, self.analyze(result)?));
+                    whens.push((self.analyze(condition)?, self.analyze(result)?));
+                }
+                if let Some(test) = arg.take() {
+                    let mut values = vec![test.clone()];
+                    values.extend(whens.iter().map(|(v, _)| v.clone()));
+                    let common = Self::common_type(&values);
+                    arg = Some(self.coerce(test, typ(common)));
+                    whens = whens.into_iter().map(|(v, r)| (self.coerce(v, typ(common)), r)).collect();
+                } else {
+                    whens = whens.into_iter().map(|(c, r)| (self.coerce(c, typ(oid::BOOL)), r)).collect();
                 }
                 let default = match case.defresult.as_deref() {
                     Some(d) => Some(self.analyze(d)?),
@@ -454,8 +463,11 @@ impl<'c, 'a> Analyzer<'c, 'a> {
                 results.extend(default.clone());
                 let common = Self::common_type(&results);
                 let whens = whens.into_iter().map(|(c, r)| (c, self.coerce(r, typ(common)))).collect();
-                let default = default.map(|d| Box::new(self.coerce(d, typ(common))));
-                TExpr::Case(None, whens, default, common)
+                let default = match default {
+                    Some(d) => self.coerce(d, typ(common)),
+                    None => TExpr::Const(None, typ(common)),
+                };
+                TExpr::Case(arg.map(Box::new), whens, Box::new(default), common)
             }
             _ => raw(),
         })
@@ -537,12 +549,27 @@ impl<'c, 'a> Analyzer<'c, 'a> {
     }
 }
 
-/// Printer prints analyzed expressions as Postgres' get_rule_expr does, putting CASE keywords on their own lines
-/// when it indents.
+/// Printer prints analyzed expressions as Postgres' get_rule_expr does, and queries as its get_query_def does, putting
+/// CASE keywords and query clauses on their own lines when it indents.
 struct Printer {
     pretty: bool,
     indents: bool,
-    indent: usize,
+    /// The indentation of the lines that keywords start, as Postgres' indentLevel counts it.
+    level: i32,
+    /// The column that target lists and FROM lists wrap after, or a negative number for no wrapping.
+    wrap: i32,
+}
+
+/// The indentation steps of Postgres' ruleutils.c.
+const INDENT_STD: i32 = 8;
+const INDENT_JOIN: i32 = 4;
+const INDENT_VAR: i32 = 4;
+const INDENT_LIMIT: i32 = 40;
+
+/// trim_spaces removes the spaces that end the text.
+fn trim_spaces(out: &mut String) {
+    let trimmed = out.trim_end_matches(' ').len();
+    out.truncate(trimmed);
 }
 
 /// simple_op returns the operator of a binary operator call whose priority pretty-printing knows, `+ -` or `* / %`.
@@ -569,6 +596,8 @@ impl Printer {
             | TExpr::MinMax(..)
             | TExpr::NullIf(..)
             | TExpr::Case(..)
+            | TExpr::Agg(_)
+            | TExpr::Syntax(..)
             | TExpr::Raw(_) => true,
             TExpr::Cast(arg, _, _) => self.is_simple(arg, e, true),
             TExpr::Op(..) if matches!(parent, TExpr::Op(..)) => {
@@ -582,22 +611,25 @@ impl Printer {
                 }
                 first
             }
-            TExpr::Op(..) | TExpr::NullTest(..) | TExpr::BoolTest(..) | TExpr::Distinct(..) => matches!(
-                parent,
-                TExpr::Bool(..)
-                    | TExpr::Not(_)
-                    | TExpr::Func(..)
-                    | TExpr::Array(..)
-                    | TExpr::Row(_)
-                    | TExpr::Coalesce(..)
-                    | TExpr::MinMax(..)
-                    | TExpr::NullIf(..)
-                    | TExpr::Case(..)
-            ),
+            TExpr::Op(..) | TExpr::NullTest(..) | TExpr::BoolTest(..) | TExpr::Distinct(..) | TExpr::Sub(..) => {
+                matches!(
+                    parent,
+                    TExpr::Bool(..)
+                        | TExpr::Not(_)
+                        | TExpr::Func(..)
+                        | TExpr::Agg(_)
+                        | TExpr::Array(..)
+                        | TExpr::Row(_)
+                        | TExpr::Coalesce(..)
+                        | TExpr::MinMax(..)
+                        | TExpr::NullIf(..)
+                        | TExpr::Case(..)
+                )
+            }
             TExpr::Bool(and, _) => match parent {
                 TExpr::Bool(parent_and, _) => *and || !parent_and,
-                TExpr::Not(_) => *and,
                 TExpr::Func(..)
+                | TExpr::Agg(_)
                 | TExpr::Array(..)
                 | TExpr::Row(_)
                 | TExpr::Coalesce(..)
@@ -644,16 +676,24 @@ impl Printer {
         if label && needs_label { format!("{body}::{}", type_name()) } else { body }
     }
 
-    /// keyword starts a line at the current indentation when the printer indents, and otherwise follows a space unless
-    /// it starts the text.
-    fn keyword(&self, out: &mut String, word: &str) {
+    /// context_keyword appends a keyword as Postgres' appendContextKeyword does: when the printer indents, on a new
+    /// line indented to the level after adding `before` to it, plus `plus`, then adding `after` to the level.
+    fn context_keyword(&mut self, out: &mut String, word: &str, before: i32, after: i32, plus: i32) {
         if self.indents {
+            self.level += before;
+            trim_spaces(out);
             out.push('\n');
-            out.push_str(&" ".repeat(self.indent));
-        } else if !out.is_empty() {
-            out.push(' ');
+            let amount = if self.level < INDENT_LIMIT {
+                self.level.max(0) + plus
+            } else {
+                (INDENT_LIMIT + (self.level - INDENT_LIMIT) / 2) % INDENT_LIMIT + plus
+            };
+            out.push_str(&" ".repeat(amount as usize));
+            out.push_str(word);
+            self.level = (self.level + after).max(0);
+        } else {
+            out.push_str(word);
         }
-        out.push_str(word);
     }
 
     /// print prints an expression as Postgres' get_rule_expr does.
@@ -666,6 +706,9 @@ impl Printer {
             TExpr::Const(text, ty) => Self::constant(text.as_deref(), *ty, true),
             TExpr::Param(n) => format!("${n}"),
             TExpr::Raw(text) => text.clone(),
+            TExpr::Sub(kind, test, op, query, _) => self.sublink(*kind, test.as_deref(), op, query, e),
+            TExpr::Agg(agg) => self.aggregate(agg),
+            TExpr::Syntax(name, args, _) => self.syntax(name, args, e),
             TExpr::Op(op, args, _) => {
                 let text = match args.as_slice() {
                     [arg] => format!("{op} {}", self.print_paren(arg, e, true, true)),
@@ -757,24 +800,29 @@ impl Printer {
             }
             TExpr::Case(arg, whens, default, _) => {
                 let mut out = String::new();
-                self.keyword(&mut out, "CASE");
+                self.context_keyword(&mut out, "CASE", 0, INDENT_VAR, 0);
                 if let Some(arg) = arg {
                     out.push(' ');
                     out.push_str(&self.print(arg, Some(e), true));
                 }
-                self.indent += 4;
                 for (condition, result) in whens {
-                    self.keyword(&mut out, "WHEN ");
+                    if !self.indents {
+                        out.push(' ');
+                    }
+                    self.context_keyword(&mut out, "WHEN ", 0, 0, 0);
                     out.push_str(&self.print(condition, Some(e), false));
                     out.push_str(" THEN ");
                     out.push_str(&self.print(result, Some(e), true));
                 }
-                if let Some(default) = default {
-                    self.keyword(&mut out, "ELSE ");
-                    out.push_str(&self.print(default, Some(e), true));
+                if !self.indents {
+                    out.push(' ');
                 }
-                self.indent -= 4;
-                self.keyword(&mut out, "END");
+                self.context_keyword(&mut out, "ELSE ", 0, 0, 0);
+                out.push_str(&self.print(default, Some(e), true));
+                if !self.indents {
+                    out.push(' ');
+                }
+                self.context_keyword(&mut out, "END", -INDENT_VAR, 0, 0);
                 out
             }
         }

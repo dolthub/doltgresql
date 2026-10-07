@@ -737,6 +737,37 @@ struct Parsed {
     offset: Option<i32>,
     zone: Option<Zone>,
     julian: Option<i64>,
+    /// Whether a month name set the month.
+    text_month: bool,
+    /// Whether the year had two digits or fewer, which makes it a year near 2000.
+    two_digit: bool,
+}
+
+impl Parsed {
+    /// decode_number sets the next date field to a number, as Postgres' DecodeNumber chooses it from the fields
+    /// already set, whether a month name set the month, and the DateStyle order, failing when the date is complete.
+    fn decode_number(&mut self, n: i64, digits: usize, order: Order) -> bool {
+        let year = |p: &mut Parsed| {
+            p.year = Some(n);
+            p.two_digit = digits <= 2;
+        };
+        match (self.year.is_some(), self.month.is_some(), self.day.is_some()) {
+            (false, false, false) if digits >= 3 || order == Order::Ymd => year(self),
+            (false, false, false) if order == Order::Dmy => self.day = Some(n),
+            (false, false, false) | (true, false, false) | (false, false, true) => self.month = Some(n),
+            (false, true, false) if self.text_month && (digits >= 3 || order == Order::Ymd) => year(self),
+            (false, true, false) => self.day = Some(n),
+            (true, true, false) if self.text_month && digits >= 3 && self.two_digit => {
+                self.day = self.year;
+                self.year = Some(n);
+                self.two_digit = false;
+            }
+            (true, true, false) => self.day = Some(n),
+            (false, true, true) => year(self),
+            _ => return false,
+        }
+        true
+    }
 }
 
 /// month_number returns the number of a month name or its three-letter abbreviation.
@@ -833,6 +864,13 @@ fn tokens(text: &str) -> Vec<String> {
         } else if c == 'Z' && !current.is_empty() && current.contains(':') && i + 1 == chars.len() {
             out.push(std::mem::take(&mut current));
             current.push('Z');
+        } else if (c.is_ascii_alphabetic() && !current.is_empty() && current.bytes().all(|b| b.is_ascii_digit()))
+            || (c.is_ascii_digit()
+                && current.chars().all(|l| l.is_ascii_alphabetic())
+                && (month_number(&current).is_some() || is_weekday(&current)))
+        {
+            out.push(std::mem::take(&mut current));
+            current.push(c);
         } else {
             current.push(c);
         }
@@ -851,7 +889,6 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
     if words.is_empty() {
         return Err(invalid(kind, text));
     }
-    let mut pending_numbers: Vec<String> = Vec::new();
     for (index, word) in words.iter().enumerate() {
         let lower = word.to_ascii_lowercase();
         match lower.as_str() {
@@ -912,6 +949,12 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
             return Err(invalid(kind, text));
         }
         if let Some(m) = month_number(word) {
+            if let (Some(numeric), false, None) = (p.month, p.text_month, p.day)
+                && (1..=31).contains(&numeric)
+            {
+                p.day = Some(numeric);
+            }
+            p.text_month = true;
             p.month = Some(m);
             continue;
         }
@@ -921,35 +964,14 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
         if word.contains(['-', '/', '.']) && word.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) {
             let parts: Vec<&str> = word.split(['-', '/', '.']).collect();
             if parts.len() == 3 && parts.iter().all(|s| !s.is_empty()) {
-                let numbers: Vec<Option<i64>> = parts.iter().map(|s| s.parse::<i64>().ok()).collect();
-                let names: Vec<Option<i64>> = parts.iter().map(|s| month_number(s)).collect();
-                if let Some(i) = names.iter().position(Option::is_some) {
-                    p.month = names[i];
-                    let others: Vec<i64> =
-                        numbers.iter().enumerate().filter(|(j, _)| *j != i).filter_map(|(_, n)| *n).collect();
-                    if others.len() != 2 {
-                        return Err(invalid(kind, text));
-                    }
-                    // A long first number is the year, as in 2020-Jan-02, and otherwise the year comes last.
-                    if i != 0 && parts[0].len() > 2 {
-                        (p.year, p.day) = (Some(others[0]), Some(others[1]));
-                    } else {
-                        (p.day, p.year) = (Some(others[0]), Some(others[1]));
-                    }
-                    continue;
+                if let Some(m) = parts.iter().find_map(|s| month_number(s)) {
+                    p.text_month = true;
+                    p.month = Some(m);
                 }
-                let n: Vec<i64> = numbers.into_iter().collect::<Option<_>>().ok_or_else(|| invalid(kind, text))?;
-                if parts[0].len() >= 3 || order == Order::Ymd {
-                    (p.year, p.month, p.day) = (Some(n[0]), Some(n[1]), Some(n[2]));
-                    if parts[0].len() <= 2 {
-                        p.year = Some(two_digit_year(n[0]));
-                    }
-                } else {
-                    let year = if parts[2].len() <= 2 { two_digit_year(n[2]) } else { n[2] };
-                    if order == Order::Dmy {
-                        (p.day, p.month, p.year) = (Some(n[0]), Some(n[1]), Some(year));
-                    } else {
-                        (p.month, p.day, p.year) = (Some(n[0]), Some(n[1]), Some(year));
+                for part in parts.iter().filter(|s| month_number(s).is_none()) {
+                    let n: i64 = part.parse().map_err(|_| invalid(kind, text))?;
+                    if !p.decode_number(n, part.len(), order) {
+                        return Err(invalid(kind, text));
                     }
                 }
                 continue;
@@ -960,18 +982,13 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
             }
         }
         if word.bytes().all(|b| b.is_ascii_digit()) {
-            if p.year.is_none() && p.month.is_none() && word.len() == 8 && pending_numbers.is_empty() {
+            if p.year.is_none() && p.month.is_none() && word.len() == 8 {
                 p.year = word[..4].parse().ok();
                 p.month = word[4..6].parse().ok();
                 p.day = word[6..].parse().ok();
                 continue;
             }
-            if p.year.is_none()
-                && p.month.is_none()
-                && word.len() == 6
-                && pending_numbers.is_empty()
-                && words.len() == 1
-            {
+            if p.year.is_none() && p.month.is_none() && word.len() == 6 && words.len() == 1 {
                 p.year = Some(two_digit_year(word[..2].parse().unwrap_or(0)));
                 p.month = word[2..4].parse().ok();
                 p.day = word[4..].parse().ok();
@@ -983,7 +1000,9 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
                 p.second = word.get(4..6).and_then(|s| s.parse().ok()).unwrap_or(0);
                 continue;
             }
-            pending_numbers.push(word.clone());
+            if !p.decode_number(word.parse().map_err(|_| invalid(kind, text))?, word.len(), order) {
+                return Err(invalid(kind, text));
+            }
             continue;
         }
         if word.contains('.') && word.bytes().all(|b| b.is_ascii_digit() || b == b'.') && p.hour.is_some() {
@@ -995,18 +1014,8 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
         }
         return Err(invalid(kind, text));
     }
-    // Loose numbers fill the date fields that month names and dates left open.
-    for number in pending_numbers {
-        let n: i64 = number.parse().map_err(|_| invalid(kind, text))?;
-        if p.month.is_some() && p.day.is_none() && number.len() <= 2 {
-            p.day = Some(n);
-        } else if p.year.is_none() && (number.len() > 2 || p.day.is_some()) {
-            p.year = Some(if number.len() <= 2 { two_digit_year(n) } else { n });
-        } else if p.day.is_none() {
-            p.day = Some(n);
-        } else {
-            return Err(invalid(kind, text));
-        }
+    if p.two_digit && !p.bc {
+        p.year = p.year.map(two_digit_year);
     }
     Ok(p)
 }

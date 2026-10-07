@@ -273,7 +273,8 @@ impl Value {
         })
     }
 
-    /// decode returns a parameter value sent in the format for the type, where a zero type OID means unspecified.
+    /// decode returns a parameter value sent in the format for the type, where a zero type OID means unspecified, and
+    /// the text of a reg type stays text for the session to look up.
     pub fn decode(type_oid: u32, format: i16, bytes: Option<&[u8]>) -> Result<Value> {
         let Some(bytes) = bytes else { return Ok(Value::Null) };
         if format == BINARY_FORMAT && array::is_array_type(type_oid) {
@@ -345,6 +346,7 @@ impl Value {
         })?;
         match type_oid {
             oid::TEXT | oid::UNKNOWN | 0 => Ok(Value::Text(text.to_string())),
+            _ if crate::cast::is_reg_type(type_oid) => Ok(Value::Text(text.to_string())),
             _ => crate::cast::input(text, type_oid),
         }
     }
