@@ -241,6 +241,11 @@ impl Config {
         }
         self.tls_cert = listener["tls_cert"].as_str().map(PathBuf::from);
         self.tls_key = listener["tls_key"].as_str().map(PathBuf::from);
+        if listener["require_secure_transport"].as_bool() == Some(true)
+            && (self.tls_key.is_none() || self.tls_cert.is_none())
+        {
+            return Err("require_secure_transport can only be `true` when a tls_key and tls_cert are provided.".into());
+        }
         Ok(())
     }
 }

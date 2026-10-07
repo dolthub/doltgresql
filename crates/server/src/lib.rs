@@ -81,11 +81,20 @@ impl Server {
 fn tls_config(cert: &std::path::Path, key: &std::path::Path) -> Result<rustls::ServerConfig, String> {
     use rustls::pki_types::pem::PemObject;
     use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    let missing = |path: &std::path::Path| format!("open {}: no such file or directory", path.display());
+    if !cert.exists() {
+        return Err(missing(cert));
+    }
+    if !key.exists() {
+        return Err(missing(key));
+    }
     let chain = CertificateDer::pem_file_iter(cert)
         .and_then(|certs| certs.collect::<Result<Vec<_>, _>>())
         .map_err(|err| format!("cannot read {}: {err}", cert.display()))?;
     let key = PrivateKeyDer::from_pem_file(key).map_err(|err| format!("cannot read {}: {err}", key.display()))?;
-    rustls::ServerConfig::builder()
+    rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+        .with_safe_default_protocol_versions()
+        .map_err(|err| format!("invalid TLS configuration: {err}"))?
         .with_no_client_auth()
         .with_single_cert(chain, key)
         .map_err(|err| format!("invalid TLS certificate or key: {err}"))
