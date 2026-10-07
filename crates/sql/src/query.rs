@@ -80,6 +80,12 @@ impl Ctx<'_> {
                 return Ok(table);
             }
         }
+        if relation.schemaname.is_empty()
+            && relation.relname == "dolt_rebase"
+            && let Some(table) = self.txn.table(self.db, "dolt", "rebase")?
+        {
+            return Ok(table);
+        }
         Err(undefined_table(relation))
     }
 

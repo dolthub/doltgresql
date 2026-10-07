@@ -750,7 +750,9 @@ impl Delta {
     /// as Dolt's ShouldIgnoreDelta decides.
     fn ignored(&self, patterns: &crate::dolt::ignore::Patterns) -> Result<bool> {
         match (&self.from, &self.to) {
-            (None, Some((name, _))) | (Some((name, _)), None) => crate::dolt::ignore::is_ignored(patterns, &name.1),
+            (None, Some((name, _))) | (Some((name, _)), None) => {
+                crate::dolt::ignore::is_ignored(patterns, &name.0, &name.1)
+            }
             _ => Ok(false),
         }
     }

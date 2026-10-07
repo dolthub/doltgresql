@@ -51,6 +51,7 @@ pub const FUNCTIONS: &[Function] = &[
     v("dolt_conflicts_resolve", INT8, crate::dolt::conflicts::dolt_conflicts_resolve),
     v("dolt_revert", RECORD, crate::dolt::revert::dolt_revert),
     v("dolt_cherry_pick", RECORD, crate::dolt::revert::dolt_cherry_pick),
+    v("dolt_rebase", RECORD, crate::dolt::rebase::dolt_rebase),
     v("dolt_remote", INT8, crate::dolt::remotes::dolt_remote),
     v("dolt_push", RECORD, crate::dolt::remotes::dolt_push),
     v("dolt_fetch", INT8, crate::dolt::remotes::dolt_fetch),
@@ -406,7 +407,7 @@ fn ignored_tables(
             let found = crate::dolt::ignore::patterns(ctx, &working, &name.0)?;
             patterns.insert(name.0.clone(), found);
         }
-        if crate::dolt::ignore::is_ignored(&patterns[&name.0], &name.1)? {
+        if crate::dolt::ignore::is_ignored(&patterns[&name.0], &name.0, &name.1)? {
             ignored.insert(name.clone());
         }
     }
@@ -633,7 +634,7 @@ pub fn commit_staged(ctx: &mut Ctx<'_>, parents: Vec<Hash>, meta: CommitMeta) ->
 }
 
 /// amend_commit replaces the head commit with one of the staged root on the head's parents.
-fn amend_commit(ctx: &mut Ctx<'_>, head: &history::CommitInfo, meta: CommitMeta) -> Result<Hash> {
+pub(crate) fn amend_commit(ctx: &mut Ctx<'_>, head: &history::CommitInfo, meta: CommitMeta) -> Result<Hash> {
     let commit = ctx.db.build_commit(None, ctx.txn.staged.encode(), head.parents.clone(), &meta)?;
     ctx.db.write_value(commit.bytes.clone())?;
     ctx.db.set_head(&branch_ref(&ctx.txn.branch), commit.hash)?;
@@ -960,7 +961,7 @@ fn check_ignored_overwrite(ctx: &mut Ctx<'_>, target: &Root) -> Result<()> {
     let mut overwritten = Vec::new();
     for ((schema, name), address) in table_map(ctx.db, &working)? {
         let patterns = crate::dolt::ignore::patterns(ctx, &working, &schema)?;
-        if !crate::dolt::ignore::is_ignored(&patterns, &name)? {
+        if !crate::dolt::ignore::is_ignored(&patterns, &schema, &name)? {
             continue;
         }
         if target.table(ctx.db, &schema, &name)?.is_some_and(|other| other != address) {

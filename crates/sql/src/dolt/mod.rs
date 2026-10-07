@@ -28,6 +28,7 @@ pub mod objmerge;
 pub mod patch;
 pub mod procedures;
 pub mod querydiff;
+pub mod rebase;
 pub mod remotes;
 pub mod revert;
 pub mod stash;

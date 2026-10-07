@@ -151,7 +151,7 @@ pub fn changed(ctx: &mut Ctx<'_>, from: &Root, to: &Root) -> Result<Vec<Name>> {
     for delta in crate::dolt::diff::deltas(ctx.db, from, to)? {
         if let (None, Some((name, _)), false) = (&delta.from, &delta.to, delta.object) {
             let patterns = crate::dolt::ignore::patterns(ctx, to, &name.0)?;
-            if crate::dolt::ignore::is_ignored(&patterns, &name.1)? {
+            if crate::dolt::ignore::is_ignored(&patterns, &name.0, &name.1)? {
                 continue;
             }
         }
@@ -481,4 +481,94 @@ fn continue_cherry_pick(ctx: &mut Ctx<'_>) -> Result<Value> {
     ctx.txn.merge = None;
     let hash = commit_staged(ctx, Vec::new(), picked_meta(ctx, &original)?)?;
     Ok(outcome(&hash.to_string(), Counts::default()))
+}
+
+/// PickOptions are how a rebase picks a commit, as Dolt's CherryPickOptions for a rebase step say: whether to amend
+/// the head commit, the message to commit with in place of the original's, and whether to drop a commit that the pick
+/// leaves empty.
+pub(crate) struct PickOptions {
+    pub amend: bool,
+    pub message: Option<String>,
+    pub drop_empty: bool,
+}
+
+/// Picked is how picking a commit for a rebase ended.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Picked {
+    Done,
+    /// The pick left conflicts or constraint violations, with the merge state recorded to resolve them.
+    Conflicts,
+    SchemaConflicts,
+}
+
+/// pick_for_rebase cherry-picks a commit onto the session's branch as a rebase step does with Dolt's CherryPick, which
+/// keeps commits that start empty and amends the head commit when asked.
+pub(crate) fn pick_for_rebase(ctx: &mut Ctx<'_>, spec: &str, options: &PickOptions) -> Result<Picked> {
+    let head = head_root(ctx)?;
+    let (staged, working) = (ctx.txn.staged.clone(), ctx.txn.root.clone());
+    if !crate::dolt::diff::deltas(ctx.db, &head, &staged)?.is_empty() || !changed(ctx, &staged, &working)?.is_empty() {
+        return Err(error("cannot cherry-pick with uncommitted changes"));
+    }
+    let hash = history::resolve(ctx.db, ctx.txn.head, spec)?;
+    let commit = history::load(ctx.db, hash)?;
+    let parent = match commit.parents.as_slice() {
+        [parent] => *parent,
+        [] => return Err(error("cherry-picking a commit without parents is not supported")),
+        _ => return Err(error("cherry-picking a merge commit is not supported")),
+    };
+    let parent_info = history::load(ctx.db, parent)?;
+    let empty = commit.root == parent_info.root;
+    let (theirs, base) = (root_of(ctx, &commit)?, root_of(ctx, &parent_info)?);
+    let commits = Commits { ours: ctx.txn.head, theirs: commit.hash, base: parent };
+    let (counts, unmergable) = apply(ctx, &theirs, &base, commits)?;
+    if !unmergable.is_empty() {
+        return Ok(Picked::SchemaConflicts);
+    }
+    if Hash::of(&ctx.txn.root.encode()) == ctx.txn.head_root && !empty {
+        ctx.txn.root = working;
+        ctx.txn.staged = staged;
+        return Err(error("no changes were made, nothing to commit"));
+    }
+    if counts.any() {
+        start_merge(ctx, &working, commit.hash, spec, &unmergable)?;
+        if let Some(merge) = ctx.txn.merge.as_mut() {
+            merge.is_cherry_pick = true;
+        }
+        return Ok(Picked::Conflicts);
+    }
+    let head_commit = history::load(ctx.db, ctx.txn.head)?;
+    let message = match &options.message {
+        Some(message) if !message.is_empty() => message.clone(),
+        _ if options.amend => head_commit.description.clone(),
+        _ => commit.description.clone(),
+    };
+    commit_rebase_step(ctx, &commit, &head_commit, message, options)?;
+    Ok(Picked::Done)
+}
+
+/// commit_rebase_step commits the staged root for a rebase step with a message and the original commit's author,
+/// amending the head commit when asked and committing nothing when the step left no changes and empty commits drop,
+/// as Dolt's GetCommitStaged does for a rebase's options.
+pub(crate) fn commit_rebase_step(
+    ctx: &mut Ctx<'_>,
+    original: &CommitInfo,
+    head: &CommitInfo,
+    message: String,
+    options: &PickOptions,
+) -> Result<()> {
+    if message.is_empty() {
+        return Err(error("Must provide commit message."));
+    }
+    let (head_root, staged) = (head_root(ctx)?, ctx.txn.staged.clone());
+    let unchanged = crate::dolt::diff::deltas(ctx.db, &head_root, &staged)?.is_empty();
+    if unchanged && options.drop_empty {
+        return Ok(());
+    }
+    let mut meta = picked_meta(ctx, original)?;
+    meta.description = message;
+    match options.amend {
+        true => crate::dolt::procedures::amend_commit(ctx, head, meta)?,
+        false => commit_staged(ctx, Vec::new(), meta)?,
+    };
+    Ok(())
 }

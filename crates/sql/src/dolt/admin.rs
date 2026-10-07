@@ -45,7 +45,7 @@ pub fn dolt_clean(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         for key in table_map(ctx.db, &working)?.into_keys() {
             if !parsed.has("x") {
                 let patterns = crate::dolt::ignore::patterns(ctx, &working, &key.0)?;
-                if crate::dolt::ignore::is_ignored(&patterns, &key.1)? {
+                if crate::dolt::ignore::is_ignored(&patterns, &key.0, &key.1)? {
                     continue;
                 }
             }

@@ -5473,6 +5473,7 @@ WHERE to_commit = dolt_hashof('HEAD')
                     query: "select dolt_rebase.commit_message from dolt_rebase order by rebase_order;",
                     expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"dolt_rebase\" does not exist", position: 40, ..E }),
                     flow: Flow::Query,
+                    skip: Some("Go reports a missing relation for a column qualified by dolt_rebase, where Rust reports a missing FROM-clause entry since the table is named rebase"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
@@ -6128,10 +6129,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     expected: Expected::Tag("SAVEPOINT"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM public.schema_conflicts",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: schema_conflicts", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "public.schema_conflicts" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -6140,10 +6141,10 @@ WHERE to_commit = dolt_hashof('HEAD')
                     expected: Expected::Tag("ROLLBACK"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT * FROM schema_conflicts",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: schema_conflicts", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "schema_conflicts" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

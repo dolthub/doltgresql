@@ -21,8 +21,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use doltdb::create::{branch_ref, working_set_ref};
 use doltdb::database::{self, CommitMeta, Database, PendingCommit};
 use doltdb::root::Root;
-use serial::write::{MergeStateFields, Meta, WorkingSetFields, write_working_set};
-use serial::{Commit, MergeState, Message, TableSchema, WorkingSet};
+use serial::write::{MergeStateFields, Meta, RebaseStateFields, WorkingSetFields, write_working_set};
+use serial::{Commit, MergeState, Message, RebaseState, TableSchema, WorkingSet};
 use store::Hash;
 
 use crate::catalog::table::TableDef;
@@ -55,6 +55,9 @@ pub struct Txn {
     /// The merge in progress, if any.
     pub merge: Option<MergeStateFields>,
     original_merge: Option<MergeStateFields>,
+    /// The rebase in progress, if any.
+    pub rebase: Option<RebaseStateFields>,
+    original_rebase: Option<RebaseStateFields>,
     /// When the transaction began, as a UTC timestamp.
     pub started: i64,
 }
@@ -62,6 +65,21 @@ pub struct Txn {
 /// read returns the message at the address, failing when the database lacks it.
 pub fn read(db: &Database, address: &Hash) -> Result<Vec<u8>> {
     db.read_value(address)?.ok_or_else(|| PgError::internal(format!("missing chunk {address}")))
+}
+
+/// rebase_state_fields reads a working set's rebase in progress.
+fn rebase_state_fields(state: &RebaseState<'_>) -> Result<RebaseStateFields> {
+    let address = |bytes: &[u8]| serial::hash(bytes).map_err(PgError::from);
+    Ok(RebaseStateFields {
+        pre_working_root: address(state.pre_working_root()?)?,
+        onto_commit: address(state.onto_commit()?)?,
+        branch: state.branch()?.to_vec(),
+        commit_becomes_empty_handling: state.commit_becomes_empty_handling()?,
+        empty_commit_handling: state.empty_commit_handling()?,
+        last_attempted_step: state.last_attempted_step()?,
+        rebasing_started: state.rebasing_started()?,
+        skip_verification: state.skip_verification()?,
+    })
 }
 
 /// merge_state_fields reads a working set's merge in progress.
@@ -83,27 +101,39 @@ fn merge_state_fields(state: &MergeState<'_>) -> Result<MergeStateFields> {
 impl Txn {
     /// begin starts a transaction on the branch, reading its working set.
     pub fn begin(handle: DbHandle, sequences: SequenceTracker, database: &str, branch: &str) -> Result<Txn> {
-        let mut db = handle.lock().map_err(|_| PgError::internal("a database lock was poisoned"))?;
+        let db = handle.clone();
+        let mut db = db.lock().map_err(|_| PgError::internal("a database lock was poisoned"))?;
+        Txn::begin_locked(&mut db, handle, sequences, database, branch)
+    }
+
+    /// begin_locked starts a transaction on the branch of a database whose lock the caller holds.
+    pub fn begin_locked(
+        db: &mut Database,
+        handle: DbHandle,
+        sequences: SequenceTracker,
+        database: &str,
+        branch: &str,
+    ) -> Result<Txn> {
         let not_found =
             || PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{database}/{branch}\" does not exist"));
         let head = db.head(&branch_ref(branch))?.ok_or_else(not_found)?;
-        let commit = read(&db, &head)?;
+        let commit = read(db, &head)?;
         let head_root = Commit::new(Message(&commit))?.root()?;
-        let (working_set, working, staged, merge) = match db.head(&working_set_ref(branch))? {
+        let (working_set, working, staged, merge, rebase) = match db.head(&working_set_ref(branch))? {
             Some(address) => {
-                let data = read(&db, &address)?;
+                let data = read(db, &address)?;
                 let ws = WorkingSet::new(Message(&data))?;
                 let working = ws.working_root()?;
                 let merge = ws.merge_state()?.map(|t| merge_state_fields(&MergeState(t))).transpose()?;
-                (address, working, ws.staged_root()?.unwrap_or(working), merge)
+                let rebase = ws.rebase_state()?.map(|t| rebase_state_fields(&RebaseState(t))).transpose()?;
+                (address, working, ws.staged_root()?.unwrap_or(working), merge, rebase)
             }
-            None => (Hash::default(), head_root, head_root, None),
+            None => (Hash::default(), head_root, head_root, None, None),
         };
-        let original = read(&db, &working)?;
-        let original_staged = read(&db, &staged)?;
+        let original = read(db, &working)?;
+        let original_staged = read(db, &staged)?;
         let root = Root::decode(&original)?;
         let staged = Root::decode(&original_staged)?;
-        drop(db);
         Ok(Txn {
             database: database.to_string(),
             branch: branch.to_string(),
@@ -118,6 +148,8 @@ impl Txn {
             original_staged,
             original_merge: merge.clone(),
             merge,
+            original_rebase: rebase.clone(),
+            rebase,
             started: crate::datetime::clock(),
         })
     }
@@ -136,7 +168,7 @@ impl Txn {
             working_root,
             staged_root: Some(staged_root),
             merge_state: self.merge.clone(),
-            rebase_state: None,
+            rebase_state: self.rebase.clone(),
             meta: Some(Meta {
                 name: user.as_bytes().to_vec(),
                 email: format!("{user}@{host}").into_bytes(),
@@ -153,6 +185,7 @@ impl Txn {
         if self.root.encode() == self.original
             && self.staged.encode() == self.original_staged
             && self.merge == self.original_merge
+            && self.rebase == self.original_rebase
         {
             return Ok(());
         }
@@ -170,6 +203,7 @@ impl Txn {
         if self.root.encode() == self.original
             && self.staged.encode() == self.original_staged
             && self.merge == self.original_merge
+            && self.rebase == self.original_rebase
         {
             return Ok(());
         }
@@ -182,6 +216,7 @@ impl Txn {
         self.original = self.root.encode();
         self.original_staged = self.staged.encode();
         self.original_merge = self.merge.clone();
+        self.original_rebase = self.rebase.clone();
         Ok(())
     }
 

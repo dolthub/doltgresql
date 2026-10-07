@@ -91,10 +91,10 @@ fn conflict(name: &str, ignoring: &[&str], keeping: &[&str]) -> crate::error::Pg
 }
 
 /// is_ignored reports whether patterns ignore a table, where a more specific pattern overrides a less specific one
-/// and patterns that neither overrides conflict, as Dolt's IsTableNameIgnored decides, and the dolt_rebase table is
-/// always ignored.
-pub fn is_ignored(patterns: &Patterns, name: &str) -> Result<bool> {
-    if name.eq_ignore_ascii_case("dolt_rebase") {
+/// and patterns that neither overrides conflict, as Dolt's IsTableNameIgnored decides, and the rebase plan table,
+/// `dolt.rebase` or any table named dolt_rebase, is always ignored.
+pub fn is_ignored(patterns: &Patterns, schema: &str, name: &str) -> Result<bool> {
+    if name.eq_ignore_ascii_case("dolt_rebase") || (schema == "dolt" && name == "rebase") {
         return Ok(true);
     }
     let matching = |ignored: bool| -> Vec<&str> {
