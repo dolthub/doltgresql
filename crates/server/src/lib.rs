@@ -34,6 +34,8 @@ use scram::Verifier;
 pub struct Server {
     pub engine: Engine,
     next_process_id: AtomicU32,
+    /// The TLS configuration that encrypts connections, when the listener has a certificate and key.
+    tls: Option<Arc<rustls::ServerConfig>>,
 }
 
 impl Server {
@@ -50,7 +52,11 @@ impl Server {
         .map_err(|err| err.to_string())?;
         engine.set_port(config.port);
         engine.set_behavior(config.read_only, config.auto_gc);
-        Ok(Server { engine, next_process_id: AtomicU32::new(1) })
+        let tls = match (&config.tls_cert, &config.tls_key) {
+            (Some(cert), Some(key)) => Some(Arc::new(tls_config(cert, key)?)),
+            _ => None,
+        };
+        Ok(Server { engine, next_process_id: AtomicU32::new(1), tls })
     }
 
     /// verifier returns the password verifier of a role with a password.
@@ -64,6 +70,20 @@ impl Server {
             server_key: password.server_key.try_into().ok()?,
         })
     }
+}
+
+/// tls_config reads a certificate chain and private key in PEM files into a TLS configuration.
+fn tls_config(cert: &std::path::Path, key: &std::path::Path) -> Result<rustls::ServerConfig, String> {
+    use rustls::pki_types::pem::PemObject;
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    let chain = CertificateDer::pem_file_iter(cert)
+        .and_then(|certs| certs.collect::<Result<Vec<_>, _>>())
+        .map_err(|err| format!("cannot read {}: {err}", cert.display()))?;
+    let key = PrivateKeyDer::from_pem_file(key).map_err(|err| format!("cannot read {}: {err}", key.display()))?;
+    rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(chain, key)
+        .map_err(|err| format!("invalid TLS certificate or key: {err}"))
 }
 
 /// LOG is the file the server writes its log to, when the command line names one.

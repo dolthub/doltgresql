@@ -71,9 +71,50 @@ fn error_fields(err: &PgError) -> ErrorFields {
     }
 }
 
+/// Stream is a client's connection, which TLS encrypts once the client asks for it.
+enum Stream {
+    Plain(TcpStream),
+    Tls(Box<rustls::StreamOwned<rustls::ServerConnection, TcpStream>>),
+}
+
+impl Stream {
+    /// tcp returns the TCP connection beneath the stream.
+    fn tcp(&self) -> &TcpStream {
+        match self {
+            Stream::Plain(stream) => stream,
+            Stream::Tls(stream) => &stream.sock,
+        }
+    }
+}
+
+impl Read for Stream {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Stream::Plain(stream) => stream.read(buffer),
+            Stream::Tls(stream) => stream.read(buffer),
+        }
+    }
+}
+
+impl Write for Stream {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Stream::Plain(stream) => stream.write(buffer),
+            Stream::Tls(stream) => stream.write(buffer),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Stream::Plain(stream) => stream.flush(),
+            Stream::Tls(stream) => stream.flush(),
+        }
+    }
+}
+
 /// Conn is a client connection.
 pub struct Conn {
-    stream: TcpStream,
+    stream: Stream,
     frames: FrameReader,
     out: Vec<u8>,
     server: Arc<Server>,
@@ -84,7 +125,7 @@ pub struct Conn {
 impl Conn {
     pub fn new(stream: TcpStream, server: Arc<Server>) -> Conn {
         let client_encoding = sql::encodings::UTF8;
-        Conn { stream, frames: FrameReader::new(), out: Vec::new(), server, client_encoding }
+        Conn { stream: Stream::Plain(stream), frames: FrameReader::new(), out: Vec::new(), server, client_encoding }
     }
 
     /// queue adds a message to the output buffer.
@@ -141,6 +182,19 @@ impl Conn {
         }
     }
 
+    /// start_tls answers an SSLRequest, encrypting the connection when the server has a certificate.
+    fn start_tls(&mut self) -> Result<(), ConnError> {
+        let (Some(config), Stream::Plain(stream)) = (self.server.tls.clone(), &self.stream) else {
+            self.stream.write_all(b"N")?;
+            return Ok(());
+        };
+        let stream = stream.try_clone()?;
+        self.stream.write_all(b"S")?;
+        let connection = rustls::ServerConnection::new(config).map_err(|err| ConnError::Protocol(err.to_string()))?;
+        self.stream = Stream::Tls(Box::new(rustls::StreamOwned::new(connection, stream)));
+        Ok(())
+    }
+
     /// fatal sends a FATAL error, which ends the connection.
     fn fatal(&mut self, err: PgError) -> Result<(), ConnError> {
         self.queue(BackendMessage::ErrorResponse(error_fields(&PgError { severity: "FATAL", ..err })));
@@ -151,9 +205,8 @@ impl Conn {
     pub fn run(mut self) -> Result<(), ConnError> {
         let parameters = loop {
             match self.read_startup()? {
-                FrontendMessage::SSLRequest | FrontendMessage::GSSEncRequest => {
-                    self.stream.write_all(b"N")?;
-                }
+                FrontendMessage::SSLRequest => self.start_tls()?,
+                FrontendMessage::GSSEncRequest => self.stream.write_all(b"N")?,
                 FrontendMessage::CancelRequest { .. } => return Ok(()),
                 FrontendMessage::StartupMessage { protocol_version, parameters } => {
                     if protocol_version >> 16 != PROTOCOL_VERSION >> 16 {
@@ -180,7 +233,7 @@ impl Conn {
             return self.fatal(PgError::fatal("28000", format!("role \"{user}\" is not permitted to log in")));
         }
         let database = parameter("database").filter(|d| !d.is_empty()).unwrap_or_else(|| user.clone());
-        let host = self.stream.peer_addr().map(|addr| addr.ip().to_string()).unwrap_or_default();
+        let host = self.stream.tcp().peer_addr().map(|addr| addr.ip().to_string()).unwrap_or_default();
         let mut startup: Vec<(String, String)> = parameters
             .iter()
             .filter(|(name, _)| !matches!(name.as_str(), "user" | "database" | "options" | "replication"))

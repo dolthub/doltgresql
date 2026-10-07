@@ -1377,6 +1377,7 @@ dependencies = [
  "pbkdf2",
  "pgproto",
  "rand",
+ "rustls",
  "sha2",
  "signal-hook",
  "sql",
