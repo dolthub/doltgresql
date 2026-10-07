@@ -149,6 +149,9 @@ pub enum Expr {
     InputColumn(usize),
     /// The result of a grouped query's aggregate call, which grouping replaces.
     AggRef(usize),
+    /// GROUPING over group keys, with the locations of its arguments, which reads the grouping set of a row from the
+    /// column of the mask that grouping sets add, and is zero without them.
+    Grouping(Vec<Expr>, Vec<i32>, Option<usize>),
     /// The first argument that is not NULL.
     Coalesce(Vec<Expr>),
     /// The result of the first condition that holds, or the default.
@@ -486,6 +489,20 @@ impl<'b, 'a> Binder<'b, 'a> {
                 Ok((Expr::BoolTest(Box::new(expr), value, negated), typ(oid::BOOL)))
             }
             NodeEnum::SubLink(link) => self.sublink(link),
+            NodeEnum::GroupingFunc(func) => {
+                if self.aggregates.is_none() {
+                    return Err(PgError {
+                        position: position(func.location),
+                        ..PgError::new(
+                            code::GROUPING_ERROR,
+                            format!("grouping operations are not allowed in {}", self.clause),
+                        )
+                    });
+                }
+                let args = func.args.iter().map(|a| self.bind(a).map(|(e, _)| e)).collect::<Result<_>>()?;
+                let locations = func.args.iter().map(arg_location).collect();
+                Ok((Expr::Grouping(args, locations, None), typ(oid::INT4)))
+            }
             NodeEnum::AArrayExpr(array) => self.array_expr(array, None),
             NodeEnum::RowExpr(row) => {
                 let (mut fields, mut types) = (Vec::with_capacity(row.args.len()), Vec::with_capacity(row.args.len()));
@@ -2859,6 +2876,7 @@ fn figure_name_strength(node: &Node) -> (String, u8) {
             }
         }
         Some(NodeEnum::XmlSerialize(_)) => strong("xmlserialize"),
+        Some(NodeEnum::GroupingFunc(_)) => strong("grouping"),
         Some(NodeEnum::CollateClause(collate)) => match collate.arg.as_deref() {
             Some(arg) => figure_name_strength(arg),
             None => ("?column?".into(), 0),
@@ -3130,6 +3148,18 @@ impl Expr {
                 ctx.outer[level].get(*i).cloned().unwrap_or(Value::Null)
             }
             Expr::InputColumn(_) | Expr::AggRef(_) => return Err(PgError::internal("an ungrouped expression")),
+            Expr::Grouping(args, _, mask) => {
+                let mask = match mask.and_then(|m| row.get(m)) {
+                    Some(Value::Int8(mask)) => *mask,
+                    _ => 0,
+                };
+                let mut bits = 0;
+                for arg in args {
+                    let Expr::Column(i) = arg else { return Err(PgError::internal("a GROUPING argument")) };
+                    bits = (bits << 1) | ((mask >> i) & 1);
+                }
+                Value::Int4(bits as i32)
+            }
             Expr::WindowRef(_) => return Err(PgError::internal("a window call outside its window")),
             Expr::SetRef(_) => return Err(PgError::internal("a set-returning call outside its select list")),
             Expr::Default(_) => return Err(PgError::internal("a default outside a written row")),
@@ -3506,6 +3536,9 @@ impl Expr {
                 Expr::ArrayOp(op, l, b(r))
             }
             Expr::Xml(op, args) => Expr::Xml(op, args.into_iter().map(&mut *f).collect()),
+            Expr::Grouping(args, locations, mask) => {
+                Expr::Grouping(args.into_iter().map(&mut *f).collect(), locations, mask)
+            }
             other => other,
         }
     }
@@ -3541,6 +3574,7 @@ impl Expr {
             | Expr::MinMax(_, args)
             | Expr::Array(_, args, _)
             | Expr::Xml(_, args)
+            | Expr::Grouping(args, ..)
             | Expr::Row(args, _) => args.iter().for_each(|a| a.visit(f)),
             Expr::Subscript(base, subscripts, _) => {
                 base.visit(f);

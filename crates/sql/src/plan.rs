@@ -18,7 +18,8 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 
 use pg_query::protobuf::{
-    JoinExpr, JoinType, RangeFunction, RangeSubselect, SelectStmt, SetOperation, SortByDir, SortByNulls,
+    CoercionForm, GroupingSetKind, JoinExpr, JoinType, RangeFunction, RangeSubselect, SelectStmt, SetOperation,
+    SortByDir, SortByNulls,
 };
 use pg_query::{Node, NodeEnum};
 
@@ -108,11 +109,14 @@ pub enum Plan {
         calls: Vec<Expr>,
         ordinality: bool,
     },
-    /// One row per group of the input, with the group keys and then the aggregate results.
+    /// One row per group of the input, with the group keys and then the aggregate results. With grouping sets, the
+    /// input is grouped by each set of keys in turn, the keys outside the set are NULL, and a last column holds a mask
+    /// with a bit set for each key outside the set.
     Aggregate {
         input: Box<Plan>,
         groups: Vec<Expr>,
         aggregates: Vec<AggCall>,
+        sets: Option<Vec<Vec<usize>>>,
     },
     Sort {
         input: Box<Plan>,
@@ -242,7 +246,37 @@ fn has_aggregate(node: &Node) -> bool {
         Some(NodeEnum::CoalesceExpr(c)) => c.args.iter().any(has_aggregate),
         Some(NodeEnum::MinMaxExpr(m)) => m.args.iter().any(has_aggregate),
         Some(NodeEnum::List(l)) => l.items.iter().any(has_aggregate),
+        Some(NodeEnum::GroupingFunc(_)) => true,
         _ => false,
+    }
+}
+
+/// grouping_sets expands an item of GROUP BY into the lists of expressions that it groups by, as Postgres'
+/// expand_grouping_sets does: an expression or an implicit row is one list, ROLLUP drops its items from the end one
+/// at a time, CUBE takes every subset of its items, and GROUPING SETS joins the lists of its elements.
+fn grouping_sets(node: &Node) -> Vec<Vec<&Node>> {
+    let Some(NodeEnum::GroupingSet(set)) = node.node.as_ref() else { return vec![row_items_of(node)] };
+    let items: Vec<Vec<&Node>> = set.content.iter().map(row_items_of).collect();
+    match GroupingSetKind::try_from(set.kind) {
+        Ok(GroupingSetKind::GroupingSetEmpty) => vec![Vec::new()],
+        Ok(GroupingSetKind::GroupingSetRollup) => (0..=items.len()).rev().map(|n| items[..n].concat()).collect(),
+        Ok(GroupingSetKind::GroupingSetCube) => (0..1usize << items.len())
+            .map(|mask| {
+                items.iter().enumerate().filter(|(i, _)| mask & (1 << i) != 0).flat_map(|(_, n)| n.clone()).collect()
+            })
+            .collect(),
+        Ok(GroupingSetKind::GroupingSetSets) => set.content.iter().flat_map(grouping_sets).collect(),
+        _ => vec![items.concat()],
+    }
+}
+
+/// row_items_of returns the expressions of an implicit row, which grouping treats as a list, or else the expression.
+fn row_items_of(node: &Node) -> Vec<&Node> {
+    match node.node.as_ref() {
+        Some(NodeEnum::RowExpr(row)) if row.row_format == CoercionForm::CoerceImplicitCast as i32 => {
+            row.args.iter().collect()
+        }
+        _ => vec![node],
     }
 }
 
@@ -266,6 +300,37 @@ fn replace_groups(expr: Expr, groups: &[Expr]) -> Expr {
     match expr {
         Expr::AggRef(k) => Expr::Column(groups.len() + k),
         other => other.map_children(&mut |child| replace_groups(child, groups)),
+    }
+}
+
+/// place_grouping checks that the arguments of each GROUPING in a grouped expression are group keys, and points each
+/// GROUPING at the column of the grouping set mask.
+fn place_grouping(expr: Expr, keys: usize, mask: Option<usize>) -> Result<Expr> {
+    let mut invalid = None;
+    expr.visit(&mut |e| {
+        if let Expr::Grouping(args, locations, _) = e
+            && let Some(i) = args.iter().position(|a| !matches!(a, Expr::Column(i) if *i < keys))
+        {
+            invalid = invalid.or(Some(locations[i]));
+        }
+    });
+    if let Some(location) = invalid {
+        return Err(PgError {
+            position: position(location),
+            ..PgError::new(
+                code::GROUPING_ERROR,
+                "arguments to GROUPING must be grouping expressions of the associated query level",
+            )
+        });
+    }
+    Ok(set_mask(expr, mask))
+}
+
+/// set_mask points each GROUPING in an expression at the column of the grouping set mask.
+fn set_mask(expr: Expr, mask: Option<usize>) -> Expr {
+    match expr {
+        Expr::Grouping(args, locations, _) => Expr::Grouping(args, locations, mask),
+        other => other.map_children(&mut |child| set_mask(child, mask)),
     }
 }
 
@@ -1576,28 +1641,59 @@ impl<'b, 'a> Planner<'b, 'a> {
         let mut set_functions = set_functions;
         if let Some(aggregates) = aggregates {
             // Group keys may refer to output columns by position or name, or be expressions of the input.
+            let mut node_sets: Vec<Vec<&Node>> = vec![Vec::new()];
+            for item in &select.group_clause {
+                let expanded = grouping_sets(item);
+                node_sets = node_sets
+                    .iter()
+                    .flat_map(|prefix| expanded.iter().map(|set| [&prefix[..], set].concat()))
+                    .collect();
+            }
             let mut groups: Vec<Expr> = Vec::new();
+            let mut sets: Vec<Vec<usize>> = Vec::with_capacity(node_sets.len());
             let mut binder = self.binder(scope.clone());
             binder.clause = "GROUP BY";
-            for node in &select.group_clause {
-                let expr = if let Some((n, location)) = ordinal(node) {
-                    output_ordinal_named(&names, n, location)?;
-                    targets[n - 1].0.clone()
-                } else if let Some(NodeEnum::ColumnRef(c)) = node.node.as_ref()
-                    && c.fields.len() == 1
-                    && let Some(name) = node_name(&c.fields[0])
-                    && !scope.columns.iter().any(|sc| sc.name == name)
-                    && let Some(i) = names.iter().position(|n| n == name)
-                {
-                    targets[i].0.clone()
-                } else {
-                    binder.bind(node)?.0
-                };
-                groups.push(mark_input(expr));
+            for node_set in &node_sets {
+                let mut set: Vec<usize> = Vec::with_capacity(node_set.len());
+                for node in node_set {
+                    let expr = if let Some((n, location)) = ordinal(node) {
+                        output_ordinal_named(&names, n, location)?;
+                        targets[n - 1].0.clone()
+                    } else if let Some(NodeEnum::ColumnRef(c)) = node.node.as_ref()
+                        && c.fields.len() == 1
+                        && let Some(name) = node_name(&c.fields[0])
+                        && !scope.columns.iter().any(|sc| sc.name == name)
+                        && let Some(i) = names.iter().position(|n| n == name)
+                    {
+                        targets[i].0.clone()
+                    } else {
+                        binder.bind(node)?.0
+                    };
+                    let expr = mark_input(expr);
+                    let i = groups.iter().position(|g| *g == expr).unwrap_or_else(|| {
+                        groups.push(expr);
+                        groups.len() - 1
+                    });
+                    if !set.contains(&i) {
+                        set.push(i);
+                    }
+                }
+                sets.push(set);
             }
             drop(binder);
+            if select.group_distinct {
+                let mut seen = HashSet::new();
+                sets.retain(|set| {
+                    let mut members = set.clone();
+                    members.sort_unstable();
+                    seen.insert(members)
+                });
+            }
+            let uses_sets = select.group_clause.iter().any(|n| matches!(n.node, Some(NodeEnum::GroupingSet(_))));
+            let sets = uses_sets.then_some(sets);
+            let mask = sets.as_ref().map(|_| groups.len() + aggregates.len());
             let finish = |expr: Expr| -> Result<Expr> {
-                let expr = replace_groups(mark_input(expr), &groups);
+                let expr = place_grouping(replace_groups(mark_input(expr), &groups), groups.len(), mask)?;
                 if let Some(i) = ungrouped_column(&expr) {
                     let column = &scope.columns[i];
                     let location = columns_bound.iter().find(|(c, _)| *c == i).map_or(-1, |(_, l)| *l);
@@ -1640,7 +1736,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 Expr::InputColumn(i) => Expr::Column(i),
                 other => unmark_input(other),
             });
-            plan = Plan::Aggregate { input: Box::new(plan), groups: groups_plan.collect(), aggregates };
+            plan = Plan::Aggregate { input: Box::new(plan), groups: groups_plan.collect(), aggregates, sets };
             if let Some(predicate) = having {
                 plan = Plan::Filter { input: Box::new(plan), predicate };
             }
@@ -2427,7 +2523,9 @@ impl Plan {
             Plan::JsonTable(table) => table.columns.len(),
             Plan::RowsFrom { calls, ordinality } => calls.len() + *ordinality as usize,
             Plan::QueryDiff(diff, ordinality) => diff.from_width + diff.to_width + 1 + *ordinality as usize,
-            Plan::Aggregate { groups, aggregates, .. } => groups.len() + aggregates.len(),
+            Plan::Aggregate { groups, aggregates, sets, .. } => {
+                groups.len() + aggregates.len() + usize::from(sets.is_some())
+            }
             Plan::SetOp { left, .. } => left.width(),
             Plan::Once(input) => input.width(),
         }
@@ -2699,39 +2797,49 @@ impl Plan {
                 }
                 out
             }
-            Plan::Aggregate { input, groups, aggregates } => {
+            Plan::Aggregate { input, groups, aggregates, sets } => {
                 let rows = input.run(ctx)?;
-                let mut keys: Vec<Vec<Value>> = Vec::new();
-                let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-                let mut states: Vec<Vec<Accumulator>> = Vec::new();
-                for row in &rows {
-                    let key = groups.iter().map(|g| g.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
-                    let k = row_key(&key);
-                    let slot = match index.get(&k) {
-                        Some(&slot) => slot,
-                        None => {
-                            index.insert(k, keys.len());
-                            keys.push(key);
-                            states.push(aggregates.iter().map(Accumulator::new).collect());
-                            keys.len() - 1
+                let all: Vec<usize> = (0..groups.len()).collect();
+                let mut out = Vec::new();
+                for set in sets.as_deref().unwrap_or(std::slice::from_ref(&all)) {
+                    let mut keys: Vec<Vec<Value>> = Vec::new();
+                    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                    let mut states: Vec<Vec<Accumulator>> = Vec::new();
+                    for row in &rows {
+                        let mut key = vec![Value::Null; groups.len()];
+                        for &i in set {
+                            key[i] = groups[i].eval(ctx, row)?;
                         }
-                    };
-                    for (agg, state) in aggregates.iter().zip(&mut states[slot]) {
-                        state.add(ctx, agg, row)?;
+                        let k = row_key(&key);
+                        let slot = match index.get(&k) {
+                            Some(&slot) => slot,
+                            None => {
+                                index.insert(k, keys.len());
+                                keys.push(key);
+                                states.push(aggregates.iter().map(Accumulator::new).collect());
+                                keys.len() - 1
+                            }
+                        };
+                        for (agg, state) in aggregates.iter().zip(&mut states[slot]) {
+                            state.add(ctx, agg, row)?;
+                        }
                     }
-                }
-                // Without groups, an aggregate over no rows still returns one row.
-                if groups.is_empty() && keys.is_empty() {
-                    keys.push(Vec::new());
-                    states.push(aggregates.iter().map(Accumulator::new).collect());
-                }
-                let mut out = Vec::with_capacity(keys.len());
-                for (key, state) in keys.into_iter().zip(states) {
-                    let mut row = key;
-                    for (agg, s) in aggregates.iter().zip(state) {
-                        row.push(s.finish(ctx, agg)?);
+                    // Without group keys, an aggregate over no rows still returns one row.
+                    if set.is_empty() && keys.is_empty() {
+                        keys.push(vec![Value::Null; groups.len()]);
+                        states.push(aggregates.iter().map(Accumulator::new).collect());
                     }
-                    out.push(row);
+                    let outside = (0..groups.len()).filter(|i| !set.contains(i)).fold(0i64, |m, i| m | 1 << i);
+                    for (key, state) in keys.into_iter().zip(states) {
+                        let mut row = key;
+                        for (agg, s) in aggregates.iter().zip(state) {
+                            row.push(s.finish(ctx, agg)?);
+                        }
+                        if sets.is_some() {
+                            row.push(Value::Int8(outside));
+                        }
+                        out.push(row);
+                    }
                 }
                 out
             }
@@ -3097,8 +3205,8 @@ pub(crate) fn share_scans(plan: Plan) -> Plan {
         Plan::Limit { input, limit, offset } => Plan::Limit { input: Box::new(share_scans(*input)), limit, offset },
         Plan::Sort { input, keys } => Plan::Sort { input: Box::new(share_scans(*input)), keys },
         Plan::Distinct { input, keys } => Plan::Distinct { input: Box::new(share_scans(*input)), keys },
-        Plan::Aggregate { input, groups, aggregates } => {
-            Plan::Aggregate { input: Box::new(share_scans(*input)), groups, aggregates }
+        Plan::Aggregate { input, groups, aggregates, sets } => {
+            Plan::Aggregate { input: Box::new(share_scans(*input)), groups, aggregates, sets }
         }
         other => other,
     }
