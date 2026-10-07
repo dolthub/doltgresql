@@ -256,7 +256,12 @@ impl Ctx<'_> {
             | AlterTableType::AtDisableTrigAll
             | AlterTableType::AtEnableTrigUser
             | AlterTableType::AtDisableTrigUser
-            | AlterTableType::AtReplicaIdentity => Ok(()),
+            | AlterTableType::AtReplicaIdentity
+            | AlterTableType::AtEnableRowSecurity
+            | AlterTableType::AtDisableRowSecurity
+            | AlterTableType::AtForceRowSecurity
+            | AlterTableType::AtNoForceRowSecurity
+            | AlterTableType::AtSetStatistics => Ok(()),
             other => Err(PgError::unsupported(format!("ALTER TABLE {other:?}"))),
         }
     }
