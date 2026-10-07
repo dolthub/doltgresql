@@ -619,8 +619,12 @@ impl Triggers {
             Event::Delete => (old.map(<[Value]>::to_vec), None),
             _ => (old.map(<[Value]>::to_vec), new),
         };
-        crate::plpgsql::call_trigger(ctx, &fired.function, ops, self.row_type, &self.columns, new, old, special)
-            .map_err(|err| PgError { position: None, ..err })
+        crate::routines::check_depth(ctx)?;
+        ctx.session.call_depth += 1;
+        let result =
+            crate::plpgsql::call_trigger(ctx, &fired.function, ops, self.row_type, &self.columns, new, old, special);
+        ctx.session.call_depth -= 1;
+        result.map_err(|err| PgError { position: None, ..err })
     }
 }
 

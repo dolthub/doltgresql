@@ -834,6 +834,39 @@ impl<'b, 'a> Planner<'b, 'a> {
         Ok((Plan::XmlTable(Box::new(XmlTable { document, row, namespaces, columns })), scope))
     }
 
+    /// plan_sequence plans a sequence read as a relation: one row of its last value, the values it logged ahead, which
+    /// are none here, and whether nextval has handed the last value out.
+    fn plan_sequence(
+        &mut self,
+        sequence: objects::Sequence,
+        relation: &pg_query::protobuf::RangeVar,
+    ) -> Result<(Plan, Scope)> {
+        let (schema, name) = crate::sequences::schema_and_name(&sequence);
+        self.ctx.require(&crate::auth::Object::Sequence(schema, name.clone()), "r", relation.location)?;
+        let sequence = self.ctx.latest(sequence)?;
+        let table = relation.alias.as_ref().map_or(name, |a| a.aliasname.clone());
+        let columns = [("last_value", oid::INT8), ("log_cnt", oid::INT8), ("is_called", oid::BOOL)]
+            .into_iter()
+            .map(|(name, ty)| ScopeColumn {
+                table: table.clone(),
+                name: name.into(),
+                ty: typ(ty),
+                hidden: false,
+                origin: (0, 0),
+            })
+            .collect();
+        let last_value = match sequence.has_been_called && !sequence.is_at_end {
+            true => sequence.current - sequence.increment,
+            false => sequence.current,
+        };
+        let row = vec![
+            Expr::Const(Value::Int8(last_value)),
+            Expr::Const(Value::Int8(0)),
+            Expr::Const(Value::Bool(sequence.has_been_called)),
+        ];
+        Ok((Plan::Values(vec![row]), Scope { columns }))
+    }
+
     /// plan_from_item plans one FROM item.
     fn plan_from_item(&mut self, item: &Node) -> Result<(Plan, Scope)> {
         match item.node.as_ref() {
@@ -857,6 +890,9 @@ impl<'b, 'a> Planner<'b, 'a> {
                 let table = match resolved {
                     Ok(table) => table,
                     Err(err) => {
+                        if let Some(sequence) = self.ctx.find_sequence(relation)? {
+                            return self.plan_sequence(sequence, relation);
+                        }
                         if let Some((schema, fragment)) = self.ctx.find_view(&relation.schemaname, &relation.relname)? {
                             self.ctx.require_view(&schema, &relation.relname, "r", relation.location)?;
                             let object = crate::auth::Object::Table(schema.clone(), relation.relname.clone());

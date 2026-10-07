@@ -3672,10 +3672,16 @@ privileges for function drop_role_routine()"#, ..E }),
                 "CREATE FUNCTION testfunc2() RETURNS int AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this setup, so this expectation follows Postgres, whose PUBLIC may execute new functions.
                 ScriptTestAssertion {
                     query: "SELECT testfunc1();",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for routine testfunc1", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("testfunc1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     username: "user1",
                     password: "a",
                     ..A
@@ -3702,10 +3708,16 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "a",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this setup, so this expectation follows Postgres, whose PUBLIC may execute new functions.
                 ScriptTestAssertion {
                     query: "SELECT testfunc2();",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for routine testfunc2", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("testfunc2", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     username: "user1",
                     password: "a",
                     ..A
@@ -3718,10 +3730,16 @@ privileges for function drop_role_routine()"#, ..E }),
                     password: "auth_test_spass",
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this setup, so this expectation follows Postgres, whose PUBLIC may execute new functions.
                 ScriptTestAssertion {
                     query: "SELECT testfunc1();",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for routine testfunc1", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("testfunc1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     username: "user1",
                     password: "a",
                     ..A

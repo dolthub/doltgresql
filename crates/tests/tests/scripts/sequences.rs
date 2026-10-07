@@ -4656,3 +4656,204 @@ ORDER BY 1,2;"#,
         },
     ]);
 }
+
+#[test]
+fn test_limit_sequence_and_privilege_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Recursive queries under LIMIT",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "with recursive cte(x) as (select 1 union all select x + 1 from cte) select * from cte limit 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "with recursive cte(x) as (select 1 union all select x + 1 from cte) select x * 2 from cte limit 3 offset 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("6")],
+                            &[T("8")],
+                            &[T("10")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "with recursive cte(x) as (select 1 union select x + 1 from cte where x < 10) select * from cte limit 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "with recursive cte(x) as (select 1 union all select x + 1 from cte where x < 3) select * from cte;",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Sequences read as relations",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE sq START 5;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT last_value, is_called FROM sq;",
+                    expected: Expected::Rows {
+                        columns: &[Column("last_value", INT8), Column("is_called", BOOL)],
+                        rows: &[
+                            &[T("5"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('sq');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT last_value, is_called FROM sq;",
+                    expected: Expected::Rows {
+                        columns: &[Column("last_value", INT8), Column("is_called", BOOL)],
+                        rows: &[
+                            &[T("5"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT s.is_called FROM sq AS s;",
+                    expected: Expected::Rows {
+                        columns: &[Column("is_called", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Schema privileges for creating relations",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE USER testerv PASSWORD 'password';",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA myschv;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT CREATE ON SCHEMA myschv TO testerv;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE testerv;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE myschv.new_table (pk BIGINT PRIMARY KEY);",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema myschv", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE myschv.s1;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW myschv.v AS SELECT 1;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "REVOKE CREATE ON SCHEMA myschv FROM testerv;",
+                    expected: Expected::Tag("REVOKE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT USAGE ON SCHEMA myschv TO testerv;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET ROLE testerv;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE myschv.new_table (pk BIGINT PRIMARY KEY);",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema myschv", position: 14, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE myschv.s1;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for schema myschv", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET ROLE;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

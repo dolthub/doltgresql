@@ -1307,11 +1307,8 @@ fn takes(routine: &Routine, names: &[Option<String>], types: &[u32]) -> bool {
     })
 }
 
-/// call runs a routine on arguments already converted to its input types.
-pub fn call(ctx: &mut Ctx<'_>, routine: &Routine, args: Vec<Value>) -> Result<Value> {
-    if routine.strict && args.iter().any(Value::is_null) {
-        return Ok(if routine.set_of { Value::Set(Vec::new()) } else { Value::Null });
-    }
+/// check_depth fails as Postgres does when it runs out of stack once calls nest too deeply.
+pub(crate) fn check_depth(ctx: &Ctx<'_>) -> Result<()> {
     if ctx.session.call_depth >= MAX_DEPTH {
         return Err(PgError {
             hint: Some(
@@ -1322,6 +1319,15 @@ pub fn call(ctx: &mut Ctx<'_>, routine: &Routine, args: Vec<Value>) -> Result<Va
             ..PgError::new(code::STATEMENT_TOO_COMPLEX, "stack depth limit exceeded")
         });
     }
+    Ok(())
+}
+
+/// call runs a routine on arguments already converted to its input types.
+pub fn call(ctx: &mut Ctx<'_>, routine: &Routine, args: Vec<Value>) -> Result<Value> {
+    if routine.strict && args.iter().any(Value::is_null) {
+        return Ok(if routine.set_of { Value::Set(Vec::new()) } else { Value::Null });
+    }
+    check_depth(ctx)?;
     ctx.session.call_depth += 1;
     let result = match &routine.body {
         Body::Sql(_) => run_sql(ctx, routine, &args),

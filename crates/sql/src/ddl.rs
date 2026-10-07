@@ -483,6 +483,7 @@ impl Ctx<'_> {
         let schema = self
             .target_schema(&relation.schemaname, relation.location)
             .map_err(|err| PgError { position: err.position.or(position(relation.location)), ..err })?;
+        self.require(&Object::Schema(schema.clone()), "U", -1)?;
         if self.nonlocal_table(relation)?.is_some() {
             let message = format!("relation \"{}\" already exists", relation.relname);
             if create.if_not_exists {
@@ -701,7 +702,7 @@ impl Ctx<'_> {
         } else {
             named.to_string()
         };
-        self.require(&Object::Schema(schema.clone()), "C", location)?;
+        self.require(&Object::Schema(schema.clone()), "C", -1)?;
         Ok(schema)
     }
 

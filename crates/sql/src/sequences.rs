@@ -398,7 +398,7 @@ impl Ctx<'_> {
     }
 
     /// latest returns a sequence in its latest state across every transaction.
-    fn latest(&mut self, sequence: Sequence) -> Result<Sequence> {
+    pub(crate) fn latest(&mut self, sequence: Sequence) -> Result<Sequence> {
         let tracker = self.txn.sequences.lock().map_err(|_| PgError::internal("a lock was poisoned"))?;
         Ok(match tracker.get(&sequence.id) {
             Some(tracked) if greater_than(tracked, &sequence) => Sequence {

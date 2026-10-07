@@ -683,7 +683,7 @@ impl Ctx<'_> {
             Object::Schema(schema) => self.holds_schema(&auth, role, schema, privilege),
             Object::Database(_) => auth.holds(role, object, privilege) || matches!(privilege, "c" | "T"),
             Object::Routine(..) => auth.holds(role, object, privilege) || privilege == "X",
-            _ => auth.holds(role, object, privilege) || auth.owner(object) == Some(role),
+            _ => auth.holds(role, object, privilege) || owns(&auth, role, object),
         };
         if held {
             return Ok(());
@@ -701,7 +701,7 @@ impl Ctx<'_> {
         let object = Object::Schema(schema.to_string());
         (privilege == "U" && matches!(schema, "pg_catalog" | "information_schema" | "public" | "dolt"))
             || auth.holds(role, &object, privilege)
-            || auth.owner(&object) == Some(role)
+            || owns(auth, role, &object)
     }
 
     /// has_privilege reports whether a role holds any of the privileges on a schema or database, each with its grant
@@ -755,14 +755,20 @@ impl Ctx<'_> {
         auth.persist()
     }
 
-    /// require_owner fails as Postgres does unless the current role owns an object or is a superuser.
+    /// require_owner fails as Postgres does unless the current role may use a table's schema and owns the object, inherits
+    /// from its owner, or is a superuser.
     pub fn require_owner(&mut self, object: &Object) -> Result<()> {
         if self.is_superuser() {
             return Ok(());
         }
         let auth = self.auth()?;
         let role = auth.role(&self.session.role).map_or(0, |r| r.id);
-        if auth.owner(object) == Some(role) {
+        if let Object::Table(schema, _) | Object::Sequence(schema, _) = object
+            && !self.holds_schema(&auth, role, schema, "U")
+        {
+            return Err(insufficient(format!("permission denied for schema {schema}")));
+        }
+        if owns(&auth, role, object) {
             return Ok(());
         }
         let kind = match object {
@@ -777,6 +783,16 @@ impl Ctx<'_> {
             Object::Schema(n) | Object::Database(n) => n,
         };
         Err(insufficient(format!("must be owner of {kind} {name}")))
+    }
+}
+
+/// owns reports whether a role holds the privileges of an object's owner: it owns the object or inherits from the role
+/// that does, where a superuser owns an object that no role recorded owning.
+fn owns(auth: &AuthDb, role: u64, object: &Object) -> bool {
+    let groups = auth.groups(role, true);
+    match auth.owner(object) {
+        Some(owner) => owner == role || groups.contains(&owner),
+        None => groups.iter().any(|g| auth.roles.get(g).is_some_and(|r| r.superuser)),
     }
 }
 
