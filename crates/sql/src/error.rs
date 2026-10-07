@@ -71,6 +71,7 @@ pub mod code {
     pub const SYNTAX_ERROR_OR_ACCESS_RULE: &str = "42000";
     pub const INVALID_COLUMN_REFERENCE: &str = "42P10";
     pub const INVALID_RECURSION: &str = "42P19";
+    pub const INVALID_SCHEMA_DEFINITION: &str = "42P15";
     pub const GROUPING_ERROR: &str = "42803";
     pub const INVALID_ROW_COUNT_IN_LIMIT_CLAUSE: &str = "2201W";
     pub const INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE: &str = "2201X";

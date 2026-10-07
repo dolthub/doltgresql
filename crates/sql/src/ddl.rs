@@ -397,6 +397,33 @@ pub(crate) fn check_column(expr: &Node) -> Option<String> {
     if names.len() == 1 { names.pop() } else { None }
 }
 
+/// schema_element returns an element of CREATE SCHEMA with its relation in the schema being created, failing as
+/// Postgres' transformCreateSchemaStmt does when the element names another schema.
+fn schema_element(mut element: NodeEnum, schema: &str) -> Result<NodeEnum> {
+    let relation = match &mut element {
+        NodeEnum::CreateStmt(s) => s.relation.as_mut(),
+        NodeEnum::ViewStmt(s) => s.view.as_mut(),
+        NodeEnum::IndexStmt(s) => s.relation.as_mut(),
+        NodeEnum::CreateSeqStmt(s) => s.sequence.as_mut(),
+        NodeEnum::CreateTrigStmt(s) => s.relation.as_mut(),
+        _ => None,
+    };
+    if let Some(relation) = relation {
+        if relation.schemaname.is_empty() {
+            relation.schemaname = schema.to_string();
+        } else if relation.schemaname != schema {
+            return Err(PgError::new(
+                code::INVALID_SCHEMA_DEFINITION,
+                format!(
+                    "CREATE specifies a schema ({}) different from the one being created ({schema})",
+                    relation.schemaname
+                ),
+            ));
+        }
+    }
+    Ok(element)
+}
+
 /// object_names returns the schema and name a qualified object name list names, with the schema empty when it is
 /// unqualified.
 fn object_names(names: &[Node]) -> (String, String) {
@@ -919,13 +946,26 @@ impl Ctx<'_> {
             }
             return Err(PgError::new(code::DUPLICATE_SCHEMA, format!("schema \"{name}\" already exists")));
         }
-        if !create.schema_elts.is_empty() {
-            return Err(PgError::unsupported("CREATE SCHEMA with elements"));
-        }
         self.require(&Object::Database(self.session.database.clone()), "C", -1)?;
         self.txn.root.schemas.push(name.clone().into_bytes());
         self.txn.root.schemas.sort();
-        self.own(Object::Schema(name))?;
+        self.own(Object::Schema(name.clone()))?;
+        let mut elements = Vec::with_capacity(create.schema_elts.len());
+        for element in create.schema_elts.iter().filter_map(|e| e.node.clone()) {
+            elements.push(schema_element(element, &name)?);
+        }
+        elements.sort_by_key(|element| match element {
+            NodeEnum::CreateSeqStmt(_) => 0,
+            NodeEnum::CreateStmt(_) => 1,
+            NodeEnum::ViewStmt(_) => 2,
+            NodeEnum::IndexStmt(_) => 3,
+            NodeEnum::CreateTrigStmt(_) => 4,
+            _ => 5,
+        });
+        let outer = self.session.view_schema.replace(name);
+        let result = elements.iter().try_for_each(|element| self.run(element).map(|_| ()));
+        self.session.view_schema = outer;
+        result?;
         Ok(Outcome::command("CREATE SCHEMA"))
     }
 
@@ -1134,9 +1174,12 @@ impl Ctx<'_> {
                 .filter(|segments| segments.first().is_some_and(|s| s == name))
                 .filter_map(|segments| segments.get(1).cloned())
                 .collect();
+            let views: Vec<String> = self.views(name)?.into_iter().map(|(view, _)| view).collect();
             let dependents: Vec<String> = tables
                 .iter()
+                .filter(|t| !t.starts_with("dolt_"))
                 .map(|t| format!("table {name}.{t}"))
+                .chain(views.iter().map(|v| format!("view {name}.{v}")))
                 .chain(types.iter().map(|(t, _)| format!("type {name}.{t}")))
                 .chain(sequences.iter().map(|s| format!("sequence {name}.{s}")))
                 .collect();

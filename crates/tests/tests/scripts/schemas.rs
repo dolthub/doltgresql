@@ -1604,3 +1604,89 @@ drop cascades to sequence many.s"#, ..N }],
         },
     ]);
 }
+
+#[test]
+fn test_schema_element_and_send_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "create schema elements",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA ss CREATE TABLE base (a int, id int) CREATE VIEW v AS SELECT * FROM base CREATE INDEX ON base (a) CREATE SEQUENCE sq;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema='ss' ORDER BY 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("table_schema", NAME), Column("table_name", NAME)],
+                        rows: &[
+                            &[T("ss"), T("base")],
+                            &[T("ss"), T("v")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname FROM pg_class WHERE relnamespace='ss'::regnamespace ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME)],
+                        rows: &[
+                            &[T("base")],
+                            &[T("base_a_idx")],
+                            &[T("sq")],
+                            &[T("v")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA s2 CREATE TABLE public.t (a int);",
+                    expected: Expected::Error(Diagnostic { code: "42P15", message: "CREATE specifies a schema (public) different from the one being created (s2)", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA s3 CREATE TABLE s3.t (a int);",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP SCHEMA ss CASCADE;",
+                    expected: Expected::Tag("DROP SCHEMA"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to 3 other objects", detail: r#"drop cascades to sequence ss.sq
+drop cascades to table ss.base
+drop cascades to view ss.v"#, ..N }],
+                    skip: Some("the cascade notice lists objects in OID order, and Doltgres OIDs are hashes of the names"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP SCHEMA s3 CASCADE;",
+                    expected: Expected::Tag("DROP SCHEMA"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to table s3.t", ..N }],
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "binary send functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT float4send('1.17549435e-38'::float4), float4send('57e18'::float4), float8send('2.2250738585072014E-308'::float8), int4send(5), int2send(-1::int2), int8send(1), boolsend(true), textsend('ab'), byteasend('\x01');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("float4send", BYTEA), Column("float4send", BYTEA), Column("float8send", BYTEA), Column("int4send", BYTEA), Column("int2send", BYTEA), Column("int8send", BYTEA), Column("boolsend", BYTEA), Column("textsend", BYTEA), Column("byteasend", BYTEA)],
+                        rows: &[
+                            &[T(r#"\x00800000"#), T(r#"\x6045c22c"#), T(r#"\x0010000000000000"#), T(r#"\x00000005"#), T(r#"\xffff"#), T(r#"\x0000000000000001"#), T(r#"\x01"#), T(r#"\x6162"#), T(r#"\x01"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

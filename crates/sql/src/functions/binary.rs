@@ -20,7 +20,7 @@ use super::Function;
 use crate::binary::{decode_escape, decode_hex, encode_hex};
 use crate::encodings::Encoding;
 use crate::error::{PgError, Result, code};
-use crate::oid::{BIT, BOOL, BYTEA, INT4, INT8, NAME, TEXT, UUID, VARBIT};
+use crate::oid::{BIT, BOOL, BYTEA, FLOAT4, FLOAT8, INT2, INT4, INT8, NAME, TEXT, UUID, VARBIT};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -32,6 +32,14 @@ const fn f(name: &'static str, args: &'static [u32], ret: u32, implementation: s
 /// FUNCTIONS are the functions and operators of the bytea, bit, bit varying, and uuid types.
 pub const FUNCTIONS: &[Function] = &[
     f("||", &[BYTEA, BYTEA], BYTEA, bytea_concat),
+    f("float4send", &[FLOAT4], BYTEA, send),
+    f("float8send", &[FLOAT8], BYTEA, send),
+    f("int2send", &[INT2], BYTEA, send),
+    f("int4send", &[INT4], BYTEA, send),
+    f("int8send", &[INT8], BYTEA, send),
+    f("boolsend", &[BOOL], BYTEA, send),
+    f("textsend", &[TEXT], BYTEA, send),
+    f("byteasend", &[BYTEA], BYTEA, send),
     f("length", &[BYTEA], INT4, bytea_length),
     f("octet_length", &[BYTEA], INT4, bytea_length),
     f("bit_length", &[BYTEA], INT4, bytea_bit_length),
@@ -502,4 +510,19 @@ fn gen_random_uuid(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     uuid[6] = (uuid[6] & 0x0f) | 0x40;
     uuid[8] = (uuid[8] & 0x3f) | 0x80;
     Ok(Value::Uuid(uuid))
+}
+
+/// send returns a value's binary format, as the type's send function does.
+fn send(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Bytea(match &args[0] {
+        Value::Float4(f) => f.to_be_bytes().to_vec(),
+        Value::Float8(f) => f.to_be_bytes().to_vec(),
+        Value::Int2(i) => i.to_be_bytes().to_vec(),
+        Value::Int4(i) => i.to_be_bytes().to_vec(),
+        Value::Int8(i) => i.to_be_bytes().to_vec(),
+        Value::Bool(b) => vec![*b as u8],
+        Value::Text(text) => text.clone().into_bytes(),
+        Value::Bytea(bytes) => bytes.clone(),
+        other => return Err(PgError::internal(format!("no binary format for {other:?}"))),
+    }))
 }
