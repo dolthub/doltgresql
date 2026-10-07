@@ -196,3 +196,126 @@ impl ArchiveReader {
         Ok(())
     }
 }
+
+/// MAX_SAMPLES is how many chunks an archive writer collects before it trains a dictionary from them, as Dolt's
+/// maxSamples.
+const MAX_SAMPLES: usize = 1000;
+/// DICTIONARY_SIZE is the size of the dictionary an archive writer trains, as Dolt's defaultDictionarySize.
+const DICTIONARY_SIZE: usize = 1 << 12;
+/// MIN_SAMPLES_LEN is how many sample bytes dictionary training needs, as ZDICT_DICTSIZE_MIN.
+const MIN_SAMPLES_LEN: usize = 256;
+/// LEVEL is the zstd compression level, gozstd's default.
+const LEVEL: i32 = 3;
+/// DOLT_VERSION is the version of Dolt's storage library that the Go server embeds, which archives record.
+const DOLT_VERSION: &str = "2.4.1";
+
+/// ArchiveWriter builds an archive in memory as Dolt's ArchiveStreamWriter does: it holds the first chunks back until
+/// it has enough to train a dictionary, compresses every chunk with that dictionary from then on, and stores the
+/// chunks of an archive too small to train one as snappy records.
+#[derive(Default)]
+pub struct ArchiveWriter {
+    buf: Vec<u8>,
+    span_ends: Vec<u64>,
+    /// Each chunk's address with its dictionary and data span ids.
+    chunks: Vec<(Hash, u32, u32)>,
+    /// The chunks held back until a dictionary is trained.
+    queue: Vec<Chunk>,
+    /// The span id of the trained dictionary and the dictionary itself.
+    dictionary: Option<(u32, Vec<u8>)>,
+}
+
+impl ArchiveWriter {
+    pub fn new() -> ArchiveWriter {
+        ArchiveWriter::default()
+    }
+
+    /// count returns the number of chunks added.
+    pub fn count(&self) -> usize {
+        self.chunks.len() + self.queue.len()
+    }
+
+    /// span appends a byte span and returns its id.
+    fn span(&mut self, bytes: &[u8]) -> u32 {
+        self.buf.extend_from_slice(bytes);
+        self.span_ends.push(self.buf.len() as u64);
+        self.span_ends.len() as u32
+    }
+
+    /// add_chunk adds a chunk, training the dictionary once enough chunks wait for it.
+    pub fn add_chunk(&mut self, chunk: Chunk) -> Result<()> {
+        if self.dictionary.is_none() {
+            self.queue.push(chunk);
+            if self.queue.len() < MAX_SAMPLES {
+                return Ok(());
+            }
+            let dictionary = train_dictionary(&self.queue);
+            let compressed = zstd::bulk::compress(&dictionary, LEVEL)?;
+            let id = self.span(&compressed);
+            self.dictionary = Some((id, dictionary));
+            for chunk in std::mem::take(&mut self.queue) {
+                self.compress(chunk)?;
+            }
+            return Ok(());
+        }
+        self.compress(chunk)
+    }
+
+    /// compress adds a chunk compressed with the trained dictionary.
+    fn compress(&mut self, chunk: Chunk) -> Result<()> {
+        let Some((id, dictionary)) = &self.dictionary else { return Ok(()) };
+        let id = *id;
+        let data = zstd::bulk::Compressor::with_dictionary(LEVEL, dictionary)?.compress(&chunk.data)?;
+        let span = self.span(&data);
+        self.chunks.push((chunk.hash, id, span));
+        Ok(())
+    }
+
+    /// finish writes the chunks still held back as snappy records, then the index, the metadata naming the Dolt
+    /// version, and the footer, returning the archive's name and bytes.
+    pub fn finish(mut self) -> (Hash, Vec<u8>) {
+        for chunk in std::mem::take(&mut self.queue) {
+            let span = self.span(&chunk.to_record());
+            self.chunks.push((chunk.hash, 0, span));
+        }
+        let index_at = self.buf.len();
+        for end in std::mem::take(&mut self.span_ends).iter() {
+            self.buf.extend_from_slice(&end.to_be_bytes());
+        }
+        let span_count = (self.buf.len() - index_at) / 8;
+        self.chunks.sort_by_key(|(hash, ..)| hash.0);
+        for (hash, ..) in &self.chunks {
+            self.buf.extend_from_slice(&hash.prefix().to_be_bytes());
+        }
+        for (_, dictionary, data) in &self.chunks {
+            self.buf.extend_from_slice(&dictionary.to_be_bytes());
+            self.buf.extend_from_slice(&data.to_be_bytes());
+        }
+        for (hash, ..) in &self.chunks {
+            self.buf.extend_from_slice(hash.suffix());
+        }
+        let index_len = (self.buf.len() - index_at) as u64;
+        let metadata = format!("{{\"dolt_version\":\"{DOLT_VERSION}\"}}");
+        self.buf.extend_from_slice(metadata.as_bytes());
+        self.buf.extend_from_slice(&index_len.to_be_bytes());
+        self.buf.extend_from_slice(&(span_count as u32).to_be_bytes());
+        self.buf.extend_from_slice(&(self.chunks.len() as u32).to_be_bytes());
+        self.buf.extend_from_slice(&(metadata.len() as u32).to_be_bytes());
+        self.buf.extend_from_slice(&[0; 192]);
+        self.buf.push(MAX_VERSION);
+        self.buf.extend_from_slice(SIGNATURE);
+        (Hash::of(&self.buf), self.buf)
+    }
+}
+
+/// train_dictionary trains a zstd dictionary on the chunks, padding small samples as gozstd's BuildDict does, and
+/// returns an empty dictionary when training fails.
+fn train_dictionary(chunks: &[Chunk]) -> Vec<u8> {
+    let mut samples: Vec<Vec<u8>> = chunks.iter().map(|c| c.data.clone()).collect();
+    let mut total: usize = samples.iter().map(Vec::len).sum();
+    while total < MIN_SAMPLES_LEN {
+        let fake = format!("this is a fake sample {total}").into_bytes();
+        total += fake.len();
+        samples.push(fake);
+    }
+    zstd::dict::from_samples(&samples, DICTIONARY_SIZE).unwrap_or_default()
+}

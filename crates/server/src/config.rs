@@ -46,6 +46,11 @@ pub struct Config {
     pub auto_gc: bool,
     /// Whether the server refuses every write, from behavior.read_only.
     pub read_only: bool,
+    /// Whether automatic garbage collection writes archives, from behavior.auto_gc_behavior.archive_level.
+    pub auto_gc_archive: bool,
+    /// The size of automatic garbage collection's incremental files, or 0 for none, from
+    /// behavior.auto_gc_behavior.incremental_file_size.
+    pub auto_gc_incremental_file_size: u64,
 }
 
 /// Startup is what a command line asks for: serving with a configuration, or printing text and exiting.
@@ -175,6 +180,8 @@ impl Config {
             skip_integrity_check: false,
             auto_gc: true,
             read_only: false,
+            auto_gc_archive: true,
+            auto_gc_incremental_file_size: 0,
         };
         if let Some(path) = config_path {
             let text =
@@ -193,6 +200,12 @@ impl Config {
         }
         if let Some(enable) = doc["behavior"]["auto_gc_behavior"]["enable"].as_bool() {
             self.auto_gc = enable;
+        }
+        if let Some(level) = doc["behavior"]["auto_gc_behavior"]["archive_level"].as_i64() {
+            self.auto_gc_archive = level != 0;
+        }
+        if let Some(size) = doc["behavior"]["auto_gc_behavior"]["incremental_file_size"].as_i64() {
+            self.auto_gc_incremental_file_size = size.max(0) as u64;
         }
         if let Some(read_only) = doc["behavior"]["read_only"].as_bool() {
             self.read_only = read_only;

@@ -121,6 +121,15 @@ pub enum GcMode {
     Shallow,
 }
 
+/// GcConfig is how a garbage collection writes, as Dolt's chunks.GCConfig: its mode, whether it writes archives
+/// rather than table files, and the size of the incremental files of leaf chunks, or 0 for none.
+#[derive(Clone, Copy, Debug)]
+pub struct GcConfig {
+    pub mode: GcMode,
+    pub archive: bool,
+    pub incremental_file_size: u64,
+}
+
 /// Database is a chunk store whose store root names its datasets.
 pub struct Database {
     store: JournalStore,
@@ -212,13 +221,19 @@ impl Database {
         Ok(())
     }
 
-    /// gc keeps only the chunks reachable from the store root, as Dolt's garbage collection does: a shallow collection
+    /// gc keeps only the chunks reachable from the store root, as Dolt's garbage collection does, starting from the old
+    /// generation's files as they are now, since an interrupted collection may have added some: a shallow collection
     /// rewrites the new generation's chunks to one table file, and the others move the chunks that commits reach from
     /// the new generation to the old generation, keeping the chunks that only working sets reach in a new generation
     /// table file, where a full collection also rewrites the old generation's chunks. It also keeps the chunks that
     /// the given addresses reach, with the working sets' chunks.
-    pub fn gc(&mut self, mode: GcMode, keep: Vec<Hash>) -> Result<()> {
+    pub fn gc(&mut self, config: GcConfig, keep: Vec<Hash>) -> Result<()> {
+        let mode = config.mode;
         let root = self.root();
+        let old_dir = self.store.dir().join("oldgen");
+        if old_dir.join(store::MANIFEST_FILE).exists() {
+            self.old_gen = Some(BlockStore::open(&old_dir)?);
+        }
         let committed: Vec<Hash> = self
             .datasets()?
             .into_iter()
@@ -228,14 +243,14 @@ impl Database {
         let mut seen = std::collections::HashSet::new();
         let (mut old_chunks, mut moved) = (Vec::new(), Vec::new());
         for chunk in self.reachable(committed, &mut seen)? {
-            match self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.hash)) {
+            match self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.0.hash)) {
                 true => old_chunks.push(chunk),
                 false => moved.push(chunk),
             }
         }
         let mut working = Vec::new();
         for chunk in self.reachable([vec![root], keep].concat(), &mut seen)? {
-            match self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.hash)) {
+            match self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.0.hash)) {
                 true => old_chunks.push(chunk),
                 false => working.push(chunk),
             }
@@ -243,10 +258,10 @@ impl Database {
         let dir = self.store.dir().to_path_buf();
         if mode == GcMode::Shallow {
             moved.append(&mut working);
+            let moved: Vec<store::Chunk> = moved.into_iter().map(|(chunk, _)| chunk).collect();
             let spec = store::write_table(&dir, &moved)?;
             self.store.rewrite(spec.into_iter().collect())?;
         } else {
-            let old_dir = dir.join("oldgen");
             let mut specs = match (mode, store::Manifest::read(&old_dir)?) {
                 (GcMode::Default, Some(manifest)) => manifest.specs,
                 _ => Vec::new(),
@@ -254,23 +269,29 @@ impl Database {
             if mode == GcMode::Full {
                 moved.append(&mut old_chunks);
             }
-            specs.extend(store::write_table(&old_dir, &moved)?);
+            let (archive, size) = (config.archive, config.incremental_file_size);
+            let mut add = |spec: &store::TableSpec| match mode {
+                GcMode::Default => store::add_to_manifest(&old_dir, root, "__DOLT__", spec),
+                _ => Ok(()),
+            };
+            specs.extend(store::write_files(&old_dir, moved, archive, size, &mut add)?);
             self.old_gen = None;
             store::replace_files(&old_dir, root, "__DOLT__", specs)?;
             self.old_gen = Some(BlockStore::open(&old_dir)?);
-            let spec = store::write_table(&dir, &working)?;
-            self.store.rewrite(spec.into_iter().collect())?;
+            let specs = store::write_files(&dir, working, archive, size, &mut |_| Ok(()))?;
+            self.store.rewrite(specs)?;
         }
         self.nodes.clear();
         Ok(())
     }
 
-    /// reachable returns the chunks that the addresses reach and the seen set has not yet seen, adding them to it.
+    /// reachable returns the chunks that the addresses reach and the seen set has not yet seen, adding them to it, each
+    /// with whether it is a leaf, which refers to no other chunk.
     fn reachable(
         &mut self,
         starts: Vec<Hash>,
         seen: &mut std::collections::HashSet<Hash>,
-    ) -> Result<Vec<store::Chunk>> {
+    ) -> Result<Vec<(store::Chunk, bool)>> {
         let mut chunks = Vec::new();
         let mut stack = starts;
         while let Some(hash) = stack.pop() {
@@ -278,11 +299,13 @@ impl Database {
                 continue;
             }
             let chunk = self.require(&hash)?;
+            let mut leaf = true;
             serial::walk::walk_addrs(Message(&chunk.data), &mut |child| {
+                leaf = false;
                 stack.push(child);
                 Ok(())
             })?;
-            chunks.push(chunk);
+            chunks.push((chunk, leaf));
         }
         Ok(chunks)
     }

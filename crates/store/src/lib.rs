@@ -30,9 +30,10 @@ mod manifest;
 mod store;
 mod table;
 
+pub use archive::{ArchiveReader, ArchiveWriter};
 pub use chunk::Chunk;
 pub use error::{Error, Result};
-pub use gc::{replace_files, write_table};
+pub use gc::{add_to_manifest, replace_files, write_files, write_table};
 pub use hash::Hash;
 pub use journal::{JOURNAL_FILE, JournalRecord, read_records};
 pub use journal_store::JournalStore;

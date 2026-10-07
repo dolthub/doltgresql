@@ -281,13 +281,20 @@ pub fn dolt_gc(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     if parsed.has("shallow") && parsed.has("full") {
         return Err(error("cannot supply both --shallow and --full to dolt_gc: error: invalid usage"));
     }
-    if let Some(level) = parsed.value("archive-level") {
-        match level.parse::<i64>() {
-            Ok(0 | 1) => {}
+    let archive = match parsed.value("archive-level") {
+        None => true,
+        Some(level) => match level.parse::<i64>() {
+            Ok(level @ (0 | 1)) => level == 1,
             Ok(level) => return Err(error(format!("invalid value for archive-level: {level}"))),
             Err(_) => return Err(error(format!("parse error for value for archive-level: {level}"))),
-        }
-    }
+        },
+    };
+    let incremental_file_size = match parsed.value("incremental-file-size") {
+        None => 0,
+        Some(size) => size
+            .parse::<u64>()
+            .map_err(|_| error(format!("parse error for value for incremental-file-size: {size}")))?,
+    };
     let mode = match (parsed.has("shallow"), parsed.has("full")) {
         (true, _) => doltdb::database::GcMode::Shallow,
         (_, true) => doltdb::database::GcMode::Full,
@@ -295,7 +302,7 @@ pub fn dolt_gc(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     };
     crate::dolt::procedures::flush(ctx)?;
     let temp_roots = ctx.session.engine.temp_roots(&ctx.session.database);
-    ctx.db.gc(mode, temp_roots)?;
+    ctx.db.gc(doltdb::database::GcConfig { mode, archive, incremental_file_size }, temp_roots)?;
     ctx.session.engine.collected(&ctx.session.database, ctx.session.id);
     Ok(Value::Int8(0))
 }

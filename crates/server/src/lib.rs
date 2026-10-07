@@ -51,7 +51,12 @@ impl Server {
         )
         .map_err(|err| err.to_string())?;
         engine.set_port(config.port);
-        engine.set_behavior(config.read_only, config.auto_gc);
+        engine.set_behavior(
+            config.read_only,
+            config.auto_gc,
+            config.auto_gc_archive,
+            config.auto_gc_incremental_file_size,
+        );
         let tls = match (&config.tls_cert, &config.tls_key) {
             (Some(cert), Some(key)) => Some(Arc::new(tls_config(cert, key)?)),
             _ => None,

@@ -69,6 +69,8 @@ struct Shared {
     read_only: std::sync::atomic::AtomicBool,
     /// Whether the server collects garbage on its own, which `dolt_auto_gc_enabled` shows.
     auto_gc_enabled: std::sync::atomic::AtomicBool,
+    /// How automatic garbage collection writes.
+    auto_gc_config: Mutex<doltdb::database::GcConfig>,
 }
 
 /// AutoGc is what automatic garbage collection last saw of a database: its store's sizes, and when its last collection
@@ -233,6 +235,11 @@ impl Engine {
                 temp_roots: Mutex::default(),
                 read_only: std::sync::atomic::AtomicBool::new(false),
                 auto_gc_enabled: std::sync::atomic::AtomicBool::new(true),
+                auto_gc_config: Mutex::new(doltdb::database::GcConfig {
+                    mode: doltdb::database::GcMode::Default,
+                    archive: true,
+                    incremental_file_size: 0,
+                }),
             }),
         };
         let databases = std::fs::read_dir(data_dir).map_err(PgError::internal)?;
@@ -243,10 +250,14 @@ impl Engine {
         Ok(engine)
     }
 
-    /// set_behavior records whether the server refuses writes and whether it collects garbage on its own.
-    pub fn set_behavior(&self, read_only: bool, auto_gc: bool) {
+    /// set_behavior records whether the server refuses writes, whether it collects garbage on its own, and how that
+    /// collection writes archives and incremental files.
+    pub fn set_behavior(&self, read_only: bool, auto_gc: bool, archive: bool, incremental_file_size: u64) {
         self.shared.read_only.store(read_only, std::sync::atomic::Ordering::Relaxed);
         self.shared.auto_gc_enabled.store(auto_gc, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut config) = self.shared.auto_gc_config.lock() {
+            (config.archive, config.incremental_file_size) = (archive, incremental_file_size);
+        }
     }
 
     /// read_only reports whether the server refuses writes.
@@ -354,7 +365,8 @@ impl Engine {
                 continue;
             }
             let start = std::time::Instant::now();
-            db.gc(doltdb::database::GcMode::Default, self.temp_roots(&name))?;
+            let config = *lock(&self.shared.auto_gc_config)?;
+            db.gc(config, self.temp_roots(&name))?;
             drop(db);
             let end = std::time::Instant::now();
             let sizes = Some(store_sizes(&noms));
