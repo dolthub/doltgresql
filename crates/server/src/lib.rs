@@ -49,6 +49,7 @@ impl Server {
         )
         .map_err(|err| err.to_string())?;
         engine.set_port(config.port);
+        engine.set_behavior(config.read_only, config.auto_gc);
         Ok(Server { engine, next_process_id: AtomicU32::new(1) })
     }
 

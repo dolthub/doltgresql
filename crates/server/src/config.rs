@@ -44,6 +44,8 @@ pub struct Config {
     pub skip_integrity_check: bool,
     /// Whether the server collects garbage on its own as stores grow, from behavior.auto_gc_behavior.enable.
     pub auto_gc: bool,
+    /// Whether the server refuses every write, from behavior.read_only.
+    pub read_only: bool,
 }
 
 /// Startup is what a command line asks for: serving with a configuration, or printing text and exiting.
@@ -172,6 +174,7 @@ impl Config {
             log_file,
             skip_integrity_check: false,
             auto_gc: true,
+            read_only: false,
         };
         if let Some(path) = config_path {
             let text =
@@ -190,6 +193,9 @@ impl Config {
         }
         if let Some(enable) = doc["behavior"]["auto_gc_behavior"]["enable"].as_bool() {
             self.auto_gc = enable;
+        }
+        if let Some(read_only) = doc["behavior"]["read_only"].as_bool() {
+            self.read_only = read_only;
         }
         if let Some(skip) = doc["behavior"]["skip_startup_integrity_check"].as_bool() {
             self.skip_integrity_check = skip;

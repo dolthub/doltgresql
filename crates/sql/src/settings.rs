@@ -43,6 +43,7 @@ const DOLT_VARIABLES: &[(&str, &str, &str)] = &[
     ("dolt_committer_email", "string", ""),
     ("dolt_committer_date", "string", ""),
     ("dolt_allow_ci_creation", "bool", "off"),
+    ("dolt_auto_gc_enabled", "integer", "1"),
     ("dolt_commit_verification_groups", "string", ""),
     ("dolt_stats_enabled", "bool", "on"),
     ("dolt_stats_paused", "bool", "on"),
@@ -570,6 +571,12 @@ impl Settings {
     /// Inside a transaction, the change is undone when the transaction rolls back.
     pub fn set(&mut self, name: &str, value: Option<&str>, local: bool, in_transaction: bool) -> Result<()> {
         let key = name.to_ascii_lowercase();
+        if key == "dolt_auto_gc_enabled" {
+            return Err(PgError::new(
+                code::CANT_CHANGE_RUNTIME_PARAM,
+                format!("Variable '{key}' is a read only variable"),
+            ));
+        }
         let value = match setting(name) {
             Some(definition) => {
                 match definition.context.as_str() {

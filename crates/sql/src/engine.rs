@@ -65,6 +65,10 @@ struct Shared {
     auto_gc: Mutex<HashMap<String, AutoGc>>,
     /// The addresses of each session's temporary objects in each database, which garbage collection keeps.
     temp_roots: Mutex<HashMap<(u64, String), Vec<store::Hash>>>,
+    /// Whether the server refuses every write.
+    read_only: std::sync::atomic::AtomicBool,
+    /// Whether the server collects garbage on its own, which `dolt_auto_gc_enabled` shows.
+    auto_gc_enabled: std::sync::atomic::AtomicBool,
 }
 
 /// AutoGc is what automatic garbage collection last saw of a database: its store's sizes, and when its last collection
@@ -227,6 +231,8 @@ impl Engine {
                 ended: Mutex::default(),
                 auto_gc: Mutex::default(),
                 temp_roots: Mutex::default(),
+                read_only: std::sync::atomic::AtomicBool::new(false),
+                auto_gc_enabled: std::sync::atomic::AtomicBool::new(true),
             }),
         };
         let databases = std::fs::read_dir(data_dir).map_err(PgError::internal)?;
@@ -235,6 +241,17 @@ impl Engine {
             doltdb::create::create_database(&dir, DEFAULT_BRANCH, superuser, "localhost", &create_times())?;
         }
         Ok(engine)
+    }
+
+    /// set_behavior records whether the server refuses writes and whether it collects garbage on its own.
+    pub fn set_behavior(&self, read_only: bool, auto_gc: bool) {
+        self.shared.read_only.store(read_only, std::sync::atomic::Ordering::Relaxed);
+        self.shared.auto_gc_enabled.store(auto_gc, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// read_only reports whether the server refuses writes.
+    pub fn read_only(&self) -> bool {
+        self.shared.read_only.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// set_port records the port the server listens on.
@@ -518,6 +535,8 @@ impl Engine {
             prepared: HashMap::new(),
         };
         session.state.settings.set_raw("session_authorization", Some(user.to_string()), false, false);
+        let auto_gc = self.shared.auto_gc_enabled.load(std::sync::atomic::Ordering::Relaxed);
+        session.state.settings.set_raw("dolt_auto_gc_enabled", Some(u8::from(auto_gc).to_string()), false, false);
         session.switch(database).map_err(|_| {
             PgError::fatal(code::INVALID_CATALOG_NAME, format!("database \"{database}\" does not exist"))
         })?;
@@ -2127,6 +2146,9 @@ impl Ctx<'_> {
                 code::READ_ONLY_SQL_TRANSACTION,
                 format!("cannot execute {} in a read-only transaction", command_name(node)),
             ));
+        }
+        if writes && self.session.engine.read_only() {
+            return Err(PgError::new(code::READ_ONLY_SQL_TRANSACTION, "database server is set to read only mode"));
         }
         if writes && self.txn.detached {
             return Err(PgError::internal(format!("Database {} is read-only.", self.session.display)));
