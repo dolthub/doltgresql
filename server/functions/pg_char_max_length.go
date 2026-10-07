@@ -32,6 +32,8 @@ func initPgCharMaxLength() {
 
 // _pg_char_max_length returns the character or bit length encoded in a type modifier.
 var _pg_char_max_length = framework.Function2{
+	// TODO: Support schema-aware built-in registration and lookup for information_schema functions.
+	// Schema: "information_schema",
 	Name:       "_pg_char_max_length",
 	Return:     pgtypes.Int32,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
