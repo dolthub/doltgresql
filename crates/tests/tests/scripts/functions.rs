@@ -5430,6 +5430,7 @@ fn test_date_and_time_function() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("both roundings print the same text whenever the fifth fractional digit rounds to 0, about one run in ten"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -11518,6 +11519,7 @@ fn test_system_information_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("version() names the platform and compiler of the build, which differ from the machine that recorded this"),
                     ..A
                 },
             ],

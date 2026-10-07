@@ -942,6 +942,9 @@ impl Session {
             ctes: Vec::new(),
             work_tables: std::collections::HashMap::new(),
             named_params: None,
+            once: None,
+            outer_reach: usize::MAX,
+            aggregate_levels: Vec::new(),
         };
         let result = (|| {
             ctx.install_types()?;

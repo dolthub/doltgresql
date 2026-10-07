@@ -8732,3 +8732,111 @@ fn test_input_edge_cases() {
         },
     ]);
 }
+
+#[test]
+fn test_interval_modifier_and_precision_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "interval type modifiers",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '1 year 2 months 3 days 04:05:06.789'::interval year, '1 year 2 months 3 days 04:05:06.789'::interval day to minute, '1.789'::interval second(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 year"), T("1 year 2 mons 3 days 04:05:00"), T("00:00:01.8")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE it (a interval(2), b interval hour to second(3), c interval year to month);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format_type(atttypid, atttypmod), atttypmod FROM pg_attribute WHERE attrelid = 'it'::regclass AND attnum > 0 ORDER BY attnum;",
+                    expected: Expected::Rows {
+                        columns: &[Column("format_type", TEXT), Column("atttypmod", INT4)],
+                        rows: &[
+                            &[T("interval(2)"), T("2147418114")],
+                            &[T("interval hour to second(3)"), T("469762051")],
+                            &[T("interval year to month"), T("458751")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO it VALUES ('1 day 01:02:03.4567', '1 day 01:02:03.4567', '1 year 2 months 3 days');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM it;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INTERVAL), Column("b", INTERVAL), Column("c", INTERVAL)],
+                        rows: &[
+                            &[T("1 day 01:02:03.46"), T("1 day 01:02:03.457"), T("1 year 2 mons")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1'::interval(-1);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "-""#, position: 22, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "precision of converted times",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '2020-01-01 10:00:00.555555'::timestamp::timestamptz(1)::text, '10:00:00.555555'::time::interval(1), '2020-01-01 10:00:00.555555'::timestamp::time(2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("text", TEXT), Column("interval", INTERVAL), Column("time", TIME)],
+                        rows: &[
+                            &[T("2020-01-01 10:00:00.6-08"), T("10:00:00.6"), T("10:00:00.56")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT length(current_time(2)::text) < length(current_time(5)::text), length(localtime(0)::text), length(current_timestamp(0)::text) = length(now()::timestamptz(0)::text);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("length", INT4), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("8"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "interval fields read by the modifier",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1' YEAR, INTERVAL '2' MONTH, INTERVAL '3' DAY, INTERVAL '4' HOUR, INTERVAL '5' MINUTE, INTERVAL '6.5' SECOND, INTERVAL '7' DAY TO HOUR, INTERVAL '8' HOUR TO MINUTE, INTERVAL '1.5' YEAR, '2'::interval minute;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 year"), T("2 mons"), T("3 days"), T("04:00:00"), T("00:05:00"), T("00:00:06.5"), T("07:00:00"), T("00:08:00"), T("1 year"), T("00:02:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

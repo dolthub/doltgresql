@@ -1293,9 +1293,68 @@ impl IntervalBuilder {
     }
 }
 
+/// INTERVAL_FULL_RANGE and INTERVAL_FULL_PRECISION are the parts of an interval modifier that leave the interval as is.
+pub const INTERVAL_FULL_RANGE: i32 = 0x7fff;
+pub const INTERVAL_FULL_PRECISION: i32 = 0xffff;
+
+/// INTERVAL_RANGES lists the field ranges an interval modifier can hold, as masks of Postgres' field bits, with the
+/// words format_type writes for each.
+pub const INTERVAL_RANGES: [(i32, &str); 14] = [
+    (1 << 2, " year"),
+    (1 << 1, " month"),
+    (1 << 3, " day"),
+    (1 << 10, " hour"),
+    (1 << 11, " minute"),
+    (1 << 12, " second"),
+    ((1 << 2) | (1 << 1), " year to month"),
+    ((1 << 3) | (1 << 10), " day to hour"),
+    ((1 << 3) | (1 << 10) | (1 << 11), " day to minute"),
+    ((1 << 3) | (1 << 10) | (1 << 11) | (1 << 12), " day to second"),
+    ((1 << 10) | (1 << 11), " hour to minute"),
+    ((1 << 10) | (1 << 11) | (1 << 12), " hour to second"),
+    ((1 << 11) | (1 << 12), " minute to second"),
+    (INTERVAL_FULL_RANGE, ""),
+];
+
+/// adjust_interval truncates an interval to the fields of a modifier's range, as Postgres' AdjustIntervalForTypmod
+/// does, leaving the fractional seconds to the modifier's precision.
+pub fn adjust_interval(iv: Interval, modifier: i32) -> Interval {
+    if modifier < 0 {
+        return iv;
+    }
+    let truncate = |micros: i64, unit: i64| micros / unit * unit;
+    let (year, month, day, hour, minute) = (1 << 2, 1 << 1, 1 << 3, 1 << 10, 1 << 11);
+    match (modifier >> 16) & 0x7fff {
+        r if r == year => Interval { months: iv.months / 12 * 12, days: 0, micros: 0 },
+        r if r == month || r == year | month => Interval { days: 0, micros: 0, ..iv },
+        r if r == day => Interval { micros: 0, ..iv },
+        r if r == hour || r == day | hour => Interval { micros: truncate(iv.micros, USECS_PER_HOUR), ..iv },
+        r if r == minute || r == day | hour | minute || r == hour | minute => {
+            Interval { micros: truncate(iv.micros, USECS_PER_MINUTE), ..iv }
+        }
+        _ => iv,
+    }
+}
+
 /// parse_interval reads an interval in Postgres' formats: unit words, `@` verbose form with `ago`, times, SQL
 /// standard year-month and day-time, and ISO 8601.
 pub fn parse_interval(text: &str) -> Result<Interval> {
+    parse_interval_with_modifier(text, -1)
+}
+
+/// parse_interval_with_modifier reads an interval as `parse_interval` does, where a number without a unit counts the
+/// last field of the modifier's range, or seconds without one.
+pub fn parse_interval_with_modifier(text: &str, modifier: i32) -> Result<Interval> {
+    let (year, month, day, hour, minute) = (1 << 2, 1 << 1, 1 << 3, 1 << 10, 1 << 11);
+    let bare_unit = match modifier >> 16 & 0x7fff {
+        _ if modifier < 0 => "s",
+        r if r == year => "y",
+        r if r == month || r == year | month => "mon",
+        r if r == day => "d",
+        r if r == hour || r == day | hour => "h",
+        r if r == minute || r == hour | minute || r == day | hour | minute => "min",
+        _ => "s",
+    };
     let invalid =
         || PgError::new(code::INVALID_DATETIME_FORMAT, format!("invalid input syntax for type interval: \"{text}\""));
     let trimmed = text.trim();
@@ -1379,7 +1438,7 @@ pub fn parse_interval(text: &str) -> Result<Interval> {
             Some(u) => b.add(amount, u),
             // A bare number is days when a time follows, and seconds otherwise.
             None if words.get(i + 1).is_some_and(|w| w.contains(':')) => b.add(amount, "d"),
-            None => b.add(amount, "s"),
+            None => b.add(amount, bare_unit),
         }
         seen_any = true;
         i += 1;

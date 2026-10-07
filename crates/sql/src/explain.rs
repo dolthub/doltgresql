@@ -80,7 +80,8 @@ fn columns(plan: &Plan) -> Vec<String> {
         Plan::Filter { input, .. }
         | Plan::Sort { input, .. }
         | Plan::Limit { input, .. }
-        | Plan::Distinct { input, .. } => columns(input),
+        | Plan::Distinct { input, .. }
+        | Plan::Once(input) => columns(input),
         Plan::Project { input, exprs } => {
             let names = columns(input);
             exprs.iter().map(|e| expr_text(e, &names)).collect()
@@ -112,7 +113,7 @@ impl Printer {
                 filters.insert(0, format!("Filter: {}", expr_text(predicate, &columns(input))));
                 return self.node(input, depth, filters);
             }
-            Plan::Project { input, .. } => return self.node(input, depth, filters),
+            Plan::Project { input, .. } | Plan::Once(input) => return self.node(input, depth, filters),
             Plan::Scan(table) => {
                 (format!("Seq Scan on {}", crate::engine::quote_identifier(&table.name)), vec![], vec![])
             }
@@ -210,7 +211,7 @@ impl Printer {
             Plan::Recursive { anchor, step, .. } => {
                 ("Recursive Union".into(), vec![], vec![anchor.as_ref(), step.as_ref()])
             }
-            Plan::WorkTable(_) => ("WorkTable Scan".into(), vec![], vec![]),
+            Plan::WorkTable(..) => ("WorkTable Scan".into(), vec![], vec![]),
             Plan::ProjectSet { input, .. } => ("ProjectSet".into(), vec![], vec![input.as_ref()]),
             Plan::Window { input, .. } => ("WindowAgg".into(), vec![], vec![input.as_ref()]),
         };

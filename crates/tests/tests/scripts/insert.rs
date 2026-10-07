@@ -1031,3 +1031,109 @@ ON CONFLICT (id) do update set c1 = $4"#,
         },
     ]);
 }
+
+#[test]
+fn test_unique_statement_check_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "unique checks within one statement",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ust (a int, b int, c int UNIQUE, PRIMARY KEY (a, b));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ust SELECT x / 10, x % 10, x FROM generate_series(1, 1000) x;",
+                    expected: Expected::Tag("INSERT 0 1000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), count(DISTINCT c) FROM ust;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("1000"), T("1000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ust SELECT x / 10, x % 10, 5 FROM generate_series(2000, 2003) x;",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "ust_c_key""#, detail: "Key (c)=(5) already exists.", schema: "public", table: "ust", constraint: "ust_c_key", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ust VALUES (500, 1, 2000), (500, 2, 2000);",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "ust_c_key""#, detail: "Key (c)=(2000) already exists.", schema: "public", table: "ust", constraint: "ust_c_key", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ust VALUES (500, 1, NULL), (500, 2, NULL);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE ust SET c = c + 5000 WHERE c > 990;",
+                    expected: Expected::Tag("UPDATE 10"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT max(c) FROM ust;",
+                    expected: Expected::Rows {
+                        columns: &[Column("max", INT4)],
+                        rows: &[
+                            &[T("6000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM ust WHERE c = 5;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ust VALUES (600, 1, 5);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "qualified function names in errors",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT pg_catalog.nosuch(1);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function pg_catalog.nosuch(integer) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM unnest(ARRAY[1, 2], 5);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function pg_catalog.unnest(integer) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a']) AS t(a, b);",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("1"), T("a")],
+                            &[T("2"), Null],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -87,6 +87,18 @@ pub struct WindowCall {
     pub start: Bound,
     pub end: Bound,
     pub ret: ColumnType,
+    /// The comparisons of a RANGE frame with offsets.
+    pub range: Option<RangeKeys>,
+}
+
+/// RangeKeys are what a RANGE frame with offsets compares rows by: the ordering value as the type of the ordering value
+/// plus an offset, and for each offset bound that sum or difference with whether rows in the frame are at most it, as
+/// Postgres' in_range functions decide.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RangeKeys {
+    pub key: Expr,
+    pub start: Option<(Expr, bool)>,
+    pub end: Option<(Expr, bool)>,
 }
 
 /// window_kind returns the window function of a name, or None for a name that is not one.
@@ -129,12 +141,13 @@ impl<'b, 'a> Binder<'b, 'a> {
             })
         };
         if !over.name.is_empty() && over.partition_clause.is_empty() && over.order_clause.is_empty() {
-            return named(&over.name);
+            let resolved = self.window_definition(&WindowDef { name: String::new(), ..named(&over.name)? })?;
+            return Ok(WindowDef { name: over.name.clone(), ..resolved });
         }
         if over.refname.is_empty() {
             return Ok(over.clone());
         }
-        let base = named(&over.refname)?;
+        let base = self.window_definition(&WindowDef { name: String::new(), ..named(&over.refname)? })?;
         if !over.partition_clause.is_empty() {
             return Err(PgError {
                 position: position(over.location),
@@ -279,7 +292,7 @@ impl<'b, 'a> Binder<'b, 'a> {
         for node in &over.partition_clause {
             partition.push(self.bind(node)?.0);
         }
-        let mut order = Vec::new();
+        let (mut order, mut order_types) = (Vec::new(), Vec::new());
         for sort in &over.order_clause {
             let Some(NodeEnum::SortBy(sort)) = sort.node.as_ref() else { continue };
             let node = sort.node.as_deref().ok_or_else(|| PgError::internal("ORDER BY without a key"))?;
@@ -290,12 +303,56 @@ impl<'b, 'a> Binder<'b, 'a> {
                 Ok(pg_query::protobuf::SortByNulls::SortbyNullsLast) => false,
                 _ => descending,
             };
-            order.push(SortKey { expr: self.bind(node)?.0, descending, nulls_first });
+            let (expr, ty) = self.bind(node)?;
+            order.push(SortKey { expr, descending, nulls_first });
+            order_types.push(ty);
         }
         let options = over.frame_options;
+        let offsets = frame::START_OFFSET_PRECEDING
+            | frame::START_OFFSET_FOLLOWING
+            | frame::END_OFFSET_PRECEDING
+            | frame::END_OFFSET_FOLLOWING;
+        let ranged = options & frame::RANGE != 0 && options & offsets != 0;
+        if ranged && order.len() != 1 {
+            return Err(PgError {
+                position: position(over.location),
+                ..PgError::new(
+                    code::WINDOWING_ERROR,
+                    "RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column",
+                )
+            });
+        }
+        let column = order_types.first().copied().unwrap_or(typ(oid::INT8));
+        let target = match column.oid {
+            oid::INT2 | oid::INT4 | oid::INT8 => oid::INT8,
+            oid::FLOAT4 | oid::FLOAT8 => oid::FLOAT8,
+            oid::NUMERIC => oid::NUMERIC,
+            oid::DATE | oid::TIME | oid::TIMETZ | oid::TIMESTAMP | oid::TIMESTAMPTZ | oid::INTERVAL => oid::INTERVAL,
+            _ => 0,
+        };
         let mut offset = |node: &Option<Box<Node>>| -> Result<Expr> {
             let node = node.as_deref().ok_or_else(|| PgError::internal("a frame offset without a value"))?;
-            Ok(coerce(self.bind(node)?, typ(oid::INT8), false, arg_location(node))?.0)
+            let bound = self.bind(node)?;
+            if !ranged {
+                return Ok(coerce(bound, typ(oid::INT8), false, arg_location(node))?.0);
+            }
+            let column_name = crate::cast::type_display(column.oid);
+            let unsupported = |message: String| PgError {
+                position: position(arg_location(node)),
+                ..PgError::new(code::FEATURE_NOT_SUPPORTED, message)
+            };
+            if target == 0 {
+                return Err(unsupported(format!(
+                    "RANGE with offset PRECEDING/FOLLOWING is not supported for column type {column_name}"
+                )));
+            }
+            let from = crate::cast::type_display(bound.1.oid).into_owned();
+            coerce(bound, typ(target), false, arg_location(node)).map(|b| b.0).map_err(|_| PgError {
+                hint: Some("Cast the offset value to an appropriate type.".into()),
+                ..unsupported(format!(
+                    "RANGE with offset PRECEDING/FOLLOWING is not supported for column type {column_name} and offset type {from}"
+                ))
+            })
         };
         let start = if options & frame::START_CURRENT_ROW != 0 {
             Bound::CurrentRow
@@ -315,13 +372,29 @@ impl<'b, 'a> Binder<'b, 'a> {
         } else {
             Bound::CurrentRow
         };
-        if options & frame::RANGE != 0
-            && (matches!(start, Bound::Preceding(_) | Bound::Following(_))
-                || matches!(end, Bound::Preceding(_) | Bound::Following(_)))
-        {
-            return Err(PgError::unsupported("RANGE frames with offsets"));
-        }
-        Ok((WindowCall { kind, args, distinct: false, filter, partition, order, options, start, end, ret }, ret))
+        let range = match ranged {
+            false => None,
+            true => {
+                let descending = order[0].descending;
+                let mut sum_type = column;
+                let mut sum = |bound: &Bound, at_most: bool| -> Result<Option<(Expr, bool)>> {
+                    let (offset, preceding) = match bound {
+                        Bound::Preceding(e) => (e, true),
+                        Bound::Following(e) => (e, false),
+                        _ => return Ok(None),
+                    };
+                    let op = if preceding != descending { "-" } else { "+" };
+                    let (sum, ty) =
+                        self.binary(op, (order[0].expr.clone(), column), (offset.clone(), typ(target)), -1)?;
+                    sum_type = ty;
+                    Ok(Some((sum, at_most != descending)))
+                };
+                let (start, end) = (sum(&start, false)?, sum(&end, true)?);
+                let key = coerce((order[0].expr.clone(), column), sum_type, true, -1)?.0;
+                Some(RangeKeys { key, start, end })
+            }
+        };
+        Ok((WindowCall { kind, args, distinct: false, filter, partition, order, options, start, end, ret, range }, ret))
     }
 }
 
@@ -388,7 +461,10 @@ impl WindowCall {
         let mut keyed: Vec<(Vec<Value>, Vec<Value>, usize)> = Vec::with_capacity(rows.len());
         for (i, row) in rows.iter().enumerate() {
             let partition = self.partition.iter().map(|e| e.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
-            let order = self.order.iter().map(|k| k.expr.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+            let mut order = self.order.iter().map(|k| k.expr.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+            if let Some(range) = &self.range {
+                order.push(range.key.eval(ctx, row)?);
+            }
             keyed.push((partition, order, i));
         }
         let partition_keys: Vec<SortKey> =
@@ -431,6 +507,59 @@ impl WindowCall {
         (first, last)
     }
 
+    /// range_edge returns the first position of a RANGE frame with an offset start, or the last position of one with an
+    /// offset end, where the rows of a NULL ordering value frame only their peers, as Postgres' window aggregation does.
+    fn range_edge(
+        &self,
+        ctx: &mut Ctx<'_>,
+        part: &[(Vec<Value>, Vec<Value>, usize)],
+        row: &[Value],
+        position: usize,
+        offset: &Expr,
+        starting: bool,
+    ) -> Result<isize> {
+        let sums = self.range.as_ref().and_then(|r| if starting { r.start.as_ref() } else { r.end.as_ref() });
+        let (sum, at_most) = sums.ok_or_else(|| PgError::internal("a RANGE frame bound without an offset"))?;
+        let negative = match offset.eval(ctx, row)? {
+            Value::Null => {
+                let which = if starting { "starting" } else { "ending" };
+                return Err(PgError::new(
+                    code::NULL_VALUE_NOT_ALLOWED,
+                    format!("frame {which} offset must not be null"),
+                ));
+            }
+            Value::Int8(n) => n < 0,
+            Value::Float8(f) => f.is_nan() || f < 0.0,
+            Value::Numeric(n) => n.is_negative() || matches!(n, crate::numeric::Numeric::NaN),
+            Value::Interval(iv) => iv.cmp_key() < 0,
+            _ => false,
+        };
+        if negative {
+            return Err(PgError::new(
+                code::INVALID_PRECEDING_OR_FOLLOWING_SIZE,
+                "invalid preceding or following size in window function",
+            ));
+        }
+        if part[position].1[0].is_null() {
+            let (first, last) = self.peers(part, position);
+            return Ok(if starting { first } else { last } as isize);
+        }
+        let bound = sum.eval(ctx, row)?;
+        let k = self.order.len();
+        let lo = part.iter().position(|p| !p.1[k].is_null()).unwrap_or(part.len());
+        let hi = part.iter().rposition(|p| !p.1[k].is_null()).map_or(lo, |i| i + 1);
+        let inside = |p: &(Vec<Value>, Vec<Value>, usize)| match compare_values(&p.1[k], &bound) {
+            Ordering::Greater => !at_most,
+            Ordering::Less => *at_most,
+            Ordering::Equal => true,
+        };
+        let rows = &part[lo..hi];
+        Ok(match starting {
+            true => (lo + rows.partition_point(|p| !inside(p))) as isize,
+            false => (lo + rows.partition_point(inside)) as isize - 1,
+        })
+    }
+
     /// frame returns the positions of the rows in a row's frame.
     fn frame(
         &self,
@@ -454,6 +583,9 @@ impl WindowCall {
         let group_of = |i: usize| group_starts.iter().rposition(|&s| s <= i).unwrap_or(0);
         let group_end = |g: usize| group_starts.get(g + 1).map_or(n, |&s| s) - 1;
         let start = match &self.start {
+            Bound::Preceding(e) | Bound::Following(e) if self.range.is_some() => {
+                self.range_edge(ctx, part, row, position, e, true)? as usize
+            }
             Bound::UnboundedPreceding => 0,
             Bound::CurrentRow if rows_mode => position,
             Bound::CurrentRow => peer_first,
@@ -472,6 +604,9 @@ impl WindowCall {
             Bound::UnboundedFollowing => n,
         };
         let end = match &self.end {
+            Bound::Preceding(e) | Bound::Following(e) if self.range.is_some() => {
+                self.range_edge(ctx, part, row, position, e, false)?
+            }
             Bound::UnboundedFollowing => n as isize - 1,
             Bound::CurrentRow if rows_mode => position as isize,
             Bound::CurrentRow => peer_last as isize,

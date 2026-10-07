@@ -91,7 +91,17 @@ pub fn format_type(type_oid: u32, modifier: Option<i32>) -> Option<String> {
             };
             return Some(format!("{name}{} {zone} time zone", typmod.map(precision).unwrap_or_default()));
         }
-        oid::INTERVAL => return with("interval", typmod.map(|m| precision(m & 0xffff)).unwrap_or_default()),
+        oid::INTERVAL => {
+            let suffix = typmod.map(|m| {
+                let range = (m >> 16) & 0x7fff;
+                let fields = crate::datetime::INTERVAL_RANGES.iter().find(|(r, _)| *r == range).map_or("", |(_, f)| f);
+                match m & 0xffff {
+                    crate::datetime::INTERVAL_FULL_PRECISION => fields.to_string(),
+                    p => format!("{fields}({p})"),
+                }
+            });
+            return with("interval", suffix.unwrap_or_default());
+        }
         oid::BOOL | oid::INT2 | oid::INT4 | oid::INT8 | oid::FLOAT4 | oid::FLOAT8 => {
             return Some(type_display(type_oid).into_owned());
         }
@@ -296,6 +306,14 @@ fn is_char_value(text: &str) -> bool {
         || (text.len() == 4 && text.starts_with('\\') && text[1..].bytes().all(|b| (b'0'..=b'7').contains(&b)))
 }
 
+/// input_with_modifier reads a value of the type from its text format, reading an interval by its modifier's range.
+pub fn input_with_modifier(text: &str, to: ColumnType) -> Result<Value> {
+    match to.oid {
+        oid::INTERVAL => Ok(Value::Interval(crate::datetime::parse_interval_with_modifier(text, to.modifier)?)),
+        _ => input(text, to.oid),
+    }
+}
+
 /// input reads a value of the type from its text format.
 pub fn input(text: &str, type_oid: u32) -> Result<Value> {
     if crate::array::is_vector_type(type_oid) {
@@ -489,16 +507,14 @@ fn cast_datetime(value: Value, to: ColumnType) -> Result<Value> {
         ts => ts.div_euclid(USECS_PER_DAY) as i32,
     };
     let result = match (value, to.oid) {
-        (Value::Text(text), _) => return input(&text, to.oid).and_then(|v| cast_datetime(v, to)),
+        (Value::Text(text), _) => return input_with_modifier(&text, to).and_then(|v| cast_datetime(v, to)),
         (v @ Value::Date(_), oid::DATE) => v,
         (Value::Timestamp(ts), oid::DATE) => Value::Date(timestamp_to_date(ts)),
         (Value::TimestampTz(ts), oid::DATE) => {
             Value::Date(timestamp_to_date(if finite(ts) { ts + zone_offset(ts) } else { ts }))
         }
         (Value::Date(d), oid::TIMESTAMP) => Value::Timestamp(date_to_timestamp(d)),
-        (Value::Timestamp(ts), oid::TIMESTAMP) => {
-            Value::Timestamp(if finite(ts) { round_micros(ts, to.modifier) } else { ts })
-        }
+        (v @ Value::Timestamp(_), oid::TIMESTAMP) => v,
         (Value::TimestampTz(ts), oid::TIMESTAMP) => {
             Value::Timestamp(if finite(ts) { ts + zone_offset(ts) } else { ts })
         }
@@ -509,27 +525,33 @@ fn cast_datetime(value: Value, to: ColumnType) -> Result<Value> {
         (Value::Timestamp(ts), oid::TIMESTAMPTZ) => {
             Value::TimestampTz(if finite(ts) { ts - local_offset(ts) } else { ts })
         }
-        (Value::TimestampTz(ts), oid::TIMESTAMPTZ) => {
-            Value::TimestampTz(if finite(ts) { round_micros(ts, to.modifier) } else { ts })
-        }
-        (Value::Time(t), oid::TIME) => Value::Time(round_micros(t, to.modifier)),
+        (v @ Value::TimestampTz(_), oid::TIMESTAMPTZ) => v,
+        (v @ Value::Time(_), oid::TIME) => v,
         (Value::TimeTz(t, _), oid::TIME) => Value::Time(t),
         (Value::Timestamp(ts), oid::TIME) => Value::Time(ts.rem_euclid(USECS_PER_DAY)),
         (Value::TimestampTz(ts), oid::TIME) => Value::Time((ts + zone_offset(ts)).rem_euclid(USECS_PER_DAY)),
         (Value::Interval(iv), oid::TIME) => Value::Time(iv.micros.rem_euclid(USECS_PER_DAY)),
         (Value::Time(t), oid::TIMETZ) => Value::TimeTz(t, -(zone_offset(dt::now().timestamp) / USECS_PER_SEC) as i32),
-        (Value::TimeTz(t, z), oid::TIMETZ) => Value::TimeTz(round_micros(t, to.modifier), z),
+        (v @ Value::TimeTz(..), oid::TIMETZ) => v,
         (Value::TimestampTz(ts), oid::TIMETZ) => {
             let offset = zone_offset(ts);
             Value::TimeTz((ts + offset).rem_euclid(USECS_PER_DAY), -(offset / USECS_PER_SEC) as i32)
         }
-        (Value::Interval(iv), oid::INTERVAL) => {
-            Value::Interval(dt::Interval { micros: round_micros(iv.micros, to.modifier & 0xffff), ..iv })
-        }
+        (v @ Value::Interval(_), oid::INTERVAL) => v,
         (Value::Time(t), oid::INTERVAL) => Value::Interval(dt::Interval { months: 0, days: 0, micros: t }),
         (other, _) => return Err(cannot_cast(&other, to.oid)),
     };
-    Ok(result)
+    Ok(match result {
+        Value::Timestamp(ts) if finite(ts) => Value::Timestamp(round_micros(ts, to.modifier)),
+        Value::TimestampTz(ts) if finite(ts) => Value::TimestampTz(round_micros(ts, to.modifier)),
+        Value::Time(t) => Value::Time(round_micros(t, to.modifier)),
+        Value::TimeTz(t, z) => Value::TimeTz(round_micros(t, to.modifier), z),
+        Value::Interval(iv) => {
+            let iv = dt::adjust_interval(iv, to.modifier);
+            Value::Interval(dt::Interval { micros: round_micros(iv.micros, to.modifier & 0xffff), ..iv })
+        }
+        other => other,
+    })
 }
 
 /// int_bits returns an integer's low `width` bits as a bit string of the modifier's length, sign-extending a longer

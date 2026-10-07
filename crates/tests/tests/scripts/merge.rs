@@ -177,10 +177,10 @@ fn test_merge() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Postgres reports the violated constraint as it does outside a merge.
                 ScriptTestAssertion {
                     query: "INSERT INTO t1 VALUES (5, '2019-12-31 00:00:00')",
-                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"Check constraint "check_b" violated"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"new row for relation "t1" violates check constraint "check_b""#, detail: "Failing row contains (5, 2019-12-31 00:00:00+00).", schema: "public", table: "t1", constraint: "check_b", ..E }),
                     ..A
                 },
             ],
@@ -225,10 +225,10 @@ fn test_merge() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Postgres reports the violated constraint as it does outside a merge.
                 ScriptTestAssertion {
                     query: "INSERT INTO t1 VALUES (100, 2)",
-                    expected: Expected::Error(Diagnostic { code: "23505", message: "duplicate unique key given: [2]", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "t1_b_key""#, detail: "Key (b)=(2) already exists.", schema: "public", table: "t1", constraint: "t1_b_key", ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

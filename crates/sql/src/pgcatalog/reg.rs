@@ -120,6 +120,11 @@ impl Ctx<'_> {
             let oid = text.parse().map_err(|_| crate::cast::out_of_range(types::OID, text))?;
             return self.reg_from_oid(oid, type_oid);
         }
+        self.reg_named(text, type_oid)
+    }
+
+    /// reg_named returns the reg value of the object that text names, reading digits as a name rather than an OID.
+    fn reg_named(&mut self, text: &str, type_oid: u32) -> Result<Reg> {
         match type_oid {
             types::REGCLASS => {
                 let names = crate::sequences::parse_qualified_name(text)?;
@@ -174,7 +179,45 @@ impl Ctx<'_> {
                     })?;
                 Ok(Reg { type_oid, oid, name })
             }
-            types::REGPROC | types::REGPROCEDURE => {
+            types::REGPROCEDURE => {
+                let (names, args) = name_and_arg_types(text)?;
+                let mut names = crate::sequences::parse_qualified_name(names)?;
+                let name = names.pop().unwrap_or_default();
+                let schemas = match names.pop() {
+                    Some(schema) => vec![schema],
+                    None => self.effective_search_path(),
+                };
+                let mut found = None;
+                if schemas.iter().any(|s| s == "pg_catalog") {
+                    let arg_types = builtin_column("pg_proc", "proargtypes");
+                    found = builtin_column("pg_proc", "proname")
+                        .into_iter()
+                        .zip(arg_types)
+                        .find(|((_, n), (_, a))| {
+                            text_of(n) == name
+                                && a.output().unwrap_or_default().split_whitespace().eq(args.iter().map(u32::to_string))
+                        })
+                        .map(|((o, _), _)| o);
+                }
+                if found.is_none() {
+                    found = self
+                        .routines()?
+                        .iter()
+                        .find(|r| {
+                            r.name == name
+                                && schemas.contains(&r.schema)
+                                && r.inputs().map(|p| p.ty.oid).eq(args.iter().copied())
+                        })
+                        .map(|r| crate::pgcatalog::routines::routine_oid(r));
+                }
+                let Some(oid) = found else {
+                    return Err(PgError::new(code::UNDEFINED_FUNCTION, format!("function \"{text}\" does not exist")));
+                };
+                let types: Vec<String> =
+                    args.iter().map(|&a| crate::cast::format_type(a, None).unwrap_or_default()).collect();
+                Ok(Reg { type_oid, oid, name: format!("{name}({})", types.join(",")) })
+            }
+            types::REGPROC => {
                 let name = text.split('(').next().unwrap_or(text).trim();
                 let mut names = crate::sequences::parse_qualified_name(name)?;
                 let name = names.pop().unwrap_or_default();
@@ -219,10 +262,7 @@ impl Ctx<'_> {
             code::UNDEFINED_FUNCTION,
             code::AMBIGUOUS_FUNCTION,
         ];
-        if !text.trim().is_empty() && text.trim().bytes().all(|b| b.is_ascii_digit()) {
-            return Ok(Value::Null);
-        }
-        match self.reg_from_name(text.trim(), type_oid) {
+        match self.reg_named(text.trim(), type_oid) {
             Ok(reg) => Ok(Value::Reg(Box::new(reg))),
             Err(err) if missing.contains(&err.code) => Ok(Value::Null),
             Err(err) => Err(err),
@@ -412,8 +452,11 @@ impl Ctx<'_> {
 /// parse_type_name reads a type name as Postgres' parseTypeString does, returning the type's OID.
 fn parse_type_name(text: &str) -> Result<u32> {
     let invalid = || PgError::new(code::SYNTAX_ERROR, format!("invalid type name \"{text}\""));
-    let statements =
-        crate::parse::parse(&format!("SELECT NULL::{text}")).map_err(|err| PgError { position: None, ..err })?;
+    const PREFIX: &str = "SELECT NULL::";
+    let statements = crate::parse::parse(&format!("{PREFIX}{text}")).map_err(|err| PgError {
+        position: err.position.and_then(|p| p.checked_sub(PREFIX.len() as u32)).filter(|p| *p > 0),
+        ..err
+    })?;
     let Some(crate::parse::Statement::Postgres { node: pg_query::NodeEnum::SelectStmt(select), .. }) =
         statements.first()
     else {
@@ -421,6 +464,12 @@ fn parse_type_name(text: &str) -> Result<u32> {
     };
     let target = select.target_list.first().and_then(|t| t.node.as_ref());
     let Some(pg_query::NodeEnum::ResTarget(target)) = target else { return Err(invalid()) };
+    if !target.name.is_empty() {
+        return Err(PgError {
+            position: text.to_lowercase().rfind(&target.name).map(|p| p as u32 + 1),
+            ..PgError::new(code::SYNTAX_ERROR, format!("syntax error at or near \"{}\"", target.name))
+        });
+    }
     let Some(pg_query::NodeEnum::TypeCast(cast)) = target.val.as_ref().and_then(|v| v.node.as_ref()) else {
         return Err(invalid());
     };
@@ -429,6 +478,31 @@ fn parse_type_name(text: &str) -> Result<u32> {
     crate::expr::resolve_type_name(&type_name)
         .map(|t| t.oid)
         .map_err(|_| PgError::new(code::UNDEFINED_OBJECT, format!("type \"{}\" does not exist", names.join("."))))
+}
+
+/// name_and_arg_types splits text such as `f(integer, text)` into the function's name and the OIDs of its argument
+/// types, as Postgres' parseNameAndArgTypes does.
+fn name_and_arg_types(text: &str) -> Result<(&str, Vec<u32>)> {
+    let invalid = |message: &str| PgError::new(code::INVALID_TEXT_REPRESENTATION, message);
+    let open = text.find('(').ok_or_else(|| invalid("expected a left parenthesis"))?;
+    let args = text[open + 1..].trim_end().strip_suffix(')').ok_or_else(|| invalid("expected a right parenthesis"))?;
+    let (mut types, mut start, mut depth, mut quoted) = (Vec::new(), 0, 0, false);
+    for (i, c) in args.char_indices() {
+        match c {
+            '"' => quoted = !quoted,
+            '(' if !quoted => depth += 1,
+            ')' if !quoted => depth -= 1,
+            ',' if !quoted && depth == 0 => {
+                types.push(parse_type_name(args[start..i].trim())?);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if !args[start..].trim().is_empty() || !types.is_empty() {
+        types.push(parse_type_name(args[start..].trim())?);
+    }
+    Ok((text[..open].trim(), types))
 }
 
 /// single_name reads the one name that regnamespace and regrole take, failing as Postgres does for a qualified name.

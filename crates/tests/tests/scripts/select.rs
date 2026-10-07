@@ -904,3 +904,108 @@ fn test_limit_alias_and_distinct_on_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_equality_join_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "joins on equal values",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jl (a int, b text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jr (a int, b text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jl VALUES (1, 'x'), (2, 'y'), (NULL, 'z'), (2, 'w');",
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jr VALUES (2, 'y'), (1, 'q'), (NULL, 'z'), (3, 'w'), (2, 'y2');",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM jl JOIN jr ON jl.a = jr.a ORDER BY 1, 2, 3, 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT), Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("1"), T("x"), T("1"), T("q")],
+                            &[T("2"), T("w"), T("2"), T("y")],
+                            &[T("2"), T("w"), T("2"), T("y2")],
+                            &[T("2"), T("y"), T("2"), T("y")],
+                            &[T("2"), T("y"), T("2"), T("y2")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM jl LEFT JOIN jr ON jl.a = jr.a AND jl.b = jr.b ORDER BY 1, 2, 3, 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT), Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("1"), T("x"), Null, Null],
+                            &[T("2"), T("w"), Null, Null],
+                            &[T("2"), T("y"), T("2"), T("y")],
+                            &[Null, T("z"), Null, Null],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM jl FULL JOIN jr ON jr.a = jl.a + 0 ORDER BY 1, 2, 3, 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT), Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("1"), T("x"), T("1"), T("q")],
+                            &[T("2"), T("w"), T("2"), T("y")],
+                            &[T("2"), T("w"), T("2"), T("y2")],
+                            &[T("2"), T("y"), T("2"), T("y")],
+                            &[T("2"), T("y"), T("2"), T("y2")],
+                            &[Null, T("z"), Null, Null],
+                            &[Null, Null, T("3"), T("w")],
+                            &[Null, Null, Null, T("z")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM jl RIGHT JOIN jr USING (b) ORDER BY 1, 2, 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", TEXT), Column("a", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("q"), Null, T("1")],
+                            &[T("w"), T("2"), T("3")],
+                            &[T("y"), T("2"), T("2")],
+                            &[T("y2"), Null, T("2")],
+                            &[T("z"), Null, Null],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM jl JOIN jr ON jl.a::bigint = jr.a::smallint;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

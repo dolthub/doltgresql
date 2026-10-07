@@ -452,7 +452,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                     _ => return Err(PgError::unsupported("this SQL value function")),
                 };
                 let resolved = functions::resolve(name, &[], f.location)?;
-                Ok((Expr::Func(resolved.index, Vec::new()), typ(resolved.ret)))
+                let bound = (Expr::Func(resolved.index, Vec::new()), typ(resolved.ret));
+                match f.typmod {
+                    -1 => Ok(bound),
+                    modifier => coerce(bound, ColumnType { oid: resolved.ret, modifier }, true, f.location),
+                }
             }
             NodeEnum::CoalesceExpr(c) => {
                 let (args, ty) = self.common_args(&c.args, "COALESCE")?;
@@ -579,6 +583,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                         self.columns.push((i, column.location));
                         return Ok((Expr::Column(i), ty));
                     }
+                    self.ctx.outer_reach = self.ctx.outer_reach.min(depth_count - 1 - depth);
                     return Ok((Expr::Outer(depth, i), ty));
                 }
                 (Some(_), Some(_)) => {
@@ -670,6 +675,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                         self.columns.push((i, -1));
                         Expr::Column(i)
                     } else {
+                        self.ctx.outer_reach = self.ctx.outer_reach.min(depth_count - 1 - depth);
                         Expr::Outer(depth, i)
                     };
                     (name, expr, ty)
@@ -803,7 +809,17 @@ impl<'b, 'a> Binder<'b, 'a> {
             bound.push((expr, crate::usertypes::base_type(ty)));
         }
         let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
-        let resolved = functions::resolve(name, &types, call.location)?;
+        let resolved = functions::resolve(name, &types, call.location).map_err(|err| match schema {
+            Some(_) if err.code == code::UNDEFINED_FUNCTION => PgError {
+                message: err.message.replacen(
+                    &format!("function {name}("),
+                    &format!("function {}(", names.join(".")),
+                    1,
+                ),
+                ..err
+            },
+            _ => err,
+        })?;
         if matches!(name, "nextval" | "currval" | "setval")
             && let Some((Expr::Const(Value::Text(text)), _)) = bound.first()
         {
@@ -866,6 +882,8 @@ impl<'b, 'a> Binder<'b, 'a> {
                 ..PgError::new(code::GROUPING_ERROR, "aggregate function calls cannot be nested")
             });
         };
+        let level = self.scopes.len() - 1;
+        self.ctx.aggregate_levels.push(level);
         let result = (|| -> Result<(AggCall, u32)> {
             let mut bound = Vec::with_capacity(call.args.len());
             for arg in &call.args {
@@ -899,8 +917,33 @@ impl<'b, 'a> Binder<'b, 'a> {
                 };
                 order.push((self.bind(node)?.0, descending, nulls_first));
             }
+            let (mut local, mut outer) = (false, usize::MAX);
+            let mut levels = |e: &Expr| {
+                e.visit(&mut |e| match e {
+                    Expr::Column(_) => local = true,
+                    Expr::Outer(depth, _) => outer = outer.min(*depth),
+                    _ => {}
+                })
+            };
+            args.iter().chain(&filter).chain(order.iter().map(|(e, ..)| e)).for_each(&mut levels);
+            if !local && outer != usize::MAX {
+                if self.ctx.aggregate_levels.contains(&(level - outer)) {
+                    return Err(PgError {
+                        position: position(call.location),
+                        ..PgError::new(code::GROUPING_ERROR, "aggregate function calls cannot be nested")
+                    });
+                }
+                return Err(PgError {
+                    position: position(call.location),
+                    ..PgError::new(
+                        code::FEATURE_NOT_SUPPORTED,
+                        "aggregate functions of only outer query columns are not yet supported",
+                    )
+                });
+            }
             Ok((AggCall { index, args, distinct: call.agg_distinct, filter, order, ret, user }, ret))
         })();
+        self.ctx.aggregate_levels.pop();
         let (agg, ret) = match result {
             Ok(r) => r,
             Err(err) => {
@@ -913,6 +956,28 @@ impl<'b, 'a> Binder<'b, 'a> {
         self.aggregates = Some(aggregates);
         Ok((Expr::AggRef(k), typ(ret)))
     }
+}
+
+/// literal_position moves a data error raised at an operator onto the string literal among its operands whose text the
+/// error quotes, since Postgres reports the position of the literal it could not read.
+fn literal_position(err: PgError, location: i32, operands: &[&Node]) -> PgError {
+    if !err.code.starts_with("22") || err.position != position(location) {
+        return err;
+    }
+    for operand in operands {
+        let Some(node) = operand.node.as_ref() else { continue };
+        let mut literals = node.nodes().into_iter().filter_map(|(n, ..)| match n {
+            pg_query::NodeRef::AConst(c) => match &c.val {
+                Some(Val::Sval(s)) => Some((s.sval.clone(), c.location)),
+                _ => None,
+            },
+            _ => None,
+        });
+        if let Some((_, at)) = literals.find(|(text, _)| err.message.contains(&format!("\"{text}\""))) {
+            return PgError { position: position(at), ..err };
+        }
+    }
+    err
 }
 
 /// row_items returns the fields of a row constructor, `ROW(...)` or `(a, b)`, or None for any other expression.
@@ -1033,7 +1098,9 @@ impl<'b, 'a> Binder<'b, 'a> {
                     return unary(&op, right, e.location);
                 }
                 if let (Some(left), Some(right)) = (row_items(operand(&e.lexpr)?), row_items(operand(&e.rexpr)?)) {
-                    return Ok((self.row_compare(&op, left, right, e.location)?, typ(oid::BOOL)));
+                    let compared = self.row_compare(&op, left, right, e.location);
+                    let operands = [operand(&e.lexpr)?, operand(&e.rexpr)?];
+                    return Ok((compared.map_err(|err| literal_position(err, e.location, &operands))?, typ(oid::BOOL)));
                 }
                 if let (Some(items), Some(NodeEnum::SubLink(link))) =
                     (row_items(operand(&e.lexpr)?), operand(&e.rexpr)?.node.as_ref())
@@ -1061,7 +1128,8 @@ impl<'b, 'a> Binder<'b, 'a> {
                 }
                 let left = self.bind(operand(&e.lexpr)?)?;
                 let right = self.bind(operand(&e.rexpr)?)?;
-                self.binary(&op, left, right, e.location)
+                let operands = [operand(&e.lexpr)?, operand(&e.rexpr)?];
+                self.binary(&op, left, right, e.location).map_err(|err| literal_position(err, e.location, &operands))
             }
             AExprKind::AexprIn => {
                 let left_node = operand(&e.lexpr)?;
@@ -1090,7 +1158,9 @@ impl<'b, 'a> Binder<'b, 'a> {
                         left.0 = Expr::SubqueryValue;
                     }
                     let right = self.bind(item)?;
-                    let (test, _) = self.binary(cmp, left, right, e.location)?;
+                    let (test, _) = self
+                        .binary(cmp, left, right, e.location)
+                        .map_err(|err| literal_position(err, e.location, &[left_node, item]))?;
                     result = Some(match result {
                         Some(previous) => join(previous, test),
                         None => test,
@@ -1131,7 +1201,10 @@ impl<'b, 'a> Binder<'b, 'a> {
                 let ty = left.1;
                 let right = self.bind(operand(&e.rexpr)?)?;
                 let left_expr = left.0.clone();
-                let (test, _) = self.binary("=", left, right, e.location)?;
+                let operands = [operand(&e.lexpr)?, operand(&e.rexpr)?];
+                let (test, _) = self
+                    .binary("=", left, right, e.location)
+                    .map_err(|err| literal_position(err, e.location, &operands))?;
                 Ok((Expr::NullIf(Box::new(left_expr), Box::new(test)), ty))
             }
             AExprKind::AexprDistinct | AExprKind::AexprNotDistinct => {
@@ -1141,8 +1214,10 @@ impl<'b, 'a> Binder<'b, 'a> {
                     }
                     let mut result: Option<Expr> = None;
                     for (l, r) in left.iter().zip(right) {
-                        let (l, r) = (self.bind(l)?, self.bind(r)?);
-                        let (test, _) = self.binary("=", l, r, e.location)?;
+                        let (bound_l, bound_r) = (self.bind(l)?, self.bind(r)?);
+                        let (test, _) = self
+                            .binary("=", bound_l, bound_r, e.location)
+                            .map_err(|err| literal_position(err, e.location, &[l, r]))?;
                         let Expr::Compare(_, l, r) = test else { return Err(PgError::internal("a distinct test")) };
                         let distinct = Expr::DistinctFrom(l, r, false);
                         result = Some(match result {
@@ -1156,7 +1231,10 @@ impl<'b, 'a> Binder<'b, 'a> {
                 }
                 let left = self.bind(operand(&e.lexpr)?)?;
                 let right = self.bind(operand(&e.rexpr)?)?;
-                let (test, _) = self.binary("=", left, right, e.location)?;
+                let operands = [operand(&e.lexpr)?, operand(&e.rexpr)?];
+                let (test, _) = self
+                    .binary("=", left, right, e.location)
+                    .map_err(|err| literal_position(err, e.location, &operands))?;
                 let Expr::Compare(_, l, r) = test else { return Err(PgError::internal("a distinct test")) };
                 Ok((Expr::DistinctFrom(l, r, kind == AExprKind::AexprNotDistinct), typ(oid::BOOL)))
             }
@@ -1429,7 +1507,15 @@ impl<'b, 'a> Binder<'b, 'a> {
         let Some(NodeEnum::SelectStmt(select)) = link.subselect.as_deref().and_then(|n| n.node.as_ref()) else {
             return Err(PgError::internal("a subquery without a SELECT"));
         };
-        let query = Planner { ctx: &mut *self.ctx, outer: self.scopes.clone() }.plan_query(select)?;
+        let reach = std::mem::replace(&mut self.ctx.outer_reach, usize::MAX);
+        let query = Planner { ctx: &mut *self.ctx, outer: self.scopes.clone() }.plan_query(select);
+        let inner = std::mem::replace(&mut self.ctx.outer_reach, reach);
+        self.ctx.outer_reach = reach.min(inner);
+        let mut query = query?;
+        query.plan = match inner >= self.scopes.len() {
+            true => Plan::Once(Box::new(query.plan)),
+            false => crate::plan::share_scans(query.plan),
+        };
         let kind = T::try_from(link.sub_link_type).unwrap_or(T::ExprSublink);
         match kind {
             T::ExistsSublink => Ok((Expr::Exists(Box::new(query.plan)), typ(oid::BOOL))),
@@ -1569,7 +1655,7 @@ impl<'b, 'a> Binder<'b, 'a> {
     }
 
     /// binary binds a binary operator, resolving its operand types as Postgres does for the built-in operators.
-    fn binary(&mut self, op: &str, left: Bound, right: Bound, location: i32) -> Result<Bound> {
+    pub(crate) fn binary(&mut self, op: &str, left: Bound, right: Bound, location: i32) -> Result<Bound> {
         let mut left = (left.0, crate::usertypes::base_type(left.1));
         let mut right = (right.0, crate::usertypes::base_type(right.1));
         if is_composite(left.1.oid) && right.1.oid == oid::RECORD {
@@ -2210,7 +2296,10 @@ pub fn arg_location(node: &Node) -> i32 {
     match node.node.as_ref() {
         Some(NodeEnum::AConst(c)) => c.location,
         Some(NodeEnum::ColumnRef(c)) => c.location,
-        Some(NodeEnum::AExpr(e)) => e.location,
+        Some(NodeEnum::AExpr(e)) => leftmost(e.location, e.lexpr.as_deref().map_or(-1, arg_location)),
+        Some(NodeEnum::BoolExpr(b)) => b.args.iter().map(arg_location).fold(b.location, leftmost),
+        Some(NodeEnum::NullTest(t)) => leftmost(t.location, t.arg.as_deref().map_or(-1, arg_location)),
+        Some(NodeEnum::BooleanTest(t)) => leftmost(t.location, t.arg.as_deref().map_or(-1, arg_location)),
         Some(NodeEnum::TypeCast(c)) => match c.arg.as_deref().map(|arg| (arg_location(arg), &arg.node)) {
             Some((_, Some(NodeEnum::RowExpr(_)))) => c.location,
             Some((arg, _)) if arg >= 0 && (arg < c.location || c.location < 0) => arg,
@@ -2222,6 +2311,15 @@ pub fn arg_location(node: &Node) -> i32 {
         Some(NodeEnum::SubLink(s)) => s.location,
         Some(NodeEnum::AArrayExpr(a)) => a.location,
         _ => -1,
+    }
+}
+
+/// leftmost returns the earlier of two parser locations, where a negative one is unknown, as Postgres' leftmostLoc does.
+fn leftmost(a: i32, b: i32) -> i32 {
+    match (a, b) {
+        (a, b) if a < 0 => b,
+        (a, b) if b < 0 => a,
+        (a, b) => a.min(b),
     }
 }
 
@@ -2311,7 +2409,8 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         {
             let value = match value {
                 Value::Text(text) => cast_value(
-                    crate::cast::input(text, to.oid).map_err(|err| PgError { position: position(location), ..err })?,
+                    crate::cast::input_with_modifier(text, to)
+                        .map_err(|err| PgError { position: position(location), ..err })?,
                     to,
                     explicit,
                 )?,
@@ -3039,35 +3138,28 @@ impl Expr {
                 };
                 Value::Bool(holds != *negated)
             }
-            Expr::Exists(plan) => {
-                ctx.outer.push(row.to_vec());
-                let rows = plan.run(ctx);
-                ctx.outer.pop();
-                Value::Bool(!rows?.is_empty())
-            }
+            Expr::Exists(plan) => Value::Bool(plan.subquery_exists(ctx, row)?),
             Expr::Scalar(plan) => {
-                ctx.outer.push(row.to_vec());
-                let rows = plan.run(ctx);
-                ctx.outer.pop();
-                let rows = rows?;
+                let rows = &plan.subquery_rows(ctx, row)?.rows;
                 if rows.len() > 1 {
                     return Err(PgError::new(
                         code::CARDINALITY_VIOLATION,
                         "more than one row returned by a subquery used as an expression",
                     ));
                 }
-                match rows.into_iter().next() {
-                    Some(r) if r.len() > 1 => Value::Record(r),
-                    Some(r) => r.into_iter().next().unwrap_or(Value::Null),
+                match rows.first() {
+                    Some(r) if r.len() > 1 => Value::Record(r.clone()),
+                    Some(r) => r.first().cloned().unwrap_or(Value::Null),
                     None => Value::Null,
                 }
             }
             Expr::ArraySubquery(plan, element) => {
-                ctx.outer.push(row.to_vec());
-                let rows = plan.run(ctx);
-                ctx.outer.pop();
-                let values: Vec<Value> =
-                    rows?.into_iter().map(|r| r.into_iter().next().unwrap_or(Value::Null)).collect();
+                let values: Vec<Value> = plan
+                    .subquery_rows(ctx, row)?
+                    .rows
+                    .iter()
+                    .map(|r| r.first().cloned().unwrap_or(Value::Null))
+                    .collect();
                 if is_array_type(*element) && !values.is_empty() {
                     return crate::functions::aggregate::array_agg_arrays(element_type(*element), values);
                 }
@@ -3075,15 +3167,28 @@ impl Expr {
                 Value::Array(Box::new(crate::array::Array::one_dimensional(element, values)))
             }
             Expr::AnySubquery(comparison, plan, all) => {
-                ctx.outer.push(row.to_vec());
-                let rows = plan.run(ctx);
-                ctx.outer.pop();
+                let rows = plan.subquery_rows(ctx, row)?;
+                if let (false, Plan::Once(_), Expr::Compare(CmpOp::Eq, left, right)) = (*all, &**plan, &**comparison)
+                    && **right == Expr::SubqueryValue
+                    && let Some((keys, null)) = rows.keys()
+                {
+                    let value = left.eval(ctx, row)?;
+                    if let Some(key) = crate::plan::HashKey::of(value.clone()) {
+                        return Ok(match keys.contains(&key) {
+                            true => Value::Bool(true),
+                            false if *null => Value::Null,
+                            false => Value::Bool(false),
+                        });
+                    }
+                    if value.is_null() {
+                        return Ok(if rows.rows.is_empty() { Value::Bool(false) } else { Value::Null });
+                    }
+                }
                 let mut saw_null = false;
                 let previous = std::mem::replace(&mut ctx.subquery_value, Value::Null);
                 let mut result = None;
-                for r in rows? {
-                    ctx.subquery_value =
-                        if r.len() == 1 { r.into_iter().next().unwrap_or(Value::Null) } else { Value::Record(r) };
+                for r in &rows.rows {
+                    ctx.subquery_value = if r.len() == 1 { r[0].clone() } else { Value::Record(r.clone()) };
                     match comparison.eval(ctx, row)? {
                         Value::Bool(b) if b != *all => {
                             result = Some(b);

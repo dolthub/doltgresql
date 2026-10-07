@@ -1908,3 +1908,69 @@ fn test_unique_clause_and_rename_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_literal_error_position_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "positions of unreadable literals",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 2 = 'a';",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "a""#, position: 12, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a' = 2;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "a""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 2 IS DISTINCT FROM 'a';",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "a""#, position: 27, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 2 IN (1, 'a');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "a""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nullif(2, 'a');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "a""#, position: 18, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 2 + 'a';",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "a""#, position: 12, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, 2) = ROW(1, 'two');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "two""#, position: 27, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '2020-13-01'::date = current_date;",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"date/time field value out of range: "2020-13-01""#, hint: r#"Perhaps you need a different "datestyle" setting."#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_date = '2020-13-01';",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"date/time field value out of range: "2020-13-01""#, hint: r#"Perhaps you need a different "datestyle" setting."#, position: 23, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -241,6 +241,18 @@ fn type_modifier(name: &str, modifiers: &[i32], position: Option<u32>) -> Result
             }
             Ok((*precision).min(6))
         }
+        ("interval", [range, rest @ ..]) if rest.len() <= 1 => {
+            if !crate::datetime::INTERVAL_RANGES.iter().any(|(r, _)| r == range) {
+                return Err(error("invalid INTERVAL type modifier".into()));
+            }
+            let precision = match rest.first() {
+                None if *range == crate::datetime::INTERVAL_FULL_RANGE => return Ok(-1),
+                None => crate::datetime::INTERVAL_FULL_PRECISION,
+                Some(p) if *p < 0 => return Err(error(format!("INTERVAL({p}) precision must not be negative"))),
+                Some(p) => (*p).min(6),
+            };
+            Ok((range << 16) | precision)
+        }
         ("bit" | "varbit", [length]) => {
             if *length < 1 {
                 let kind = if name == "bit" { "bit" } else { "bit varying" };

@@ -54,6 +54,13 @@ pub struct Ctx<'a> {
     /// The name of the SQL function whose body is running and the names of its parameters, which the body can refer
     /// to its parameters by.
     pub named_params: Option<(String, Vec<String>)>,
+    /// The rows of the `Once` plans that the running plan has evaluated, by their address, or None outside a plan run.
+    pub once: Option<std::collections::HashMap<usize, std::sync::Arc<crate::plan::SubqueryRows>>>,
+    /// The outermost enclosing scope that the expressions bound so far refer to, as an index into the binder's
+    /// scopes, or `usize::MAX` for none.
+    pub outer_reach: usize,
+    /// The scopes, as indexes into the binder's scopes, of the aggregate calls whose arguments are being bound.
+    pub aggregate_levels: Vec<usize>,
 }
 
 /// column returns the description of a result column of the type.

@@ -1721,3 +1721,61 @@ fn test_inherited_column_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_check_creation_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "check constraints bound at creation",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ck1 (a int, b int, CONSTRAINT check_b CHECK (b IS NULL OR b = 'a'));",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "a""#, position: 76, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ck2 (a int CHECK (a + 1));",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "argument of CHECK must be type boolean, not type integer", position: 32, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ck3 (a int CHECK (nosuch > 0));",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "nosuch" does not exist"#, position: 32, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ck4 (a int CHECK (a > (SELECT 1)));",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use subquery in check constraint", position: 36, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ck5 (a int CHECK (sum(a) > 0));",
+                    expected: Expected::Error(Diagnostic { code: "42803", message: "aggregate functions are not allowed in check constraints", position: 32, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ck6 (a int CHECK (a > 0), b text CHECK (b <> ''));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ck6 VALUES (1, 'x');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ck6 VALUES (0, 'x');",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"new row for relation "ck6" violates check constraint "ck6_a_check""#, detail: "Failing row contains (0, x).", schema: "public", table: "ck6", constraint: "ck6_a_check", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

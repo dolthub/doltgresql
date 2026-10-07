@@ -26,7 +26,7 @@ use crate::catalog::ColumnType;
 use crate::catalog::table::TableDef;
 use crate::error::{PgError, Result, code};
 use crate::expr::{
-    Binder, Expr, Scope, ScopeColumn, coerce, common_type, compare_values, figure_name, node_name, position, typ,
+    Binder, CmpOp, Expr, Scope, ScopeColumn, coerce, common_type, compare_values, figure_name, node_name, position, typ,
 };
 use crate::functions::aggregate::{Accumulator, AggCall};
 use crate::query::{Ctx, column, scan};
@@ -142,8 +142,8 @@ pub enum Plan {
         step: Box<Plan>,
         all: bool,
     },
-    /// The rows of the previous round of a recursive WITH query.
-    WorkTable(usize),
+    /// The rows of the previous round of a recursive WITH query, by the query's ID, and their width.
+    WorkTable(usize, usize),
     /// For each input row, the rows of its set-returning calls side by side, padded with NULLs, after its values.
     ProjectSet {
         input: Box<Plan>,
@@ -154,6 +154,38 @@ pub enum Plan {
         input: Box<Plan>,
         calls: Vec<crate::window::WindowCall>,
     },
+    /// A plan that reads nothing of any enclosing row, which runs once for each run of the whole plan, as Postgres'
+    /// initplans do.
+    Once(Box<Plan>),
+}
+
+/// SubqueryRows holds the rows of a plan, with the hash keys of their one column once an IN test asks for them, and the
+/// rows by the keys of a filter's equality conditions once the filter above a `Once` plan asks for them.
+#[derive(Debug)]
+pub struct SubqueryRows {
+    pub rows: Vec<Vec<Value>>,
+    keys: std::sync::OnceLock<Option<(HashSet<HashKey>, bool)>>,
+    index: std::sync::OnceLock<Option<std::collections::HashMap<Vec<HashKey>, Vec<usize>>>>,
+}
+
+impl SubqueryRows {
+    /// keys returns the set of the rows' hash keys and whether a row is NULL, or None when a value has no hash key.
+    pub fn keys(&self) -> Option<&(HashSet<HashKey>, bool)> {
+        self.keys
+            .get_or_init(|| {
+                let (mut keys, mut null) = (HashSet::new(), false);
+                for row in &self.rows {
+                    match row.first() {
+                        Some(Value::Null) | None => null = true,
+                        Some(value) => {
+                            keys.insert(HashKey::of(value.clone())?);
+                        }
+                    }
+                }
+                Some((keys, null))
+            })
+            .as_ref()
+    }
 }
 
 /// Cte is a WITH query in scope: its name, its columns, and its plan, or the ID of its working table while its
@@ -298,8 +330,19 @@ impl<'b, 'a> Planner<'b, 'a> {
                 return Err(PgError::unsupported("data-modifying statements in WITH"));
             };
             let mut aliases: Vec<String> = cte.aliascolnames.iter().filter_map(node_name).map(str::to_string).collect();
-            let op = SetOperation::try_from(query.op).unwrap_or(SetOperation::SetopNone);
-            let recursive = with.recursive && op == SetOperation::SetopUnion && references(query, &cte.ctename);
+            let recursive = with.recursive && references(query, &cte.ctename);
+            if recursive {
+                check_recursion(cte, query)?;
+            }
+            if with.recursive && mutually_recursive(with, cte) {
+                return Err(PgError {
+                    position: position(cte.location),
+                    ..PgError::new(
+                        code::FEATURE_NOT_SUPPORTED,
+                        "mutual recursion between WITH items is not implemented",
+                    )
+                });
+            }
             if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
                 self.check_search_and_cycle(cte, query, recursive)?;
             }
@@ -453,7 +496,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             });
         }
         for (i, (a, s)) in anchor.types.iter().zip(&step.types).enumerate() {
-            if a.oid != s.oid {
+            if a != s {
                 let location = left
                     .target_list
                     .get(i)
@@ -471,8 +514,8 @@ impl<'b, 'a> Planner<'b, 'a> {
                             "recursive query \"{}\" column {} has type {} in non-recursive term but type {} overall",
                             cte.ctename,
                             i + 1,
-                            crate::cast::type_display(a.oid),
-                            crate::cast::type_display(s.oid)
+                            crate::cast::format_type(a.oid, Some(a.modifier)).unwrap_or_default(),
+                            crate::cast::format_type(s.oid, Some(-1)).unwrap_or_default()
                         ),
                     )
                 });
@@ -1006,7 +1049,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 origin: c.origin,
             })
             .collect();
-        let plan = cte.plan.unwrap_or(Plan::WorkTable(cte.work_table));
+        let plan = cte.plan.unwrap_or(Plan::WorkTable(cte.work_table, cte.columns.len()));
         (plan, Scope { columns })
     }
 
@@ -2034,6 +2077,239 @@ fn references(select: &SelectStmt, name: &str) -> bool {
         .any(|(n, ..)| matches!(n, pg_query::NodeRef::RangeVar(r) if r.schemaname.is_empty() && r.relname == name))
 }
 
+/// check_recursion fails as Postgres' checkWellFormedRecursion does for a recursive WITH query it cannot run: one that is
+/// not a UNION, one whose reference to itself sits somewhere other than once in its recursive term outside subqueries,
+/// outer joins, INTERSECT, and EXCEPT, and one with ORDER BY, LIMIT, OFFSET, or FOR UPDATE atop the UNION.
+fn check_recursion(cte: &pg_query::protobuf::CommonTableExpr, query: &SelectStmt) -> Result<()> {
+    let name = &cte.ctename;
+    let (Some(left), Some(right), Ok(SetOperation::SetopUnion)) =
+        (query.larg.as_deref(), query.rarg.as_deref(), SetOperation::try_from(query.op))
+    else {
+        return Err(PgError {
+            position: position(cte.location),
+            ..PgError::new(
+                code::INVALID_RECURSION,
+                format!(
+                    "recursive query \"{name}\" does not have the form non-recursive-term UNION [ALL] recursive-term"
+                ),
+            )
+        });
+    };
+    let mut check = RecursionCheck { name, context: Recursion::NonRecursiveTerm, references: 0 };
+    check.select(left)?;
+    check.context = Recursion::Ok;
+    check.select(right)?;
+    let unsupported = |what: &str, at: i32| PgError {
+        position: position(at),
+        ..PgError::new(code::FEATURE_NOT_SUPPORTED, format!("{what} in a recursive query is not implemented"))
+    };
+    if let Some(sort) = query.sort_clause.first() {
+        let at = match sort.node.as_ref() {
+            Some(NodeEnum::SortBy(s)) => s.node.as_deref().map_or(-1, crate::expr::arg_location),
+            _ => -1,
+        };
+        return Err(unsupported("ORDER BY", at));
+    }
+    if let Some(offset) = query.limit_offset.as_deref() {
+        return Err(unsupported("OFFSET", crate::expr::arg_location(offset)));
+    }
+    if let Some(limit) = query.limit_count.as_deref() {
+        return Err(unsupported("LIMIT", crate::expr::arg_location(limit)));
+    }
+    if !query.locking_clause.is_empty() {
+        return Err(unsupported("FOR UPDATE/SHARE", -1));
+    }
+    Ok(())
+}
+
+/// mutually_recursive reports whether a query of a WITH clause reaches itself through another of the clause's queries.
+fn mutually_recursive(with: &pg_query::protobuf::WithClause, start: &pg_query::protobuf::CommonTableExpr) -> bool {
+    let ctes: Vec<(&str, &SelectStmt)> = with
+        .ctes
+        .iter()
+        .filter_map(|c| match c.node.as_ref() {
+            Some(NodeEnum::CommonTableExpr(c)) => match c.ctequery.as_deref().and_then(|q| q.node.as_ref()) {
+                Some(NodeEnum::SelectStmt(s)) => Some((c.ctename.as_str(), &**s)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    let mut reached: Vec<&str> = Vec::new();
+    let mut pending = vec![start.ctename.as_str()];
+    while let Some(name) = pending.pop() {
+        let Some((_, query)) = ctes.iter().find(|(n, _)| *n == name) else { continue };
+        for (other, _) in ctes.iter().filter(|(n, _)| *n != name && references(query, n)) {
+            if *other == start.ctename {
+                return true;
+            }
+            if !reached.contains(other) {
+                reached.push(other);
+                pending.push(other);
+            }
+        }
+    }
+    false
+}
+
+/// Recursion is where a recursive WITH query's reference to itself sits, as Postgres' RecursionContext names it.
+#[derive(Clone, Copy, PartialEq)]
+enum Recursion {
+    Ok,
+    NonRecursiveTerm,
+    Sublink,
+    OuterJoin,
+    Intersect,
+    Except,
+}
+
+/// RecursionCheck walks the terms of a recursive WITH query, counting its references to itself.
+struct RecursionCheck<'n> {
+    name: &'n str,
+    context: Recursion,
+    references: usize,
+}
+
+impl RecursionCheck<'_> {
+    /// reference checks a reference to the query at a location.
+    fn reference(&mut self, location: i32) -> Result<()> {
+        let what = match self.context {
+            Recursion::NonRecursiveTerm => "must not appear within its non-recursive term",
+            Recursion::Sublink => "must not appear within a subquery",
+            Recursion::OuterJoin => "must not appear within an outer join",
+            Recursion::Intersect => "must not appear within INTERSECT",
+            Recursion::Except => "must not appear within EXCEPT",
+            Recursion::Ok if self.references > 0 => "must not appear more than once",
+            Recursion::Ok => {
+                self.references += 1;
+                return Ok(());
+            }
+        };
+        Err(PgError {
+            position: position(location),
+            ..PgError::new(code::INVALID_RECURSION, format!("recursive reference to query \"{}\" {what}", self.name))
+        })
+    }
+
+    /// select walks a SELECT or set operation, skipping one whose own WITH clause hides the query's name.
+    fn select(&mut self, select: &SelectStmt) -> Result<()> {
+        let ctes = select.with_clause.iter().flat_map(|w| &w.ctes).filter_map(|c| match c.node.as_ref() {
+            Some(NodeEnum::CommonTableExpr(c)) => Some(c),
+            _ => None,
+        });
+        if ctes.clone().any(|c| c.ctename == self.name) {
+            return Ok(());
+        }
+        for cte in ctes {
+            if let Some(query) = cte.ctequery.as_deref() {
+                self.expression(query)?;
+            }
+        }
+        let saved = self.context;
+        match SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone) {
+            SetOperation::SetopNone | SetOperation::Undefined => {
+                let before = self.references;
+                for item in &select.from_clause {
+                    self.from(item)?;
+                }
+                let having = select.having_clause.as_deref();
+                let aggregate = select.target_list.iter().chain(having).find(|n| has_aggregate(n));
+                if self.references > before
+                    && let Some(node) = aggregate
+                {
+                    return Err(PgError {
+                        position: match node.node.as_ref() {
+                            Some(NodeEnum::ResTarget(t)) => t.val.as_deref().and_then(aggregate_location),
+                            _ => aggregate_location(node),
+                        }
+                        .and_then(position),
+                        ..PgError::new(
+                            code::INVALID_RECURSION,
+                            "aggregate functions are not allowed in a recursive query's recursive term",
+                        )
+                    });
+                }
+                let lists = [&select.target_list, &select.group_clause, &select.values_lists, &select.window_clause];
+                for node in lists.into_iter().flatten() {
+                    self.expression(node)?;
+                }
+                for node in [&select.where_clause, &select.having_clause].into_iter().flatten() {
+                    self.expression(node)?;
+                }
+            }
+            op => {
+                let (left, right) = match op {
+                    SetOperation::SetopIntersect if select.all => (Recursion::Intersect, Recursion::Intersect),
+                    SetOperation::SetopExcept if select.all => (Recursion::Except, Recursion::Except),
+                    SetOperation::SetopExcept => (saved, Recursion::Except),
+                    _ => (saved, saved),
+                };
+                self.context = left;
+                if let Some(larg) = select.larg.as_deref() {
+                    self.select(larg)?;
+                }
+                self.context = right;
+                if let Some(rarg) = select.rarg.as_deref() {
+                    self.select(rarg)?;
+                }
+                self.context = saved;
+            }
+        }
+        let limits = [&select.limit_offset, &select.limit_count].into_iter().flatten().map(|n| &**n);
+        for node in select.sort_clause.iter().chain(limits) {
+            self.expression(node)?;
+        }
+        Ok(())
+    }
+
+    /// from walks a FROM item, where the nullable sides of outer joins are outer join contexts.
+    fn from(&mut self, node: &Node) -> Result<()> {
+        match node.node.as_ref() {
+            Some(NodeEnum::RangeVar(r)) if r.schemaname.is_empty() && r.relname == self.name => {
+                self.reference(r.location)
+            }
+            Some(NodeEnum::JoinExpr(join)) => {
+                let saved = self.context;
+                let (left, right) = match pg_query::protobuf::JoinType::try_from(join.jointype) {
+                    Ok(pg_query::protobuf::JoinType::JoinLeft) => (saved, Recursion::OuterJoin),
+                    Ok(pg_query::protobuf::JoinType::JoinRight) => (Recursion::OuterJoin, saved),
+                    Ok(pg_query::protobuf::JoinType::JoinFull) => (Recursion::OuterJoin, Recursion::OuterJoin),
+                    _ => (saved, saved),
+                };
+                self.context = left;
+                let left_result = join.larg.as_deref().map_or(Ok(()), |l| self.from(l));
+                self.context = right;
+                let right_result = join.rarg.as_deref().map_or(Ok(()), |r| self.from(r));
+                self.context = saved;
+                left_result?;
+                right_result?;
+                join.quals.as_deref().map_or(Ok(()), |q| self.expression(q))
+            }
+            Some(NodeEnum::RangeSubselect(subselect)) => {
+                match subselect.subquery.as_deref().and_then(|q| q.node.as_ref()) {
+                    Some(NodeEnum::SelectStmt(select)) => self.select(select),
+                    _ => Ok(()),
+                }
+            }
+            _ => self.expression(node),
+        }
+    }
+
+    /// expression walks an expression, where a reference can only sit inside a subquery.
+    fn expression(&mut self, node: &Node) -> Result<()> {
+        let Some(node) = node.node.as_ref() else { return Ok(()) };
+        let found = node.nodes().into_iter().find_map(|(n, ..)| match n {
+            pg_query::NodeRef::RangeVar(r) if r.schemaname.is_empty() && r.relname == self.name => Some(r.location),
+            _ => None,
+        });
+        let Some(location) = found else { return Ok(()) };
+        let saved = std::mem::replace(&mut self.context, Recursion::Sublink);
+        let result = self.reference(location);
+        self.context = saved;
+        result
+    }
+}
+
 /// rename_columns names a WITH query's columns after its column list, failing when the list is too long.
 fn rename_columns(name: &str, columns: &mut [Column], aliases: &[String], location: i32) -> Result<()> {
     if aliases.len() > columns.len() {
@@ -2128,7 +2404,7 @@ impl Plan {
             Plan::Scan(table) => table.columns.len(),
             Plan::IndexScan(scan) => scan.table.columns.len(),
             Plan::Recursive { anchor, .. } => anchor.width(),
-            Plan::WorkTable(_) => 0,
+            Plan::WorkTable(_, width) => *width,
             Plan::Window { input, calls } => input.width() + calls.len(),
             Plan::ProjectSet { input, functions } => input.width() + functions.len(),
             Plan::System(system) => system.columns().len(),
@@ -2147,7 +2423,48 @@ impl Plan {
             Plan::QueryDiff(diff, ordinality) => diff.from_width + diff.to_width + 1 + *ordinality as usize,
             Plan::Aggregate { groups, aggregates, .. } => groups.len() + aggregates.len(),
             Plan::SetOp { left, .. } => left.width(),
+            Plan::Once(input) => input.width(),
         }
+    }
+
+    /// subquery_rows runs a subquery for an enclosing row.
+    pub fn subquery_rows(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Result<std::sync::Arc<SubqueryRows>> {
+        ctx.outer.push(row.to_vec());
+        let rows = self.shared_rows(ctx);
+        ctx.outer.pop();
+        rows
+    }
+
+    /// subquery_exists reports whether a subquery returns a row for an enclosing row, stopping at the first row.
+    pub fn subquery_exists(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Result<bool> {
+        if let Plan::Once(_) = self {
+            return Ok(!self.subquery_rows(ctx, row)?.rows.is_empty());
+        }
+        ctx.outer.push(row.to_vec());
+        let rows = self.run_capped(ctx, Some(1));
+        ctx.outer.pop();
+        Ok(!rows?.is_empty())
+    }
+
+    /// shared_rows runs the plan, reusing the rows of a `Once` plan that the running plan has already evaluated.
+    fn shared_rows(&self, ctx: &mut Ctx<'_>) -> Result<std::sync::Arc<SubqueryRows>> {
+        let key = self as *const Plan as usize;
+        if let Plan::Once(_) = self
+            && let Some(rows) = ctx.once.as_ref().and_then(|once| once.get(&key))
+        {
+            return Ok(rows.clone());
+        }
+        let rows = std::sync::Arc::new(SubqueryRows {
+            rows: self.run(ctx)?,
+            keys: std::sync::OnceLock::new(),
+            index: std::sync::OnceLock::new(),
+        });
+        if let Plan::Once(_) = self
+            && let Some(once) = ctx.once.as_mut()
+        {
+            once.insert(key, rows.clone());
+        }
+        Ok(rows)
     }
 
     /// run runs the plan and returns its rows.
@@ -2158,11 +2475,23 @@ impl Plan {
     /// run_capped runs the plan when a LIMIT above it needs only some rows, which lets a recursive WITH query stop
     /// once it has that many, as Postgres' lazy execution does.
     fn run_capped(&self, ctx: &mut Ctx<'_>, cap: Option<usize>) -> Result<Vec<Vec<Value>>> {
+        if ctx.once.is_some() {
+            return self.run_node(ctx, cap);
+        }
+        ctx.once = Some(std::collections::HashMap::new());
+        let rows = self.run_node(ctx, cap);
+        ctx.once = None;
+        rows
+    }
+
+    /// run_node runs the plan node itself, for `run_capped`.
+    fn run_node(&self, ctx: &mut Ctx<'_>, cap: Option<usize>) -> Result<Vec<Vec<Value>>> {
         Ok(match self {
+            Plan::Once(input) => input.run_capped(ctx, cap)?,
             Plan::OneRow => vec![Vec::new()],
             Plan::Scan(table) => scan(ctx.db, table)?,
             Plan::IndexScan(index_scan) => index_scan.run(ctx)?,
-            Plan::WorkTable(id) => ctx.work_tables.get(id).cloned().unwrap_or_default(),
+            Plan::WorkTable(id, _) => ctx.work_tables.get(id).cloned().unwrap_or_default(),
             Plan::ProjectSet { input, functions } => {
                 let mut out = Vec::new();
                 for row in input.run(ctx)? {
@@ -2190,14 +2519,15 @@ impl Plan {
                 rows
             }
             Plan::Recursive { work_table, anchor, step, all } => {
-                let mut result = anchor.run(ctx)?;
+                let step_cap = cap.filter(|_| *all);
+                let mut result = anchor.run_capped(ctx, step_cap)?;
                 if !*all {
                     result = dedupe(result, &[]);
                 }
                 let mut working = result.clone();
                 while !working.is_empty() && cap.is_none_or(|cap| result.len() < cap) {
                     let previous = ctx.work_tables.insert(*work_table, working);
-                    let rows = step.run(ctx);
+                    let rows = step.run_capped(ctx, step_cap.map(|cap| cap - result.len()));
                     match previous {
                         Some(previous) => ctx.work_tables.insert(*work_table, previous),
                         None => ctx.work_tables.remove(work_table),
@@ -2247,9 +2577,15 @@ impl Plan {
                     })
                     .collect()
             }
+            Plan::Filter { input, predicate } if matches!(**input, Plan::Once(_)) => {
+                once_filter(ctx, input, predicate, cap)?
+            }
             Plan::Filter { input, predicate } => {
                 let mut out = Vec::new();
                 for row in input.run(ctx)? {
+                    if cap.is_some_and(|cap| out.len() >= cap) {
+                        break;
+                    }
                     if predicate.is_true(ctx, &row)? {
                         out.push(row);
                     }
@@ -2310,9 +2646,20 @@ impl Plan {
                 let right_rows = right.run(ctx)?;
                 let mut out = Vec::new();
                 let mut right_matched = vec![false; right_rows.len()];
-                for l in &left_rows {
+                let candidates =
+                    condition.as_ref().and_then(|c| join_candidates(ctx, c, left_width, &left_rows, &right_rows));
+                for (i, l) in left_rows.iter().enumerate() {
                     let mut matched = false;
-                    for (j, r) in right_rows.iter().enumerate() {
+                    let all: Vec<usize>;
+                    let js = match &candidates {
+                        Some(candidates) => &candidates[i],
+                        None => {
+                            all = (0..right_rows.len()).collect();
+                            &all
+                        }
+                    };
+                    for &j in js {
+                        let r = &right_rows[j];
                         let mut row = l.clone();
                         row.extend(r.iter().cloned());
                         if condition.as_ref().map_or(Ok(true), |c| c.is_true(ctx, &row))? {
@@ -2418,6 +2765,14 @@ impl Plan {
                     Some(limit) => rows.take(limit as usize).collect(),
                     None => rows.collect(),
                 }
+            }
+            Plan::SetOp { op: SetOp::Union, all: true, left, right } if cap.is_some() => {
+                let mut rows = left.run_capped(ctx, cap)?;
+                let remaining = cap.unwrap_or_default().saturating_sub(rows.len());
+                if remaining > 0 {
+                    rows.extend(right.run_capped(ctx, Some(remaining))?);
+                }
+                rows
             }
             Plan::SetOp { op, all, left, right } => {
                 let left_rows = left.run(ctx)?;
@@ -2574,6 +2929,204 @@ fn push_down(plan: Plan, predicate: Expr) -> Plan {
     Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral }
 }
 
+/// join_candidates returns, for each left row, the right rows whose values equal it in the equality conditions between
+/// the two sides, as a hash join finds them, or None when the condition has none or a key is not one it can hash.
+fn join_candidates(
+    ctx: &mut Ctx<'_>,
+    condition: &Expr,
+    width: usize,
+    left_rows: &[Vec<Value>],
+    right_rows: &[Vec<Value>],
+) -> Option<Vec<Vec<usize>>> {
+    let side = |e: &Expr| {
+        let (mut left, mut right, mut other) = (false, false, false);
+        e.visit(&mut |e| match e {
+            Expr::Column(i) if *i >= width => right = true,
+            Expr::Column(_) => left = true,
+            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => other = true,
+            _ => {}
+        });
+        match (left, right, other) {
+            (true, false, false) => Some(true),
+            (false, true, false) => Some(false),
+            _ => None,
+        }
+    };
+    let (mut left_keys, mut right_keys) = (Vec::new(), Vec::new());
+    for c in crate::indexscan::conjuncts(condition) {
+        if let Expr::Compare(CmpOp::Eq, a, b) = c {
+            match (side(a), side(b)) {
+                (Some(true), Some(false)) => {
+                    left_keys.push((**a).clone());
+                    right_keys.push(shift_columns((**b).clone(), width));
+                }
+                (Some(false), Some(true)) => {
+                    left_keys.push((**b).clone());
+                    right_keys.push(shift_columns((**a).clone(), width));
+                }
+                _ => {}
+            }
+        }
+    }
+    if left_keys.is_empty() {
+        return None;
+    }
+    let mut keys = |exprs: &[Expr], rows: &[Vec<Value>]| -> Option<Vec<Option<Vec<HashKey>>>> {
+        rows.iter()
+            .map(|row| {
+                let mut key = Vec::with_capacity(exprs.len());
+                for e in exprs {
+                    match e.eval(ctx, row).ok()? {
+                        Value::Null => return Some(None),
+                        value => key.push(HashKey::of(value)?),
+                    }
+                }
+                Some(Some(key))
+            })
+            .collect()
+    };
+    let right = keys(&right_keys, right_rows)?;
+    let left = keys(&left_keys, left_rows)?;
+    let mut table: std::collections::HashMap<Vec<HashKey>, Vec<usize>> = std::collections::HashMap::new();
+    for (j, key) in right.into_iter().enumerate() {
+        if let Some(key) = key {
+            table.entry(key).or_default().push(j);
+        }
+    }
+    Some(left.into_iter().map(|key| key.and_then(|k| table.get(&k).cloned()).unwrap_or_default()).collect())
+}
+
+/// once_filter runs a filter over a `Once` plan's rows, finding the rows that its equality conditions between their
+/// columns and the enclosing rows hold for through a hash index of the rows, as Postgres' hashed subplans do.
+fn once_filter(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr, cap: Option<usize>) -> Result<Vec<Vec<Value>>> {
+    let shared = input.shared_rows(ctx)?;
+    let reads = |e: &Expr| {
+        let (mut column, mut other) = (false, false);
+        e.visit(&mut |e| match e {
+            Expr::Column(_) => column = true,
+            Expr::Outer(..) | Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => {
+                other = true
+            }
+            _ => {}
+        });
+        (column, other)
+    };
+    let (mut inner, mut outer) = (Vec::new(), Vec::new());
+    for c in crate::indexscan::conjuncts(predicate) {
+        if let Expr::Compare(CmpOp::Eq, a, b) = c {
+            match (reads(a), reads(b)) {
+                ((true, false), (false, _)) if !has_subquery(b) => {
+                    inner.push(&**a);
+                    outer.push(&**b);
+                }
+                ((false, _), (true, false)) if !has_subquery(a) => {
+                    inner.push(&**b);
+                    outer.push(&**a);
+                }
+                _ => {}
+            }
+        }
+    }
+    let index = match inner.is_empty() {
+        true => None,
+        false => shared
+            .index
+            .get_or_init(|| {
+                let mut index: std::collections::HashMap<Vec<HashKey>, Vec<usize>> = std::collections::HashMap::new();
+                'rows: for (j, row) in shared.rows.iter().enumerate() {
+                    let mut key = Vec::with_capacity(inner.len());
+                    for e in &inner {
+                        match e.eval(ctx, row).ok()? {
+                            Value::Null => continue 'rows,
+                            value => key.push(HashKey::of(value)?),
+                        }
+                    }
+                    index.entry(key).or_default().push(j);
+                }
+                Some(index)
+            })
+            .as_ref(),
+    };
+    let mut key = Vec::with_capacity(outer.len());
+    for e in outer.iter().filter(|_| index.is_some()) {
+        match e.eval(ctx, &[])? {
+            Value::Null => return Ok(Vec::new()),
+            value => key.push(HashKey::of(value)),
+        }
+    }
+    let candidates: Vec<usize> = match (index, key.into_iter().collect::<Option<Vec<_>>>()) {
+        (Some(index), Some(key)) => index.get(&key).cloned().unwrap_or_default(),
+        _ => (0..shared.rows.len()).collect(),
+    };
+    let mut out = Vec::new();
+    for j in candidates {
+        if cap.is_some_and(|cap| out.len() >= cap) {
+            break;
+        }
+        if predicate.is_true(ctx, &shared.rows[j])? {
+            out.push(shared.rows[j].clone());
+        }
+    }
+    Ok(out)
+}
+
+/// share_scans wraps the table scan under the filter of a subquery that reads its enclosing rows in a `Once` plan, so
+/// that each run of the subquery filters the same rows.
+pub(crate) fn share_scans(plan: Plan) -> Plan {
+    match plan {
+        Plan::Filter { input, predicate }
+            if matches!(*input, Plan::Scan(_) | Plan::IndexScan(_) | Plan::Catalog(_)) =>
+        {
+            Plan::Filter { input: Box::new(Plan::Once(input)), predicate }
+        }
+        Plan::Project { input, exprs } => Plan::Project { input: Box::new(share_scans(*input)), exprs },
+        Plan::Limit { input, limit, offset } => Plan::Limit { input: Box::new(share_scans(*input)), limit, offset },
+        Plan::Sort { input, keys } => Plan::Sort { input: Box::new(share_scans(*input)), keys },
+        Plan::Distinct { input, keys } => Plan::Distinct { input: Box::new(share_scans(*input)), keys },
+        Plan::Aggregate { input, groups, aggregates } => {
+            Plan::Aggregate { input: Box::new(share_scans(*input)), groups, aggregates }
+        }
+        other => other,
+    }
+}
+
+/// has_subquery reports whether an expression holds a subquery.
+fn has_subquery(e: &Expr) -> bool {
+    let mut found = false;
+    e.visit(&mut |e| {
+        if matches!(e, Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..)) {
+            found = true;
+        }
+    });
+    found
+}
+
+/// HashKey is a join or IN key value whose equality matches the `=` comparison of the values it stands for.
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum HashKey {
+    Int(i64),
+    Bytes(Vec<u8>),
+    Bool(bool),
+}
+
+impl HashKey {
+    /// of returns the key of a value, or None for a value whose equal values can differ in their representation.
+    pub fn of(value: Value) -> Option<HashKey> {
+        Some(match value {
+            Value::Int2(i) => HashKey::Int(i as i64),
+            Value::Int4(i) => HashKey::Int(i as i64),
+            Value::Int8(i) => HashKey::Int(i),
+            Value::Oid(o) => HashKey::Int(o as i64),
+            Value::Date(d) => HashKey::Int(d as i64),
+            Value::Text(text) => HashKey::Bytes(text.into_bytes()),
+            Value::Bytea(bytes) => HashKey::Bytes(bytes),
+            Value::Uuid(uuid) => HashKey::Bytes(uuid.to_vec()),
+            Value::Bool(b) => HashKey::Bool(b),
+            _ => return None,
+        })
+    }
+}
+
 /// shift_columns moves an expression's column references back by `width`, so that it reads the right input of a join
 /// on its own.
 fn shift_columns(expr: Expr, width: usize) -> Expr {
@@ -2598,11 +3151,17 @@ fn rows_from_calls(function: &RangeFunction) -> Result<Vec<pg_query::protobuf::F
         && call.args.len() > 1
         && call.funcname.iter().filter_map(node_name).next_back() == Some("unnest")
     {
-        let call = call.clone();
+        let funcname = ["pg_catalog", "unnest"]
+            .map(|s| Node { node: Some(NodeEnum::String(pg_query::protobuf::String { sval: s.into() })) })
+            .to_vec();
         return Ok(call
             .args
             .iter()
-            .map(|arg| pg_query::protobuf::FuncCall { args: vec![arg.clone()], ..call.clone() })
+            .map(|arg| pg_query::protobuf::FuncCall {
+                args: vec![arg.clone()],
+                funcname: funcname.clone(),
+                ..call.clone()
+            })
             .collect());
     }
     Ok(calls)

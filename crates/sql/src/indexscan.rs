@@ -723,7 +723,7 @@ fn with_like_bounds(table: &TableDef, e: &Expr) -> Expr {
 }
 
 /// conjuncts returns the expressions that a predicate ANDs together.
-fn conjuncts(predicate: &Expr) -> Vec<&Expr> {
+pub(crate) fn conjuncts(predicate: &Expr) -> Vec<&Expr> {
     match predicate {
         Expr::And(left, right) => {
             let mut out = conjuncts(left);

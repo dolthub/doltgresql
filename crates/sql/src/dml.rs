@@ -313,13 +313,21 @@ pub(crate) fn unique_violation(table: &TableDef, rules: &IndexRules, index: &Ind
 /// KeyEdits are changes to an index by key, where None deletes the key.
 type KeyEdits = Vec<(Vec<u8>, Option<Vec<u8>>)>;
 
+/// PrefixPositions are the positions of an index's edits by the bytes of their indexed values.
+type PrefixPositions = std::collections::HashMap<Vec<Option<Vec<u8>>>, Vec<usize>>;
+
 /// Edits collects changes to a table's primary index and secondary indexes by key.
 struct Edits<'a> {
     table: &'a TableDef,
     rules: IndexRules,
     edits: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+    /// The position of each key's last edit by the key's bytes, for a table whose equal keys have equal bytes.
+    latest: Option<std::collections::HashMap<Vec<u8>, usize>>,
     /// Each secondary index's changes, in the order of the table's indexes.
     index_edits: Vec<KeyEdits>,
+    /// The positions of each secondary index's changes by the bytes of their indexed values, for an index whose equal
+    /// keys have equal bytes.
+    index_positions: Vec<Option<PrefixPositions>>,
     /// Whether each secondary index's unique constraint is deferred, whose checks wait for the commit.
     deferred: Vec<bool>,
     /// The unique checks that deferred constraints owe, by index position and indexed values.
@@ -333,7 +341,19 @@ impl<'a> Edits<'a> {
             table,
             rules: ctx.index_rules(table)?,
             edits: Vec::new(),
+            latest: table.key_columns.iter().all(|&c| canonical(table, c)).then(std::collections::HashMap::new),
             index_edits: vec![Vec::new(); table.indexes.len()],
+            index_positions: table
+                .indexes
+                .iter()
+                .map(|index| {
+                    table
+                        .index_key_columns(index)
+                        .iter()
+                        .all(|&c| canonical(table, c))
+                        .then(std::collections::HashMap::new)
+                })
+                .collect(),
             deferred: vec![false; table.indexes.len()],
             deferred_checks: Vec::new(),
         })
@@ -369,15 +389,21 @@ impl<'a> Edits<'a> {
         let index = &self.table.indexes[i];
         let width = index.columns.len();
         let same = |k: &[u8]| self.table.compare_index_prefix(index, width, k, key) == Ordering::Equal;
-        let mut pending: Vec<(&[u8], bool)> = Vec::new();
-        for (k, v) in &self.index_edits[i] {
-            match pending.iter_mut().find(|(p, _)| self.table.compare_index_keys(index, p, k) == Ordering::Equal) {
-                Some(entry) => entry.1 = v.is_some(),
-                None => pending.push((k, v.is_some())),
-            }
-        }
-        if let Some((k, _)) = pending.iter().find(|(k, present)| *present && same(k)) {
-            return Ok(Some(k.to_vec()));
+        let edits = &self.index_edits[i];
+        let candidates: Vec<usize> = match &self.index_positions[i] {
+            Some(positions) => positions.get(&key_prefix(key, width)).cloned().unwrap_or_default(),
+            None => (0..edits.len()).filter(|&j| same(&edits[j].0)).collect(),
+        };
+        let latest = |k: &[u8]| {
+            candidates
+                .iter()
+                .rev()
+                .map(|&j| &edits[j])
+                .find(|(p, _)| self.table.compare_index_keys(index, p, k) == Ordering::Equal)
+                .map(|(_, v)| v.is_some())
+        };
+        if let Some(&j) = candidates.iter().find(|&&j| latest(&edits[j].0) == Some(true)) {
+            return Ok(Some(edits[j].0.clone()));
         }
         let mut found = None;
         let root = db.read(&index.root)?;
@@ -385,10 +411,7 @@ impl<'a> Edits<'a> {
             if !same(k) {
                 return Ok(false);
             }
-            let deleted = pending
-                .iter()
-                .any(|(p, present)| !present && self.table.compare_index_keys(index, p, k) == Ordering::Equal);
-            if !deleted {
+            if latest(k) != Some(false) {
                 found = Some(k.to_vec());
             }
             Ok(found.is_none())
@@ -462,14 +485,28 @@ impl<'a> Edits<'a> {
                 return Err(unique_violation(self.table, &self.rules, index, &row));
             }
             let value = add.then(|| prolly::val::build_tuple(&[]));
+            if let Some(positions) = self.index_positions[i].as_mut() {
+                positions.entry(key_prefix(&key, index.columns.len())).or_default().push(self.index_edits[i].len());
+            }
             self.index_edits[i].push((key, value));
         }
         Ok(())
     }
 
+    /// push records an edit of a key, where a value of None deletes it.
+    fn push(&mut self, key: Vec<u8>, value: Option<Vec<u8>>) {
+        if let Some(latest) = self.latest.as_mut() {
+            latest.insert(key.clone(), self.edits.len());
+        }
+        self.edits.push((key, value));
+    }
+
     /// pending returns the value an earlier edit gave a key: None when no edit touched it, and Some(None) when one
     /// deleted it.
     fn pending(&self, key: &[u8]) -> Option<Option<Vec<u8>>> {
+        if let Some(latest) = &self.latest {
+            return latest.get(key).map(|&i| self.edits[i].1.clone());
+        }
         self.edits
             .iter()
             .rev()
@@ -510,7 +547,7 @@ impl<'a> Edits<'a> {
         } else {
             self.index_row(ctx, row, &key, true)?;
         }
-        self.edits.push((key, Some(value)));
+        self.push(key, Some(value));
         Ok(())
     }
 
@@ -522,11 +559,11 @@ impl<'a> Edits<'a> {
             && cardinality(&existing) > 1
         {
             let value = with_cardinality(&existing, cardinality(&existing) - 1);
-            self.edits.push((key, Some(value)));
+            self.push(key, Some(value));
             return Ok(());
         }
         self.index_row(ctx, row, &key, false)?;
-        self.edits.push((key, None));
+        self.push(key, None);
         Ok(())
     }
 
@@ -583,6 +620,35 @@ impl<'a> Edits<'a> {
         txn.root.put_table(db, &table.schema, &table.name, Some(address))?;
         Ok(())
     }
+}
+
+/// canonical reports whether equal values of a table column, or of a keyless table's row hash, always have equal bytes
+/// in a key.
+fn canonical(table: &TableDef, column: usize) -> bool {
+    column == crate::catalog::table::KEYLESS_HASH
+        || table.columns.get(column).is_some_and(|c| {
+            matches!(
+                c.ty.oid,
+                oid::INT2
+                    | oid::INT4
+                    | oid::INT8
+                    | oid::OID
+                    | oid::TEXT
+                    | oid::VARCHAR
+                    | oid::NAME
+                    | oid::BOOL
+                    | oid::UUID
+                    | oid::DATE
+                    | oid::TIMESTAMP
+                    | oid::TIMESTAMPTZ
+                    | oid::BYTEA
+            )
+        })
+}
+
+/// key_prefix returns the bytes of the first fields of a key.
+fn key_prefix(key: &[u8], width: usize) -> Vec<Option<Vec<u8>>> {
+    (0..width).map(|i| Tuple(key).field(i).ok().flatten().map(<[u8]>::to_vec)).collect()
 }
 
 /// cardinality returns the cardinality of a keyless row's value.

@@ -864,6 +864,9 @@ impl Ctx<'_> {
             ctes: Vec::new(),
             work_tables: std::collections::HashMap::new(),
             named_params,
+            once: None,
+            outer_reach: usize::MAX,
+            aggregate_levels: Vec::new(),
         };
         f(&mut ctx)
     }

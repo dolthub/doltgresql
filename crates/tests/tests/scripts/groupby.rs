@@ -129,3 +129,61 @@ fn test_group_by() {
         },
     ]);
 }
+
+#[test]
+fn test_outer_aggregate_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "aggregates of outer query columns",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ta (a int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ta VALUES (1),(2);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select avg((select avg(a1.a order by (select avg(a2.a) from ta a3)) from ta a1)) from ta a2;",
+                    expected: Expected::Error(Diagnostic { code: "42803", message: "aggregate function calls cannot be nested", position: 46, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (SELECT max(ta.a)) FROM ta;",
+                    expected: Expected::Rows {
+                        columns: &[Column("max", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("an aggregate of only outer query columns belongs to the outer query, which Doltgres cannot group yet"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (SELECT max(x.a) FROM ta x) FROM ta;",
+                    expected: Expected::Rows {
+                        columns: &[Column("max", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select max(min(a)) from ta;",
+                    expected: Expected::Error(Diagnostic { code: "42803", message: "aggregate function calls cannot be nested", position: 12, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

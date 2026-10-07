@@ -643,6 +643,7 @@ impl Ctx<'_> {
         }
         let mut constraints = self.constraint_names(&schema)?;
         let mut checks: Vec<Check> = Vec::new();
+        let mut check_nodes = Vec::new();
         for (constraint, expr) in pending_checks {
             let check_name = if constraint.is_empty() {
                 let column = check_column(&expr);
@@ -657,6 +658,7 @@ impl Ctx<'_> {
             };
             constraints.push(check_name.clone());
             checks.push(Check { name: check_name, expression: expression_text(&expr)? });
+            check_nodes.push(expr);
         }
         let mut taken = self.relation_names(&schema)?;
         taken.push(name.to_string());
@@ -681,6 +683,12 @@ impl Ctx<'_> {
             indexes.push(IndexDef { deferrable, initially_deferred, ..new_index(index_name, keys, true) });
         }
         self.write_new_table(&schema, name, columns, (primary_key, primary), checks, indexes)?;
+        let table = self.txn.table(self.db, &schema, name)?.ok_or_else(|| PgError::internal("the new table"))?;
+        for expr in &check_nodes {
+            let mut binder = Binder::new(self, crate::dml::table_scope(&table, None));
+            (binder.clause, binder.definition) = ("check constraints", true);
+            crate::expr::condition(binder.bind(expr)?, "CHECK", arg_location(expr))?;
+        }
         for (keys, constraint) in foreign {
             let table =
                 self.txn.table(self.db, &schema, name)?.ok_or_else(|| PgError::internal("a new table vanished"))?;

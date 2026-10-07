@@ -795,3 +795,167 @@ fn test_window_functions() {
         },
     ]);
 }
+
+#[test]
+fn test_range_offset_and_window_chain_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "RANGE frames with offsets",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE rg (d date, n int, f float8, t text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO rg VALUES ('2020-01-31', 1, 1.5, 'a'), ('2020-02-29', 2, 2.5, 'b'), ('2020-03-31', 4, NULL, 'c'), (NULL, NULL, 4.0, 'd'), ('2020-03-01', 7, 7.5, 'e');",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT d, n, sum(n) OVER (ORDER BY d RANGE BETWEEN INTERVAL '1 month' PRECEDING AND CURRENT ROW) FROM rg ORDER BY d;",
+                    expected: Expected::Rows {
+                        columns: &[Column("d", DATE), Column("n", INT4), Column("sum", INT8)],
+                        rows: &[
+                            &[T("2020-01-31"), T("1"), T("1")],
+                            &[T("2020-02-29"), T("2"), T("3")],
+                            &[T("2020-03-01"), T("7"), T("9")],
+                            &[T("2020-03-31"), T("4"), T("13")],
+                            &[Null, Null, Null],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT n, sum(n) OVER (ORDER BY n RANGE BETWEEN 2 PRECEDING AND 1 FOLLOWING), sum(n) OVER (ORDER BY n DESC RANGE BETWEEN 2 PRECEDING AND 1 FOLLOWING) FROM rg ORDER BY n;",
+                    expected: Expected::Rows {
+                        columns: &[Column("n", INT4), Column("sum", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("1"), T("3"), T("3")],
+                            &[T("2"), T("3"), T("7")],
+                            &[T("4"), T("6"), T("4")],
+                            &[T("7"), T("7"), T("7")],
+                            &[Null, Null, Null],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT f, sum(n) OVER (ORDER BY f RANGE BETWEEN 1.5 PRECEDING AND 1 FOLLOWING) FROM rg ORDER BY f;",
+                    expected: Expected::Rows {
+                        columns: &[Column("f", FLOAT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("1.5"), T("3")],
+                            &[T("2.5"), T("3")],
+                            &[T("4"), T("2")],
+                            &[T("7.5"), T("7")],
+                            &[Null, T("4")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT n, sum(n) OVER (ORDER BY n NULLS FIRST RANGE BETWEEN 1 FOLLOWING AND 3 FOLLOWING) FROM rg ORDER BY n;",
+                    expected: Expected::Rows {
+                        columns: &[Column("n", INT4), Column("sum", INT8)],
+                        rows: &[
+                            &[T("1"), T("6")],
+                            &[T("2"), T("4")],
+                            &[T("4"), T("7")],
+                            &[T("7"), Null],
+                            &[Null, Null],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(n) OVER (ORDER BY n, f RANGE 1 PRECEDING) FROM rg;",
+                    expected: Expected::Error(Diagnostic { code: "42P20", message: "RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column", position: 20, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(n) OVER (ORDER BY t RANGE 1 PRECEDING) FROM rg;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "RANGE with offset PRECEDING/FOLLOWING is not supported for column type text", position: 38, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(n) OVER (ORDER BY n RANGE -1 PRECEDING) FROM rg;",
+                    expected: Expected::Error(Diagnostic { code: "22013", message: "invalid preceding or following size in window function", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(n) OVER (ORDER BY n RANGE NULL PRECEDING) FROM rg;",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "frame starting offset must not be null", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(n) OVER (ORDER BY d RANGE 1 PRECEDING) FROM rg;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "RANGE with offset PRECEDING/FOLLOWING is not supported for column type date and offset type integer", hint: "Cast the offset value to an appropriate type.", position: 38, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(n) OVER (RANGE 1 PRECEDING) FROM rg;",
+                    expected: Expected::Error(Diagnostic { code: "42P20", message: "RANGE with offset PRECEDING/FOLLOWING requires exactly one ORDER BY column", position: 20, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "named window chains",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE nw (id int, grp int, amt int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO nw VALUES (1, 1, 10), (2, 1, 20), (3, 1, 30), (4, 2, 5), (5, 2, 15);",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(amt) OVER w3 FROM nw WINDOW w1 AS (PARTITION BY grp), w2 AS (w1 ORDER BY id), w3 AS (w2) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("2"), T("30")],
+                            &[T("3"), T("60")],
+                            &[T("4"), T("5")],
+                            &[T("5"), T("20")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(amt) OVER (w2 ROWS 1 PRECEDING) FROM nw WINDOW w1 AS (PARTITION BY grp), w2 AS (w1 ORDER BY id) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("2"), T("30")],
+                            &[T("3"), T("50")],
+                            &[T("4"), T("5")],
+                            &[T("5"), T("20")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

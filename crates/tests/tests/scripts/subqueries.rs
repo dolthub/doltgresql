@@ -558,3 +558,204 @@ fn test_array_subqueries() {
         },
     ]);
 }
+
+#[test]
+fn test_subquery_evaluation_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "uncorrelated and correlated subqueries",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE sa (a int, b text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE sb (a int, b text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sa VALUES (1, 'x'), (2, 'y'), (3, NULL), (NULL, 'w');",
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sb VALUES (1, 'x'), (2, 'q'), (2, 'r'), (5, NULL);",
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, a IN (SELECT a FROM sb), a NOT IN (SELECT a FROM sb WHERE a IS NOT NULL) FROM sa ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("1"), T("t"), T("f")],
+                            &[T("2"), T("t"), T("f")],
+                            &[T("3"), T("f"), T("t")],
+                            &[Null, Null, Null],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sb VALUES (NULL, 'n');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, a IN (SELECT a FROM sb), a NOT IN (SELECT a FROM sb) FROM sa ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("1"), T("t"), T("f")],
+                            &[T("2"), T("t"), T("f")],
+                            &[T("3"), Null, Null],
+                            &[Null, Null, Null],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, b IN (SELECT b FROM sb) FROM sa ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("1"), T("t")],
+                            &[T("2"), Null],
+                            &[T("3"), Null],
+                            &[Null, Null],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a FROM sa WHERE a IN (SELECT a FROM sb WHERE false) ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, EXISTS (SELECT 1 FROM sb WHERE sb.a = sa.a), (SELECT count(*) FROM sb WHERE sb.a = sa.a) FROM sa ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("exists", BOOL), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("t"), T("1")],
+                            &[T("2"), T("t"), T("2")],
+                            &[T("3"), T("f"), T("0")],
+                            &[Null, T("f"), T("0")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a FROM sa WHERE EXISTS (SELECT 1 FROM sb WHERE sb.a = sa.a AND sb.b <> 'q') ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a FROM sa WHERE NOT EXISTS (SELECT 1 FROM sb WHERE sb.a = sa.a + 0 AND NOT EXISTS (SELECT 1 FROM sb c WHERE c.b = sa.b)) ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("3")],
+                            &[Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, ARRAY(SELECT b FROM sb WHERE sb.a = sa.a ORDER BY b) FROM sa ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("array", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{x}")],
+                            &[T("2"), T("{q,r}")],
+                            &[T("3"), T("{}")],
+                            &[Null, T("{}")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (SELECT max(a) FROM sb), a FROM sa WHERE a < (SELECT max(a) FROM sb) ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("max", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("5"), T("1")],
+                            &[T("5"), T("2")],
+                            &[T("5"), T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, (SELECT b FROM sb WHERE sb.a = sa.a) FROM sa ORDER BY a;",
+                    expected: Expected::Error(Diagnostic { code: "21000", message: "more than one row returned by a subquery used as an expression", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "to_regtype syntax errors",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT to_regtype('integer"');"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated quoted identifier at or near """"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regtype('23');",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "23""#, position: 1, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regtype('int4 x');",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "x""#, position: 6, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regclass('23'), to_regproc('23'), to_regrole('23'), to_regnamespace('23');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regclass", REGCLASS), Column("to_regproc", REGPROC), Column("to_regrole", REGROLE), Column("to_regnamespace", REGNAMESPACE)],
+                        rows: &[
+                            &[Null, Null, Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('23');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a left parenthesis", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
