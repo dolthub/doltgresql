@@ -10095,6 +10095,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
+                    skip: Some("json_valid is a MySQL function that Postgres lacks"),
                     ..A
                 },
             ],
@@ -10364,6 +10365,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 21",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
             ],
@@ -10486,6 +10488,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -10499,6 +10502,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -10512,6 +10516,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
             ],
@@ -10782,6 +10787,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -10795,6 +10801,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -10808,6 +10815,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
             ],
@@ -11078,6 +11086,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -11091,6 +11100,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -11104,6 +11114,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -11117,6 +11128,7 @@ fn test_dolt_help_system_table() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
+                    skip: Some("Doltgres has no Dolt command line, so dolt_help is empty as in the Go server, while Dolt's enginetest installs the Dolt CLI's documentation"),
                     ..A
                 },
             ],

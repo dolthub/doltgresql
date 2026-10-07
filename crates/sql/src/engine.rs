@@ -53,6 +53,21 @@ struct Shared {
     started: i64,
     /// The histograms that ANALYZE built, by database and branch.
     statistics: Mutex<HashMap<(String, String), Vec<crate::stats::Statistic>>>,
+    /// What each open session is doing, by session ID.
+    activity: Mutex<std::collections::BTreeMap<u64, Activity>>,
+}
+
+/// Activity is what a session is doing, as pg_stat_activity shows it.
+#[derive(Clone, Debug, Default)]
+pub struct Activity {
+    pub database: String,
+    pub user: String,
+    /// The address the client connected from.
+    pub host: String,
+    /// The running statement, or the last one when the session is idle.
+    pub query: String,
+    /// When the running statement began, as a UTC timestamp, or None when the session is idle.
+    pub started: Option<i64>,
 }
 
 /// undrop_hint lists the dropped databases that dolt_undrop can restore, as Dolt's CreateUndropErrorMessage does.
@@ -99,6 +114,7 @@ impl Engine {
                 advisory: Arc::default(),
                 started: crate::datetime::clock(),
                 statistics: Mutex::default(),
+                activity: Mutex::default(),
             }),
         };
         if !engine.database_exists(superuser) {
@@ -127,6 +143,24 @@ impl Engine {
     pub fn statistics(&self, database: &str, branch: &str) -> Vec<crate::stats::Statistic> {
         let Ok(all) = self.shared.statistics.lock() else { return Vec::new() };
         all.get(&(database.to_string(), branch.to_string())).cloned().unwrap_or_default()
+    }
+
+    /// activity returns what each open session is doing, by session ID.
+    pub fn activity(&self) -> Vec<(u64, Activity)> {
+        let Ok(all) = self.shared.activity.lock() else { return Vec::new() };
+        all.iter().map(|(id, activity)| (*id, activity.clone())).collect()
+    }
+
+    /// update_activity changes what a session is doing.
+    fn update_activity(&self, id: u64, update: impl FnOnce(&mut Activity)) {
+        let Ok(mut all) = self.shared.activity.lock() else { return };
+        update(all.entry(id).or_default());
+    }
+
+    /// forget_activity forgets a session that closed.
+    fn forget_activity(&self, id: u64) {
+        let Ok(mut all) = self.shared.activity.lock() else { return };
+        all.remove(&id);
     }
 
     /// started returns when the engine opened, as a UTC timestamp.
@@ -252,6 +286,7 @@ impl Engine {
                 auth: self.shared.auth.clone(),
                 role: user.to_string(),
                 authenticated: user.to_string(),
+                view_schema: None,
                 routines: None,
                 triggers: None,
                 operators: None,
@@ -275,6 +310,7 @@ impl Engine {
         session.switch(database).map_err(|_| {
             PgError::fatal(code::INVALID_CATALOG_NAME, format!("database \"{database}\" does not exist"))
         })?;
+        session.report_activity(None);
         Ok(session)
     }
 }
@@ -330,6 +366,9 @@ pub struct SessionState {
     pub role: String,
     /// The user that logged in, which SET SESSION AUTHORIZATION checks.
     pub authenticated: String,
+    /// The schema of the view whose query is being planned, which its unqualified names search first, as if they
+    /// were bound when the view was created.
+    pub view_schema: Option<String>,
     /// The functions and procedures last loaded, with the addresses of the collections they were loaded from.
     pub routines: Option<RoutineCache>,
     /// The triggers last loaded, with the address of the trigger collection they were loaded from.
@@ -362,6 +401,7 @@ static NEXT_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 impl Drop for Session {
     fn drop(&mut self) {
         self.state.advisory.release_all(self.state.id, false, true);
+        self.state.engine.forget_activity(self.state.id);
     }
 }
 
@@ -407,6 +447,11 @@ impl SessionState {
     /// search_path returns the schemas that unqualified names resolve in.
     pub fn search_path(&self) -> Vec<String> {
         let path = self.settings.get("search_path").unwrap_or_default();
+        let path = match &self.view_schema {
+            Some(schema) => format!("{},{path}", crate::engine::quote_identifier(schema)),
+            None => path,
+        };
+        let mut seen = std::collections::HashSet::new();
         path.split(',')
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
@@ -418,7 +463,7 @@ impl SessionState {
                 };
                 if s == "$user" { self.user.clone() } else { s }
             })
-            .filter(|s| self.can_use_schema(s))
+            .filter(|s| self.can_use_schema(s) && seen.insert(s.clone()))
             .collect()
     }
 
@@ -560,17 +605,32 @@ impl Session {
         Ok(())
     }
 
+    /// report_activity records the statement that the session runs, or that it went idle after its last statement
+    /// for None.
+    fn report_activity(&mut self, query: Option<&str>) {
+        let state = &self.state;
+        state.engine.update_activity(state.id, |activity| {
+            activity.database.clone_from(&state.database);
+            activity.user.clone_from(&state.user);
+            activity.host.clone_from(&state.host);
+            if let Some(query) = query {
+                activity.query = query.to_string();
+            }
+            activity.started = query.map(|_| crate::datetime::clock());
+        });
+    }
+
     /// execute runs the statements of a simple query, stopping at the first error, and returns what each produced.
     /// The statements run in one implicit transaction unless they manage their own.
     pub fn execute(&mut self, query: &str) -> (Vec<Outcome>, Option<PgError>) {
-        let statements = match parse::parse(query) {
-            Ok(statements) => statements,
-            Err(err) => return (Vec::new(), Some(self.fail(err))),
+        self.report_activity(Some(query));
+        let result = match parse::parse(query) {
+            Ok(statements) if statements.is_empty() => (vec![Outcome::Empty], None),
+            Ok(statements) => self.run_batch(statements, Vec::new()),
+            Err(err) => (Vec::new(), Some(self.fail(err))),
         };
-        if statements.is_empty() {
-            return (vec![Outcome::Empty], None);
-        }
-        self.run_batch(statements, Vec::new())
+        self.report_activity(None);
+        result
     }
 
     /// run_batch runs the statements of a simple query after the outcomes of the ones before them, pausing at a COPY
@@ -638,15 +698,20 @@ impl Session {
                 *parameter = crate::oid::TEXT;
             }
         }
-        Ok(Prepared { statement, parameter_types: parameters, columns })
+        Ok(Prepared { query: query.to_string(), statement, parameter_types: parameters, columns })
     }
 
     /// execute_prepared runs a prepared statement with the parameter values, in the implicit transaction that lasts
     /// until the next Sync.
     pub fn execute_prepared(&mut self, prepared: &Prepared, parameters: &[Value]) -> Result<Outcome> {
         let Some(statement) = &prepared.statement else { return Ok(Outcome::Empty) };
-        let parameters = self.reg_parameters(&prepared.parameter_types, parameters).map_err(|err| self.fail(err))?;
-        self.run(statement, &parameters).map_err(|err| self.fail(err))
+        self.report_activity(Some(&prepared.query));
+        let result = match self.reg_parameters(&prepared.parameter_types, parameters) {
+            Ok(parameters) => self.run(statement, &parameters).map_err(|err| self.fail(err)),
+            Err(err) => Err(self.fail(err)),
+        };
+        self.report_activity(None);
+        result
     }
 
     /// reg_parameters looks up the objects that the text of reg-typed parameters names.

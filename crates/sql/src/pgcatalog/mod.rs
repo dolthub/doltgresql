@@ -178,6 +178,17 @@ impl<'t> Rows<'t> {
         Rows { table, rows: Vec::new() }
     }
 
+    /// zeros returns a zero of each named column's type, for the counters of the statistics views.
+    fn zeros<'n>(&self, names: &[&'n str]) -> Vec<(&'n str, Value)> {
+        let zero = |name: &str| match self.table.column(name).map(|i| self.table.columns[i].type_oid) {
+            Some(crate::oid::INT4) => Value::Int4(0),
+            Some(crate::oid::FLOAT8) => Value::Float8(0.0),
+            Some(crate::oid::NUMERIC) => Value::Numeric(crate::numeric::Numeric::from_i64(0)),
+            _ => Value::Int8(0),
+        };
+        names.iter().map(|&name| (name, zero(name))).collect()
+    }
+
     /// push adds a row with the given columns set, ignoring columns the relation lacks.
     fn push(&mut self, fields: Vec<(&str, Value)>) {
         let mut row = vec![Value::Null; self.table.columns.len()];

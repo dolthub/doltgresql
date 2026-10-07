@@ -20,7 +20,7 @@ use crate::catalog::{ColumnType, builtin_type, id, oids};
 
 /// SECTION_COLUMN_DEFAULT is the ID section of column defaults.
 const SECTION_COLUMN_DEFAULT: u8 = 5;
-use crate::error::Result;
+use crate::error::{PgError, Result};
 use crate::foreign::Rule;
 use crate::oid as types;
 use crate::pgcatalog::snapshot::{
@@ -277,6 +277,17 @@ impl Ctx<'_> {
                 self.pg_settings(rows);
                 Ok(())
             }
+            "pg_config" => {
+                self.pg_config(rows);
+                Ok(())
+            }
+            "pg_timezone_names" => {
+                pg_timezone_names(rows);
+                Ok(())
+            }
+            "pg_rewrite" => self.pg_rewrite(rows),
+            "pg_depend" => self.pg_depend(rows),
+            name if name.starts_with("pg_stat") => self.pg_stat(rows),
             _ => Ok(()),
         }
     }
@@ -670,9 +681,12 @@ impl Ctx<'_> {
 
     /// view_columns returns the names and types of a view's columns, by planning its query.
     pub fn view_columns(&mut self, schema: &str, name: &str) -> Option<Vec<(String, ColumnType)>> {
-        let (_, fragment) = self.find_view(schema, name).ok()??;
+        let (schema, fragment) = self.find_view(schema, name).ok()??;
         let (select, aliases) = crate::views::view_query(&fragment).ok()?;
-        let query = crate::plan::Planner { ctx: self, outer: Vec::new() }.plan_query(&select).ok()?;
+        let schema = self.session.view_schema.replace(schema);
+        let query = crate::plan::Planner { ctx: self, outer: Vec::new() }.plan_query(&select);
+        self.session.view_schema = schema;
+        let query = query.ok()?;
         Some(
             query
                 .columns
@@ -1283,4 +1297,409 @@ pub fn index_definition(table: &TableDef, index: &TableIndex, qualified: bool) -
         rendering.as_ref().map_or("btree", |(method, _)| method),
         columns.join(", ")
     )
+}
+
+/// TABLE_COUNTERS are the counters of pg_stat_all_tables and its sys and user variants.
+const TABLE_COUNTERS: &[&str] = &[
+    "seq_scan",
+    "seq_tup_read",
+    "idx_scan",
+    "idx_tup_fetch",
+    "n_tup_ins",
+    "n_tup_upd",
+    "n_tup_del",
+    "n_tup_hot_upd",
+    "n_live_tup",
+    "n_dead_tup",
+    "n_mod_since_analyze",
+    "n_ins_since_vacuum",
+    "vacuum_count",
+    "autovacuum_count",
+    "analyze_count",
+    "autoanalyze_count",
+];
+
+/// XACT_TABLE_COUNTERS are the counters of pg_stat_xact_all_tables and its sys and user variants.
+const XACT_TABLE_COUNTERS: &[&str] =
+    &["seq_scan", "seq_tup_read", "idx_scan", "idx_tup_fetch", "n_tup_ins", "n_tup_upd", "n_tup_del", "n_tup_hot_upd"];
+
+/// SLRU_NAMES are the simple LRU caches that pg_stat_slru lists.
+const SLRU_NAMES: &[&str] =
+    &["CommitTs", "MultiXactMember", "MultiXactOffset", "Notify", "Serial", "Subtrans", "Xact", "other"];
+
+/// StatRelation is a relation that the statistics views list: its OID, schema, name, and kind, with the OID and name
+/// of the table of an index.
+struct StatRelation {
+    oid: u32,
+    schema: String,
+    name: String,
+    kind: String,
+    table: Option<(u32, String)>,
+}
+
+impl Ctx<'_> {
+    /// stat_relations returns the relations of pg_class that the statistics views list.
+    fn stat_relations(&mut self) -> Result<Vec<StatRelation>> {
+        let column = |table: &crate::pgcatalog::CatalogTable, name: &str| table.column(name).unwrap_or_default();
+        let class = crate::pgcatalog::lookup("pg_catalog", "pg_class").ok_or_else(|| PgError::internal("pg_class"))?;
+        let namespace =
+            crate::pgcatalog::lookup("pg_catalog", "pg_namespace").ok_or_else(|| PgError::internal("pg_namespace"))?;
+        let index = crate::pgcatalog::lookup("pg_catalog", "pg_index").ok_or_else(|| PgError::internal("pg_index"))?;
+        let as_oid = |v: &Value| if let Value::Oid(o) = v { *o } else { 0 };
+        let as_text = |v: &Value| v.output().unwrap_or_default();
+        let schemas: std::collections::HashMap<u32, String> = self
+            .catalog_rows(namespace)?
+            .iter()
+            .map(|r| (as_oid(&r[column(namespace, "oid")]), as_text(&r[column(namespace, "nspname")])))
+            .collect();
+        let tables: std::collections::HashMap<u32, u32> = self
+            .catalog_rows(index)?
+            .iter()
+            .map(|r| (as_oid(&r[column(index, "indexrelid")]), as_oid(&r[column(index, "indrelid")])))
+            .collect();
+        let classes: Vec<(u32, String, u32, String)> = self
+            .catalog_rows(class)?
+            .iter()
+            .map(|r| {
+                (
+                    as_oid(&r[column(class, "oid")]),
+                    as_text(&r[column(class, "relname")]),
+                    as_oid(&r[column(class, "relnamespace")]),
+                    as_text(&r[column(class, "relkind")]),
+                )
+            })
+            .collect();
+        let names: std::collections::HashMap<u32, String> = classes.iter().map(|c| (c.0, c.1.clone())).collect();
+        Ok(classes
+            .into_iter()
+            .map(|(oid, name, schema, kind)| StatRelation {
+                oid,
+                schema: schemas.get(&schema).cloned().unwrap_or_default(),
+                name,
+                kind,
+                table: tables.get(&oid).map(|&t| (t, names.get(&t).cloned().unwrap_or_default())),
+            })
+            .collect())
+    }
+
+    /// pg_stat fills a statistics view, whose counters are all zero since Doltgres tracks no statistics, as Go does.
+    fn pg_stat(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let name = rows.table.name;
+        let wanted = |schema: &str| {
+            let system = schema == "pg_catalog" || schema == "information_schema" || schema.starts_with("pg_toast");
+            if name.contains("_sys_") {
+                system
+            } else if name.contains("_user_") {
+                !system
+            } else {
+                true
+            }
+        };
+        let kind = name.rsplit('_').next().unwrap_or_default();
+        let listed = name.starts_with("pg_stat_all_")
+            || name.starts_with("pg_stat_sys_")
+            || name.starts_with("pg_stat_user_")
+            || name.starts_with("pg_stat_xact_")
+            || name.starts_with("pg_statio_");
+        if listed && matches!(kind, "tables" | "indexes" | "sequences") {
+            let relkinds: &[&str] = match kind {
+                "tables" => &["r", "t", "m", "p"],
+                "indexes" => &["i"],
+                _ => &["S"],
+            };
+            let counters: &[&str] = match (name.starts_with("pg_statio_"), kind, name.starts_with("pg_stat_xact_")) {
+                (true, "tables", _) => &["heap_blks_read", "heap_blks_hit", "idx_blks_read", "idx_blks_hit"],
+                (true, "indexes", _) => &["idx_blks_read", "idx_blks_hit"],
+                (true, _, _) => &["blks_read", "blks_hit"],
+                (false, "indexes", _) => &["idx_scan", "idx_tup_read", "idx_tup_fetch"],
+                (false, _, true) => XACT_TABLE_COUNTERS,
+                _ => TABLE_COUNTERS,
+            };
+            for relation in self.stat_relations()? {
+                if !relkinds.contains(&relation.kind.as_str()) || !wanted(&relation.schema) {
+                    continue;
+                }
+                let mut fields = vec![("schemaname", text(relation.schema.clone()))];
+                match &relation.table {
+                    Some((table_oid, table_name)) => fields.extend([
+                        ("relid", oid(*table_oid)),
+                        ("indexrelid", oid(relation.oid)),
+                        ("relname", text(table_name.clone())),
+                        ("indexrelname", text(relation.name.clone())),
+                    ]),
+                    None => fields.extend([("relid", oid(relation.oid)), ("relname", text(relation.name.clone()))]),
+                }
+                fields.extend(rows.zeros(counters));
+                rows.push(fields);
+            }
+            return Ok(());
+        }
+        match name {
+            "pg_stat_activity" => {
+                for (pid, activity) in self.session.engine.activity() {
+                    let database = match activity.database.as_str() {
+                        "" => vec![],
+                        database => vec![("datid", oid(database_oid(database))), ("datname", text(database))],
+                    };
+                    let mut fields = vec![
+                        ("pid", int4(pid as i32)),
+                        ("usesysid", oid(role_oid(&activity.user, &self.session.superuser))),
+                        ("usename", text(activity.user.clone())),
+                        ("application_name", text("")),
+                        ("client_addr", if activity.host.is_empty() { Value::Null } else { text(activity.host) }),
+                        ("query_start", activity.started.map_or(Value::Null, Value::TimestampTz)),
+                        ("state", text(if activity.started.is_some() { "active" } else { "idle" })),
+                        ("query", text(activity.query)),
+                        ("backend_type", text("client backend")),
+                    ];
+                    fields.extend(database);
+                    rows.push(fields);
+                }
+            }
+            "pg_stat_ssl" | "pg_stat_gssapi" => {
+                for (pid, _) in self.session.engine.activity() {
+                    let flags: &[&str] =
+                        if name == "pg_stat_ssl" { &["ssl"] } else { &["gss_authenticated", "encrypted"] };
+                    let mut fields = vec![("pid", int4(pid as i32))];
+                    fields.extend(flags.iter().map(|&flag| (flag, boolean(false))));
+                    rows.push(fields);
+                }
+            }
+            "pg_stat_wal" => {
+                let fields = rows.zeros(&[
+                    "wal_records",
+                    "wal_fpi",
+                    "wal_bytes",
+                    "wal_buffers_full",
+                    "wal_write",
+                    "wal_sync",
+                    "wal_write_time",
+                    "wal_sync_time",
+                ]);
+                rows.push(fields);
+            }
+            "pg_stat_archiver" => {
+                let fields = rows.zeros(&["archived_count", "failed_count"]);
+                rows.push(fields);
+            }
+            "pg_stat_bgwriter" => {
+                let fields = rows.zeros(&[
+                    "checkpoints_timed",
+                    "checkpoints_req",
+                    "checkpoint_write_time",
+                    "checkpoint_sync_time",
+                    "buffers_checkpoint",
+                    "buffers_clean",
+                    "maxwritten_clean",
+                    "buffers_backend",
+                    "buffers_backend_fsync",
+                    "buffers_alloc",
+                ]);
+                rows.push(fields);
+            }
+            "pg_stat_recovery_prefetch" => {
+                let fields = rows.zeros(&["prefetch", "hit", "skip_init", "skip_new", "skip_fpw", "skip_rep"]);
+                rows.push(fields);
+            }
+            "pg_stat_slru" => {
+                for slru in SLRU_NAMES {
+                    let mut fields = vec![("name", text(*slru))];
+                    fields.extend(rows.zeros(&[
+                        "blks_zeroed",
+                        "blks_hit",
+                        "blks_read",
+                        "blks_written",
+                        "blks_exists",
+                        "flushes",
+                        "truncates",
+                    ]));
+                    rows.push(fields);
+                }
+            }
+            "pg_stat_database" | "pg_stat_database_conflicts" => {
+                let counters: &[&str] = if name == "pg_stat_database" {
+                    &[
+                        "numbackends",
+                        "xact_commit",
+                        "xact_rollback",
+                        "blks_read",
+                        "blks_hit",
+                        "tup_returned",
+                        "tup_fetched",
+                        "tup_inserted",
+                        "tup_updated",
+                        "tup_deleted",
+                        "conflicts",
+                        "temp_files",
+                        "temp_bytes",
+                        "deadlocks",
+                        "checksum_failures",
+                        "blk_read_time",
+                        "blk_write_time",
+                        "session_time",
+                        "active_time",
+                        "idle_in_transaction_time",
+                        "sessions",
+                        "sessions_abandoned",
+                        "sessions_fatal",
+                        "sessions_killed",
+                    ]
+                } else {
+                    &[
+                        "confl_tablespace",
+                        "confl_lock",
+                        "confl_snapshot",
+                        "confl_bufferpin",
+                        "confl_deadlock",
+                        "confl_active_logicalslot",
+                    ]
+                };
+                if name == "pg_stat_database" {
+                    let mut fields = vec![("datid", oid(0))];
+                    fields.extend(rows.zeros(counters));
+                    rows.push(fields);
+                }
+                for database in self.catalog_database_names() {
+                    let mut fields = vec![("datid", oid(database_oid(&database))), ("datname", text(database))];
+                    fields.extend(rows.zeros(counters));
+                    rows.push(fields);
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+/// PG_CLASS and PG_ATTRDEF are the OIDs of the pg_class and pg_attrdef catalogs, which pg_depend rows name.
+const PG_CLASS: u32 = 1259;
+const PG_ATTRDEF: u32 = 2604;
+
+impl Ctx<'_> {
+    /// pg_rewrite lists the `_RETURN` rule of each view, the only rules there are without CREATE RULE.
+    fn pg_rewrite(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        for view in self.snapshot()?.views {
+            rows.push(vec![
+                ("oid", oid(oids::oid(&id::new(id::SECTION_TRIGGER, &[&view.schema, &view.name, "_RETURN"])))),
+                ("rulename", text("_RETURN")),
+                ("ev_class", oid(view_oid(&view.schema, &view.name))),
+                ("ev_type", text("1")),
+                ("ev_enabled", text("O")),
+                ("is_instead", boolean(true)),
+                ("ev_qual", text("<>")),
+                ("ev_action", text("<>")),
+            ]);
+        }
+        Ok(())
+    }
+
+    /// pg_depend lists the dependencies of column defaults on their columns and on the sequences they call nextval
+    /// on, and of owned sequences on their columns.
+    fn pg_depend(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        let dependency = |classid: u32, objid: u32, refobjid: u32, refobjsubid: i32, deptype: &str| {
+            vec![
+                ("classid", oid(classid)),
+                ("objid", oid(objid)),
+                ("objsubid", int4(0)),
+                ("refclassid", oid(PG_CLASS)),
+                ("refobjid", oid(refobjid)),
+                ("refobjsubid", int4(refobjsubid)),
+                ("deptype", text(deptype)),
+            ]
+        };
+        let sequences: Vec<(String, String)> =
+            snapshot.sequences.iter().map(crate::sequences::schema_and_name).collect();
+        for table in &snapshot.tables {
+            let relation = table_oid(&table.schema, &table.name);
+            for (i, column) in table.columns.iter().enumerate().filter(|(_, c)| !c.default.is_empty()) {
+                let default = oids::oid(&id::new(SECTION_COLUMN_DEFAULT, &[&table.schema, &table.name, &column.name]));
+                rows.push(dependency(PG_ATTRDEF, default, relation, i as i32 + 1, "a"));
+                let called = column.default.split("nextval('").nth(1).and_then(|rest| rest.split('\'').next());
+                let Some(Ok(parts)) = called.map(crate::sequences::parse_qualified_name) else { continue };
+                let (schema, name) = match parts.as_slice() {
+                    [name] => (table.schema.clone(), name.clone()),
+                    [.., schema, name] => (schema.clone(), name.clone()),
+                    [] => continue,
+                };
+                if sequences.contains(&(schema.clone(), name.clone())) {
+                    rows.push(dependency(PG_ATTRDEF, default, sequence_oid(&schema, &name), 0, "n"));
+                }
+            }
+        }
+        for (sequence, (schema, name)) in snapshot.sequences.iter().zip(&sequences) {
+            let owner = snapshot
+                .tables
+                .iter()
+                .find(|t| id::new(id::SECTION_TABLE, &[&t.schema, &t.name]) == sequence.owner_table);
+            let Some(table) = owner else { continue };
+            let Some(column) = table.columns.iter().position(|c| c.name.as_bytes() == sequence.owner_column.as_slice())
+            else {
+                continue;
+            };
+            let relation = table_oid(&table.schema, &table.name);
+            rows.push(dependency(PG_CLASS, sequence_oid(schema, name), relation, column as i32 + 1, "a"));
+        }
+        Ok(())
+    }
+}
+
+/// PG_CONFIG are the build settings that pg_config lists before VERSION, as Go lists them, since Doltgres is not
+/// built from Postgres' source tree.
+const PG_CONFIG: &[(&str, &str)] = &[
+    ("BINDIR", "/usr/local/pgsql/bin"),
+    ("DOCDIR", "/usr/local/pgsql/share/doc"),
+    ("HTMLDIR", "/usr/local/pgsql/share/doc"),
+    ("INCLUDEDIR", "/usr/local/pgsql/include"),
+    ("PKGINCLUDEDIR", "/usr/local/pgsql/include"),
+    ("INCLUDEDIR-SERVER", "/usr/local/pgsql/include/server"),
+    ("LIBDIR", "/usr/local/pgsql/lib"),
+    ("PKGLIBDIR", "/usr/local/pgsql/lib"),
+    ("LOCALEDIR", "/usr/local/pgsql/share/locale"),
+    ("MANDIR", "/usr/local/pgsql/share/man"),
+    ("SHAREDIR", "/usr/local/pgsql/share"),
+    ("SYSCONFDIR", "/usr/local/pgsql/etc"),
+    ("PGXS", "/usr/local/pgsql/lib/pgxs/src/makefiles/pgxs.mk"),
+    ("CONFIGURE", ""),
+    ("CC", "cc"),
+    ("CPPFLAGS", ""),
+    ("CFLAGS", ""),
+    ("CFLAGS_SL", ""),
+    ("LDFLAGS", ""),
+    ("LDFLAGS_EX", ""),
+    ("LDFLAGS_SL", ""),
+    ("LIBS", ""),
+];
+
+/// pg_timezone_names lists the time zones with the offset, abbreviation, and daylight saving flag they have now.
+fn pg_timezone_names(rows: &mut Rows<'_>) {
+    use chrono::{Offset, TimeZone};
+    use chrono_tz::{OffsetComponents, OffsetName};
+    let now = chrono::Utc::now().naive_utc();
+    let mut zones: Vec<&chrono_tz::Tz> = chrono_tz::TZ_VARIANTS.iter().collect();
+    zones.sort_by_key(|tz| tz.name());
+    for tz in zones {
+        let offset = tz.offset_from_utc_datetime(&now);
+        let seconds = offset.fix().local_minus_utc();
+        rows.push(vec![
+            ("name", text(tz.name())),
+            ("abbrev", text(offset.abbreviation().unwrap_or_default())),
+            (
+                "utc_offset",
+                Value::Interval(crate::datetime::Interval { months: 0, days: 0, micros: seconds as i64 * 1_000_000 }),
+            ),
+            ("is_dst", boolean(!offset.dst_offset().is_zero())),
+        ]);
+    }
+}
+
+impl Ctx<'_> {
+    /// pg_config lists the build settings, ending with the version that server_version reports.
+    fn pg_config(&mut self, rows: &mut Rows<'_>) {
+        for (name, setting) in PG_CONFIG {
+            rows.push(vec![("name", text(*name)), ("setting", text(*setting))]);
+        }
+        let version = self.session.settings.get("server_version").unwrap_or_default();
+        rows.push(vec![("name", text("VERSION")), ("setting", text(format!("PostgreSQL {version}")))]);
+    }
 }

@@ -191,7 +191,7 @@ impl Numeric {
     }
 
     /// finite returns a value from a sign and a coefficient at a scale.
-    fn finite(negative: bool, coefficient: BigUint, scale: u32) -> Numeric {
+    pub(crate) fn finite(negative: bool, coefficient: BigUint, scale: u32) -> Numeric {
         Numeric::Finite { negative: negative && !coefficient.is_zero(), coefficient, scale }
     }
 

@@ -61,6 +61,8 @@ pub enum SystemTable {
     Procedures,
     /// The histogram buckets that ANALYZE built.
     Statistics,
+    /// The help of Dolt's procedures, which stays empty since Doltgres has no Dolt command line to document them.
+    Help,
     /// A system table over a user table.
     User(Box<UserTable>),
     /// The conflicts or constraint violations of a user table.
@@ -90,6 +92,7 @@ const TABLES: &[(&str, SystemTable)] = &[
     ("procedures", SystemTable::Procedures),
     ("docs", SystemTable::Docs),
     ("statistics", SystemTable::Statistics),
+    ("help", SystemTable::Help),
 ];
 
 /// lookup returns the system table that a schema and name refer to: a name in the `dolt` schema, or the name with a
@@ -225,6 +228,14 @@ impl SystemTable {
                 ("sql_mode", TEXT),
             ],
             SystemTable::Statistics => crate::stats::COLUMNS.to_vec(),
+            SystemTable::Help => vec![
+                ("name", TEXT),
+                ("type", TEXT),
+                ("synopsis", TEXT),
+                ("short_description", TEXT),
+                ("long_description", TEXT),
+                ("arguments", JSON),
+            ],
             SystemTable::User(table) => return table.columns(),
             SystemTable::Artifacts(table) => return table.columns(),
             SystemTable::ObjectConflicts(table) => return table.columns(),
@@ -250,7 +261,9 @@ impl SystemTable {
             SystemTable::CommitAncestors => ancestor_rows(ctx),
             SystemTable::Status => status_rows(ctx),
             SystemTable::MergeStatus => merge_status_rows(ctx),
-            SystemTable::SchemaConflicts | SystemTable::Ignore | SystemTable::Procedures => Ok(Vec::new()),
+            SystemTable::SchemaConflicts | SystemTable::Ignore | SystemTable::Procedures | SystemTable::Help => {
+                Ok(Vec::new())
+            }
             SystemTable::Diff => crate::dolt::diff::unscoped_rows(ctx),
             SystemTable::Docs => crate::dolt::docs::rows(ctx),
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),

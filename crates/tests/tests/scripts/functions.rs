@@ -14212,3 +14212,134 @@ AS $function$pg_get_keywords$function$
         },
     ]);
 }
+
+#[test]
+fn test_numeric_math() {
+    run_scripts(&[
+        ScriptTest {
+            name: "numeric logarithms, exponentials, powers, and square roots",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ln(2::numeric), ln(0.000123::numeric), ln(1e-20::numeric), ln(1::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("ln", NUMERIC), Column("ln", NUMERIC), Column("ln", NUMERIC), Column("ln", NUMERIC)],
+                        rows: &[
+                            &[T("0.6931471805599453"), T("-9.0033262025918566"), T("-46.05170185988091368036"), T("0.0000000000000000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT log(1000::numeric), log(2::numeric, 8::numeric), log(7::numeric, 49.000001::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("log", NUMERIC), Column("log", NUMERIC), Column("log", NUMERIC)],
+                        rows: &[
+                            &[T("3.0000000000000000"), T("3.0000000000000000"), T("2.0000000104877212")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sqrt(2::numeric), sqrt(0.00001::numeric), sqrt(99999::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("sqrt", NUMERIC), Column("sqrt", NUMERIC), Column("sqrt", NUMERIC)],
+                        rows: &[
+                            &[T("1.414213562373095"), T("0.0031622776601683793"), T("316.2261848740550")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT exp(0::numeric), exp(1::numeric), exp(-2.5::numeric), exp(23.456::numeric), exp(-6000::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("exp", NUMERIC), Column("exp", NUMERIC), Column("exp", NUMERIC), Column("exp", NUMERIC), Column("exp", NUMERIC)],
+                        rows: &[
+                            &[T("1.0000000000000000"), T("2.7182818284590452"), T("0.08208499862389880"), T("15374866997.000768"), T("0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT power(2::numeric, 0.5::numeric), power(3::numeric, -3::numeric), power(-2::numeric, 3::numeric), power(12.34::numeric, 33::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("power", NUMERIC), Column("power", NUMERIC), Column("power", NUMERIC), Column("power", NUMERIC)],
+                        rows: &[
+                            &[T("1.4142135623730950"), T("0.0370370370370370"), T("-8.0000000000000000"), T("1031336219503664876006972321373516886.8670741364033477")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT power(0.001::numeric, -0.333::numeric), power(1.5::numeric, 100::numeric), power(0::numeric, 2.5::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("power", NUMERIC), Column("power", NUMERIC), Column("power", NUMERIC)],
+                        rows: &[
+                            &[T("9.9770006382255332"), T("406561177535215237.3972797075670417"), T("0.0000000000000000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT power('-inf'::numeric, '-inf'::numeric), power('nan'::numeric, 0::numeric), power(1::numeric, 'nan'::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("power", NUMERIC), Column("power", NUMERIC), Column("power", NUMERIC)],
+                        rows: &[
+                            &[T("0"), T("1"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ln(0::numeric);",
+                    expected: Expected::Error(Diagnostic { code: "2201E", message: "cannot take logarithm of zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ln(-1::numeric);",
+                    expected: Expected::Error(Diagnostic { code: "2201E", message: "cannot take logarithm of a negative number", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT log(1::numeric, 10::numeric);",
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT power(0::numeric, -1::numeric);",
+                    expected: Expected::Error(Diagnostic { code: "2201F", message: "zero raised to a negative power is undefined", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT power(-2::numeric, 0.5::numeric);",
+                    expected: Expected::Error(Diagnostic { code: "2201F", message: "a negative number raised to a non-integer power yields a complex result", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT exp(6000::numeric);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "value overflows numeric format", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sqrt(-1::numeric);",
+                    expected: Expected::Error(Diagnostic { code: "2201F", message: "cannot take square root of a negative number", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

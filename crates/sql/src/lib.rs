@@ -46,6 +46,7 @@ pub mod json;
 pub mod jsonpath;
 pub mod jsontable;
 pub mod numeric;
+pub mod numeric_math;
 pub mod operators;
 pub mod parse;
 mod pgcatalog;
@@ -158,6 +159,8 @@ pub enum Outcome {
 /// Prepared is a parsed statement, ready to bind parameters to and execute.
 #[derive(Clone, Debug)]
 pub struct Prepared {
+    /// The query text, which pg_stat_activity shows while the statement runs.
+    pub query: String,
     /// The statement, or None for an empty query.
     pub statement: Option<Statement>,
     pub parameter_types: Vec<u32>,

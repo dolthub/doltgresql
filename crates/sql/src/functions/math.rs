@@ -67,13 +67,21 @@ pub const FUNCTIONS: &[Function] = &[
     f("sign", &[FLOAT8], FLOAT8, sign_float),
     f("sign", &[NUMERIC], NUMERIC, sign_numeric),
     f("sqrt", &[FLOAT8], FLOAT8, sqrt),
+    f("sqrt", &[NUMERIC], NUMERIC, sqrt_numeric),
     f("cbrt", &[FLOAT8], FLOAT8, cbrt),
     f("exp", &[FLOAT8], FLOAT8, exp),
+    f("exp", &[NUMERIC], NUMERIC, exp_numeric),
     f("ln", &[FLOAT8], FLOAT8, ln),
+    f("ln", &[NUMERIC], NUMERIC, ln_numeric),
     f("log", &[FLOAT8], FLOAT8, log10),
+    f("log", &[NUMERIC], NUMERIC, log10_numeric),
+    f("log", &[NUMERIC, NUMERIC], NUMERIC, log_numeric),
     f("log10", &[FLOAT8], FLOAT8, log10),
+    f("log10", &[NUMERIC], NUMERIC, log10_numeric),
     f("power", &[FLOAT8, FLOAT8], FLOAT8, power),
+    f("power", &[NUMERIC, NUMERIC], NUMERIC, power_numeric),
     f("pow", &[FLOAT8, FLOAT8], FLOAT8, power),
+    f("pow", &[NUMERIC, NUMERIC], NUMERIC, power_numeric),
     f("pi", &[], FLOAT8, pi),
     f("degrees", &[FLOAT8], FLOAT8, degrees),
     f("radians", &[FLOAT8], FLOAT8, radians),
@@ -331,6 +339,36 @@ fn power(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         return Err(PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "value out of range: overflow"));
     }
     Ok(Value::Float8(result))
+}
+
+/// sqrt_numeric returns the square root of a numeric.
+fn sqrt_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Numeric(crate::numeric_math::sqrt(&numeric(&args[0]))?))
+}
+
+/// exp_numeric returns e raised to a numeric.
+fn exp_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Numeric(crate::numeric_math::exp(&numeric(&args[0]))?))
+}
+
+/// ln_numeric returns the natural logarithm of a numeric.
+fn ln_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Numeric(crate::numeric_math::ln(&numeric(&args[0]))?))
+}
+
+/// log10_numeric returns the base 10 logarithm of a numeric.
+fn log10_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Numeric(crate::numeric_math::log(&Numeric::from_i64(10), &numeric(&args[0]))?))
+}
+
+/// log_numeric returns the logarithm of a numeric to a base.
+fn log_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Numeric(crate::numeric_math::log(&numeric(&args[0]), &numeric(&args[1]))?))
+}
+
+/// power_numeric returns a numeric raised to a numeric power.
+fn power_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Numeric(crate::numeric_math::power(&numeric(&args[0]), &numeric(&args[1]))?))
 }
 
 /// pi returns π.

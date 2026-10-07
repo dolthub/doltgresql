@@ -747,10 +747,12 @@ impl<'b, 'a> Planner<'b, 'a> {
                     Err(err) => {
                         if let Some((schema, fragment)) = self.ctx.find_view(&relation.schemaname, &relation.relname)? {
                             self.ctx.require_view(&schema, &relation.relname, "r", relation.location)?;
-                            let object = crate::auth::Object::Table(schema, relation.relname.clone());
+                            let object = crate::auth::Object::Table(schema.clone(), relation.relname.clone());
                             let owner = self.ctx.owner_name(&object)?;
                             let role = std::mem::replace(&mut self.ctx.session.role, owner);
+                            let schema = self.ctx.session.view_schema.replace(schema);
                             let planned = self.plan_view(&fragment, relation);
+                            self.ctx.session.view_schema = schema;
                             self.ctx.session.role = role;
                             return planned;
                         }
