@@ -44,20 +44,24 @@ pub fn parse(statement: &str) -> Result<ParseResult> {
 }
 
 /// Parses like [`parse`], and on a parse error also returns the 1-based character position that the parser reported,
-/// which is 0 when it reported none.
+/// which is 0 when it reported none, and the error's SQLSTATE.
 ///
-/// Added for Doltgres, which reports the position to clients.
-pub fn parse_with_cursor(statement: &str) -> core::result::Result<ParseResult, (Error, i32)> {
-    let input = CString::new(statement).map_err(|err| (Error::from(err), 0))?;
+/// Added for Doltgres, which reports the position and the SQLSTATE to clients.
+pub fn parse_with_cursor(statement: &str) -> core::result::Result<ParseResult, (Error, i32, String)> {
+    let input = CString::new(statement).map_err(|err| (Error::from(err), 0, String::from("42601")))?;
     let result = unsafe { pg_query_parse_protobuf(input.as_ptr()) };
     let parse_result = if !result.error.is_null() {
         let message = unsafe { CStr::from_ptr((*result.error).message) }.to_string_lossy().to_string();
         let cursor = unsafe { (*result.error).cursorpos };
-        Err((Error::Parse(message), cursor))
+        let code = unsafe { (*result.error).sqlerrcode };
+        let state = (0..5).map(|i| char::from(b'0' + ((code >> (6 * i)) & 0x3F) as u8)).collect();
+        Err((Error::Parse(message), cursor, state))
     } else {
         let data = unsafe { std::slice::from_raw_parts(result.parse_tree.data as *const u8, result.parse_tree.len as usize) };
         let stderr = unsafe { CStr::from_ptr(result.stderr_buffer) }.to_string_lossy().to_string();
-        protobuf::ParseResult::decode(data).map_err(|err| (Error::Decode(err), 0)).map(|result| ParseResult::new(result, stderr))
+        protobuf::ParseResult::decode(data)
+            .map_err(|err| (Error::Decode(err), 0, String::from("42601")))
+            .map(|result| ParseResult::new(result, stderr))
     };
     unsafe { pg_query_free_protobuf_parse_result(result) };
     parse_result

@@ -108,9 +108,10 @@ pub const AGGREGATES: &[Aggregate] = &[
     a("jsonb_object_agg", &[super::ANY, super::ANY], crate::oid::JSONB, Kind::JsonbObjectAgg),
 ];
 
-/// exists reports whether an aggregate of the name exists.
-pub fn exists(name: &str) -> bool {
-    AGGREGATES.iter().any(|a| a.name == name) || crate::aggregates::exists(name)
+/// exists reports whether a call names an aggregate, built in or user-defined.
+pub fn exists(schema: Option<&str>, name: &str) -> bool {
+    schema.is_none_or(|s| s == "pg_catalog") && AGGREGATES.iter().any(|a| a.name == name)
+        || crate::aggregates::exists(schema, name)
 }
 
 /// AggCall is a call of an aggregate in a grouped query, over the input rows.

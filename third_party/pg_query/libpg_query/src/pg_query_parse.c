@@ -99,6 +99,7 @@ PgQueryInternalParsetreeAndError pg_query_raw_parse(const char* input, int parse
 		error->context   = NULL;
 		error->lineno    = error_data->lineno;
 		error->cursorpos = error_data->cursorpos;
+		error->sqlerrcode = error_data->sqlerrcode;
 
 		result.error = error;
 		FlushErrorState();

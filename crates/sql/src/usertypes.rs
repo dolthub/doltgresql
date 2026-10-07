@@ -199,6 +199,11 @@ pub fn lookup(schema: Option<&str>, name: &str) -> Option<Arc<UserType>> {
     })
 }
 
+/// in_search_path reports whether a schema is on the search path of the statement running on this thread.
+pub fn in_search_path(schema: &str) -> bool {
+    REGISTRY.with(|r| r.borrow().search_path.iter().any(|s| s == schema))
+}
+
 /// base_type returns the type whose values a type holds: a domain's base type, and any other type itself.
 pub fn base_type(ty: ColumnType) -> ColumnType {
     match get(ty.oid).map(|t| t.kind.clone()) {

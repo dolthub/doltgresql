@@ -270,13 +270,9 @@ const PREFIX: &str = "SELECT NULL::";
 fn check_type(ctx: &mut Ctx<'_>, text: &str, position: u32) -> Result<()> {
     let result = match pg_query::parse_with_cursor(&format!("{PREFIX}{text}")) {
         Ok(result) => result,
-        Err((err, cursor)) => {
-            let message = match err {
-                pg_query::Error::Parse(message) => message,
-                other => other.to_string(),
-            };
+        Err((err, cursor, state)) => {
             let at = (cursor as u32).saturating_sub(1 + PREFIX.len() as u32);
-            return Err(PgError { position: Some(position + at), ..PgError::new(code::SYNTAX_ERROR, message) });
+            return Err(PgError { position: Some(position + at), ..crate::parse::syntax_error(err, cursor, &state) });
         }
     };
     let target = result.protobuf.stmts.first().and_then(|raw| match raw.stmt.as_ref()?.node.as_ref()? {

@@ -246,7 +246,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                 };
                 (kind, args, ret)
             }
-            None if call.agg_star || crate::functions::aggregate::exists(name) => {
+            None if call.agg_star || crate::functions::aggregate::exists(None, name) => {
                 let (index, arg_types, ret) = crate::functions::aggregate::resolve(name, &types, call.location)?;
                 let mut args = Vec::new();
                 for ((b, &t), node) in bound.into_iter().zip(&arg_types).zip(&call.args) {

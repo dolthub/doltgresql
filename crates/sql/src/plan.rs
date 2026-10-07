@@ -171,16 +171,18 @@ pub struct Query {
 }
 
 /// is_aggregate reports whether a function is an aggregate, which a query must group to call.
-pub fn is_aggregate(name: &str) -> bool {
-    crate::functions::aggregate::exists(name)
+pub fn is_aggregate(schema: Option<&str>, name: &str) -> bool {
+    crate::functions::aggregate::exists(schema, name)
 }
 
 /// has_aggregate reports whether an expression calls an aggregate outside any subquery.
 fn has_aggregate(node: &Node) -> bool {
     match node.node.as_ref() {
         Some(NodeEnum::FuncCall(call)) => {
-            let name = call.funcname.iter().filter_map(node_name).next_back().unwrap_or_default();
-            (call.over.is_none() && (is_aggregate(name) || call.agg_star)) || call.args.iter().any(has_aggregate)
+            let (schema, name) = crate::routines::function_names(&call.funcname);
+            let schema = (!schema.is_empty()).then_some(schema.as_str());
+            (call.over.is_none() && (is_aggregate(schema, &name) || call.agg_star))
+                || call.args.iter().any(has_aggregate)
         }
         Some(NodeEnum::SubLink(_)) | None => false,
         Some(NodeEnum::AExpr(e)) => {

@@ -445,7 +445,7 @@ pub(crate) fn store(db: &mut Database, root: &mut Root, function: &Function, pro
 }
 
 /// function_id returns the ID of a function, or a procedure, from its schema, name, and input types.
-fn function_id(schema: &str, name: &str, inputs: &[ColumnType], procedure: bool) -> Vec<u8> {
+pub(crate) fn function_id(schema: &str, name: &str, inputs: &[ColumnType], procedure: bool) -> Vec<u8> {
     let types: Vec<String> = inputs.iter().map(|t| String::from_utf8_lossy(&type_id(*t)).into_owned()).collect();
     let mut segments = vec![schema, name];
     segments.extend(types.iter().map(String::as_str));
@@ -498,7 +498,7 @@ fn options(nodes: &[Node]) -> Result<Options> {
 }
 
 /// function_names returns the schema, which is empty when unqualified, and name of a qualified function name.
-fn function_names(nodes: &[Node]) -> (String, String) {
+pub(crate) fn function_names(nodes: &[Node]) -> (String, String) {
     let names: Vec<&str> = nodes.iter().filter_map(node_name).collect();
     match names.as_slice() {
         [name] => (String::new(), name.to_string()),

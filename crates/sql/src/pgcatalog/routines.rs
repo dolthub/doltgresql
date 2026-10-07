@@ -21,6 +21,7 @@ use crate::catalog::id::{self, SECTION_FUNCTION};
 use crate::catalog::oids;
 use crate::error::Result;
 use crate::oid as types;
+use crate::pgcatalog::rows::regproc;
 use crate::pgcatalog::snapshot::{namespace_oid, table_oid};
 use crate::pgcatalog::{Rows, boolean, int2, int4, oid, text};
 use crate::query::Ctx;
@@ -32,6 +33,7 @@ use crate::types::Value;
 const SQL_LANGUAGE: u32 = 14;
 const PLPGSQL_LANGUAGE: u32 = 14035;
 const C_LANGUAGE: u32 = 13;
+const INTERNAL_LANGUAGE: u32 = 12;
 
 /// The trigger type bits that pg_trigger's tgtype holds.
 const TYPE_ROW: i16 = 1;
@@ -146,6 +148,62 @@ impl Ctx<'_> {
                     },
                 ),
                 ("prosrc", text(source(routine))),
+            ]);
+        }
+        for aggregate in self.user_aggregates()?.iter() {
+            rows.push(vec![
+                ("oid", oid(oids::oid(&aggregate.stored.id))),
+                ("proname", text(aggregate.name.clone())),
+                ("pronamespace", oid(namespace_oid(&aggregate.schema))),
+                ("proowner", oid(10)),
+                ("prolang", oid(INTERNAL_LANGUAGE)),
+                ("procost", Value::Float4(1.0)),
+                ("prorows", Value::Float4(0.0)),
+                ("provariadic", oid(0)),
+                ("prosupport", regproc(&[])),
+                ("prokind", text("a")),
+                ("prosecdef", boolean(false)),
+                ("proleakproof", boolean(false)),
+                ("proisstrict", boolean(false)),
+                ("proretset", boolean(false)),
+                ("provolatile", text("i")),
+                ("proparallel", text("u")),
+                ("pronargs", int2(aggregate.params.len() as i16)),
+                ("pronargdefaults", int2(0)),
+                ("prorettype", oid(aggregate.ret.oid)),
+                ("proargtypes", text(aggregate.params.iter().map(u32::to_string).collect::<Vec<_>>().join(" "))),
+                ("prosrc", text("aggregate_dummy")),
+            ]);
+        }
+        Ok(())
+    }
+
+    /// pg_aggregate lists the aggregates of the aggregate collection, as Go's pg_aggregate does.
+    pub(super) fn pg_aggregate(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        for aggregate in self.user_aggregates()?.iter() {
+            let stored = &aggregate.stored;
+            rows.push(vec![
+                ("aggfnoid", regproc(&stored.id)),
+                ("aggkind", text("n")),
+                ("aggnumdirectargs", int2(0)),
+                ("aggtransfn", regproc(&stored.s_func)),
+                ("aggfinalfn", regproc(&stored.final_func)),
+                ("aggcombinefn", regproc(&stored.combine_func)),
+                ("aggserialfn", regproc(&[])),
+                ("aggdeserialfn", regproc(&[])),
+                ("aggmtransfn", regproc(&[])),
+                ("aggminvtransfn", regproc(&[])),
+                ("aggmfinalfn", regproc(&[])),
+                ("aggfinalextra", boolean(false)),
+                ("aggmfinalextra", boolean(false)),
+                ("aggfinalmodify", text("r")),
+                ("aggmfinalmodify", text("r")),
+                ("aggsortop", oid(0)),
+                ("aggtranstype", oid(aggregate.state_type.oid)),
+                ("aggtransspace", int4(0)),
+                ("aggmtranstype", oid(0)),
+                ("aggmtransspace", int4(0)),
+                ("agginitval", aggregate.init_cond.clone().map_or(Value::Null, text)),
             ]);
         }
         Ok(())

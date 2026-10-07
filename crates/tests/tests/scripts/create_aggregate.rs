@@ -488,5 +488,70 @@ fn test_create_aggregate() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "CREATE AGGREGATE options and DROP AGGREGATE errors",
+            set_up_script: &[
+                r#"CREATE FUNCTION agg_opt_step(state int8, val int4) RETURNS int8
+					AS $$ SELECT state + val $$ LANGUAGE SQL STRICT;"#,
+                r#"CREATE FUNCTION agg_opt_taken(a int4) RETURNS int4
+					AS $$ SELECT a $$ LANGUAGE SQL;"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE AGGREGATE agg_opt (int4) (SFUNC = agg_opt_step, STYPE = int8);",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "must not omit initial value when transition function is strict and transition type is not compatible with input type", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE AGGREGATE agg_opt (int4) (SFUNC = agg_opt_step);",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "aggregate stype must be specified", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE AGGREGATE agg_opt (int4) (STYPE = int8);",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "aggregate sfunc must be specified", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OR REPLACE AGGREGATE agg_opt_taken (int4) (SFUNC = agg_opt_step, STYPE = int8, INITCOND = 0);",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: "cannot change routine kind", detail: r#""agg_opt_taken" is a function."#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE AGGREGATE agg_opt (int4) (SFUNC = agg_opt_step, STYPE = int8, BOGUS = 1, INITCOND = 0);",
+                    expected: Expected::Tag("CREATE AGGREGATE"),
+                    notices: &[Diagnostic { severity: "WARNING", code: "42601", message: r#"aggregate attribute "bogus" not recognized"#, ..E }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT proname, prokind, pronargs, prorettype, proargtypes::text, prosrc, provolatile FROM pg_proc WHERE proname = 'agg_opt';",
+                    expected: Expected::Rows {
+                        columns: &[Column("proname", NAME), Column("prokind", CHAR), Column("pronargs", INT2), Column("prorettype", OID), Column("proargtypes", TEXT), Column("prosrc", TEXT), Column("provolatile", CHAR)],
+                        rows: &[
+                            &[T("agg_opt"), T("a"), T("1"), T("20"), T("23"), T("aggregate_dummy"), T("i")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP AGGREGATE agg_opt(int8);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "aggregate agg_opt(bigint) does not exist", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP AGGREGATE IF EXISTS agg_opt(int8);",
+                    expected: Expected::Tag("DROP AGGREGATE"),
+                    notices: &[Diagnostic { code: "00000", message: "aggregate agg_opt(int8) does not exist, skipping", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP AGGREGATE agg_opt(int4);",
+                    expected: Expected::Tag("DROP AGGREGATE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

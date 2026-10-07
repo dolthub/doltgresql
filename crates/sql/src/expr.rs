@@ -630,7 +630,8 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         if call.over.is_none() && !call.agg_star {
             let routines = self.ctx.routines_named(schema, name)?;
-            if (!routines.is_empty() || schema.is_some_and(|s| s != "pg_catalog"))
+            if (!routines.is_empty()
+                || schema.is_some_and(|s| s != "pg_catalog") && !crate::aggregates::exists(schema, name))
                 && let Some(bound) = self.routine_call(call, schema, name, routines, false)?
             {
                 return Ok(bound);
@@ -645,8 +646,8 @@ impl<'b, 'a> Binder<'b, 'a> {
                 ..PgError::new(code::WRONG_OBJECT_TYPE, format!("window function {name} requires an OVER clause"))
             });
         }
-        if call.agg_star || functions::aggregate::exists(name) {
-            return self.aggregate_call(name, call);
+        if call.agg_star || functions::aggregate::exists(schema, name) {
+            return self.aggregate_call(schema, name, call);
         }
         if call.agg_distinct || call.agg_filter.is_some() || !call.agg_order.is_empty() {
             return Err(PgError {
@@ -702,7 +703,12 @@ impl<'b, 'a> Binder<'b, 'a> {
 
 impl<'b, 'a> Binder<'b, 'a> {
     /// aggregate_call binds a call of an aggregate in a grouped query, whose arguments are over the input rows.
-    fn aggregate_call(&mut self, name: &str, call: &pg_query::protobuf::FuncCall) -> Result<Bound> {
+    fn aggregate_call(
+        &mut self,
+        schema: Option<&str>,
+        name: &str,
+        call: &pg_query::protobuf::FuncCall,
+    ) -> Result<Bound> {
         if self.definition {
             return Err(PgError {
                 position: position(call.location),
@@ -722,7 +728,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                 bound.push((expr, crate::usertypes::base_type(ty)));
             }
             let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
-            let user = crate::aggregates::find(name, &types);
+            let user = crate::aggregates::find(schema, name, &types);
             let (index, arg_types, ret) = match &user {
                 Some(user) => (0, user.params.clone(), user.ret.oid),
                 None => functions::aggregate::resolve(name, &types, call.location)?,

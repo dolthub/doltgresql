@@ -932,6 +932,10 @@ impl Session {
                 let mut parameters = Vec::new();
                 return self.with_ctx(&mut parameters, params, |ctx| ctx.create_function(create, &extras.text));
             }
+            NodeEnum::DefineStmt(define) if define.kind == pg_query::protobuf::ObjectType::ObjectAggregate as i32 => {
+                let mut parameters = Vec::new();
+                return self.with_ctx(&mut parameters, params, |ctx| ctx.create_aggregate(define));
+            }
             NodeEnum::CreateCastStmt(create) => {
                 let mut parameters = Vec::new();
                 return self.with_ctx(&mut parameters, params, |ctx| ctx.create_cast(create));

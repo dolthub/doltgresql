@@ -48,7 +48,7 @@ pub struct Extras {
 pub fn parse(query: &str) -> Result<Vec<Statement>> {
     match pg_query::parse_with_cursor(query) {
         Ok(result) => Ok(postgres_statements(query, result, Extras::default())),
-        Err((err, cursor)) => extended(query).ok_or_else(|| syntax_error(err, cursor)),
+        Err((err, cursor, state)) => extended(query).ok_or_else(|| syntax_error(err, cursor, &state)),
     }
 }
 
@@ -74,17 +74,25 @@ pub fn expression_node(text: &str) -> Result<Node> {
         .ok_or_else(|| PgError::new(code::SYNTAX_ERROR, format!("invalid expression: {text}")))
 }
 
-/// syntax_error converts a parser error, with the 1-based character position it reported, to Postgres' error.
-fn syntax_error(err: pg_query::Error, cursor: i32) -> PgError {
+/// GRAMMAR_CODES are the error codes that Postgres' grammar raises besides syntax errors.
+const GRAMMAR_CODES: &[&str] = &[
+    code::DUPLICATE_OBJECT,
+    code::FEATURE_NOT_SUPPORTED,
+    code::INVALID_ESCAPE_SEQUENCE,
+    code::INVALID_PARAMETER_VALUE,
+    code::NONSTANDARD_USE_OF_ESCAPE_CHARACTER,
+    code::RESERVED_NAME,
+    code::WINDOWING_ERROR,
+];
+
+/// syntax_error converts a parser error, with the 1-based character position and the SQLSTATE it reported, to
+/// Postgres' error.
+pub fn syntax_error(err: pg_query::Error, cursor: i32, state: &str) -> PgError {
     let message = match err {
         pg_query::Error::Parse(message) => message,
         other => other.to_string(),
     };
-    let code = if message.starts_with("role name \"") && message.ends_with("\" is reserved") {
-        code::RESERVED_NAME
-    } else {
-        code::SYNTAX_ERROR
-    };
+    let code = GRAMMAR_CODES.iter().find(|c| **c == state).copied().unwrap_or(code::SYNTAX_ERROR);
     PgError { position: u32::try_from(cursor).ok().filter(|&p| p > 0), ..PgError::new(code, message) }
 }
 

@@ -14,6 +14,7 @@ typedef struct {
 	int lineno; // source of exception (e.g. 104)
 	int cursorpos; // char in query at which exception occurred
 	char* context; // additional context (optional, can be NULL)
+	int sqlerrcode; // encoded SQLSTATE of the exception, set by pg_query_parse_protobuf (added for Doltgres)
 } PgQueryError;
 
 typedef struct {

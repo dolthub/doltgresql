@@ -119,7 +119,7 @@ fn type_info(type_oid: u32) -> TypeInfo {
 }
 
 /// regproc returns a regproc value for a function ID, which is 0 and prints as `-` for an empty ID.
-fn regproc(function: &[u8]) -> Value {
+pub(super) fn regproc(function: &[u8]) -> Value {
     let name = id::segments(function).get(1).cloned();
     Value::Reg(Box::new(Reg {
         type_oid: types::REGPROC,
@@ -254,6 +254,7 @@ impl Ctx<'_> {
             "pg_sequence" | "pg_sequences" => self.pg_sequences(rows),
             "pg_proc" => self.pg_proc(rows),
             "pg_cast" => self.pg_cast(rows),
+            "pg_aggregate" => self.pg_aggregate(rows),
             "pg_enum" => self.pg_enum(rows),
             "pg_trigger" => self.pg_trigger(rows),
             "pg_extension" => self.pg_extension(rows),
