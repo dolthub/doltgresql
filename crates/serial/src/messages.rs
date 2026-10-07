@@ -402,6 +402,10 @@ pub struct Index<'a> {
     pub descending: Vec<bool>,
     pub nulls_last: Vec<bool>,
     pub op_classes: Vec<&'a [u8]>,
+    /// Whether the unique or primary key constraint is DEFERRABLE, a Doltgres field that Dolt lacks.
+    pub deferrable: bool,
+    /// Whether the unique or primary key constraint is INITIALLY DEFERRED, a Doltgres field that Dolt lacks.
+    pub initially_deferred: bool,
     pub fulltext_info: Option<FulltextInfo<'a>>,
     /// The distance type of a vector index.
     pub vector_distance: Option<u8>,
@@ -485,6 +489,8 @@ impl<'a> TableSchema<'a> {
             descending: bool_list(&t, 15)?,
             nulls_last: bool_list(&t, 16)?,
             op_classes,
+            deferrable: t.bool(18, false)?,
+            initially_deferred: t.bool(19, false)?,
             fulltext_info: match t.table(11)? {
                 Some(f) => Some(FulltextInfo {
                     config_table: f.string(0)?.unwrap_or_default(),
@@ -573,6 +579,10 @@ pub struct ForeignKey<'a> {
     pub parent_table_database_schema: Vec<&'a [u8]>,
     pub is_not_valid: bool,
     pub match_type: u8,
+    /// Whether the foreign key is DEFERRABLE, a Doltgres field that Dolt lacks.
+    pub deferrable: bool,
+    /// Whether the foreign key is INITIALLY DEFERRED, a Doltgres field that Dolt lacks.
+    pub initially_deferred: bool,
 }
 
 /// foreign_keys decodes a ForeignKeyCollection message.
@@ -598,6 +608,8 @@ pub fn foreign_keys(message: Message<'_>) -> Result<Vec<ForeignKey<'_>>> {
                 parent_table_database_schema: string_list(&t, 12)?,
                 is_not_valid: t.bool(13, false)?,
                 match_type: t.u8(14, 0)?,
+                deferrable: t.bool(15, false)?,
+                initially_deferred: t.bool(16, false)?,
             })
         })
         .collect()

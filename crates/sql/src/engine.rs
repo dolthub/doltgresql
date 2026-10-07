@@ -231,6 +231,7 @@ impl Engine {
                 advisory: self.shared.advisory.clone(),
                 pending_copy: None,
                 as_of: Vec::new(),
+                deferred: crate::deferred::Deferred::default(),
             },
             txns: Vec::new(),
             pending: None,
@@ -319,6 +320,8 @@ pub struct SessionState {
     pub pending_copy: Option<Box<crate::copy::CopyFrom>>,
     /// The `AS OF` revisions of the running statement's tables, each with the location of the table it follows.
     pub as_of: Vec<(i32, pg_query::Node)>,
+    /// The transaction's constraint modes and the checks its deferred constraints owe.
+    pub deferred: crate::deferred::Deferred,
 }
 
 /// NEXT_SESSION numbers the sessions of the process.
@@ -335,6 +338,7 @@ impl SessionState {
     /// advisory locks it took.
     pub fn end_transaction(&mut self, committed: bool) {
         self.settings.end_transaction(committed);
+        self.deferred = crate::deferred::Deferred::default();
         self.advisory.release_all(self.id, true, false);
     }
 
@@ -645,7 +649,23 @@ impl Session {
         if self.state.explicit {
             return Ok(());
         }
+        self.check_deferred()?;
         self.commit()
+    }
+
+    /// check_deferred runs the checks that deferred constraints owe before the transaction commits, rolling it back
+    /// when one fails.
+    fn check_deferred(&mut self) -> Result<()> {
+        if self.state.deferred.pending.is_empty() {
+            return Ok(());
+        }
+        let mut parameters = Vec::new();
+        if let Err(err) = self.with_ctx(&mut parameters, &[], |ctx| ctx.run_deferred(true)) {
+            self.txns.clear();
+            self.state.end_transaction(false);
+            return Err(err);
+        }
+        Ok(())
     }
 
     /// commit commits and ends the open transaction, refusing a working set with conflicts or constraint violations
@@ -839,6 +859,7 @@ impl Session {
                     });
                 }
                 self.state.explicit = false;
+                self.check_deferred()?;
                 self.commit()?;
                 Ok(Outcome::command("COMMIT"))
             }
@@ -1218,6 +1239,7 @@ impl Ctx<'_> {
             NodeEnum::AlterEnumStmt(stmt) => self.alter_enum(stmt),
             NodeEnum::CreateExtensionStmt(stmt) => self.create_extension(stmt),
             NodeEnum::CopyStmt(stmt) => self.copy(stmt),
+            NodeEnum::ConstraintsSetStmt(stmt) => self.set_constraints(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

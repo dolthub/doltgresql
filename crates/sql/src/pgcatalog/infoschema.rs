@@ -266,24 +266,25 @@ impl Ctx<'_> {
         let database = self.session.database.clone();
         let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
-            let mut constraints: Vec<(String, &str)> = Vec::new();
+            let mut constraints: Vec<(String, &str, (bool, bool))> = Vec::new();
             for index in table_indexes(table).into_iter().filter(|i| i.unique) {
-                constraints.push((index.name, if index.primary { "PRIMARY KEY" } else { "UNIQUE" }));
+                let kind = if index.primary { "PRIMARY KEY" } else { "UNIQUE" };
+                constraints.push((index.name, kind, (index.deferrable, index.initially_deferred)));
             }
             for fk in
                 snapshot.foreign_keys.iter().filter(|f| f.child_schema == table.schema && f.child_table == table.name)
             {
-                constraints.push((fk.name.clone(), "FOREIGN KEY"));
+                constraints.push((fk.name.clone(), "FOREIGN KEY", (fk.deferrable, fk.initially_deferred)));
             }
             for check in &table.checks {
-                constraints.push((check.name.clone(), "CHECK"));
+                constraints.push((check.name.clone(), "CHECK", (false, false)));
             }
             let relation = crate::pgcatalog::snapshot::table_oid(&table.schema, &table.name);
             let namespace = crate::pgcatalog::snapshot::namespace_oid(&table.schema);
             for (i, _) in table.columns.iter().enumerate().filter(|(_, c)| !c.nullable) {
-                constraints.push((format!("{namespace}_{relation}_{}_not_null", i + 1), "CHECK"));
+                constraints.push((format!("{namespace}_{relation}_{}_not_null", i + 1), "CHECK", (false, false)));
             }
-            for (name, kind) in constraints {
+            for (name, kind, (deferrable, deferred)) in constraints {
                 rows.push(vec![
                     ("constraint_catalog", text(database.clone())),
                     ("constraint_schema", text(table.schema.clone())),
@@ -292,8 +293,8 @@ impl Ctx<'_> {
                     ("table_schema", text(table.schema.clone())),
                     ("table_name", text(table.name.clone())),
                     ("constraint_type", text(kind)),
-                    ("is_deferrable", yes_no(false)),
-                    ("initially_deferred", yes_no(false)),
+                    ("is_deferrable", yes_no(deferrable)),
+                    ("initially_deferred", yes_no(deferred)),
                     ("enforced", yes_no(true)),
                     ("nulls_distinct", if kind == "UNIQUE" { yes_no(true) } else { Value::Null }),
                 ]);

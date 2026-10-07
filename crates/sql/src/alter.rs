@@ -22,7 +22,7 @@ use pg_query::protobuf::{
 use pg_query::{Node, NodeEnum};
 
 use crate::Outcome;
-use crate::catalog::table::{Check, TableDef};
+use crate::catalog::table::{Check, IndexDef, Primary, TableDef};
 use crate::ddl::{TableParts, check_column, choose_relation_name, constraint_type, expression_text, new_index};
 use crate::dml::{parse_expression, table_scope, write_rows};
 use crate::error::{ErrorObjects, PgError, Result, code};
@@ -195,6 +195,12 @@ impl Ctx<'_> {
                 };
                 self.add_constraint(alteration, constraint)
             }
+            AlterTableType::AtAlterConstraint => {
+                let Some(NodeEnum::Constraint(constraint)) = cmd.def.as_deref().and_then(|d| d.node.as_ref()) else {
+                    return Err(PgError::internal("ALTER CONSTRAINT without a constraint"));
+                };
+                self.alter_constraint(alteration, constraint)
+            }
             AlterTableType::AtDropConstraint => {
                 let cascade = DropBehavior::try_from(cmd.behavior) == Ok(DropBehavior::DropCascade);
                 self.drop_constraint(alteration, &cmd.name, cmd.missing_ok, cascade)
@@ -300,15 +306,20 @@ impl Ctx<'_> {
             }
         }
         if primary {
-            self.set_primary_key(alteration, vec![index], None)?;
+            self.set_primary_key(alteration, vec![index], parts.primary.clone())?;
         } else {
             alteration.table.value_columns.push(index);
         }
         for (constraint, expr) in parts.checks {
             self.add_check(alteration, &constraint, &expr)?;
         }
-        for (constraint, keys) in parts.uniques {
-            self.add_unique(alteration, &constraint, keys)?;
+        for (constraint, keys, deferral) in parts.uniques {
+            self.add_unique(alteration, &constraint, keys, deferral)?;
+        }
+        for (_, mut constraint) in parts.foreign {
+            let name = pg_query::protobuf::String { sval: alteration.table.columns[index].name.clone() };
+            constraint.fk_attrs = vec![Node { node: Some(NodeEnum::String(name)) }];
+            alteration.foreign.push(constraint);
         }
         Ok(())
     }
@@ -413,16 +424,15 @@ impl Ctx<'_> {
                     ));
                 }
                 parts.add_constraint(&alteration.table.name, constraint)?;
-                let name = (!constraint.conname.is_empty()).then(|| constraint.conname.clone());
-                self.set_primary_key(alteration, parts.primary_key, name)
+                self.set_primary_key(alteration, parts.primary_key, parts.primary)
             }
             ConstrType::ConstrCheck | ConstrType::ConstrUnique => {
                 parts.add_constraint(&alteration.table.name, constraint)?;
                 for (name, expr) in parts.checks {
                     self.add_check(alteration, &name, &expr)?;
                 }
-                for (name, keys) in parts.uniques {
-                    self.add_unique(alteration, &name, keys)?;
+                for (name, keys, deferral) in parts.uniques {
+                    self.add_unique(alteration, &name, keys, deferral)?;
                 }
                 Ok(())
             }
@@ -432,6 +442,28 @@ impl Ctx<'_> {
             }
             other => Err(PgError::unsupported(format!("ADD CONSTRAINT {other:?}"))),
         }
+    }
+
+    /// alter_constraint runs ALTER CONSTRAINT, which changes a foreign key's deferral.
+    fn alter_constraint(&mut self, alteration: &Alteration, constraint: &pg_query::protobuf::Constraint) -> Result<()> {
+        let table = &alteration.table;
+        let name = &constraint.conname;
+        if self.set_foreign_key_deferral(table, name, crate::ddl::deferral(constraint))? {
+            return Ok(());
+        }
+        let exists = table.checks.iter().any(|c| c.name == *name)
+            || table.indexes.iter().any(|i| i.unique && i.name == *name)
+            || !table.key_columns.is_empty() && table.primary_name() == *name;
+        if exists {
+            return Err(PgError::new(
+                code::WRONG_OBJECT_TYPE,
+                format!("constraint \"{name}\" of relation \"{}\" is not a foreign key constraint", table.name),
+            ));
+        }
+        Err(PgError::new(
+            code::UNDEFINED_OBJECT,
+            format!("constraint \"{name}\" of relation \"{}\" does not exist", table.name),
+        ))
     }
 
     /// add_check adds a check constraint after checking every row against it.
@@ -472,7 +504,13 @@ impl Ctx<'_> {
     }
 
     /// add_unique adds a unique index after checking the rows for duplicates.
-    fn add_unique(&mut self, alteration: &mut Alteration, name: &str, keys: Vec<usize>) -> Result<()> {
+    fn add_unique(
+        &mut self,
+        alteration: &mut Alteration,
+        name: &str,
+        keys: Vec<usize>,
+        (deferrable, initially_deferred): crate::ddl::Deferral,
+    ) -> Result<()> {
         let schema = alteration.table.schema.clone();
         let mut taken = self.relation_names(&schema)?;
         taken.extend(alteration.table.indexes.iter().map(|i| i.name.clone()));
@@ -485,7 +523,7 @@ impl Ctx<'_> {
             name.to_string()
         };
         self.check_duplicates(alteration, &name, &keys)?;
-        alteration.table.indexes.push(new_index(name, keys, true));
+        alteration.table.indexes.push(IndexDef { deferrable, initially_deferred, ..new_index(name, keys, true) });
         alteration.rebuild = true;
         Ok(())
     }
@@ -514,7 +552,7 @@ impl Ctx<'_> {
     }
 
     /// set_primary_key makes columns the table's primary key, checking the rows for NULLs and duplicates.
-    fn set_primary_key(&mut self, alteration: &mut Alteration, keys: Vec<usize>, _name: Option<String>) -> Result<()> {
+    fn set_primary_key(&mut self, alteration: &mut Alteration, keys: Vec<usize>, primary: Primary) -> Result<()> {
         let table_name = alteration.table.name.clone();
         for &k in &keys {
             if self.rows(alteration)?.iter().any(|r| r.get(k).is_none_or(Value::is_null)) {
@@ -528,8 +566,10 @@ impl Ctx<'_> {
                 });
             }
         }
-        self.check_duplicates(alteration, &format!("{table_name}_pkey"), &keys)?;
+        let name = if primary.name.is_empty() { format!("{table_name}_pkey") } else { primary.name.clone() };
+        self.check_duplicates(alteration, &name, &keys)?;
         let table = &mut alteration.table;
+        table.primary = primary;
         for &k in &keys {
             table.columns[k].primary_key = true;
             table.columns[k].nullable = false;
@@ -556,7 +596,7 @@ impl Ctx<'_> {
             table.checks.remove(i);
             return Ok(());
         }
-        let referenced = if table.key_columns.is_empty() || name != format!("{}_pkey", table.name) {
+        let referenced = if table.key_columns.is_empty() || name != table.primary_name() {
             table.indexes.iter().find(|ix| ix.unique && ix.name == name).map(|ix| ix.name.clone())
         } else {
             Some(String::new())
@@ -571,13 +611,14 @@ impl Ctx<'_> {
             alteration.rebuild = true;
             return Ok(());
         }
-        if !table.key_columns.is_empty() && name == format!("{}_pkey", table.name) {
+        if !table.key_columns.is_empty() && name == table.primary_name() {
             self.rows(alteration)?;
             let table = &mut alteration.table;
             for column in &mut table.columns {
                 column.primary_key = false;
             }
             table.key_columns.clear();
+            table.primary = crate::catalog::table::Primary::default();
             table.value_columns = (0..table.columns.len()).collect();
             alteration.rebuild = true;
             return Ok(());
@@ -711,6 +752,9 @@ impl Ctx<'_> {
                     table.indexes[index].name = stmt.newname.clone();
                     table.table.put_index(self.db, &stmt.subname, None)?;
                     table.table.put_index(self.db, &stmt.newname, Some(root))?;
+                } else if !table.key_columns.is_empty() && stmt.subname == table.primary_name() {
+                    let default = stmt.newname == format!("{}_pkey", table.name);
+                    table.primary.name = if default { String::new() } else { stmt.newname.clone() };
                 } else {
                     return Err(PgError::new(
                         code::UNDEFINED_OBJECT,

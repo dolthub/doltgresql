@@ -540,5 +540,132 @@ fn test_set_constraints() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "SET CONSTRAINTS with deferred parent deletions",
+            set_up_script: &[
+                "CREATE TABLE dp (id INTEGER PRIMARY KEY);",
+                "CREATE TABLE dc (id INTEGER PRIMARY KEY, pid INTEGER CONSTRAINT dc_fk REFERENCES dp(id) DEFERRABLE INITIALLY DEFERRED);",
+                "CREATE TABLE du (id INTEGER PRIMARY KEY, v INTEGER CONSTRAINT du_v UNIQUE DEFERRABLE);",
+                "INSERT INTO dp VALUES (1);",
+                "INSERT INTO dc VALUES (1, 1);",
+                "INSERT INTO du VALUES (1, 1), (2, 2);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM dp WHERE id = 1;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO dp VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM dp WHERE id = 1;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "dp" violates foreign key constraint "dc_fk" on table "dc""#, detail: r#"Key (id)=(1) is still referenced from table "dc"."#, schema: "public", table: "dc", constraint: "dc_fk", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO dc VALUES (2, 5);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "dc" violates foreign key constraint "dc_fk""#, detail: r#"Key (pid)=(5) is not present in table "dp"."#, schema: "public", table: "dc", constraint: "dc_fk", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO dc VALUES (3, 7);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM dc WHERE id = 3;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM dc ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("pid", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE du SET v = v + 1;",
+                    expected: Expected::Tag("UPDATE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM du ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("2"), T("3")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT indimmediate FROM pg_index WHERE indexrelid = 'du_v'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("indimmediate", BOOL)],
+                        rows: &[
+                            &[T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT constraint_name, is_deferrable, initially_deferred FROM information_schema.table_constraints WHERE table_name IN ('dc', 'du') AND constraint_type <> 'CHECK' ORDER BY constraint_name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("constraint_name", NAME), Column("is_deferrable", VARCHAR), Column("initially_deferred", VARCHAR)],
+                        rows: &[
+                            &[T("dc_fk"), T("YES"), T("YES")],
+                            &[T("dc_pkey"), T("NO"), T("NO")],
+                            &[T("du_pkey"), T("NO"), T("NO")],
+                            &[T("du_v"), T("YES"), T("NO")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

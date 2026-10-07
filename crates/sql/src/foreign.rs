@@ -22,6 +22,7 @@ use serial::{Message, foreign_keys};
 use store::Hash;
 
 use crate::catalog::table::{IndexDef, TableDef};
+use crate::deferred::Pending;
 use crate::error::{ErrorObjects, PgError, Result, code};
 use crate::expr::{compare_values, node_name};
 use crate::query::{Ctx, scan};
@@ -88,6 +89,8 @@ pub struct ForeignKeyDef {
     pub on_delete: Rule,
     pub match_full: bool,
     pub not_valid: bool,
+    pub deferrable: bool,
+    pub initially_deferred: bool,
 }
 
 /// split_key returns the schema and name of a table key.
@@ -146,6 +149,8 @@ pub fn load(db: &mut Database, root: &Root) -> Result<Vec<ForeignKeyDef>> {
             on_delete: Rule::from_dolt(fk.on_delete),
             match_full: fk.match_type == 1,
             not_valid: fk.is_not_valid,
+            deferrable: fk.deferrable,
+            initially_deferred: fk.initially_deferred,
         });
     }
     Ok(out)
@@ -200,6 +205,8 @@ pub fn store(db: &mut Database, root: &mut Root, fks: &[ForeignKeyDef]) -> Resul
             unresolved_parent_columns: Some(parent_names),
             is_not_valid: fk.not_valid,
             match_type: fk.match_full as u8,
+            deferrable: fk.deferrable,
+            initially_deferred: fk.initially_deferred,
         })
         .collect();
     let address = db.write_value(write_foreign_keys(&fields))?;
@@ -422,6 +429,8 @@ impl Ctx<'_> {
             on_delete: Rule::from_postgres(&constraint.fk_del_action),
             match_full: constraint.fk_matchtype == "f",
             not_valid: constraint.skip_validation,
+            deferrable: constraint.deferrable || constraint.initdeferred,
+            initially_deferred: constraint.initdeferred,
         };
         if !fk.not_valid {
             let rows = match self.txn.table(self.db, &child.schema, &child.name)? {
@@ -483,7 +492,17 @@ impl Ctx<'_> {
         }
         let fks = self.foreign_keys()?;
         for fk in fks.iter().filter(|fk| fk.child_table == table.name && fk.child_schema == table.schema) {
-            self.check_children(fk, table, changes)?;
+            if !self.is_deferred(&fk.child_schema, &fk.name, fk.deferrable, fk.initially_deferred) {
+                self.check_children(fk, table, changes)?;
+                continue;
+            }
+            let columns = positions(table, &fk.child_columns);
+            for row in changes.iter().filter_map(|(_, new)| new.as_ref()) {
+                let key = values(row, &columns);
+                if !key.iter().all(Value::is_null) {
+                    self.defer(Pending::Child(fk.child_schema.clone(), fk.child_table.clone(), fk.name.clone(), key));
+                }
+            }
         }
         let referencing: Vec<&ForeignKeyDef> =
             fks.iter().filter(|fk| fk.parent_table == table.name && fk.parent_schema == table.schema).collect();
@@ -538,6 +557,18 @@ impl Ctx<'_> {
                     referencing.push(row);
                 }
             }
+            if action == Rule::NoAction
+                && !referencing.is_empty()
+                && self.is_deferred(&fk.child_schema, &fk.name, fk.deferrable, fk.initially_deferred)
+            {
+                self.defer(Pending::Parent(
+                    fk.child_schema.clone(),
+                    fk.child_table.clone(),
+                    fk.name.clone(),
+                    key.clone(),
+                ));
+                continue;
+            }
             for row in referencing {
                 match action {
                     Rule::NoAction | Rule::Restrict => return Err(parent_violation(fk, key)),
@@ -573,6 +604,34 @@ impl Ctx<'_> {
             .table(self.db, &fk.child_schema, &fk.child_table)?
             .ok_or_else(|| PgError::internal("a referencing table vanished"))?;
         self.enforce_foreign_keys(&child, &child_changes)
+    }
+
+    /// recheck_child runs the check that a deferred foreign key owes for a referencing key, which passes when no row
+    /// has the key any longer.
+    pub(crate) fn recheck_child(&mut self, fk: &ForeignKeyDef, key: &[Value]) -> Result<()> {
+        let Some(child) = self.txn.table(self.db, &fk.child_schema, &fk.child_table)? else { return Ok(()) };
+        let columns = positions(&child, &fk.child_columns);
+        let row = scan(self.db, &child)?.into_iter().find(|row| same_key(&values(row, &columns), key));
+        match row {
+            Some(row) => self.check_children(fk, &child, &[(None, Some(row))]),
+            None => Ok(()),
+        }
+    }
+
+    /// recheck_parent runs the check that a deferred foreign key owes for a removed referenced key, which fails when
+    /// the key is still missing and rows still refer to it.
+    pub(crate) fn recheck_parent(&mut self, fk: &ForeignKeyDef, key: &[Value]) -> Result<()> {
+        let Some(parent) = self.txn.table(self.db, &fk.parent_schema, &fk.parent_table)? else { return Ok(()) };
+        let parent_columns = positions(&parent, &fk.parent_columns);
+        if scan(self.db, &parent)?.iter().any(|r| same_key(&values(r, &parent_columns), key)) {
+            return Ok(());
+        }
+        let Some(child) = self.txn.table(self.db, &fk.child_schema, &fk.child_table)? else { return Ok(()) };
+        let child_columns = positions(&child, &fk.child_columns);
+        let referenced = scan(self.db, &child)?.iter().any(|row| {
+            converted(values(row, &child_columns), &parent, &parent_columns).is_ok_and(|v| same_key(&v, key))
+        });
+        if referenced { Err(parent_violation(fk, key)) } else { Ok(()) }
     }
 
     /// drop_table_foreign_keys drops the views and foreign keys that depend on a table being dropped, failing as
@@ -625,7 +684,7 @@ impl Ctx<'_> {
         if referencing.is_empty() {
             return Ok(());
         }
-        let index_name = if index.is_empty() { format!("{}_pkey", parent.name) } else { index.to_string() };
+        let index_name = if index.is_empty() { parent.primary_name() } else { index.to_string() };
         if !cascade {
             let detail: Vec<String> = referencing
                 .iter()
@@ -794,13 +853,30 @@ impl Ctx<'_> {
 
     /// rename_foreign_key renames a table's foreign key, reporting whether it had one by the old name.
     pub fn rename_foreign_key(&mut self, table: &TableDef, old: &str, new: &str) -> Result<bool> {
+        self.update_foreign_key(table, old, |fk| fk.name = new.to_string())
+    }
+
+    /// set_foreign_key_deferral changes whether a table's foreign key is DEFERRABLE and INITIALLY DEFERRED, returning
+    /// whether the table has it.
+    pub fn set_foreign_key_deferral(&mut self, table: &TableDef, name: &str, deferral: (bool, bool)) -> Result<bool> {
+        self.update_foreign_key(table, name, |fk| (fk.deferrable, fk.initially_deferred) = deferral)
+    }
+
+    /// update_foreign_key changes a table's foreign key, returning whether the table has it.
+    fn update_foreign_key(
+        &mut self,
+        table: &TableDef,
+        name: &str,
+        change: impl FnOnce(&mut ForeignKeyDef),
+    ) -> Result<bool> {
         let mut fks = self.foreign_keys()?;
-        let Some(fk) =
-            fks.iter_mut().find(|fk| fk.child_schema == table.schema && fk.child_table == table.name && fk.name == old)
+        let Some(fk) = fks
+            .iter_mut()
+            .find(|fk| fk.child_schema == table.schema && fk.child_table == table.name && fk.name == name)
         else {
             return Ok(false);
         };
-        fk.name = new.to_string();
+        change(fk);
         store(self.db, &mut self.txn.root, &fks)?;
         Ok(true)
     }

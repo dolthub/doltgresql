@@ -27,7 +27,7 @@ use crate::Outcome;
 use crate::auth::Object;
 use crate::cast::type_display;
 use crate::catalog::ColumnType;
-use crate::catalog::table::{Check, ColumnDef, IndexDef, TableDef, schema_message};
+use crate::catalog::table::{Check, ColumnDef, IndexDef, Primary, TableDef, schema_message};
 use crate::error::{PgError, Result, code};
 use crate::expr::{
     Binder, Scope, ScopeColumn, arg_location, assign, assignable, node_name, position, resolve_type_name,
@@ -111,6 +111,45 @@ fn check_constraint_attributes(constraints: &[Node]) -> Result<()> {
     Ok(())
 }
 
+/// Deferral is whether a constraint is DEFERRABLE and whether it is INITIALLY DEFERRED.
+pub(crate) type Deferral = (bool, bool);
+
+/// deferral returns a table constraint's DEFERRABLE and INITIALLY DEFERRED settings, where INITIALLY DEFERRED implies
+/// DEFERRABLE.
+pub(crate) fn deferral(constraint: &pg_query::protobuf::Constraint) -> Deferral {
+    (constraint.deferrable || constraint.initdeferred, constraint.initdeferred)
+}
+
+/// column_deferrals returns each column constraint's DEFERRABLE and INITIALLY DEFERRED settings, applying the
+/// attribute clauses that follow a constraint to it, as Postgres' transformConstraintAttrs does.
+fn column_deferrals(constraints: &[Node]) -> Vec<Deferral> {
+    let mut out: Vec<Deferral> = Vec::with_capacity(constraints.len());
+    let mut last = None;
+    for node in constraints {
+        let Some(NodeEnum::Constraint(constraint)) = node.node.as_ref() else {
+            out.push((false, false));
+            continue;
+        };
+        let target: Option<&mut Deferral> = last.and_then(|i: usize| out.get_mut(i));
+        match (constraint_type(constraint), target) {
+            (ConstrType::ConstrAttrDeferrable, Some(entry)) => entry.0 = true,
+            (ConstrType::ConstrAttrNotDeferrable, Some(entry)) => entry.0 = false,
+            (ConstrType::ConstrAttrDeferred, Some(entry)) => *entry = (true, true),
+            (ConstrType::ConstrAttrImmediate, Some(entry)) => entry.1 = false,
+            (
+                ConstrType::ConstrAttrDeferrable
+                | ConstrType::ConstrAttrNotDeferrable
+                | ConstrType::ConstrAttrDeferred
+                | ConstrType::ConstrAttrImmediate,
+                None,
+            ) => {}
+            _ => last = Some(out.len()),
+        }
+        out.push(deferral(constraint));
+    }
+    out
+}
+
 /// both_default_and_generated returns Postgres' error for a column with both a default and a generation expression.
 fn both_default_and_generated(column: &str, table: &str, location: i32) -> PgError {
     PgError {
@@ -127,10 +166,12 @@ fn both_default_and_generated(column: &str, table: &str, location: i32) -> PgErr
 pub(crate) struct TableParts {
     pub columns: Vec<ColumnDef>,
     pub primary_key: Vec<usize>,
+    /// The primary key constraint's name and deferral.
+    pub primary: Primary,
     /// Each check constraint's name, empty when unnamed, and expression.
     pub checks: Vec<(String, Node)>,
-    /// Each unique constraint's name, empty when unnamed, and columns.
-    pub uniques: Vec<(String, Vec<usize>)>,
+    /// Each unique constraint's name, empty when unnamed, columns, and deferral.
+    pub uniques: Vec<(String, Vec<usize>, Deferral)>,
     /// Each serial or identity column with its sequence's data type and options.
     pub generated: Vec<(usize, &'static str, Vec<Node>)>,
     /// Each foreign key with its referencing columns.
@@ -177,13 +218,14 @@ impl TableParts {
             generated: false,
         };
         check_constraint_attributes(&def.constraints)?;
-        for constraint in &def.constraints {
+        let deferrals = column_deferrals(&def.constraints);
+        for (constraint, &deferral) in def.constraints.iter().zip(&deferrals) {
             let Some(NodeEnum::Constraint(constraint)) = constraint.node.as_ref() else { continue };
             match constraint_type(constraint) {
                 ConstrType::ConstrAttrDeferrable
                 | ConstrType::ConstrAttrNotDeferrable
-                | ConstrType::ConstrAttrImmediate => {}
-                ConstrType::ConstrAttrDeferred => return Err(PgError::unsupported("INITIALLY DEFERRED constraints")),
+                | ConstrType::ConstrAttrImmediate
+                | ConstrType::ConstrAttrDeferred => {}
                 ConstrType::ConstrNotnull => column.nullable = false,
                 ConstrType::ConstrNull => column.nullable = true,
                 ConstrType::ConstrPrimary => {
@@ -191,6 +233,7 @@ impl TableParts {
                         return Err(multiple_primary_keys(table, constraint.location));
                     }
                     self.primary_key.push(index);
+                    self.primary = primary(table, &constraint.conname, deferral);
                 }
                 ConstrType::ConstrGenerated => {
                     if !column.default.is_empty() {
@@ -214,8 +257,12 @@ impl TableParts {
                     let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty CHECK"))?;
                     self.checks.push((constraint.conname.clone(), expr.clone()));
                 }
-                ConstrType::ConstrUnique => self.uniques.push((constraint.conname.clone(), vec![index])),
-                ConstrType::ConstrForeign => self.foreign.push((vec![index], (**constraint).clone())),
+                ConstrType::ConstrUnique => self.uniques.push((constraint.conname.clone(), vec![index], deferral)),
+                ConstrType::ConstrForeign => {
+                    let mut constraint = (**constraint).clone();
+                    (constraint.deferrable, constraint.initdeferred) = deferral;
+                    self.foreign.push((vec![index], constraint));
+                }
                 ConstrType::ConstrIdentity => {
                     let data_type = match ty.oid {
                         crate::oid::INT2 => "int2",
@@ -270,6 +317,7 @@ impl TableParts {
                     return Err(multiple_primary_keys(table, constraint.location));
                 }
                 self.primary_key = self.key_columns(constraint)?;
+                self.primary = primary(table, &constraint.conname, deferral(constraint));
             }
             ConstrType::ConstrCheck => {
                 let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty CHECK"))?;
@@ -277,7 +325,7 @@ impl TableParts {
             }
             ConstrType::ConstrUnique => {
                 let keys = self.key_columns(constraint)?;
-                self.uniques.push((constraint.conname.clone(), keys));
+                self.uniques.push((constraint.conname.clone(), keys, deferral(constraint)));
             }
             ConstrType::ConstrForeign => {
                 let mut keys = Vec::new();
@@ -296,6 +344,13 @@ impl TableParts {
         }
         Ok(())
     }
+}
+
+/// primary returns a primary key constraint of a table with its name, which is stored only when it is not the
+/// default, and its deferral.
+fn primary(table: &str, name: &str, (deferrable, initially_deferred): Deferral) -> Primary {
+    let name = if name == format!("{table}_pkey") { String::new() } else { name.to_string() };
+    Primary { name, deferrable, initially_deferred }
 }
 
 /// serial_type returns the integer type of a serial pseudo-type name, or None for any other type.
@@ -458,6 +513,7 @@ impl Ctx<'_> {
         let TableParts {
             mut columns,
             primary_key,
+            primary,
             checks: pending_checks,
             uniques,
             generated,
@@ -495,7 +551,7 @@ impl Ctx<'_> {
         let mut taken = self.relation_names(&schema)?;
         taken.push(name.to_string());
         if !primary_key.is_empty() {
-            taken.push(format!("{name}_pkey"));
+            taken.push(if primary.name.is_empty() { format!("{name}_pkey") } else { primary.name.clone() });
         }
         for (column, data_type, options) in generated {
             let column_name = columns[column].name.clone();
@@ -504,7 +560,7 @@ impl Ctx<'_> {
             columns[column].nullable = false;
         }
         let mut indexes = Vec::new();
-        for (constraint, keys) in uniques {
+        for (constraint, keys, (deferrable, initially_deferred)) in uniques {
             let index_name = if constraint.is_empty() {
                 let names: Vec<&str> = keys.iter().map(|&k| columns[k].name.as_str()).collect();
                 choose_relation_name(name, &names.join("_"), "key", &taken)
@@ -512,9 +568,9 @@ impl Ctx<'_> {
                 constraint
             };
             taken.push(index_name.clone());
-            indexes.push(new_index(index_name, keys, true));
+            indexes.push(IndexDef { deferrable, initially_deferred, ..new_index(index_name, keys, true) });
         }
-        self.write_new_table(&schema, name, columns, primary_key, checks, indexes)?;
+        self.write_new_table(&schema, name, columns, (primary_key, primary), checks, indexes)?;
         for (keys, constraint) in foreign {
             let table =
                 self.txn.table(self.db, &schema, name)?.ok_or_else(|| PgError::internal("a new table vanished"))?;
@@ -546,7 +602,7 @@ impl Ctx<'_> {
         schema: &str,
         name: &str,
         mut columns: Vec<ColumnDef>,
-        primary_key: Vec<usize>,
+        (primary_key, primary): (Vec<usize>, Primary),
         checks: Vec<Check>,
         indexes: Vec<IndexDef>,
     ) -> Result<()> {
@@ -558,7 +614,7 @@ impl Ctx<'_> {
             kinds.push(EXTENDED_KIND);
         }
         let value_columns: Vec<usize> = (0..columns.len()).filter(|i| !primary_key.contains(i)).collect();
-        let message = schema_message(&columns, &primary_key, &value_columns, &checks, &indexes)?;
+        let message = schema_message(&columns, &primary_key, &value_columns, &checks, &indexes, &primary)?;
         let (mut address, mut table) = Table::create(self.db, message)?;
         if !indexes.is_empty() {
             let empty = Hash::of(&empty_rows());
@@ -613,7 +669,7 @@ impl Ctx<'_> {
                 }
             })
             .collect();
-        self.write_new_table(&schema, &name, columns, Vec::new(), Vec::new(), Vec::new())?;
+        self.write_new_table(&schema, &name, columns, (Vec::new(), Primary::default()), Vec::new(), Vec::new())?;
         let rows = if into.skip_data { Vec::new() } else { query.plan.run(self)? };
         let count = rows.len();
         let table =
@@ -838,7 +894,7 @@ impl Ctx<'_> {
             let table = TableDef::load(self.db, schema, &name, address)?;
             names.extend(table.indexes.iter().filter(|i| !i.system).map(|i| i.name.clone()));
             if !table.key_columns.is_empty() {
-                names.push(format!("{name}_pkey"));
+                names.push(table.primary_name());
             }
             names.push(name);
         }
@@ -864,7 +920,7 @@ impl Ctx<'_> {
             names.extend(table.checks.iter().map(|c| c.name.clone()));
             names.extend(table.indexes.iter().filter(|i| i.unique).map(|i| i.name.clone()));
             if !table.key_columns.is_empty() {
-                names.push(format!("{name}_pkey"));
+                names.push(table.primary_name());
             }
         }
         names.extend(self.foreign_keys()?.into_iter().filter(|fk| fk.child_schema == schema).map(|fk| fk.name));
@@ -1074,6 +1130,8 @@ pub(crate) fn new_index(name: String, columns: Vec<usize>, unique: bool) -> Inde
         root: Hash::of(&empty_rows()),
         system: false,
         vector: None,
+        deferrable: false,
+        initially_deferred: false,
     }
 }
 

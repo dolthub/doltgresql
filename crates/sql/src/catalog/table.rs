@@ -75,6 +75,9 @@ pub struct IndexDef {
     pub system: bool,
     /// The distance of a vector index, which Dolt stores as a proximity map rather than a prolly map.
     pub vector: Option<prolly::Distance>,
+    /// Whether a unique index's constraint is DEFERRABLE, and whether it is INITIALLY DEFERRED.
+    pub deferrable: bool,
+    pub initially_deferred: bool,
 }
 
 impl IndexDef {
@@ -98,6 +101,7 @@ impl IndexDef {
 pub struct TableDef {
     pub schema: String,
     pub name: String,
+    pub primary: Primary,
     pub columns: Vec<ColumnDef>,
     pub checks: Vec<Check>,
     pub indexes: Vec<IndexDef>,
@@ -106,6 +110,15 @@ pub struct TableDef {
     /// The columns stored in the value tuple, in order.
     pub value_columns: Vec<usize>,
     pub table: Table,
+}
+
+/// Primary is a primary key constraint's name, empty for the default `<table>_pkey`, and whether it is DEFERRABLE
+/// and INITIALLY DEFERRED.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Primary {
+    pub name: String,
+    pub deferrable: bool,
+    pub initially_deferred: bool,
 }
 
 /// column_type reads a column type from its form in a Dolt schema: a Doltgres type, or one of the MySQL types of
@@ -200,12 +213,20 @@ impl TableDef {
                     },
                     name,
                     root,
+                    deferrable: index.deferrable,
+                    initially_deferred: index.initially_deferred,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+        let primary = Primary {
+            name: lossy(clustered.name),
+            deferrable: clustered.deferrable,
+            initially_deferred: clustered.initially_deferred,
+        };
         Ok(TableDef {
             schema: schema.to_string(),
             name: name.to_string(),
+            primary,
             columns,
             checks,
             indexes,
@@ -305,9 +326,21 @@ impl TableDef {
         self.key_columns.is_empty()
     }
 
+    /// primary_name returns the name of the table's primary key constraint and of its index.
+    pub fn primary_name(&self) -> String {
+        if self.primary.name.is_empty() { format!("{}_pkey", self.name) } else { self.primary.name.clone() }
+    }
+
     /// schema_message writes the table's Dolt schema.
     pub fn schema_message(&self) -> Result<Vec<u8>> {
-        schema_message(&self.columns, &self.key_columns, &self.value_columns, &self.checks, &self.indexes)
+        schema_message(
+            &self.columns,
+            &self.key_columns,
+            &self.value_columns,
+            &self.checks,
+            &self.indexes,
+            &self.primary,
+        )
     }
 
     /// key_encodings returns the field encodings of the primary index's keys.
@@ -383,13 +416,15 @@ impl TableDef {
 }
 
 /// schema_message writes a Dolt schema of the columns, with the key and value columns of its primary index, its check
-/// constraints, and its secondary indexes, whose key columns leave out the row hash that ends a keyless table's keys.
+/// constraints, its secondary indexes, whose key columns leave out the row hash that ends a keyless table's keys, and
+/// its primary key constraint.
 pub fn schema_message(
     columns: &[ColumnDef],
     key_columns: &[usize],
     value_columns: &[usize],
     checks: &[Check],
     indexes: &[IndexDef],
+    primary: &Primary,
 ) -> Result<Vec<u8>> {
     let types: Vec<Vec<u8>> =
         columns.iter().map(|c| c.ty.serialized().map(String::into_bytes)).collect::<Result<_>>()?;
@@ -437,6 +472,8 @@ pub fn schema_message(
                     index.op_classes.iter().map(String::as_bytes).collect()
                 },
                 unique: index.unique,
+                deferrable: index.deferrable,
+                initially_deferred: index.initially_deferred,
                 system_defined: index.system,
                 spatial: false,
                 fulltext: None,
@@ -466,6 +503,9 @@ pub fn schema_message(
                 is_not_valid: false,
             })
             .collect(),
+        primary_key_name: primary.name.as_bytes(),
+        primary_deferrable: primary.deferrable,
+        primary_initially_deferred: primary.initially_deferred,
         collation: COLLATION,
         comment: b"",
         target_row_size: DEFAULT_TARGET_ROW_SIZE,

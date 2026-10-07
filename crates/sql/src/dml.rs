@@ -219,18 +219,18 @@ fn duplicate_key(table: &TableDef, row: &[Value]) -> PgError {
         objects: Some(Box::new(ErrorObjects {
             schema: Some(table.schema.clone()),
             table: Some(table.name.clone()),
-            constraint: Some(format!("{}_pkey", table.name)),
+            constraint: Some(table.primary_name()),
             ..ErrorObjects::default()
         })),
         ..PgError::new(
             code::UNIQUE_VIOLATION,
-            format!("duplicate key value violates unique constraint \"{}_pkey\"", table.name),
+            format!("duplicate key value violates unique constraint \"{}\"", table.primary_name()),
         )
     }
 }
 
 /// unique_violation returns Postgres' error for a row that duplicates another's values in a unique index.
-fn unique_violation(table: &TableDef, index: &IndexDef, row: &[Value]) -> PgError {
+pub(crate) fn unique_violation(table: &TableDef, index: &IndexDef, row: &[Value]) -> PgError {
     let names: Vec<&str> = index.columns.iter().map(|&i| table.columns[i].name.as_str()).collect();
     let values: Vec<Value> = index.columns.iter().map(|&i| row[i].clone()).collect();
     PgError {
@@ -257,12 +257,42 @@ struct Edits<'a> {
     edits: Vec<(Vec<u8>, Option<Vec<u8>>)>,
     /// Each secondary index's changes, in the order of the table's indexes.
     index_edits: Vec<KeyEdits>,
+    /// Whether each secondary index's unique constraint is deferred, whose checks wait for the commit.
+    deferred: Vec<bool>,
+    /// The unique checks that deferred constraints owe, by index position and indexed values.
+    deferred_checks: Vec<(usize, Vec<Value>)>,
 }
 
 impl<'a> Edits<'a> {
     /// new starts collecting changes to the table.
     fn new(table: &'a TableDef) -> Edits<'a> {
-        Edits { table, edits: Vec::new(), index_edits: vec![Vec::new(); table.indexes.len()] }
+        Edits {
+            table,
+            edits: Vec::new(),
+            index_edits: vec![Vec::new(); table.indexes.len()],
+            deferred: vec![false; table.indexes.len()],
+            deferred_checks: Vec::new(),
+        }
+    }
+
+    /// deferring starts collecting changes to the table, leaving the checks of the unique constraints that are deferred
+    /// now to the commit.
+    fn deferring(ctx: &Ctx<'_>, table: &'a TableDef) -> Edits<'a> {
+        let mut edits = Edits::new(table);
+        edits.deferred = table
+            .indexes
+            .iter()
+            .map(|i| i.unique && ctx.is_deferred(&table.schema, &i.name, i.deferrable, i.initially_deferred))
+            .collect();
+        edits
+    }
+
+    /// owe records the unique checks that the deferred constraints of the collected changes owe.
+    fn owe(&mut self, ctx: &mut Ctx<'_>) {
+        for (i, values) in std::mem::take(&mut self.deferred_checks) {
+            let (schema, table) = (self.table.schema.clone(), self.table.name.clone());
+            ctx.defer(crate::deferred::Pending::Unique(schema, table, self.table.indexes[i].name.clone(), values));
+        }
     }
 
     /// index_taken reports whether another row already has a key's indexed values in a unique index.
@@ -355,11 +385,10 @@ impl<'a> Edits<'a> {
         for i in 0..self.table.indexes.len() {
             let index = &self.table.indexes[i];
             let key = self.table.index_key(db, index, row, primary)?;
-            if add
-                && index.unique
-                && index.columns.iter().all(|&c| !row[c].is_null())
-                && self.index_taken(db, i, &key)?
-            {
+            let checked = add && index.unique && index.columns.iter().all(|&c| !row[c].is_null());
+            if checked && self.deferred[i] {
+                self.deferred_checks.push((i, index.columns.iter().map(|&c| row[c].clone()).collect()));
+            } else if checked && self.index_taken(db, i, &key)? {
                 return Err(unique_violation(self.table, index, row));
             }
             let value = add.then(|| prolly::val::build_tuple(&[]));
@@ -681,7 +710,7 @@ impl Ctx<'_> {
         let target = match clause.infer.as_deref() {
             None => ConflictTarget::Any,
             Some(infer) if !infer.conname.is_empty() => {
-                if !table.keyless() && infer.conname == format!("{}_pkey", table.name) {
+                if !table.keyless() && infer.conname == table.primary_name() {
                     ConflictTarget::Primary
                 } else if let Some(i) = table.indexes.iter().position(|ix| ix.unique && ix.name == infer.conname) {
                     ConflictTarget::Index(i)
@@ -937,7 +966,7 @@ impl InsertPlan {
             return outcome(ctx, &self.returning, &rows, tag);
         };
         let table = &self.table;
-        let mut edits = Edits::new(table);
+        let mut edits = Edits::deferring(ctx, table);
         let mut written = Vec::new();
         let mut changes: Vec<Change> = Vec::new();
         let mut touched: Vec<Vec<u8>> = Vec::new();
@@ -992,6 +1021,7 @@ impl InsertPlan {
             changes.push((Some(existing), Some(new_row.clone())));
             written.push(new_row);
         }
+        edits.owe(ctx);
         edits.apply(ctx.db, ctx.txn)?;
         ctx.enforce_foreign_keys(table, &changes)?;
         if let ConflictAction::Update { assignments, .. } = &on_conflict.action {
@@ -1036,12 +1066,12 @@ fn insert_checked_rows(
     for row in &mut rows {
         check_row(ctx, table, rules, row)?;
     }
-    let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
-    let mut edits = Edits::new(table);
+    let mut edits = Edits::deferring(ctx, table);
     for row in &rows {
-        edits.insert(db, row)?;
+        edits.insert(ctx.db, row)?;
     }
-    edits.apply(db, txn)?;
+    edits.owe(ctx);
+    edits.apply(ctx.db, ctx.txn)?;
     Ok(rows)
 }
 
@@ -1075,19 +1105,19 @@ pub(crate) fn apply_changes(ctx: &mut Ctx<'_>, table: &TableDef, changes: &[Chan
             check_row(ctx, table, &rules, row)?;
         }
     }
-    let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
-    let mut edits = Edits::new(table);
+    let mut edits = Edits::deferring(ctx, table);
     for (old, _) in &changes {
         if let Some(row) = old {
-            edits.delete(db, row)?;
+            edits.delete(ctx.db, row)?;
         }
     }
     for (_, new) in &changes {
         if let Some(row) = new {
-            edits.insert(db, row)?;
+            edits.insert(ctx.db, row)?;
         }
     }
-    edits.apply(db, txn)
+    edits.owe(ctx);
+    edits.apply(ctx.db, ctx.txn)
 }
 
 /// insert_rows converts rows to a table's column types and inserts them, for CREATE TABLE AS.
@@ -1167,13 +1197,14 @@ impl UpdatePlan {
             check_row(ctx, &self.table, &self.rules, &mut new_row)?;
             changes.push((row, new_row, from_row));
         }
-        let mut edits = Edits::new(&self.table);
+        let mut edits = Edits::deferring(ctx, &self.table);
         for (row, _, _) in &changes {
             edits.delete(ctx.db, row)?;
         }
         for (_, new_row, _) in &changes {
             edits.insert(ctx.db, new_row)?;
         }
+        edits.owe(ctx);
         edits.apply(ctx.db, ctx.txn)?;
         let edited: Vec<Change> =
             changes.iter().map(|(row, new_row, _)| (Some(row.clone()), Some(new_row.clone()))).collect();

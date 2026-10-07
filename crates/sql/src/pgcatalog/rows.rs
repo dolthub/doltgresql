@@ -189,7 +189,7 @@ const SYSTEM_COLUMNS: [(&str, i16, u32); 6] = [
 
 /// index_name returns the name of a table's index, where an empty name is its primary key.
 fn index_name(table: &TableDef, index: &str) -> String {
-    if index.is_empty() { format!("{}_pkey", table.name) } else { index.to_string() }
+    if index.is_empty() { table.primary_name() } else { index.to_string() }
 }
 
 /// TableIndex is an index of a table as the catalogs show it: its name, columns, and kind.
@@ -202,6 +202,9 @@ pub struct TableIndex {
     pub nulls_first: Vec<bool>,
     /// The distance of a vector index.
     pub vector: Option<prolly::Distance>,
+    /// Whether a unique index's constraint is DEFERRABLE, and whether it is INITIALLY DEFERRED.
+    pub deferrable: bool,
+    pub initially_deferred: bool,
 }
 
 /// table_indexes returns a table's primary key index and its visible secondary indexes.
@@ -216,6 +219,8 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
             descending: vec![false; table.key_columns.len()],
             nulls_first: vec![false; table.key_columns.len()],
             vector: None,
+            deferrable: table.primary.deferrable,
+            initially_deferred: table.primary.initially_deferred,
         });
     }
     for index in table.indexes.iter().filter(|i| !i.system) {
@@ -227,6 +232,8 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
             descending: index.descending.clone(),
             nulls_first: index.nulls_last.iter().map(|&l| !l).collect(),
             vector: index.vector,
+            deferrable: index.deferrable,
+            initially_deferred: index.initially_deferred,
         });
     }
     out
@@ -809,7 +816,7 @@ impl Ctx<'_> {
                     ("indnullsnotdistinct", boolean(false)),
                     ("indisprimary", boolean(index.primary)),
                     ("indisexclusion", boolean(false)),
-                    ("indimmediate", boolean(true)),
+                    ("indimmediate", boolean(!index.deferrable)),
                     ("indisclustered", boolean(false)),
                     ("indisvalid", boolean(true)),
                     ("indcheckxmin", boolean(false)),
@@ -875,14 +882,14 @@ impl Ctx<'_> {
         for table in &snapshot.tables {
             let relation = table_oid(&table.schema, &table.name);
             let namespace = namespace_oid(&table.schema);
-            let base = |name: &str, kind: &str, section: u8| {
+            let base = |name: &str, kind: &str, section: u8, (deferrable, deferred): (bool, bool)| {
                 vec![
                     ("oid", oid(constraint_oid(section, &table.schema, &table.name, name))),
                     ("conname", text(name)),
                     ("connamespace", oid(namespace)),
                     ("contype", text(kind)),
-                    ("condeferrable", boolean(false)),
-                    ("condeferred", boolean(false)),
+                    ("condeferrable", boolean(deferrable)),
+                    ("condeferred", boolean(deferred)),
                     ("convalidated", boolean(true)),
                     ("conrelid", oid(relation)),
                     ("contypid", oid(0)),
@@ -898,7 +905,7 @@ impl Ctx<'_> {
             };
             for index in table_indexes(table).into_iter().filter(|i| i.unique) {
                 let (kind, section) = if index.primary { ("p", 23) } else { ("u", 36) };
-                let mut row = base(&index.name, kind, section);
+                let mut row = base(&index.name, kind, section, (index.deferrable, index.initially_deferred));
                 row.extend([
                     ("conindid", oid(index_oid(&table.schema, &table.name, &index.name))),
                     ("conkey", int2_array(index.columns.iter().map(|&c| c as i16 + 1))),
@@ -906,7 +913,7 @@ impl Ctx<'_> {
                 rows.push(row);
             }
             for check in &table.checks {
-                let mut row = base(&check.name, "c", 3);
+                let mut row = base(&check.name, "c", 3, (false, false));
                 let columns: Vec<i16> = table
                     .columns
                     .iter()
@@ -925,7 +932,7 @@ impl Ctx<'_> {
                     |t: &TableDef, c: &String| t.columns.iter().position(|col| col.name == *c).unwrap_or(0) as i16 + 1;
                 let parent_index =
                     if fk.parent_index.is_empty() { index_name(parent, "") } else { fk.parent_index.clone() };
-                let mut row = base(&fk.name, "f", 11);
+                let mut row = base(&fk.name, "f", 11, (fk.deferrable, fk.initially_deferred));
                 row.extend([
                     ("conindid", oid(index_oid(&parent.schema, &parent.name, &parent_index))),
                     ("confrelid", oid(table_oid(&parent.schema, &parent.name))),

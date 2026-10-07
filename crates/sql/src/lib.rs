@@ -29,6 +29,7 @@ pub mod catalog;
 pub mod copy;
 pub mod datetime;
 mod ddl;
+pub mod deferred;
 pub mod dml;
 pub mod dolt;
 pub mod encodings;

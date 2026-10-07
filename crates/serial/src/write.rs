@@ -336,6 +336,8 @@ pub struct ForeignKeyFields<'a> {
     pub unresolved_parent_columns: Option<Vec<Vec<u8>>>,
     pub is_not_valid: bool,
     pub match_type: u8,
+    pub deferrable: bool,
+    pub initially_deferred: bool,
 }
 
 /// u64_vector writes a vector of u64 values in order.
@@ -379,7 +381,7 @@ pub fn write_foreign_keys(foreign_keys: &[ForeignKeyFields<'_>]) -> Vec<u8> {
         let child_table = b.create_string(fk.child_table_name);
         let child_index = b.create_string(fk.child_table_index);
         let name = b.create_string(fk.name);
-        b.start_object(15);
+        b.start_object(17);
         b.add_offset(0, name);
         b.add_offset(1, child_table);
         b.add_offset(2, child_index);
@@ -393,6 +395,8 @@ pub fn write_foreign_keys(foreign_keys: &[ForeignKeyFields<'_>]) -> Vec<u8> {
         b.add_u8(8, fk.on_delete, 0);
         b.add_bool(13, fk.is_not_valid, false);
         b.add_u8(14, fk.match_type, 0);
+        b.add_bool(15, fk.deferrable, false);
+        b.add_bool(16, fk.initially_deferred, false);
         offsets[i] = b.end_object();
     }
     let vector = b.create_vector_of_tables(&offsets);
@@ -437,6 +441,8 @@ pub struct IndexFields<'a> {
     pub nulls_last: Vec<bool>,
     pub op_classes: Vec<&'a [u8]>,
     pub unique: bool,
+    pub deferrable: bool,
+    pub initially_deferred: bool,
     pub system_defined: bool,
     pub spatial: bool,
     pub fulltext: Option<crate::FulltextInfo<'a>>,
@@ -464,6 +470,10 @@ pub struct SchemaFields<'a> {
     pub value_columns: Vec<u16>,
     pub indexes: Vec<IndexFields<'a>>,
     pub checks: Vec<CheckFields<'a>>,
+    /// The primary key constraint's name, a Doltgres field that Dolt lacks, empty for the default name.
+    pub primary_key_name: &'a [u8],
+    pub primary_deferrable: bool,
+    pub primary_initially_deferred: bool,
     pub collation: u16,
     pub comment: &'a [u8],
     pub target_row_size: u16,
@@ -534,9 +544,11 @@ fn write_columns(b: &mut Builder, s: &SchemaFields<'_>) -> u32 {
 
 /// write_clustered_index writes the clustered index as Dolt's serializeClusteredIndex does.
 fn write_clustered_index(b: &mut Builder, s: &SchemaFields<'_>) -> u32 {
+    let name = if s.primary_key_name.is_empty() { 0 } else { b.create_string(s.primary_key_name) };
     let keys = u16_vector(b, &s.key_columns);
     let values = u16_vector(b, &s.value_columns);
-    b.start_object(18);
+    b.start_object(20);
+    b.add_offset(0, name);
     b.add_offset(2, keys);
     b.add_offset(3, keys);
     b.add_offset(4, values);
@@ -544,6 +556,8 @@ fn write_clustered_index(b: &mut Builder, s: &SchemaFields<'_>) -> u32 {
     b.add_bool(6, true, false);
     b.add_bool(9, false, false);
     b.add_bool(7, false, false);
+    b.add_bool(18, s.primary_deferrable, false);
+    b.add_bool(19, s.primary_initially_deferred, false);
     b.end_object()
 }
 
@@ -594,7 +608,7 @@ fn write_secondary_indexes(b: &mut Builder, indexes: &[IndexFields<'_>]) -> u32 
             b.add_u8(0, distance, 0);
             b.end_object()
         });
-        b.start_object(18);
+        b.start_object(20);
         b.add_offset(0, name);
         b.add_offset(1, comment);
         b.add_offset(2, index_columns);
@@ -614,6 +628,8 @@ fn write_secondary_indexes(b: &mut Builder, indexes: &[IndexFields<'_>]) -> u32 
         b.add_offset(15, descending);
         b.add_offset(16, nulls_last);
         b.add_offset(17, op_classes);
+        b.add_bool(18, index.deferrable, false);
+        b.add_bool(19, index.initially_deferred, false);
         offsets[i] = b.end_object();
     }
     b.create_vector_of_tables(&offsets)
