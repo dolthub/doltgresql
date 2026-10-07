@@ -253,6 +253,7 @@ impl Ctx<'_> {
             "pg_views" => self.pg_views(rows),
             "pg_sequence" | "pg_sequences" => self.pg_sequences(rows),
             "pg_proc" => self.pg_proc(rows),
+            "pg_cast" => self.pg_cast(rows),
             "pg_enum" => self.pg_enum(rows),
             "pg_trigger" => self.pg_trigger(rows),
             "pg_extension" => self.pg_extension(rows),

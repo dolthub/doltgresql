@@ -129,8 +129,9 @@ pub struct Routine {
     pub set_of: bool,
     pub strict: bool,
     pub body: Body,
-    /// The row type of the table the routine returns rows of, which each statement that uses it registers.
-    pub row_type: Option<objects::SerializedType>,
+    /// The row types of the tables whose rows the routine takes or returns, which each statement that uses it
+    /// registers.
+    pub row_types: Vec<objects::SerializedType>,
     /// The statements of a SQL body, parsed on first use.
     statements: OnceLock<Result<Vec<NodeEnum>>>,
 }
@@ -167,18 +168,25 @@ impl Routine {
         let mut segments = id::segments(&object.id).into_iter();
         let schema = segments.next().unwrap_or_default();
         let name = segments.next().unwrap_or_default();
+        let mut row_types = Vec::new();
         let mut params = Vec::with_capacity(object.all_params.len());
         for param in &object.all_params {
+            let ty = match type_from_id(&param.type_id) {
+                Ok(ty) => ty,
+                Err(err) => {
+                    row_types.push(row_type(&param.type_id)?.ok_or(err)?);
+                    typ(crate::usertypes::type_oid(&param.type_id))
+                }
+            };
             params.push(Param {
                 name: String::from_utf8_lossy(&param.name).into_owned(),
-                ty: type_from_id(&param.type_id)?,
+                ty,
                 mode: Mode::from_stored(param.mode),
                 default: (!param.default.is_empty()).then(|| String::from_utf8_lossy(&param.default).into_owned()),
             });
         }
         let outputs: Vec<(String, ColumnType)> =
             params.iter().filter(|p| p.mode.is_output()).map(|p| (p.name.clone(), p.ty)).collect();
-        let mut table_row_type = None;
         let (ret, columns) = match table_columns(&object.return_type)? {
             _ if procedure => (typ(VOID), outputs),
             Some(columns) if columns.len() == 1 => {
@@ -199,7 +207,7 @@ impl Routine {
                         crate::usertypes::Kind::Composite(columns) => columns,
                         _ => Vec::new(),
                     };
-                    table_row_type = Some(definition);
+                    row_types.push(definition);
                     (typ(crate::usertypes::type_oid(&object.return_type)), columns)
                 }
             },
@@ -212,7 +220,7 @@ impl Routine {
             Body::PlPgSql(object.operations.clone())
         };
         Ok(Routine {
-            row_type: table_row_type,
+            row_types,
             procedure,
             schema,
             name,
@@ -230,7 +238,7 @@ impl Routine {
     /// internal returns a routine that only the server runs, such as a trigger's WHEN condition, with the result type.
     pub fn internal(object: Function, ret: ColumnType) -> Routine {
         Routine {
-            row_type: None,
+            row_types: Vec::new(),
             procedure: false,
             schema: String::new(),
             name: String::new(),
@@ -512,13 +520,13 @@ impl Ctx<'_> {
             && *cached == address
         {
             let routines = routines.clone();
-            for row_type in routines.iter().filter_map(|r| r.row_type.clone()) {
+            for row_type in routines.iter().flat_map(|r| r.row_types.iter().cloned()) {
                 crate::usertypes::register(row_type);
             }
             return Ok(routines);
         }
         let routines = Arc::new(all(self.db, &self.txn.root)?);
-        for row_type in routines.iter().filter_map(|r| r.row_type.clone()) {
+        for row_type in routines.iter().flat_map(|r| r.row_types.iter().cloned()) {
             crate::usertypes::register(row_type);
         }
         self.session.routines = Some((address, routines.clone()));
@@ -887,7 +895,7 @@ impl Ctx<'_> {
 
     /// find_routine returns the routine of the kind that DROP or ALTER names, with or without its argument types, or
     /// None when it is missing and that is allowed, after a notice.
-    fn find_routine(
+    pub(crate) fn find_routine(
         &mut self,
         target: &ObjectWithArgs,
         missing_ok: bool,
@@ -933,6 +941,7 @@ impl Ctx<'_> {
                 _ => None,
             });
             if output != Some(true) {
+                self.prepare_type(type_name)?;
                 types.push(crate::expr::resolve_type_name(type_name)?.oid);
             }
         }

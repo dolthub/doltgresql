@@ -245,6 +245,26 @@ impl Ctx<'_> {
         }
         Ok(())
     }
+
+    /// pg_cast lists the casts of the cast collection, as Go's pg_cast does.
+    pub(super) fn pg_cast(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        for cast in self.user_casts()?.iter() {
+            let method = match (&cast.routine, cast.stored.use_in_out) {
+                (Some(_), _) => "f",
+                (None, true) => "i",
+                (None, false) => "b",
+            };
+            rows.push(vec![
+                ("oid", oid(oids::oid(&cast.stored.id))),
+                ("castsource", oid(cast.source)),
+                ("casttarget", oid(cast.target)),
+                ("castfunc", oid(cast.routine.as_deref().map_or(0, routine_oid))),
+                ("castcontext", text(crate::casts::context_code(cast.context))),
+                ("castmethod", text(method)),
+            ]);
+        }
+        Ok(())
+    }
 }
 
 /// trigger_type returns the type bits pg_trigger's tgtype holds for a trigger.

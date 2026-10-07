@@ -414,16 +414,16 @@ fn test_root_object_collections() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT f1();",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function: 'f1' not found", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function f1() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT nextval('s1');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: r#"sequence "s1" does not exist"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "s1" does not exist"#, position: 16, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -475,10 +475,10 @@ fn test_root_object_collections() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT nextval('s2');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: r#"sequence "s2" does not exist"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "s2" does not exist"#, position: 16, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

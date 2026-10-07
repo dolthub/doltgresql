@@ -32,10 +32,8 @@ const CASTS: usize = 7;
 const OPERATORS: usize = 8;
 const AGGREGATES: usize = 9;
 
-/// The ID sections of extensions, casts, and operators.
+/// SECTION_EXTENSION is the ID section of extensions.
 const SECTION_EXTENSION: u8 = 10;
-const SECTION_CAST: u8 = 2;
-const SECTION_OPERATOR: u8 = 20;
 
 /// Objects names the objects of an installed extension in a schema.
 struct Objects<'e> {
@@ -115,7 +113,7 @@ impl Objects<'_> {
         for operator in &self.extension.operators {
             let (left, right) = (self.type_id(&operator.left)?, self.type_id(&operator.right)?);
             let id = id::new(
-                SECTION_OPERATOR,
+                id::SECTION_OPERATOR,
                 &[&self.schema, operator.name, &String::from_utf8_lossy(&left), &String::from_utf8_lossy(&right)],
             );
             operators.push(objects::Operator {
@@ -137,7 +135,7 @@ impl Objects<'_> {
             let (source, target) = (self.type_id(&cast.source)?, self.type_id(&cast.target)?);
             let function = self.routine_id(&cast.routine)?;
             casts.push(objects::Cast {
-                id: id::new(SECTION_CAST, &[&String::from_utf8_lossy(&source), &String::from_utf8_lossy(&target)]),
+                id: id::new(id::SECTION_CAST, &[&String::from_utf8_lossy(&source), &String::from_utf8_lossy(&target)]),
                 cast_type: cast.context,
                 use_in_out: function.is_empty(),
                 function,

@@ -1913,8 +1913,9 @@ pub fn arg_location(node: &Node) -> i32 {
         Some(NodeEnum::AConst(c)) => c.location,
         Some(NodeEnum::ColumnRef(c)) => c.location,
         Some(NodeEnum::AExpr(e)) => e.location,
-        Some(NodeEnum::TypeCast(c)) => match c.arg.as_deref().map(arg_location) {
-            Some(arg) if arg >= 0 && (arg < c.location || c.location < 0) => arg,
+        Some(NodeEnum::TypeCast(c)) => match c.arg.as_deref().map(|arg| (arg_location(arg), &arg.node)) {
+            Some((_, Some(NodeEnum::RowExpr(_)))) => c.location,
+            Some((arg, _)) if arg >= 0 && (arg < c.location || c.location < 0) => arg,
             _ => c.location,
         },
         Some(NodeEnum::ParamRef(p)) => p.location,
@@ -1964,7 +1965,7 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         let (expr, _) = coerce((expr, from), base, explicit, location)?;
         return Ok((Expr::Cast(Box::new(expr), to, explicit), to));
     }
-    if let (Expr::Row(fields), Some(user_type)) = (&expr, crate::usertypes::get(to.oid))
+    if let (Expr::Row(fields), oid::RECORD, Some(user_type)) = (&expr, from.oid, crate::usertypes::get(to.oid))
         && let crate::usertypes::Kind::Composite(attributes) = &user_type.kind
         && fields.len() != attributes.len()
     {
@@ -2010,8 +2011,11 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     let transaction_id = (matches!(to.oid, oid::XID | oid::CID) || matches!(from.oid, oid::XID | oid::CID))
         && from.oid != to.oid
         && !textual;
+    let composite =
+        |t: u32| crate::usertypes::get(t).is_some_and(|u| matches!(u.kind, crate::usertypes::Kind::Composite(_)));
     let allowed = explicit
         && (is_array_type(from.oid) == is_array_type(to.oid) || textual)
+        && !(composite(from.oid) && composite(to.oid))
         && (!(opaque(from.oid) || opaque(to.oid)) || textual || (bits_or_ints(from.oid) && bits_or_ints(to.oid)))
         && !xml_only_textual
         && !transaction_id
@@ -2040,7 +2044,10 @@ fn user_cast(expr: &Expr, from: ColumnType, to: ColumnType, explicit: bool, cont
     if allowed < context {
         return None;
     }
-    let routine = routine?;
+    let Some(routine) = routine else {
+        let text = Expr::Cast(Box::new(expr.clone()), typ(oid::TEXT), true);
+        return Some((Expr::Cast(Box::new(text), to, true), to));
+    };
     let mut args = vec![expr.clone()];
     if routine.params.len() > 1 {
         args.push(Expr::Const(Value::Int4(to.modifier)));

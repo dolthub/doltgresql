@@ -1438,7 +1438,7 @@ fn test_dolt_remote_31() {
                 "USE cloned_cast",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: r#"SELECT c.castcontext::text, c.castmethod::text
 					FROM pg_cast c
@@ -1446,7 +1446,7 @@ fn test_dolt_remote_31() {
 					JOIN pg_type dst ON dst.oid = c.casttarget
 					WHERE src.typname = 'cast_src' AND dst.typname = 'cast_dst';"#,
                     expected: Expected::Rows {
-                        columns: &[Column("c.castcontext", TEXT), Column("c.castmethod", TEXT)],
+                        columns: &[Column("castcontext", TEXT), Column("castmethod", TEXT)],
                         rows: &[
                             &[T("e"), T("f")],
                         ],

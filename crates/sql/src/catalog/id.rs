@@ -14,6 +14,8 @@
 
 //! Doltgres' internal object IDs: a section byte followed by length-prefixed name segments.
 
+/// SECTION_CAST is the ID section of casts.
+pub const SECTION_CAST: u8 = 2;
 /// SECTION_DATABASE is the ID section of databases.
 pub const SECTION_DATABASE: u8 = 6;
 /// SECTION_FOREIGN_KEY is the ID section of foreign keys.
@@ -26,6 +28,8 @@ pub const SECTION_INDEX: u8 = 17;
 pub const SECTION_NAMESPACE: u8 = 18;
 /// SECTION_OID is the ID section of raw OIDs that name no known object.
 pub const SECTION_OID: u8 = 19;
+/// SECTION_OPERATOR is the ID section of operators.
+pub const SECTION_OPERATOR: u8 = 20;
 /// SECTION_PROCEDURE is the ID section of procedures.
 pub const SECTION_PROCEDURE: u8 = 24;
 /// SECTION_SEQUENCE is the ID section of sequences.

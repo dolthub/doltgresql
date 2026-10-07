@@ -932,6 +932,10 @@ impl Session {
                 let mut parameters = Vec::new();
                 return self.with_ctx(&mut parameters, params, |ctx| ctx.create_function(create, &extras.text));
             }
+            NodeEnum::CreateCastStmt(create) => {
+                let mut parameters = Vec::new();
+                return self.with_ctx(&mut parameters, params, |ctx| ctx.create_cast(create));
+            }
             NodeEnum::DoStmt(stmt) => {
                 let mut parameters = Vec::new();
                 return self.with_ctx(&mut parameters, params, |ctx| ctx.do_block(stmt, &extras.text));
