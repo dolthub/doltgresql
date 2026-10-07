@@ -132,6 +132,9 @@ pub struct Activity {
     pub started: Option<i64>,
     /// Whether the session has an explicit transaction open.
     pub in_transaction: bool,
+    /// Whether the session has any transaction open, including the implicit one of a running statement or of
+    /// extended-protocol messages before their Sync, whose chunks garbage collection must keep.
+    pub writing: bool,
 }
 
 /// undrop_hint lists the dropped databases that dolt_undrop can restore, as Dolt's CreateUndropErrorMessage does.
@@ -277,6 +280,16 @@ impl Engine {
         update(all.entry(id).or_default());
     }
 
+    /// sync writes out the buffered journal records of every open database, as a server does before it stops.
+    pub fn sync(&self) -> Result<()> {
+        let databases: Vec<DbHandle> =
+            lock(&self.shared.databases)?.values().map(|(handle, _)| handle.clone()).collect();
+        for handle in databases {
+            lock(&handle)?.sync()?;
+        }
+        Ok(())
+    }
+
     /// forget_activity forgets a session that closed.
     fn forget_activity(&self, id: u64) {
         let Ok(mut all) = self.shared.activity.lock() else { return };
@@ -304,8 +317,8 @@ impl Engine {
     }
 
     /// auto_gc collects the garbage of each open database whose store has grown enough since it was last looked at, as
-    /// Dolt's automatic garbage collection does, skipping a database while a session has a transaction open on it, and
-    /// returns the databases it collected with how long each took.
+    /// Dolt's automatic garbage collection does, skipping a database while a session has a transaction open or a
+    /// statement running on it, and returns the databases it collected with how long each took.
     pub fn auto_gc(&self) -> Result<Vec<(String, std::time::Duration)>> {
         let databases: Vec<(String, DbHandle)> =
             lock(&self.shared.databases)?.iter().map(|(name, (handle, _))| (name.clone(), handle.clone())).collect();
@@ -315,13 +328,17 @@ impl Engine {
             let now = store_sizes(&noms);
             let state = *lock(&self.shared.auto_gc)?.entry(name.clone()).or_default();
             let then = state.sizes.unwrap_or(now);
-            let busy = self.activity().iter().any(|(_, a)| a.database == name && a.in_transaction);
-            if busy || !should_collect(now, then, state.last) {
+            if !should_collect(now, then, state.last) {
                 lock(&self.shared.auto_gc)?.insert(name, AutoGc { sizes: Some(then), ..state });
                 continue;
             }
+            let mut db = lock(&handle)?;
+            if self.activity().iter().any(|(_, a)| a.database == name && (a.writing || a.started.is_some())) {
+                continue;
+            }
             let start = std::time::Instant::now();
-            lock(&handle)?.gc(doltdb::database::GcMode::Default, self.temp_roots(&name))?;
+            db.gc(doltdb::database::GcMode::Default, self.temp_roots(&name))?;
+            drop(db);
             let end = std::time::Instant::now();
             let sizes = Some(store_sizes(&noms));
             lock(&self.shared.auto_gc)?.insert(name.clone(), AutoGc { sizes, last: Some((start, end)) });
@@ -896,7 +913,7 @@ impl Session {
         if let Some(query) = query {
             self.state.source = query.to_string();
         }
-        let state = &self.state;
+        let (state, txns) = (&self.state, &self.txns);
         state.engine.update_activity(state.id, |activity| {
             activity.database.clone_from(&state.database);
             activity.user.clone_from(&state.user);
@@ -906,6 +923,7 @@ impl Session {
             }
             activity.started = query.map(|_| crate::datetime::clock());
             activity.in_transaction = state.explicit;
+            activity.writing = !txns.is_empty();
         });
     }
 
@@ -1113,7 +1131,9 @@ impl Session {
 
     /// sync commits the implicit transaction of the extended protocol's messages since the last Sync.
     pub fn sync(&mut self) -> Result<()> {
-        self.end_implicit().map_err(|err| self.fail(err))
+        let result = self.end_implicit().map_err(|err| self.fail(err));
+        self.report_activity(None);
+        result
     }
 
     /// abort ends an implicit transaction, or marks an explicit one failed, after an error in a protocol message.
@@ -1171,28 +1191,34 @@ impl Session {
         let allow_conflicts = self.state.setting_on("dolt_allow_commit_conflicts");
         let force = self.state.setting_on("dolt_force_transaction_commit");
         let autocommit = !self.state.explicit;
-        for mut txn in std::mem::take(&mut self.txns) {
-            let handle = txn.handle.clone();
-            let mut db = lock(&handle)?;
-            if let Some(objects) = txn.take_temp(&mut db)?
-                && let Some(temp) = self.state.temp.get_mut(&txn.database)
-            {
-                let roots = objects.tables.iter().map(|t| t.1).chain(objects.objects.iter().map(|o| o.2)).collect();
-                self.state.engine.set_temp_roots(self.state.id, Some((&txn.database, roots)));
-                temp.objects = objects;
-            }
-            if txn.changed() {
-                let schema_conflicts = txn.merge.as_ref().is_some_and(|m| !m.unmergable_tables.is_empty());
-                crate::dolt::conflicts::commit_check(
-                    &mut db,
-                    &txn.root,
-                    schema_conflicts,
-                    allow_conflicts,
-                    force,
-                    autocommit,
-                )?;
-            }
-            txn.commit(&mut db, &self.state.user, &self.state.host)?;
+        for txn in std::mem::take(&mut self.txns) {
+            let (_, result) = self.with_txn(txn, &mut Vec::new(), &[], |ctx| {
+                if let Some(objects) = ctx.txn.take_temp(ctx.db)?
+                    && let Some(temp) = ctx.session.temp.get_mut(&ctx.txn.database)
+                {
+                    let roots = objects.tables.iter().map(|t| t.1).chain(objects.objects.iter().map(|o| o.2)).collect();
+                    ctx.session.engine.set_temp_roots(ctx.session.id, Some((&ctx.txn.database, roots)));
+                    temp.objects = objects;
+                }
+                if ctx.txn.detached || !ctx.txn.changed_persisted(ctx.db)? {
+                    return Ok(());
+                }
+                if ctx.txn.changed() {
+                    let schema_conflicts = ctx.txn.merge.as_ref().is_some_and(|m| !m.unmergable_tables.is_empty());
+                    crate::dolt::conflicts::commit_check(
+                        ctx.db,
+                        &ctx.txn.root,
+                        schema_conflicts,
+                        allow_conflicts,
+                        force,
+                        autocommit,
+                    )?;
+                }
+                ctx.merge_concurrent()?;
+                let (user, host) = (ctx.session.user.clone(), ctx.session.host.clone());
+                ctx.txn.flush(ctx.db, &user, &host)
+            });
+            result?;
         }
         Ok(())
     }
@@ -1281,11 +1307,28 @@ impl Session {
                 self.txns.len() - 1
             }
         };
-        let mut txn = self.txns.remove(index);
+        let txn = self.txns.remove(index);
+        let (txn, result) = self.with_txn(txn, parameters, params, f);
+        self.txns.insert(index, txn);
+        result
+    }
+
+    /// with_txn runs a function with the planning context of a transaction that the session holds apart from its
+    /// open ones, returning the transaction along with the result.
+    fn with_txn<T>(
+        &mut self,
+        mut txn: Txn,
+        parameters: &mut Vec<u32>,
+        params: &[Value],
+        f: impl FnOnce(&mut Ctx<'_>) -> Result<T>,
+    ) -> (Txn, Result<T>) {
         crate::datetime::install_now(txn.started);
         self.state.install_format();
         let handle = txn.handle.clone();
-        let mut db = lock(&handle)?;
+        let mut db = match lock(&handle) {
+            Ok(db) => db,
+            Err(err) => return (txn, Err(err)),
+        };
         let mut ctx = Ctx {
             db: &mut db,
             txn: &mut txn,
@@ -1309,8 +1352,8 @@ impl Session {
             ctx.install_aggregates()?;
             f(&mut ctx)
         })();
-        self.txns.insert(index, txn);
-        result
+        drop(db);
+        (txn, result)
     }
 
     /// run runs one statement with the parameter values.
@@ -1412,11 +1455,13 @@ impl Session {
     }
 
     /// begin_modes applies the transaction modes of a BEGIN, which a new transaction otherwise takes from
-    /// default_transaction_read_only, as Postgres does even for a BEGIN inside a transaction block.
+    /// default_transaction_read_only, as Postgres does even for a BEGIN inside a transaction block, and begins a new
+    /// transaction on the session's branch, whose starting state Dolt takes at BEGIN.
     fn begin_modes(&mut self, stmt: Option<&pg_query::protobuf::TransactionStmt>, begun: bool) -> Result<()> {
         if begun {
             let read_only = self.state.settings.get("default_transaction_read_only").unwrap_or_default();
             self.state.settings.set("transaction_read_only", Some(&read_only), true, true)?;
+            self.with_ctx(&mut Vec::new(), &[], |_| Ok(()))?;
         }
         for option in stmt.map(|s| s.options.as_slice()).unwrap_or_default() {
             let Some(NodeEnum::DefElem(def)) = option.node.as_ref() else { continue };

@@ -329,6 +329,14 @@ impl JournalStore {
         Ok(())
     }
 
+    /// sync writes out the journal's buffered records and index, leaving the store open.
+    pub fn sync(&mut self) -> Result<()> {
+        match self.journal.as_mut() {
+            Some(journal) => journal.sync(),
+            None => Ok(()),
+        }
+    }
+
     /// close writes out the journal's buffered records and index.
     pub fn close(self) -> Result<()> {
         match self.journal {

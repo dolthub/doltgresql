@@ -375,6 +375,11 @@ impl JournalWriter {
 
     /// close writes out the buffered records and index, and syncs the journal.
     pub fn close(mut self) -> Result<()> {
+        self.sync()
+    }
+
+    /// sync writes out the buffered records and index, and syncs the journal, which stays open.
+    pub fn sync(&mut self) -> Result<()> {
         self.flush()?;
         self.flush_index()?;
         self.journal.sync_all()?;

@@ -617,6 +617,14 @@ pub fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         }
         return Err(error("nothing to commit"));
     }
+    let current = ctx.db.head(&branch_ref(&ctx.txn.branch))?.unwrap_or_default();
+    if amend && current != ctx.txn.head {
+        return Err(crate::txn::retry_transaction_error(&format!(
+            "cannot amend head of branch '{}': is at {current} but expected {}",
+            ctx.txn.branch, ctx.txn.head
+        )));
+    }
+    ctx.merge_concurrent()?;
     let hash = if amend {
         let hash = amend_commit(ctx, &head, meta)?;
         ctx.session.advisory.release_all(ctx.session.id, true, false);
@@ -629,8 +637,21 @@ pub fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 }
 
 /// commit_staged commits the staged root on the given parents, or on the head alone without them, and releases the
-/// session's transaction-scoped advisory locks, as Dolt's DoltCommit does.
+/// session's transaction-scoped advisory locks, as Dolt's DoltCommit does, first merging into the staged root what
+/// other transactions committed to the branch since this one began.
 pub fn commit_staged(ctx: &mut Ctx<'_>, parents: Vec<Hash>, meta: CommitMeta) -> Result<Hash> {
+    if let Some(current) = ctx.db.head(&branch_ref(&ctx.txn.branch))?
+        && current != ctx.txn.head
+    {
+        let current_root = history::load(ctx.db, current)?.root;
+        if current_root != ctx.txn.head_root {
+            let theirs = Root::decode(&read(ctx.db, &current_root)?)?;
+            let base = Root::decode(&read(ctx.db, &ctx.txn.head_root)?)?;
+            let ours = ctx.txn.staged.clone();
+            let commits = crate::dolt::merge::Commits { ours: ctx.txn.head, theirs: current, base: ctx.txn.head };
+            ctx.txn.staged = crate::dolt::merge::merge_roots(ctx, &ours, &theirs, &base, commits)?.root;
+        }
+    }
     let (user, host) = (ctx.session.user.clone(), ctx.session.host.clone());
     let hash = ctx.txn.dolt_commit(ctx.db, &user, &host, parents, meta)?;
     ctx.session.advisory.release_all(ctx.session.id, true, false);

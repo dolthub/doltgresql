@@ -133,6 +133,17 @@ pub fn serve(config: &Config) -> Result<(), String> {
             }
         });
     }
+    let engine = server.engine.clone();
+    let mut signals = signal_hook::iterator::Signals::new([signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])
+        .map_err(|err| format!("cannot handle signals: {err}"))?;
+    std::thread::spawn(move || {
+        if signals.forever().next().is_some() {
+            if let Err(err) = engine.sync() {
+                log(&format!("error writing out databases on shutdown: {err}"));
+            }
+            std::process::exit(0);
+        }
+    });
     let host = if config.host == "localhost" { "127.0.0.1" } else { config.host.as_str() };
     let listener = bind(host, config.port)?;
     log(&format!("Server ready. Accepting connections on {host}:{}.", config.port));

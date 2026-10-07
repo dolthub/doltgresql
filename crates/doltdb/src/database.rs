@@ -587,6 +587,11 @@ impl Database {
         Ok(commit)
     }
 
+    /// sync writes out the store's buffered journal records, leaving the database open.
+    pub fn sync(&mut self) -> Result<()> {
+        Ok(self.store.sync()?)
+    }
+
     /// close writes out the store's buffered journal records.
     pub fn close(self) -> Result<()> {
         Ok(self.store.close()?)

@@ -17,6 +17,7 @@ pbkdf2 = "0.12"
 pgproto.workspace = true
 rand = "0.8"
 sha2 = "0.10"
+signal-hook = "0.3"
 sql = { path = "../sql" }
 yaml-rust2 = "0.13"
 

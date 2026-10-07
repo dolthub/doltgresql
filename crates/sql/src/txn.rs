@@ -42,8 +42,8 @@ pub struct Txn {
     pub branch: String,
     pub handle: DbHandle,
     pub sequences: SequenceTracker,
-    /// The working set's address when the transaction began.
-    working_set: Hash,
+    /// The working set's address when the transaction began, or as it last wrote it.
+    pub(crate) working_set: Hash,
     /// The branch's head commit and its root value.
     pub head: Hash,
     pub head_root: Hash,
@@ -205,7 +205,7 @@ impl Txn {
     }
 
     /// changed_persisted reports whether the transaction changed what it writes back to the working set.
-    fn changed_persisted(&self, db: &mut Database) -> Result<bool> {
+    pub(crate) fn changed_persisted(&self, db: &mut Database) -> Result<bool> {
         Ok(self.persisted_root(db)?.encode() != self.original
             || self.staged.encode() != self.original_staged
             || self.merge != self.original_merge
@@ -241,20 +241,6 @@ impl Txn {
             return Ok(None);
         }
         strip_schema(db, &mut self.root, &schema).map(Some)
-    }
-
-    /// commit writes the working and staged roots back to the working set when the transaction changed them, as the
-    /// user connected from the host.
-    pub fn commit(self, db: &mut Database, user: &str, host: &str) -> Result<()> {
-        if self.detached || !self.changed_persisted(db)? {
-            return Ok(());
-        }
-        let fields = self.working_set_fields(db, user, host)?;
-        match db.update_working_set(&working_set_ref(&self.branch), &fields, self.working_set) {
-            Ok(_) => Ok(()),
-            Err(database::Error::OptimisticLockFailed) => Err(serialization_failure()),
-            Err(err) => Err(err.into()),
-        }
     }
 
     /// flush writes the working and staged roots to the working set now, when they changed, and continues the
@@ -333,6 +319,31 @@ impl Txn {
         }
         Ok(tags)
     }
+}
+
+/// retry_transaction_error returns Dolt's error for a transaction that conflicts with one another client committed,
+/// after a detail that may be empty.
+pub fn retry_transaction_error(detail: &str) -> PgError {
+    let detail = if detail.is_empty() { String::new() } else { format!("{detail}: ") };
+    PgError::new(
+        code::SERIALIZATION_FAILURE,
+        format!(
+            "serialization failure: {detail}this transaction conflicts with a committed transaction from another \
+             client, try restarting transaction"
+        ),
+    )
+}
+
+/// working_roots returns the working and staged roots of the working set at the address.
+pub fn working_roots(db: &Database, address: Hash) -> Result<(Root, Root)> {
+    let data = read(db, &address)?;
+    let ws = WorkingSet::new(Message(&data))?;
+    let working = Root::decode(&read(db, &ws.working_root()?)?)?;
+    let staged = match ws.staged_root()? {
+        Some(staged) => Root::decode(&read(db, &staged)?)?,
+        None => working.clone(),
+    };
+    Ok((working, staged))
 }
 
 /// serialization_failure returns the error for a transaction that lost a race with a concurrent one.

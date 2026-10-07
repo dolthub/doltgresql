@@ -891,3 +891,36 @@ pub fn apply_to_working(ctx: &mut Ctx<'_>, table: &TableDef, edits: Vec<Edit>) -
     ctx.txn.root.put_table(ctx.db, &table.schema, &table.name, Some(address))?;
     Ok(())
 }
+
+impl Ctx<'_> {
+    /// merge_concurrent merges the changes that other transactions committed to the branch's working set since this
+    /// transaction began into its working and staged roots, as Dolt's transaction commit does, failing with Dolt's
+    /// retry error when the merge leaves conflicts.
+    pub fn merge_concurrent(&mut self) -> Result<()> {
+        let current = self.db.head(&doltdb::create::working_set_ref(&self.txn.branch))?.unwrap_or_default();
+        if current == self.txn.working_set || current.is_empty() || self.txn.working_set.is_empty() {
+            return Ok(());
+        }
+        let (start_working, start_staged) = crate::txn::working_roots(self.db, self.txn.working_set)?;
+        let (working, staged) = crate::txn::working_roots(self.db, current)?;
+        let commits = Commits { ours: self.txn.head, theirs: self.txn.head, base: self.txn.head };
+        if working.encode() != self.txn.root.encode() && working.encode() != start_working.encode() {
+            let ours = self.txn.root.clone();
+            let outcome = merge_roots(self, &working, &ours, &start_working, commits)?;
+            if outcome.artifacts {
+                return Err(crate::txn::retry_transaction_error(""));
+            }
+            self.txn.root = outcome.root;
+        }
+        if staged.encode() != self.txn.staged.encode() && staged.encode() != start_staged.encode() {
+            let ours = self.txn.staged.clone();
+            let outcome = merge_roots(self, &staged, &ours, &start_staged, commits)?;
+            if outcome.artifacts {
+                return Err(crate::txn::retry_transaction_error(""));
+            }
+            self.txn.staged = outcome.root;
+        }
+        self.txn.working_set = current;
+        Ok(())
+    }
+}
