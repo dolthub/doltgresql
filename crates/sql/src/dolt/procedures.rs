@@ -453,6 +453,7 @@ const ADD: Parser = Parser {
 
 /// dolt_add stages tables.
 fn dolt_add(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = ADD.parse(&strings(args))?;
     if parsed.args.is_empty() && !parsed.has("all") {
         return Err(error("Nothing specified, nothing added. Maybe you wanted to say 'dolt add .'?"));
@@ -567,6 +568,7 @@ pub fn commit_meta(ctx: &Ctx<'_>, description: &str) -> Result<CommitMeta> {
 
 /// dolt_commit commits the staged tables.
 pub fn dolt_commit(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::MERGE)?;
     let parsed = COMMIT.parse(&strings(args))?;
     if parsed.has("allow-empty") && parsed.has("skip-empty") {
         return Err(error("error: cannot use both --allow-empty and --skip-empty"));
@@ -747,10 +749,12 @@ fn create_branch(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> 
     if start.is_empty() {
         return Err(invalid_usage());
     }
+    ctx.can_create_branch(&name)?;
     create_branch_at(ctx, &name, start, force)
 }
 
-/// create_branch_at creates a branch at the commit a spec names, as Dolt's CreateBranchWithStartPt does.
+/// create_branch_at creates a branch at the commit a spec names and makes the session its admin, as Dolt's
+/// CreateBranchWithStartPt does.
 pub fn create_branch_at(ctx: &mut Ctx<'_>, name: &str, start: &str, force: bool) -> Result<()> {
     if let Some(existing) = case_conflict(ctx.db, "refs/heads/", name, "")? {
         return Err(error(format!("fatal: A branch named '{existing}' already exists.")));
@@ -763,14 +767,19 @@ pub fn create_branch_at(ctx: &mut Ctx<'_>, name: &str, start: &str, force: bool)
     }
     let commit = history::resolve(ctx.db, ctx.txn.head, start)
         .map_err(|e| error(format!("fatal: Unexpected error creating branch '{name}' : {}", e.message)))?;
-    new_branch(ctx.db, name, commit)
+    new_branch(ctx.db, name, commit)?;
+    ctx.add_branch_admin(name)
 }
 
-/// copy_branch copies a branch to a new name.
+/// copy_branch copies a branch to a new name, making the session the copy's admin.
 fn copy_branch(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> {
     let [source, dest] = parsed.args.as_slice() else { return Err(invalid_usage()) };
     if source.is_empty() || dest.is_empty() {
         return Err(empty_branch_name());
+    }
+    ctx.can_create_branch(dest)?;
+    if force {
+        ctx.can_delete_branch(dest)?;
     }
     let Some(commit) = ctx.db.head(&branch_ref(source))? else {
         return Err(error(format!("fatal: A branch named '{source}' not found")));
@@ -784,14 +793,21 @@ fn copy_branch(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> {
     if !valid_branch_name(dest) {
         return Err(error(format!("fatal: '{dest}' is not a valid branch name.")));
     }
-    new_branch(ctx.db, dest, commit)
+    new_branch(ctx.db, dest, commit)?;
+    ctx.add_branch_admin(dest)
 }
 
-/// rename_branch renames a branch with its working set, following it when it is the session's branch.
+/// rename_branch renames a branch with its working set, following it when it is the session's branch, and makes the
+/// session the renamed branch's admin.
 fn rename_branch(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> {
     let [old, new] = parsed.args.as_slice() else { return Err(invalid_usage()) };
     if old.is_empty() || new.is_empty() {
         return Err(empty_branch_name());
+    }
+    ctx.can_delete_branch(old)?;
+    ctx.can_create_branch(new)?;
+    if force {
+        ctx.can_delete_branch(new)?;
     }
     if old == new {
         return if branch_exists(ctx.db, old)? { Ok(()) } else { Err(error("branch not found")) };
@@ -816,13 +832,16 @@ fn rename_branch(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> 
         ctx.session.branch = new.clone();
         ctx.txn.branch = new.clone();
     }
-    Ok(())
+    ctx.add_branch_admin(new)
 }
 
 /// delete_branches deletes branches, refusing unmerged ones without force.
 fn delete_branches(ctx: &mut Ctx<'_>, parsed: &Parsed, force: bool) -> Result<()> {
     if parsed.args.is_empty() {
         return Err(invalid_usage());
+    }
+    for name in &parsed.args {
+        ctx.can_delete_branch(name)?;
     }
     for name in &parsed.args {
         if name.is_empty() {
@@ -1093,6 +1112,7 @@ const RESET: Parser =
 
 /// dolt_reset resets the staged root, and with --hard the working root, to a commit, moving the branch to it.
 fn dolt_reset(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = RESET.parse(&strings(args))?;
     if parsed.has("hard") && parsed.has("soft") {
         return Err(error("error: --hard and --soft are mutually exclusive options."));
@@ -1199,6 +1219,7 @@ fn merge_record(hash: &str, fast_forward: bool, conflicts: i64, message: &str) -
 
 /// dolt_merge merges a branch or commit into the session's branch.
 pub fn dolt_merge(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::MERGE)?;
     let parsed = MERGE.parse(&strings(args)).map_err(|e| {
         if e.message.contains("too many positional arguments") {
             error("Error: Dolt does not support merging from multiple commits. You probably meant to checkout one and then merge from the other.")

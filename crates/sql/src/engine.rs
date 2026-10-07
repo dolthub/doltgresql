@@ -46,6 +46,8 @@ struct Shared {
     superuser: String,
     /// The roles and privileges.
     auth: Arc<Mutex<crate::auth::AuthDb>>,
+    /// The branch control tables.
+    branch_control: Mutex<crate::dolt::branch_control::Controller>,
     databases: Mutex<HashMap<String, (DbHandle, SequenceTracker)>>,
     /// The advisory locks that sessions hold.
     advisory: Arc<crate::advisory::AdvisoryLocks>,
@@ -104,16 +106,25 @@ fn lock<T>(mutex: &Mutex<T>) -> Result<std::sync::MutexGuard<'_, T>> {
 }
 
 impl Engine {
-    /// open opens the data directory and the auth file, creating them, the default database named after the
-    /// superuser, and the superuser's role when they do not exist, as the Go server does on its first start.
-    pub fn open(data_dir: &Path, superuser: &str, password: &str, auth_file: &Path) -> Result<Engine> {
+    /// open opens the data directory, the auth file, and the branch control file when there is one, creating them,
+    /// the default database named after the superuser, and the superuser's role when they do not exist, as the Go
+    /// server does on its first start.
+    pub fn open(
+        data_dir: &Path,
+        superuser: &str,
+        password: &str,
+        auth_file: &Path,
+        branch_control_file: Option<&Path>,
+    ) -> Result<Engine> {
         std::fs::create_dir_all(data_dir.join(".dolt")).map_err(PgError::internal)?;
         let auth = crate::auth::AuthDb::open(auth_file, superuser, password)?;
+        let branch_control = crate::dolt::branch_control::Controller::load(branch_control_file.map(Path::to_path_buf))?;
         let engine = Engine {
             shared: Arc::new(Shared {
                 data_dir: data_dir.to_path_buf(),
                 superuser: superuser.to_string(),
                 auth: Arc::new(Mutex::new(auth)),
+                branch_control: Mutex::new(branch_control),
                 databases: Mutex::new(HashMap::new()),
                 advisory: Arc::default(),
                 started: crate::datetime::clock(),
@@ -127,6 +138,11 @@ impl Engine {
             doltdb::create::create_database(&dir, DEFAULT_BRANCH, superuser, "localhost", &create_times())?;
         }
         Ok(engine)
+    }
+
+    /// branch_control returns the branch control tables.
+    pub fn branch_control(&self) -> &Mutex<crate::dolt::branch_control::Controller> {
+        &self.shared.branch_control
     }
 
     /// put_statistics replaces the histograms of a table on a branch of a database.
@@ -1384,6 +1400,11 @@ impl Ctx<'_> {
     pub(crate) fn describe(&mut self, node: &NodeEnum) -> Result<Option<Vec<Column>>> {
         Ok(match node {
             NodeEnum::SelectStmt(select) => Some(Planner { ctx: self, outer: Vec::new() }.plan_query(select)?.columns),
+            NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
+                if self.is_branch_control_dml(node)? =>
+            {
+                None
+            }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.returning.map(|r| r.columns),
             NodeEnum::UpdateStmt(update) if self.is_conflicts_table(update.relation.as_ref())? => None,
             NodeEnum::DeleteStmt(delete) if self.is_conflicts_table(delete.relation.as_ref())? => None,
@@ -1395,14 +1416,37 @@ impl Ctx<'_> {
         })
     }
 
-    /// run plans and runs a statement.
+    /// run plans and runs a statement, after checking that the session may write to its branch when the statement
+    /// changes tables.
     pub(crate) fn run(&mut self, node: &NodeEnum) -> Result<Outcome> {
+        let writes = matches!(
+            node,
+            NodeEnum::InsertStmt(_)
+                | NodeEnum::UpdateStmt(_)
+                | NodeEnum::DeleteStmt(_)
+                | NodeEnum::TruncateStmt(_)
+                | NodeEnum::CreateStmt(_)
+                | NodeEnum::CreateTableAsStmt(_)
+                | NodeEnum::DropStmt(_)
+                | NodeEnum::AlterTableStmt(_)
+                | NodeEnum::RenameStmt(_)
+                | NodeEnum::IndexStmt(_)
+                | NodeEnum::ViewStmt(_)
+        );
+        if writes && !self.is_branch_control_dml(node)? {
+            self.check_branch_write()?;
+        }
         match node {
             NodeEnum::SelectStmt(select) => {
                 let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
                 let rows = query.plan.run(self)?;
                 let tag = format!("SELECT {}", rows.len());
                 Ok(Outcome::Rows { columns: query.columns, rows, tag })
+            }
+            NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
+                if let Some(outcome) = self.branch_control_dml(node)? =>
+            {
+                Ok(outcome)
             }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self),
             NodeEnum::UpdateStmt(update) => match self.update_object_conflicts(update)? {

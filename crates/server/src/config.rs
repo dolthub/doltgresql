@@ -32,6 +32,9 @@ pub struct Config {
     pub password: String,
     /// The file that holds the roles and privileges, relative to the working directory.
     pub auth_file: PathBuf,
+    /// The file that holds the branch control tables, relative to the working directory, or None to keep them in
+    /// memory as the Go server does without one.
+    pub branch_control_file: Option<PathBuf>,
 }
 
 /// usage is the command line's help.
@@ -70,6 +73,7 @@ impl Config {
             user: env("DOLTGRES_USER").unwrap_or_else(|| "postgres".into()),
             password: env("DOLTGRES_PASSWORD").unwrap_or_else(|| "password".into()),
             auth_file: PathBuf::from("auth.db"),
+            branch_control_file: None,
         };
         if let Some(path) = config_path {
             let text =
@@ -88,6 +92,9 @@ impl Config {
         }
         if let Some(file) = doc["auth_file"].as_str() {
             self.auth_file = PathBuf::from(file);
+        }
+        if let Some(file) = doc["branch_control_file"].as_str() {
+            self.branch_control_file = Some(PathBuf::from(file));
         }
         if let (Some(dir), false) = (doc["data_dir"].as_str(), data_dir_given) {
             self.data_dir = PathBuf::from(dir);

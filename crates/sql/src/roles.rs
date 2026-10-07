@@ -655,7 +655,7 @@ impl Ctx<'_> {
     }
 
     /// is_superuser reports whether the current role is a superuser.
-    fn is_superuser(&self) -> bool {
+    pub(crate) fn is_superuser(&self) -> bool {
         self.auth().ok().and_then(|a| a.role(&self.session.role).map(|r| r.superuser)).unwrap_or(false)
     }
 

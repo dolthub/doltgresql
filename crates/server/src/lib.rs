@@ -38,8 +38,14 @@ pub struct Server {
 impl Server {
     /// new opens the configured data directory and auth file.
     pub fn new(config: &Config) -> Result<Server, String> {
-        let engine = Engine::open(&config.data_dir, &config.user, &config.password, &config.auth_file)
-            .map_err(|err| err.to_string())?;
+        let engine = Engine::open(
+            &config.data_dir,
+            &config.user,
+            &config.password,
+            &config.auth_file,
+            config.branch_control_file.as_deref(),
+        )
+        .map_err(|err| err.to_string())?;
         Ok(Server { engine, next_process_id: AtomicU32::new(1) })
     }
 

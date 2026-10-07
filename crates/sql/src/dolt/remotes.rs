@@ -447,6 +447,7 @@ const REMOTE: Parser =
 
 /// dolt_remote adds or removes a remote.
 pub fn dolt_remote(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     crate::dolt::procedures::require_admin(ctx)?;
     let parsed = REMOTE.parse(&strings(args))?;
     let dir = database_dir(ctx);
@@ -722,6 +723,7 @@ fn push_record(status: i64, message: &str) -> Value {
 
 /// dolt_push pushes branches and tags to a remote.
 pub fn dolt_push(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     crate::dolt::procedures::require_admin(ctx)?;
     let parsed = PUSH.parse(&strings(args))?;
     let dir = database_dir(ctx);
@@ -867,6 +869,7 @@ fn fetch_remote<'a>(state: &RepoState, args: &'a [String]) -> Result<(Remote, &'
 
 /// dolt_fetch fetches branches and tags from a remote.
 pub fn dolt_fetch(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     crate::dolt::procedures::require_admin(ctx)?;
     let parsed = FETCH.parse(&strings(args))?;
     let state = RepoState::load(&database_dir(ctx))?;
@@ -911,6 +914,7 @@ fn pull_record(fast_forward: i64, conflicts: i64, message: &str) -> Value {
 
 /// dolt_pull fetches the current branch's upstream from a remote and merges it, as Dolt's doDoltPull does.
 pub fn dolt_pull(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     crate::dolt::procedures::require_admin(ctx)?;
     let parsed = PULL.parse(&strings(args)).map_err(|e| {
         if e.message.contains("too many positional arguments") { error("dolt pull takes at most two args") } else { e }
@@ -1163,6 +1167,7 @@ fn sync_to(ctx: &mut Ctx<'_>, backup: &Remote) -> Result<()> {
 
 /// dolt_backup adds, removes, syncs, and restores backups.
 pub fn dolt_backup(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     crate::dolt::procedures::require_admin(ctx)?;
     let parsed = BACKUP.parse(&strings(args))?;
     if parsed.args.is_empty() || (parsed.args.len() == 1 && parsed.has("verbose")) {

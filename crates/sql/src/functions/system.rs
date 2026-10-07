@@ -196,6 +196,7 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_get_viewdef", &[OID, INT4], TEXT, pg_get_viewdef),
     f("pg_get_viewdef", &[TEXT], TEXT, pg_get_viewdef),
     f("pg_get_viewdef", &[TEXT, BOOL], TEXT, pg_get_viewdef),
+    f("load_file", &[TEXT], TEXT, load_file),
 ];
 
 /// current_schemas returns the schemas of the search path that exist, with the ones searched implicitly when asked.
@@ -346,6 +347,16 @@ fn pg_get_indexdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 }
 
 /// pg_sleep waits for a number of seconds, for an interval, or until a time.
+/// load_file returns the contents of a file relative to the server's working directory, or NULL when it is missing, as
+/// go-mysql-server's LOAD_FILE does for Doltgres.
+fn load_file(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    match std::fs::read(text(&args[0])) {
+        Ok(bytes) => Ok(Value::Text(String::from_utf8_lossy(&bytes).into_owned())),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
+        Err(err) => Err(PgError::internal(err.to_string())),
+    }
+}
+
 fn pg_sleep(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let seconds = match &args[0] {
         Value::Float8(f) => *f,

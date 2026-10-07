@@ -228,6 +228,7 @@ fn abort_merge(ctx: &mut Ctx<'_>, merge: &MergeStateFields) -> Result<()> {
 
 /// dolt_revert commits the undoing of each named commit in turn, stopping at the first that leaves conflicts.
 pub fn dolt_revert(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = REVERT.parse(&strings(args))?;
     if parsed.has("abort") && parsed.has("continue") {
         return Err(error("error: --continue and --abort are mutually exclusive"));
@@ -384,6 +385,7 @@ fn abort_revert(ctx: &mut Ctx<'_>) -> Result<()> {
 
 /// dolt_cherry_pick commits a commit's changes onto the session's branch.
 pub fn dolt_cherry_pick(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = CHERRY_PICK.parse(&strings(args)).map_err(|e| {
         if e.message.contains("too many positional arguments") {
             error("cherry-picking multiple commits is not supported yet.")

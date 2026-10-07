@@ -30,6 +30,7 @@ const CLEAN: Parser =
 /// dolt_clean deletes the working root's tables and root objects that the staged root lacks, or only the named ones,
 /// leaving out tables that dolt_ignore ignores unless asked not to, as Dolt's CleanUntracked does.
 pub fn dolt_clean(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = CLEAN.parse(&strings(args))?;
     let working = ctx.txn.root.clone();
     let mut untracked = Vec::new();
@@ -162,6 +163,7 @@ fn table_error(tables: &[String], problem: &str) -> PgError {
 /// dolt_rm removes tables from the staged root, and from the working root too unless only the staged ones are
 /// removed, refusing tables with changes that the removal would lose, as Dolt's doDoltRm does.
 pub fn dolt_rm(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = RM.parse(&strings(args))?;
     if parsed.args.is_empty() {
         return Err(error("Nothing specified, nothing removed. Which tables should I remove?"));
@@ -268,6 +270,7 @@ const GC: Parser = Parser {
 /// dolt_gc removes the chunks that nothing reachable from the database's store root refers to, as Dolt's dolt_gc
 /// does, ending the other sessions that use the database with a transaction open.
 pub fn dolt_gc(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     crate::dolt::procedures::require_admin(ctx)?;
     let parsed = GC.parse(&strings(args))?;
     if parsed.has("shallow") && parsed.has("full") {
@@ -326,6 +329,7 @@ const UPDATE_TAG: Parser = Parser { command: "update-tag", options: &[], max_arg
 /// dolt_update_column_tag changes a column's tag. Like Dolt under Doltgres, it looks tables up without a schema, so
 /// it finds none, since every Doltgres table belongs to one.
 pub fn dolt_update_column_tag(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     crate::dolt::procedures::require_admin(ctx)?;
     let parsed = UPDATE_TAG.parse(&strings(args))?;
     if parsed.args.len() != 3 {
@@ -376,6 +380,7 @@ const VERIFY_CONSTRAINTS: Parser = Parser {
 /// commit, or among all rows, and returns 1 when a checked table has constraint violations, as Dolt's
 /// doDoltConstraintsVerify does.
 pub fn dolt_verify_constraints(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = VERIFY_CONSTRAINTS.parse(&strings(args))?;
     let working = ctx.txn.root.clone();
     let mut checked = Vec::new();

@@ -63,6 +63,10 @@ pub enum SystemTable {
     Statistics,
     /// The help of Dolt's procedures, which stays empty since Doltgres has no Dolt command line to document them.
     Help,
+    /// Who may do what on which branches, dolt_branch_control.
+    BranchControl,
+    /// Who may create branches with which names, dolt_branch_namespace_control.
+    BranchNamespaceControl,
     /// A system table over a user table.
     User(Box<UserTable>),
     /// The conflicts or constraint violations of a user table.
@@ -93,6 +97,8 @@ const TABLES: &[(&str, SystemTable)] = &[
     ("docs", SystemTable::Docs),
     ("statistics", SystemTable::Statistics),
     ("help", SystemTable::Help),
+    ("branch_control", SystemTable::BranchControl),
+    ("branch_namespace_control", SystemTable::BranchNamespaceControl),
 ];
 
 /// lookup returns the system table that a schema and name refer to: a name in the `dolt` schema, or the name with a
@@ -185,6 +191,12 @@ impl SystemTable {
             ],
             SystemTable::Conflicts => crate::dolt::conflicts::summary_columns(true),
             SystemTable::ConstraintViolations => crate::dolt::conflicts::summary_columns(false),
+            SystemTable::BranchControl => {
+                vec![("database", TEXT), ("branch", TEXT), ("user", TEXT), ("host", TEXT), ("permissions", TEXT)]
+            }
+            SystemTable::BranchNamespaceControl => {
+                vec![("database", TEXT), ("branch", TEXT), ("user", TEXT), ("host", TEXT)]
+            }
             SystemTable::SchemaConflicts => vec![
                 ("table_name", TEXT),
                 ("base_schema", TEXT),
@@ -261,9 +273,10 @@ impl SystemTable {
             SystemTable::CommitAncestors => ancestor_rows(ctx),
             SystemTable::Status => status_rows(ctx),
             SystemTable::MergeStatus => merge_status_rows(ctx),
-            SystemTable::SchemaConflicts | SystemTable::Ignore | SystemTable::Procedures | SystemTable::Help => {
-                Ok(Vec::new())
-            }
+            SystemTable::SchemaConflicts => crate::dolt::conflicts::schema_conflict_rows(ctx),
+            SystemTable::BranchControl => ctx.branch_control_rows(),
+            SystemTable::BranchNamespaceControl => ctx.branch_namespace_rows(),
+            SystemTable::Ignore | SystemTable::Procedures | SystemTable::Help => Ok(Vec::new()),
             SystemTable::Diff => crate::dolt::diff::unscoped_rows(ctx),
             SystemTable::Docs => crate::dolt::docs::rows(ctx),
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),

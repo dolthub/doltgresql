@@ -17,6 +17,7 @@
 pub mod admin;
 pub mod args;
 pub mod artifacts;
+pub mod branch_control;
 pub mod conflicts;
 pub mod diff;
 pub mod docs;

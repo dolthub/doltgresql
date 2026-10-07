@@ -256,6 +256,73 @@ impl ArtifactTable {
     }
 }
 
+/// schema_conflict_rows returns the tables whose schemas the merge in progress could not merge, with their base, our,
+/// and their CREATE TABLE statements and what conflicts, as dolt_schema_conflicts lists them.
+pub fn schema_conflict_rows(ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+    let Some(merge) = ctx.txn.merge.clone() else { return Ok(Vec::new()) };
+    let theirs = history::load(ctx.db, merge.from_commit)?;
+    let their_root = Root::decode(&read(ctx.db, &theirs.root)?)?;
+    let base_root = match history::merge_base(ctx.db, ctx.txn.head, merge.from_commit)? {
+        Some(base) => {
+            let base = history::load(ctx.db, base)?;
+            Some(Root::decode(&read(ctx.db, &base.root)?)?)
+        }
+        None => None,
+    };
+    let our_root = ctx.txn.root.clone();
+    let mut rows = Vec::new();
+    for name in &merge.unmergable_tables {
+        let name = String::from_utf8_lossy(name).into_owned();
+        let ours = find_table(ctx, &our_root, &name)?;
+        let theirs = find_table(ctx, &their_root, &name)?;
+        let base = match &base_root {
+            Some(root) => find_table(ctx, root, &name)?,
+            None => None,
+        };
+        let statement = |t: &Option<TableDef>| match t {
+            Some(t) => Value::Text(crate::dolt::patch::create_table_statement(t, &[])),
+            None => Value::Null,
+        };
+        let mut messages = Vec::new();
+        if let (Some(ours), Some(theirs)) = (&ours, &theirs) {
+            for column in &ours.columns {
+                if let Some(other) = theirs.columns.iter().find(|c| c.tag == column.tag) {
+                    if other.ty != column.ty || other.name != column.name {
+                        let (a, b) = (&column.name, &other.name);
+                        messages.push(format!("different column definitions for our column {a} and their column {b}"));
+                    }
+                } else if let Some(other) = theirs.columns.iter().find(|c| c.name == column.name && c.ty != column.ty) {
+                    let (a, b) = (crate::cast::type_display(column.ty.oid), crate::cast::type_display(other.ty.oid));
+                    messages.push(format!("incompatible column types for column '{}': {a} and {b}", column.name));
+                }
+            }
+        } else {
+            messages.push("table was modified in one branch and deleted in the other".to_string());
+        }
+        rows.push(vec![
+            Value::Text(name),
+            statement(&base),
+            statement(&ours),
+            statement(&theirs),
+            Value::Text(messages.join("\n")),
+        ]);
+    }
+    Ok(rows)
+}
+
+/// find_table loads the table of a root with a name, in whichever schema holds it.
+fn find_table(ctx: &mut Ctx<'_>, root: &Root, name: &str) -> Result<Option<TableDef>> {
+    for (key, address) in root.tables(ctx.db)? {
+        let mut parts = key.splitn(3, |&b| b == 0).skip(1);
+        let (Some(schema), Some(table)) = (parts.next(), parts.next()) else { continue };
+        if table == name.as_bytes() {
+            let schema = String::from_utf8_lossy(schema).into_owned();
+            return Ok(Some(TableDef::load(ctx.db, &schema, name, address)?));
+        }
+    }
+    Ok(None)
+}
+
 /// summary_rows returns the tables of the working root that have conflicts, or constraint violations, with how many,
 /// and for conflicts the root objects with conflicting fields.
 pub fn summary_rows(ctx: &mut Ctx<'_>, conflicts: bool) -> Result<Vec<Vec<Value>>> {
@@ -330,7 +397,7 @@ impl Ctx<'_> {
 
 impl Ctx<'_> {
     /// select_rows runs a SELECT of targets from a relation with a WHERE clause.
-    fn select_rows(
+    pub(crate) fn select_rows(
         &mut self,
         relation: &pg_query::protobuf::RangeVar,
         target_list: Vec<pg_query::Node>,
@@ -506,7 +573,7 @@ fn column(name: &str) -> pg_query::Node {
 }
 
 /// star returns the `*` target of a select list.
-fn star() -> pg_query::Node {
+pub(crate) fn star() -> pg_query::Node {
     let star = pg_query::Node { node: Some(NodeEnum::AStar(pg_query::protobuf::AStar {})) };
     let column = pg_query::protobuf::ColumnRef { fields: vec![star], location: -1 };
     let target = pg_query::protobuf::ResTarget {

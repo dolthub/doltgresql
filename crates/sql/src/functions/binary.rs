@@ -45,6 +45,13 @@ pub const FUNCTIONS: &[Function] = &[
     f("substr", &[BYTEA, INT4, INT4], BYTEA, bytea_substring),
     f("position", &[BYTEA, BYTEA], INT4, bytea_position),
     f("btrim", &[BYTEA, BYTEA], BYTEA, bytea_btrim),
+    f("byteacmp", &[BYTEA, BYTEA], INT4, byteacmp),
+    f("byteaeq", &[BYTEA, BYTEA], BOOL, byteaeq),
+    f("byteane", &[BYTEA, BYTEA], BOOL, byteane),
+    f("bytealt", &[BYTEA, BYTEA], BOOL, bytealt),
+    f("byteale", &[BYTEA, BYTEA], BOOL, byteale),
+    f("byteagt", &[BYTEA, BYTEA], BOOL, byteagt),
+    f("byteage", &[BYTEA, BYTEA], BOOL, byteage),
     f("~~", &[BYTEA, BYTEA], BOOL, bytea_like),
     f("!~~", &[BYTEA, BYTEA], BOOL, bytea_not_like),
     f("encode", &[BYTEA, TEXT], TEXT, encode),
@@ -210,6 +217,41 @@ fn bytea_btrim(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let start = data.iter().position(|b| !set.contains(b)).unwrap_or(data.len());
     let end = data.iter().rposition(|b| !set.contains(b)).map_or(start, |i| i + 1);
     Ok(Value::Bytea(data[start..end.max(start)].to_vec()))
+}
+
+/// byteacmp compares two byte strings, returning -1, 0, or 1.
+fn byteacmp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Int4(bytes(&args[0]).cmp(bytes(&args[1])) as i32))
+}
+
+/// byteaeq reports whether two byte strings are equal.
+fn byteaeq(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Bool(bytes(&args[0]) == bytes(&args[1])))
+}
+
+/// byteane reports whether two byte strings differ.
+fn byteane(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Bool(bytes(&args[0]) != bytes(&args[1])))
+}
+
+/// bytealt reports whether a byte string sorts before another.
+fn bytealt(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Bool(bytes(&args[0]) < bytes(&args[1])))
+}
+
+/// byteale reports whether a byte string sorts before another or equals it.
+fn byteale(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Bool(bytes(&args[0]) <= bytes(&args[1])))
+}
+
+/// byteagt reports whether a byte string sorts after another.
+fn byteagt(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Bool(bytes(&args[0]) > bytes(&args[1])))
+}
+
+/// byteage reports whether a byte string sorts after another or equals it.
+fn byteage(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    Ok(Value::Bool(bytes(&args[0]) >= bytes(&args[1])))
 }
 
 /// bytea_like implements LIKE, matching byte by byte.

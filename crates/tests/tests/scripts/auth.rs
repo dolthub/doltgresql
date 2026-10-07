@@ -3193,9 +3193,14 @@ privileges for function drop_role_routine()"#, ..E }),
                 "CREATE USER user2 PASSWORD 'b';",
                 "GRANT ALL PRIVILEGES ON SCHEMA public TO user1;",
                 "GRANT ALL PRIVILEGES ON SCHEMA public TO user2;",
-                "GRANT ALL PRIVILEGES ON test TO user1 WITH GRANT OPTION;",
             ],
             assertions: &[
+                // Postgres rejects a grant on a table that does not exist yet, which Go accepted in this script's setup.
+                ScriptTestAssertion {
+                    query: "GRANT ALL PRIVILEGES ON test TO user1 WITH GRANT OPTION;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "test" does not exist"#, ..E }),
+                    ..A
+                },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "CREATE TABLE test (pk INT4 PRIMARY KEY);",

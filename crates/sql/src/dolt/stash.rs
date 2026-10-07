@@ -227,6 +227,7 @@ fn index(arg: Option<&String>) -> Result<usize> {
 
 /// dolt_stash pushes, pops, applies, drops, and clears stashes.
 pub fn dolt_stash(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = STASH.parse(&strings(args))?;
     if parsed.args.len() < 2 {
         return Err(error("error: invalid arguments. Must provide valid subcommand and stash name"));
