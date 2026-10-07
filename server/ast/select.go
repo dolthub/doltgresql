@@ -198,6 +198,16 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 // inputExpressionForSelectExpr returns the input expression for a tree.SelectExpr.
 // Postgres has specific handling for function calls that differs from the default printing behavior.
 func inputExpressionForSelectExpr(node tree.SelectExpr) string {
+	// PostgreSQL uses only the function name as the default column label, even for qualified calls.
+	if funcExpr, ok := node.Expr.(*tree.FuncExpr); ok && node.As == "" {
+		if funcName, ok := funcExpr.Func.FunctionReference.(*tree.UnresolvedName); ok && funcName.NumParts > 1 {
+			unqualifiedName := *funcName
+			unqualifiedName.NumParts = 1
+			unqualifiedExpr := *funcExpr
+			unqualifiedExpr.Func.FunctionReference = &unqualifiedName
+			node.Expr = &unqualifiedExpr
+		}
+	}
 	inputExpression := tree.AsStringWithFlags(&node, tree.FmtOmitFunctionArgs)
 	// To be consistent with vitess handling, InputExpression always gets its outer quotes trimmed
 	if strings.HasPrefix(inputExpression, "'") && strings.HasSuffix(inputExpression, "'") {
