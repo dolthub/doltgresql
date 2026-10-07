@@ -17,22 +17,28 @@
 //! a table file and committing it with the new root.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use md5::{Digest, Md5};
 use store::{Chunk, ChunkReader, ChunkStore, Hash, TableWriter};
 use tonic::transport::Channel;
 
+use crate::cluster::{EPOCH_HEADER, Member, ROLE_HEADER};
 use crate::remotesapi::chunk_store_service_client::ChunkStoreServiceClient;
 use crate::remotesapi::{self as api, download_loc, upload_loc};
+use crate::replicationapi;
+use crate::replicationapi::replication_service_client::ReplicationServiceClient;
 
 /// BATCH is how many chunks one download location request asks for.
 const BATCH: usize = 4096;
 
+/// Client is the gRPC client of a remote's chunk store service.
+type Client = ChunkStoreServiceClient<Channel>;
+
 /// RemoteStore is a chunk store on a remote server.
 pub struct RemoteStore {
     runtime: tokio::runtime::Runtime,
-    client: ChunkStoreServiceClient<Channel>,
+    client: Client,
     http: reqwest::Client,
     /// The repository path that requests name.
     repo: String,
@@ -43,6 +49,8 @@ pub struct RemoteStore {
     cache: Mutex<HashMap<Hash, Chunk>>,
     /// The decompressed archive dictionaries downloaded so far, by URL and offset.
     dictionaries: Mutex<HashMap<(String, u64), Vec<u8>>>,
+    /// The cluster member that replicates through the store, if any.
+    member: Option<Arc<dyn Member>>,
 }
 
 /// error returns a store error for a failed remote call.
@@ -53,6 +61,12 @@ fn error(err: impl std::fmt::Display) -> store::Error {
 impl RemoteStore {
     /// open connects to a remote at a URL such as `http://host:port/repo` and reads its root.
     pub fn open(url: &str) -> Result<RemoteStore, String> {
+        RemoteStore::open_as(url, None)
+    }
+
+    /// open_as connects to a remote as open does, sending a cluster member's role, epoch, and token with each request
+    /// when given one.
+    pub fn open_as(url: &str, member: Option<Arc<dyn Member>>) -> Result<RemoteStore, String> {
         let (scheme, rest) = url.split_once("://").ok_or_else(|| format!("invalid remote url: {url}"))?;
         let (host, repo) = rest.split_once('/').unwrap_or((rest, ""));
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
@@ -71,10 +85,19 @@ impl RemoteStore {
             pending: Vec::new(),
             cache: Mutex::new(HashMap::new()),
             dictionaries: Mutex::new(HashMap::new()),
+            member,
         };
         store.metadata().map_err(|err| err.to_string())?;
         store.root = store.fetch_root().map_err(|err| err.to_string())?;
         Ok(store)
+    }
+
+    /// call sends a request through exchange.
+    fn call<T, R, F>(&self, message: T, send: impl FnOnce(Client, tonic::Request<T>) -> F) -> store::Result<R>
+    where
+        F: std::future::Future<Output = Result<tonic::Response<R>, tonic::Status>>,
+    {
+        exchange(&self.runtime, self.client.clone(), self.member.as_deref(), message, send).map_err(error)
     }
 
     /// metadata checks that the remote serves the repository in Dolt's storage format.
@@ -87,8 +110,7 @@ impl RemoteStore {
             }),
             ..Default::default()
         };
-        let mut client = self.client.clone();
-        let response = self.runtime.block_on(client.get_repo_metadata(request)).map_err(error)?.into_inner();
+        let response = self.call(request, |mut c, r| async move { c.get_repo_metadata(r).await })?;
         if response.nbf_version != "__DOLT__" {
             return Err(error(format!("remote has unsupported storage format {}", response.nbf_version)));
         }
@@ -98,8 +120,7 @@ impl RemoteStore {
     /// fetch_root reads the remote's root.
     fn fetch_root(&self) -> store::Result<Hash> {
         let request = api::RootRequest { repo_path: self.repo.clone(), ..Default::default() };
-        let mut client = self.client.clone();
-        let response = self.runtime.block_on(client.root(request)).map_err(error)?.into_inner();
+        let response = self.call(request, |mut c, r| async move { c.root(r).await })?;
         Ok(Hash(response.root_hash.as_slice().try_into().map_err(|_| error("invalid root hash"))?))
     }
 
@@ -111,8 +132,7 @@ impl RemoteStore {
                 chunk_hashes: batch.iter().map(|h| h.0.to_vec()).collect(),
                 ..Default::default()
             };
-            let mut client = self.client.clone();
-            let response = self.runtime.block_on(client.get_download_locations(request)).map_err(error)?.into_inner();
+            let response = self.call(request, |mut c, r| async move { c.get_download_locations(r).await })?;
             for location in response.locs {
                 let Some(download_loc::Location::HttpGetRange(range)) = location.location else { continue };
                 self.fetch_ranges(&range)?;
@@ -194,8 +214,7 @@ impl RemoteStore {
             table_file_details: vec![details],
             ..Default::default()
         };
-        let mut client = self.client.clone();
-        let response = self.runtime.block_on(client.get_upload_locations(request)).map_err(error)?.into_inner();
+        let response = self.call(request, |mut c, r| async move { c.get_upload_locations(r).await })?;
         for location in response.locs {
             let Some(upload_loc::Location::HttpPost(post)) = location.location else { continue };
             let sent = self.runtime.block_on(self.http.put(&post.url).body(bytes.clone()).send()).map_err(error)?;
@@ -204,6 +223,75 @@ impl RemoteStore {
             }
         }
         Ok(Some(api::ChunkTableInfo { hash: name.0.to_vec(), chunk_count: count }))
+    }
+}
+
+/// exchange sends a request, with the cluster member's role, epoch, and token when there is one, and lets the member
+/// learn from the role and epoch of the response, as Dolt's cluster clientinterceptor does.
+fn exchange<C, T, R, F>(
+    runtime: &tokio::runtime::Runtime,
+    client: C,
+    member: Option<&dyn Member>,
+    message: T,
+    send: impl FnOnce(C, tonic::Request<T>) -> F,
+) -> Result<R, String>
+where
+    F: std::future::Future<Output = Result<tonic::Response<R>, tonic::Status>>,
+{
+    let mut request = tonic::Request::new(message);
+    if let Some(member) = member {
+        let (role, epoch) = member.role();
+        let state = match role.as_str() {
+            "primary" => None,
+            "standby" => Some("a standby"),
+            _ => Some("in detected_broken_config"),
+        };
+        if let Some(state) = state {
+            return Err(format!(
+                "cluster: clientinterceptor: this server is {state} and is not currently replicating to its standby"
+            ));
+        }
+        let metadata = request.metadata_mut();
+        let mut insert = |name: &'static str, value: String| {
+            if let Ok(value) = value.parse() {
+                metadata.insert(name, value);
+            }
+        };
+        insert(ROLE_HEADER, role);
+        insert(EPOCH_HEADER, epoch.to_string());
+        insert("authorization", format!("Bearer {}", member.credentials().token()));
+    }
+    let result = runtime.block_on(send(client, request));
+    if let Some(member) = member {
+        let metadata = match &result {
+            Ok(response) => response.metadata(),
+            Err(status) => status.metadata(),
+        };
+        learn(member, metadata);
+    }
+    result
+        .map(tonic::Response::into_inner)
+        .map_err(|status| format!("rpc error: code = {:?} desc = {}", status.code(), status.message()))
+}
+
+/// learn moves a primary to the role that a standby's response shows it must take, as Dolt's
+/// handleResponseHeaders does.
+fn learn(member: &dyn Member, metadata: &tonic::metadata::MetadataMap) {
+    let (role, epoch) = member.role();
+    let header = |name: &str| metadata.get(name).and_then(|v| v.to_str().ok());
+    let (Some(from_role), Some(Ok(from_epoch))) = (header(ROLE_HEADER), header(EPOCH_HEADER).map(str::parse::<i64>))
+    else {
+        return;
+    };
+    if role != "primary" {
+        return;
+    }
+    if from_role == "primary" && from_epoch == epoch {
+        member.force_role("detected_broken_config", from_epoch);
+    } else if from_role == "primary" && from_epoch > epoch {
+        member.force_role("standby", from_epoch);
+    } else if from_role == "detected_broken_config" && from_epoch >= epoch {
+        member.force_role("detected_broken_config", from_epoch);
     }
 }
 
@@ -242,10 +330,9 @@ impl ChunkStore for RemoteStore {
                 hashes: batch.iter().map(|h| h.0.to_vec()).collect(),
                 ..Default::default()
             };
-            let mut client = self.client.clone();
-            match self.runtime.block_on(client.has_chunks(request)) {
+            match self.call(request, |mut c, r| async move { c.has_chunks(r).await }) {
                 Ok(response) => {
-                    for absent in response.into_inner().absent {
+                    for absent in response.absent {
                         held[start + absent as usize] = false;
                     }
                 }
@@ -264,9 +351,8 @@ impl ChunkStore for RemoteStore {
         }
         let request =
             api::HasChunksRequest { repo_path: self.repo.clone(), hashes: vec![hash.0.to_vec()], ..Default::default() };
-        let mut client = self.client.clone();
-        match self.runtime.block_on(client.has_chunks(request)) {
-            Ok(response) => response.into_inner().absent.is_empty(),
+        match self.call(request, |mut c, r| async move { c.has_chunks(r).await }) {
+            Ok(response) => response.absent.is_empty(),
             Err(_) => false,
         }
     }
@@ -291,8 +377,7 @@ impl ChunkStore for RemoteStore {
             }),
             ..Default::default()
         };
-        let mut client = self.client.clone();
-        let success = self.runtime.block_on(client.commit(request)).map_err(error)?.into_inner().success;
+        let success = self.call(request, |mut c, r| async move { c.commit(r).await })?.success;
         self.pending.clear();
         self.root = if success { current } else { self.fetch_root()? };
         Ok(success)
@@ -300,5 +385,62 @@ impl ChunkStore for RemoteStore {
 
     fn root(&self) -> Hash {
         self.root
+    }
+}
+
+/// Replica sends a standby what a primary replicates outside of its databases: roles and privileges, branch control,
+/// and dropped databases, as Dolt's replicationServiceClient does.
+pub struct Replica {
+    runtime: tokio::runtime::Runtime,
+    client: ReplicationServiceClient<Channel>,
+    member: Arc<dyn Member>,
+}
+
+impl Replica {
+    /// connect connects to the standby at the host and port of a URL such as `http://host:port/`.
+    pub fn connect(url: &str, member: Arc<dyn Member>) -> Result<Replica, String> {
+        let (scheme, rest) = url.split_once("://").ok_or_else(|| format!("invalid remote url: {url}"))?;
+        let host = rest.split('/').next().unwrap_or(rest);
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
+        let client = runtime
+            .block_on(ReplicationServiceClient::connect(format!("{scheme}://{host}")))
+            .map_err(|err| err.to_string())?
+            .max_decoding_message_size(usize::MAX)
+            .max_encoding_message_size(usize::MAX);
+        Ok(Replica { runtime, client, member })
+    }
+
+    /// update_users sends the serialized roles and privileges.
+    pub fn update_users(&self, contents: Vec<u8>) -> Result<(), String> {
+        let request = replicationapi::UpdateUsersAndGrantsRequest { serialized_contents: contents };
+        let member = Some(self.member.as_ref());
+        exchange(&self.runtime, self.client.clone(), member, request, |mut c, r| async move {
+            c.update_users_and_grants(r).await
+        })
+        .map(|_| ())
+    }
+
+    /// update_branch_control sends the serialized branch control tables.
+    pub fn update_branch_control(&self, contents: Vec<u8>) -> Result<(), String> {
+        let request = replicationapi::UpdateBranchControlRequest { serialized_contents: contents };
+        let member = Some(self.member.as_ref());
+        exchange(&self.runtime, self.client.clone(), member, request, |mut c, r| async move {
+            c.update_branch_control(r).await
+        })
+        .map(|_| ())
+    }
+
+    /// drop_database tells the standby to drop a database.
+    pub fn drop_database(&self, name: &str) -> Result<(), String> {
+        let request = replicationapi::DropDatabaseRequest { name: name.to_string() };
+        let member = Some(self.member.as_ref());
+        exchange(
+            &self.runtime,
+            self.client.clone(),
+            member,
+            request,
+            |mut c, r| async move { c.drop_database(r).await },
+        )
+        .map(|_| ())
     }
 }

@@ -54,6 +54,8 @@ pub struct Config {
     /// The size of automatic garbage collection's incremental files, or 0 for none, from
     /// behavior.auto_gc_behavior.incremental_file_size.
     pub auto_gc_incremental_file_size: u64,
+    /// The cluster replication that the server takes part in, from the `cluster` section.
+    pub cluster: Option<sql::cluster::ClusterConfig>,
 }
 
 /// Startup is what a command line asks for: serving with a configuration, or printing text and exiting.
@@ -186,6 +188,7 @@ impl Config {
             remotesapi: None,
             auto_gc_archive: true,
             auto_gc_incremental_file_size: 0,
+            cluster: None,
         };
         if let Some(path) = config_path {
             let text =
@@ -214,6 +217,9 @@ impl Config {
         if let Some(port) = doc["remotesapi"]["port"].as_i64() {
             let read_only = doc["remotesapi"]["read_only"].as_bool().unwrap_or(false);
             self.remotesapi = Some((port as u16, read_only));
+        }
+        if !doc["cluster"].is_badvalue() {
+            self.cluster = Some(cluster_config(&doc["cluster"])?);
         }
         if let Some(read_only) = doc["behavior"]["read_only"].as_bool() {
             self.read_only = read_only;
@@ -248,4 +254,44 @@ impl Config {
         }
         Ok(())
     }
+}
+
+/// cluster_config reads the `cluster` section of a config file, checking it as Dolt's ValidateClusterConfig does.
+fn cluster_config(cluster: &Yaml) -> Result<sql::cluster::ClusterConfig, String> {
+    let remotes: Vec<sql::cluster::StandbyRemote> = cluster["standby_remotes"]
+        .as_vec()
+        .into_iter()
+        .flatten()
+        .map(|remote| sql::cluster::StandbyRemote {
+            name: remote["name"].as_str().unwrap_or_default().to_string(),
+            url_template: remote["remote_url_template"].as_str().unwrap_or_default().to_string(),
+        })
+        .collect();
+    if remotes.is_empty() {
+        return Err("cluster config: must supply standby_remotes when supplying cluster configuration.".into());
+    }
+    for (i, remote) in remotes.iter().enumerate() {
+        if remote.name.is_empty() {
+            return Err(format!("cluster: standby_remotes[{i}]: name: Cannot be empty"));
+        }
+        if !remote.url_template.contains("{database}") {
+            return Err(format!(
+                "cluster: standby_remotes[{i}]: remote_url_template: is \"{}\" but must include the {{database}} \
+                 template parameter",
+                remote.url_template
+            ));
+        }
+    }
+    let bootstrap_role = cluster["bootstrap_role"].as_str().unwrap_or_default().to_string();
+    if !matches!(bootstrap_role.as_str(), "" | "primary" | "standby") {
+        return Err(format!("cluster: boostrap_role: is \"{bootstrap_role}\" but must be \"primary\" or \"standby\""));
+    }
+    let bootstrap_epoch = cluster["bootstrap_epoch"].as_i64().unwrap_or(0);
+    if bootstrap_epoch < 0 {
+        return Err(format!("cluster: boostrap_epoch: is {bootstrap_epoch} but must be >= 0"));
+    }
+    let port = cluster["remotesapi"]["port"].as_i64().unwrap_or(0);
+    let remotesapi_port =
+        u16::try_from(port).map_err(|_| format!("cluster: remotesapi: port: is not in range 0-65535: {port}"))?;
+    Ok(sql::cluster::ClusterConfig { standby_remotes: remotes, bootstrap_role, bootstrap_epoch, remotesapi_port })
 }

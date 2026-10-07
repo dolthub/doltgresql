@@ -45,7 +45,7 @@ pub struct Remote {
 
 impl Remote {
     /// new returns a remote whose fetch spec maps every branch to a tracking branch, as Dolt's NewRemote does.
-    fn new(name: &str, url: &str) -> Remote {
+    pub(crate) fn new(name: &str, url: &str) -> Remote {
         Remote {
             name: name.to_string(),
             url: url.to_string(),
@@ -1123,6 +1123,9 @@ pub fn dolt_clone(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         let _ = std::fs::remove_dir_all(&dir);
     }
     cloned?;
+    if let Some(cluster) = ctx.session.engine.cluster() {
+        ctx.session.engine.add_cluster_database(&cluster, &name)?;
+    }
     Ok(Value::Int8(0))
 }
 

@@ -30,14 +30,20 @@ use store::{Hash, TableSpec};
 use tokio_stream::StreamExt;
 use tonic::{Request, Status};
 
+use crate::cluster::{EPOCH_HEADER, JWKS_PATH, Member, ROLE_HEADER};
 use crate::remotesapi::chunk_store_service_server::{ChunkStoreService, ChunkStoreServiceServer};
 use crate::remotesapi::{self as api, download_loc, upload_loc};
+use crate::replicationapi;
+use crate::replicationapi::replication_service_server::{ReplicationService, ReplicationServiceServer};
 use crate::sealer::Sealer;
 
 /// Databases gives the server the databases it serves by name.
 pub trait Databases: Send + Sync + 'static {
     /// database returns the open database with the name, or None when there is none.
     fn database(&self, name: &str) -> Option<Arc<Mutex<Database>>>;
+
+    /// committed notes that a commit through the server moved a database's root.
+    fn committed(&self, _name: &str) {}
 }
 
 /// Shared is what the gRPC service and the HTTP handler share.
@@ -47,8 +53,14 @@ struct Shared {
     sealer: Sealer,
 }
 
-/// serve serves the remotes API on a listener until the listener fails, running its own async runtime.
-pub fn serve(listener: std::net::TcpListener, databases: Arc<dyn Databases>, read_only: bool) -> std::io::Result<()> {
+/// serve serves the remotes API on a listener until the listener fails, running its own async runtime, and serves a
+/// cluster member's replication to it when given one.
+pub fn serve(
+    listener: std::net::TcpListener,
+    databases: Arc<dyn Databases>,
+    read_only: bool,
+    member: Option<Arc<dyn Member>>,
+) -> std::io::Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     runtime.block_on(async move {
         listener.set_nonblocking(true)?;
@@ -57,14 +69,113 @@ pub fn serve(listener: std::net::TcpListener, databases: Arc<dyn Databases>, rea
         let service = ChunkStoreServiceServer::new(Service { shared: shared.clone() })
             .max_decoding_message_size(usize::MAX)
             .max_encoding_message_size(usize::MAX);
-        let router = tonic::service::Routes::new(service)
+        let mut routes = tonic::service::Routes::new(service);
+        if let Some(member) = &member {
+            routes = routes.add_service(ReplicationServiceServer::new(Replication { member: member.clone() }));
+        }
+        let mut router = routes
             .into_axum_router()
             .fallback(move |method: Method, uri: Uri, headers: HeaderMap, body: Bytes| {
                 files(shared.clone(), method, uri, headers, body)
             })
             .layer(axum::middleware::map_request(authority_header));
+        if let Some(member) = member {
+            router = router.layer(axum::middleware::from_fn_with_state(member, gate));
+        }
         axum::serve(listener, router).await
     })
+}
+
+/// WRITES are the requests that write to a database, which a request from outside the cluster is told are
+/// unimplemented rather than unauthenticated, as Dolt's writeEndpoints are.
+const WRITES: [&str; 3] = [
+    "/dolt.services.remotesapi.v1alpha1.ChunkStoreService/Commit",
+    "/dolt.services.remotesapi.v1alpha1.ChunkStoreService/AddTableFiles",
+    "/dolt.services.remotesapi.v1alpha1.ChunkStoreService/GetUploadLocations",
+];
+
+/// gate serves a cluster member's published key, and lets through only the requests of an authenticated primary to
+/// a standby, answering each with the member's role and epoch, as Dolt's cluster serverinterceptor does.
+async fn gate(
+    axum::extract::State(member): axum::extract::State<Arc<dyn Member>>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let path = request.uri().path().to_string();
+    if path == JWKS_PATH {
+        return ([(axum::http::header::CONTENT_TYPE, "application/json")], member.credentials().jwks()).into_response();
+    }
+    if !path.starts_with("/dolt.services.") {
+        return next.run(request).await;
+    }
+    let [from_role, from_epoch, authorization] = [ROLE_HEADER, EPOCH_HEADER, "authorization"]
+        .map(|name| request.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_string));
+    let token = authorization.and_then(|a| a.strip_prefix("Bearer ").map(str::to_string));
+    let (Some(from_role), Some(from_epoch)) = (from_role, from_epoch) else {
+        return match WRITES.contains(&path.as_str()) {
+            true => Status::unimplemented("unimplemented").into_http(),
+            false => Status::unauthenticated("unauthenticated").into_http(),
+        };
+    };
+    let (role, epoch) = member.role();
+    if let (true, Ok(from_epoch)) = (from_role == "primary", from_epoch.parse::<i64>()) {
+        if from_epoch == epoch && role == "primary" {
+            member.force_role("detected_broken_config", from_epoch);
+        } else if from_epoch > epoch {
+            member.force_role("standby", from_epoch);
+        }
+    }
+    if !matches!(&token, Some(token) if member.keys().verify(token).await) {
+        return Status::unauthenticated("unauthenticated").into_http();
+    }
+    let (role, epoch) = member.role();
+    let mut response = match role.as_str() {
+        "primary" => Status::failed_precondition("this server is a primary and is not currently accepting replication")
+            .into_http(),
+        "detected_broken_config" => Status::failed_precondition(
+            "this server is currently in detected_broken_config and is not currently accepting replication",
+        )
+        .into_http(),
+        _ => next.run(request).await,
+    };
+    if let (Ok(role), Ok(epoch)) = (role.parse(), epoch.to_string().parse()) {
+        response.headers_mut().insert(ROLE_HEADER, role);
+        response.headers_mut().insert(EPOCH_HEADER, epoch);
+    }
+    response
+}
+
+/// Replication implements the replication service, through which a primary sends a standby what its databases do not
+/// hold, as Dolt's replicationServiceServer does.
+struct Replication {
+    member: Arc<dyn Member>,
+}
+
+#[tonic::async_trait]
+impl ReplicationService for Replication {
+    async fn update_users_and_grants(
+        &self,
+        request: Request<replicationapi::UpdateUsersAndGrantsRequest>,
+    ) -> Result<tonic::Response<replicationapi::UpdateUsersAndGrantsResponse>, Status> {
+        self.member.update_users(&request.into_inner().serialized_contents).map_err(internal)?;
+        Ok(tonic::Response::new(replicationapi::UpdateUsersAndGrantsResponse {}))
+    }
+
+    async fn update_branch_control(
+        &self,
+        request: Request<replicationapi::UpdateBranchControlRequest>,
+    ) -> Result<tonic::Response<replicationapi::UpdateBranchControlResponse>, Status> {
+        self.member.update_branch_control(&request.into_inner().serialized_contents).map_err(internal)?;
+        Ok(tonic::Response::new(replicationapi::UpdateBranchControlResponse {}))
+    }
+
+    async fn drop_database(
+        &self,
+        request: Request<replicationapi::DropDatabaseRequest>,
+    ) -> Result<tonic::Response<replicationapi::DropDatabaseResponse>, Status> {
+        self.member.drop_database(&request.into_inner().name).map_err(internal)?;
+        Ok(tonic::Response::new(replicationapi::DropDatabaseResponse {}))
+    }
 }
 
 /// AUTHORITY_HEADER carries the host and port that a request reached the server at, which gRPC requests only carry
@@ -303,6 +414,10 @@ impl ChunkStoreService for Service {
             }
             err => internal(format!("failed to commit: {err}")),
         })?;
+        drop(db);
+        if success {
+            self.shared.databases.committed(&repo_path(&req.repo_path, req.repo_id.as_ref()));
+        }
         Ok(tonic::Response::new(api::CommitResponse { success }))
     }
 

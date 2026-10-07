@@ -27,6 +27,7 @@ pub mod binary;
 pub mod cast;
 pub mod casts;
 pub mod catalog;
+pub mod cluster;
 pub mod copy;
 pub mod datetime;
 mod ddl;

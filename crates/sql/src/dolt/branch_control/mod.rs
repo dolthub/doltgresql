@@ -612,8 +612,7 @@ impl Controller {
     /// load reads the branch control file at a path, or starts with Dolt's default row when the path is None or the
     /// file is missing or empty.
     pub fn load(path: Option<PathBuf>) -> Result<Controller> {
-        let mut controller = Controller { path, ..Controller::default() };
-        let data = match &controller.path {
+        let data = match &path {
             Some(path) => match std::fs::read(path) {
                 Ok(data) => data,
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => Vec::new(),
@@ -621,6 +620,13 @@ impl Controller {
             },
             None => Vec::new(),
         };
+        Controller::parse(path, &data)
+    }
+
+    /// parse reads serialized tables, kept in the file at a path when there is one, or starts with Dolt's default row
+    /// when there are none.
+    fn parse(path: Option<PathBuf>, data: &[u8]) -> Result<Controller> {
+        let mut controller = Controller { path, ..Controller::default() };
         if data.is_empty() {
             controller.access.insert_default();
             return Ok(controller);
@@ -631,7 +637,7 @@ impl Controller {
         if data.get(8..12) != Some(FILE_ID.as_bytes()) {
             return Err(failed(&"unknown file ID"));
         }
-        let root = Table::root(&data, 4).map_err(|e| failed(&e))?;
+        let root = Table::root(data, 4).map_err(|e| failed(&e))?;
         let access = root.table(0).map_err(|e| failed(&e))?;
         let binlog = match &access {
             Some(access) => read_binlog(access.table(0).map_err(|e| failed(&e))?)?,
@@ -675,9 +681,23 @@ impl Controller {
         Ok(controller)
     }
 
+    /// replace replaces the tables with serialized ones, as a standby takes its primary's, and saves them.
+    pub fn replace(&mut self, data: &[u8]) -> Result<()> {
+        *self = Controller::parse(self.path.clone(), data)?;
+        self.save()
+    }
+
     /// save writes the tables to the branch control file, when the server has one.
     pub fn save(&self) -> Result<()> {
         let Some(path) = &self.path else { return Ok(()) };
+        if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir).map_err(PgError::internal)?;
+        }
+        std::fs::write(path, self.serialize()).map_err(PgError::internal)
+    }
+
+    /// serialize returns the tables as the branch control file holds them.
+    pub fn serialize(&self) -> Vec<u8> {
         let mut b = Builder::new(1024);
         let binlog = write_binlog(&mut b, &self.access.binlog);
         b.start_object(6);
@@ -711,10 +731,7 @@ impl Controller {
         let root = b.end_object();
         let mut data = b.finish_message(root, FILE_ID);
         data[..4].fill(0);
-        if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-            std::fs::create_dir_all(dir).map_err(PgError::internal)?;
-        }
-        std::fs::write(path, data).map_err(PgError::internal)
+        data
     }
 
     /// access_rows returns the rows of the access table.
@@ -774,6 +791,9 @@ impl Ctx<'_> {
     /// check_branch_write fails as Dolt's CheckAccessForDb does unless the session may write to its branch.
     pub fn check_branch_write(&mut self) -> Result<()> {
         let (database, branch) = (self.session.database.clone(), self.session.branch.clone());
+        if self.session.engine.cluster().is_some_and(|c| c.role().0 != crate::cluster::Role::Primary) {
+            return Err(PgError::new(code::READ_ONLY_SQL_TRANSACTION, format!("Database {database} is read-only.")));
+        }
         let identity = self.identity();
         let permissions = self.branch_controller()?.permissions(&database, &branch, &identity.user, &identity.host);
         if permissions & (WRITE | ADMIN) != 0 {

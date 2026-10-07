@@ -316,7 +316,11 @@ pub fn dolt_undrop(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             crate::engine::undrop_hint(&ctx.session.engine.dropped_databases())
         ))),
         [name] => {
-            ctx.session.engine.undrop_database(name)?;
+            ctx.session.engine.check_writable()?;
+            let name = ctx.session.engine.undrop_database(name)?;
+            if let Some(cluster) = ctx.session.engine.cluster() {
+                ctx.session.engine.add_cluster_database(&cluster, &name)?;
+            }
             Ok(Value::Int8(0))
         }
         _ => Err(error(

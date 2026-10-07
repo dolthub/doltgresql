@@ -194,8 +194,19 @@ pub fn serve(config: &Config) -> Result<(), String> {
         let listener = bind(host, port)?;
         let databases: Arc<dyn remotes::server::Databases> = Arc::new(EngineDatabases(server.engine.clone()));
         std::thread::spawn(move || {
-            if let Err(err) = remotes::server::serve(listener, databases, read_only) {
+            if let Err(err) = remotes::server::serve(listener, databases, read_only, None) {
                 log(&format!("remotesapi server failed: {err}"));
+            }
+        });
+    }
+    if let Some(cluster) = &config.cluster {
+        server.engine.start_cluster(cluster.clone())?;
+        let listener = bind("0.0.0.0", cluster.remotesapi_port)?;
+        let databases = sql::cluster::databases(&server.engine).ok_or("cluster replication did not start")?;
+        let member = sql::cluster::member(&server.engine);
+        std::thread::spawn(move || {
+            if let Err(err) = remotes::server::serve(listener, databases, false, member) {
+                log(&format!("cluster remotesapi server failed: {err}"));
             }
         });
     }

@@ -71,6 +71,10 @@ struct Shared {
     auto_gc_enabled: std::sync::atomic::AtomicBool,
     /// How automatic garbage collection writes.
     auto_gc_config: Mutex<doltdb::database::GcConfig>,
+    /// The server's cluster replication, when its config has a cluster section.
+    cluster: std::sync::OnceLock<Arc<crate::cluster::Cluster>>,
+    /// The open databases whose sequence trackers reload before their next transaction.
+    stale_sequences: Mutex<std::collections::HashSet<String>>,
 }
 
 /// AutoGc is what automatic garbage collection last saw of a database: its store's sizes, and when its last collection
@@ -150,6 +154,9 @@ pub fn undrop_hint(available: &[String]) -> String {
         false => format!("available databases that can be undropped: {}", available.join(", ")),
     }
 }
+
+/// ACK_TIMEOUT names the setting that holds how long a write waits for the standbys to receive it.
+const ACK_TIMEOUT: &str = "dolt_cluster_ack_writes_timeout_secs";
 
 /// DROPPED_DATABASES is the directory in the data directory that holds dropped databases.
 const DROPPED_DATABASES: &str = ".dolt_dropped_databases";
@@ -235,6 +242,8 @@ impl Engine {
                 temp_roots: Mutex::default(),
                 read_only: std::sync::atomic::AtomicBool::new(false),
                 auto_gc_enabled: std::sync::atomic::AtomicBool::new(true),
+                cluster: std::sync::OnceLock::new(),
+                stale_sequences: Mutex::default(),
                 auto_gc_config: Mutex::new(doltdb::database::GcConfig {
                     mode: doltdb::database::GcMode::Default,
                     archive: true,
@@ -260,14 +269,104 @@ impl Engine {
         }
     }
 
-    /// read_only reports whether the server refuses writes.
+    /// read_only reports whether the server refuses writes, as it does as a cluster standby.
     pub fn read_only(&self) -> bool {
         self.shared.read_only.load(std::sync::atomic::Ordering::Relaxed)
+            || self.cluster().is_some_and(|c| c.role().0 != crate::cluster::Role::Primary)
+    }
+
+    /// check_writable fails when the server refuses writes.
+    pub fn check_writable(&self) -> Result<()> {
+        match self.read_only() {
+            true => Err(PgError::new(code::READ_ONLY_SQL_TRANSACTION, "database server is set to read only mode")),
+            false => Ok(()),
+        }
+    }
+
+    /// cluster returns the server's cluster replication, when it has one.
+    pub fn cluster(&self) -> Option<Arc<crate::cluster::Cluster>> {
+        self.shared.cluster.get().cloned()
+    }
+
+    /// start_cluster starts cluster replication: it applies the persisted or bootstrap role, makes each database's
+    /// standby remotes, and replicates in the background.
+    pub fn start_cluster(&self, config: crate::cluster::ClusterConfig) -> std::result::Result<(), String> {
+        let cluster = Arc::new(crate::cluster::Cluster::open(config)?);
+        for name in self.database_names() {
+            self.add_cluster_database(&cluster, &name).map_err(|err| err.message)?;
+        }
+        let mut db = Database::with_store(Box::new(store::MemoryStore::default()));
+        doltdb::create::initialize(&mut db, DEFAULT_BRANCH, "postgres", "localhost", &create_times())
+            .map_err(|err| err.to_string())?;
+        let entry = (Arc::new(Mutex::new(db)), Arc::new(Mutex::new(HashMap::new())));
+        lock(&self.shared.databases).map_err(|err| err.message)?.insert(crate::cluster::DATABASE.to_string(), entry);
+        let _ = self.shared.cluster.set(cluster.clone());
+        cluster.run(self.clone());
+        Ok(())
+    }
+
+    /// add_cluster_database makes a database's standby remotes and the hooks that replicate it.
+    pub(crate) fn add_cluster_database(&self, cluster: &crate::cluster::Cluster, name: &str) -> Result<()> {
+        let dir = self.shared.data_dir.join(name);
+        let mut state = crate::dolt::remotes::RepoState::load(&dir)?;
+        for (remote, url) in cluster.add_database(name) {
+            state.remotes.entry(remote.clone()).or_insert_with(|| crate::dolt::remotes::Remote::new(&remote, &url));
+        }
+        state.save(&dir)
+    }
+
+    /// database_names returns the names of the databases in the data directory, in name order.
+    pub fn database_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(&self.shared.data_dir)
+            .map(|entries| {
+                entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().join(".dolt").is_dir())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    /// session_ids returns the ids of the open sessions.
+    pub fn session_ids(&self) -> Vec<u64> {
+        self.activity().into_iter().map(|(id, _)| id).collect()
     }
 
     /// set_port records the port the server listens on.
     pub fn set_port(&self, port: u16) {
         self.shared.port.store(port, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// is_open reports whether the server has opened a database.
+    pub(crate) fn is_open(&self, name: &str) -> bool {
+        lock(&self.shared.databases).is_ok_and(|databases| databases.contains_key(name))
+    }
+
+    /// store_root returns the store root of an open database.
+    fn store_root(&self, name: &str) -> Option<store::Hash> {
+        let handle = lock(&self.shared.databases).ok()?.get(name)?.0.clone();
+        handle.lock().ok().map(|db| db.root())
+    }
+
+    /// refresh_sequences has every open database reload the latest state of its sequences when its next transaction
+    /// begins, as a standby does when it becomes the primary after receiving its databases from another server.
+    pub fn refresh_sequences(&self) -> Result<()> {
+        let names = lock(&self.shared.databases)?.keys().cloned().collect::<Vec<_>>();
+        lock(&self.shared.stale_sequences)?.extend(names);
+        Ok(())
+    }
+
+    /// auth_contents returns the roles and privileges as the auth file holds them.
+    pub fn auth_contents(&self) -> Vec<u8> {
+        self.shared.auth.lock().map(|auth| auth.serialize()).unwrap_or_default()
+    }
+
+    /// replace_auth replaces the roles and privileges with serialized ones.
+    pub fn replace_auth(&self, contents: &[u8]) -> Result<()> {
+        lock(&self.shared.auth)?.replace(contents)
     }
 
     /// branch_control returns the branch control tables.
@@ -395,6 +494,11 @@ impl Engine {
         self.shared.ended.lock().is_ok_and(|ended| ended.contains(&id))
     }
 
+    /// cluster_ended reports whether a cluster role change ended a session.
+    fn cluster_ended(&self, id: u64) -> bool {
+        self.cluster().is_some_and(|c| c.ended.lock().is_ok_and(|ended| ended.contains(&id)))
+    }
+
     /// started returns when the engine opened, as a UTC timestamp.
     pub fn started(&self) -> i64 {
         self.shared.started
@@ -407,8 +511,14 @@ impl Engine {
         Some((role.password.clone(), role.login))
     }
 
-    /// database_exists reports whether the data directory holds the database.
+    /// database_exists reports whether the data directory holds the database, or whether it is the dolt_cluster
+    /// database of a server with cluster replication.
     pub fn database_exists(&self, name: &str) -> bool {
+        (name == crate::cluster::DATABASE && self.cluster().is_some()) || self.stored(name)
+    }
+
+    /// stored reports whether the data directory holds the database.
+    fn stored(&self, name: &str) -> bool {
         !name.is_empty() && !name.contains(['/', '\\']) && self.shared.data_dir.join(name).join(".dolt").is_dir()
     }
 
@@ -485,20 +595,25 @@ impl Engine {
         Ok(self.open_database(name)?.0)
     }
 
-    /// open_database returns the shared handle and sequence tracker of a database, opening it on first use.
     /// database_handle returns the open database with the name, opening it when it exists, as the remotes API serves
     /// it.
     pub fn database_handle(&self, name: &str) -> Option<DbHandle> {
-        if !self.database_exists(name) {
+        if !self.stored(name) {
             return None;
         }
         self.open_database(name).ok().map(|(handle, _)| handle)
     }
 
+    /// open_database returns the shared handle and sequence tracker of a database, opening it on first use.
     fn open_database(&self, name: &str) -> Result<(DbHandle, SequenceTracker)> {
         let mut databases = lock(&self.shared.databases)?;
-        if let Some(entry) = databases.get(name) {
-            return Ok(entry.clone());
+        if let Some(entry) = databases.get(name).cloned() {
+            drop(databases);
+            if lock(&self.shared.stale_sequences)?.remove(name) {
+                let tracked = tracked_sequences(&mut *lock(&entry.0)?)?;
+                *lock(&entry.1)? = tracked;
+            }
+            return Ok(entry);
         }
         let mut db = Database::open(&self.shared.data_dir.join(name).join(".dolt/noms"))?;
         let tracked = tracked_sequences(&mut db)?;
@@ -554,6 +669,7 @@ impl Engine {
             savepoints: Vec::new(),
             reported: HashMap::new(),
             prepared: HashMap::new(),
+            replication: None,
         };
         session.state.settings.set_raw("session_authorization", Some(user.to_string()), false, false);
         let auto_gc = self.shared.auto_gc_enabled.load(std::sync::atomic::Ordering::Relaxed);
@@ -583,6 +699,9 @@ pub struct Session {
     pending: Option<Vec<Statement>>,
     /// The prepared statements by name, which PREPARE and the extended protocol's Parse share.
     pub prepared: HashMap<String, Arc<Prepared>>,
+    /// The database that the statements since the last commit ran in, with its store root before them, which the
+    /// standbys must receive once a change to it commits.
+    replication: Option<(String, Option<store::Hash>)>,
 }
 
 /// RoutineCache is the functions and procedures of a root value, with the addresses of their collections.
@@ -705,8 +824,17 @@ impl SessionState {
     }
 
     /// sync_identity sets the session user and the current role from the parameters that SET SESSION AUTHORIZATION
-    /// and SET ROLE change, which transactions can undo.
+    /// and SET ROLE change, which transactions can undo, and refreshes the settings that show the server's read-only
+    /// state and cluster role.
     pub fn sync_identity(&mut self) {
+        let read_only = u8::from(self.engine.read_only()).to_string();
+        self.settings.set_raw("read_only", Some(read_only), false, false);
+        if let Some(cluster) = self.engine.cluster() {
+            let (role, epoch) = cluster.role();
+            self.settings.set_raw("dolt_cluster_role", Some(role.name().to_string()), false, false);
+            self.settings.set_raw("dolt_cluster_role_epoch", Some(epoch.to_string()), false, false);
+            self.settings.set_raw(ACK_TIMEOUT, Some(cluster.ack_timeout().to_string()), false, false);
+        }
         self.user = self.settings.raw("session_authorization").unwrap_or_else(|| self.authenticated.clone());
         self.role = match self.settings.raw("role") {
             Some(role) if role != "none" => role,
@@ -714,18 +842,14 @@ impl SessionState {
         };
     }
 
-    /// database_names returns the names of the databases in the data directory, in name order.
+    /// database_names returns the names of the databases in the data directory, with the dolt_cluster database of a
+    /// server with cluster replication, in name order.
     pub fn database_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = std::fs::read_dir(&self.data_dir)
-            .map(|entries| {
-                entries
-                    .filter_map(|e| e.ok())
-                    .filter(|e| e.path().join(".dolt").is_dir())
-                    .filter_map(|e| e.file_name().into_string().ok())
-                    .collect()
-            })
-            .unwrap_or_default();
-        names.sort();
+        let mut names = self.engine.database_names();
+        if self.engine.cluster().is_some() {
+            names.push(crate::cluster::DATABASE.to_string());
+            names.sort();
+        }
         names
     }
 
@@ -1205,7 +1329,29 @@ impl Session {
             return Ok(());
         }
         self.check_deferred()?;
-        self.commit()
+        self.commit()?;
+        self.await_replication();
+        Ok(())
+    }
+
+    /// await_replication waits for the standbys to receive what the statements since the last commit changed, as
+    /// dolt_cluster_ack_writes_timeout_secs asks, warning about the standbys that it timed out on.
+    fn await_replication(&mut self) {
+        let Some((database, before)) = self.replication.take() else { return };
+        let Some(cluster) = self.state.engine.cluster() else { return };
+        if before == self.state.engine.store_root(&database) {
+            return;
+        }
+        let (failed, waited) = cluster.wait_replicated(&database);
+        if failed > 0 {
+            self.state.notices.push(PgError {
+                severity: "WARNING",
+                ..PgError::new(
+                    code::QUERY_CANCELED,
+                    format!("Timed out replication of commit to {failed} out of {waited} replicas."),
+                )
+            });
+        }
     }
 
     /// check_deferred runs the checks that deferred constraints owe before the transaction commits, rolling it back
@@ -1404,6 +1550,16 @@ impl Session {
                 "this connection was established when this server performed an online garbage collection. this \
                  connection can no longer be used. please reconnect.",
             ));
+        }
+        if self.state.engine.cluster_ended(self.state.id) {
+            return Err(PgError::fatal(
+                code::INTERNAL_ERROR,
+                "this server transitioned cluster roles. this connection can no longer be used. please reconnect.",
+            ));
+        }
+        if self.replication.is_none() && self.state.engine.cluster().is_some_and(|c| c.ack_timeout() > 0) {
+            let database = self.state.database.clone();
+            self.replication = Some((database.clone(), self.state.engine.store_root(&database)));
         }
         let result = self.run_statement(statement, params);
         for warning in crate::xml::take_warnings() {
@@ -1635,6 +1791,7 @@ impl Session {
                 "CREATE DATABASE cannot run inside a transaction block",
             ));
         }
+        self.state.engine.check_writable()?;
         if name.contains(['/', '\\']) || name.is_empty() {
             return Err(PgError {
                 detail: Some("Database names cannot be empty or contain \"/\" or \"\\\", which name branches.".into()),
@@ -1648,6 +1805,9 @@ impl Session {
             return Err(PgError::new(code::DUPLICATE_DATABASE, format!("database \"{name}\" already exists")));
         }
         self.state.engine.create_database(name, &self.state.user, &self.state.host)?;
+        if let Some(cluster) = self.state.engine.cluster() {
+            self.state.engine.add_cluster_database(&cluster, name)?;
+        }
         Ok(Outcome::command("CREATE DATABASE"))
     }
 
@@ -1660,6 +1820,7 @@ impl Session {
                 "DROP DATABASE cannot run inside a transaction block",
             ));
         }
+        self.state.engine.check_writable()?;
         if !self.state.engine.database_exists(name) {
             if missing_ok {
                 self.state
@@ -1676,6 +1837,9 @@ impl Session {
             return Err(PgError::new(code::OBJECT_IN_USE, "cannot drop the currently open database"));
         }
         self.state.engine.drop_database(name)?;
+        if let Some(cluster) = self.state.engine.cluster() {
+            cluster.remove_database(name);
+        }
         Ok(Outcome::command("DROP DATABASE"))
     }
 
@@ -1957,6 +2121,20 @@ impl Session {
             VariableSetKind::VarSetMulti => {}
             _ => return Err(PgError::unsupported("this SET")),
         }
+        if set.name.eq_ignore_ascii_case(ACK_TIMEOUT)
+            && let Some(cluster) = self.state.engine.cluster()
+        {
+            let value = self.state.settings.get(ACK_TIMEOUT).unwrap_or_default();
+            match value.parse::<i64>() {
+                Ok(seconds) if (0..=60).contains(&seconds) => cluster.set_ack_timeout(seconds)?,
+                _ => {
+                    return Err(PgError::new(
+                        code::INVALID_PARAMETER_VALUE,
+                        format!("Variable '{ACK_TIMEOUT}' can't be set to the value of '{value}'"),
+                    ));
+                }
+            }
+        }
         Ok(Outcome::command(tag))
     }
 
@@ -2168,8 +2346,17 @@ impl Ctx<'_> {
                 format!("cannot execute {} in a read-only transaction", command_name(node)),
             ));
         }
-        if writes && self.session.engine.read_only() {
-            return Err(PgError::new(code::READ_ONLY_SQL_TRANSACTION, "database server is set to read only mode"));
+        if writes
+            && let Some(cluster) = self.session.engine.cluster()
+            && (cluster.role().0 != crate::cluster::Role::Primary || self.session.database == crate::cluster::DATABASE)
+        {
+            return Err(PgError::new(
+                code::READ_ONLY_SQL_TRANSACTION,
+                format!("Database {} is read-only.", self.session.database),
+            ));
+        }
+        if writes {
+            self.session.engine.check_writable()?;
         }
         if writes && self.txn.detached {
             return Err(PgError::internal(format!("Database {} is read-only.", self.session.display)));

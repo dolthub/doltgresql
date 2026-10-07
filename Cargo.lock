@@ -1750,6 +1750,7 @@ dependencies = [
 name = "remotes"
 version = "0.1.0"
 dependencies = [
+ "aws-lc-rs",
  "axum",
  "base64 0.22.1",
  "doltdb",
@@ -1759,6 +1760,7 @@ dependencies = [
  "prost-types",
  "rand 0.8.8",
  "reqwest",
+ "serde_json",
  "serial",
  "sha2",
  "store",

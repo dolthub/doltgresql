@@ -243,6 +243,14 @@ impl AuthDb {
         }
     }
 
+    /// replace replaces the roles and privileges with serialized ones, as a standby takes its primary's, and persists
+    /// them.
+    pub fn replace(&mut self, data: &[u8]) -> Result<()> {
+        let fresh = AuthDb::deserialize(data)?;
+        *self = AuthDb { path: self.path.take(), ..fresh };
+        self.persist()
+    }
+
     /// deserialize reads an auth file, dropping records about roles that no longer exist.
     pub fn deserialize(data: &[u8]) -> Result<AuthDb> {
         let mut reader = Reader::new(data);

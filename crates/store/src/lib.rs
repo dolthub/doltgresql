@@ -27,6 +27,7 @@ mod journal;
 mod journal_store;
 mod journal_writer;
 mod manifest;
+mod memory;
 mod store;
 mod table;
 
@@ -39,6 +40,7 @@ pub use journal::{JOURNAL_FILE, JournalRecord, read_records};
 pub use journal_store::JournalStore;
 pub use journal_writer::{JOURNAL_INDEX_FILE, JournalWriter};
 pub use manifest::{MANIFEST_FILE, Manifest, TableSpec, lock_hash};
+pub use memory::MemoryStore;
 pub use store::{BlockStore, GenerationalStore};
 pub use table::{TableReader, TableWriter};
 

@@ -28,7 +28,7 @@ use crate::dolt::procedures::table_map;
 use crate::error::{PgError, Result};
 use crate::expr::typ;
 use crate::numeric::Numeric;
-use crate::oid::{BOOL, INT4, NUMERIC, TEXT, TIMESTAMP};
+use crate::oid::{BOOL, INT4, INT8, NUMERIC, TEXT, TIMESTAMP};
 use crate::query::Ctx;
 use crate::txn::read;
 use crate::types::Value;
@@ -63,6 +63,8 @@ pub enum SystemTable {
     Statistics,
     /// The help of Dolt's procedures, which stays empty since Doltgres has no Dolt command line to document them.
     Help,
+    /// dolt_cluster_status, each database's replication to each standby remote.
+    ClusterStatus,
     /// Who may do what on which branches, dolt_branch_control.
     BranchControl,
     /// Who may create branches with which names, dolt_branch_namespace_control.
@@ -99,6 +101,7 @@ const TABLES: &[(&str, SystemTable)] = &[
     ("docs", SystemTable::Docs),
     ("statistics", SystemTable::Statistics),
     ("help", SystemTable::Help),
+    ("cluster_status", SystemTable::ClusterStatus),
     ("branch_control", SystemTable::BranchControl),
     ("branch_namespace_control", SystemTable::BranchNamespaceControl),
     ("dolt_nonlocal_tables", SystemTable::NonlocalTables),
@@ -246,6 +249,15 @@ impl SystemTable {
                 ("sql_mode", TEXT),
             ],
             SystemTable::Statistics => crate::stats::COLUMNS.to_vec(),
+            SystemTable::ClusterStatus => vec![
+                ("database", TEXT),
+                ("standby_remote", TEXT),
+                ("role", TEXT),
+                ("epoch", INT8),
+                ("replication_lag_millis", INT8),
+                ("last_update", TIMESTAMP),
+                ("current_error", TEXT),
+            ],
             SystemTable::Help => vec![
                 ("name", TEXT),
                 ("type", TEXT),
@@ -289,6 +301,7 @@ impl SystemTable {
             SystemTable::Docs => crate::dolt::docs::rows(ctx),
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),
             SystemTable::Statistics => ctx.statistics_rows(),
+            SystemTable::ClusterStatus => Ok(cluster_status_rows(ctx)),
             SystemTable::User(table) => table.rows(ctx),
             SystemTable::Artifacts(table) => table.rows(ctx),
             SystemTable::ObjectConflicts(table) => table.rows(ctx),
@@ -296,6 +309,28 @@ impl SystemTable {
             SystemTable::ConstraintViolations => crate::dolt::conflicts::summary_rows(ctx, false),
         }
     }
+}
+
+/// cluster_status_rows returns the rows of dolt_cluster_status, which a server without cluster replication lacks.
+fn cluster_status_rows(ctx: &mut Ctx<'_>) -> Vec<Vec<Value>> {
+    let Some(cluster) = ctx.session.engine.cluster() else { return Vec::new() };
+    cluster
+        .status(&ctx.session.engine, Some((ctx.txn.database.as_str(), &*ctx.db)))
+        .into_iter()
+        .map(|status| {
+            let millis =
+                |t: std::time::SystemTime| t.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+            vec![
+                Value::Text(status.database),
+                Value::Text(status.remote),
+                Value::Text(status.role.name().to_string()),
+                Value::Int8(status.epoch),
+                status.lag.map_or(Value::Null, |lag| Value::Int8(lag.as_millis() as i64)),
+                status.last_update.map_or(Value::Null, |t| timestamp(millis(t))),
+                status.error.map_or(Value::Null, Value::Text),
+            ]
+        })
+        .collect()
 }
 
 /// timestamp converts Unix milliseconds to a timestamp.

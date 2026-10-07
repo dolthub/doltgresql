@@ -16,6 +16,7 @@
 //! server over local databases and as a chunk store for `http` and `https` remotes.
 
 pub mod client;
+pub mod cluster;
 mod sealer;
 pub mod server;
 

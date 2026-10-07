@@ -44,6 +44,10 @@ const DOLT_VARIABLES: &[(&str, &str, &str)] = &[
     ("dolt_committer_date", "string", ""),
     ("dolt_allow_ci_creation", "bool", "off"),
     ("dolt_auto_gc_enabled", "integer", "1"),
+    ("dolt_cluster_role", "string", ""),
+    ("dolt_cluster_role_epoch", "integer", "0"),
+    ("dolt_cluster_ack_writes_timeout_secs", "integer", "0"),
+    ("read_only", "integer", "0"),
     ("dolt_commit_verification_groups", "string", ""),
     ("dolt_stats_enabled", "bool", "on"),
     ("dolt_stats_paused", "bool", "on"),
@@ -571,7 +575,7 @@ impl Settings {
     /// Inside a transaction, the change is undone when the transaction rolls back.
     pub fn set(&mut self, name: &str, value: Option<&str>, local: bool, in_transaction: bool) -> Result<()> {
         let key = name.to_ascii_lowercase();
-        if key == "dolt_auto_gc_enabled" {
+        if matches!(key.as_str(), "dolt_auto_gc_enabled" | "dolt_cluster_role" | "dolt_cluster_role_epoch") {
             return Err(PgError::new(
                 code::CANT_CHANGE_RUNTIME_PARAM,
                 format!("Variable '{key}' is a read only variable"),

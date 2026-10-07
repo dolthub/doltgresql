@@ -141,6 +141,12 @@ pub fn create_files(dir: &Path, branch: &str) -> Result<()> {
 pub fn create_database(dir: &Path, branch: &str, user: &str, host: &str, times: &CreateTimes) -> Result<()> {
     create_files(dir, branch)?;
     let mut db = Database::open(&dir.join(".dolt/noms"))?;
+    initialize(&mut db, branch, user, host, times)?;
+    db.close()
+}
+
+/// initialize writes the commits and working set of a new database into an empty store, as create_database does.
+pub fn initialize(db: &mut Database, branch: &str, user: &str, host: &str, times: &CreateTimes) -> Result<()> {
     // Dolt's WriteEmptyRepo: the empty root, its commit on the creation ref, and the branch.
     let empty = empty_root_value(&[]);
     db.write_value(empty.clone())?;
@@ -158,9 +164,9 @@ pub fn create_database(dir: &Path, branch: &str, user: &str, host: &str, times: 
     db.write_commit(CREATION_REF, None, &first)?;
     db.set_head(&branch_ref(branch), first.hash)?;
     // InitializeRepoState, then the default schemas through the environment's working and staged roots.
-    let ws = update_roots(&mut db, branch, &empty, &empty, Hash::default(), times.environment_seconds)?;
+    let ws = update_roots(db, branch, &empty, &empty, Hash::default(), times.environment_seconds)?;
     let schemas = empty_root_value(&DEFAULT_SCHEMAS);
-    let ws = update_roots(&mut db, branch, &schemas, &empty, ws, times.environment_seconds)?;
+    let ws = update_roots(db, branch, &schemas, &empty, ws, times.environment_seconds)?;
     // The session's DoltCommit of the new schemas.
     let session = WorkingSetFields {
         working_root: Hash::of(&schemas),
@@ -187,5 +193,5 @@ pub fn create_database(dir: &Path, branch: &str, user: &str, host: &str, times: 
     };
     let pending = PendingCommit { root_value: schemas, parents: vec![first.hash], meta: commit };
     db.commit_with_working_set(&branch_ref(branch), &working_set_ref(branch), &session, ws, pending)?;
-    db.close()
+    Ok(())
 }
