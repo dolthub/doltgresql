@@ -253,7 +253,7 @@ impl Conn {
             }
             match message {
                 FrontendMessage::Query { query } => {
-                    extended.statements.remove("");
+                    session.prepared.remove("");
                     extended.portals.remove("");
                     let (mut outcomes, mut error) = session.execute(&query);
                     loop {
@@ -262,7 +262,6 @@ impl Conn {
                             _ => None,
                         };
                         for (notices, outcome) in outcomes {
-                            extended.forget(&outcome);
                             self.queue_notices(notices);
                             self.queue_outcome(outcome, None);
                         }
@@ -322,17 +321,17 @@ impl Conn {
     ) -> Result<(), PgError> {
         match message {
             FrontendMessage::Parse { name, query, parameter_oids } => {
-                if !name.is_empty() && extended.statements.contains_key(&name) {
+                if !name.is_empty() && session.prepared.contains_key(&name) {
                     return Err(PgError::new(
                         code::DUPLICATE_PREPARED_STATEMENT,
                         format!("prepared statement \"{name}\" already exists"),
                     ));
                 }
                 if name.is_empty() {
-                    extended.statements.remove("");
+                    session.prepared.remove("");
                 }
                 let prepared = session.prepare(&query, &parameter_oids)?;
-                extended.statements.insert(name, Arc::new(prepared));
+                session.prepared.insert(name, Arc::new(prepared));
                 self.queue(BackendMessage::ParseComplete);
             }
             FrontendMessage::Bind {
@@ -342,7 +341,7 @@ impl Conn {
                 parameters,
                 result_format_codes,
             } => {
-                let prepared = extended.statement(&prepared_statement)?;
+                let prepared = session.statement(&prepared_statement)?;
                 if parameters.len() != prepared.parameter_types.len() {
                     return Err(PgError::new(
                         code::PROTOCOL_VIOLATION,
@@ -372,7 +371,7 @@ impl Conn {
                 self.queue(BackendMessage::BindComplete);
             }
             FrontendMessage::Describe { object_type: b'S', name } => {
-                let prepared = extended.statement(&name)?;
+                let prepared = session.statement(&name)?;
                 self.queue(BackendMessage::ParameterDescription { parameter_oids: prepared.parameter_types.clone() });
                 self.queue_description(prepared.columns.as_deref(), &[]);
             }
@@ -391,7 +390,6 @@ impl Conn {
                 let portal = extended.portal(&portal)?;
                 let (prepared, formats) = (portal.prepared.clone(), portal.result_formats.clone());
                 let outcome = session.execute_prepared(&prepared, &portal.parameters.clone())?;
-                extended.forget(&outcome);
                 self.queue_notices(session.take_notices());
                 if let Outcome::CopyIn { binary, .. } = outcome {
                     extended.copying = Some(binary);
@@ -401,7 +399,7 @@ impl Conn {
             FrontendMessage::Close { object_type, name } => {
                 match object_type {
                     b'S' => {
-                        extended.statements.remove(&name);
+                        session.prepared.remove(&name);
                     }
                     b'P' => {
                         extended.portals.remove(&name);
@@ -550,11 +548,10 @@ impl Conn {
     }
 }
 
-/// Extended is the state of the extended query protocol: the prepared statements, the portals, and whether an error
-/// is discarding messages until the next Sync.
+/// Extended is the state of the extended query protocol: the portals, and whether an error is discarding messages
+/// until the next Sync.
 #[derive(Default)]
 struct Extended {
-    statements: HashMap<String, Arc<Prepared>>,
     portals: HashMap<String, Portal>,
     failed: bool,
     /// Whether an executed COPY FROM STDIN waits for its data, in the binary format or as text.
@@ -562,25 +559,6 @@ struct Extended {
 }
 
 impl Extended {
-    /// forget drops the prepared statements after a DISCARD ALL or DEALLOCATE ALL, which Postgres applies to the
-    /// statements of the extended protocol too.
-    fn forget(&mut self, outcome: &Outcome) {
-        if matches!(outcome, Outcome::Command { tag } if tag == "DISCARD ALL" || tag == "DEALLOCATE ALL") {
-            self.statements.clear();
-        }
-    }
-
-    /// statement returns a prepared statement by name, or the unnamed one for an empty name.
-    fn statement(&self, name: &str) -> Result<Arc<Prepared>, PgError> {
-        self.statements.get(name).cloned().ok_or_else(|| {
-            let message = match name {
-                "" => "unnamed prepared statement does not exist".to_string(),
-                name => format!("prepared statement \"{name}\" does not exist"),
-            };
-            PgError::new(code::INVALID_SQL_STATEMENT_NAME, message)
-        })
-    }
-
     /// portal returns a portal by name.
     fn portal(&self, name: &str) -> Result<&Portal, PgError> {
         self.portals

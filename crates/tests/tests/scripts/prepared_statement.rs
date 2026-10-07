@@ -2323,3 +2323,125 @@ fn test_prepared_statements() {
         },
     ]);
 }
+
+#[test]
+fn test_sql_prepare_execute() {
+    run_scripts(&[
+        ScriptTest {
+            name: "sql prepare execute and deallocate",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (a int, b text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "PREPARE ins (int, text) AS INSERT INTO t VALUES ($1, $2);",
+                    expected: Expected::Tag("PREPARE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE ins(1, 'one');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE ins('2', 'two');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "PREPARE sel AS SELECT * FROM t WHERE a > $1 ORDER BY a;",
+                    expected: Expected::Tag("PREPARE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE sel(0);",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("1"), T("one")],
+                            &[T("2"), T("two")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE sel;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"wrong number of parameters for prepared statement "sel""#, detail: "Expected 1 parameters but got 0.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE ins(1, 2, 3);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"wrong number of parameters for prepared statement "ins""#, detail: "Expected 2 parameters but got 3.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE ins('x', 'y');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "x""#, position: 13, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "PREPARE sel AS SELECT 1;",
+                    expected: Expected::Error(Diagnostic { code: "42P05", message: r#"prepared statement "sel" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DEALLOCATE sel;",
+                    expected: Expected::Tag("DEALLOCATE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DEALLOCATE PREPARE ins;",
+                    expected: Expected::Tag("DEALLOCATE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DEALLOCATE nope;",
+                    expected: Expected::Error(Diagnostic { code: "26000", message: r#"prepared statement "nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE nope;",
+                    expected: Expected::Error(Diagnostic { code: "26000", message: r#"prepared statement "nope" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "PREPARE q AS SELECT $1::int + 1;",
+                    expected: Expected::Tag("PREPARE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE q(41);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("42")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DEALLOCATE ALL;",
+                    expected: Expected::Tag("DEALLOCATE ALL"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXECUTE q(1);",
+                    expected: Expected::Error(Diagnostic { code: "26000", message: r#"prepared statement "q" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

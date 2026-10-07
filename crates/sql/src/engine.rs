@@ -498,6 +498,7 @@ impl Engine {
             failed: false,
             savepoints: Vec::new(),
             reported: HashMap::new(),
+            prepared: HashMap::new(),
         };
         session.state.settings.set_raw("session_authorization", Some(user.to_string()), false, false);
         session.switch(database).map_err(|_| {
@@ -523,6 +524,8 @@ pub struct Session {
     /// The statements of a simple query that wait for its COPY FROM STDIN to finish, or None when the extended
     /// protocol began the copy.
     pending: Option<Vec<Statement>>,
+    /// The prepared statements by name, which PREPARE and the extended protocol's Parse share.
+    pub prepared: HashMap<String, Arc<Prepared>>,
 }
 
 /// RoutineCache is the functions and procedures of a root value, with the addresses of their collections.
@@ -992,6 +995,8 @@ impl Session {
             columns = Some(crate::listing::show_create_columns());
         } else if let Some(Statement::Listing { kind, from }) = &statement {
             columns = Some(self.with_ctx(&mut parameters, &[], |ctx| ctx.plan_listing(kind, from))?.columns);
+        } else if let Some(Statement::Postgres { node: NodeEnum::ExecuteStmt(execute), .. }) = &statement {
+            columns = self.statement(&execute.name)?.columns.clone();
         } else if let Some(Statement::Postgres { node, .. }) = &statement
             && describable(node)
         {
@@ -1004,6 +1009,75 @@ impl Session {
             }
         }
         Ok(Prepared { query: query.to_string(), statement, parameter_types: parameters, columns })
+    }
+
+    /// statement returns a prepared statement by name, or the unnamed one for an empty name.
+    pub fn statement(&self, name: &str) -> Result<Arc<Prepared>> {
+        self.prepared.get(name).cloned().ok_or_else(|| {
+            let message = match name {
+                "" => "unnamed prepared statement does not exist".to_string(),
+                name => format!("prepared statement \"{name}\" does not exist"),
+            };
+            PgError::new(code::INVALID_SQL_STATEMENT_NAME, message)
+        })
+    }
+
+    /// prepare_statement runs PREPARE, which prepares its statement under a name with the parameter types it lists.
+    fn prepare_statement(&mut self, stmt: &pg_query::protobuf::PrepareStmt) -> Result<Outcome> {
+        if self.prepared.contains_key(&stmt.name) {
+            return Err(PgError::new(
+                code::DUPLICATE_PREPARED_STATEMENT,
+                format!("prepared statement \"{}\" already exists", stmt.name),
+            ));
+        }
+        let query = stmt.query.as_deref().and_then(|q| q.node.as_ref()).ok_or_else(|| PgError::internal("no query"))?;
+        let text = query.deparse().map_err(PgError::internal)?;
+        let mut types = Vec::new();
+        for node in &stmt.argtypes {
+            let Some(NodeEnum::TypeName(type_name)) = node.node.as_ref() else { continue };
+            let mut parameters = Vec::new();
+            types.push(self.with_ctx(&mut parameters, &[], |ctx| {
+                ctx.prepare_type(type_name)?;
+                crate::expr::resolve_type_name(type_name)
+            })?);
+        }
+        let source = std::mem::take(&mut self.state.source);
+        let prepared = self.prepare(&text, &types.iter().map(|t| t.oid).collect::<Vec<_>>());
+        self.state.source = source;
+        self.prepared.insert(stmt.name.clone(), Arc::new(prepared?));
+        Ok(Outcome::command("PREPARE"))
+    }
+
+    /// execute_statement runs EXECUTE, which runs a prepared statement with its parameters converted to the types
+    /// the statement takes.
+    fn execute_statement(&mut self, stmt: &pg_query::protobuf::ExecuteStmt) -> Result<Outcome> {
+        let prepared = self.statement(&stmt.name)?;
+        if stmt.params.len() != prepared.parameter_types.len() {
+            return Err(PgError {
+                detail: Some(format!(
+                    "Expected {} parameters but got {}.",
+                    prepared.parameter_types.len(),
+                    stmt.params.len()
+                )),
+                ..PgError::new(
+                    code::SYNTAX_ERROR,
+                    format!("wrong number of parameters for prepared statement \"{}\"", stmt.name),
+                )
+            });
+        }
+        let mut parameters = Vec::new();
+        let values = self.with_ctx(&mut parameters, &[], |ctx| {
+            let mut values = Vec::with_capacity(stmt.params.len());
+            for (node, &ty) in stmt.params.iter().zip(&prepared.parameter_types) {
+                let bound = crate::expr::Binder::new(ctx, crate::expr::Scope::default()).bind(node)?;
+                let target = crate::catalog::ColumnType { oid: ty, modifier: -1 };
+                let (expr, _) = crate::expr::assign(bound, target, "", crate::expr::arg_location(node))?;
+                values.push(expr.eval(ctx, &[])?);
+            }
+            Ok(values)
+        })?;
+        let Some(statement) = &prepared.statement else { return Ok(Outcome::Empty) };
+        self.run(statement, &values)
     }
 
     /// execute_prepared runs a prepared statement with the parameter values, in the implicit transaction that lasts
@@ -1644,7 +1718,17 @@ impl Session {
             }
             NodeEnum::VariableSetStmt(set) => return self.set(set),
             NodeEnum::VariableShowStmt(show) => return self.show(&show.name),
-            NodeEnum::DeallocateStmt(stmt) if stmt.isall => return Ok(Outcome::command("DEALLOCATE ALL")),
+            NodeEnum::DeallocateStmt(stmt) if stmt.isall => {
+                self.prepared.clear();
+                return Ok(Outcome::command("DEALLOCATE ALL"));
+            }
+            NodeEnum::DeallocateStmt(stmt) => {
+                self.statement(&stmt.name)?;
+                self.prepared.remove(&stmt.name);
+                return Ok(Outcome::command("DEALLOCATE"));
+            }
+            NodeEnum::PrepareStmt(stmt) => return self.prepare_statement(stmt),
+            NodeEnum::ExecuteStmt(stmt) => return self.execute_statement(stmt),
             NodeEnum::DiscardStmt(discard) => {
                 let mode = pg_query::protobuf::DiscardMode::try_from(discard.target);
                 if mode != Ok(pg_query::protobuf::DiscardMode::DiscardAll) {
@@ -1675,6 +1759,7 @@ impl Session {
                 self.state.sequence_values.clear();
                 self.state.last_sequence = None;
                 self.discard_temp()?;
+                self.prepared.clear();
                 return Ok(Outcome::command("DISCARD ALL"));
             }
             _ => {}
