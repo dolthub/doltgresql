@@ -22,7 +22,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
-	pgparser "github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
@@ -137,30 +136,14 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			}
 			return true, nil
 		},
-		View: func(ctx *sql.Context, _ functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
+		View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
 			if engine == nil {
 				return true, nil
 			}
 
-			// Get the SELECT body from the view definition.
-			selectBody := view.Item.TextDefinition
-			if selectBody == "" {
-				stmts, parseErr := pgparser.Parse(view.Item.CreateViewStatement)
-				if parseErr != nil || len(stmts) == 0 {
-					return true, nil
-				}
-				cv, ok := stmts[0].AST.(*tree.CreateView)
-				if !ok {
-					return true, nil
-				}
-				selectBody = cv.AsSource.String()
-			}
-			if selectBody == "" {
-				return true, nil
-			}
-
 			// Analyze the SELECT statement to get the view's output schema.
-			analyzed, analyzeErr := engine.AnalyzeQuery(ctx, selectBody)
+			viewName := tree.MakeTableNameFromPrefix(tree.ObjectNamePrefix{SchemaName: tree.Name(schema.Item.SchemaName()), ExplicitSchema: true}, tree.Name(view.Item.Name))
+			analyzed, analyzeErr := engine.AnalyzeQuery(ctx, "SELECT * FROM "+viewName.String())
 			if analyzeErr != nil {
 				return true, nil
 			}
