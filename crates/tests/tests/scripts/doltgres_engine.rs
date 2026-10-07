@@ -11923,10 +11923,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -12236,10 +12236,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -12515,10 +12515,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -12780,10 +12780,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -13054,10 +13054,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -13332,10 +13332,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -13626,10 +13626,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -13933,10 +13933,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -14333,10 +14333,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -14756,10 +14756,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -15020,10 +15020,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -17582,10 +17582,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -17889,10 +17889,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -18156,10 +18156,10 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -32648,10 +32648,10 @@ fn test_dolt_reset() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "start transaction;",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -32804,10 +32804,10 @@ fn test_dolt_reset() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "start transaction;",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -32960,10 +32960,10 @@ fn test_dolt_reset() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "start transaction;",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -34575,10 +34575,10 @@ fn test_dolt_revert() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -34797,10 +34797,10 @@ fn test_dolt_revert() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -36239,10 +36239,10 @@ fn test_dolt_revert() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },
@@ -37240,10 +37240,10 @@ hint: Please commit your changes before you revert."#, ..E }),
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this script, so this expectation follows Postgres' command tag.
                 ScriptTestAssertion {
                     query: "START TRANSACTION",
-                    expected: Expected::Tag("BEGIN"),
+                    expected: Expected::Tag("START TRANSACTION"),
                     flow: Flow::Simple,
                     ..A
                 },

@@ -480,7 +480,9 @@ impl Ctx<'_> {
     /// create_table runs CREATE TABLE.
     pub fn create_table(&mut self, create: &CreateStmt) -> Result<Outcome> {
         let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
-        let schema = self.target_schema(&relation.schemaname, relation.location)?;
+        let schema = self
+            .target_schema(&relation.schemaname, relation.location)
+            .map_err(|err| PgError { position: err.position.or(position(relation.location)), ..err })?;
         if self.nonlocal_table(relation)?.is_some() {
             let message = format!("relation \"{}\" already exists", relation.relname);
             if create.if_not_exists {
@@ -789,10 +791,11 @@ impl Ctx<'_> {
 
     /// create_schema runs CREATE SCHEMA.
     pub fn create_schema(&mut self, create: &CreateSchemaStmt) -> Result<Outcome> {
-        let name = if create.schemaname.is_empty() {
-            create.authrole.as_ref().map(|r| r.rolename.clone()).unwrap_or_default()
-        } else {
-            create.schemaname.clone()
+        self.check_new_owner(create.authrole.as_ref())?;
+        let name = match (create.schemaname.as_str(), create.authrole.as_ref()) {
+            ("", Some(role)) if role.rolename.is_empty() => self.session.role.clone(),
+            ("", Some(role)) => role.rolename.clone(),
+            (name, _) => name.to_string(),
         };
         if self.txn.root.schemas.iter().any(|s| s == name.as_bytes()) {
             if create.if_not_exists {
@@ -999,9 +1002,28 @@ impl Ctx<'_> {
                     key.strip_prefix(prefix.as_slice()).map(|n| String::from_utf8_lossy(n).into_owned())
                 })
                 .collect();
-            if !tables.is_empty() && !cascade {
-                let detail =
-                    tables.iter().map(|t| format!("table {name}.{t} depends on schema {name}")).collect::<Vec<_>>();
+            let mut types: Vec<(String, bool)> = self
+                .user_types()?
+                .values()
+                .filter(|t| t.schema == name && !t.is_array())
+                .map(|t| (t.name.clone(), matches!(t.kind, crate::usertypes::Kind::Domain(_))))
+                .collect();
+            types.sort();
+            let sequences: Vec<String> = crate::sequences::all(self.db, &self.txn.root)?
+                .into_iter()
+                .filter(|s| s.owner_table.is_empty())
+                .map(|s| crate::catalog::id::segments(&s.id))
+                .filter(|segments| segments.first().is_some_and(|s| s == name))
+                .filter_map(|segments| segments.get(1).cloned())
+                .collect();
+            let dependents: Vec<String> = tables
+                .iter()
+                .map(|t| format!("table {name}.{t}"))
+                .chain(types.iter().map(|(t, _)| format!("type {name}.{t}")))
+                .chain(sequences.iter().map(|s| format!("sequence {name}.{s}")))
+                .collect();
+            if !dependents.is_empty() && !cascade {
+                let detail = dependents.iter().map(|d| format!("{d} depends on schema {name}")).collect::<Vec<_>>();
                 return Err(PgError {
                     detail: Some(detail.join("\n")),
                     hint: Some("Use DROP ... CASCADE to drop the dependent objects too.".into()),
@@ -1011,17 +1033,14 @@ impl Ctx<'_> {
                     )
                 });
             }
-            doomed.push((name.to_string(), tables));
+            doomed.push((name.to_string(), tables, types, sequences, dependents));
         }
-        for (name, tables) in doomed {
-            match tables.len() {
+        for (name, tables, types, sequences, dependents) in doomed {
+            match dependents.len() {
                 0 => {}
-                1 => self
-                    .session
-                    .notice(PgError::notice("00000", format!("drop cascades to table {name}.{}", tables[0]))),
+                1 => self.session.notice(PgError::notice("00000", format!("drop cascades to {}", dependents[0]))),
                 n => {
-                    let detail =
-                        tables.iter().map(|t| format!("drop cascades to table {name}.{t}")).collect::<Vec<_>>();
+                    let detail = dependents.iter().map(|d| format!("drop cascades to {d}")).collect::<Vec<_>>();
                     self.session.notice(PgError {
                         detail: Some(detail.join("\n")),
                         ..PgError::notice("00000", format!("drop cascades to {n} other objects"))
@@ -1032,6 +1051,23 @@ impl Ctx<'_> {
                 self.txn.root.put_table(self.db, &name, &table, None)?;
                 self.drop_table_triggers(&name, &table)?;
                 self.forget_object(&Object::Table(name.clone(), table))?;
+            }
+            let quoted = |object: &str| {
+                format!("{}.{}", crate::engine::quote_identifier(&name), crate::engine::quote_identifier(object))
+            };
+            let mut statements: Vec<String> = types
+                .iter()
+                .map(|(t, domain)| format!("DROP {} {} CASCADE", if *domain { "DOMAIN" } else { "TYPE" }, quoted(t)))
+                .collect();
+            statements.extend(sequences.iter().map(|s| format!("DROP SEQUENCE {}", quoted(s))));
+            for statement in statements {
+                let parsed = pg_query::parse(&statement).map_err(PgError::internal)?;
+                let Some(NodeEnum::DropStmt(stmt)) =
+                    parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
+                else {
+                    return Err(PgError::internal("a schema's dependent object"));
+                };
+                self.drop(&stmt)?;
             }
             self.txn.root.schemas.retain(|s| s != name.as_bytes());
             self.forget_object(&Object::Schema(name))?;

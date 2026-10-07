@@ -281,7 +281,7 @@ impl<'b, 'a> Planner<'b, 'a> {
     }
 
     /// plan_with plans the WITH queries of a WITH clause and brings them into scope.
-    fn plan_with(&mut self, with: &pg_query::protobuf::WithClause) -> Result<()> {
+    pub(crate) fn plan_with(&mut self, with: &pg_query::protobuf::WithClause) -> Result<()> {
         let depth = self.ctx.ctes.len();
         for cte in &with.ctes {
             let Some(NodeEnum::CommonTableExpr(cte)) = cte.node.as_ref() else { continue };

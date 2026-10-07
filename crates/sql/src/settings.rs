@@ -70,9 +70,11 @@ pub struct Setting {
     pub enum_values: Vec<String>,
 }
 
-/// Definitions indexes the settings by lowercase name.
+/// Definitions indexes the settings by lowercase name, where the settings past `shown` are ones that pg_settings and
+/// SHOW ALL leave out.
 struct Definitions {
     settings: Vec<Setting>,
+    shown: usize,
     by_name: HashMap<String, usize>,
 }
 
@@ -118,8 +120,22 @@ fn definitions() -> &'static Definitions {
                 enum_values: Vec::new(),
             });
         }
+        let shown = settings.len();
+        settings.push(Setting {
+            name: "default_with_oids".into(),
+            default: "off".into(),
+            unit: String::new(),
+            category: "Version and Platform Compatibility / Previous PostgreSQL Versions".into(),
+            description: "WITH OIDS is no longer supported; this can only be false.".into(),
+            extra_description: String::new(),
+            context: "user".into(),
+            kind: "bool".into(),
+            min: String::new(),
+            max: String::new(),
+            enum_values: Vec::new(),
+        });
         let by_name = settings.iter().enumerate().map(|(i, s)| (s.name.to_ascii_lowercase(), i)).collect();
-        Definitions { settings, by_name }
+        Definitions { settings, shown, by_name }
     })
 }
 
@@ -129,9 +145,10 @@ pub fn setting(name: &str) -> Option<&'static Setting> {
     d.by_name.get(&name.to_ascii_lowercase()).map(|&i| &d.settings[i])
 }
 
-/// all_settings returns every setting in name order.
+/// all_settings returns every setting that pg_settings shows, in name order.
 pub fn all_settings() -> &'static [Setting] {
-    &definitions().settings
+    let d = definitions();
+    &d.settings[..d.shown]
 }
 
 /// valid_custom_name reports whether a placeholder parameter's name is two or more simple identifiers separated by
@@ -247,6 +264,9 @@ pub fn normalize(definition: &Setting, value: &str) -> Result<String> {
     let name = &definition.name;
     match definition.kind.as_str() {
         "bool" => match parse_bool(value) {
+            Some(true) if name == "default_with_oids" => {
+                Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "tables declared WITH OIDS are not supported"))
+            }
             Some(b) => Ok(if b { "on" } else { "off" }.to_string()),
             None => Err(PgError::new(
                 code::INVALID_PARAMETER_VALUE,
@@ -437,6 +457,21 @@ pub fn local_timezone() -> String {
 
 /// date_style returns the canonical DateStyle for a value: an output style and a field order.
 fn date_style(value: &str) -> Option<String> {
+    let (style, order) = date_style_parts(value)?;
+    Some(format!("{}, {}", style.unwrap_or("ISO"), order.unwrap_or("MDY")))
+}
+
+/// merged_date_style returns a DateStyle value with the parts it leaves out taken from the current DateStyle, as
+/// Postgres' check_datestyle does.
+fn merged_date_style(value: &str, current: &str) -> Option<String> {
+    let (style, order) = date_style_parts(value)?;
+    let (current_style, current_order) = current.split_once(", ").unwrap_or(("ISO", "MDY"));
+    Some(format!("{}, {}", style.unwrap_or(current_style), order.unwrap_or(current_order)))
+}
+
+/// date_style_parts reads the output style and field order that a DateStyle value names, either of which it may leave
+/// out.
+fn date_style_parts(value: &str) -> Option<(Option<&'static str>, Option<&'static str>)> {
     let mut style: Option<&str> = None;
     let mut order: Option<&str> = None;
     for word in value.split(',').map(|w| w.trim().to_ascii_lowercase()) {
@@ -451,11 +486,14 @@ fn date_style(value: &str) -> Option<String> {
             "ymd" => order = Some("YMD"),
             "dmy" | "euro" | "european" => order = Some("DMY"),
             "mdy" | "us" | "noneuro" | "noneuropean" => order = Some("MDY"),
-            "default" => {}
+            "default" => {
+                style = Some("ISO");
+                order = Some("MDY");
+            }
             _ => return None,
         }
     }
-    Some(format!("{}, {}", style.unwrap_or("ISO"), order.unwrap_or("MDY")))
+    Some((style, order))
 }
 
 /// Settings is a session's parameter values, with the changes its transaction can undo.
@@ -543,7 +581,13 @@ impl Settings {
                     }
                     _ => {}
                 }
-                value.map(|v| normalize(definition, v)).transpose()?
+                match value.map(|v| normalize(definition, v)).transpose()? {
+                    Some(_) if definition.name == "DateStyle" => {
+                        let current = self.values.get("datestyle").map_or("ISO, MDY", String::as_str);
+                        value.and_then(|v| merged_date_style(v, current))
+                    }
+                    normalized => normalized,
+                }
             }
             None if name.contains('.') => {
                 if !valid_custom_name(name) {

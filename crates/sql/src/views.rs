@@ -227,9 +227,31 @@ impl Ctx<'_> {
             }
             _ => {
                 if self.relation_names(&schema)?.contains(&name) {
+                    if stmt.replace {
+                        return Err(PgError::new(code::WRONG_OBJECT_TYPE, format!("\"{name}\" is not a view")));
+                    }
                     return Err(PgError::new(code::DUPLICATE_TABLE, format!("relation \"{name}\" already exists")));
                 }
             }
+        }
+        let checked = pg_query::protobuf::ViewCheckOption::try_from(stmt.with_check_option)
+            .is_ok_and(|o| o != pg_query::protobuf::ViewCheckOption::NoCheckOption)
+            || stmt
+                .options
+                .iter()
+                .any(|o| matches!(o.node.as_ref(), Some(NodeEnum::DefElem(d)) if d.defname == "check_option"));
+        let single_relation =
+            matches!(select.from_clause.as_slice(), [item] if matches!(item.node, Some(NodeEnum::RangeVar(_))));
+        if checked && !single_relation {
+            return Err(PgError {
+                hint: Some(
+                    "Views that do not select from a single table or view are not automatically updatable.".into(),
+                ),
+                ..PgError::new(
+                    code::FEATURE_NOT_SUPPORTED,
+                    "WITH CHECK OPTION is supported only on automatically updatable views",
+                )
+            });
         }
         self.put_view(&schema, &name, Some(text))?;
         self.own(crate::auth::Object::Table(schema.clone(), name.clone()))?;

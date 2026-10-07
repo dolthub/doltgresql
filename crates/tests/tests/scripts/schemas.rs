@@ -1527,3 +1527,97 @@ fn test_schemas() {
         },
     ]);
 }
+
+#[test]
+fn test_schema_dependent_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Schema dependents and owners",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA many;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE many.t (a INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN many.d AS INT;",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE many.s;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP SCHEMA many;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop schema many because other objects depend on it", detail: r#"table many.t depends on schema many
+type many.d depends on schema many
+sequence many.s depends on schema many"#, hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP SCHEMA many CASCADE;",
+                    expected: Expected::Tag("DROP SCHEMA"),
+                    notices: &[Diagnostic { code: "00000", message: "drop cascades to 3 other objects", detail: r#"drop cascades to table many.t
+drop cascades to type many.d
+drop cascades to sequence many.s"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM pg_namespace WHERE nspname = 'many';",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA AUTHORIZATION nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "nobody" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA s1 AUTHORIZATION nobody;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "nobody" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path = 'nothere';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE test (pk BIGINT PRIMARY KEY);",
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: "no schema has been selected to create in", position: 14, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE s2;",
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: "no schema has been selected to create in", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TYPE IF EXISTS a.b.c.d;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "improper qualified name (too many dotted names): a.b.c.d", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

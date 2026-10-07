@@ -350,7 +350,8 @@ pub(crate) fn parse_type(spelling: &str) -> Result<ColumnType> {
     Ok(ColumnType { modifier: -1, ..ty })
 }
 
-/// go_spelling returns the SQL syntax Go writes for a type in the name of a table's anonymous type.
+/// go_spelling returns the SQL syntax Go writes for a type in the name of a table's anonymous type, qualifying a
+/// user-defined type with its schema.
 fn go_spelling(type_oid: u32) -> String {
     if let Some(t) = builtin_type(type_oid)
         && t.elem != 0
@@ -369,7 +370,13 @@ fn go_spelling(type_oid: u32) -> String {
         oid::BPCHAR => "CHAR".into(),
         oid::CHAR => "\"char\"".into(),
         17 => "BYTES".into(),
-        other => builtin_type(other).map_or("TEXT".into(), |t| t.name.to_uppercase()),
+        other => match (builtin_type(other), crate::usertypes::get(other)) {
+            (Some(t), _) => t.name.to_uppercase(),
+            (None, Some(t)) => {
+                format!("{}.{}", crate::engine::quote_identifier(&t.schema), crate::engine::quote_identifier(&t.name))
+            }
+            (None, None) => "TEXT".into(),
+        },
     }
 }
 
@@ -690,6 +697,7 @@ impl Ctx<'_> {
                     (None, None) => return Err(invalid_definition("no function body specified")),
                 };
                 let offset = text.find(body.as_str()).unwrap_or(0) as u32;
+                let ret = if table.len() == 1 { table[0].1 } else { ret };
                 let composite = match crate::usertypes::get(ret.oid).map(|t| t.kind.clone()) {
                     Some(crate::usertypes::Kind::Composite(attributes)) => Some(attributes),
                     _ => None,
@@ -705,7 +713,6 @@ impl Ctx<'_> {
                 } else {
                     Vec::new()
                 };
-                let ret = if table.len() == 1 { table[0].1 } else { ret };
                 self.check_sql_body(&name, &params, &body, ret, &columns)
                     .map_err(|err| PgError { position: err.position.map(|p| p + offset), ..err })?;
                 function.sql_definition = body.into_bytes();

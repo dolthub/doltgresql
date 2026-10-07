@@ -480,3 +480,335 @@ fn test_session_state_after_query_error() {
         },
     ]);
 }
+
+#[test]
+fn test_read_only_transaction_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Read-only transactions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE test (a INT PRIMARY KEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN ISOLATION LEVEL SERIALIZABLE, READ WRITE;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;",
+                    expected: Expected::Tag("BEGIN"),
+                    notices: &[Diagnostic { severity: "WARNING", code: "25001", message: "there is already a transaction in progress", ..E }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW transaction_read_only;",
+                    expected: Expected::Rows {
+                        columns: &[Column("transaction_read_only", TEXT)],
+                        rows: &[
+                            &[T("on")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW transaction_isolation;",
+                    expected: Expected::Rows {
+                        columns: &[Column("transaction_isolation", TEXT)],
+                        rows: &[
+                            &[T("repeatable read")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO test VALUES (1);",
+                    expected: Expected::Error(Diagnostic { code: "25006", message: "cannot execute INSERT in a read-only transaction", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW transaction_read_only;",
+                    expected: Expected::Rows {
+                        columns: &[Column("transaction_read_only", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN READ ONLY;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t2 (a int);",
+                    expected: Expected::Error(Diagnostic { code: "25006", message: "cannot execute CREATE TABLE in a read-only transaction", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET default_transaction_read_only = on;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO test VALUES (2);",
+                    expected: Expected::Error(Diagnostic { code: "25006", message: "cannot execute INSERT in a read-only transaction", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW transaction_read_only;",
+                    expected: Expected::Rows {
+                        columns: &[Column("transaction_read_only", TEXT)],
+                        rows: &[
+                            &[T("on")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM test;",
+                    expected: Expected::Error(Diagnostic { code: "25006", message: "cannot execute DELETE in a read-only transaction", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN READ WRITE;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO test VALUES (3);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET default_transaction_read_only = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM test;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "START TRANSACTION READ ONLY;",
+                    expected: Expected::Tag("START TRANSACTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE test SET a = 4;",
+                    expected: Expected::Error(Diagnostic { code: "25006", message: "cannot execute UPDATE in a read-only transaction", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_discard_and_hidden_setting_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "DISCARD forms",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE ds;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('ds');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD SEQUENCES;",
+                    expected: Expected::Tag("DISCARD SEQUENCES"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT currval('ds');",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: r#"currval of sequence "ds" is not yet defined in this session"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lastval();",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: "lastval is not yet defined in this session", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD PLANS;",
+                    expected: Expected::Tag("DISCARD PLANS"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD TEMP;",
+                    expected: Expected::Tag("DISCARD TEMP"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD TEMPORARY;",
+                    expected: Expected::Tag("DISCARD TEMP"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('ds');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD ALL;",
+                    expected: Expected::Tag("DISCARD ALL"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lastval();",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: "lastval is not yet defined in this session", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD PLANS;",
+                    expected: Expected::Tag("DISCARD PLANS"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD SEQUENCES;",
+                    expected: Expected::Tag("DISCARD SEQUENCES"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD ALL;",
+                    expected: Expected::Error(Diagnostic { code: "25001", message: "DISCARD ALL cannot run inside a transaction block", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Hidden default_with_oids",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET default_with_oids = false;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW default_with_oids;",
+                    expected: Expected::Rows {
+                        columns: &[Column("default_with_oids", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET default_with_oids = true;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "tables declared WITH OIDS are not supported", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT name, setting, category, short_desc, vartype, context FROM pg_settings WHERE name = 'default_with_oids';",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("setting", TEXT), Column("category", TEXT), Column("short_desc", TEXT), Column("vartype", TEXT), Column("context", TEXT)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET default_with_oids;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

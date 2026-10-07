@@ -1525,3 +1525,99 @@ fn test_subscript() {
         },
     ]);
 }
+
+#[test]
+fn test_jsonb_subscript_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "jsonb subscripts",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ('123'::jsonb)[NULL];",
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ('{"a": {"b": [10, 20]}}'::jsonb)['a']['b'][1];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[T("20")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ('{"a": {"b": [10, 20]}}'::jsonb)['a']['b']['1'];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[T("20")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('[10, 20]'::jsonb)[-1];",
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[T("20")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ('{"1": 5}'::jsonb)[1];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb", JSONB)],
+                        rows: &[
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ('{"a": 1}'::jsonb)['a':'b'];"#,
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "jsonb subscript does not support slices", position: 32, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ('{"a": 1}'::jsonb)[1.5];"#,
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "subscript type numeric is not supported", hint: "jsonb subscript must be coercible to either integer or text.", position: 28, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ('{"a": 1}'::jsonb)[true];"#,
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "subscript type boolean is not supported", hint: "jsonb subscript must be coercible to either integer or text.", position: 28, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT pg_typeof(('{"a": 1}'::jsonb)['a']);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("jsonb")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

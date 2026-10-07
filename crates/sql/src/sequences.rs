@@ -421,6 +421,13 @@ impl Ctx<'_> {
         store(self.db, &mut self.txn.root, sequence)
     }
 
+    /// forget_tracked drops the state that every transaction shares for a sequence, so that a new sequence that takes
+    /// a dropped one's name starts over.
+    fn forget_tracked(&mut self, id: &[u8]) -> Result<()> {
+        self.txn.sequences.lock().map_err(|_| PgError::internal("a lock was poisoned"))?.remove(id);
+        Ok(())
+    }
+
     /// next_value advances a sequence, as nextval does.
     pub fn next_value(&mut self, sequence: Sequence) -> Result<i64> {
         let mut sequence = self.latest(sequence)?;
@@ -448,6 +455,7 @@ impl Ctx<'_> {
         if let Some(owned_by) = apply_options(&mut sequence, &stmt.options, true)? {
             self.set_owner(&mut sequence, &schema, &owned_by)?;
         }
+        self.forget_tracked(&sequence.id)?;
         store(self.db, &mut self.txn.root, &sequence)?;
         self.own(crate::auth::Object::Sequence(schema, name))?;
         Ok(Outcome::command("CREATE SEQUENCE"))
@@ -664,6 +672,7 @@ impl Ctx<'_> {
         apply_options(&mut sequence, options, true)?;
         sequence.owner_table = id::new(SECTION_TABLE, &[schema, table]);
         sequence.owner_column = column.as_bytes().to_vec();
+        self.forget_tracked(&sequence.id)?;
         store(self.db, &mut self.txn.root, &sequence)?;
         self.own(crate::auth::Object::Sequence(schema.to_string(), name.clone()))?;
         let quoted = format!("{}.{}", crate::engine::quote_identifier(schema), crate::engine::quote_identifier(&name));

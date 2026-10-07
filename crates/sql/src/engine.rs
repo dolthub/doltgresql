@@ -994,7 +994,12 @@ impl Session {
         }
         if let Some(kind) = kind {
             let name = transaction_statement(statement).map(|t| t.savepoint_name.clone()).unwrap_or_default();
-            return self.transaction(kind, &name);
+            let begun = !self.state.explicit;
+            let outcome = self.transaction(kind, &name)?;
+            if matches!(kind, TransactionStmtKind::TransStmtBegin | TransactionStmtKind::TransStmtStart) {
+                self.begin_modes(transaction_statement(statement), begun)?;
+            }
+            return Ok(outcome);
         }
         match statement {
             Statement::Use(target) => {
@@ -1043,6 +1048,28 @@ impl Session {
         Ok(Outcome::command("ROLLBACK"))
     }
 
+    /// begin_modes applies the transaction modes of a BEGIN, which a new transaction otherwise takes from
+    /// default_transaction_read_only, as Postgres does even for a BEGIN inside a transaction block.
+    fn begin_modes(&mut self, stmt: Option<&pg_query::protobuf::TransactionStmt>, begun: bool) -> Result<()> {
+        if begun {
+            let read_only = self.state.settings.get("default_transaction_read_only").unwrap_or_default();
+            self.state.settings.set("transaction_read_only", Some(&read_only), true, true)?;
+        }
+        for option in stmt.map(|s| s.options.as_slice()).unwrap_or_default() {
+            let Some(NodeEnum::DefElem(def)) = option.node.as_ref() else { continue };
+            let value = match def.arg.as_deref().and_then(|a| a.node.as_ref()) {
+                Some(NodeEnum::AConst(c)) => match &c.val {
+                    Some(Val::Ival(i)) => if i.ival == 0 { "off" } else { "on" }.to_string(),
+                    Some(Val::Sval(s)) => s.sval.clone(),
+                    _ => continue,
+                },
+                _ => continue,
+            };
+            self.state.settings.set(&def.defname, Some(&value), true, true)?;
+        }
+        Ok(())
+    }
+
     /// transaction runs BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, or ROLLBACK TO.
     fn transaction(&mut self, kind: TransactionStmtKind, name: &str) -> Result<Outcome> {
         let outside = |statement: &str| {
@@ -1082,7 +1109,8 @@ impl Session {
                     });
                 }
                 self.state.explicit = true;
-                Ok(Outcome::command("BEGIN"))
+                let start = kind == TransactionStmtKind::TransStmtStart;
+                Ok(Outcome::command(if start { "START TRANSACTION" } else { "BEGIN" }))
             }
             TransactionStmtKind::TransStmtCommit => {
                 if !self.state.explicit {
@@ -1222,7 +1250,20 @@ impl Session {
             NodeEnum::VariableSetStmt(set) => return self.set(set),
             NodeEnum::VariableShowStmt(show) => return self.show(&show.name),
             NodeEnum::DeallocateStmt(stmt) if stmt.isall => return Ok(Outcome::command("DEALLOCATE ALL")),
-            NodeEnum::DiscardStmt(_) => {
+            NodeEnum::DiscardStmt(discard) => {
+                let mode = pg_query::protobuf::DiscardMode::try_from(discard.target);
+                if mode != Ok(pg_query::protobuf::DiscardMode::DiscardAll) {
+                    let tag = match mode {
+                        Ok(pg_query::protobuf::DiscardMode::DiscardPlans) => "DISCARD PLANS",
+                        Ok(pg_query::protobuf::DiscardMode::DiscardSequences) => "DISCARD SEQUENCES",
+                        _ => "DISCARD TEMP",
+                    };
+                    if tag == "DISCARD SEQUENCES" {
+                        self.state.sequence_values.clear();
+                        self.state.last_sequence = None;
+                    }
+                    return Ok(Outcome::command(tag));
+                }
                 if self.state.explicit {
                     return Err(PgError::new(
                         code::ACTIVE_SQL_TRANSACTION,
@@ -1233,6 +1274,8 @@ impl Session {
                 let user = self.state.authenticated.clone();
                 self.state.settings.set_raw("session_authorization", Some(user), false, false);
                 self.state.settings.set_raw("role", None, false, false);
+                self.state.sequence_values.clear();
+                self.state.last_sequence = None;
                 return Ok(Outcome::command("DISCARD ALL"));
             }
             _ => {}
@@ -1422,6 +1465,27 @@ fn set_value(name: &str, args: &[Node]) -> Result<String> {
     Ok(parts.join(", "))
 }
 
+/// command_name names a statement that changes data as Postgres' CreateCommandName does.
+fn command_name(node: &NodeEnum) -> &'static str {
+    match node {
+        NodeEnum::InsertStmt(_) => "INSERT",
+        NodeEnum::UpdateStmt(_) => "UPDATE",
+        NodeEnum::DeleteStmt(_) => "DELETE",
+        NodeEnum::TruncateStmt(_) => "TRUNCATE TABLE",
+        NodeEnum::CreateStmt(_) => "CREATE TABLE",
+        NodeEnum::CreateTableAsStmt(_) => "CREATE TABLE AS",
+        NodeEnum::IndexStmt(_) => "CREATE INDEX",
+        NodeEnum::ViewStmt(_) => "CREATE VIEW",
+        NodeEnum::DropStmt(drop) => match pg_query::protobuf::ObjectType::try_from(drop.remove_type) {
+            Ok(pg_query::protobuf::ObjectType::ObjectIndex) => "DROP INDEX",
+            Ok(pg_query::protobuf::ObjectType::ObjectView) => "DROP VIEW",
+            Ok(pg_query::protobuf::ObjectType::ObjectSequence) => "DROP SEQUENCE",
+            _ => "DROP TABLE",
+        },
+        _ => "ALTER TABLE",
+    }
+}
+
 /// describable reports whether describing a statement needs the catalog.
 pub(crate) fn describable(node: &NodeEnum) -> bool {
     matches!(
@@ -1525,6 +1589,15 @@ impl Ctx<'_> {
                 | NodeEnum::IndexStmt(_)
                 | NodeEnum::ViewStmt(_)
         );
+        if writes
+            && (self.session.setting_on("transaction_read_only")
+                || !self.session.explicit && self.session.setting_on("default_transaction_read_only"))
+        {
+            return Err(PgError::new(
+                code::READ_ONLY_SQL_TRANSACTION,
+                format!("cannot execute {} in a read-only transaction", command_name(node)),
+            ));
+        }
         if writes && self.txn.detached {
             return Err(PgError::internal(format!("Database {} is read-only.", self.session.display)));
         }
@@ -1572,6 +1645,10 @@ impl Ctx<'_> {
             NodeEnum::ViewStmt(stmt) => {
                 let text = pg_query::NodeRef::ViewStmt(stmt).deparse().map_err(PgError::internal)?;
                 self.create_view(stmt, &text)
+            }
+            NodeEnum::DoStmt(stmt) => {
+                let text = pg_query::NodeRef::DoStmt(stmt).deparse().map_err(PgError::internal)?;
+                self.do_block(stmt, &text)
             }
             NodeEnum::AlterRoleStmt(stmt) => self.alter_role(stmt),
             NodeEnum::DropRoleStmt(stmt) => self.drop_role(stmt),

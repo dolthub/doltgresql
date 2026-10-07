@@ -187,3 +187,191 @@ fn test_parameters() {
         },
     ]);
 }
+
+#[test]
+fn test_partial_datestyle_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Partial DateStyle values",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET datestyle = 'german';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("German, DMY")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET datestyle = 'YMD';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("German, YMD")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET datestyle = 'sQl';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("SQL, YMD")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET datestyle = 'postgreS';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("Postgres, YMD")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET datestyle = 'dmy, german';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("German, DMY")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET datestyle = 'german, ymd';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("German, YMD")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET datestyle = default;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("ISO, MDY")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET datestyle = 'iso';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("ISO, MDY")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("ISO, MDY")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET LOCAL datestyle = 'sql';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("SQL, MDY")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SHOW DateStyle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("DateStyle", TEXT)],
+                        rows: &[
+                            &[T("ISO, MDY")],
+                        ],
+                        tag: "SHOW",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

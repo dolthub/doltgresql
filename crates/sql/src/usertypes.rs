@@ -792,10 +792,26 @@ impl Ctx<'_> {
                 Some(pg_query::NodeEnum::List(list)) => list.items.clone(),
                 _ => continue,
             };
+            let written: Vec<&str> = names.iter().filter_map(crate::expr::node_name).collect();
+            let shown = written.join(".");
+            match written.as_slice() {
+                [_, _, _, _, ..] => {
+                    return Err(PgError::new(
+                        code::SYNTAX_ERROR,
+                        format!("improper qualified name (too many dotted names): {shown}"),
+                    ));
+                }
+                [database, _, _] if *database != self.session.database => {
+                    return Err(PgError::new(
+                        code::FEATURE_NOT_SUPPORTED,
+                        format!("cross-database references are not implemented: {shown}"),
+                    ));
+                }
+                _ => {}
+            }
             let (schema, name) = type_names(&names);
             let found = lookup((!schema.is_empty()).then_some(schema.as_str()), &name).filter(|t| !t.is_array());
             let Some(user_type) = found else {
-                let shown = if schema.is_empty() { name.clone() } else { format!("{schema}.{name}") };
                 if drop.missing_ok {
                     self.session.notice(PgError::notice("00000", format!("type \"{shown}\" does not exist, skipping")));
                     continue;

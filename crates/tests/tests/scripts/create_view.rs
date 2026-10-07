@@ -791,3 +791,328 @@ fn test_view_definitions() {
         },
     ]);
 }
+
+#[test]
+fn test_view_and_routine_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "WITH queries in INSERT, UPDATE, and DELETE",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE w1 (a INT PRIMARY KEY, b TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "WITH src AS (SELECT 1 AS a, 'x' AS b UNION ALL SELECT 2, 'y') INSERT INTO w1 SELECT * FROM src;",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "WITH v AS (SELECT 5 AS n) INSERT INTO w1 VALUES ((SELECT n FROM v), 'z') RETURNING *;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("5"), T("z")],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "WITH t AS (SELECT 2 AS a) UPDATE w1 SET b = 'updated' WHERE a IN (SELECT a FROM t) RETURNING *;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("2"), T("updated")],
+                        ],
+                        tag: "UPDATE 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "WITH t AS (SELECT 1 AS a) DELETE FROM w1 USING t WHERE w1.a = t.a RETURNING w1.*;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("1"), T("x")],
+                        ],
+                        tag: "DELETE 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "WITH t AS (SELECT 1 AS a), t AS (SELECT 2) INSERT INTO w1 VALUES (9, 'q');",
+                    expected: Expected::Error(Diagnostic { code: "42712", message: r#"WITH query name "t" specified more than once"#, position: 28, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM w1 ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("2"), T("updated")],
+                            &[T("5"), T("z")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Views over other relations and check options",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE vt (pk INT PRIMARY KEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE vs;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OR REPLACE VIEW vt AS SELECT 1;",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#""vt" is not a view"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE OR REPLACE VIEW vs AS SELECT 1;",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#""vs" is not a view"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW vc AS SELECT 1 WITH LOCAL CHECK OPTION;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "WITH CHECK OPTION is supported only on automatically updatable views", hint: "Views that do not select from a single table or view are not automatically updatable.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW vc WITH (check_option = 'cascaded') AS SELECT 1;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "WITH CHECK OPTION is supported only on automatically updatable views", hint: "Views that do not select from a single table or view are not automatically updatable.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW vc WITH (security_barrier = true) AS SELECT 1;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW vd AS SELECT pk FROM vt WITH CHECK OPTION;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM vc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Composite routine parameters and results",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA rsch;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE rsch.pair AS (id INT, label TEXT);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE goods (id INT PRIMARY KEY, name TEXT NOT NULL, qty INT NOT NULL, price REAL NOT NULL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO goods VALUES (1, 'apple', 3, 2.5), (2, 'banana', 5, 1.2);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION total(g goods) RETURNS REAL AS $$ BEGIN RETURN g.qty * g.price; END; $$ LANGUAGE plpgsql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT total(g) FROM goods AS g ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("total", FLOAT4)],
+                        rows: &[
+                            &[T("6")],
+                            &[T("7.5")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION pairs() RETURNS TABLE(p rsch.pair) LANGUAGE plpgsql AS $$ BEGIN RETURN QUERY SELECT 1, 'one'; RETURN QUERY SELECT 2, 'two'; END; $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pairs();",
+                    expected: Expected::Rows {
+                        columns: &[Column("pairs", USER_DEFINED)],
+                        rows: &[
+                            &[T("(1,one)")],
+                            &[T("(2,two)")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM pairs();",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("label", TEXT)],
+                        rows: &[
+                            &[T("1"), T("one")],
+                            &[T("2"), T("two")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION pairs_sql() RETURNS TABLE(p rsch.pair) LANGUAGE sql AS $$ SELECT 3, 'three' $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pairs_sql();",
+                    expected: Expected::Rows {
+                        columns: &[Column("pairs_sql", USER_DEFINED)],
+                        rows: &[
+                            &[T("(3,three)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION nested_do() RETURNS void AS $f$ BEGIN DO $b$ BEGIN INSERT INTO goods VALUES (3, 'cherry', 1, 9); END $b$; END; $f$ LANGUAGE plpgsql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nested_do();",
+                    expected: Expected::Rows {
+                        columns: &[Column("nested_do", VOID)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT name FROM goods WHERE id = 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT)],
+                        rows: &[
+                            &[T("cherry")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Arrays of arrays",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[ARRAY[]::int[]];",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ARRAY[ARRAY[1,2]::int[], ARRAY[3,4]::int[]];",
+                    expected: Expected::Rows {
+                        columns: &[Column("array", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2},{3,4}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(ARRAY[ARRAY[1]::int[]]);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("integer[]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Recreated serial sequences start over",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE rs (pk SERIAL PRIMARY KEY, v TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO rs (v) VALUES ('a'), ('b');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE rs;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE rs (pk SERIAL PRIMARY KEY, v TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO rs (v) VALUES ('c') RETURNING pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

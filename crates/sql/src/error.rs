@@ -53,6 +53,7 @@ pub mod code {
     pub const DUPLICATE_SCHEMA: &str = "42P06";
     pub const ACTIVE_SQL_TRANSACTION: &str = "25001";
     pub const IN_FAILED_SQL_TRANSACTION: &str = "25P02";
+    pub const READ_ONLY_SQL_TRANSACTION: &str = "25006";
     pub const OBJECT_NOT_IN_PREREQUISITE_STATE: &str = "55000";
     pub const SEQUENCE_GENERATOR_LIMIT_EXCEEDED: &str = "2200H";
     pub const INVALID_NAME: &str = "42602";

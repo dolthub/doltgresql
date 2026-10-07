@@ -1742,6 +1742,7 @@ impl<'b, 'a> Binder<'b, 'a> {
         if nested && !is_array_type(ty.oid) {
             ty = typ(array_of(ty.oid));
         }
+        let nested = nested || (is_array_type(ty.oid) && !crate::array::is_vector_type(ty.oid));
         let mut items = Vec::with_capacity(bound.len());
         for (item, location) in bound {
             items.push(coerce(item, ty, false, location)?.0);
@@ -1823,6 +1824,9 @@ impl<'b, 'a> Binder<'b, 'a> {
         if items.is_empty() {
             return Ok((base, ty));
         }
+        if ty.oid == oid::JSONB {
+            return self.jsonb_subscripts((base, ty), items, arg_location(arg));
+        }
         let (subscripts, slice) = self.subscripts(items)?;
         if !is_array_type(ty.oid) {
             return Err(PgError {
@@ -1835,6 +1839,43 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         let result = if slice { ty } else { ColumnType { oid: element_type(ty.oid), ..ty } };
         Ok((Expr::Subscript(Box::new(base), subscripts, slice), result))
+    }
+
+    /// jsonb_subscripts binds subscripts of a jsonb value as the path of a `#>` lookup, each read as an integer or as
+    /// text, as Postgres' jsonb_subscript_transform does.
+    fn jsonb_subscripts(&mut self, base: Bound, items: &[Node], location: i32) -> Result<Bound> {
+        let mut path = Vec::with_capacity(items.len());
+        for item in items {
+            let Some(NodeEnum::AIndices(indices)) = item.node.as_ref() else {
+                return Err(PgError::unsupported("field selection"));
+            };
+            let index = indices.uidx.as_deref().ok_or_else(|| PgError::internal("a subscript without an index"))?;
+            if indices.is_slice {
+                return Err(PgError {
+                    position: position(arg_location(index)),
+                    ..PgError::new(code::DATATYPE_MISMATCH, "jsonb subscript does not support slices")
+                });
+            }
+            let (expr, ty) = self.bind(index)?;
+            let target = match ty.oid {
+                oid::UNKNOWN => oid::TEXT,
+                from => [oid::INT4, oid::TEXT]
+                    .into_iter()
+                    .find(|&to| from == to || implicitly_converts(from, to))
+                    .ok_or_else(|| PgError {
+                        position: position(arg_location(index)),
+                        hint: Some("jsonb subscript must be coercible to either integer or text.".into()),
+                        ..PgError::new(
+                            code::DATATYPE_MISMATCH,
+                            format!("subscript type {} is not supported", type_display(from)),
+                        )
+                    })?,
+            };
+            let bound = coerce((expr, ty), typ(target), false, arg_location(index))?;
+            path.push(coerce(bound, typ(oid::TEXT), true, arg_location(index))?.0);
+        }
+        let path = (Expr::Array(oid::TEXT, path, false), typ(oid::TEXT_ARRAY));
+        self.binary("#>", base, path, location)
     }
 
     /// array_binary binds an operator with an array operand, or returns None when no array operator matches.

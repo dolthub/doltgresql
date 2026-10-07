@@ -644,11 +644,27 @@ impl Ctx<'_> {
         Ok(rules)
     }
 
-    /// plan_insert plans an INSERT.
+    /// with_queries runs a function with the WITH queries of a statement's WITH clause in scope, as plan_query brings
+    /// them into scope for a SELECT.
+    fn with_queries<T>(
+        &mut self,
+        with: Option<&pg_query::protobuf::WithClause>,
+        f: impl FnOnce(&mut Ctx<'_>) -> Result<T>,
+    ) -> Result<T> {
+        let Some(with) = with else { return f(self) };
+        let depth = self.ctes.len();
+        let result = Planner { ctx: self, outer: Vec::new() }.plan_with(with).and_then(|_| f(self));
+        self.ctes.truncate(depth);
+        result
+    }
+
+    /// plan_insert plans an INSERT, with the WITH queries it defines in scope.
     pub fn plan_insert(&mut self, insert: &InsertStmt) -> Result<InsertPlan> {
-        if insert.with_clause.is_some() {
-            return Err(PgError::unsupported("WITH in INSERT"));
-        }
+        self.with_queries(insert.with_clause.as_ref(), |ctx| ctx.plan_insert_statement(insert))
+    }
+
+    /// plan_insert_statement plans an INSERT whose WITH queries are in scope.
+    fn plan_insert_statement(&mut self, insert: &InsertStmt) -> Result<InsertPlan> {
         let relation = insert.relation.as_ref().ok_or_else(|| PgError::internal("INSERT without a table"))?;
         let table = self.resolve_target(relation, "a")?;
         let object = Object::Table(table.schema.clone(), table.name.clone());
@@ -898,9 +914,11 @@ impl Ctx<'_> {
 
     /// plan_update plans an UPDATE, with its FROM list joined to the table's rows.
     pub fn plan_update(&mut self, update: &UpdateStmt) -> Result<UpdatePlan> {
-        if update.with_clause.is_some() {
-            return Err(PgError::unsupported("WITH in UPDATE"));
-        }
+        self.with_queries(update.with_clause.as_ref(), |ctx| ctx.plan_update_statement(update))
+    }
+
+    /// plan_update_statement plans an UPDATE whose WITH queries are in scope.
+    fn plan_update_statement(&mut self, update: &UpdateStmt) -> Result<UpdatePlan> {
         let relation = update.relation.as_ref().ok_or_else(|| PgError::internal("UPDATE without a table"))?;
         let table = self.resolve_target(relation, "w")?;
         let object = Object::Table(table.schema.clone(), table.name.clone());
@@ -931,9 +949,11 @@ impl Ctx<'_> {
 
     /// plan_delete plans a DELETE, with its USING list joined to the table's rows.
     pub fn plan_delete(&mut self, delete: &DeleteStmt) -> Result<DeletePlan> {
-        if delete.with_clause.is_some() {
-            return Err(PgError::unsupported("WITH in DELETE"));
-        }
+        self.with_queries(delete.with_clause.as_ref(), |ctx| ctx.plan_delete_statement(delete))
+    }
+
+    /// plan_delete_statement plans a DELETE whose WITH queries are in scope.
+    fn plan_delete_statement(&mut self, delete: &DeleteStmt) -> Result<DeletePlan> {
         let relation = delete.relation.as_ref().ok_or_else(|| PgError::internal("DELETE without a table"))?;
         let table = self.resolve_target(relation, "d")?;
         let object = Object::Table(table.schema.clone(), table.name.clone());

@@ -378,7 +378,8 @@ pub(crate) struct Frame<'r> {
     outputs: Vec<String>,
 }
 
-/// call runs a PL/pgSQL routine on arguments already converted to its input types.
+/// call runs a PL/pgSQL routine on arguments already converted to its input types, where an argument of a composite
+/// type is a row variable.
 pub fn call(ctx: &mut Ctx<'_>, routine: &Routine, ops: &[Operation], args: Vec<Value>) -> Result<Value> {
     let mut frame = Frame::new(routine, ops);
     for param in routine.params.iter().filter(|p| p.mode.is_output()) {
@@ -386,7 +387,17 @@ pub fn call(ctx: &mut Ctx<'_>, routine: &Routine, ops: &[Operation], args: Vec<V
         frame.outputs.push(param.name.clone());
     }
     for (i, (param, value)) in routine.inputs().zip(args).enumerate() {
-        frame.declare(&param.name, Variable::scalar(param.ty, value));
+        let variable = match crate::usertypes::get(param.ty.oid).map(|t| t.kind.clone()) {
+            Some(crate::usertypes::Kind::Composite(attributes)) => {
+                let row = match value {
+                    Value::Composite(composite) => Some(composite.fields),
+                    _ => None,
+                };
+                Variable { ty: param.ty, fixed: true, ..Variable::record(attributes, row) }
+            }
+            _ => Variable::scalar(param.ty, value),
+        };
+        frame.declare(&param.name, variable);
         let index = frame.variables.len() - 1;
         frame.alias(&format!("${}", i + 1), index);
     }
@@ -973,7 +984,17 @@ impl<'r> Frame<'r> {
                     let result = self.query(ctx, &primary, &secondary)?;
                     self.check_structure(&result.columns)?;
                     self.set_found(!result.rows.is_empty());
-                    self.returned.get_or_insert_with(Vec::new).extend(result.rows);
+                    let rows = match self.composite_column() {
+                        Some((type_oid, _)) => result
+                            .rows
+                            .into_iter()
+                            .map(|fields| {
+                                vec![Value::Composite(Box::new(crate::types::CompositeValue { type_oid, fields }))]
+                            })
+                            .collect(),
+                        None => result.rows,
+                    };
+                    self.returned.get_or_insert_with(Vec::new).extend(rows);
                 }
                 Some(OpCode::ForQueryInit) => {
                     let result = self.query(ctx, &primary, &secondary)?;
@@ -1004,12 +1025,22 @@ impl<'r> Frame<'r> {
         self.finish(None)
     }
 
+    /// composite_column returns the type and attributes of the routine's only output column when that column has a
+    /// composite type, which makes the routine's rows that type's values, as Postgres does.
+    fn composite_column(&self) -> Option<(u32, Vec<(String, ColumnType)>)> {
+        let [(_, ty)] = self.routine.columns.as_slice() else { return None };
+        match crate::usertypes::get(ty.oid).map(|t| t.kind.clone()) {
+            Some(crate::usertypes::Kind::Composite(attributes)) => Some((ty.oid, attributes)),
+            _ => None,
+        }
+    }
+
     /// check_structure fails as Postgres does when RETURN QUERY's columns do not match the routine's result.
     fn check_structure(&self, columns: &[(String, ColumnType)]) -> Result<()> {
-        let expected: Vec<ColumnType> = if self.routine.columns.is_empty() {
-            vec![self.routine.ret]
-        } else {
-            self.routine.columns.iter().map(|(_, ty)| *ty).collect()
+        let expected: Vec<ColumnType> = match self.composite_column() {
+            Some((_, attributes)) => attributes.iter().map(|(_, ty)| *ty).collect(),
+            None if self.routine.columns.is_empty() => vec![self.routine.ret],
+            None => self.routine.columns.iter().map(|(_, ty)| *ty).collect(),
         };
         let mismatch = |detail: String| PgError {
             detail: Some(detail),
