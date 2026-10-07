@@ -4966,3 +4966,363 @@ fn test_index_column_options() {
         },
     ]);
 }
+
+#[test]
+fn test_index_scans() {
+    run_scripts(&[
+        ScriptTest {
+            name: "index scans and ordering by indexes",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ix (pk INT PRIMARY KEY, v1 INT, v2 TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ix_v1_desc ON ix (v1 DESC);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ix_v1_v2 ON ix (v1, v2);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ix VALUES (1, 5, 'a'), (2, NULL, 'b'), (3, 3, NULL), (4, 6, 'c'), (5, 1, 'z'), (6, 5, 'd');",
+                    expected: Expected::Tag("INSERT 0 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM ix ORDER BY pk DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v1", INT4), Column("v2", TEXT)],
+                        rows: &[
+                            &[T("6"), T("5"), T("d")],
+                            &[T("5"), T("1"), T("z")],
+                            &[T("4"), T("6"), T("c")],
+                            &[T("3"), T("3"), Null],
+                            &[T("2"), Null, T("b")],
+                            &[T("1"), T("5"), T("a")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, v1 FROM ix ORDER BY v1, pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v1", INT4)],
+                        rows: &[
+                            &[T("5"), T("1")],
+                            &[T("3"), T("3")],
+                            &[T("1"), T("5")],
+                            &[T("6"), T("5")],
+                            &[T("4"), T("6")],
+                            &[T("2"), Null],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, v1 FROM ix ORDER BY v1 DESC, pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v1", INT4)],
+                        rows: &[
+                            &[T("2"), Null],
+                            &[T("4"), T("6")],
+                            &[T("1"), T("5")],
+                            &[T("6"), T("5")],
+                            &[T("3"), T("3")],
+                            &[T("5"), T("1")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, v1 FROM ix ORDER BY v1 NULLS FIRST, pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v1", INT4)],
+                        rows: &[
+                            &[T("2"), Null],
+                            &[T("5"), T("1")],
+                            &[T("3"), T("3")],
+                            &[T("1"), T("5")],
+                            &[T("6"), T("5")],
+                            &[T("4"), T("6")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, v1 FROM ix ORDER BY v1 DESC NULLS LAST, pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v1", INT4)],
+                        rows: &[
+                            &[T("4"), T("6")],
+                            &[T("1"), T("5")],
+                            &[T("6"), T("5")],
+                            &[T("3"), T("3")],
+                            &[T("5"), T("1")],
+                            &[T("2"), Null],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, v2 FROM ix WHERE v1 = 5 ORDER BY v2 DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("v2", TEXT)],
+                        rows: &[
+                            &[T("6"), T("d")],
+                            &[T("1"), T("a")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM ix WHERE v1 > 2 ORDER BY v1, v2 LIMIT 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("3")],
+                            &[T("1")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM ix WHERE v1 IN (1, 6) ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("4")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM ix WHERE v1 <> 5 ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("3")],
+                            &[T("4")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM ix WHERE v1 IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM ix WHERE v1 >= 3 AND v1 < 6 ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("3")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM ix WHERE v1 = 5 OR v1 = 1 ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM ix WHERE pk > 2 AND pk <= 5 ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("3")],
+                            &[T("4")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a.pk, b.pk FROM ix a JOIN ix b ON a.v1 = b.v1 ORDER BY a.pk DESC, b.pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("pk", INT4)],
+                        rows: &[
+                            &[T("6"), T("1")],
+                            &[T("6"), T("6")],
+                            &[T("5"), T("5")],
+                            &[T("4"), T("4")],
+                            &[T("3"), T("3")],
+                            &[T("1"), T("1")],
+                            &[T("1"), T("6")],
+                        ],
+                        tag: "SELECT 7",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "index scans over keyless tables and text keys",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE kl (a INT, b TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX kl_a ON kl (a);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO kl VALUES (1, 'x'), (2, 'y'), (2, 'y'), (3, 'z');",
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, b FROM kl WHERE a = 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("2"), T("y")],
+                            &[T("2"), T("y")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a FROM kl WHERE a > 1 ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("2")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tk (id TEXT PRIMARY KEY, n INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tk VALUES ('b', 1), ('a', 2), ('c', 3);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT n FROM tk ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("n", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("1")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT n FROM tk WHERE id > 'a' ORDER BY id DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("n", INT4)],
+                        rows: &[
+                            &[T("3")],
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "volatile functions in filters run for each row",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE ixs;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE sv (pk INT PRIMARY KEY, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX sv_v ON sv (v);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sv VALUES (1, 1), (2, 2), (3, 3);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM sv WHERE v = nextval('ixs') ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('ixs');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

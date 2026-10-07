@@ -148,6 +148,24 @@ pub fn is_immutable(expr: &pg_query::Node) -> bool {
     })
 }
 
+/// is_volatile reports whether a built-in function has a volatile form, as pg_proc's provolatile shows them.
+pub fn is_volatile(function: &str) -> bool {
+    static VOLATILE: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    VOLATILE
+        .get_or_init(|| {
+            let Some(proc) = lookup("pg_catalog", "pg_proc") else { return Default::default() };
+            let (Some(name), Some(volatility)) = (proc.column("proname"), proc.column("provolatile")) else {
+                return Default::default();
+            };
+            builtin::rows(proc)
+                .iter()
+                .filter(|r| r[volatility] == Value::Text("v".into()))
+                .map(|r| r[name].output().unwrap_or_default())
+                .collect()
+        })
+        .contains(function)
+}
+
 /// Rows collects the rows of a system catalog relation, with each column NULL unless set.
 pub struct Rows<'t> {
     table: &'t CatalogTable,

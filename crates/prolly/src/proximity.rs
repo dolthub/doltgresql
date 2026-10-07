@@ -18,8 +18,9 @@
 use std::collections::{BTreeMap, HashMap};
 
 use serial::Builder;
-use store::Hash;
+use store::{ChunkReader, Hash};
 
+use crate::Node;
 use crate::blob::NodeSink;
 use crate::serialize::{encode_counts, write_item_bytes};
 use store::{Error, Result};
@@ -49,7 +50,7 @@ impl Distance {
     }
 
     /// eval returns the distance between two vectors, computed as go-mysql-server's distance types compute it.
-    fn eval(self, left: &[f32], right: &[f32]) -> f64 {
+    pub fn eval(self, left: &[f32], right: &[f32]) -> f64 {
         match self {
             Distance::L2Squared => left.iter().zip(right).map(|(l, r)| (l - r) as f64 * (l - r) as f64).sum(),
             Distance::Cosine => {
@@ -229,6 +230,171 @@ fn serialize_vector_index_node(
     b.add_u8(9, distance as u8, 0);
     let root = b.end_object();
     b.finish_message(root, serial::VECTOR_INDEX_NODE)
+}
+
+/// Candidate is a key of a proximity map, with its value and its distance from a query vector.
+struct Candidate {
+    key: Vec<u8>,
+    value: Vec<u8>,
+    distance: f64,
+}
+
+/// Candidates holds the closest keys found so far in a min-max heap ordered by distance, laid out as the
+/// esote/minmaxheap package lays out Dolt's DistancePriorityHeap, so that ties between equal distances fall as they
+/// fall in Dolt.
+struct Candidates {
+    items: Vec<Candidate>,
+    capacity: usize,
+}
+
+impl Candidates {
+    /// new returns an empty heap that keeps at most `limit` candidates.
+    fn new(limit: usize) -> Candidates {
+        Candidates { items: Vec::with_capacity(limit + 1), capacity: limit + 1 }
+    }
+
+    /// less reports whether the candidate at `i` is closer than the one at `j`.
+    fn less(&self, i: usize, j: usize) -> bool {
+        self.items[i].distance < self.items[j].distance
+    }
+
+    /// is_min_level reports whether a position lies on a level of the heap whose items are smaller than their
+    /// descendants.
+    fn is_min_level(i: usize) -> bool {
+        (usize::BITS - (i + 1).leading_zeros() - 1).is_multiple_of(2)
+    }
+
+    /// down moves the item at `i` down among the first `n` items, reporting whether it moved.
+    fn down(&mut self, i0: usize, n: usize) -> bool {
+        let min = Self::is_min_level(i0);
+        let mut i = i0;
+        loop {
+            let mut m = i;
+            let l = i * 2 + 1;
+            if l >= n {
+                break;
+            }
+            if self.less(l, m) == min {
+                m = l;
+            }
+            let r = i * 2 + 2;
+            if r < n && self.less(r, m) == min {
+                m = r;
+            }
+            let mut g = l * 2 + 1;
+            while g < n && g <= r * 2 + 2 {
+                if self.less(g, m) == min {
+                    m = g;
+                }
+                g += 1;
+            }
+            if m == i {
+                break;
+            }
+            self.items.swap(i, m);
+            if m == l || m == r {
+                break;
+            }
+            let p = (m - 1) / 2;
+            if self.less(p, m) == min {
+                self.items.swap(m, p);
+            }
+            i = m;
+        }
+        i > i0
+    }
+
+    /// up moves the item at `i` up to its place.
+    fn up(&mut self, mut i: usize) {
+        let mut min = Self::is_min_level(i);
+        if i > 0 {
+            let p = (i - 1) / 2;
+            if self.less(p, i) == min {
+                self.items.swap(i, p);
+                min = !min;
+                i = p;
+            }
+        }
+        while i > 2 {
+            let g = ((i - 1) / 2 - 1) / 2;
+            if self.less(i, g) != min {
+                return;
+            }
+            self.items.swap(i, g);
+            i = g;
+        }
+    }
+
+    /// insert adds a candidate, dropping the farthest when the heap holds more than its limit.
+    fn insert(&mut self, candidate: Candidate) {
+        self.items.push(candidate);
+        self.up(self.items.len() - 1);
+        if self.items.len() == self.capacity {
+            self.pop_max();
+        }
+    }
+
+    /// pop_max removes the farthest candidate.
+    fn pop_max(&mut self) {
+        let n = self.items.len();
+        let mut i = 0;
+        if 1 < n && !self.less(1, i) {
+            i = 1;
+        }
+        if 2 < n && !self.less(2, i) {
+            i = 2;
+        }
+        self.items.swap(i, n - 1);
+        self.down(i, n - 1);
+        self.items.pop();
+    }
+
+    /// pop removes the closest candidate.
+    fn pop(&mut self) -> Option<Candidate> {
+        let n = self.items.len().checked_sub(1)?;
+        self.items.swap(0, n);
+        self.down(0, n);
+        self.items.pop()
+    }
+}
+
+/// KeyValue is a key of a map with its value.
+pub type KeyValue = (Vec<u8>, Vec<u8>);
+
+/// closest returns up to `limit` keys of a proximity map with their values, closest first, by descending from the root
+/// through the children of the closest keys of each level, as Dolt's GetClosest does. `distance_of` gives a key's
+/// distance from the query vector.
+pub fn closest<E: From<Error>>(
+    reader: &dyn ChunkReader,
+    root: &Node,
+    limit: usize,
+    distance_of: &mut dyn FnMut(&[u8]) -> std::result::Result<f64, E>,
+) -> std::result::Result<Vec<KeyValue>, E> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    let mut add = |candidates: &mut Candidates, node: &Node| -> std::result::Result<(), E> {
+        for i in 0..node.count() {
+            let key = node.key(i)?;
+            let distance = distance_of(key)?;
+            candidates.insert(Candidate { key: key.to_vec(), value: node.value(i)?.to_vec(), distance });
+        }
+        Ok(())
+    };
+    let mut candidates = Candidates::new(limit);
+    add(&mut candidates, root)?;
+    for _ in 0..root.level() {
+        let mut next = Candidates::new(limit);
+        for candidate in &candidates.items {
+            add(&mut next, &Node::load(reader, &serial::hash(&candidate.value)?)?)?;
+        }
+        candidates = next;
+    }
+    let mut out = Vec::with_capacity(candidates.items.len());
+    while let Some(candidate) = candidates.pop() {
+        out.push((candidate.key, candidate.value));
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

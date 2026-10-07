@@ -23,7 +23,7 @@ const COMMIT_CLOSURE_KEY_LEN: usize = 8 + Hash::LEN;
 /// Values is where a node's values are.
 #[derive(Clone, Debug)]
 enum Values {
-    /// Variable-width value items with their u16 offsets.
+    /// Variable-width value items with their offsets.
     Items { items: Range<usize>, offsets: Range<usize> },
     /// Fixed-width child or value addresses.
     Addresses(Range<usize>),
@@ -37,8 +37,10 @@ pub struct Node {
     bytes: Vec<u8>,
     file_id: String,
     key_items: Range<usize>,
-    /// The position of the u16 key offsets, or None for fixed-width keys.
+    /// The position of the key offsets, or None for fixed-width keys.
     key_offsets: Option<usize>,
+    /// The width in bytes of each item offset.
+    offset_width: usize,
     count: usize,
     values: Values,
     level: u8,
@@ -75,7 +77,7 @@ impl Node {
         let values = match (tree.value_items, tree.value_offsets, tree.address_array) {
             (Some(items), Some(offsets), _) => Values::Items {
                 items: range_of(&bytes, items),
-                offsets: offsets.start()..offsets.start() + offsets.len() * 2,
+                offsets: offsets.start()..offsets.start() + offsets.len() * tree.offset_width,
             },
             (_, _, Some(addresses)) => Values::Addresses(range_of(&bytes, addresses)),
             _ => Values::None,
@@ -84,8 +86,19 @@ impl Node {
             Some(counts) => decode_counts(counts, count)?,
             None => Vec::new(),
         };
-        let (level, tree_count) = (tree.tree_level, tree.tree_count);
-        Ok(Node { bytes, file_id, key_items, key_offsets, count, values, level, tree_count, subtree_counts })
+        let (level, tree_count, offset_width) = (tree.tree_level, tree.tree_count, tree.offset_width);
+        Ok(Node {
+            bytes,
+            file_id,
+            key_items,
+            key_offsets,
+            offset_width,
+            count,
+            values,
+            level,
+            tree_count,
+            subtree_counts,
+        })
     }
 
     /// load reads and decodes the node at the address.
@@ -123,12 +136,15 @@ impl Node {
         self.tree_count
     }
 
-    /// offset reads the u16 offset at the index of the offsets starting at the position.
+    /// offset reads the offset at the index of the offsets starting at the position.
     fn offset(&self, start: usize, index: usize) -> Result<usize> {
-        serial::fb::u16_at(&self.bytes, start + index * 2).map(|offset| offset as usize)
+        match self.offset_width {
+            4 => serial::fb::u32_at(&self.bytes, start + index * 4).map(|offset| offset as usize),
+            _ => serial::fb::u16_at(&self.bytes, start + index * 2).map(|offset| offset as usize),
+        }
     }
 
-    /// item returns the item at the index of items with u16 offsets.
+    /// item returns the item at the index of items with offsets.
     fn item(&self, items: &Range<usize>, offsets: usize, index: usize) -> Result<&[u8]> {
         let (start, end) = (self.offset(offsets, index)?, self.offset(offsets, index + 1)?);
         if start > end || items.start + end > items.end {

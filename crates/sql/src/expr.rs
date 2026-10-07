@@ -128,6 +128,8 @@ pub enum Expr {
     Func(usize, Vec<Expr>),
     /// A call of a user-defined function, with an argument for each of its input parameters.
     Routine(std::sync::Arc<crate::routines::Routine>, Vec<Expr>),
+    /// A user-defined binary operator, by its symbol, with the routine that computes it.
+    Operator(String, std::sync::Arc<crate::routines::Routine>, Box<Expr>, Box<Expr>),
     /// A field of a composite value by position.
     Field(Box<Expr>, usize),
     /// A column of an enclosing query's row, by how many queries out it is and its position.
@@ -1484,7 +1486,8 @@ impl<'b, 'a> Binder<'b, 'a> {
         if let Some(operator) = self.user_operator(op, lt, rt)? {
             let left = coerce(left, typ(operator.left), false, location)?.0;
             let right = coerce(right, typ(operator.right), false, location)?.0;
-            return Ok((Expr::Routine(operator.routine.clone(), vec![left, right]), operator.routine.ret));
+            let call = Expr::Operator(operator.name.clone(), operator.routine.clone(), Box::new(left), Box::new(right));
+            return Ok((call, operator.routine.ret));
         }
         let missing = || PgError {
             position: position(location),
@@ -2614,6 +2617,10 @@ impl Expr {
                 let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
                 crate::routines::call(ctx, routine, values)?
             }
+            Expr::Operator(_, routine, l, r) => {
+                let values = vec![l.eval(ctx, row)?, r.eval(ctx, row)?];
+                crate::routines::call(ctx, routine, values)?
+            }
             Expr::Outer(depth, i) => {
                 let level = ctx
                     .outer
@@ -2864,6 +2871,10 @@ impl Expr {
             Expr::IsNull(e, n) => Expr::IsNull(b(e), n),
             Expr::Func(i, args) => Expr::Func(i, args.into_iter().map(&mut *f).collect()),
             Expr::Routine(r, args) => Expr::Routine(r, args.into_iter().map(&mut *f).collect()),
+            Expr::Operator(name, routine, l, r) => {
+                let l = b(l);
+                Expr::Operator(name, routine, l, b(r))
+            }
             Expr::Coalesce(args) => Expr::Coalesce(args.into_iter().map(&mut *f).collect()),
             Expr::MinMax(g, args) => Expr::MinMax(g, args.into_iter().map(&mut *f).collect()),
             Expr::Case(whens, otherwise) => {
@@ -2927,6 +2938,7 @@ impl Expr {
             | Expr::DateTime(_, l, r)
             | Expr::AnyArray(l, r, _)
             | Expr::Shared(l, r)
+            | Expr::Operator(_, _, l, r)
             | Expr::ArrayOp(_, l, r)
             | Expr::DistinctFrom(l, r, _) => {
                 l.visit(f);

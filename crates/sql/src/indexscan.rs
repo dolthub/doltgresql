@@ -1,0 +1,1077 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Index scans: choosing the index that answers a table's filters as go-mysql-server's costedIndexScans does without
+//! statistics, building the ranges of its keys that the filters allow, and reading the rows of those ranges.
+
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
+use crate::catalog::table::TableDef;
+use crate::error::Result;
+use crate::expr::{CmpOp, Expr};
+use crate::plan::Plan;
+use crate::query::Ctx;
+use crate::ranges::{IndexBuilder, Range};
+use crate::types::Value;
+
+/// IndexScan reads the rows of a table whose keys in an index lie in ranges, in the index's order or its reverse.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IndexScan {
+    pub table: Box<TableDef>,
+    /// The secondary index read, or None for the primary key.
+    pub index: Option<usize>,
+    pub ranges: Vec<Range>,
+    pub reverse: bool,
+    /// The vector search that a vector index answers in place of ranges.
+    pub nearest: Option<Nearest>,
+}
+
+/// Nearest is a search of a vector index for the keys closest to a query vector, as many as a LIMIT and OFFSET keep.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Nearest {
+    /// The distance that orders the rows, which EXPLAIN shows.
+    pub order: Expr,
+    pub query: Expr,
+    pub limit: Option<Expr>,
+    pub offset: Option<Expr>,
+}
+
+/// Op is what a filter leaf tests of a column.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Op {
+    Compare(CmpOp),
+    IsNull,
+    IsNotNull,
+}
+
+/// Leaf is a filter that tests one column against a constant, as go-mysql-server's iScanLeaf.
+#[derive(Clone, Debug)]
+struct Leaf {
+    id: usize,
+    column: String,
+    op: Op,
+    value: Value,
+}
+
+/// And is a conjunction of filters, as go-mysql-server's iScanAnd, with its leaves grouped by column in the order
+/// they appear.
+#[derive(Clone, Debug, Default)]
+struct And {
+    id: usize,
+    leaves: Vec<(String, Vec<Leaf>)>,
+    ors: Vec<Or>,
+    count: usize,
+}
+
+/// Or is a disjunction of filters, as go-mysql-server's iScanOr.
+#[derive(Clone, Debug)]
+struct Or {
+    id: usize,
+    children: Vec<Filter>,
+}
+
+/// Filter is a node of the filter tree that index costing builds.
+#[derive(Clone, Debug)]
+enum Filter {
+    And(And),
+    Or(Or),
+    Leaf(Leaf),
+}
+
+impl Filter {
+    /// id returns the node's ID.
+    fn id(&self) -> usize {
+        match self {
+            Filter::And(a) => a.id,
+            Filter::Or(o) => o.id,
+            Filter::Leaf(l) => l.id,
+        }
+    }
+}
+
+impl And {
+    /// add_leaf adds a leaf under its column.
+    fn add_leaf(&mut self, leaf: Leaf) {
+        match self.leaves.iter_mut().find(|(c, _)| *c == leaf.column) {
+            Some((_, leaves)) => leaves.push(leaf),
+            None => self.leaves.push((leaf.column.clone(), vec![leaf])),
+        }
+        self.count += 1;
+    }
+
+    /// sorted_leaves returns the leaves in ID order.
+    fn sorted_leaves(&self) -> Vec<&Leaf> {
+        let mut leaves: Vec<&Leaf> = self.leaves.iter().flat_map(|(_, l)| l).collect();
+        leaves.sort_by_key(|l| l.id);
+        leaves
+    }
+}
+
+/// Fds is the part of go-mysql-server's FuncDepSet that index costing reads: the constant columns and the leading
+/// key.
+#[derive(Clone, Debug, Default)]
+struct Fds {
+    constants: BTreeSet<usize>,
+    /// The leading key's columns, and whether it is strict.
+    key: Option<(BTreeSet<usize>, bool)>,
+}
+
+impl Fds {
+    /// lookup returns the dependencies of a unique index lookup, as go-mysql-server's NewLookupFDs builds them, where
+    /// the constants are the positions of the index columns that equalities fix, counted from 1.
+    fn lookup(index_columns: &BTreeSet<usize>, not_null: &BTreeSet<usize>, constants: BTreeSet<usize>) -> Fds {
+        let cols: BTreeSet<usize> = index_columns.difference(&constants).copied().collect();
+        let strict = index_columns.is_subset(not_null);
+        Fds { constants, key: Some((cols, strict)) }
+    }
+
+    /// max_one_row reports whether the dependencies allow at most one row.
+    fn max_one_row(&self) -> bool {
+        matches!(&self.key, Some((cols, true)) if cols.is_empty())
+    }
+
+    /// strict_key returns the leading key when it is strict.
+    fn strict_key(&self) -> Option<&BTreeSet<usize>> {
+        self.key.as_ref().filter(|(_, strict)| *strict).map(|(c, _)| c)
+    }
+
+    /// has_lax_key reports whether the leading key is lax.
+    fn has_lax_key(&self) -> bool {
+        matches!(&self.key, Some((_, false)))
+    }
+}
+
+/// Candidate is an index that a scan may read, as costing sees it.
+struct Candidate {
+    /// The index, or None for the primary key.
+    index: Option<usize>,
+    name: String,
+    columns: Vec<String>,
+    unique: bool,
+    /// The table column IDs of the index's columns, counted from 1.
+    column_ids: BTreeSet<usize>,
+}
+
+/// Collector gathers the effect of a conjunction's leaves on an index, as go-mysql-server's conjCollector does.
+#[derive(Default)]
+struct Collector {
+    constant: BTreeSet<usize>,
+    inequality: BTreeSet<usize>,
+    applied: BTreeSet<usize>,
+    missing_prefix: usize,
+}
+
+impl Collector {
+    /// add applies a leaf on one of the index's columns.
+    fn add(&mut self, leaf: &Leaf, ordinal: usize) {
+        self.applied.insert(leaf.id);
+        if leaf.op != Op::Compare(CmpOp::Eq) {
+            self.inequality.insert(ordinal);
+            return;
+        }
+        if !self.constant.insert(ordinal + 1) || ordinal != self.missing_prefix {
+            return;
+        }
+        let mut last = ordinal;
+        while self.constant.contains(&(last + 1)) {
+            last += 1;
+        }
+        self.missing_prefix = last;
+    }
+}
+
+/// Cost is what costing finds of an index: the filters it applies, its dependencies, the length of its key prefix that
+/// equalities fix, and whether an inequality bounds the next column.
+#[derive(Default)]
+struct Cost {
+    filters: BTreeSet<usize>,
+    fds: Fds,
+    prefix: usize,
+    has_range: bool,
+}
+
+/// Best is the index that costing has chosen so far, or the table scan.
+struct Best<'c> {
+    candidate: Option<&'c Candidate>,
+    cost: Cost,
+}
+
+/// Coster chooses an index for a table's filters, as go-mysql-server's indexCoster does.
+struct Coster<'t> {
+    table: &'t TableDef,
+    next: usize,
+    /// The IDs of the leaves that are equalities and of those that test for NULL.
+    equalities: BTreeSet<usize>,
+    null_tests: BTreeSet<usize>,
+}
+
+/// swap returns the comparison with its operands exchanged.
+fn swap(op: CmpOp) -> CmpOp {
+    match op {
+        CmpOp::Lt => CmpOp::Gt,
+        CmpOp::Le => CmpOp::Ge,
+        CmpOp::Gt => CmpOp::Lt,
+        CmpOp::Ge => CmpOp::Le,
+        other => other,
+    }
+}
+
+/// is_constant reports whether an expression reads no column or subquery and calls no volatile function, so that
+/// planning can evaluate it.
+fn is_constant(e: &Expr) -> bool {
+    let mut constant = true;
+    e.visit(&mut |e| {
+        if matches!(
+            e,
+            Expr::Column(_)
+                | Expr::Outer(..)
+                | Expr::Exists(_)
+                | Expr::Scalar(_)
+                | Expr::ArraySubquery(..)
+                | Expr::AnySubquery(..)
+                | Expr::SubqueryValue
+                | Expr::InputColumn(_)
+                | Expr::AggRef(_)
+                | Expr::WindowRef(_)
+                | Expr::SetRef(_)
+                | Expr::Default(_)
+                | Expr::Routine(..)
+        ) {
+            constant = false;
+        }
+        if let Expr::Func(index, _) = e
+            && crate::pgcatalog::is_volatile(crate::functions::function(*index).name)
+        {
+            constant = false;
+        }
+    });
+    constant
+}
+
+impl Coster<'_> {
+    /// column returns the lower-case name of the table column that an expression reads, under any casts.
+    fn column(&self, e: &Expr) -> Option<String> {
+        match e {
+            Expr::Column(i) => self.table.columns.get(*i).map(|c| c.name.to_lowercase()),
+            Expr::Cast(inner, ..) => self.column(inner),
+            _ => None,
+        }
+    }
+
+    /// leaf builds a leaf from a comparison of a column with a constant, or a NULL test of a column.
+    fn leaf(&self, ctx: &mut Ctx<'_>, id: usize, e: &Expr) -> Option<Leaf> {
+        let (column, op, value) = match e {
+            Expr::Compare(op, l, r) => {
+                let (column, op, constant) = match (self.column(l), self.column(r)) {
+                    (Some(c), _) if is_constant(r) => (c, *op, r),
+                    (_, Some(c)) if is_constant(l) => (c, swap(*op), l),
+                    _ => return None,
+                };
+                (column, Op::Compare(op), constant.eval(ctx, &[]).ok()?)
+            }
+            Expr::IsNull(inner, negated) => {
+                (self.column(inner)?, if *negated { Op::IsNotNull } else { Op::IsNull }, Value::Null)
+            }
+            Expr::Not(inner) => match inner.as_ref() {
+                Expr::IsNull(inner, false) => (self.column(inner)?, Op::IsNotNull, Value::Null),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        Some(Leaf { id, column, op, value })
+    }
+
+    /// note records whether a leaf is an equality or a NULL test, which costing prefers.
+    fn note(&mut self, leaf: &Leaf) {
+        match leaf.op {
+            Op::Compare(CmpOp::Eq) => {
+                self.equalities.insert(leaf.id);
+            }
+            Op::IsNull => {
+                self.null_tests.insert(leaf.id);
+            }
+            _ => {}
+        }
+    }
+
+    /// build_root builds the filter tree of a predicate, as go-mysql-server's buildRoot does, or None when no part of
+    /// it tests columns.
+    fn build_root(&mut self, ctx: &mut Ctx<'_>, e: &Expr) -> Option<Filter> {
+        let id = self.next;
+        self.next += 1;
+        match e {
+            Expr::And(..) => {
+                let mut and = And { id, ..And::default() };
+                self.build_and(ctx, e, &mut and);
+                Some(Filter::And(and))
+            }
+            Expr::Or(..) => {
+                let mut or = Or { id, children: Vec::new() };
+                self.build_or(ctx, e, &mut or).then_some(Filter::Or(or))
+            }
+            _ => {
+                let leaf = self.leaf(ctx, id, e)?;
+                self.note(&leaf);
+                Some(Filter::Leaf(leaf))
+            }
+        }
+    }
+
+    /// build_and adds the children of a conjunction to a conjunction node, as go-mysql-server's buildAnd does,
+    /// reporting whether every child tests columns.
+    fn build_and(&mut self, ctx: &mut Ctx<'_>, e: &Expr, and: &mut And) -> bool {
+        let Expr::And(left, right) = e else { return false };
+        let mut valid = true;
+        for child in [left.as_ref(), right.as_ref()] {
+            let id = self.next;
+            self.next += 1;
+            match child {
+                Expr::And(..) => valid &= self.build_and(ctx, child, and),
+                Expr::Or(..) => {
+                    let mut or = Or { id, children: Vec::new() };
+                    if self.build_or(ctx, child, &mut or) {
+                        and.ors.push(or);
+                        and.count += 1;
+                    } else {
+                        valid = false;
+                    }
+                }
+                _ => match self.leaf(ctx, id, child) {
+                    Some(leaf) => {
+                        self.note(&leaf);
+                        and.add_leaf(leaf);
+                    }
+                    None => valid = false,
+                },
+            }
+        }
+        valid
+    }
+
+    /// build_or adds the children of a disjunction to a disjunction node, as go-mysql-server's buildOr does, reporting
+    /// whether every child tests columns.
+    fn build_or(&mut self, ctx: &mut Ctx<'_>, e: &Expr, or: &mut Or) -> bool {
+        let Expr::Or(left, right) = e else { return false };
+        for child in [left.as_ref(), right.as_ref()] {
+            match child {
+                Expr::And(..) => {
+                    let mut and = And { id: self.next, ..And::default() };
+                    self.next += 1;
+                    if !self.build_and(ctx, child, &mut and) {
+                        return false;
+                    }
+                    or.children.push(Filter::And(and));
+                }
+                Expr::Or(..) => {
+                    self.next += 1;
+                    if !self.build_or(ctx, child, or) {
+                        return false;
+                    }
+                }
+                _ => {
+                    let Some(leaf) = self.leaf(ctx, self.next, child) else { return false };
+                    self.next += 1;
+                    self.note(&leaf);
+                    or.children.push(Filter::Leaf(leaf));
+                }
+            }
+        }
+        true
+    }
+
+    /// cost_and costs a conjunction against an index, as go-mysql-server's costIndexScanAnd does.
+    fn cost_and(&self, and: &And, candidate: &Candidate) -> Cost {
+        let mut filters: BTreeSet<usize> =
+            and.ors.iter().filter(|o| self.cost_or(o, candidate)).map(|o| o.id).collect();
+        let mut collector = Collector::default();
+        for (ordinal, column) in candidate.columns.iter().enumerate() {
+            for leaf in and.leaves.iter().filter(|(c, _)| c == column).flat_map(|(_, l)| l) {
+                collector.add(leaf, ordinal);
+            }
+        }
+        let fds = self.fds(candidate, &collector);
+        let has_range = collector.inequality.contains(&collector.missing_prefix);
+        filters.extend(collector.applied);
+        Cost { filters, fds, prefix: collector.missing_prefix, has_range }
+    }
+
+    /// cost_or reports whether an index can answer every child of a disjunction, as go-mysql-server's
+    /// costIndexScanOr does.
+    fn cost_or(&self, or: &Or, candidate: &Candidate) -> bool {
+        or.children.iter().all(|child| match child {
+            Filter::And(and) => self.cost_and(and, candidate).filters.len() == and.count,
+            Filter::Leaf(leaf) => candidate.columns.contains(&leaf.column),
+            Filter::Or(_) => false,
+        })
+    }
+
+    /// fds returns the dependencies of a unique index's lookup, or none for another index.
+    fn fds(&self, candidate: &Candidate, collector: &Collector) -> Fds {
+        if !candidate.unique {
+            return Fds::default();
+        }
+        let not_null: BTreeSet<usize> =
+            self.table.columns.iter().enumerate().filter(|(_, c)| !c.nullable).map(|(i, _)| i + 1).collect();
+        Fds::lookup(&candidate.column_ids, &not_null, collector.constant.clone())
+    }
+
+    /// cost costs a filter tree against an index, as go-mysql-server's indexCoster.cost does.
+    fn cost(&self, root: &Filter, candidate: &Candidate) -> Cost {
+        match root {
+            Filter::And(and) => self.cost_and(and, candidate),
+            Filter::Or(or) => {
+                let filters = if self.cost_or(or, candidate) { BTreeSet::from([or.id]) } else { BTreeSet::new() };
+                Cost { filters, ..Cost::default() }
+            }
+            Filter::Leaf(leaf) => match candidate.columns.iter().position(|c| *c == leaf.column) {
+                Some(ordinal) => {
+                    let mut collector = Collector::default();
+                    collector.add(leaf, ordinal);
+                    let fds = self.fds(candidate, &collector);
+                    Cost { filters: BTreeSet::from([leaf.id]), fds, prefix: collector.missing_prefix, has_range: false }
+                }
+                None => Cost::default(),
+            },
+        }
+    }
+
+    /// better reports whether an index's cost beats the best so far, as go-mysql-server's updateBest decides without
+    /// statistics, where every index estimates the same number of rows.
+    fn better(&self, best: &Best<'_>, candidate: &Candidate, cost: &Cost) -> bool {
+        if cost.filters.is_empty() {
+            return false;
+        }
+        let Some(current) = best.candidate else { return true };
+        let old = &best.cost;
+        if old.fds.max_one_row() {
+            return false;
+        }
+        if old.prefix == 0 || cost.prefix == 0 && old.prefix != cost.prefix {
+            return cost.prefix > old.prefix;
+        }
+        if cost.fds.max_one_row() {
+            return true;
+        }
+        let same_prefix = |n: usize| {
+            n <= current.columns.len() && n <= candidate.columns.len() && current.columns[..n] == candidate.columns[..n]
+        };
+        if cost.prefix > old.prefix && same_prefix(old.prefix) {
+            return true;
+        }
+        if cost.prefix == old.prefix && same_prefix(old.prefix) && cost.has_range && !old.has_range {
+            return true;
+        }
+        if old.prefix > cost.prefix && same_prefix(cost.prefix) {
+            return false;
+        }
+        if old.prefix == cost.prefix && same_prefix(cost.prefix) && !cost.has_range && old.has_range {
+            return false;
+        }
+        match (old.fds.strict_key(), cost.fds.strict_key()) {
+            (None, Some(_)) => return true,
+            (Some(_), None) => return false,
+            (Some(b), Some(c)) if c.len() < b.len() => return true,
+            _ => {}
+        }
+        let (old_lax, new_lax) = (old.fds.has_lax_key(), cost.fds.has_lax_key());
+        match cost.fds.constants.len().cmp(&old.fds.constants.len()) {
+            std::cmp::Ordering::Greater => return !(old_lax && !new_lax),
+            std::cmp::Ordering::Less => return new_lax && !old_lax,
+            std::cmp::Ordering::Equal => {}
+        }
+        match cost.filters.len().cmp(&old.filters.len()) {
+            std::cmp::Ordering::Greater => return true,
+            std::cmp::Ordering::Less => return false,
+            std::cmp::Ordering::Equal => {}
+        }
+        let unused = |c: &Candidate, f: &BTreeSet<usize>| c.columns.len() as i64 - f.len() as i64;
+        if unused(candidate, &cost.filters) < unused(current, &old.filters) {
+            return true;
+        }
+        let count = |set: &BTreeSet<usize>, f: &BTreeSet<usize>| f.intersection(set).count();
+        if count(&self.equalities, &cost.filters) > count(&self.equalities, &old.filters)
+            || count(&self.null_tests, &cost.filters) > count(&self.null_tests, &old.filters)
+        {
+            return true;
+        }
+        if candidate.index.is_none() {
+            return true;
+        }
+        if current.index.is_none() {
+            return false;
+        }
+        candidate.name < current.name
+    }
+
+    /// build_ranges builds the ranges of an index's keys that a filter tree allows, applying the filters in
+    /// `include` and anything under them, as go-mysql-server's indexScanRangeBuilder does.
+    fn build_ranges(
+        &self,
+        root: &Filter,
+        columns: &[(String, crate::catalog::ColumnType)],
+        include: &BTreeSet<usize>,
+    ) -> Vec<Range> {
+        let in_scan = include.contains(&root.id());
+        let ranges = match root {
+            Filter::And(and) => self.ranges_and(and, columns, include, in_scan),
+            Filter::Or(or) => self.ranges_or(or, columns, include, in_scan).unwrap_or_default(),
+            Filter::Leaf(leaf) => self.ranges_leaf(leaf, columns, include, in_scan),
+        };
+        crate::ranges::remove_overlapping(ranges)
+    }
+
+    /// ranges_and builds the ranges a conjunction allows.
+    fn ranges_and(
+        &self,
+        and: &And,
+        columns: &[(String, crate::catalog::ColumnType)],
+        include: &BTreeSet<usize>,
+        in_scan: bool,
+    ) -> Vec<Range> {
+        let in_scan = in_scan || include.contains(&and.id);
+        let mut result: Option<Vec<Range>> = None;
+        for or in &and.ors {
+            let Some(ranges) = self.ranges_or(or, columns, include, in_scan) else { continue };
+            result = Some(match result {
+                None => ranges,
+                Some(previous) => crate::ranges::intersect(&previous, &ranges),
+            });
+        }
+        let mut builder = IndexBuilder::new(columns);
+        for leaf in and.sorted_leaves() {
+            self.apply(&mut builder, leaf, include, in_scan);
+        }
+        match result {
+            None => builder.ranges(),
+            Some(previous) => crate::ranges::intersect(&previous, &builder.ranges()),
+        }
+    }
+
+    /// ranges_or builds the ranges a disjunction allows, or None when the scan leaves it to the filter.
+    fn ranges_or(
+        &self,
+        or: &Or,
+        columns: &[(String, crate::catalog::ColumnType)],
+        include: &BTreeSet<usize>,
+        in_scan: bool,
+    ) -> Option<Vec<Range>> {
+        if !in_scan && !include.contains(&or.id) {
+            return None;
+        }
+        let mut out = Vec::new();
+        for child in &or.children {
+            match child {
+                Filter::And(and) => out.extend(self.ranges_and(and, columns, include, true)),
+                Filter::Leaf(leaf) => out.extend(self.ranges_leaf(leaf, columns, include, true)),
+                Filter::Or(_) => {}
+            }
+        }
+        (!out.is_empty()).then_some(out)
+    }
+
+    /// ranges_leaf builds the ranges one leaf allows.
+    fn ranges_leaf(
+        &self,
+        leaf: &Leaf,
+        columns: &[(String, crate::catalog::ColumnType)],
+        include: &BTreeSet<usize>,
+        in_scan: bool,
+    ) -> Vec<Range> {
+        let mut builder = IndexBuilder::new(columns);
+        self.apply(&mut builder, leaf, include, in_scan);
+        builder.ranges()
+    }
+
+    /// apply narrows a builder's ranges by a leaf that the scan applies.
+    fn apply(&self, builder: &mut IndexBuilder, leaf: &Leaf, include: &BTreeSet<usize>, in_scan: bool) {
+        if !in_scan && !include.contains(&leaf.id) {
+            return;
+        }
+        match leaf.op {
+            Op::Compare(op) => {
+                builder.compare(&leaf.column, op, &leaf.value);
+            }
+            Op::IsNull => builder.is_null(&leaf.column, false),
+            Op::IsNotNull => builder.is_null(&leaf.column, true),
+        }
+    }
+}
+
+/// candidates returns the indexes a scan of a table may read: the primary key, then the secondary indexes, leaving out
+/// vector and partial indexes.
+fn candidates(table: &TableDef) -> Vec<Candidate> {
+    let id_of = |c: usize| c + 1;
+    let names = |columns: &[usize]| columns.iter().map(|&c| table.columns[c].name.to_lowercase()).collect();
+    let mut out = Vec::new();
+    if !table.keyless() {
+        out.push(Candidate {
+            index: None,
+            name: "primary".into(),
+            columns: names(&table.key_columns),
+            unique: true,
+            column_ids: table.key_columns.iter().map(|&c| id_of(c)).collect(),
+        });
+    }
+    for (i, index) in table.indexes.iter().enumerate() {
+        if index.vector.is_some() || !index.predicate.is_empty() {
+            continue;
+        }
+        out.push(Candidate {
+            index: Some(i),
+            name: index.name.to_lowercase(),
+            columns: names(&index.columns),
+            unique: index.unique,
+            column_ids: index.columns.iter().map(|&c| id_of(c)).collect(),
+        });
+    }
+    out
+}
+
+/// choose returns the index scan that answers a table's filter, as go-mysql-server's getCostedIndexScan chooses it, or
+/// None when a full scan serves as well.
+pub fn choose(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) -> Option<IndexScan> {
+    let mut coster = Coster { table, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new() };
+    let root = coster.build_root(ctx, predicate)?;
+    let candidates = candidates(table);
+    let mut best = Best { candidate: None, cost: Cost::default() };
+    for candidate in &candidates {
+        let cost = coster.cost(&root, candidate);
+        if coster.better(&best, candidate, &cost) {
+            best = Best { candidate: Some(candidate), cost };
+        }
+    }
+    let chosen = best.candidate?;
+    let columns: Vec<(String, crate::catalog::ColumnType)> = match chosen.index {
+        Some(i) => table.indexes[i]
+            .columns
+            .iter()
+            .map(|&c| (table.columns[c].name.to_lowercase(), table.columns[c].ty))
+            .collect(),
+        None => {
+            table.key_columns.iter().map(|&c| (table.columns[c].name.to_lowercase(), table.columns[c].ty)).collect()
+        }
+    };
+    let ranges = coster.build_ranges(&root, &columns, &best.cost.filters);
+    if crate::ranges::is_all_range(&ranges) {
+        return None;
+    }
+    Some(IndexScan { table: Box::new(table.clone()), index: chosen.index, ranges, reverse: false, nearest: None })
+}
+
+impl IndexScan {
+    /// index_columns returns the table columns of the index's keys, in key order.
+    pub fn index_columns(&self) -> Vec<usize> {
+        match self.index {
+            Some(i) => self.table.indexes[i].columns.clone(),
+            None => self.table.key_columns.clone(),
+        }
+    }
+
+    /// index_name returns the name of the index read, which is the primary key's constraint name for the primary key.
+    pub fn index_name(&self) -> String {
+        match self.index {
+            Some(i) => self.table.indexes[i].name.clone(),
+            None => self.table.primary_name(),
+        }
+    }
+
+    /// in_range reports whether a key's leading values lie in any of the scan's ranges.
+    fn in_range(&self, values: &[Value]) -> bool {
+        self.ranges.iter().any(|r| crate::ranges::range_contains(r, values))
+    }
+
+    /// closest returns the keys of the scan's vector index closest to its query vector, closest first, with their
+    /// values.
+    fn closest(&self, ctx: &mut Ctx<'_>, root: &prolly::Node, nearest: &Nearest) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        let offset = crate::plan::limit_value(
+            &nearest.offset,
+            ctx,
+            "OFFSET",
+            crate::error::code::INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE,
+        )?;
+        let limit = crate::plan::limit_value(
+            &nearest.limit,
+            ctx,
+            "LIMIT",
+            crate::error::code::INVALID_ROW_COUNT_IN_LIMIT_CLAUSE,
+        )?;
+        let limit = (limit.unwrap_or(0) + offset.unwrap_or(0)) as usize;
+        let query = vector_of(&nearest.query.eval(ctx, &[])?)?;
+        let index = &self.table.indexes[self.index.unwrap_or_default()];
+        let distance = index.vector.unwrap_or(prolly::Distance::L2Squared);
+        let column = &self.table.columns[index.columns[0]];
+        let db = &*ctx.db;
+        prolly::closest(db, root, limit, &mut |key| {
+            let value = crate::storage::decode_field(db, prolly::Tuple(key).field(0)?, column.encoding, column.ty)?;
+            let vector = vector_of(&value)?;
+            if vector.len() != query.len() {
+                return Err(crate::error::PgError::new(
+                    crate::error::code::DATA_EXCEPTION,
+                    format!("different vector dimensions {} and {}", vector.len(), query.len()),
+                ));
+            }
+            Ok(distance.eval(&vector, &query))
+        })
+    }
+
+    /// run reads the rows whose keys lie in the scan's ranges, in index order or its reverse, or the rows a vector
+    /// search finds, closest first.
+    pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+        let table = &self.table;
+        let columns = self.index_columns();
+        let primary = Arc::new(prolly::Node::decode(table.table.primary_index.clone())?);
+        let root = match self.index {
+            Some(i) => Arc::new(prolly::Node::load(ctx.db, &table.indexes[i].root)?),
+            None => primary.clone(),
+        };
+        let mut items = Vec::new();
+        match &self.nearest {
+            Some(nearest) => items = self.closest(ctx, &root, nearest)?,
+            None => prolly::walk_leaves(ctx.db, &root, &mut |key, value| {
+                items.push((key.to_vec(), value.to_vec()));
+                Ok(())
+            })?,
+        }
+        if self.reverse {
+            items.reverse();
+        }
+        let mut rows = Vec::new();
+        for (key, value) in items {
+            let tuple = prolly::Tuple(&key);
+            let mut values = Vec::with_capacity(columns.len());
+            for (field, &c) in columns.iter().enumerate() {
+                let column = &table.columns[c];
+                values.push(crate::storage::decode_field(ctx.db, tuple.field(field)?, column.encoding, column.ty)?);
+            }
+            if self.nearest.is_none() && !self.in_range(&values) {
+                continue;
+            }
+            let (row, cardinality) = match self.index {
+                None => table.decode_row(ctx.db, &key, &value)?,
+                Some(i) => {
+                    let index = &table.indexes[i];
+                    let mut fields = Vec::with_capacity(table.key_columns.len());
+                    let mut extra = index.columns.len();
+                    if table.keyless() {
+                        fields.push(tuple.field(extra)?);
+                    }
+                    for c in &table.key_columns {
+                        let position = match index.columns.iter().position(|ic| ic == c) {
+                            Some(p) => p,
+                            None => {
+                                extra += 1;
+                                extra - 1
+                            }
+                        };
+                        fields.push(tuple.field(position)?);
+                    }
+                    let primary_key = prolly::val::build_tuple(&fields);
+                    let compare = |a: &[u8], b: &[u8]| table.compare_keys(a, b);
+                    let Some(stored) = prolly::get(ctx.db, primary.clone(), &primary_key, &compare)? else { continue };
+                    table.decode_row(ctx.db, &primary_key, &stored)?
+                }
+            };
+            for _ in 0..cardinality {
+                rows.push(row.clone());
+            }
+        }
+        Ok(rows)
+    }
+}
+
+/// Order is how a scan orders a column: descending or not, and with NULLs first or not.
+type Order = (bool, bool);
+
+/// index_orders returns how an index orders its columns, the primary key ascending.
+fn index_orders(table: &TableDef, index: Option<usize>) -> Vec<Order> {
+    match index {
+        Some(i) => {
+            let index = &table.indexes[i];
+            (0..index.columns.len()).map(|c| (index.descending[c], !index.nulls_last[c])).collect()
+        }
+        None => table.key_columns.iter().map(|_| (false, false)).collect(),
+    }
+}
+
+/// hash_ordered reports whether an index orders its keys by content hashes rather than values, as Dolt's
+/// HasContentHashedField does: a unique index with a column stored out of band or adaptively.
+fn hash_ordered(table: &TableDef, index: Option<usize>) -> bool {
+    let (unique, columns) = match index {
+        Some(i) => (table.indexes[i].unique, &table.indexes[i].columns),
+        None => (true, &table.key_columns),
+    };
+    unique
+        && columns.iter().any(|&c| {
+            let encoding = table.columns[c].encoding;
+            use prolly::val::encoding::*;
+            matches!(encoding, BYTES_ADDR | COMMIT_ADDR | STRING_ADDR | JSON_ADDR | GEOM_ADDR | EXTENDED_ADDR)
+                || crate::storage::is_adaptive(encoding)
+        })
+}
+
+/// provides reports whether reading an index in a direction gives the sort keys' order for the index's columns at the
+/// positions given, returning the direction it must read in, where NULL placement only matters for a nullable column.
+fn provides(
+    table: &TableDef,
+    columns: &[usize],
+    orders: &[Order],
+    keys: &[(usize, usize, &crate::plan::SortKey)],
+) -> Option<bool> {
+    let mut reverse = None;
+    for &(position, _, key) in keys {
+        let (descending, nulls_first) = orders[position];
+        let flip = key.descending != descending;
+        if reverse.is_some_and(|r| r != flip) {
+            return None;
+        }
+        reverse = Some(flip);
+        let provided = nulls_first != flip;
+        if provided != key.nulls_first && table.columns[columns[position]].nullable {
+            return None;
+        }
+    }
+    reverse
+}
+
+/// matching pairs each sort key with the index column it orders, as go-mysql-server's
+/// sortExprsMatchIdxColExprsWithConstantColumns does: the keys must follow the index's columns in order, skipping
+/// columns that equalities fix, which keys may also name.
+fn matching(key_columns: &[usize], columns: &[usize], constant: &BTreeSet<usize>) -> Option<Vec<(usize, usize)>> {
+    if key_columns.len() > columns.len() {
+        return None;
+    }
+    let mut pairs = Vec::new();
+    let mut k = 0;
+    let mut out_of_order = Vec::new();
+    for (position, column) in columns.iter().enumerate() {
+        if k >= key_columns.len() {
+            break;
+        }
+        if key_columns[k] == *column {
+            if !constant.contains(&position) {
+                pairs.push((position, k));
+            }
+            k += 1;
+        } else if !constant.contains(&position) {
+            out_of_order.push(key_columns[k]);
+        }
+    }
+    out_of_order.extend(&key_columns[k..]);
+    for column in out_of_order {
+        let position = columns.iter().position(|c| *c == column)?;
+        if !constant.contains(&position) {
+            return None;
+        }
+    }
+    Some(pairs)
+}
+
+/// constant_columns returns the positions of the index columns that a scan's one range fixes to a value.
+fn constant_columns(ranges: &[Range]) -> BTreeSet<usize> {
+    let [range] = ranges else { return BTreeSet::new() };
+    range
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| {
+            matches!((&r.lower, &r.upper), (crate::ranges::Cut::Below(a), crate::ranges::Cut::Above(b))
+            if crate::expr::compare_values(a, b) == std::cmp::Ordering::Equal)
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// ordered returns a plan whose rows come in the sort keys' order by reading its table through an index, as
+/// go-mysql-server's replaceIdxSort does, or None when no index gives that order.
+fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
+    match plan {
+        Plan::Project { input, exprs } => {
+            let mut mapped = Vec::with_capacity(keys.len());
+            for key in keys {
+                let Expr::Column(i) = key.expr else { return None };
+                mapped.push(crate::plan::SortKey { expr: exprs.get(i)?.clone(), ..key.clone() });
+            }
+            let input = ordered(input, &mapped)?;
+            Some(Plan::Project { input: Box::new(input), exprs: exprs.clone() })
+        }
+        Plan::Filter { input, predicate } => {
+            Some(Plan::Filter { input: Box::new(ordered(input, keys)?), predicate: predicate.clone() })
+        }
+        Plan::Distinct { input, keys: None } => {
+            Some(Plan::Distinct { input: Box::new(ordered(input, keys)?), keys: None })
+        }
+        Plan::Join { left, right, kind: crate::plan::JoinKind::Inner, condition, lateral: false } => {
+            let width = left.width();
+            if keys.iter().any(|k| !matches!(k.expr, Expr::Column(i) if i < width)) {
+                return None;
+            }
+            if keys.iter().any(|k| k.descending != keys[0].descending) {
+                return None;
+            }
+            Some(Plan::Join {
+                left: Box::new(ordered(left, keys)?),
+                right: right.clone(),
+                kind: crate::plan::JoinKind::Inner,
+                condition: condition.clone(),
+                lateral: false,
+            })
+        }
+        Plan::Scan(table) => {
+            let key_columns: Vec<usize> = keys
+                .iter()
+                .map(|k| if let Expr::Column(c) = k.expr { Some(c) } else { None })
+                .collect::<Option<_>>()?;
+            let mut indexes: Vec<Option<usize>> = Vec::new();
+            if !table.keyless() {
+                indexes.push(None);
+            }
+            indexes.extend((0..table.indexes.len()).filter(|&i| table.indexes[i].vector.is_none()).map(Some));
+            for index in indexes.into_iter().filter(|&i| !hash_ordered(table, i)) {
+                let columns = match index {
+                    Some(i) => table.indexes[i].columns.clone(),
+                    None => table.key_columns.clone(),
+                };
+                if key_columns.len() > columns.len() || columns[..key_columns.len()] != key_columns[..] {
+                    continue;
+                }
+                let paired: Vec<(usize, usize, &crate::plan::SortKey)> =
+                    keys.iter().enumerate().map(|(k, key)| (k, k, key)).collect();
+                let Some(reverse) = provides(table, &columns, &index_orders(table, index), &paired) else { continue };
+                let names: Vec<(String, crate::catalog::ColumnType)> =
+                    columns.iter().map(|&c| (table.columns[c].name.to_lowercase(), table.columns[c].ty)).collect();
+                let ranges = IndexBuilder::new(&names).ranges();
+                return Some(Plan::IndexScan(Box::new(IndexScan {
+                    table: table.clone(),
+                    index,
+                    ranges,
+                    reverse,
+                    nearest: None,
+                })));
+            }
+            None
+        }
+        Plan::IndexScan(scan) => {
+            let key_columns: Vec<usize> = keys
+                .iter()
+                .map(|k| if let Expr::Column(c) = k.expr { Some(c) } else { None })
+                .collect::<Option<_>>()?;
+            if hash_ordered(&scan.table, scan.index) {
+                return None;
+            }
+            let columns = scan.index_columns();
+            let pairs = matching(&key_columns, &columns, &constant_columns(&scan.ranges))?;
+            for column in 0..keys.len().min(columns.len()) {
+                for (i, a) in scan.ranges.iter().enumerate() {
+                    if scan.ranges[i + 1..].iter().any(|b| a[column].try_intersect(&b[column]).is_some()) {
+                        return None;
+                    }
+                }
+            }
+            let paired: Vec<(usize, usize, &crate::plan::SortKey)> =
+                pairs.iter().map(|&(position, k)| (position, k, &keys[k])).collect();
+            let reverse = if paired.is_empty() {
+                false
+            } else {
+                provides(&scan.table, &columns, &index_orders(&scan.table, scan.index), &paired)?
+            };
+            Some(Plan::IndexScan(Box::new(IndexScan { reverse, ..(**scan).clone() })))
+        }
+        _ => None,
+    }
+}
+
+/// order_by_index removes a sort whose order an index of its table already gives, reading the table through that
+/// index, as go-mysql-server's replaceIdxSort does.
+pub fn order_by_index(plan: Plan) -> Plan {
+    match plan {
+        Plan::Sort { input, keys } => match ordered(&input, &keys) {
+            Some(input) => input,
+            None => Plan::Sort { input, keys },
+        },
+        other => other,
+    }
+}
+
+/// vector_of returns the elements of a vector value of a type that a vector index holds.
+fn vector_of(value: &Value) -> Result<Vec<f32>> {
+    match value {
+        Value::Base(base) => match crate::types::base_type(base.type_oid).and_then(|t| t.vector) {
+            Some(vector) => Ok(vector(&base.data)),
+            None => Err(crate::error::PgError::internal("a vector search with a value that is not a vector")),
+        },
+        _ => Err(crate::error::PgError::internal("a vector search with a value that is not a vector")),
+    }
+}
+
+/// routine_distance returns the distance that a vector index orders its keys by for a pgvector distance routine.
+fn routine_distance(routine: &crate::routines::Routine) -> Option<prolly::Distance> {
+    Some(match routine.name.as_str() {
+        "l2_distance" => prolly::Distance::L2Squared,
+        "cosine_distance" => prolly::Distance::Cosine,
+        "vector_negative_inner_product" | "halfvec_negative_inner_product" => prolly::Distance::InnerProduct,
+        "l1_distance" => prolly::Distance::L1,
+        _ => return None,
+    })
+}
+
+/// is_query_vector reports whether an expression can be the query vector of a vector search: it reads no row and
+/// holds no NULL constant, as Doltgres' isRowIndependentQueryVector requires.
+fn is_query_vector(e: &Expr) -> bool {
+    let mut null = false;
+    e.visit(&mut |e| null |= matches!(e, Expr::Const(Value::Null)));
+    is_constant(e) && !null
+}
+
+/// nearest_scan returns the input of a sort with its table read through a vector index, when the sort orders the
+/// table's rows by their distance from a query vector and a LIMIT keeps the first of them.
+fn nearest_scan(sort: &Plan, limit: &Option<Expr>, offset: &Option<Expr>) -> Option<Plan> {
+    let Plan::Sort { input, keys } = sort else { return None };
+    let ([key], Plan::Project { input: scanned, exprs }) = (keys.as_slice(), input.as_ref()) else { return None };
+    let (Plan::Scan(table), Expr::Column(i), false) = (scanned.as_ref(), &key.expr, key.descending) else {
+        return None;
+    };
+    let Expr::Operator(_, routine, l, r) = exprs.get(*i)? else { return None };
+    let distance = routine_distance(routine)?;
+    let (column, query) = match (l.as_ref(), r.as_ref()) {
+        (Expr::Column(c), query) if is_query_vector(query) => (*c, query),
+        (query, Expr::Column(c)) if is_query_vector(query) => (*c, query),
+        _ => return None,
+    };
+    let index = table.indexes.iter().position(|index| index.columns == [column] && index.vector == Some(distance))?;
+    let nearest =
+        Nearest { order: exprs[*i].clone(), query: query.clone(), limit: limit.clone(), offset: offset.clone() };
+    let scan = IndexScan {
+        table: table.clone(),
+        index: Some(index),
+        ranges: Vec::new(),
+        reverse: false,
+        nearest: Some(nearest),
+    };
+    Some(Plan::Project { input: Box::new(Plan::IndexScan(Box::new(scan))), exprs: exprs.clone() })
+}
+
+/// nearest replaces a sort under a LIMIT with a search of a vector index when the sort orders a table's rows by their
+/// distance from a query vector, as go-mysql-server's replaceIdxOrderByDistance does.
+pub fn nearest(plan: Plan) -> Plan {
+    match plan {
+        Plan::Limit { input, limit: Some(limit), offset } => {
+            let limit = Some(limit);
+            match nearest_scan(&input, &limit, &offset) {
+                Some(scan) => Plan::Limit { input: Box::new(scan), limit, offset },
+                None => Plan::Limit { input, limit, offset },
+            }
+        }
+        other => other,
+    }
+}

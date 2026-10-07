@@ -94,3 +94,14 @@ created. Go reads the quoted defaults that Rust writes, since it trims the quote
 Hard to change in Go: fixing the stored text breaks nothing, but every existing database keeps the unquoted form.
 
 Rust: writes `nextval('public."regions_Id_seq"')`.
+
+## Vector index searches ignore Postgres' NULL and zero-vector rules (confirmed)
+
+go-mysql-server answers every `ORDER BY v <op> q LIMIT n` with a vector index when one matches, however small the
+table, and Dolt's proximity map leaves out NULL vectors, so `LIMIT 5` over five rows with two NULLs returns three.
+Postgres costs the plan and scans a small table sequentially, returning all five. Dolt's cosine distance of a zero
+vector is 0, where pgvector's is NaN, so the zero vector sorts first instead of last.
+
+Hard to change in Go: the first needs a cost model for vector indexes, the second changes stored index order.
+
+Rust: matches Go, with the Postgres expectations kept as skipped assertions.

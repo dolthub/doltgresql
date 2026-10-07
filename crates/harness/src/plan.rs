@@ -123,6 +123,83 @@ pub fn parse_gms(lines: &[String]) -> Vec<Node> {
     roots
 }
 
+/// parse_pg parses Postgres' text EXPLAIN format, given one line per row, into nodes labeled as go-mysql-server labels
+/// them: scans as `Table` and `IndexedTableAccess(t)` with their Doltgres-specific `Index Columns` and `Index Ranges`
+/// lines as properties, and joins by their algorithm.
+pub fn parse_pg(lines: &[String]) -> Vec<Node> {
+    let mut entries: Vec<(usize, Node)> = Vec::new();
+    for line in lines {
+        let depth = match line.find("->  ") {
+            Some(i) => i / 6 + 1,
+            None if entries.is_empty() => 0,
+            None => {
+                if let Some((_, node)) = entries.last_mut()
+                    && let Some((key, value)) = line.trim().split_once(": ")
+                {
+                    node.properties.push((key.to_string(), value.to_string()));
+                }
+                continue;
+            }
+        };
+        let text = line.trim().trim_start_matches("->  ").trim();
+        entries.push((depth, Node { label: text.to_string(), ..Node::default() }));
+    }
+    let mut roots: Vec<Node> = Vec::new();
+    let mut stack: Vec<(usize, Node)> = Vec::new();
+    for (depth, node) in entries {
+        while stack.last().is_some_and(|(d, _)| *d >= depth) {
+            let (_, done) = stack.pop().expect("a node");
+            match stack.last_mut() {
+                Some((_, parent)) => parent.children.push(done),
+                None => roots.push(done),
+            }
+        }
+        stack.push((depth, pg_node(node)));
+    }
+    while let Some((_, done)) = stack.pop() {
+        match stack.last_mut() {
+            Some((_, parent)) => parent.children.push(done),
+            None => roots.push(done),
+        }
+    }
+    roots
+}
+
+/// pg_node relabels a Postgres plan node as go-mysql-server labels the same operation.
+fn pg_node(mut node: Node) -> Node {
+    let label = node.label.clone();
+    let pg_property = |node: &Node, key: &str| property(node, key).map(str::to_string);
+    if let Some(table) = label.strip_prefix("Seq Scan on ") {
+        node.properties.push(("name".into(), table.split(' ').next().unwrap_or_default().to_string()));
+        node.label = "Table".into();
+    } else if label.starts_with("Index Scan") {
+        let table = label.rsplit(" on ").next().unwrap_or_default().split(' ').next().unwrap_or_default().to_string();
+        let columns = pg_property(&node, "Index Columns").unwrap_or_default();
+        let columns: Vec<String> = columns.split(", ").map(|c| format!("{table}.{c}")).collect();
+        let ranges = pg_property(&node, "Index Ranges").unwrap_or_default();
+        node.properties.push(("index".into(), format!("[{}]", columns.join(","))));
+        node.properties.push(("filters".into(), ranges));
+        if label.starts_with("Index Scan Backward") {
+            node.properties.push(("reverse".into(), "true".into()));
+        }
+        node.label = format!("IndexedTableAccess({table})");
+    } else {
+        let kind = match label.as_str() {
+            "Nested Loop" if node.properties.iter().any(|(k, _)| k == "Index Lookup") => "LookupJoin",
+            "Nested Loop" => "InnerJoin",
+            "Nested Loop Left Join" => "LeftOuterJoin",
+            "Nested Loop Semi Join" | "Hash Semi Join" => "SemiJoin",
+            "Nested Loop Anti Join" | "Hash Anti Join" => "AntiJoin",
+            "Hash Join" => "HashJoin",
+            "Hash Left Join" => "LeftOuterHashJoin",
+            "Merge Join" => "MergeJoin",
+            _ => return node,
+        };
+        node.label = kind.into();
+    }
+    node
+}
+
 /// parse_node parses the node at the index and its descendants.
 fn parse_node(entries: &[(usize, String)], index: &mut usize, depth: usize) -> Node {
     let mut node = Node { label: entries[*index].1.clone(), ..Node::default() };

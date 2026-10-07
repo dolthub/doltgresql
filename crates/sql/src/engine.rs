@@ -1230,6 +1230,7 @@ pub(crate) fn describable(node: &NodeEnum) -> bool {
             | NodeEnum::UpdateStmt(_)
             | NodeEnum::DeleteStmt(_)
             | NodeEnum::CallStmt(_)
+            | NodeEnum::ExplainStmt(_)
     )
 }
 
@@ -1244,6 +1245,7 @@ impl Ctx<'_> {
             NodeEnum::UpdateStmt(update) => self.plan_update(update)?.returning.map(|r| r.columns),
             NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.returning.map(|r| r.columns),
             NodeEnum::CallStmt(call) => self.call_columns(call)?,
+            NodeEnum::ExplainStmt(stmt) => Some(self.explain_columns(stmt)?),
             _ => None,
         })
     }
@@ -1294,6 +1296,7 @@ impl Ctx<'_> {
             NodeEnum::AlterSeqStmt(stmt) => self.alter_sequence(stmt),
             NodeEnum::AlterOwnerStmt(stmt) => self.alter_owner(stmt),
             NodeEnum::VacuumStmt(stmt) => self.analyze(stmt),
+            NodeEnum::ExplainStmt(stmt) => self.explain(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

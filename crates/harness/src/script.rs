@@ -798,8 +798,14 @@ pub fn check(assertion: &ScriptTestAssertion, observation: &Observation) -> Vec<
                 Expected::Plan(facts) => {
                     let lines: Vec<String> =
                         observation.rows.iter().map(|row| row.first().cloned().flatten().unwrap_or_default()).collect();
-                    problems
-                        .extend(crate::plan::check_facts(facts, &crate::plan::facts(&crate::plan::parse_gms(&lines))));
+                    problems.extend(crate::plan::check_facts(
+                        facts,
+                        &crate::plan::facts(&if lines.iter().any(|l| l.contains("├─") || l.contains("└─")) {
+                            crate::plan::parse_gms(&lines)
+                        } else {
+                            crate::plan::parse_pg(&lines)
+                        }),
+                    ));
                 }
                 Expected::Ok | Expected::Error(_) | Expected::ClientError(_) => {}
             }

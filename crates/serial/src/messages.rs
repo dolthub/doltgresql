@@ -56,7 +56,7 @@ impl<'a> StoreRoot<'a> {
 pub struct TreeNode<'a> {
     pub table: Table<'a>,
     pub key_items: &'a [u8],
-    /// The u16 offsets of the key items, one more than the item count, which commit closures lack.
+    /// The offsets of the key items, one more than the item count, which commit closures lack.
     pub key_offsets: Option<Vector<'a>>,
     pub value_items: Option<&'a [u8]>,
     pub value_offsets: Option<Vector<'a>>,
@@ -64,10 +64,13 @@ pub struct TreeNode<'a> {
     pub subtree_counts: Option<&'a [u8]>,
     pub tree_count: u64,
     pub tree_level: u8,
+    /// The width in bytes of each item offset: 4 in a vector index node, otherwise 2.
+    pub offset_width: usize,
 }
 
 impl<'a> TreeNode<'a> {
-    /// new reads a ProllyTreeNode, AddressMap, CommitClosure, or MergeArtifacts message as a tree node.
+    /// new reads a ProllyTreeNode, AddressMap, CommitClosure, MergeArtifacts, or VectorIndexNode message as a tree
+    /// node.
     pub fn new(message: Message<'a>) -> Result<TreeNode<'a>> {
         let table = message.root()?;
         match message.file_id() {
@@ -81,6 +84,7 @@ impl<'a> TreeNode<'a> {
                 subtree_counts: table.bytes(8)?,
                 tree_count: table.u64(9, 0)?,
                 tree_level: table.u8(10, 0)?,
+                offset_width: 2,
             }),
             ADDRESS_MAP => Ok(TreeNode {
                 table,
@@ -92,6 +96,7 @@ impl<'a> TreeNode<'a> {
                 subtree_counts: table.bytes(3)?,
                 tree_count: table.u64(4, 0)?,
                 tree_level: table.u8(5, 0)?,
+                offset_width: 2,
             }),
             MERGE_ARTIFACTS => Ok(TreeNode {
                 table,
@@ -103,6 +108,7 @@ impl<'a> TreeNode<'a> {
                 subtree_counts: table.bytes(6)?,
                 tree_count: table.u64(7, 0)?,
                 tree_level: table.u8(8, 0)?,
+                offset_width: 2,
             }),
             COMMIT_CLOSURE => Ok(TreeNode {
                 table,
@@ -114,6 +120,19 @@ impl<'a> TreeNode<'a> {
                 subtree_counts: table.bytes(2)?,
                 tree_count: table.u64(3, 0)?,
                 tree_level: table.u8(4, 0)?,
+                offset_width: 2,
+            }),
+            VECTOR_INDEX_NODE => Ok(TreeNode {
+                table,
+                key_items: table.bytes(0)?.ok_or_else(|| missing("key_items"))?,
+                key_offsets: Some(table.vector(1, 4)?.ok_or_else(|| missing("key_offsets"))?),
+                value_items: table.bytes(2)?,
+                value_offsets: table.vector(3, 4)?,
+                address_array: table.bytes(4)?,
+                subtree_counts: table.bytes(5)?,
+                tree_count: table.u64(6, 0)?,
+                tree_level: table.u8(7, 0)?,
+                offset_width: 4,
             }),
             other => Err(store::Error::Corrupt(format!("{other:?} is not a tree node message"))),
         }

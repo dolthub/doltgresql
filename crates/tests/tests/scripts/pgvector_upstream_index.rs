@@ -255,6 +255,7 @@ fn test_pgvector_upstream_index() {
                         ],
                         tag: "SELECT 4",
                     },
+                    skip: Some("Doltgres always answers ORDER BY distance LIMIT with the vector index, where a zero vector has cosine distance 0 as in Dolt, while Postgres sorts this small table and puts the zero vector's NaN distance last"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -573,6 +574,7 @@ fn test_pgvector_upstream_index() {
                         ],
                         tag: "SELECT 4",
                     },
+                    skip: Some("Doltgres always answers ORDER BY distance LIMIT with the vector index, where a zero vector has cosine distance 0 as in Dolt, while Postgres sorts this small table and puts the zero vector's NaN distance last"),
                     ..A
                 },
                 ScriptTestAssertion {

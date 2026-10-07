@@ -64,6 +64,8 @@ pub enum Plan {
     /// One row without columns, the input of a SELECT without FROM.
     OneRow,
     Scan(Box<TableDef>),
+    /// The rows of a table whose keys in an index lie in ranges.
+    IndexScan(Box<crate::indexscan::IndexScan>),
     /// The rows of one of Dolt's system tables.
     System(crate::dolt::tables::SystemTable),
     /// The rows of a system catalog relation.
@@ -565,6 +567,31 @@ impl<'b, 'a> Planner<'b, 'a> {
             });
         }
         Ok(result.unwrap_or((Plan::OneRow, Scope::default())))
+    }
+
+    /// use_indexes replaces each table scan under a filter with an index scan when an index answers the filter, as
+    /// go-mysql-server's costedIndexScans does.
+    fn use_indexes(&mut self, plan: Plan) -> Plan {
+        match plan {
+            Plan::Filter { input, predicate } => match *input {
+                Plan::Scan(table) => {
+                    let input = match crate::indexscan::choose(self.ctx, &table, &predicate) {
+                        Some(scan) => Plan::IndexScan(Box::new(scan)),
+                        None => Plan::Scan(table),
+                    };
+                    Plan::Filter { input: Box::new(input), predicate }
+                }
+                other => Plan::Filter { input: Box::new(self.use_indexes(other)), predicate },
+            },
+            Plan::Join { left, right, kind, condition, lateral } => Plan::Join {
+                left: Box::new(self.use_indexes(*left)),
+                right: Box::new(self.use_indexes(*right)),
+                kind,
+                condition,
+                lateral,
+            },
+            other => other,
+        }
     }
 
     /// plan_lateral_item plans a FROM item after others, which sees their columns when it is lateral and otherwise
@@ -1157,6 +1184,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             binder.clause = "WHERE";
             let predicate = coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0;
             plan = push_down(plan, predicate);
+            plan = self.use_indexes(plan);
         }
         let windowed = select.target_list.iter().any(crate::window::has_window)
             || select.sort_clause.iter().any(crate::window::has_window);
@@ -1419,10 +1447,10 @@ impl<'b, 'a> Planner<'b, 'a> {
                 plan = Plan::Distinct { input: Box::new(plan), keys: None };
             }
             if !keys.is_empty() {
-                plan = Plan::Sort { input: Box::new(plan), keys };
+                plan = crate::indexscan::order_by_index(Plan::Sort { input: Box::new(plan), keys });
             }
         }
-        plan = self.limit(plan, select)?;
+        plan = crate::indexscan::nearest(self.limit(plan, select)?);
         if matches!(&plan, Plan::Project { exprs, .. } if exprs.len() == width) {
             return Ok(Query { plan, columns, types });
         }
@@ -1744,7 +1772,12 @@ fn type_tag(value: &Value) -> &'static str {
 }
 
 /// limit_value evaluates a LIMIT or OFFSET, failing as Postgres does when it is negative.
-fn limit_value(expr: &Option<Expr>, ctx: &mut Ctx<'_>, what: &str, error_code: &'static str) -> Result<Option<i64>> {
+pub(crate) fn limit_value(
+    expr: &Option<Expr>,
+    ctx: &mut Ctx<'_>,
+    what: &str,
+    error_code: &'static str,
+) -> Result<Option<i64>> {
     let Some(expr) = expr else { return Ok(None) };
     match expr.eval(ctx, &[])? {
         Value::Int8(n) if n < 0 => Err(PgError::new(error_code, format!("{what} must not be negative"))),
@@ -1755,10 +1788,11 @@ fn limit_value(expr: &Option<Expr>, ctx: &mut Ctx<'_>, what: &str, error_code: &
 
 impl Plan {
     /// width returns the number of columns of the plan's rows.
-    fn width(&self) -> usize {
+    pub(crate) fn width(&self) -> usize {
         match self {
             Plan::OneRow => 0,
             Plan::Scan(table) => table.columns.len(),
+            Plan::IndexScan(scan) => scan.table.columns.len(),
             Plan::Recursive { anchor, .. } => anchor.width(),
             Plan::WorkTable(_) => 0,
             Plan::Window { input, calls } => input.width() + calls.len(),
@@ -1786,6 +1820,7 @@ impl Plan {
         Ok(match self {
             Plan::OneRow => vec![Vec::new()],
             Plan::Scan(table) => scan(ctx.db, table)?,
+            Plan::IndexScan(index_scan) => index_scan.run(ctx)?,
             Plan::WorkTable(id) => ctx.work_tables.get(id).cloned().unwrap_or_default(),
             Plan::ProjectSet { input, functions } => {
                 let mut out = Vec::new();
