@@ -31,7 +31,7 @@ use crate::query::{Ctx, column};
 use crate::settings::{Settings, setting};
 use crate::txn::{DbHandle, SequenceTracker, Txn};
 use crate::types::Value;
-use crate::{Column, DEFAULT_BRANCH, Outcome, Prepared};
+use crate::{Column, DEFAULT_BRANCH, Outcome, Prepared, Results};
 
 /// Engine serves the databases in a data directory. Clones share the same databases.
 #[derive(Clone)]
@@ -651,10 +651,10 @@ impl Session {
 
     /// execute runs the statements of a simple query, stopping at the first error, and returns what each produced.
     /// The statements run in one implicit transaction unless they manage their own.
-    pub fn execute(&mut self, query: &str) -> (Vec<Outcome>, Option<PgError>) {
+    pub fn execute(&mut self, query: &str) -> (Results, Option<PgError>) {
         self.report_activity(Some(query));
         let result = match parse::parse(query) {
-            Ok(statements) if statements.is_empty() => (vec![Outcome::Empty], None),
+            Ok(statements) if statements.is_empty() => (vec![(Vec::new(), Outcome::Empty)], None),
             Ok(statements) => self.run_batch(statements, Vec::new()),
             Err(err) => (Vec::new(), Some(self.fail(err))),
         };
@@ -664,16 +664,16 @@ impl Session {
 
     /// run_batch runs the statements of a simple query after the outcomes of the ones before them, pausing at a COPY
     /// FROM STDIN until the client sends its data.
-    fn run_batch(&mut self, statements: Vec<Statement>, mut outcomes: Vec<Outcome>) -> (Vec<Outcome>, Option<PgError>) {
+    fn run_batch(&mut self, statements: Vec<Statement>, mut outcomes: Results) -> (Results, Option<PgError>) {
         let mut statements = statements.into_iter();
         while let Some(statement) = statements.next() {
             match self.run(&statement, &[]) {
                 Ok(outcome @ Outcome::CopyIn { .. }) => {
                     self.pending = Some(statements.collect());
-                    outcomes.push(outcome);
+                    outcomes.push((self.take_notices(), outcome));
                     return (outcomes, None);
                 }
-                Ok(outcome) => outcomes.push(outcome),
+                Ok(outcome) => outcomes.push((self.take_notices(), outcome)),
                 Err(err) => return (outcomes, Some(self.fail(err))),
             }
         }
@@ -684,14 +684,17 @@ impl Session {
     }
 
     /// copy_data finishes a COPY FROM STDIN with the data the client sent, then runs the rest of its query.
-    pub fn copy_data(&mut self, data: &[u8]) -> (Vec<Outcome>, Option<PgError>) {
+    pub fn copy_data(&mut self, data: &[u8]) -> (Results, Option<PgError>) {
         let Some(copy) = self.state.pending_copy.take() else { return (Vec::new(), None) };
         let mut parameters = Vec::new();
         match self.with_ctx(&mut parameters, &[], |ctx| ctx.copy_rows(&copy, data)) {
-            Ok(outcome) => match self.pending.take() {
-                Some(pending) => self.run_batch(pending, vec![outcome]),
-                None => (vec![outcome], None),
-            },
+            Ok(outcome) => {
+                let outcome = (self.take_notices(), outcome);
+                match self.pending.take() {
+                    Some(pending) => self.run_batch(pending, vec![outcome]),
+                    None => (vec![outcome], None),
+                }
+            }
             Err(err) => {
                 self.pending = None;
                 (Vec::new(), Some(self.fail(err)))
@@ -1134,6 +1137,7 @@ impl Session {
             }
             NodeEnum::VariableSetStmt(set) => return self.set(set),
             NodeEnum::VariableShowStmt(show) => return self.show(&show.name),
+            NodeEnum::DeallocateStmt(stmt) if stmt.isall => return Ok(Outcome::command("DEALLOCATE ALL")),
             NodeEnum::DiscardStmt(_) => {
                 if self.state.explicit {
                     return Err(PgError::new(

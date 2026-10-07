@@ -443,6 +443,8 @@ fn date_style(value: &str) -> Option<String> {
 #[derive(Clone, Debug, Default)]
 pub struct Settings {
     values: HashMap<String, String>,
+    /// The values the client sent at startup, which RESET restores.
+    startup: HashMap<String, String>,
     /// The values to restore when the transaction rolls back, oldest first.
     transaction_undo: Vec<(String, Option<String>)>,
     /// The values to restore when the transaction ends, for SET LOCAL.
@@ -458,7 +460,8 @@ impl Settings {
         for (name, value) in startup {
             let definition = setting(name).ok_or_else(|| unrecognized(name))?;
             let value = normalize(definition, value)?;
-            settings.values.insert(definition.name.to_ascii_lowercase(), value);
+            settings.values.insert(definition.name.to_ascii_lowercase(), value.clone());
+            settings.startup.insert(definition.name.to_ascii_lowercase(), value);
         }
         Ok(settings)
     }
@@ -526,6 +529,7 @@ impl Settings {
         };
         let value = match value {
             None if name.contains('.') && setting(name).is_none() => Some(String::new()),
+            None => self.startup.get(&key).cloned(),
             value => value,
         };
         self.store(key, value, local, in_transaction);
@@ -574,6 +578,7 @@ impl Settings {
             }
         }
         self.values.insert("timezone".into(), local_timezone());
+        self.values.extend(self.startup.clone());
     }
 
     /// end_transaction ends the transaction, undoing SET LOCAL, and undoing every change when it rolled back.

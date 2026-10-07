@@ -20,7 +20,7 @@ use std::net::TcpStream;
 use std::sync::Arc;
 
 use pgproto::{BackendMessage, ErrorFields, FieldDescription, Frame, FrameReader, FrontendMessage, PasswordKind};
-use sql::{Column, Outcome, PgError, Prepared, Session, Value, code};
+use sql::{Column, Outcome, PgError, Prepared, Results, Session, Value, code};
 
 use crate::Server;
 use crate::scram::Exchange;
@@ -254,14 +254,16 @@ impl Conn {
                     extended.portals.remove("");
                     let (mut outcomes, mut error) = session.execute(&query);
                     loop {
-                        self.queue_notices(session);
                         let copy = match outcomes.last() {
-                            Some(Outcome::CopyIn { binary, .. }) => Some(*binary),
+                            Some((_, Outcome::CopyIn { binary, .. })) => Some(*binary),
                             _ => None,
                         };
-                        for outcome in outcomes {
+                        for (notices, outcome) in outcomes {
+                            extended.forget(&outcome);
+                            self.queue_notices(notices);
                             self.queue_outcome(outcome, None);
                         }
+                        self.queue_notices(session.take_notices());
                         if let Some(err) = error {
                             self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                         }
@@ -285,7 +287,7 @@ impl Conn {
                 FrontendMessage::Terminate => return Ok(()),
                 message => {
                     let result = self.extended_message(session, &mut extended, message);
-                    self.queue_notices(session);
+                    self.queue_notices(session.take_notices());
                     if let Err(err) = result {
                         let err = session.abort(err);
                         self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
@@ -293,10 +295,11 @@ impl Conn {
                     }
                     if let Some(binary) = extended.copying.take() {
                         let (outcomes, error) = self.copy_in(session, binary)?;
-                        self.queue_notices(session);
-                        for outcome in outcomes {
+                        for (notices, outcome) in outcomes {
+                            self.queue_notices(notices);
                             self.queue_outcome(outcome, Some(&[]));
                         }
+                        self.queue_notices(session.take_notices());
                         if let Some(err) = error {
                             self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                             extended.failed = true;
@@ -345,6 +348,12 @@ impl Conn {
                         ),
                     ));
                 }
+                if !destination_portal.is_empty() && extended.portals.contains_key(&destination_portal) {
+                    return Err(PgError::new(
+                        code::DUPLICATE_CURSOR,
+                        format!("cursor \"{destination_portal}\" already exists"),
+                    ));
+                }
                 let values = parameters
                     .iter()
                     .enumerate()
@@ -361,25 +370,42 @@ impl Conn {
                 self.queue(BackendMessage::ParameterDescription { parameter_oids: prepared.parameter_types.clone() });
                 self.queue_description(prepared.columns.as_deref(), &[]);
             }
-            FrontendMessage::Describe { name, .. } => {
+            FrontendMessage::Describe { object_type: b'P', name } => {
                 let portal = extended.portal(&name)?;
                 let (prepared, formats) = (portal.prepared.clone(), portal.result_formats.clone());
                 self.queue_description(prepared.columns.as_deref(), &formats);
+            }
+            FrontendMessage::Describe { object_type, .. } => {
+                return Err(PgError::new(
+                    code::PROTOCOL_VIOLATION,
+                    format!("invalid DESCRIBE message subtype {object_type}"),
+                ));
             }
             FrontendMessage::Execute { portal, .. } => {
                 let portal = extended.portal(&portal)?;
                 let (prepared, formats) = (portal.prepared.clone(), portal.result_formats.clone());
                 let outcome = session.execute_prepared(&prepared, &portal.parameters.clone())?;
+                extended.forget(&outcome);
+                self.queue_notices(session.take_notices());
                 if let Outcome::CopyIn { binary, .. } = outcome {
                     extended.copying = Some(binary);
                 }
                 self.queue_outcome(outcome, Some(&formats));
             }
             FrontendMessage::Close { object_type, name } => {
-                if object_type == b'S' {
-                    extended.statements.remove(&name);
-                } else {
-                    extended.portals.remove(&name);
+                match object_type {
+                    b'S' => {
+                        extended.statements.remove(&name);
+                    }
+                    b'P' => {
+                        extended.portals.remove(&name);
+                    }
+                    _ => {
+                        return Err(PgError::new(
+                            code::PROTOCOL_VIOLATION,
+                            format!("invalid CLOSE message subtype {object_type}"),
+                        ));
+                    }
                 }
                 self.queue(BackendMessage::CloseComplete);
             }
@@ -390,7 +416,7 @@ impl Conn {
 
     /// copy_in receives the data of a COPY FROM STDIN and finishes the copy, returning what it and the rest of its
     /// query produced, or ends the connection when the client leaves the copy protocol, as Postgres does.
-    fn copy_in(&mut self, session: &mut Session, binary: bool) -> Result<(Vec<Outcome>, Option<PgError>), ConnError> {
+    fn copy_in(&mut self, session: &mut Session, binary: bool) -> Result<(Results, Option<PgError>), ConnError> {
         self.flush()?;
         let mut data = Vec::new();
         let line = |data: &[u8]| data.iter().filter(|&&b| b == b'\n').count() + 1;
@@ -438,9 +464,9 @@ impl Conn {
         }
     }
 
-    /// queue_notices queues the notices the session raised.
-    fn queue_notices(&mut self, session: &mut Session) {
-        for notice in session.take_notices() {
+    /// queue_notices queues a NoticeResponse for each notice.
+    fn queue_notices(&mut self, notices: Vec<PgError>) {
+        for notice in notices {
             self.queue(BackendMessage::NoticeResponse(error_fields(&notice)));
         }
     }
@@ -530,6 +556,14 @@ struct Extended {
 }
 
 impl Extended {
+    /// forget drops the prepared statements after a DISCARD ALL or DEALLOCATE ALL, which Postgres applies to the
+    /// statements of the extended protocol too.
+    fn forget(&mut self, outcome: &Outcome) {
+        if matches!(outcome, Outcome::Command { tag } if tag == "DISCARD ALL" || tag == "DEALLOCATE ALL") {
+            self.statements.clear();
+        }
+    }
+
     /// statement returns a prepared statement by name.
     fn statement(&self, name: &str) -> Result<Arc<Prepared>, PgError> {
         self.statements.get(name).cloned().ok_or_else(|| {

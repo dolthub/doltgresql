@@ -125,6 +125,7 @@ pub mod code {
     pub const SQL_JSON_NUMBER_NOT_FOUND: &str = "2203B";
     pub const SQL_JSON_OBJECT_NOT_FOUND: &str = "2203C";
     pub const SQL_JSON_SCALAR_REQUIRED: &str = "2203F";
+    pub const DUPLICATE_CURSOR: &str = "42P03";
 }
 
 /// PgError is an error to report to the client.

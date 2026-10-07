@@ -2113,6 +2113,7 @@ fn test_implicit_transactions_simple_protocol() {
 #[test]
 fn test_issue3116_wire_format() {
     run_wire_tests(&[
+        // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
         WireTest {
             name: "Issue #3116: dolt system table booleans over the wire",
             set_up_script: &[
@@ -2123,42 +2124,54 @@ fn test_issue3116_wire_format() {
                     Send::Query("SELECT dirty FROM dolt.branches;"),
                 ]),
                 Step::Receive(&[
-                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "42P01", message: r#"relation "dolt.branches" does not exist"#, position: 19, ..F }),
+                    Receive::RowDescription(&[Field { name: "dirty", attnum: 0, type_oid: BOOL, size: 1, typmod: -1, format: 0 }]),
+                    Receive::DataRow(&[Datum::Text("t")]),
+                    Receive::CommandComplete("SELECT 1"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
                     Send::Query("SELECT dirty FROM dolt.branches WHERE name = 'main';"),
                 ]),
                 Step::Receive(&[
-                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "42P01", message: r#"relation "dolt.branches" does not exist"#, position: 19, ..F }),
+                    Receive::RowDescription(&[Field { name: "dirty", attnum: 0, type_oid: BOOL, size: 1, typmod: -1, format: 0 }]),
+                    Receive::DataRow(&[Datum::Text("t")]),
+                    Receive::CommandComplete("SELECT 1"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
                     Send::Query("SELECT dirty FROM dolt.branches ORDER BY name;"),
                 ]),
                 Step::Receive(&[
-                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "42P01", message: r#"relation "dolt.branches" does not exist"#, position: 19, ..F }),
+                    Receive::RowDescription(&[Field { name: "dirty", attnum: 0, type_oid: BOOL, size: 1, typmod: -1, format: 0 }]),
+                    Receive::DataRow(&[Datum::Text("t")]),
+                    Receive::CommandComplete("SELECT 1"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
                     Send::Query("SELECT dirty FROM dolt.branches WHERE dirty = true;"),
                 ]),
                 Step::Receive(&[
-                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "42P01", message: r#"relation "dolt.branches" does not exist"#, position: 19, ..F }),
+                    Receive::RowDescription(&[Field { name: "dirty", attnum: 0, type_oid: BOOL, size: 1, typmod: -1, format: 0 }]),
+                    Receive::DataRow(&[Datum::Text("t")]),
+                    Receive::CommandComplete("SELECT 1"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
                     Send::Query("SELECT staged FROM dolt.status ORDER BY table_name;"),
                 ]),
                 Step::Receive(&[
-                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "42P01", message: r#"relation "dolt.status" does not exist"#, position: 20, ..F }),
+                    Receive::RowDescription(&[Field { name: "staged", attnum: 0, type_oid: BOOL, size: 1, typmod: -1, format: 0 }]),
+                    Receive::DataRow(&[Datum::Text("f")]),
+                    Receive::CommandComplete("SELECT 1"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
                     Send::Query("SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;"),
                 ]),
                 Step::Receive(&[
-                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "42P01", message: r#"relation "dolt.diff" does not exist"#, position: 40, ..F }),
+                    Receive::RowDescription(&[Field { name: "data_change", attnum: 0, type_oid: BOOL, size: 1, typmod: -1, format: 0 }, Field { name: "schema_change", attnum: 0, type_oid: BOOL, size: 1, typmod: -1, format: 0 }]),
+                    Receive::DataRow(&[Datum::Text("f"), Datum::Text("t")]),
+                    Receive::CommandComplete("SELECT 1"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
             ],

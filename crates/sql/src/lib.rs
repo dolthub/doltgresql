@@ -156,6 +156,9 @@ pub enum Outcome {
     CopyOut { binary: bool, columns: usize, chunks: Vec<Vec<u8>>, tag: String },
 }
 
+/// Results are the outcomes of a simple query's statements, each with the notices its statement raised first.
+pub type Results = Vec<(Vec<PgError>, Outcome)>;
+
 /// Prepared is a parsed statement, ready to bind parameters to and execute.
 #[derive(Clone, Debug)]
 pub struct Prepared {
