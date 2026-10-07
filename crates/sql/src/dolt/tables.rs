@@ -59,6 +59,8 @@ pub enum SystemTable {
     Docs,
     /// A schema's dolt_procedures table, which stays empty since Doltgres keeps procedures as root objects.
     Procedures,
+    /// The histogram buckets that ANALYZE built.
+    Statistics,
     /// A system table over a user table.
     User(Box<UserTable>),
     /// The conflicts or constraint violations of a user table.
@@ -87,6 +89,7 @@ const TABLES: &[(&str, SystemTable)] = &[
     ("ignore", SystemTable::Ignore),
     ("procedures", SystemTable::Procedures),
     ("docs", SystemTable::Docs),
+    ("statistics", SystemTable::Statistics),
 ];
 
 /// lookup returns the system table that a schema and name refer to: a name in the `dolt` schema, or the name with a
@@ -221,6 +224,7 @@ impl SystemTable {
                 ("modified_at", TIMESTAMP),
                 ("sql_mode", TEXT),
             ],
+            SystemTable::Statistics => crate::stats::COLUMNS.to_vec(),
             SystemTable::User(table) => return table.columns(),
             SystemTable::Artifacts(table) => return table.columns(),
             SystemTable::ObjectConflicts(table) => return table.columns(),
@@ -250,6 +254,7 @@ impl SystemTable {
             SystemTable::Diff => crate::dolt::diff::unscoped_rows(ctx),
             SystemTable::Docs => crate::dolt::docs::rows(ctx),
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),
+            SystemTable::Statistics => ctx.statistics_rows(),
             SystemTable::User(table) => table.rows(ctx),
             SystemTable::Artifacts(table) => table.rows(ctx),
             SystemTable::ObjectConflicts(table) => table.rows(ctx),

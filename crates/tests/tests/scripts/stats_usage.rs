@@ -58,35 +58,35 @@ fn test_stats_aggregates() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' numeric formatting.
                 ScriptTestAssertion {
                     query: "SELECT avg(row_count) FROM dolt_statistics WHERE table_name = 't';",
                     expected: Expected::Rows {
                         columns: &[Column("avg", NUMERIC)],
                         rows: &[
-                            &[T("100")],
+                            &[T("100.0000000000000000")],
                         ],
                         tag: "SELECT 1",
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' numeric formatting.
                 ScriptTestAssertion {
                     query: "SELECT avg(null_count) FROM dolt_statistics WHERE table_name = 't2';",
                     expected: Expected::Rows {
                         columns: &[Column("avg", NUMERIC)],
                         rows: &[
-                            &[T("0")],
+                            &[T("0.00000000000000000000")],
                         ],
                         tag: "SELECT 1",
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT table_name, index_name, sum(row_count)::int FROM dolt_statistics GROUP BY table_name, index_name ORDER BY table_name, index_name;",
                     expected: Expected::Rows {
-                        columns: &[Column("table_name", TEXT), Column("index_name", TEXT), Column("sum(row_count)", INT4)],
+                        columns: &[Column("table_name", TEXT), Column("index_name", TEXT), Column("sum", INT4)],
                         rows: &[
                             &[T("t"), T("primary"), T("100")],
                             &[T("t2"), T("primary"), T("60")],
@@ -108,11 +108,11 @@ fn test_stats_aggregates() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT sum(row_count) OVER () FROM dolt_statistics WHERE table_name = 't';",
                     expected: Expected::Rows {
-                        columns: &[Column("sum OVER ()", NUMERIC)],
+                        columns: &[Column("sum", NUMERIC)],
                         rows: &[
                             &[T("100")],
                         ],
@@ -190,11 +190,11 @@ fn test_stats_usage() {
                 "ANALYZE small;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT index_name, sum(row_count)::int FROM dolt_statistics WHERE table_name = 'big' GROUP BY index_name ORDER BY index_name;",
                     expected: Expected::Rows {
-                        columns: &[Column("index_name", TEXT), Column("sum(row_count)", INT4)],
+                        columns: &[Column("index_name", TEXT), Column("sum", INT4)],
                         rows: &[
                             &[T("big_highcard_idx"), T("5000")],
                             &[T("big_lowcard_idx"), T("5000")],
@@ -204,11 +204,11 @@ fn test_stats_usage() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT sum(distinct_count)::int FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'primary';",
                     expected: Expected::Rows {
-                        columns: &[Column("sum(distinct_count)", INT4)],
+                        columns: &[Column("sum", INT4)],
                         rows: &[
                             &[T("5000")],
                         ],
@@ -216,11 +216,11 @@ fn test_stats_usage() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT sum(distinct_count)::int FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'big_highcard_idx';",
                     expected: Expected::Rows {
-                        columns: &[Column("sum(distinct_count)", INT4)],
+                        columns: &[Column("sum", INT4)],
                         rows: &[
                             &[T("5000")],
                         ],
@@ -228,11 +228,11 @@ fn test_stats_usage() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT max(distinct_count) <= 10 AND sum(distinct_count) >= 10 FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'big_lowcard_idx';",
                     expected: Expected::Rows {
-                        columns: &[Column("(max <= 10) AND (sum >= 10)", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],
@@ -240,11 +240,11 @@ fn test_stats_usage() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT sum(null_count)::int FROM dolt_statistics WHERE table_name IN ('big', 'small');",
                     expected: Expected::Rows {
-                        columns: &[Column("sum(null_count)", INT4)],
+                        columns: &[Column("sum", INT4)],
                         rows: &[
                             &[T("0")],
                         ],
@@ -278,11 +278,11 @@ fn test_stats_usage() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT index_name, sum(row_count)::int, sum(distinct_count)::int FROM dolt_statistics WHERE table_name = 'small' GROUP BY index_name ORDER BY index_name;",
                     expected: Expected::Rows {
-                        columns: &[Column("index_name", TEXT), Column("sum(row_count)", INT4), Column("sum(distinct_count)", INT4)],
+                        columns: &[Column("index_name", TEXT), Column("sum", INT4), Column("sum", INT4)],
                         rows: &[
                             &[T("primary"), T("10"), T("10")],
                         ],
@@ -301,11 +301,11 @@ fn test_stats_usage() {
                 "ANALYZE t;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT sum(row_count)::int FROM dolt_statistics WHERE table_name = 't';",
                     expected: Expected::Rows {
-                        columns: &[Column("sum(row_count)", INT4)],
+                        columns: &[Column("sum", INT4)],
                         rows: &[
                             &[T("100")],
                         ],
@@ -323,11 +323,11 @@ fn test_stats_usage() {
                     expected: Expected::Tag("ANALYZE"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT sum(row_count)::int FROM dolt_statistics WHERE table_name = 't';",
                     expected: Expected::Rows {
-                        columns: &[Column("sum(row_count)", INT4)],
+                        columns: &[Column("sum", INT4)],
                         rows: &[
                             &[T("300")],
                         ],

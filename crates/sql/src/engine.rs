@@ -51,6 +51,8 @@ struct Shared {
     advisory: Arc<crate::advisory::AdvisoryLocks>,
     /// When the engine opened, as a UTC timestamp.
     started: i64,
+    /// The histograms that ANALYZE built, by database and branch.
+    statistics: Mutex<HashMap<(String, String), Vec<crate::stats::Statistic>>>,
 }
 
 /// undrop_hint lists the dropped databases that dolt_undrop can restore, as Dolt's CreateUndropErrorMessage does.
@@ -96,6 +98,7 @@ impl Engine {
                 databases: Mutex::new(HashMap::new()),
                 advisory: Arc::default(),
                 started: crate::datetime::clock(),
+                statistics: Mutex::default(),
             }),
         };
         if !engine.database_exists(superuser) {
@@ -103,6 +106,27 @@ impl Engine {
             doltdb::create::create_database(&dir, DEFAULT_BRANCH, superuser, "localhost", &create_times())?;
         }
         Ok(engine)
+    }
+
+    /// put_statistics replaces the histograms of a table on a branch of a database.
+    pub fn put_statistics(
+        &self,
+        database: &str,
+        branch: &str,
+        schema: &str,
+        table: &str,
+        statistics: Vec<crate::stats::Statistic>,
+    ) {
+        let Ok(mut all) = self.shared.statistics.lock() else { return };
+        let entry = all.entry((database.to_string(), branch.to_string())).or_default();
+        entry.retain(|s| s.schema != schema || s.table != table);
+        entry.extend(statistics);
+    }
+
+    /// statistics returns the histograms of the tables on a branch of a database.
+    pub fn statistics(&self, database: &str, branch: &str) -> Vec<crate::stats::Statistic> {
+        let Ok(all) = self.shared.statistics.lock() else { return Vec::new() };
+        all.get(&(database.to_string(), branch.to_string())).cloned().unwrap_or_default()
     }
 
     /// started returns when the engine opened, as a UTC timestamp.
@@ -1269,6 +1293,7 @@ impl Ctx<'_> {
             NodeEnum::ConstraintsSetStmt(stmt) => self.set_constraints(stmt),
             NodeEnum::AlterSeqStmt(stmt) => self.alter_sequence(stmt),
             NodeEnum::AlterOwnerStmt(stmt) => self.alter_owner(stmt),
+            NodeEnum::VacuumStmt(stmt) => self.analyze(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }
     }

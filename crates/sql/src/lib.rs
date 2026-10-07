@@ -55,6 +55,7 @@ pub mod routines;
 pub mod ruleutils;
 pub mod sequences;
 pub mod settings;
+pub mod stats;
 pub mod storage;
 mod triggers;
 pub mod txn;
