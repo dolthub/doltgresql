@@ -229,7 +229,7 @@ impl Ctx<'_> {
     /// information_schema_views lists the user views.
     fn information_schema_views(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let database = self.session.display.clone();
-        for view in self.snapshot()?.views {
+        for view in self.snapshot()?.views.clone() {
             let definition = self.view_definition(&view.statement, false, 0).unwrap_or_default();
             rows.push(vec![
                 ("table_catalog", text(database.clone())),
@@ -250,7 +250,7 @@ impl Ctx<'_> {
     /// information_schema_sequences lists the sequences.
     fn information_schema_sequences(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let database = self.session.display.clone();
-        for sequence in self.snapshot()?.sequences {
+        for sequence in self.snapshot()?.sequences.clone() {
             let (schema, name) = crate::sequences::schema_and_name(&sequence);
             let data_type = crate::catalog::builtin_type_by_id(&sequence.data_type_id).map_or(types::INT8, |t| t.oid);
             let precision = match data_type {

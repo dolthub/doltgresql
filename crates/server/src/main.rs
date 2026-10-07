@@ -18,7 +18,11 @@
 
 fn main() {
     let config = match server::Config::from_args(std::env::args().skip(1)) {
-        Ok(config) => config,
+        Ok(server::config::Startup::Serve(config)) => config,
+        Ok(server::config::Startup::Print(text)) => {
+            print!("{text}");
+            return;
+        }
         Err(message) => {
             eprintln!("{message}");
             std::process::exit(2);

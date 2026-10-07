@@ -23,6 +23,7 @@ use crate::foreign::ForeignKeyDef;
 use crate::query::Ctx;
 
 /// ViewDef is a view: its schema, name, and CREATE VIEW statement.
+#[derive(Clone)]
 pub struct ViewDef {
     pub schema: String,
     pub name: String,
@@ -39,6 +40,14 @@ pub struct Snapshot {
     pub views: Vec<ViewDef>,
     pub sequences: Vec<Sequence>,
     pub foreign_keys: Vec<ForeignKeyDef>,
+}
+
+/// CatalogCache holds what a statement has read of the catalogs, for the root value it read them from.
+pub struct CatalogCache {
+    pub root: doltdb::root::Root,
+    pub snapshot: std::sync::Arc<Snapshot>,
+    /// The relations that regclass can name, once a lookup asks for them.
+    pub relations: Option<std::sync::Arc<Vec<crate::pgcatalog::reg::Relation>>>,
 }
 
 impl Snapshot {
@@ -84,8 +93,21 @@ pub fn constraint_oid(section: u8, schema: &str, table: &str, name: &str) -> u32
 }
 
 impl Ctx<'_> {
-    /// snapshot reads every user object of the working root value.
-    pub fn snapshot(&mut self) -> Result<Snapshot> {
+    /// snapshot returns every user object of the working root value, reading them once for each root value that a
+    /// statement sees.
+    pub fn snapshot(&mut self) -> Result<std::sync::Arc<Snapshot>> {
+        if let Some(cache) = &self.catalog
+            && cache.root == self.txn.root
+        {
+            return Ok(cache.snapshot.clone());
+        }
+        let snapshot = std::sync::Arc::new(self.read_snapshot()?);
+        self.catalog = Some(CatalogCache { root: self.txn.root.clone(), snapshot: snapshot.clone(), relations: None });
+        Ok(snapshot)
+    }
+
+    /// read_snapshot reads every user object of the working root value.
+    fn read_snapshot(&mut self) -> Result<Snapshot> {
         let mut schemas: Vec<String> =
             self.txn.root.schemas.iter().map(|s| String::from_utf8_lossy(s).into_owned()).collect();
         schemas.sort();

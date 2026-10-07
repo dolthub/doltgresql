@@ -23,7 +23,7 @@ use crate::query::Ctx;
 use crate::types::{Reg, Value};
 
 /// Relation is a relation that regclass can name: its schema, name, and OID.
-struct Relation {
+pub struct Relation {
     schema: String,
     name: String,
     oid: u32,
@@ -76,7 +76,7 @@ impl Ctx<'_> {
     fn reg_from_oid(&mut self, oid: u32, type_oid: u32) -> Result<Reg> {
         let name = match type_oid {
             _ if oid == 0 => Some("-".to_string()),
-            types::REGCLASS => self.relations()?.into_iter().find(|r| r.oid == oid).map(|r| self.visible_name(&r)),
+            types::REGCLASS => self.relations()?.iter().find(|r| r.oid == oid).map(|r| self.visible_name(r)),
             types::REGTYPE => match builtin_type(oid).is_some() || crate::usertypes::get(oid).is_some() {
                 true => Some(crate::cast::type_display(oid).into_owned()),
                 false => self.snapshot()?.tables.iter().find_map(|t| {
@@ -276,7 +276,7 @@ impl Ctx<'_> {
         let path = self.effective_search_path();
         let builtin = |catalog: &str, column: &str| builtin_column(catalog, column).iter().any(|(o, _)| *o == oid);
         let schema = match catalog {
-            "pg_class" => self.relations()?.into_iter().find(|r| r.oid == oid).map(|r| r.schema),
+            "pg_class" => self.relations()?.iter().find(|r| r.oid == oid).map(|r| r.schema.clone()),
             "pg_type" => match builtin_type(oid) {
                 Some(_) => Some("pg_catalog".to_string()),
                 None => self.user_types()?.get(&oid).map(|t| t.schema.clone()),
@@ -359,14 +359,18 @@ impl Ctx<'_> {
     }
 
     /// relations returns every relation that regclass can name: the system catalogs, their indexes, and the user
-    /// relations.
-    fn relations(&mut self) -> Result<Vec<Relation>> {
+    /// relations, reading them once for each root value that a statement sees.
+    fn relations(&mut self) -> Result<std::sync::Arc<Vec<Relation>>> {
+        let snapshot = self.snapshot()?;
+        if let Some(relations) = self.catalog.as_ref().and_then(|c| c.relations.clone()) {
+            return Ok(relations);
+        }
         let mut out = Vec::new();
         if let Some(class) = lookup("pg_catalog", "pg_class") {
             let (Some(oid), Some(name), Some(namespace)) =
                 (class.column("oid"), class.column("relname"), class.column("relnamespace"))
             else {
-                return Ok(out);
+                return Ok(std::sync::Arc::new(out));
             };
             for row in builtin::rows(class) {
                 let schema = match &row[namespace] {
@@ -379,7 +383,6 @@ impl Ctx<'_> {
                 }
             }
         }
-        let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
             out.push(Relation {
                 schema: table.schema.clone(),
@@ -415,7 +418,11 @@ impl Ctx<'_> {
             let oid = sequence_oid(&schema, &name);
             out.push(Relation { schema, name, oid });
         }
-        Ok(out)
+        let relations = std::sync::Arc::new(out);
+        if let Some(cache) = self.catalog.as_mut() {
+            cache.relations = Some(relations.clone());
+        }
+        Ok(relations)
     }
 
     /// namespaces returns the name and OID of every schema.

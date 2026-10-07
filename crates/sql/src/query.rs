@@ -61,6 +61,8 @@ pub struct Ctx<'a> {
     pub outer_reach: usize,
     /// The scopes, as indexes into the binder's scopes, of the aggregate calls whose arguments are being bound.
     pub aggregate_levels: Vec<usize>,
+    /// What the statement has read of the catalogs, for the root value it read them from.
+    pub catalog: Option<crate::pgcatalog::snapshot::CatalogCache>,
 }
 
 /// column returns the description of a result column of the type.

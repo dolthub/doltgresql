@@ -108,11 +108,12 @@ fn lock<T>(mutex: &Mutex<T>) -> Result<std::sync::MutexGuard<'_, T>> {
 }
 
 impl Engine {
-    /// open opens the data directory, the auth file, and the branch control file when there is one, creating them,
-    /// the default database named after the superuser, and the superuser's role when they do not exist, as the Go
-    /// server does on its first start.
+    /// open opens the data directory, the auth file, and the branch control file when there is one, creating them and
+    /// the superuser's role when they do not exist, and the default database when the data directory has none, as the
+    /// Go server does on its first start.
     pub fn open(
         data_dir: &Path,
+        default_database: &str,
         superuser: &str,
         password: &str,
         auth_file: &Path,
@@ -136,8 +137,9 @@ impl Engine {
                 ended: Mutex::default(),
             }),
         };
-        if !engine.database_exists(superuser) {
-            let dir = data_dir.join(superuser);
+        let databases = std::fs::read_dir(data_dir).map_err(PgError::internal)?;
+        if !databases.filter_map(|e| e.ok()).any(|e| e.path().join(".dolt").is_dir()) {
+            let dir = data_dir.join(default_database);
             doltdb::create::create_database(&dir, DEFAULT_BRANCH, superuser, "localhost", &create_times())?;
         }
         Ok(engine)
@@ -946,6 +948,7 @@ impl Session {
             once: None,
             outer_reach: usize::MAX,
             aggregate_levels: Vec::new(),
+            catalog: None,
         };
         let result = (|| {
             ctx.install_types()?;

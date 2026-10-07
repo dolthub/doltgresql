@@ -867,6 +867,7 @@ impl Ctx<'_> {
             once: None,
             outer_reach: usize::MAX,
             aggregate_levels: Vec::new(),
+            catalog: None,
         };
         f(&mut ctx)
     }

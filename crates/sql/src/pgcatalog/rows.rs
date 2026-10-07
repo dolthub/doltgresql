@@ -1257,7 +1257,7 @@ impl Ctx<'_> {
     /// pg_views lists the user views.
     fn pg_views(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let owner = self.session.superuser.clone();
-        for view in self.snapshot()?.views {
+        for view in self.snapshot()?.views.clone() {
             let definition = self.view_definition(&view.statement, false, 0).unwrap_or_default();
             rows.push(vec![
                 ("schemaname", text(view.schema)),
@@ -1272,7 +1272,7 @@ impl Ctx<'_> {
     /// pg_sequences fills pg_sequence or the pg_sequences view.
     fn pg_sequences(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let owner = self.session.superuser.clone();
-        for sequence in self.snapshot()?.sequences {
+        for sequence in self.snapshot()?.sequences.clone() {
             let (schema, name) = crate::sequences::schema_and_name(&sequence);
             let data_type = crate::catalog::builtin_type_by_id(&sequence.data_type_id).map_or(types::INT8, |t| t.oid);
             let display = crate::cast::type_display(data_type).into_owned();
@@ -1652,7 +1652,7 @@ const PG_ATTRDEF: u32 = 2604;
 impl Ctx<'_> {
     /// pg_rewrite lists the `_RETURN` rule of each view, the only rules there are without CREATE RULE.
     fn pg_rewrite(&mut self, rows: &mut Rows<'_>) -> Result<()> {
-        for view in self.snapshot()?.views {
+        for view in self.snapshot()?.views.clone() {
             rows.push(vec![
                 ("oid", oid(oids::oid(&id::new(id::SECTION_TRIGGER, &[&view.schema, &view.name, "_RETURN"])))),
                 ("rulename", text("_RETURN")),

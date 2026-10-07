@@ -245,7 +245,7 @@ impl Ctx<'_> {
             tables.push(self.resolve_table(relation)?);
         }
         if stmt.rels.is_empty() {
-            tables = self.snapshot()?.tables;
+            tables = self.snapshot()?.tables.clone();
         }
         let created = crate::datetime::clock();
         for table in tables {

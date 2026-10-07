@@ -20,9 +20,10 @@ pub mod config;
 mod conn;
 pub mod scram;
 
+use std::io::Write;
 use std::net::TcpListener;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use sql::Engine;
 
@@ -40,6 +41,7 @@ impl Server {
     pub fn new(config: &Config) -> Result<Server, String> {
         let engine = Engine::open(
             &config.data_dir,
+            &config.default_database,
             &config.user,
             &config.password,
             &config.auth_file,
@@ -63,16 +65,34 @@ impl Server {
     }
 }
 
+/// LOG is the file the server writes its log to, when the command line names one.
+static LOG: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
+
+/// log writes a line to the server's log, which is standard error unless the command line names a file.
+fn log(line: &str) {
+    match LOG.get() {
+        Some(file) => {
+            let mut file = file.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let _ = writeln!(file, "{line}");
+        }
+        None => eprintln!("{line}"),
+    }
+}
+
 /// CONNECTION_STACK_SIZE is the stack size of each connection's thread, where function calls nest.
 const CONNECTION_STACK_SIZE: usize = 256 << 20;
 
 /// serve accepts connections on the configured address until the listener fails.
 pub fn serve(config: &Config) -> Result<(), String> {
+    if let Some(path) = &config.log_file {
+        let file = std::fs::File::create(path).map_err(|err| format!("cannot open {}: {err}", path.display()))?;
+        let _ = LOG.set(Mutex::new(file));
+    }
     let server = Arc::new(Server::new(config)?);
     let host = if config.host == "localhost" { "127.0.0.1" } else { config.host.as_str() };
     let listener = TcpListener::bind((host, config.port))
         .map_err(|err| format!("cannot listen on {host}:{}: {err}", config.port))?;
-    eprintln!("Server ready. Accepting connections on {host}:{}.", config.port);
+    log(&format!("Server ready. Accepting connections on {host}:{}.", config.port));
     for stream in listener.incoming() {
         let stream = stream.map_err(|err| err.to_string())?;
         let _ = stream.set_nodelay(true);
@@ -82,11 +102,11 @@ pub fn serve(config: &Config) -> Result<(), String> {
             if let Err(err) = conn::Conn::new(stream, server).run()
                 && !matches!(&err, conn::ConnError::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof)
             {
-                eprintln!("connection {process_id} ended: {err}");
+                log(&format!("connection {process_id} ended: {err}"));
             }
         });
         if let Err(err) = spawned {
-            eprintln!("connection {process_id} could not start: {err}");
+            log(&format!("connection {process_id} could not start: {err}"));
         }
     }
     Ok(())
