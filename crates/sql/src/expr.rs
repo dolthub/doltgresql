@@ -292,7 +292,7 @@ fn numeric_rank(type_oid: u32) -> Option<u8> {
 }
 
 /// is_string reports whether the type is in the string category, counting untyped literals.
-fn is_string(type_oid: u32) -> bool {
+pub(crate) fn is_string(type_oid: u32) -> bool {
     matches!(type_oid, oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN)
 }
 
@@ -363,6 +363,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                     }
                     _ => self.bind(arg)?,
                 };
+                if let Expr::Param(i) = bound.0
+                    && self.ctx.parameters[i] == 0
+                {
+                    self.ctx.parameters[i] = target.oid;
+                }
                 if crate::cast::is_reg_type(target.oid)
                     && let (Expr::Const(value), oid::UNKNOWN) = (&bound.0, bound.1.oid)
                 {
@@ -1964,6 +1969,7 @@ pub fn arg_location(node: &Node) -> i32 {
         Some(NodeEnum::ParamRef(p)) => p.location,
         Some(NodeEnum::FuncCall(f)) => f.location,
         Some(NodeEnum::RowExpr(r)) => r.location,
+        Some(NodeEnum::SubLink(s)) => s.location,
         _ => -1,
     }
 }

@@ -196,7 +196,7 @@ impl Numeric {
     }
 
     /// is_negative reports whether the value is below zero.
-    fn is_negative(&self) -> bool {
+    pub fn is_negative(&self) -> bool {
         matches!(self, Numeric::Finite { negative: true, .. } | Numeric::NegativeInfinity)
     }
 

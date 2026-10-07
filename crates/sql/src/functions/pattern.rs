@@ -275,7 +275,7 @@ fn compile(pattern: &str, flags: &str) -> Result<Regex> {
 }
 
 /// regex_error summarizes a regular expression error as briefly as Postgres' messages do.
-fn regex_error(err: &regex::Error) -> String {
+pub(crate) fn regex_error(err: &regex::Error) -> String {
     let text = err.to_string();
     let lower = text.to_lowercase();
     if lower.contains("unclosed group") || lower.contains("unopened group") {
@@ -290,7 +290,7 @@ fn regex_error(err: &regex::Error) -> String {
 }
 
 /// translate_regex rewrites Postgres' regular expression escapes that the regex crate spells differently.
-fn translate_regex(pattern: &str) -> String {
+pub(crate) fn translate_regex(pattern: &str) -> String {
     let mut out = String::with_capacity(pattern.len());
     let mut chars = pattern.chars();
     while let Some(c) = chars.next() {

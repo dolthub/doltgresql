@@ -24,7 +24,7 @@ mod catalog;
 pub mod datetime;
 pub mod json;
 mod math;
-mod pattern;
+pub(crate) mod pattern;
 mod series;
 mod string;
 mod system;

@@ -1319,6 +1319,41 @@ pub fn to_timestamp(text: &str, template: &str, zone: &Zone) -> Result<i64> {
     Ok(result)
 }
 
+/// DatetimeParts is a date and time that text read with a template holds for SQL/JSON, with the offset east of UTC
+/// it named and whether the template has date, time, and zone fields.
+pub struct DatetimeParts {
+    pub fields: Fields,
+    pub offset: Option<i64>,
+    pub dated: bool,
+    pub timed: bool,
+    pub zoned: bool,
+}
+
+/// parse_datetime reads text with a template as Postgres' parse_datetime does for SQL/JSON's `.datetime()` method.
+pub fn parse_datetime(text: &str, template: &str) -> Result<DatetimeParts> {
+    let parsed = read_datetime(text, template)?;
+    let (mut dated, mut timed, mut zoned) = (false, false, false);
+    for node in parse_format(template) {
+        let Node::Action(keyword, _) = node else { continue };
+        match keyword.id {
+            Id::Tzh | Id::Tzm | Id::Tz | Id::Of => zoned = true,
+            Id::Hh24
+            | Id::Hh12
+            | Id::Mi
+            | Id::Ss
+            | Id::Ms
+            | Id::Us
+            | Id::Ff(_)
+            | Id::Ssss
+            | Id::Meridiem
+            | Id::MeridiemDotted => timed = true,
+            Id::DayName | Id::DayAbbreviation | Id::D | Id::IsoD | Id::Fx => {}
+            _ => dated = true,
+        }
+    }
+    Ok(DatetimeParts { fields: parsed.fields, offset: parsed.offset, dated, timed, zoned })
+}
+
 /// to_date reads text with a template as a date.
 pub fn to_date(text: &str, template: &str) -> Result<i32> {
     let parsed = read_datetime(text, template)?;

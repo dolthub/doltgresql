@@ -40,6 +40,8 @@ mod foreign;
 pub mod formatting;
 pub mod functions;
 pub mod json;
+pub mod jsonpath;
+pub mod jsontable;
 pub mod numeric;
 pub mod operators;
 pub mod parse;

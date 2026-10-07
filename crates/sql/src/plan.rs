@@ -96,6 +96,8 @@ pub enum Plan {
     },
     /// The rows of an XMLTABLE.
     XmlTable(Box<crate::xml::table::XmlTable>),
+    /// The rows of a JSON_TABLE.
+    JsonTable(Box<crate::jsontable::JsonTable>),
     /// The rows of several set-returning calls side by side, padded with NULLs, with a row number when asked, as
     /// ROWS FROM and unnest of several arrays return them.
     RowsFrom {
@@ -589,6 +591,30 @@ impl<'b, 'a> Planner<'b, 'a> {
         planned
     }
 
+    /// plan_json_table plans a JSON_TABLE, whose columns are named after its alias.
+    fn plan_json_table(&mut self, table: &pg_query::protobuf::JsonTable) -> Result<(Plan, Scope)> {
+        let mut binder = self.binder(Scope::default());
+        let planned = crate::jsontable::plan(&mut binder, table)?;
+        let alias = table.alias.as_ref();
+        let name = alias.map_or("json_table".to_string(), |a| a.aliasname.clone());
+        let renames: Vec<&str> = alias.map(|a| a.colnames.iter().filter_map(node_name).collect()).unwrap_or_default();
+        let scope = Scope {
+            columns: planned
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(i, c)| ScopeColumn {
+                    table: name.clone(),
+                    name: renames.get(i).map_or(c.name.clone(), |r| r.to_string()),
+                    ty: c.ty,
+                    hidden: false,
+                    origin: (0, 0),
+                })
+                .collect(),
+        };
+        Ok((Plan::JsonTable(Box::new(planned)), scope))
+    }
+
     /// plan_xml_table plans an XMLTABLE.
     fn plan_xml_table(&mut self, function: &pg_query::protobuf::RangeTableFunc) -> Result<(Plan, Scope)> {
         use crate::xml::table::{XmlColumn, XmlTable};
@@ -775,6 +801,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             Some(NodeEnum::RangeSubselect(subselect)) => self.plan_subselect(subselect),
             Some(NodeEnum::RangeFunction(function)) => self.plan_range_function(function),
             Some(NodeEnum::RangeTableFunc(function)) => self.plan_xml_table(function),
+            Some(NodeEnum::JsonTable(table)) => self.plan_json_table(table),
             _ => Err(PgError::unsupported("this FROM item")),
         }
     }
@@ -1746,6 +1773,7 @@ impl Plan {
             Plan::Project { exprs, .. } => exprs.len(),
             Plan::Join { left, right, .. } => left.width() + right.width(),
             Plan::XmlTable(table) => table.columns.len(),
+            Plan::JsonTable(table) => table.columns.len(),
             Plan::RowsFrom { calls, ordinality } => calls.len() + *ordinality as usize,
             Plan::Aggregate { groups, aggregates, .. } => groups.len() + aggregates.len(),
             Plan::SetOp { left, .. } => left.width(),
@@ -1851,6 +1879,7 @@ impl Plan {
                 out
             }
             Plan::XmlTable(table) => crate::xml::table::rows(ctx, table)?,
+            Plan::JsonTable(table) => crate::jsontable::rows(ctx, table)?,
             Plan::RowsFrom { calls, ordinality } => {
                 let columns = calls.iter().map(|c| set_rows(ctx, c, &[])).collect::<Result<Vec<_>>>()?;
                 let count = columns.iter().map(Vec::len).max().unwrap_or(0);
@@ -2082,12 +2111,12 @@ fn set_rows(ctx: &mut Ctx<'_>, call: &Expr, row: &[Value]) -> Result<Vec<Value>>
     }
 }
 
-/// is_lateral reports whether a FROM item can see the items before it: a LATERAL subquery, a function, or an
-/// XMLTABLE.
+/// is_lateral reports whether a FROM item can see the items before it: a LATERAL subquery, a function, an XMLTABLE,
+/// or a JSON_TABLE.
 fn is_lateral(item: &Node) -> bool {
     match item.node.as_ref() {
         Some(NodeEnum::RangeSubselect(subselect)) => subselect.lateral,
-        Some(NodeEnum::RangeFunction(_) | NodeEnum::RangeTableFunc(_)) => true,
+        Some(NodeEnum::RangeFunction(_) | NodeEnum::RangeTableFunc(_) | NodeEnum::JsonTable(_)) => true,
         _ => false,
     }
 }

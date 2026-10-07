@@ -113,6 +113,17 @@ pub mod code {
     pub const NOT_AN_XML_DOCUMENT: &str = "2200L";
     pub const INVALID_XML_COMMENT: &str = "2200S";
     pub const INVALID_XML_PROCESSING_INSTRUCTION: &str = "2200T";
+    pub const INVALID_ARGUMENT_FOR_SQL_JSON_DATETIME_FUNCTION: &str = "22031";
+    pub const INVALID_SQL_JSON_SUBSCRIPT: &str = "22033";
+    pub const MORE_THAN_ONE_SQL_JSON_ITEM: &str = "22034";
+    pub const NO_SQL_JSON_ITEM: &str = "22035";
+    pub const NON_NUMERIC_SQL_JSON_ITEM: &str = "22036";
+    pub const SINGLETON_SQL_JSON_ITEM_REQUIRED: &str = "22038";
+    pub const SQL_JSON_ARRAY_NOT_FOUND: &str = "22039";
+    pub const SQL_JSON_MEMBER_NOT_FOUND: &str = "2203A";
+    pub const SQL_JSON_NUMBER_NOT_FOUND: &str = "2203B";
+    pub const SQL_JSON_OBJECT_NOT_FOUND: &str = "2203C";
+    pub const SQL_JSON_SCALAR_REQUIRED: &str = "2203F";
 }
 
 /// PgError is an error to report to the client.
