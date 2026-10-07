@@ -183,11 +183,101 @@ pub enum IntervalStyle {
     Iso8601,
 }
 
-/// Zone is a time zone: a fixed offset east of UTC with its name, or a zone of the IANA database.
+/// Zone is a time zone: a fixed offset east of UTC with its name, a zone of the IANA database, or an abbreviation
+/// whose offset is the one it had in a zone at the time.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Zone {
     Fixed { offset: i32, name: String },
     Tz(chrono_tz::Tz),
+    Dynamic { name: String, tz: chrono_tz::Tz },
+}
+
+/// DYNAMIC_ABBREVIATIONS are the abbreviations of Postgres' default set whose offsets come from a zone, as its
+/// timezonesets/Default file defines them.
+const DYNAMIC_ABBREVIATIONS: &[(&str, &str)] = &[
+    ("ART", "America/Argentina/Buenos_Aires"),
+    ("ARST", "America/Argentina/Buenos_Aires"),
+    ("CLT", "America/Santiago"),
+    ("GYT", "America/Guyana"),
+    ("PYT", "America/Asuncion"),
+    ("VET", "America/Caracas"),
+    ("DAVT", "Antarctica/Davis"),
+    ("MAWT", "Antarctica/Mawson"),
+    ("AMST", "Asia/Yerevan"),
+    ("ANAST", "Asia/Anadyr"),
+    ("ANAT", "Asia/Anadyr"),
+    ("AZST", "Asia/Baku"),
+    ("AZT", "Asia/Baku"),
+    ("GEST", "Asia/Tbilisi"),
+    ("GET", "Asia/Tbilisi"),
+    ("IRKST", "Asia/Irkutsk"),
+    ("IRKT", "Asia/Irkutsk"),
+    ("KGT", "Asia/Bishkek"),
+    ("KRAST", "Asia/Krasnoyarsk"),
+    ("KRAT", "Asia/Krasnoyarsk"),
+    ("LKT", "Asia/Colombo"),
+    ("MAGST", "Asia/Magadan"),
+    ("MAGT", "Asia/Magadan"),
+    ("NOVST", "Asia/Novosibirsk"),
+    ("NOVT", "Asia/Novosibirsk"),
+    ("OMSST", "Asia/Omsk"),
+    ("OMST", "Asia/Omsk"),
+    ("PETST", "Asia/Kamchatka"),
+    ("PETT", "Asia/Kamchatka"),
+    ("SGT", "Asia/Singapore"),
+    ("TMT", "Asia/Ashgabat"),
+    ("ULAT", "Asia/Ulaanbaatar"),
+    ("VLAST", "Asia/Vladivostok"),
+    ("VLAT", "Asia/Vladivostok"),
+    ("YAKST", "Asia/Yakutsk"),
+    ("YAKT", "Asia/Yakutsk"),
+    ("YEKT", "Asia/Yekaterinburg"),
+    ("FKST", "Atlantic/Stanley"),
+    ("FKT", "Atlantic/Stanley"),
+    ("LHDT", "Australia/Lord_Howe"),
+    ("MSK", "Europe/Moscow"),
+    ("VOLT", "Europe/Volgograd"),
+    ("IOT", "Indian/Chagos"),
+    ("CKT", "Pacific/Rarotonga"),
+    ("EASST", "Pacific/Easter"),
+    ("EAST", "Pacific/Easter"),
+    ("KOST", "Pacific/Kosrae"),
+    ("LINT", "Pacific/Kiritimati"),
+    ("NUT", "Pacific/Niue"),
+    ("TKT", "Pacific/Fakaofo"),
+];
+
+/// SEARCH_STEP and SEARCH_STEPS bound the search for when a zone used an abbreviation: weekly steps over about two
+/// centuries.
+const SEARCH_STEP: i64 = 7 * USECS_PER_DAY;
+const SEARCH_STEPS: i64 = 200 * 53;
+
+/// zone_offset returns a zone's offset east of UTC and its abbreviation at a UTC timestamp.
+fn zone_offset(tz: chrono_tz::Tz, utc: i64) -> (i32, String) {
+    let offset = tz.offset_from_utc_datetime(&naive_of(utc));
+    let seconds = offset.fix().local_minus_utc();
+    let abbreviation =
+        chrono_tz::OffsetName::abbreviation(&offset).map_or_else(|| numeric_name(seconds), str::to_string);
+    (seconds, abbreviation)
+}
+
+/// abbreviation_offset returns the offset that an abbreviation had in a zone at a UTC timestamp, from the latest
+/// period of the zone that used it at or before then, or else the earliest one after, or the zone's offset when it
+/// never used it, as Postgres' pg_interpret_timezone_abbrev and its callers do.
+fn abbreviation_offset(tz: chrono_tz::Tz, name: &str, utc: i64) -> i32 {
+    let (offset, abbreviation) = zone_offset(tz, utc);
+    if abbreviation.eq_ignore_ascii_case(name) {
+        return offset;
+    }
+    for direction in [-1, 1] {
+        for step in 1..=SEARCH_STEPS {
+            let (found, abbreviation) = zone_offset(tz, utc + direction * step * SEARCH_STEP);
+            if abbreviation.eq_ignore_ascii_case(name) {
+                return found;
+            }
+        }
+    }
+    offset
 }
 
 /// abbreviations returns Postgres' default time zone abbreviations with their offsets east of UTC.
@@ -244,6 +334,11 @@ impl Zone {
         if let Some(tz) = chrono_tz::TZ_VARIANTS.iter().find(|z| z.name().eq_ignore_ascii_case(trimmed)) {
             return Some(Zone::Tz(*tz));
         }
+        if let Some((name, tz)) = DYNAMIC_ABBREVIATIONS.iter().find(|(n, _)| n.eq_ignore_ascii_case(trimmed))
+            && let Ok(tz) = tz.parse::<chrono_tz::Tz>()
+        {
+            return Some(Zone::Dynamic { name: name.to_string(), tz });
+        }
         if let Some(&(offset, _)) = abbreviations().get(&trimmed.to_ascii_lowercase()) {
             return Some(Zone::Fixed { offset, name: trimmed.to_ascii_uppercase() });
         }
@@ -269,14 +364,8 @@ impl Zone {
     pub fn offset_at(&self, utc: i64) -> (i32, String) {
         match self {
             Zone::Fixed { offset, name } => (*offset, name.clone()),
-            Zone::Tz(tz) => {
-                let naive = naive_of(utc);
-                let offset = tz.offset_from_utc_datetime(&naive);
-                let seconds = offset.fix().local_minus_utc();
-                let abbreviation =
-                    chrono_tz::OffsetName::abbreviation(&offset).map_or_else(|| numeric_name(seconds), str::to_string);
-                (seconds, abbreviation)
-            }
+            Zone::Tz(tz) => zone_offset(*tz, utc),
+            Zone::Dynamic { name, tz } => (abbreviation_offset(*tz, name, utc), name.clone()),
         }
     }
 
@@ -285,6 +374,10 @@ impl Zone {
     pub fn offset_for_local(&self, local: i64) -> i32 {
         match self {
             Zone::Fixed { offset, .. } => *offset,
+            Zone::Dynamic { name, tz } => {
+                let utc = local - Zone::Tz(*tz).offset_for_local(local) as i64 * USECS_PER_SEC;
+                abbreviation_offset(*tz, name, utc)
+            }
             Zone::Tz(tz) => {
                 let naive = naive_of(local);
                 match tz.offset_from_local_datetime(&naive) {

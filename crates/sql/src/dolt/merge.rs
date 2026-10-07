@@ -28,9 +28,11 @@ use crate::catalog::table::{HIDDEN_BASE, IndexDef, TableDef};
 use crate::dolt::args::error;
 use crate::dolt::artifacts::{self, Artifact};
 use crate::error::Result;
+use crate::json::Json;
 use crate::query::Ctx;
 use crate::txn::read;
 use crate::types::Value;
+use serial::write::DEFAULT_TARGET_ROW_SIZE;
 
 /// Name is a table by schema and name.
 type Name = (String, String);
@@ -125,11 +127,12 @@ fn value_fields(table: &TableDef, value: &[u8]) -> Vec<Option<Vec<u8>>> {
 }
 
 /// try_merge merges two sides' changes to a row column by column, as Dolt's valueMerger does: a column that only one
-/// side changed takes that side's value, and a column that both changed differently is a conflict, which returns
-/// None. A missing value is a deleted row, which merges only when the other side left every column as the base had
-/// it.
+/// side changed takes that side's value, a JSON document that both changed merges key by key when given the database
+/// to read it from, and any other column that both changed differently is a conflict, which returns None. A missing
+/// value is a deleted row, which merges only when the other side left every column as the base had it.
 fn try_merge(
     table: &TableDef,
+    mut json: Option<&mut Database>,
     base: Option<&[u8]>,
     left: Option<&[u8]>,
     right: Option<&[u8]>,
@@ -157,12 +160,70 @@ fn try_merge(
             match b {
                 Some(b) if l == b => r.clone(),
                 Some(b) if r == b => l.clone(),
-                _ => return None,
+                Some(b) => merge_json_field(json.as_deref_mut()?, &table.columns[table.value_columns[i]], b, l, r)?,
+                None => return None,
             }
         };
         merged.push(value);
     }
+    if let Some(db) = json {
+        crate::storage::place_adaptive(db, &mut merged, &table.value_encodings(), DEFAULT_TARGET_ROW_SIZE as usize)
+            .ok()?;
+    }
     Some(Some(prolly::val::build_tuple(&merged.iter().map(Option::as_deref).collect::<Vec<_>>())))
+}
+
+/// merge_json_field merges a json or jsonb column's documents that both sides changed, returning the merged field, or
+/// None when the column holds something else or the changes conflict.
+fn merge_json_field(
+    db: &mut Database,
+    column: &crate::catalog::table::ColumnDef,
+    base: &Option<Vec<u8>>,
+    left: &Option<Vec<u8>>,
+    right: &Option<Vec<u8>>,
+) -> Option<Option<Vec<u8>>> {
+    if !matches!(column.ty.oid, crate::oid::JSON | crate::oid::JSONB) {
+        return None;
+    }
+    let document = |field: &Option<Vec<u8>>| -> Option<Json> {
+        match crate::storage::decode_field(db, field.as_deref(), column.encoding, column.ty).ok()? {
+            Value::Json(text) => crate::json::parse(&text, false).ok(),
+            Value::Jsonb(json) => Some(*json),
+            _ => None,
+        }
+    };
+    let merged = merge_json(&document(base)?, &document(left)?, &document(right)?)?;
+    let value = match column.ty.oid {
+        crate::oid::JSONB => Value::Jsonb(Box::new(merged)),
+        _ => Value::Json(merged.compact()),
+    };
+    crate::storage::encode_field(&value, column.encoding, column.ty).ok()
+}
+
+/// merge_json three-way merges JSON documents as Dolt's ThreeWayJsonDiffer does: objects merge key by key, and any
+/// other value that both sides changed differently is a conflict, which returns None.
+fn merge_json(base: &Json, left: &Json, right: &Json) -> Option<Json> {
+    if left == right || right == base {
+        return Some(left.clone());
+    }
+    if left == base {
+        return Some(right.clone());
+    }
+    let (Json::Object(b), Json::Object(l), Json::Object(r)) = (base, left, right) else { return None };
+    let get = |items: &[(String, Json)], key: &str| items.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+    let keys = union([l, r, b].map(|items| items.iter().map(|(k, _)| k.clone()).collect()));
+    let mut merged = Vec::with_capacity(keys.len());
+    for key in keys {
+        let (bv, lv, rv) = (get(b, &key), get(l, &key), get(r, &key));
+        let value = match pick(bv.as_ref(), lv.as_ref(), rv.as_ref()) {
+            Some(value) => value,
+            None => Some(merge_json(&bv?, &lv?, &rv?)?),
+        };
+        if let Some(value) = value {
+            merged.push((key, value));
+        }
+    }
+    Some(Json::Object(merged))
 }
 
 /// Merged is the outcome of merging a table's rows: the edits to make to our rows, and the conflicts and constraint
@@ -218,24 +279,12 @@ struct RowMerger<'a> {
     /// The current value of each row whose value the merge changed or validated, by key.
     current: BTreeMap<Vec<u8>, Option<Vec<u8>>>,
     ours: &'a [Entry],
+    db: &'a mut Database,
+    /// Whether JSON documents that both sides changed merge key by key, which dolt_dont_merge_json turns off.
+    merge_json: bool,
 }
 
 impl<'a> RowMerger<'a> {
-    /// indexed returns the values of a row that a unique index holds, or None when one is NULL, since NULLs never
-    /// collide.
-    fn indexed(&self, index: &IndexDef, key: &[u8], value: &[u8]) -> Option<Vec<Option<Vec<u8>>>> {
-        let (key, values) = (Tuple(key), value_fields(self.table, value));
-        let mut out = Vec::with_capacity(index.columns.len());
-        for &c in &index.columns {
-            let field = match self.table.key_columns.iter().position(|&k| k == c) {
-                Some(i) => key.field(i).ok().flatten().map(<[u8]>::to_vec),
-                None => self.table.value_columns.iter().position(|&v| v == c).and_then(|i| values[i].clone()),
-            };
-            out.push(Some(field?));
-        }
-        Some(out)
-    }
-
     /// value_of returns a row's current value: the merge's value for it, or our value.
     fn value_of(&self, key: &[u8]) -> Option<Vec<u8>> {
         if let Some(value) = self.current.get(key) {
@@ -287,7 +336,7 @@ impl<'a> RowMerger<'a> {
     /// remove_unique removes a row from the unique indexes.
     fn remove_unique(&mut self, key: &[u8], value: &[u8]) {
         for i in 0..self.uniques.len() {
-            let Some(values) = self.indexed(self.uniques[i].index, key, value) else { continue };
+            let Some(values) = indexed(self.table, self.uniques[i].index, key, value) else { continue };
             if let Some(keys) = self.uniques[i].rows.get_mut(&values) {
                 keys.retain(|k| k != key);
             }
@@ -301,7 +350,7 @@ impl<'a> RowMerger<'a> {
             self.remove_unique(key, previous);
         }
         for i in 0..self.uniques.len() {
-            let Some(values) = self.indexed(self.uniques[i].index, key, value) else { continue };
+            let Some(values) = indexed(self.table, self.uniques[i].index, key, value) else { continue };
             let others: Vec<Vec<u8>> = self.uniques[i]
                 .rows
                 .get(&values)
@@ -332,7 +381,7 @@ impl<'a> RowMerger<'a> {
             return;
         }
         for i in 0..self.uniques.len() {
-            let Some(values) = self.indexed(self.uniques[i].index, key, previous) else { continue };
+            let Some(values) = indexed(self.table, self.uniques[i].index, key, previous) else { continue };
             let others = self.uniques[i].rows.get(&values).cloned().unwrap_or_default();
             self.merged.artifacts.retain(|a| !(others.contains(&a.key) && a.kind == artifacts::UNIQUE));
         }
@@ -409,7 +458,8 @@ impl<'a> RowMerger<'a> {
                         }
                         continue;
                     }
-                    match try_merge(self.table, l.from.as_deref(), l.to.as_deref(), r.to.as_deref()) {
+                    let json = self.merge_json.then_some(&mut *self.db);
+                    match try_merge(self.table, json, l.from.as_deref(), l.to.as_deref(), r.to.as_deref()) {
                         Some(None) => self.set(&l.key, None),
                         Some(Some(merged)) => {
                             self.check_unique(&l.key, &merged, l.to.as_deref());
@@ -493,22 +543,28 @@ fn unique_indexes<'a>(table: &'a TableDef, rows: &[Entry]) -> Vec<UniqueIndex<'a
         let info = format!("{{\"Columns\":{},\"Name\":{}}}", json_strings(&columns), json_string(&index.name));
         out.push(UniqueIndex { index, info: info.into_bytes(), rows: HashMap::new() });
     }
-    let merger = RowMerger {
-        table,
-        commits: Commits { ours: Hash([0; Hash::LEN]), theirs: Hash([0; Hash::LEN]), base: Hash([0; Hash::LEN]) },
-        merged: Merged::default(),
-        uniques: Vec::new(),
-        current: BTreeMap::new(),
-        ours: &[],
-    };
     for unique in &mut out {
         for (key, value) in rows {
-            if let Some(values) = merger.indexed(unique.index, key, value) {
+            if let Some(values) = indexed(table, unique.index, key, value) {
                 unique.rows.entry(values).or_default().push(key.clone());
             }
         }
     }
     out
+}
+
+/// indexed returns the values of a row that a unique index holds, or None when one is NULL, since NULLs never collide.
+fn indexed(table: &TableDef, index: &IndexDef, key: &[u8], value: &[u8]) -> Option<Vec<Option<Vec<u8>>>> {
+    let (key, values) = (Tuple(key), value_fields(table, value));
+    let mut out = Vec::with_capacity(index.columns.len());
+    for &c in &index.columns {
+        let field = match table.key_columns.iter().position(|&k| k == c) {
+            Some(i) => key.field(i).ok().flatten().map(<[u8]>::to_vec),
+            None => table.value_columns.iter().position(|&v| v == c).and_then(|i| values[i].clone()),
+        };
+        out.push(Some(field?));
+    }
+    Some(out)
 }
 
 /// convert rewrites rows of a table as rows of another version of it, matching columns by tag and giving a column
@@ -572,6 +628,7 @@ fn merge_rows(
 ) -> Result<TableOutcome> {
     let left = changes(table, base, ours);
     let right = changes(table, base, theirs);
+    let merge_json = !ctx.session.setting_on("dolt_dont_merge_json");
     let mut merger = RowMerger {
         table,
         commits,
@@ -579,6 +636,8 @@ fn merge_rows(
         uniques: unique_indexes(table, ours),
         current: BTreeMap::new(),
         ours,
+        db: ctx.db,
+        merge_json,
     };
     merger.merge(&left, &right);
     let Merged { edits, artifacts: found, new_artifacts } = merger.merged;
@@ -658,7 +717,122 @@ fn merge_table(
         let base_rows = convert(ctx, &base, &ours, &base_rows)?;
         return merge_rows(ctx, &ours, &our_rows, &their_rows, &base_rows, commits, brought);
     }
-    Ok(TableOutcome::SchemaConflict)
+    let Some(mut merged) = merge_schemas(&base, &ours, &theirs) else { return Ok(TableOutcome::SchemaConflict) };
+    let message = merged.schema_message()?;
+    let our_converted = convert(ctx, &ours, &merged, &our_rows)?;
+    if same_layout(&merged, &ours) {
+        merged.table.schema = ctx.db.write_value(message)?;
+    } else {
+        let (_, mut stored) = doltdb::table::Table::create(ctx.db, message)?;
+        for index in &mut merged.indexes {
+            index.root = index.empty_root(ctx.db)?;
+            stored.put_index(ctx.db, &index.name, Some(index.root))?;
+        }
+        stored.artifacts = ours.table.artifacts.clone();
+        stored.auto_increment = ours.table.auto_increment;
+        merged.table = stored;
+        let inserts = our_converted.iter().map(|(key, value)| (key.clone(), Some(value.clone()))).collect();
+        merged.table = apply(ctx, &merged, &[], inserts)?;
+    }
+    let their_rows = convert(ctx, &theirs, &merged, &their_rows)?;
+    let base_rows = convert(ctx, &base, &merged, &base_rows)?;
+    merge_rows(ctx, &merged, &our_converted, &their_rows, &base_rows, commits, brought)
+}
+
+/// pick returns the version of a part of a schema that a three-way merge keeps: the one side that changed it, or
+/// either when both made the same change, or None when both changed it differently.
+fn pick<T: PartialEq + Clone>(base: Option<&T>, ours: Option<&T>, theirs: Option<&T>) -> Option<Option<T>> {
+    match (ours == theirs, ours == base, theirs == base) {
+        (true, ..) | (_, _, true) => Some(ours.cloned()),
+        (_, true, _) => Some(theirs.cloned()),
+        _ => None,
+    }
+}
+
+/// IndexShape is an index as a merge compares it: its definition with its columns by tag, without its rows.
+type IndexShape = (String, Vec<u64>, bool, Vec<bool>, Vec<bool>, Vec<String>, String);
+
+/// index_shape returns an index's definition with its columns by tag, or None for an index of an expression.
+fn index_shape(table: &TableDef, index: &IndexDef) -> Option<IndexShape> {
+    let tags = index.columns.iter().map(|&c| table.columns.get(c).map(|c| c.tag)).collect::<Option<Vec<_>>>()?;
+    let parts = (index.descending.clone(), index.nulls_last.clone(), index.op_classes.clone());
+    Some((index.name.clone(), tags, index.unique, parts.0, parts.1, parts.2, index.predicate.clone()))
+}
+
+/// merge_schemas merges the schemas of a table that both sides changed, column by column and index by index as Dolt's
+/// SchemaMerge does: each part that one side changed takes that side's version, and parts that both changed must
+/// match. It returns None for a conflict, or for changes it cannot merge, such as to the primary key.
+fn merge_schemas(base: &TableDef, ours: &TableDef, theirs: &TableDef) -> Option<TableDef> {
+    let key_tags = |t: &TableDef| t.key_columns.iter().map(|&k| t.columns[k].tag).collect::<Vec<_>>();
+    if key_tags(base) != key_tags(ours) || key_tags(ours) != key_tags(theirs) || ours.primary != theirs.primary {
+        return None;
+    }
+    if !(base.hidden.is_empty() && ours.hidden.is_empty() && theirs.hidden.is_empty()) {
+        return None;
+    }
+    let column = |t: &TableDef, tag: u64| t.columns.iter().find(|c| c.tag == tag).cloned();
+    let tags = union([ours, theirs, base].map(|t| t.columns.iter().map(|c| c.tag).collect()));
+    let mut columns = Vec::new();
+    for tag in tags {
+        let (b, o, t) = (column(base, tag), column(ours, tag), column(theirs, tag));
+        if let Some(column) = pick(b.as_ref(), o.as_ref(), t.as_ref())? {
+            columns.push(column);
+        }
+    }
+    let mut names: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+    names.sort_unstable();
+    if names.windows(2).any(|w| w[0] == w[1]) {
+        return None;
+    }
+    let mut merged = ours.clone();
+    let position = |tag: u64| columns.iter().position(|c| c.tag == tag);
+    merged.key_columns = key_tags(ours).into_iter().map(position).collect::<Option<_>>()?;
+    merged.value_columns = (0..columns.len()).filter(|i| !merged.key_columns.contains(i)).collect();
+    let check = |t: &TableDef, name: &str| t.checks.iter().find(|c| c.name == name).cloned();
+    let check_names = union([ours, theirs, base].map(|t| t.checks.iter().map(|c| c.name.clone()).collect()));
+    merged.checks = Vec::new();
+    for name in check_names {
+        let (b, o, t) = (check(base, &name), check(ours, &name), check(theirs, &name));
+        merged.checks.extend(pick(b.as_ref(), o.as_ref(), t.as_ref())?);
+    }
+    let shapes = |t: &TableDef| t.indexes.iter().map(|i| index_shape(t, i)).collect::<Option<Vec<_>>>();
+    let (base_shapes, our_shapes, their_shapes) = (shapes(base)?, shapes(ours)?, shapes(theirs)?);
+    let index_names = union([ours, theirs, base].map(|t| t.indexes.iter().map(|i| i.name.clone()).collect()));
+    merged.indexes = Vec::new();
+    for name in index_names {
+        let find = |shapes: &[IndexShape]| shapes.iter().find(|s| s.0 == name).cloned();
+        let (b, o, t) = (find(&base_shapes), find(&our_shapes), find(&their_shapes));
+        let Some(shape) = pick(b.as_ref(), o.as_ref(), t.as_ref())? else { continue };
+        let source = if o.as_ref() == Some(&shape) { ours } else { theirs };
+        let mut index = source.indexes.iter().find(|i| i.name == name)?.clone();
+        index.columns = shape.1.iter().map(|&tag| position(tag)).collect::<Option<_>>()?;
+        merged.indexes.push(index);
+    }
+    merged.columns = columns;
+    merged.comment = pick(Some(&base.comment), Some(&ours.comment), Some(&theirs.comment))??;
+    Some(merged)
+}
+
+/// union returns the items of lists in order, each once.
+fn union<T: PartialEq>(lists: [Vec<T>; 3]) -> Vec<T> {
+    let mut out = Vec::new();
+    for item in lists.into_iter().flatten() {
+        if !out.contains(&item) {
+            out.push(item);
+        }
+    }
+    out
+}
+
+/// same_layout reports whether a merged table stores its rows and indexes as our table does, so that it can keep our
+/// table's storage under its new schema.
+fn same_layout(merged: &TableDef, ours: &TableDef) -> bool {
+    let layout = |t: &TableDef| {
+        let columns: Vec<_> = t.columns.iter().map(|c| (c.tag, c.encoding, c.ty)).collect();
+        let indexes: Vec<_> = t.indexes.iter().map(|i| (i.name.clone(), i.columns.clone(), i.unique)).collect();
+        (columns, t.key_columns.clone(), t.value_columns.clone(), indexes)
+    };
+    layout(merged) == layout(ours)
 }
 
 /// carry_artifacts adds to our table the conflicts and constraint violations that their side added since the merge

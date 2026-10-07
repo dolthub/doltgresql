@@ -4147,7 +4147,7 @@ fn test_sequences() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output, with the name type that Postgres gives pg_get_userbyid.
                 ScriptTestAssertion {
                     query: r#"SELECT n.nspname as "Schema",
   c.relname as "Name",
@@ -4163,7 +4163,7 @@ WHERE c.relkind IN ('r','p','v','m','S','f','')
   AND pg_catalog.pg_table_is_visible(c.oid)
 ORDER BY 1,2;"#,
                     expected: Expected::Rows {
-                        columns: &[Column("Schema", NAME), Column("Name", NAME), Column("Type", TEXT), Column("Owner", TEXT)],
+                        columns: &[Column("Schema", NAME), Column("Name", NAME), Column("Type", TEXT), Column("Owner", NAME)],
                         rows: &[
                             &[T("public"), T("call"), T("table"), T("postgres")],
                             &[T("public"), T("call_id_seq"), T("sequence"), T("postgres")],
@@ -4357,13 +4357,19 @@ ORDER BY 1,2;"#,
                 "CREATE SEQUENCE seq_in_postgres",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Postgres rejects a regclass in another database, where the Go server gives an OID without a name.
                 ScriptTestAssertion {
                     query: "SELECT nextval('seq_in_postgres'), 'testdb2.public.seq_in_testdb2'::regclass IS NOT NULL",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cross-database references are not implemented: "testdb2.public.seq_in_testdb2""#, position: 36, ..E }),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT nextval('seq_in_postgres')",
                     expected: Expected::Rows {
-                        columns: &[Column("nextval", INT8), Column("'testdb2.public.seq_in_testdb2'::REGCLASS IS NOT NULL", BOOL)],
+                        columns: &[Column("nextval", INT8)],
                         rows: &[
-                            &[T("1"), T("t")],
+                            &[T("1")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -4850,6 +4856,114 @@ fn test_limit_sequence_and_privilege_rules() {
                 ScriptTestAssertion {
                     query: "RESET ROLE;",
                     expected: Expected::Tag("RESET"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "sequences created on separate branches continue from each other",
+            set_up_script: &[
+                "CREATE TABLE base (a int);",
+                "SELECT dolt_commit('-Am', 'init');",
+                "SELECT dolt_branch('other');",
+                "CREATE SEQUENCE s;",
+            ],
+            assertions: &[
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT nextval('s'), nextval('s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8), Column("nextval", INT8)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT dolt_checkout('other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_checkout", RECORD)],
+                        rows: &[
+                            &[T(r#"(0,"Switched to branch 'other'")"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE s;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT nextval('s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ser (id serial PRIMARY KEY, v int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "INSERT INTO ser (v) VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT dolt_checkout('main');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_checkout", RECORD)],
+                        rows: &[
+                            &[T(r#"(0,"Switched to branch 'main'")"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT nextval('s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ser (id serial PRIMARY KEY, v int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "INSERT INTO ser (v) VALUES (1) RETURNING id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
                     ..A
                 },
             ],

@@ -181,6 +181,9 @@ impl ArtifactTable {
             }
             Kind::Violations => {
                 out.push(("violation_type".into(), typ(VARCHAR)));
+                if self.keyless {
+                    out.push(("dolt_row_hash".into(), typ(TEXT)));
+                }
                 out.extend(prefixed("", &self.ours));
                 out.push(("violation_info".into(), typ(JSON)));
             }
@@ -211,6 +214,10 @@ impl ArtifactTable {
             if self.kind == Kind::Violations {
                 let (info, value) = artifacts::violation_parts(&artifact.meta).unwrap_or_default();
                 row.push(Value::Text(violation_type(artifact.kind).into()));
+                if self.keyless {
+                    let hash = prolly::Tuple(&artifact.key).field(0)?.unwrap_or_default();
+                    row.push(Value::Text(String::from_utf8_lossy(hash).into_owned()));
+                }
                 let (values, _) = table.decode_row(ctx.db, &artifact.key, &value)?;
                 row.extend(self.ours.iter().map(|c| {
                     table.columns.iter().position(|t| t.tag == c.tag).map_or(Value::Null, |i| values[i].clone())

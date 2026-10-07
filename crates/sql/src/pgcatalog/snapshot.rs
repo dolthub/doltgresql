@@ -40,12 +40,16 @@ pub struct Snapshot {
     pub views: Vec<ViewDef>,
     pub sequences: Vec<Sequence>,
     pub foreign_keys: Vec<ForeignKeyDef>,
+    /// Dolt's own tables with their indexes, which the catalogs list when dolt_show_system_tables is on.
+    pub system: Vec<(TableDef, Vec<crate::pgcatalog::rows::TableIndex>)>,
 }
 
 /// CatalogCache holds what a statement has read of the catalogs, for the root value it read them from.
 pub struct CatalogCache {
     pub root: doltdb::root::Root,
     pub snapshot: std::sync::Arc<Snapshot>,
+    /// Whether the snapshot lists Dolt's own tables, as dolt_show_system_tables asked when it was read.
+    pub system: bool,
     /// The relations that regclass can name, once a lookup asks for them.
     pub relations: Option<std::sync::Arc<Vec<crate::pgcatalog::reg::Relation>>>,
 }
@@ -54,6 +58,13 @@ impl Snapshot {
     /// table returns a table by schema and name.
     pub fn table(&self, schema: &str, name: &str) -> Option<&TableDef> {
         self.tables.iter().find(|t| t.schema == schema && t.name == name)
+    }
+
+    /// listed returns the tables that the catalogs list, with their indexes: the user tables, then Dolt's own tables
+    /// when dolt_show_system_tables is on.
+    pub fn listed(&self) -> Vec<(&TableDef, Vec<crate::pgcatalog::rows::TableIndex>)> {
+        let user = self.tables.iter().map(|t| (t, crate::pgcatalog::rows::table_indexes(t)));
+        user.chain(self.system.iter().map(|(t, indexes)| (t, indexes.clone()))).collect()
     }
 }
 
@@ -72,7 +83,7 @@ pub fn sequence_oid(schema: &str, name: &str) -> u32 {
     oids::oid(&id::new(id::SECTION_SEQUENCE, &[schema, name]))
 }
 
-/// index_oid returns the OID of an index, where the primary key's index is named `<table>_pkey`.
+/// index_oid returns the OID of an index, where a primary key's index is named `PRIMARY`.
 pub fn index_oid(schema: &str, table: &str, index: &str) -> u32 {
     oids::oid(&id::new(id::SECTION_INDEX, &[schema, table, index]))
 }
@@ -96,31 +107,42 @@ impl Ctx<'_> {
     /// snapshot returns every user object of the working root value, reading them once for each root value that a
     /// statement sees.
     pub fn snapshot(&mut self) -> Result<std::sync::Arc<Snapshot>> {
+        let system = self.session.setting_on("dolt_show_system_tables");
         if let Some(cache) = &self.catalog
             && cache.root == self.txn.root
+            && cache.system == system
         {
             return Ok(cache.snapshot.clone());
         }
-        let snapshot = std::sync::Arc::new(self.read_snapshot()?);
-        self.catalog = Some(CatalogCache { root: self.txn.root.clone(), snapshot: snapshot.clone(), relations: None });
+        let snapshot = std::sync::Arc::new(self.read_snapshot(system)?);
+        self.catalog =
+            Some(CatalogCache { root: self.txn.root.clone(), snapshot: snapshot.clone(), system, relations: None });
         Ok(snapshot)
     }
 
-    /// read_snapshot reads every user object of the working root value.
-    fn read_snapshot(&mut self) -> Result<Snapshot> {
+    /// read_snapshot reads every user object of the working root value, with Dolt's own tables when asked.
+    fn read_snapshot(&mut self, system: bool) -> Result<Snapshot> {
         let mut schemas: Vec<String> =
             self.txn.root.schemas.iter().map(|s| String::from_utf8_lossy(s).into_owned()).collect();
         schemas.sort();
-        let mut tables = Vec::new();
+        let (mut tables, mut stored_system) = (Vec::new(), Vec::new());
         for (key, address) in self.txn.root.tables(self.db)? {
             let text = String::from_utf8_lossy(&key).into_owned();
             let mut parts = text.splitn(3, '\0').skip(1);
             let (Some(schema), Some(name)) = (parts.next(), parts.next()) else { continue };
-            if name.starts_with("dolt_") || schema == "dolt" {
+            if schema == "dolt" {
                 continue;
             }
-            tables.push(TableDef::load(self.db, schema, name, address)?);
+            match name.starts_with("dolt_") {
+                true if system => stored_system.push(TableDef::load(self.db, schema, name, address)?),
+                true => {}
+                false => tables.push(TableDef::load(self.db, schema, name, address)?),
+            }
         }
+        let system = match system {
+            true => crate::pgcatalog::systables::generated(&schemas, &tables, stored_system),
+            false => Vec::new(),
+        };
         for schema in &schemas {
             for table in self.nonlocal_tables(schema)? {
                 if !tables.iter().any(|t| t.schema == table.schema && t.name == table.name) {
@@ -137,6 +159,6 @@ impl Ctx<'_> {
         }
         let sequences = crate::sequences::all(self.db, &self.txn.root)?;
         let foreign_keys = self.foreign_keys()?;
-        Ok(Snapshot { schemas, tables, views, sequences, foreign_keys })
+        Ok(Snapshot { schemas, tables, views, sequences, foreign_keys, system })
     }
 }

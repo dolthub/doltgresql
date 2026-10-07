@@ -315,10 +315,16 @@ fn test_basic_indexing() {
                     expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "test", columns: &["v1", "v2"], ranges: "[{[2, 2], [22, 22]}]" }]),
                     ..A
                 },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "from""#, position: 51, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT8), Column("v1", INT8), Column("v2", INT8), Column("v3", INT8), Column("v4", INT8)],
+                        rows: &[
+                            &[T("12"), T("2"), T("22"), T("2"), T("22")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -465,10 +471,16 @@ fn test_basic_indexing() {
                 "INSERT INTO jointable VALUES (2, 22)",
             ],
             assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "from""#, position: 51, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT8), Column("v1", INT2), Column("v2", INT2), Column("v3", INT8), Column("v4", INT8)],
+                        rows: &[
+                            &[T("12"), T("2"), T("22"), T("2"), T("22")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -476,10 +488,16 @@ fn test_basic_indexing() {
                     skip: Some("the Go test expects Postgres plan text, whose costs are implementation details"),
                     ..A
                 },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "from""#, position: 51, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT8), Column("v1", INT2), Column("v2", INT2), Column("v3", INT8), Column("v4", INT8)],
+                        rows: &[
+                            &[T("12"), T("2"), T("22"), T("2"), T("22")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -500,16 +518,26 @@ fn test_basic_indexing() {
                 "INSERT INTO jointable VALUES (2147483648, 2147483649), (1, 21)",
             ],
             assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "from""#, position: 51, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT8), Column("v1", INT2), Column("v2", INT2), Column("v3", INT8), Column("v4", INT8)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
                     ..A
                 },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 21 order by 1",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "from""#, position: 51, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT8), Column("v1", INT2), Column("v2", INT2), Column("v3", INT8), Column("v4", INT8)],
+                        rows: &[
+                            &[T("11"), T("1"), T("21"), T("1"), T("21")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -530,10 +558,16 @@ fn test_basic_indexing() {
                 "INSERT INTO jointable VALUES (2, 22), (1, 21), (2147483648, 22)",
             ],
             assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(sq, test) */ HINT * from test join (select * from jointable) sq on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "from""#, position: 44, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT8), Column("v1", INT2), Column("v2", INT2), Column("v3", INT8), Column("v4", INT8)],
+                        rows: &[
+                            &[T("11"), T("1"), T("21"), T("1"), T("21")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {

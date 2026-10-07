@@ -283,5 +283,39 @@ fn test_merge() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "merge columns that each side added",
+            set_up_script: &[
+                "CREATE TABLE a (pk INT PRIMARY KEY, x INT)",
+                "INSERT INTO a VALUES (1, 1)",
+                "SELECT DOLT_COMMIT('-Am', 'a')",
+                "SELECT DOLT_BRANCH('r2')",
+                "ALTER TABLE a ADD COLUMN l TEXT",
+                "INSERT INTO a VALUES (2, 2, 'left')",
+                "SELECT DOLT_COMMIT('-am', 'left a')",
+                "SELECT DOLT_CHECKOUT('r2')",
+                "ALTER TABLE a ADD COLUMN r INT",
+                "UPDATE a SET x = 10, r = 5 WHERE pk = 1",
+                "SELECT DOLT_COMMIT('-am', 'right a')",
+                "SELECT DOLT_CHECKOUT('main')",
+                "SELECT DOLT_MERGE('r2')",
+            ],
+            assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT * FROM a ORDER BY pk",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("x", INT4), Column("l", TEXT), Column("r", INT4)],
+                        rows: &[
+                            &[T("1"), T("10"), Null, T("5")],
+                            &[T("2"), T("2"), T("left"), Null],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

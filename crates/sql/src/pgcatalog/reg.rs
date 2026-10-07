@@ -17,7 +17,7 @@
 use crate::catalog::builtin_type;
 use crate::error::{PgError, Result, code};
 use crate::oid as types;
-use crate::pgcatalog::snapshot::{index_oid, namespace_oid, sequence_oid, table_oid, view_oid};
+use crate::pgcatalog::snapshot::{namespace_oid, sequence_oid, table_oid, view_oid};
 use crate::pgcatalog::{builtin, lookup};
 use crate::query::Ctx;
 use crate::types::{Reg, Value};
@@ -402,18 +402,14 @@ impl Ctx<'_> {
                 }
             }
         }
-        for table in &snapshot.tables {
+        for (table, indexes) in snapshot.listed() {
             out.push(Relation {
                 schema: table.schema.clone(),
                 name: table.name.clone(),
                 oid: table_oid(&table.schema, &table.name),
             });
-            for index in crate::pgcatalog::rows::table_indexes(table) {
-                out.push(Relation {
-                    schema: table.schema.clone(),
-                    oid: index_oid(&table.schema, &table.name, &index.name),
-                    name: index.name,
-                });
+            for index in indexes {
+                out.push(Relation { schema: table.schema.clone(), oid: index.oid(table), name: index.name });
             }
         }
         for view in &snapshot.views {

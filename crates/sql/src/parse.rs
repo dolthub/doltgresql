@@ -347,6 +347,16 @@ fn cut_statement(query: &str, range: Range<usize>, words: &Words<'_>) -> Option<
             text.replace_range(token.start as usize..token.end as usize, &format!("\"{name}\""));
         }
     }
+    let mut hinted = false;
+    for index in 1..words.tokens.len() {
+        if words.keyword(index, "hint")
+            && words.kind(index - 1) == Token::CComment as i32
+            && words.text(index - 1).starts_with("/*+")
+        {
+            blank(&mut text, words.tokens[index].start as usize..words.tokens[index].end as usize);
+            hinted = true;
+        }
+    }
     let mut index = 0;
     while index + 1 < words.tokens.len() {
         if !(words.keyword(index, "as") && words.keyword(index + 1, "of")) {
@@ -363,7 +373,7 @@ fn cut_statement(query: &str, range: Range<usize>, words: &Words<'_>) -> Option<
         blank(&mut text, words.tokens[index].start as usize..words.tokens[last].end as usize);
         index = last + 1;
     }
-    if !extras.if_not_exists && cuts.is_empty() {
+    if !extras.if_not_exists && !hinted && cuts.is_empty() {
         return None;
     }
     let result = pg_query::parse(&text).ok()?;

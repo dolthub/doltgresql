@@ -31,10 +31,16 @@ fn test_lookup_join_extended_key_storage_position() {
                 "INSERT INTO m VALUES (1, 'f', '11111111-1111-1111-1111-111111111111', 'L');",
             ],
             assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(m, c) */ HINT count(*) from m join c on c.id = m.company_id;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "(""#, position: 43, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
             ],
@@ -49,10 +55,16 @@ fn test_lookup_join_extended_key_storage_position() {
                 "INSERT INTO m VALUES (1, '11111111-1111-1111-1111-111111111111', 'L');",
             ],
             assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(m, c) */ HINT count(*) from m join c on c.id = m.company_id;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "(""#, position: 43, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
             ],
@@ -67,10 +79,16 @@ fn test_lookup_join_extended_key_storage_position() {
                 "INSERT INTO m VALUES (1, 'f1', 'f2', '11111111-1111-1111-1111-111111111111', 'L');",
             ],
             assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(m, c) */ HINT count(*) from m join c on c.id = m.company_id;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "(""#, position: 43, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
             ],
@@ -87,10 +105,17 @@ fn test_lookup_join_extended_key_storage_position() {
                 "INSERT INTO m VALUES (2, 'f', '22222222-2222-2222-2222-222222222222', 'other');",
             ],
             assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
                     query: "select /*+ lookup_join(m, c) */ HINT m.seq, c.tag from m join c on c.code = m.ref_code and c.label = m.ref_label order by m.seq;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near ".""#, position: 39, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("seq", INT4), Column("tag", TEXT)],
+                        rows: &[
+                            &[T("1"), T("c1")],
+                            &[T("2"), T("c2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
             ],

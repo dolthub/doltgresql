@@ -120,10 +120,17 @@ fn test_dolt_procedure_record_results() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: a procedure's record has the fields its OUT parameters name, as a Postgres function's does,
+                // which Go cannot select.
                 ScriptTestAssertion {
                     query: "SELECT (dolt_checkout('main')).message;",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: r#"column "message" not found in data type record"#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("message", TEXT)],
+                        rows: &[
+                            &[T("Switched to branch 'main'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },

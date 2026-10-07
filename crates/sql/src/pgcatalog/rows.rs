@@ -168,8 +168,14 @@ fn index_name(table: &TableDef, index: &str) -> String {
     if index.is_empty() { table.primary_name() } else { index.to_string() }
 }
 
+/// PRIMARY is the name that a primary key's index has in its ID, as Go's Doltgres names it.
+const PRIMARY: &str = "PRIMARY";
+
 /// TableIndex is an index of a table as the catalogs show it: its name, columns, and kind.
+#[derive(Clone)]
 pub struct TableIndex {
+    /// The name that the index has in its ID, `PRIMARY` for a primary key's index as Go's Doltgres names it.
+    pub id: String,
     pub name: String,
     pub columns: Vec<usize>,
     pub unique: bool,
@@ -190,9 +196,15 @@ pub struct TableIndex {
 }
 
 impl TableIndex {
-    /// constraint reports whether a unique index can back a constraint, which needs plain columns and every row.
+    /// oid returns the index's OID.
+    pub fn oid(&self, table: &TableDef) -> u32 {
+        index_oid(&table.schema, &table.name, &self.id)
+    }
+
+    /// constraint reports whether a primary key or unique index can back a constraint, which needs plain columns and
+    /// every row.
     pub fn constraint(&self) -> bool {
-        self.unique && self.predicate.is_empty() && self.columns.iter().all(|&c| c < HIDDEN_BASE)
+        (self.unique || self.primary) && self.predicate.is_empty() && self.columns.iter().all(|&c| c < HIDDEN_BASE)
     }
 }
 
@@ -219,6 +231,7 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
     let mut out = Vec::new();
     if !table.key_columns.is_empty() {
         out.push(TableIndex {
+            id: PRIMARY.to_string(),
             name: index_name(table, ""),
             columns: table.key_columns.clone(),
             unique: true,
@@ -235,6 +248,7 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
     }
     for index in table.indexes.iter().filter(|i| !i.system) {
         out.push(TableIndex {
+            id: index.name.clone(),
             name: index.name.clone(),
             columns: index.columns.clone(),
             unique: index.unique,
@@ -366,9 +380,13 @@ impl Ctx<'_> {
         Ok(())
     }
 
-    /// pg_namespace lists the schemas.
+    /// pg_namespace lists the schemas, with Doltgres' `dolt` schema when dolt_show_system_tables is on.
     fn pg_namespace(&mut self, rows: &mut Rows<'_>) {
-        for schema in self.schema_names().into_iter().filter(|s| !is_builtin_schema(s)) {
+        let mut schemas = self.schema_names();
+        if self.session.setting_on("dolt_show_system_tables") {
+            schemas.push("dolt".into());
+        }
+        for schema in schemas.into_iter().filter(|s| !is_builtin_schema(s)) {
             rows.push(vec![
                 ("oid", oid(namespace_oid(&schema))),
                 ("nspname", text(schema)),
@@ -622,9 +640,8 @@ impl Ctx<'_> {
     fn pg_class(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let snapshot = self.snapshot()?;
         let triggered = self.triggered_tables()?;
-        for table in &snapshot.tables {
+        for (table, indexes) in snapshot.listed() {
             let relation = table_oid(&table.schema, &table.name);
-            let indexes = table_indexes(table);
             let mut row = class_row(relation, &table.name, &table.schema, "r", table.columns.len() as i16, 2);
             row.extend([
                 ("reltype", oid(row_type_oid(&table.schema, &table.name))),
@@ -643,7 +660,7 @@ impl Ctx<'_> {
             ]);
             rows.push(row);
             for index in indexes {
-                let index_relation = index_oid(&table.schema, &table.name, &index.name);
+                let index_relation = index.oid(table);
                 let method = match index.vector {
                     Some(_) => super::extensions::access_method_oid("hnsw"),
                     None => 403,
@@ -718,7 +735,7 @@ impl Ctx<'_> {
             }
         };
         let snapshot = self.snapshot()?;
-        for table in &snapshot.tables {
+        for (table, indexes) in snapshot.listed() {
             let relation = table_oid(&table.schema, &table.name);
             system(&mut attributes, relation);
             for (i, column) in table.columns.iter().enumerate() {
@@ -732,8 +749,8 @@ impl Ctx<'_> {
                     generated: column.generated,
                 });
             }
-            for index in table_indexes(table) {
-                let index_relation = index_oid(&table.schema, &table.name, &index.name);
+            for index in indexes.clone() {
+                let index_relation = index.oid(table);
                 for (i, &c) in index.columns.iter().enumerate() {
                     attributes.push(Attribute {
                         relation: index_relation,
@@ -830,8 +847,8 @@ impl Ctx<'_> {
     /// pg_index lists the indexes of the user tables.
     fn pg_index(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let snapshot = self.snapshot()?;
-        for table in &snapshot.tables {
-            for index in table_indexes(table) {
+        for (table, indexes) in snapshot.listed() {
+            for index in indexes.clone() {
                 let types: Vec<u32> =
                     index.columns.iter().map(|&c| table.index_column(c).map_or(0, |c| c.ty.oid)).collect();
                 let expressions: Vec<&str> = index
@@ -841,7 +858,7 @@ impl Ctx<'_> {
                     .collect();
                 let node_tree = |t: String| if t.is_empty() { Value::Null } else { text(t) };
                 rows.push(vec![
-                    ("indexrelid", oid(index_oid(&table.schema, &table.name, &index.name))),
+                    ("indexrelid", oid(index.oid(table))),
                     ("indrelid", oid(table_oid(&table.schema, &table.name))),
                     ("indnatts", int2(index.columns.len() as i16)),
                     ("indnkeyatts", int2(index.columns.len() as i16)),
@@ -879,8 +896,8 @@ impl Ctx<'_> {
     /// pg_indexes lists each index of the user tables with its definition.
     fn pg_indexes(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let snapshot = self.snapshot()?;
-        for table in &snapshot.tables {
-            for index in table_indexes(table) {
+        for (table, indexes) in snapshot.listed() {
+            for index in indexes.clone() {
                 rows.push(vec![
                     ("schemaname", text(table.schema.clone())),
                     ("tablename", text(table.name.clone())),
@@ -896,9 +913,9 @@ impl Ctx<'_> {
     /// when asked, or the name of one of its columns for a nonzero column number, or None when no index has the OID.
     pub(crate) fn index_definition_of(&mut self, index: u32, column: i32, pretty: bool) -> Result<Option<String>> {
         let snapshot = self.snapshot()?;
-        for table in &snapshot.tables {
-            for candidate in table_indexes(table) {
-                if index_oid(&table.schema, &table.name, &candidate.name) != index {
+        for (table, indexes) in snapshot.listed() {
+            for candidate in indexes.clone() {
+                if candidate.oid(table) != index {
                     continue;
                 }
                 return Ok(Some(match usize::try_from(column) {
@@ -1051,8 +1068,8 @@ impl Ctx<'_> {
                 columns.iter().map(|&c| crate::engine::quote_identifier(&table.columns[c].name)).collect();
             names.join(", ")
         };
-        for table in &snapshot.tables {
-            for index in table_indexes(table).into_iter().filter(TableIndex::constraint) {
+        for (table, indexes) in snapshot.listed() {
+            for index in indexes.clone().into_iter().filter(TableIndex::constraint) {
                 let section = if index.primary { 23 } else { 36 };
                 if constraint_oid(section, &table.schema, &table.name, &index.name) == constraint {
                     let kind = if index.primary { "PRIMARY KEY" } else { "UNIQUE" };
@@ -1121,7 +1138,7 @@ impl Ctx<'_> {
     /// check constraints of the user domains.
     fn pg_constraint(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let snapshot = self.snapshot()?;
-        for table in &snapshot.tables {
+        for (table, indexes) in snapshot.listed() {
             let relation = table_oid(&table.schema, &table.name);
             let namespace = namespace_oid(&table.schema);
             let base = |name: &str, kind: &str, section: u8, (deferrable, deferred): (bool, bool)| {
@@ -1145,11 +1162,11 @@ impl Ctx<'_> {
                     ("connoinherit", boolean(kind != "c")),
                 ]
             };
-            for index in table_indexes(table).into_iter().filter(TableIndex::constraint) {
+            for index in indexes.clone().into_iter().filter(TableIndex::constraint) {
                 let (kind, section) = if index.primary { ("p", 23) } else { ("u", 36) };
                 let mut row = base(&index.name, kind, section, (index.deferrable, index.initially_deferred));
                 row.extend([
-                    ("conindid", oid(index_oid(&table.schema, &table.name, &index.name))),
+                    ("conindid", oid(index.oid(table))),
                     ("conkey", int2_array(index.columns.iter().map(|&c| c as i16 + 1))),
                 ]);
                 rows.push(row);
@@ -1172,11 +1189,10 @@ impl Ctx<'_> {
                 let Some(parent) = snapshot.table(&fk.parent_schema, &fk.parent_table) else { continue };
                 let position =
                     |t: &TableDef, c: &String| t.columns.iter().position(|col| col.name == *c).unwrap_or(0) as i16 + 1;
-                let parent_index =
-                    if fk.parent_index.is_empty() { index_name(parent, "") } else { fk.parent_index.clone() };
+                let parent_index = if fk.parent_index.is_empty() { PRIMARY } else { fk.parent_index.as_str() };
                 let mut row = base(&fk.name, "f", 11, (fk.deferrable, fk.initially_deferred));
                 row.extend([
-                    ("conindid", oid(index_oid(&parent.schema, &parent.name, &parent_index))),
+                    ("conindid", oid(index_oid(&parent.schema, &parent.name, parent_index))),
                     ("confrelid", oid(table_oid(&parent.schema, &parent.name))),
                     ("confupdtype", text(rule_letter(fk.on_update))),
                     ("confdeltype", text(rule_letter(fk.on_delete))),
@@ -1248,14 +1264,14 @@ impl Ctx<'_> {
         let owner = self.session.superuser.clone();
         let snapshot = self.snapshot()?;
         let triggered = self.triggered_tables()?;
-        for table in &snapshot.tables {
+        for (table, indexes) in snapshot.listed() {
             let has_triggers =
                 has_foreign_keys(&snapshot, table) || triggered.contains(&(table.schema.clone(), table.name.clone()));
             rows.push(vec![
                 ("schemaname", text(table.schema.clone())),
                 ("tablename", text(table.name.clone())),
                 ("tableowner", text(owner.clone())),
-                ("hasindexes", boolean(!table_indexes(table).is_empty())),
+                ("hasindexes", boolean(!indexes.clone().is_empty())),
                 ("hasrules", boolean(false)),
                 ("hastriggers", boolean(has_triggers)),
                 ("rowsecurity", boolean(false)),

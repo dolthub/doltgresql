@@ -251,6 +251,24 @@ fn has_aggregate(node: &Node) -> bool {
     }
 }
 
+/// out_columns returns the columns of a call of a built-in function or a routine that returns a row with named
+/// columns, as its OUT parameters name them.
+pub(crate) fn out_columns(call: &Expr) -> Option<Vec<(String, ColumnType)>> {
+    match call {
+        Expr::Func(index, _) => {
+            let name = crate::functions::function(*index).name;
+            let lists = crate::dolt::procedures::OUT_COLUMNS
+                .iter()
+                .chain(crate::functions::JSON_OUT_COLUMNS)
+                .chain(crate::functions::CATALOG_OUT_COLUMNS);
+            let (_, columns) = lists.into_iter().find(|(n, _)| *n == name)?;
+            Some(columns.iter().map(|(n, t)| (n.to_string(), typ(*t))).collect())
+        }
+        Expr::Routine(routine, _) => (!routine.columns.is_empty()).then(|| routine.columns.clone()),
+        _ => None,
+    }
+}
+
 /// grouping_sets expands an item of GROUP BY into the lists of expressions that it groups by, as Postgres'
 /// expand_grouping_sets does: an expression or an implicit row is one list, ROLLUP drops its items from the end one
 /// at a time, CUBE takes every subset of its items, and GROUPING SETS joins the lists of its elements.
@@ -1336,17 +1354,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             .first()
             .map(|r| r.to_string())
             .unwrap_or_else(|| alias.map_or(name.clone(), |a| a.aliasname.clone()));
-        let routine_columns: Vec<(String, ColumnType)> = match &expr {
-            Expr::Routine(routine, _) => routine.columns.clone(),
-            _ => Vec::new(),
-        };
-        let out_columns: Option<Vec<(String, ColumnType)>> = crate::dolt::procedures::OUT_COLUMNS
-            .iter()
-            .chain(crate::functions::JSON_OUT_COLUMNS)
-            .chain(crate::functions::CATALOG_OUT_COLUMNS)
-            .find(|(n, _)| *n == name)
-            .map(|(_, c)| c.iter().map(|(n, t)| (n.to_string(), typ(*t))).collect())
-            .or((!routine_columns.is_empty()).then_some(routine_columns));
+        let out_columns = out_columns(&expr);
         let dolt_procedure = crate::dolt::procedures::OUT_COLUMNS.iter().any(|(n, _)| *n == name);
         let mut columns = match out_columns {
             Some(out) if out.len() == 1 && alias.is_some() && !dolt_procedure => {

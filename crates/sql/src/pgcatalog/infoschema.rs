@@ -151,7 +151,7 @@ impl Ctx<'_> {
             ]);
         };
         let snapshot = self.snapshot()?;
-        for table in &snapshot.tables {
+        for (table, _) in snapshot.listed() {
             push(&table.schema, &table.name, false);
         }
         for view in &snapshot.views {
@@ -165,7 +165,7 @@ impl Ctx<'_> {
         let database = self.session.display.clone();
         let snapshot = self.snapshot()?;
         let mut relations: Vec<(String, String, Vec<InfoColumn>)> = Vec::new();
-        for table in &snapshot.tables {
+        for (table, _) in snapshot.listed() {
             let columns = table
                 .columns
                 .iter()
@@ -320,9 +320,9 @@ impl Ctx<'_> {
     fn information_schema_table_constraints(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let database = self.session.display.clone();
         let snapshot = self.snapshot()?;
-        for table in &snapshot.tables {
+        for (table, indexes) in snapshot.listed() {
             let mut constraints: Vec<(String, &str, (bool, bool))> = Vec::new();
-            for index in table_indexes(table).into_iter().filter(TableIndex::constraint) {
+            for index in indexes.clone().into_iter().filter(TableIndex::constraint) {
                 let kind = if index.primary { "PRIMARY KEY" } else { "UNIQUE" };
                 constraints.push((index.name, kind, (index.deferrable, index.initially_deferred)));
             }
@@ -395,9 +395,9 @@ impl Ctx<'_> {
     fn information_schema_key_column_usage(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let database = self.session.display.clone();
         let snapshot = self.snapshot()?;
-        for table in &snapshot.tables {
+        for (table, indexes) in snapshot.listed() {
             let mut keys: Vec<(String, Vec<String>, Option<Vec<usize>>)> = Vec::new();
-            for index in table_indexes(table).into_iter().filter(TableIndex::constraint) {
+            for index in indexes.clone().into_iter().filter(TableIndex::constraint) {
                 keys.push((index.name, index.columns.iter().map(|&c| table.columns[c].name.clone()).collect(), None));
             }
             for fk in

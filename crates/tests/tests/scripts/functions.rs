@@ -5821,6 +5821,59 @@ fn test_date_and_time_function() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "time zone abbreviations whose offsets changed over time",
+            set_up_script: &[
+                "SET TIME ZONE 'UTC'",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT timestamp '2010-06-01 12:00:00' AT TIME ZONE 'MSK', timestamp '2015-06-01 12:00:00' AT TIME ZONE 'MSK';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timezone", TIMESTAMPTZ), Column("timezone", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2010-06-01 09:00:00+00"), T("2015-06-01 09:00:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamptz '2010-06-01 12:00:00 VOLT', timestamptz '2020-06-01 12:00:00 VOLT';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ), Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2010-06-01 08:00:00+00"), T("2020-06-01 08:00:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamptz '1980-01-01 00:00:00 SGT', timestamptz '2000-01-01 00:00:00 SGT';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamptz", TIMESTAMPTZ), Column("timestamptz", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("1979-12-31 16:30:00+00"), T("1999-12-31 16:00:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timezone('IRKT', timestamptz '2012-01-01 00:00:00+00'), timezone('IRKT', timestamptz '2016-01-01 00:00:00+00');",
+                    expected: Expected::Rows {
+                        columns: &[Column("timezone", TIMESTAMP), Column("timezone", TIMESTAMP)],
+                        rows: &[
+                            &[T("2012-01-01 09:00:00"), T("2016-01-01 08:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }
 

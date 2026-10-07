@@ -183,7 +183,19 @@ fn lock<T>(mutex: &Mutex<T>) -> Result<std::sync::MutexGuard<'_, T>> {
 /// which a database starts tracking from, as Dolt's sequence tracker does, since a value one branch handed out is never
 /// handed out again on another.
 fn tracked_sequences(db: &mut Database) -> Result<HashMap<Vec<u8>, objects::Sequence>> {
-    let mut tracked: HashMap<Vec<u8>, objects::Sequence> = HashMap::new();
+    let mut tracked = HashMap::new();
+    for (_, root) in branch_roots(db)? {
+        for sequence in crate::sequences::all(db, &root)? {
+            crate::sequences::track(&mut tracked, sequence);
+        }
+    }
+    Ok(tracked)
+}
+
+/// branch_roots returns the working root of each of a database's branches, or its head's root when it has no working
+/// set.
+pub(crate) fn branch_roots(db: &mut Database) -> Result<Vec<(String, doltdb::root::Root)>> {
+    let mut roots = Vec::new();
     let branches: Vec<(String, store::Hash)> = db
         .datasets()?
         .into_iter()
@@ -197,17 +209,9 @@ fn tracked_sequences(db: &mut Database) -> Result<HashMap<Vec<u8>, objects::Sequ
             }
             None => crate::dolt::history::load(db, head)?.root,
         };
-        let root = doltdb::root::Root::decode(&crate::txn::read(db, &root)?)?;
-        for sequence in crate::sequences::all(db, &root)? {
-            match tracked.get(&sequence.id) {
-                Some(seen) if !crate::sequences::greater_than(&sequence, seen) => {}
-                _ => {
-                    tracked.insert(sequence.id.clone(), sequence);
-                }
-            }
-        }
+        roots.push((branch, doltdb::root::Root::decode(&crate::txn::read(db, &root)?)?));
     }
-    Ok(tracked)
+    Ok(roots)
 }
 
 impl Engine {

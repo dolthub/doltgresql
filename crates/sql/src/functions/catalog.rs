@@ -211,8 +211,25 @@ fn pg_get_serial_sequence(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     if !schema.is_empty() && !ctx.schema_names().contains(&schema) {
         return Err(PgError::new(code::INVALID_SCHEMA_NAME, format!("schema \"{schema}\" does not exist")));
     }
-    let relation = pg_query::protobuf::RangeVar { schemaname: schema, relname: name, inh: true, ..Default::default() };
-    let table = ctx.resolve_table(&relation).map_err(|err| PgError { position: None, ..err })?;
+    let relation = pg_query::protobuf::RangeVar {
+        schemaname: schema.clone(),
+        relname: name.clone(),
+        inh: true,
+        ..Default::default()
+    };
+    let table = match ctx.resolve_table(&relation) {
+        Ok(table) => table,
+        Err(err) => {
+            let schemas = if schema.is_empty() { ctx.session.search_path() } else { vec![schema] };
+            let snapshot = ctx.snapshot()?;
+            let system =
+                schemas.iter().find_map(|s| snapshot.system.iter().find(|(t, _)| t.schema == *s && t.name == name));
+            match system {
+                Some((table, _)) => table.clone(),
+                None => return Err(PgError { position: None, ..err }),
+            }
+        }
+    };
     let column = text(&args[1]);
     if !table.columns.iter().any(|c| c.name == column) {
         return Err(PgError::new(

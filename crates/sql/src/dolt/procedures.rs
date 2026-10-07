@@ -798,8 +798,11 @@ pub fn create_branch_at(ctx: &mut Ctx<'_>, name: &str, start: &str, force: bool)
     if !valid_branch_name(name) || name.eq_ignore_ascii_case("head") {
         return Err(error(format!("fatal: '{name}' is an invalid branch name.")));
     }
-    let commit = history::resolve(ctx.db, ctx.txn.head, start)
-        .map_err(|e| error(format!("fatal: Unexpected error creating branch '{name}' : {}", e.message)))?;
+    let unexpected = |message: &str| error(format!("fatal: Unexpected error creating branch '{name}' : {message}"));
+    if ctx.txn.detached && start.eq_ignore_ascii_case("head") {
+        return Err(unexpected("this operation is not supported while in a detached head state"));
+    }
+    let commit = history::resolve(ctx.db, ctx.txn.head, start).map_err(|e| unexpected(&e.message))?;
     new_branch(ctx.db, name, commit)?;
     ctx.add_branch_admin(name)
 }

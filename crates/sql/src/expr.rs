@@ -2095,6 +2095,7 @@ impl<'b, 'a> Binder<'b, 'a> {
             let Some(NodeEnum::String(field)) = first.node.as_ref() else { break };
             let attributes = match crate::usertypes::get(ty.oid).map(|t| t.kind.clone()) {
                 Some(crate::usertypes::Kind::Composite(attributes)) => attributes,
+                _ if let Some(columns) = self.record_columns(&base) => columns,
                 _ => {
                     return Err(PgError {
                         position: position(arg_location(arg)),
@@ -2110,6 +2111,15 @@ impl<'b, 'a> Binder<'b, 'a> {
                 }
             };
             let Some(index) = attributes.iter().position(|(name, _)| *name == field.sval) else {
+                if ty.oid == oid::RECORD {
+                    return Err(PgError {
+                        position: position(arg_location(arg)),
+                        ..PgError::new(
+                            code::UNDEFINED_COLUMN,
+                            format!("could not identify column \"{}\" in record data type", field.sval),
+                        )
+                    });
+                }
                 return Err(PgError {
                     position: position(arg_location(arg)),
                     ..PgError::new(
@@ -2141,6 +2151,16 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         let result = if slice { ty } else { ColumnType { oid: element_type(ty.oid), ..ty } };
         Ok((Expr::Subscript(Box::new(base), subscripts, slice), result))
+    }
+
+    /// record_columns returns the named columns of the row that a call returns, through the set-returning call that a
+    /// reference stands for.
+    fn record_columns(&self, base: &Expr) -> Option<Vec<(String, ColumnType)>> {
+        let call = match base {
+            Expr::SetRef(k) => self.set_functions.as_ref()?.get(*k)?,
+            other => other,
+        };
+        crate::plan::out_columns(call).filter(|columns| columns.len() > 1)
     }
 
     /// jsonb_subscripts binds subscripts of a jsonb value as the path of a `#>` lookup, each read as an integer or as

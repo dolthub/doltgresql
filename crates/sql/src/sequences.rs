@@ -19,6 +19,7 @@ use doltdb::root::Root;
 use objects::Sequence;
 use pg_query::protobuf::{AlterSeqStmt, CreateSeqStmt, DefElem, DropBehavior, DropStmt};
 use pg_query::{Node, NodeEnum};
+use std::collections::HashMap;
 use store::Hash;
 
 use crate::Outcome;
@@ -319,6 +320,19 @@ pub(crate) fn greater_than(a: &Sequence, b: &Sequence) -> bool {
     }
 }
 
+/// track merges a state of a sequence into the tracked states, as Doltgres' SequenceState.Merge does: the further
+/// state wins, and states that count in different directions leave a state with no increment, which nextval rejects.
+pub(crate) fn track(tracked: &mut HashMap<Vec<u8>, Sequence>, sequence: Sequence) {
+    match tracked.get_mut(&sequence.id) {
+        Some(seen) if seen.increment == 0 => {}
+        Some(seen) if (seen.increment > 0) != (sequence.increment > 0) => seen.increment = 0,
+        Some(seen) if !greater_than(&sequence, seen) => {}
+        _ => {
+            tracked.insert(sequence.id.clone(), sequence);
+        }
+    }
+}
+
 /// parse_qualified_name splits text naming a relation into its identifiers, folding unquoted ones to lower case, as
 /// Postgres' stringToQualifiedNameList does.
 pub fn parse_qualified_name(text: &str) -> Result<Vec<String>> {
@@ -401,6 +415,7 @@ impl Ctx<'_> {
     pub(crate) fn latest(&mut self, sequence: Sequence) -> Result<Sequence> {
         let tracker = self.txn.sequences.lock().map_err(|_| PgError::internal("a lock was poisoned"))?;
         Ok(match tracker.get(&sequence.id) {
+            Some(tracked) if tracked.increment == 0 => sequence,
             Some(tracked) if greater_than(tracked, &sequence) => Sequence {
                 current: tracked.current,
                 is_at_end: tracked.is_at_end,
@@ -421,15 +436,32 @@ impl Ctx<'_> {
         store(self.db, &mut self.txn.root, sequence)
     }
 
-    /// forget_tracked drops the state that every transaction shares for a sequence, so that a new sequence that takes
-    /// a dropped one's name starts over.
-    fn forget_tracked(&mut self, id: &[u8]) -> Result<()> {
-        self.txn.sequences.lock().map_err(|_| PgError::internal("a lock was poisoned"))?.remove(id);
+    /// track_created starts tracking a new sequence from its own state merged with the copies of it on the other
+    /// branches, as Dolt's sequence tracker does when a sequence is set.
+    fn track_created(&mut self, sequence: &Sequence) -> Result<()> {
+        let mut tracked = HashMap::from([(sequence.id.clone(), sequence.clone())]);
+        let (schema, name) = schema_and_name(sequence);
+        for (branch, root) in crate::engine::branch_roots(self.db)? {
+            if branch != self.txn.branch
+                && let Some(other) = find(self.db, &root, &schema, &name)?
+            {
+                track(&mut tracked, other);
+            }
+        }
+        self.txn.sequences.lock().map_err(|_| PgError::internal("a lock was poisoned"))?.extend(tracked);
         Ok(())
     }
 
-    /// next_value advances a sequence, as nextval does.
+    /// next_value advances a sequence, as nextval does, failing as Doltgres does when branches hold copies of it that
+    /// count in different directions.
     pub fn next_value(&mut self, sequence: Sequence) -> Result<i64> {
+        let tracker = self.txn.sequences.lock().map_err(|_| PgError::internal("a lock was poisoned"))?;
+        if tracker.get(&sequence.id).is_some_and(|tracked| tracked.increment == 0) {
+            return Err(PgError::internal(
+                "unable to advance sequence state, possibly due to having incompatible state on different branches",
+            ));
+        }
+        drop(tracker);
         let mut sequence = self.latest(sequence)?;
         let value = advance(&mut sequence)?;
         self.save(&sequence)?;
@@ -455,7 +487,7 @@ impl Ctx<'_> {
         if let Some(owned_by) = apply_options(&mut sequence, &stmt.options, true)? {
             self.set_owner(&mut sequence, &schema, &owned_by)?;
         }
-        self.forget_tracked(&sequence.id)?;
+        self.track_created(&sequence)?;
         store(self.db, &mut self.txn.root, &sequence)?;
         self.own(crate::auth::Object::Sequence(schema, name))?;
         Ok(Outcome::command("CREATE SEQUENCE"))
@@ -676,7 +708,7 @@ impl Ctx<'_> {
         apply_options(&mut sequence, options, true)?;
         sequence.owner_table = id::new(SECTION_TABLE, &[schema, table]);
         sequence.owner_column = column.as_bytes().to_vec();
-        self.forget_tracked(&sequence.id)?;
+        self.track_created(&sequence)?;
         store(self.db, &mut self.txn.root, &sequence)?;
         self.own(crate::auth::Object::Sequence(schema.to_string(), name.clone()))?;
         let quoted = format!("{}.{}", crate::engine::quote_identifier(schema), crate::engine::quote_identifier(&name));
