@@ -3275,7 +3275,7 @@ impl Expr {
     pub fn foldable(&self) -> bool {
         let mut found = false;
         self.visit(&mut |e| {
-            if !matches!(e, Expr::Const(_) | Expr::Param(_)) && crate::indexscan::is_constant(e) {
+            if !matches!(e, Expr::Const(_) | Expr::Param(_)) && crate::indexscan::is_constant(e) || e.strict_null() {
                 found = true;
             }
         });
@@ -3283,8 +3283,8 @@ impl Expr {
     }
 
     /// fold replaces each largest part of the expression that reads no row and calls no volatile function with its
-    /// value, keeping a part whose evaluation fails so that its error waits for a row, as Postgres folds constants
-    /// once it knows the parameters.
+    /// value, and a strict operation on a NULL constant with NULL, keeping a part whose evaluation fails so that its
+    /// error waits for a row, as Postgres folds constants once it knows the parameters.
     pub fn fold(self, ctx: &mut Ctx<'_>) -> Expr {
         if matches!(self, Expr::Const(_)) {
             return self;
@@ -3295,7 +3295,23 @@ impl Expr {
                 Err(_) => self,
             };
         }
-        self.map_children(&mut |child| child.fold(ctx))
+        let folded = self.map_children(&mut |child| child.fold(ctx));
+        match folded.strict_null() {
+            true => Expr::Const(Value::Null),
+            false => folded,
+        }
+    }
+
+    /// strict_null reports whether the expression is a strict operation with a NULL constant operand, whose result is
+    /// NULL whatever its other operands are.
+    fn strict_null(&self) -> bool {
+        let null = |e: &Expr| matches!(e, Expr::Const(Value::Null));
+        match self {
+            Expr::Arith(_, l, r, _) | Expr::Compare(_, l, r) => null(l) || null(r),
+            Expr::Neg(e, _) => null(e),
+            Expr::Func(index, args) => functions::function(*index).strict && args.iter().any(null),
+            _ => false,
+        }
     }
 
     /// map_children rebuilds the expression with each child replaced, leaving subquery plans alone.

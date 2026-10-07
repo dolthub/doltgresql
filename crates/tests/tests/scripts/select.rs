@@ -1100,3 +1100,61 @@ fn test_select_into() {
         },
     ]);
 }
+
+#[test]
+fn test_strict_null_constants() {
+    run_scripts(&[
+        ScriptTest {
+            name: "strict operators on NULL constants",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tab0(pk INTEGER PRIMARY KEY, col0 INTEGER, col3 INTEGER, col4 FLOAT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tab0 VALUES (1, 2000000, 30000, 1.5);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT - 76 AS col4 FROM tab0 AS cor0 WHERE NULL BETWEEN - col0 * + - 73 * 37 * col3 AND NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("col4", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ALL * FROM tab0 WHERE ( NULL ) <> - 39 * - col4 / + 0;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("col0", INT4), Column("col3", INT4), Column("col4", FLOAT8)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM tab0 WHERE NULL = 1/0;",
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM tab0 WHERE col0 * col3 * 1000 > 0;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "integer out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM tab0 WHERE NULL IS DISTINCT FROM col0 / 0;",
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
