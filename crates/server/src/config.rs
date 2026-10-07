@@ -39,6 +39,11 @@ pub struct Config {
     pub branch_control_file: Option<PathBuf>,
     /// The file that `-stdout`, `-stderr`, or `-out-and-err` sends the server's log to, or None for standard error.
     pub log_file: Option<PathBuf>,
+    /// Whether the server starts without checking its databases for values that earlier releases serialized
+    /// incorrectly, from behavior.skip_startup_integrity_check.
+    pub skip_integrity_check: bool,
+    /// Whether the server collects garbage on its own as stores grow, from behavior.auto_gc_behavior.enable.
+    pub auto_gc: bool,
 }
 
 /// Startup is what a command line asks for: serving with a configuration, or printing text and exiting.
@@ -165,6 +170,8 @@ impl Config {
             auth_file: PathBuf::from("auth.db"),
             branch_control_file: None,
             log_file,
+            skip_integrity_check: false,
+            auto_gc: true,
         };
         if let Some(path) = config_path {
             let text =
@@ -180,6 +187,12 @@ impl Config {
         let Some(doc) = docs.first() else { return Ok(()) };
         if let Some(level) = doc["log_level"].as_str() {
             self.log_level = level.to_string();
+        }
+        if let Some(enable) = doc["behavior"]["auto_gc_behavior"]["enable"].as_bool() {
+            self.auto_gc = enable;
+        }
+        if let Some(skip) = doc["behavior"]["skip_startup_integrity_check"].as_bool() {
+            self.skip_integrity_check = skip;
         }
         if let Some(file) = doc["auth_file"].as_str() {
             self.auth_file = PathBuf::from(file);

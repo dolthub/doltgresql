@@ -111,6 +111,33 @@ impl Node {
         &self.bytes
     }
 
+    /// key_items returns the bytes of the node's keys, which the positions of its key addresses index.
+    pub fn key_items(&self) -> &[u8] {
+        &self.bytes[self.key_items.clone()]
+    }
+
+    /// value_items returns the bytes of the node's variable-width values, which the positions of its value addresses
+    /// index, or nothing for a node without them.
+    pub fn value_items(&self) -> &[u8] {
+        match &self.values {
+            Values::Items { items, .. } => &self.bytes[items.clone()],
+            _ => &[],
+        }
+    }
+
+    /// address_offsets returns the positions in the key items and in the value items that a ProllyTreeNode records
+    /// as holding chunk addresses, its key_address_offsets and value_address_offsets fields.
+    pub fn address_offsets(&self) -> Result<(Vec<u16>, Vec<u16>)> {
+        let tree = TreeNode::new(Message(&self.bytes))?;
+        let read = |field: usize| -> Result<Vec<u16>> {
+            Ok(match tree.table.vector(field, 2)? {
+                Some(offsets) => offsets.bytes().as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect(),
+                None => Vec::new(),
+            })
+        };
+        Ok((read(11)?, read(6)?))
+    }
+
     /// file_id returns the node's message type.
     pub fn file_id(&self) -> &str {
         &self.file_id

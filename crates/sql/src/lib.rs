@@ -43,6 +43,7 @@ mod foreign;
 pub mod formatting;
 pub mod functions;
 pub mod indexscan;
+pub mod integrity;
 pub mod json;
 pub mod jsonpath;
 pub mod jsontable;
@@ -94,6 +95,9 @@ pub mod oid {
     pub const INT4: u32 = 23;
     pub const TEXT: u32 = 25;
     pub const TEXT_ARRAY: u32 = 1009;
+    /// ACLITEM_ARRAY is the type of the catalogs' access privilege columns, an array of text-like elements to
+    /// Doltgres, which has no aclitem type.
+    pub const ACLITEM_ARRAY: u32 = 1034;
     pub const JSON: u32 = 114;
     pub const JSONB: u32 = 3802;
     pub const RECORD: u32 = 2249;

@@ -61,6 +61,60 @@ struct Shared {
     activity: Mutex<std::collections::BTreeMap<u64, Activity>>,
     /// The sessions that a garbage collection ended because they had a transaction open, by session ID.
     ended: Mutex<std::collections::HashSet<u64>>,
+    /// What automatic garbage collection last saw of each open database.
+    auto_gc: Mutex<HashMap<String, AutoGc>>,
+}
+
+/// AutoGc is what automatic garbage collection last saw of a database: its store's sizes, and when its last collection
+/// started and ended.
+#[derive(Clone, Copy, Default)]
+struct AutoGc {
+    sizes: Option<StoreSizes>,
+    last: Option<(std::time::Instant, std::time::Instant)>,
+}
+
+/// StoreSizes are the bytes of a database's journal, of its new generation, and of both its generations, as Dolt's
+/// StoreSizes counts them.
+#[derive(Clone, Copy, Default)]
+struct StoreSizes {
+    journal: u64,
+    new_gen: u64,
+    total: u64,
+}
+
+/// AUTO_GC_THRESHOLD is how far a store grows before automatic garbage collection first collects it, as Dolt's
+/// defaultCheckSizeThreshold is.
+const AUTO_GC_THRESHOLD: u64 = 1 << 27;
+
+/// store_sizes measures a database's store from its files.
+fn store_sizes(noms: &Path) -> StoreSizes {
+    let measure = |dir: &Path| -> (u64, u64) {
+        let (mut total, mut journal) = (0, 0);
+        for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok()) {
+            let Ok(metadata) = entry.metadata() else { continue };
+            if metadata.is_file() {
+                total += metadata.len();
+                if entry.file_name().to_string_lossy().bytes().all(|b| b == b'v') {
+                    journal += metadata.len();
+                }
+            }
+        }
+        (total, journal)
+    };
+    let (new_gen, journal) = measure(noms);
+    let (old_gen, _) = measure(&noms.join("oldgen"));
+    StoreSizes { journal, new_gen, total: new_gen + old_gen }
+}
+
+/// should_collect decides whether a store has grown enough to collect, as Dolt's shouldRequestGC does: past the
+/// threshold before any collection, and afterwards once it has grown by more than its new generation then held, its
+/// new generation is past the threshold, and more time has passed since the last collection than that one took.
+fn should_collect(now: StoreSizes, then: StoreSizes, last: Option<(std::time::Instant, std::time::Instant)>) -> bool {
+    let growth = now.total.saturating_sub(then.total);
+    match last {
+        None => now.journal > AUTO_GC_THRESHOLD || growth > AUTO_GC_THRESHOLD,
+        Some((start, end)) => end.elapsed() > end - start && growth > then.new_gen && now.new_gen > AUTO_GC_THRESHOLD,
+    }
 }
 
 /// Activity is what a session is doing, as pg_stat_activity shows it.
@@ -107,6 +161,37 @@ fn lock<T>(mutex: &Mutex<T>) -> Result<std::sync::MutexGuard<'_, T>> {
     mutex.lock().map_err(|_| PgError::internal("a lock was poisoned"))
 }
 
+/// tracked_sequences returns the furthest state of each sequence across the working roots of a database's branches,
+/// which a database starts tracking from, as Dolt's sequence tracker does, since a value one branch handed out is never
+/// handed out again on another.
+fn tracked_sequences(db: &mut Database) -> Result<HashMap<Vec<u8>, objects::Sequence>> {
+    let mut tracked: HashMap<Vec<u8>, objects::Sequence> = HashMap::new();
+    let branches: Vec<(String, store::Hash)> = db
+        .datasets()?
+        .into_iter()
+        .filter_map(|(r, head)| r.strip_prefix("refs/heads/").map(|branch| (branch.to_string(), head)))
+        .collect();
+    for (branch, head) in branches {
+        let root = match db.head(&doltdb::create::working_set_ref(&branch))? {
+            Some(address) => {
+                let data = crate::txn::read(db, &address)?;
+                serial::WorkingSet::new(serial::Message(&data))?.working_root()?
+            }
+            None => crate::dolt::history::load(db, head)?.root,
+        };
+        let root = doltdb::root::Root::decode(&crate::txn::read(db, &root)?)?;
+        for sequence in crate::sequences::all(db, &root)? {
+            match tracked.get(&sequence.id) {
+                Some(seen) if !crate::sequences::greater_than(&sequence, seen) => {}
+                _ => {
+                    tracked.insert(sequence.id.clone(), sequence);
+                }
+            }
+        }
+    }
+    Ok(tracked)
+}
+
 impl Engine {
     /// open opens the data directory, the auth file, and the branch control file when there is one, creating them and
     /// the superuser's role when they do not exist, and the default database when the data directory has none, as the
@@ -135,6 +220,7 @@ impl Engine {
                 statistics: Mutex::default(),
                 activity: Mutex::default(),
                 ended: Mutex::default(),
+                auto_gc: Mutex::default(),
             }),
         };
         let databases = std::fs::read_dir(data_dir).map_err(PgError::internal)?;
@@ -192,6 +278,33 @@ impl Engine {
     fn forget_activity(&self, id: u64) {
         let Ok(mut all) = self.shared.activity.lock() else { return };
         all.remove(&id);
+    }
+
+    /// auto_gc collects the garbage of each open database whose store has grown enough since it was last looked at, as
+    /// Dolt's automatic garbage collection does, skipping a database while a session has a transaction open on it, and
+    /// returns the databases it collected with how long each took.
+    pub fn auto_gc(&self) -> Result<Vec<(String, std::time::Duration)>> {
+        let databases: Vec<(String, DbHandle)> =
+            lock(&self.shared.databases)?.iter().map(|(name, (handle, _))| (name.clone(), handle.clone())).collect();
+        let mut collected = Vec::new();
+        for (name, handle) in databases {
+            let noms = self.shared.data_dir.join(&name).join(".dolt/noms");
+            let now = store_sizes(&noms);
+            let state = *lock(&self.shared.auto_gc)?.entry(name.clone()).or_default();
+            let then = state.sizes.unwrap_or(now);
+            let busy = self.activity().iter().any(|(_, a)| a.database == name && a.in_transaction);
+            if busy || !should_collect(now, then, state.last) {
+                lock(&self.shared.auto_gc)?.insert(name, AutoGc { sizes: Some(then), ..state });
+                continue;
+            }
+            let start = std::time::Instant::now();
+            lock(&handle)?.gc(doltdb::database::GcMode::Default)?;
+            let end = std::time::Instant::now();
+            let sizes = Some(store_sizes(&noms));
+            lock(&self.shared.auto_gc)?.insert(name.clone(), AutoGc { sizes, last: Some((start, end)) });
+            collected.push((name, end - start));
+        }
+        Ok(collected)
     }
 
     /// collected records a garbage collection of a database, which ends the other sessions that use it with a
@@ -309,8 +422,9 @@ impl Engine {
         if let Some(entry) = databases.get(name) {
             return Ok(entry.clone());
         }
-        let handle = Arc::new(Mutex::new(Database::open(&self.shared.data_dir.join(name).join(".dolt/noms"))?));
-        let entry = (handle, SequenceTracker::default());
+        let mut db = Database::open(&self.shared.data_dir.join(name).join(".dolt/noms"))?;
+        let tracked = tracked_sequences(&mut db)?;
+        let entry = (Arc::new(Mutex::new(db)), Arc::new(Mutex::new(tracked)));
         databases.insert(name.to_string(), entry.clone());
         Ok(entry)
     }
@@ -331,6 +445,7 @@ impl Engine {
                 settings: Settings::new(startup, self.shared.port.load(std::sync::atomic::Ordering::Relaxed))
                     .map_err(|err| PgError { severity: "FATAL", ..err })?,
                 explicit: false,
+                implicit_block: false,
                 sequence_values: HashMap::new(),
                 last_sequence: None,
                 data_dir: self.shared.data_dir.clone(),
@@ -409,6 +524,8 @@ pub struct SessionState {
     pub settings: Settings,
     /// Whether the open transaction began with BEGIN.
     pub explicit: bool,
+    /// Whether the running simple query has several statements, which share an implicit transaction block.
+    pub implicit_block: bool,
     /// The last value nextval returned for each sequence in this session, by sequence ID.
     pub sequence_values: HashMap<Vec<u8>, i64>,
     /// The sequence ID and value of the session's most recent nextval.
@@ -709,7 +826,12 @@ impl Session {
         self.report_activity(Some(query));
         let result = match parse::parse(query) {
             Ok(statements) if statements.is_empty() => (vec![(Vec::new(), Outcome::Empty)], None),
-            Ok(statements) => self.run_batch(statements, Vec::new()),
+            Ok(statements) => {
+                self.state.implicit_block = statements.len() > 1;
+                let result = self.run_batch(statements, Vec::new());
+                self.state.implicit_block = false;
+                result
+            }
             Err(err) => (Vec::new(), Some(self.fail(err))),
         };
         self.report_activity(None);
@@ -1422,7 +1544,7 @@ impl Session {
 
     /// warn_set_local warns as Postgres does about SET LOCAL outside a transaction block, where it has no effect.
     fn warn_set_local(&mut self, set: &VariableSetStmt) {
-        if set.is_local && !self.state.explicit {
+        if set.is_local && !self.state.explicit && !self.state.implicit_block {
             self.state.notices.push(PgError {
                 severity: "WARNING",
                 ..PgError::new(code::NO_ACTIVE_SQL_TRANSACTION, "SET LOCAL can only be used in transaction blocks")
@@ -1740,6 +1862,7 @@ impl Ctx<'_> {
             NodeEnum::AlterSeqStmt(stmt) => self.alter_sequence(stmt),
             NodeEnum::AlterOwnerStmt(stmt) => self.alter_owner(stmt),
             NodeEnum::VacuumStmt(stmt) => self.analyze(stmt),
+            NodeEnum::CommentStmt(stmt) => self.comment(stmt),
             NodeEnum::ExplainStmt(stmt) => self.explain(stmt),
             _ => Err(PgError::unsupported("this statement")),
         }

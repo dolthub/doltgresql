@@ -187,6 +187,8 @@ fn rewrite_foreign_keys(message: Message<'_>) -> Vec<u8> {
                     .map(|_| owned(fk.unresolved_parent_columns.clone())),
                 is_not_valid: fk.is_not_valid,
                 match_type: fk.match_type,
+                deferrable: fk.deferrable,
+                initially_deferred: fk.initially_deferred,
             }
         })
         .collect();
@@ -250,6 +252,8 @@ fn rewrite_schema(message: Message<'_>) -> Vec<u8> {
                 spatial: i.spatial_key,
                 fulltext: i.fulltext_info,
                 vector_distance: i.vector_distance,
+                deferrable: i.deferrable,
+                initially_deferred: i.initially_deferred,
             })
             .collect(),
         checks: s
@@ -266,6 +270,9 @@ fn rewrite_schema(message: Message<'_>) -> Vec<u8> {
         collation: s.collation().unwrap(),
         comment: s.comment().unwrap(),
         target_row_size: s.target_row_size().unwrap(),
+        primary_key_name: clustered.name,
+        primary_deferrable: clustered.deferrable,
+        primary_initially_deferred: clustered.initially_deferred,
     })
 }
 

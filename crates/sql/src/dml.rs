@@ -181,16 +181,18 @@ pub struct DeletePlan {
 /// table_scope returns the scope of a table's columns under its name or alias.
 pub(crate) fn table_scope(table: &TableDef, alias: Option<&str>) -> Scope {
     let name = alias.unwrap_or(&table.name);
+    let table_oid = crate::pgcatalog::snapshot::table_oid(&table.schema, &table.name);
     Scope {
         columns: table
             .columns
             .iter()
-            .map(|c| ScopeColumn {
+            .enumerate()
+            .map(|(i, c)| ScopeColumn {
                 table: name.to_string(),
                 name: c.name.clone(),
                 ty: c.ty,
                 hidden: false,
-                origin: (0, 0),
+                origin: (table_oid, i as u16 + 1),
             })
             .collect(),
     }

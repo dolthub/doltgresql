@@ -1779,3 +1779,175 @@ fn test_check_creation_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_vacuum_comment_and_system_check_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "vacuum statements",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE vt (a int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VACUUM;",
+                    expected: Expected::Tag("VACUUM"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VACUUM ANALYZE vt;",
+                    expected: Expected::Tag("VACUUM"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VACUUM nosuch;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "nosuch" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VACUUM FULL vt (a);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "ANALYZE option must be specified when a column list is provided", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VACUUM vt (a);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "ANALYZE option must be specified when a column list is provided", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VACUUM (ANALYZE) vt (a);",
+                    expected: Expected::Tag("VACUUM"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "comments on tables and columns",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ct (id int, v text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMENT ON TABLE ct IS 'tbl';",
+                    expected: Expected::Tag("COMMENT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMENT ON COLUMN ct.id IS 'col id';",
+                    expected: Expected::Tag("COMMENT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMENT ON COLUMN ct.nosuch IS 'x';",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "nosuch" of relation "ct" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMENT ON TABLE nosuch IS 'x';",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "nosuch" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMENT ON COLUMN nosuch.id IS 'x';",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "nosuch" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMENT ON COLUMN id IS 'x';",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "column name must be qualified", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT obj_description('ct'::regclass, 'pg_class'), col_description('ct'::regclass, 1), col_description('ct'::regclass, 2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("obj_description", TEXT), Column("col_description", TEXT), Column("col_description", TEXT)],
+                        rows: &[
+                            &[T("tbl"), T("col id"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT objsubid, description FROM pg_description WHERE objoid = 'ct'::regclass ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("objsubid", INT4), Column("description", TEXT)],
+                        rows: &[
+                            &[T("0"), T("tbl")],
+                            &[T("1"), T("col id")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMENT ON TABLE ct IS NULL;",
+                    expected: Expected::Tag("COMMENT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMENT ON COLUMN ct.id IS '';",
+                    expected: Expected::Tag("COMMENT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT obj_description('ct'::regclass, 'pg_class'), col_description('ct'::regclass, 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("obj_description", TEXT), Column("col_description", TEXT)],
+                        rows: &[
+                            &[Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "check constraints over system columns",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE sys_col_check (city text, is_capital bool, CHECK (NOT (is_capital AND tableoid::regclass::text = 'sys_col_check')));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sys_col_check VALUES ('Seattle', false);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sys_col_check VALUES ('Olympia', true);",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"new row for relation "sys_col_check" violates check constraint "sys_col_check_check""#, detail: "Failing row contains (Olympia, t).", schema: "public", table: "sys_col_check", constraint: "sys_col_check_check", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM sys_col_check;",
+                    expected: Expected::Rows {
+                        columns: &[Column("city", TEXT), Column("is_capital", BOOL)],
+                        rows: &[
+                            &[T("Seattle"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

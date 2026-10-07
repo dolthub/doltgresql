@@ -776,6 +776,9 @@ pub fn append(mut array: Array, value: Value, prepend: bool) -> Result<Array> {
 
 /// is_array_type reports whether a type is an array type.
 pub fn is_array_type(type_oid: u32) -> bool {
+    if type_oid == crate::oid::ACLITEM_ARRAY {
+        return true;
+    }
     match builtin_type(type_oid) {
         Some(t) => t.elem != 0 && t.definition.typ_category == b"A",
         None => crate::usertypes::get(type_oid).is_some_and(|t| t.is_array()),

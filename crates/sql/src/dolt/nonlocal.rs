@@ -82,6 +82,7 @@ pub fn table(ctx: &mut Ctx<'_>) -> Result<TableDef> {
             default: String::new(),
             generated: false,
             mysql_type: COLUMN_TYPE.into(),
+            comment: String::new(),
         })
         .collect();
     ctx.write_new_table(SCHEMA, TABLE, columns, (vec![0], Primary::default()), Vec::new(), Vec::new())?;

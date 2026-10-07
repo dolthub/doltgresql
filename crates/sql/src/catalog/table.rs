@@ -48,6 +48,8 @@ pub struct ColumnDef {
     /// The MySQL type that Dolt gives a column of one of its own tables, as its schema names it, which is empty for a
     /// Doltgres type.
     pub mysql_type: String,
+    /// The comment that COMMENT ON COLUMN gives the column, which is empty without one.
+    pub comment: String,
 }
 
 /// Check is a check constraint: its name and its expression's SQL text.
@@ -120,6 +122,8 @@ pub struct TableDef {
     pub key_columns: Vec<usize>,
     /// The columns stored in the value tuple, in order.
     pub value_columns: Vec<usize>,
+    /// The comment that COMMENT ON TABLE gives the table, which is empty without one.
+    pub comment: String,
     pub table: Table,
 }
 
@@ -186,6 +190,7 @@ impl TableDef {
                     true => String::new(),
                     false => String::from_utf8_lossy(c.sql_type).into_owned(),
                 },
+                comment: String::from_utf8_lossy(c.comment).into_owned(),
             };
             if c.hidden_system && c.is_virtual {
                 positions.push(Some(HIDDEN_BASE + hidden.len()));
@@ -256,6 +261,7 @@ impl TableDef {
             indexes,
             key_columns,
             value_columns,
+            comment: lossy(message.comment()?),
             table,
         })
     }
@@ -393,11 +399,11 @@ impl TableDef {
         schema_message(
             &self.columns,
             &self.hidden,
-            &self.key_columns,
-            &self.value_columns,
+            (&self.key_columns, &self.value_columns),
             &self.checks,
             &self.indexes,
             &self.primary,
+            &self.comment,
         )
     }
 
@@ -479,11 +485,11 @@ impl TableDef {
 pub fn schema_message(
     columns: &[ColumnDef],
     hidden: &[ColumnDef],
-    key_columns: &[usize],
-    value_columns: &[usize],
+    (key_columns, value_columns): (&[usize], &[usize]),
     checks: &[Check],
     indexes: &[IndexDef],
     primary: &Primary,
+    comment: &str,
 ) -> Result<Vec<u8>> {
     let all: Vec<(&ColumnDef, bool)> =
         columns.iter().map(|c| (c, false)).chain(hidden.iter().map(|c| (c, true))).collect();
@@ -501,7 +507,7 @@ pub fn schema_message(
             name: c.name.as_bytes(),
             sql_type,
             default_value: c.default.as_bytes(),
-            comment: b"",
+            comment: c.comment.as_bytes(),
             on_update: b"",
             tag: c.tag,
             encoding: c.encoding,
@@ -577,7 +583,7 @@ pub fn schema_message(
         primary_deferrable: primary.deferrable,
         primary_initially_deferred: primary.initially_deferred,
         collation: COLLATION,
-        comment: b"",
+        comment: comment.as_bytes(),
         target_row_size: DEFAULT_TARGET_ROW_SIZE,
     }))
 }

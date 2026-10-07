@@ -98,7 +98,7 @@ impl Ctx<'_> {
     /// set_constraints runs SET CONSTRAINTS, then runs the checks of the constraints it made immediate, as Postgres'
     /// AfterTriggerSetState does.
     pub fn set_constraints(&mut self, stmt: &ConstraintsSetStmt) -> Result<Outcome> {
-        if !self.session.explicit {
+        if !self.session.explicit && !self.session.implicit_block {
             self.session.notice(PgError {
                 severity: "WARNING",
                 ..PgError::new(

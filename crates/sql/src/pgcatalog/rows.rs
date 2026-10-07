@@ -268,6 +268,7 @@ impl Ctx<'_> {
             "pg_attribute" => self.pg_attribute(rows),
             "pg_index" => self.pg_index(rows),
             "pg_attrdef" => self.pg_attrdef(rows),
+            "pg_description" => self.pg_description(rows),
             "pg_indexes" => self.pg_indexes(rows),
             "pg_constraint" => self.pg_constraint(rows),
             "pg_tables" => self.pg_tables(rows),
@@ -940,6 +941,23 @@ impl Ctx<'_> {
                     ("adrelid", oid(table_oid(&table.schema, &table.name))),
                     ("adnum", int2(i as i16 + 1)),
                     ("adbin", text(expression)),
+                ]);
+            }
+        }
+        Ok(())
+    }
+
+    /// pg_description lists the comments on the user tables and their columns.
+    fn pg_description(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            let comments = std::iter::once(&table.comment).chain(table.columns.iter().map(|c| &c.comment));
+            for (i, comment) in comments.enumerate().filter(|(_, c)| !c.is_empty()) {
+                rows.push(vec![
+                    ("objoid", oid(table_oid(&table.schema, &table.name))),
+                    ("classoid", oid(1259)),
+                    ("objsubid", int4(i as i32)),
+                    ("description", text(comment.clone())),
                 ]);
             }
         }

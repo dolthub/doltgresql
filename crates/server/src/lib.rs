@@ -82,16 +82,59 @@ fn log(line: &str) {
 /// CONNECTION_STACK_SIZE is the stack size of each connection's thread, where function calls nest.
 const CONNECTION_STACK_SIZE: usize = 256 << 20;
 
+/// BIND_ATTEMPTS is how many times the server tries to listen on an address that is in use, a hundredth of a second
+/// apart, which gives a server stopped just before it time to let the address go.
+const BIND_ATTEMPTS: usize = 500;
+
+/// bind listens on the address, waiting for one that is in use to come free.
+fn bind(host: &str, port: u16) -> Result<TcpListener, String> {
+    let mut attempts = 0;
+    loop {
+        match TcpListener::bind((host, port)) {
+            Ok(listener) => return Ok(listener),
+            Err(err) if err.kind() == std::io::ErrorKind::AddrInUse && attempts + 1 < BIND_ATTEMPTS => {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(err) => return Err(format!("cannot listen on {host}:{port}: {err}")),
+        }
+    }
+}
+
 /// serve accepts connections on the configured address until the listener fails.
 pub fn serve(config: &Config) -> Result<(), String> {
     if let Some(path) = &config.log_file {
         let file = std::fs::File::create(path).map_err(|err| format!("cannot open {}: {err}", path.display()))?;
         let _ = LOG.set(Mutex::new(file));
     }
+    std::fs::create_dir_all(&config.data_dir)
+        .map_err(|err| format!("failed to make dir '{}': {err}", config.data_dir.display()))?;
+    if !config.skip_integrity_check
+        && let Some(message) = sql::integrity::check_data_dir(&config.data_dir).map_err(|err| err.to_string())?
+    {
+        return Err(message);
+    }
     let server = Arc::new(Server::new(config)?);
+    if config.auto_gc {
+        let engine = server.engine.clone();
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                match engine.auto_gc() {
+                    Ok(collected) => {
+                        for (database, took) in collected {
+                            log(&format!(
+                                "sqle/auto_gc: Successfully completed auto GC of database {database} in {took:?}"
+                            ));
+                        }
+                    }
+                    Err(err) => log(&format!("sqle/auto_gc: {err}")),
+                }
+            }
+        });
+    }
     let host = if config.host == "localhost" { "127.0.0.1" } else { config.host.as_str() };
-    let listener = TcpListener::bind((host, config.port))
-        .map_err(|err| format!("cannot listen on {host}:{}: {err}", config.port))?;
+    let listener = bind(host, config.port)?;
     log(&format!("Server ready. Accepting connections on {host}:{}.", config.port));
     for stream in listener.incoming() {
         let stream = stream.map_err(|err| err.to_string())?;

@@ -180,19 +180,19 @@ fn getdatabaseencoding(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     Ok(Value::Text("UTF8".into()))
 }
 
-/// obj_description returns the built-in comment on an object of a catalog, which pg_class is without one.
+/// obj_description returns the comment on an object of a catalog, which pg_class is without one.
 fn obj_description(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let catalog = args.get(1).map_or("pg_class", text);
-    Ok(ctx.description(oid(&args[0]), catalog, 0).map_or(Value::Null, Value::Text))
+    Ok(ctx.description(oid(&args[0]), catalog, 0)?.map_or(Value::Null, Value::Text))
 }
 
-/// col_description returns the built-in comment on a column of a relation.
+/// col_description returns the comment on a column of a relation.
 fn col_description(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let column = match args[1] {
         Value::Int4(i) => i,
         _ => 0,
     };
-    Ok(ctx.description(oid(&args[0]), "pg_class", column).map_or(Value::Null, Value::Text))
+    Ok(ctx.description(oid(&args[0]), "pg_class", column)?.map_or(Value::Null, Value::Text))
 }
 
 /// pg_get_serial_sequence returns the qualified name of the sequence that a column owns, or NULL without one.

@@ -224,15 +224,29 @@ fn key_text(values: &[Value]) -> String {
 }
 
 impl Ctx<'_> {
-    /// analyze runs ANALYZE, which builds the histograms of the named tables, or of every table without names.
+    /// analyze runs ANALYZE, which builds the histograms of the named tables, or of every table without names, and
+    /// VACUUM, which only checks its tables since storage reclaims nothing that way, analyzing them with ANALYZE.
     pub fn analyze(&mut self, stmt: &VacuumStmt) -> Result<Outcome> {
-        if stmt.is_vacuumcmd {
-            return Err(PgError::unsupported("VACUUM"));
+        let option = |name: &str| {
+            stmt.options.iter().any(|o| {
+                matches!(o.node.as_ref(), Some(NodeEnum::DefElem(d)) if d.defname == name
+                    && !matches!(d.arg.as_deref().and_then(|a| a.node.as_ref()), Some(NodeEnum::Boolean(b)) if !b.boolval))
+            })
+        };
+        let vacuum = stmt.is_vacuumcmd;
+        if vacuum && self.session.explicit {
+            return Err(PgError::new(code::ACTIVE_SQL_TRANSACTION, "VACUUM cannot run inside a transaction block"));
         }
         let mut tables = Vec::new();
         for node in &stmt.rels {
-            let Some(NodeEnum::VacuumRelation(relation)) = node.node.as_ref() else { continue };
-            let Some(relation) = &relation.relation else { continue };
+            let Some(NodeEnum::VacuumRelation(vacuumed)) = node.node.as_ref() else { continue };
+            let Some(relation) = &vacuumed.relation else { continue };
+            if vacuum && !vacuumed.va_cols.is_empty() && !option("analyze") {
+                return Err(PgError::new(
+                    code::FEATURE_NOT_SUPPORTED,
+                    "ANALYZE option must be specified when a column list is provided",
+                ));
+            }
             if !relation.catalogname.is_empty() && relation.catalogname != self.session.database {
                 return Err(PgError::new(
                     code::FEATURE_NOT_SUPPORTED,
@@ -242,7 +256,10 @@ impl Ctx<'_> {
                     ),
                 ));
             }
-            tables.push(self.resolve_table(relation)?);
+            tables.push(self.resolve_table(relation).map_err(|err| PgError { position: None, ..err })?);
+        }
+        if vacuum && !option("analyze") {
+            return Ok(Outcome::command("VACUUM"));
         }
         if stmt.rels.is_empty() {
             tables = self.snapshot()?.tables.clone();
@@ -253,7 +270,7 @@ impl Ctx<'_> {
             let (database, branch) = (self.session.database.clone(), self.session.branch.clone());
             self.session.engine.put_statistics(&database, &branch, &table.schema, &table.name, statistics);
         }
-        Ok(Outcome::command("ANALYZE"))
+        Ok(Outcome::command(if vacuum { "VACUUM" } else { "ANALYZE" }))
     }
 
     /// statistics_rows returns the rows of dolt_statistics: a row for each bucket of the histograms of the tables

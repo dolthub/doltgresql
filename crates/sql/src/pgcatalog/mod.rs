@@ -336,6 +336,22 @@ impl Ctx<'_> {
             "pg_catalog" => self.pg_catalog_rows(&mut rows)?,
             _ => self.information_schema_rows(&mut rows)?,
         }
+        let acls: Vec<usize> = table
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.type_oid == crate::oid::ACLITEM_ARRAY)
+            .map(|(i, _)| i)
+            .collect();
+        for row in rows.rows.iter_mut().filter(|_| !acls.is_empty()) {
+            for &i in &acls {
+                if let Value::Text(text) = &row[i] {
+                    row[i] = Value::Array(Box::new(crate::array::parse(text, crate::oid::TEXT, &|item| {
+                        Ok(Value::Text(item.to_string()))
+                    })?));
+                }
+            }
+        }
         Ok(rows.rows)
     }
 

@@ -229,6 +229,7 @@ impl TableParts {
             default: String::new(),
             generated: false,
             mysql_type: String::new(),
+            comment: String::new(),
         };
         check_constraint_attributes(&def.constraints)?;
         let deferrals = column_deferrals(&def.constraints);
@@ -409,6 +410,48 @@ fn object_names(names: &[Node]) -> (String, String) {
 }
 
 impl Ctx<'_> {
+    /// comment runs COMMENT ON, which keeps the comments of tables and columns in their Dolt schemas, and accepts the
+    /// comments of other objects without keeping them, warning as the Go server does.
+    pub(crate) fn comment(&mut self, stmt: &pg_query::protobuf::CommentStmt) -> Result<Outcome> {
+        let items = match stmt.object.as_deref().and_then(|n| n.node.as_ref()) {
+            Some(NodeEnum::List(list)) => list.items.clone(),
+            _ => Vec::new(),
+        };
+        let (relation, column) = match ObjectType::try_from(stmt.objtype) {
+            Ok(ObjectType::ObjectTable) => (&items[..], None),
+            Ok(ObjectType::ObjectColumn) => match items.split_last() {
+                Some((column, relation)) if !relation.is_empty() => (relation, node_name(column)),
+                _ => return Err(PgError::new(code::SYNTAX_ERROR, "column name must be qualified")),
+            },
+            _ => {
+                let warning = "COMMENT ON is not yet supported for this kind of object";
+                self.session.notice(PgError { severity: "WARNING", ..PgError::new("01000", warning) });
+                return Ok(Outcome::command("COMMENT"));
+            }
+        };
+        let (schemaname, relname) = object_names(relation);
+        let relation = pg_query::protobuf::RangeVar { schemaname, relname, ..Default::default() };
+        let mut table = self.resolve_table(&relation).map_err(|err| PgError { position: None, ..err })?;
+        self.require_owner(&Object::Table(table.schema.clone(), table.name.clone()))?;
+        match column {
+            Some(name) => {
+                let Some(column) = table.columns.iter_mut().find(|c| c.name == name) else {
+                    return Err(PgError::new(
+                        code::UNDEFINED_COLUMN,
+                        format!("column \"{name}\" of relation \"{}\" does not exist", table.name),
+                    ));
+                };
+                column.comment = stmt.comment.clone();
+            }
+            None => table.comment = stmt.comment.clone(),
+        }
+        let mut stored = table.table.clone();
+        stored.schema = self.db.write_value(table.schema_message()?)?;
+        let address = stored.write(self.db)?;
+        self.txn.root.put_table(self.db, &table.schema, &table.name, Some(address))?;
+        Ok(Outcome::command("COMMENT"))
+    }
+
     /// check_generation fails as Postgres does for an expression that a generated column can't be generated from:
     /// one that uses another generated column, a subquery, an aggregate, or a function that is not immutable.
     pub(crate) fn check_generation(
@@ -733,7 +776,7 @@ impl Ctx<'_> {
             kinds.push(kind);
         }
         let value_columns: Vec<usize> = (0..columns.len()).filter(|i| !primary_key.contains(i)).collect();
-        let message = schema_message(&columns, &[], &primary_key, &value_columns, &checks, &indexes, &primary)?;
+        let message = schema_message(&columns, &[], (&primary_key, &value_columns), &checks, &indexes, &primary, "")?;
         let (mut address, mut table) = Table::create(self.db, message)?;
         if !indexes.is_empty() {
             let empty = Hash::of(&empty_rows());
@@ -786,6 +829,7 @@ impl Ctx<'_> {
                     default: String::new(),
                     generated: false,
                     mysql_type: String::new(),
+                    comment: String::new(),
                 }
             })
             .collect();
@@ -1259,6 +1303,7 @@ impl Ctx<'_> {
                 default: format!("({text})"),
                 generated: true,
                 mysql_type: String::new(),
+                comment: String::new(),
             });
         }
         let index = IndexDef { descending, nulls_last, op_classes, predicate, ..new_index(name, columns, stmt.unique) };

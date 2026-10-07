@@ -146,12 +146,38 @@ fn extended_statement(query: &str, tokens: &[ScanToken]) -> Option<Vec<Statement
     {
         return Some(vec![Statement::ShowCreateTable { relation, extras }]);
     }
+    if words.keyword(0, "copy")
+        && let Some(statements) = legacy_copy(query, range.clone(), &words)
+    {
+        return Some(statements);
+    }
     if ["describe", "desc", "explain"].iter().any(|word| words.keyword(0, word))
         && let Some((relation, extras)) = table_reference(query, &words, 1)
     {
         return Some(vec![Statement::Describe { relation, extras }]);
     }
     cut_statement(query, range, &words)
+}
+
+/// legacy_copy parses a COPY whose options after its source or target are separated by commas, as in
+/// `COPY t FROM STDIN CSV, HEADER`, which the Go server accepts, by reading the commas as spaces.
+fn legacy_copy(query: &str, range: Range<usize>, words: &Words<'_>) -> Option<Vec<Statement>> {
+    let source = (0..words.tokens.len()).position(|i| {
+        words.keyword(i, "stdin") || words.keyword(i, "stdout") || words.kind(i) == Token::Sconst as i32
+    })?;
+    let mut text = isolate(query, range).into_bytes();
+    let mut depth = 0;
+    for token in &words.tokens[source + 1..] {
+        match token.token {
+            t if t == Token::Ascii40 as i32 => depth += 1,
+            t if t == Token::Ascii41 as i32 => depth -= 1,
+            t if t == Token::Ascii44 as i32 && depth == 0 => text[token.start as usize] = b' ',
+            _ => {}
+        }
+    }
+    let text = String::from_utf8(text).ok()?;
+    let result = pg_query::parse(&text).ok()?;
+    Some(postgres_statements(&text, result, Extras::default()))
 }
 
 /// listing parses `SHOW kind {FROM | IN} name[.name]`.

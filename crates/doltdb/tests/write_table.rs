@@ -112,6 +112,9 @@ fn creating_a_table_and_inserting_gives_the_graph_go_gave() {
         collation: 309,
         comment: b"",
         target_row_size: DEFAULT_TARGET_ROW_SIZE,
+        primary_key_name: b"",
+        primary_deferrable: false,
+        primary_initially_deferred: false,
     });
     let (address, mut table) = Table::create(&mut db, schema).unwrap();
     root.put_table(&mut db, "public", "test", Some(address)).unwrap();

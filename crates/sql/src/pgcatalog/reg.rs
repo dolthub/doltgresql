@@ -295,9 +295,26 @@ impl Ctx<'_> {
         Ok(schema.map_or(Value::Null, |s| Value::Bool(path.contains(&s))))
     }
 
-    /// description returns the built-in comment on an object of a catalog, from pg_description, or from
+    /// description returns the comment on an object of a catalog, from pg_description, or from pg_shdescription for a
+    /// shared catalog, with a column number for a column's comment.
+    pub fn description(&mut self, oid: u32, catalog: &str, column: i32) -> Result<Option<String>> {
+        if catalog == "pg_class" {
+            let snapshot = self.snapshot()?;
+            if let Some(table) = snapshot.tables.iter().find(|t| table_oid(&t.schema, &t.name) == oid) {
+                let comment = match usize::try_from(column) {
+                    Ok(0) => Some(&table.comment),
+                    Ok(i) => table.columns.get(i - 1).map(|c| &c.comment),
+                    Err(_) => None,
+                };
+                return Ok(comment.filter(|c| !c.is_empty()).cloned());
+            }
+        }
+        Ok(self.builtin_description(oid, catalog, column))
+    }
+
+    /// builtin_description returns the built-in comment on an object of a catalog, from pg_description, or from
     /// pg_shdescription for a shared catalog, with a column number for a column's comment.
-    pub fn description(&self, oid: u32, catalog: &str, column: i32) -> Option<String> {
+    fn builtin_description(&self, oid: u32, catalog: &str, column: i32) -> Option<String> {
         let shared = catalog == "pg_database";
         let description = lookup("pg_catalog", if shared { "pg_shdescription" } else { "pg_description" })?;
         let class = lookup("pg_catalog", catalog)?.oid;

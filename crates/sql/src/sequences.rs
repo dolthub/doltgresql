@@ -309,7 +309,7 @@ pub fn advance(sequence: &mut Sequence) -> Result<i64> {
 
 /// greater_than reports whether one state of a sequence is further along than another, counting a wrapped sequence
 /// as further along, as Doltgres' SequenceState.GreaterThan does.
-fn greater_than(a: &Sequence, b: &Sequence) -> bool {
+pub(crate) fn greater_than(a: &Sequence, b: &Sequence) -> bool {
     if a.increment > 0 {
         let (wrapped, other_wrapped) = (a.current < a.start, b.current < a.start);
         if wrapped == other_wrapped { a.current > b.current } else { wrapped }
