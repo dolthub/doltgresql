@@ -1140,6 +1140,13 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         let types: Vec<(ColumnType, i32)> = bound.iter().map(|((_, t), l)| (*t, *l)).collect();
         let ty = common_type(&types, context)?;
+        for ((expr, _), _) in &bound {
+            if let Expr::Param(i) = expr
+                && self.ctx.parameters[*i] == 0
+            {
+                self.ctx.parameters[*i] = ty.oid;
+            }
+        }
         let args = bound.into_iter().map(|(b, l)| coerce(b, ty, false, l).map(|b| b.0)).collect::<Result<_>>()?;
         Ok((args, ty))
     }
@@ -1734,6 +1741,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                 match node.as_deref() {
                     Some(node) => {
                         let bound = self.bind(node)?;
+                        if let Expr::Param(i) = bound.0
+                            && self.ctx.parameters[i] == 0
+                        {
+                            self.ctx.parameters[i] = oid::INT4;
+                        }
                         let location = arg_location(node);
                         Ok(Some(subscript_int(bound, location)?))
                     }

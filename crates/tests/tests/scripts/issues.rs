@@ -29,10 +29,10 @@ fn test_issues() {
                 "insert into tbl values (1);",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' error for a missing column.
                 ScriptTestAssertion {
                     query: r#"select dolt_add(".");"#,
-                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "." could not be found in any table in scope"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "." does not exist"#, position: 17, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -47,10 +47,10 @@ fn test_issues() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' error for a missing column.
                 ScriptTestAssertion {
                     query: r#"select dolt_commit("-m", "look ma");"#,
-                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "-m" could not be found in any table in scope"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "-m" does not exist"#, position: 20, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -65,10 +65,10 @@ fn test_issues() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' error for a missing column.
                 ScriptTestAssertion {
                     query: r#"select dolt_branch("br1");"#,
-                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "br1" could not be found in any table in scope"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "br1" does not exist"#, position: 20, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -571,11 +571,11 @@ limit 1"#,
                 "SELECT dolt_checkout('f');",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column naming.
                 ScriptTestAssertion {
                     query: "SELECT length(dolt_merge('main')::text) = 57;",
                     expected: Expected::Rows {
-                        columns: &[Column("length = 57", BOOL)],
+                        columns: &[Column("?column?", BOOL)],
                         rows: &[
                             &[T("t")],
                         ],

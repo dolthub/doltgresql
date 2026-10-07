@@ -430,10 +430,14 @@ impl<'b, 'a> Planner<'b, 'a> {
         }
         let mut binder = self.binder(Scope::default());
         let mut count = |node: Option<&Node>| -> Result<Option<Expr>> {
-            match node {
-                Some(node) => Ok(Some(coerce(binder.bind(node)?, typ(oid::INT8), false, -1)?.0)),
-                None => Ok(None),
+            let Some(node) = node else { return Ok(None) };
+            let bound = binder.bind(node)?;
+            if let Expr::Param(i) = bound.0
+                && binder.ctx.parameters[i] == 0
+            {
+                binder.ctx.parameters[i] = oid::INT8;
             }
+            Ok(Some(coerce(bound, typ(oid::INT8), false, -1)?.0))
         };
         let limit = count(select.limit_count.as_deref())?;
         let offset = count(select.limit_offset.as_deref())?;
