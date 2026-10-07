@@ -785,7 +785,9 @@ impl Ctx<'_> {
                 }
             }
         }
+        let cascade = DropBehavior::try_from(drop.behavior) == Ok(DropBehavior::DropCascade);
         for (schema, name) in &doomed {
+            self.drop_row_type_dependents(schema, name, cascade, &doomed)?;
             self.drop_table_foreign_keys(schema, name, drop.behavior, &doomed)?;
         }
         for (schema, name) in doomed {
@@ -795,6 +797,74 @@ impl Ctx<'_> {
             self.drop_owned_sequences(&schema, &name)?;
         }
         Ok(Outcome::command("DROP TABLE"))
+    }
+
+    /// drop_row_type_dependents fails as Postgres does when another table's column or a routine uses the row type of
+    /// a table being dropped, unless the drop cascades, which drops those columns and routines.
+    fn drop_row_type_dependents(
+        &mut self,
+        schema: &str,
+        name: &str,
+        cascade: bool,
+        dropping: &[(String, String)],
+    ) -> Result<()> {
+        let row_type = crate::pgcatalog::row_type_oid(schema, name);
+        let mut columns = Vec::new();
+        for ((s, t), address) in crate::dolt::procedures::table_map(self.db, &self.txn.root.clone())? {
+            if dropping.iter().any(|(ds, dt)| *ds == s && *dt == t) {
+                continue;
+            }
+            let table = TableDef::load(self.db, &s, &t, address)?;
+            columns.extend(
+                table.columns.iter().filter(|c| c.ty.oid == row_type).map(|c| (s.clone(), t.clone(), c.name.clone())),
+            );
+        }
+        let routines: Vec<_> = self
+            .routines()?
+            .iter()
+            .filter(|r| r.ret.oid == row_type || r.params.iter().any(|p| p.ty.oid == row_type))
+            .cloned()
+            .collect();
+        if columns.is_empty() && routines.is_empty() {
+            return Ok(());
+        }
+        let dependents: Vec<String> = columns
+            .iter()
+            .map(|(s, t, c)| format!("column {c} of table {}", self.shown_relation(s, t)))
+            .chain(routines.iter().map(|r| format!("function {}", r.signature())))
+            .collect();
+        let shown = self.shown_relation(schema, name);
+        if !cascade {
+            return Err(PgError {
+                detail: Some(
+                    dependents.iter().map(|d| format!("{d} depends on type {shown}")).collect::<Vec<_>>().join("\n"),
+                ),
+                hint: Some("Use DROP ... CASCADE to drop the dependent objects too.".into()),
+                ..PgError::new(
+                    code::DEPENDENT_OBJECTS_STILL_EXIST,
+                    format!("cannot drop table {shown} because other objects depend on it"),
+                )
+            });
+        }
+        self.notice_cascades(dependents.iter().map(|d| format!("drop cascades to {d}")).collect());
+        let quote = crate::engine::quote_identifier;
+        let mut statements: Vec<String> = columns
+            .iter()
+            .map(|(s, t, c)| format!("ALTER TABLE {}.{} DROP COLUMN {}", quote(s), quote(t), quote(c)))
+            .collect();
+        statements.extend(routines.iter().map(|r| format!("DROP ROUTINE {}.{}", quote(&r.schema), r.signature())));
+        for statement in statements {
+            match crate::parse::parse(&statement)?.into_iter().next() {
+                Some(crate::parse::Statement::Postgres { node: NodeEnum::AlterTableStmt(alter), .. }) => {
+                    self.alter_table(&alter)?;
+                }
+                Some(crate::parse::Statement::Postgres { node: NodeEnum::DropStmt(drop), .. }) => {
+                    self.drop_routines(&drop, None)?;
+                }
+                _ => return Err(PgError::internal("a cascading drop statement did not parse")),
+            }
+        }
+        Ok(())
     }
 
     /// drop_schemas runs DROP SCHEMA, which fails for a schema with tables unless it cascades to them.

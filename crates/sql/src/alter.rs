@@ -242,6 +242,7 @@ impl Ctx<'_> {
                 };
                 self.alter_constraint(alteration, constraint)
             }
+            AlterTableType::AtValidateConstraint => self.validate_constraint(alteration, &cmd.name),
             AlterTableType::AtDropConstraint => {
                 let cascade = DropBehavior::try_from(cmd.behavior) == Ok(DropBehavior::DropCascade);
                 self.drop_constraint(alteration, &cmd.name, cmd.missing_ok, cascade)
@@ -390,7 +391,7 @@ impl Ctx<'_> {
             alteration.table.value_columns.push(index);
         }
         for (constraint, expr) in parts.checks {
-            self.add_check(alteration, &constraint, &expr)?;
+            self.add_check(alteration, &constraint, &expr, true)?;
         }
         for (constraint, keys, deferral) in parts.uniques {
             self.add_unique(alteration, &constraint, keys, deferral)?;
@@ -447,6 +448,19 @@ impl Ctx<'_> {
 
     /// alter_column_type runs ALTER COLUMN TYPE, converting each row's value with the USING expression or a cast.
     fn alter_column_type(&mut self, alteration: &mut Alteration, cmd: &AlterTableCmd) -> Result<()> {
+        let row_type = crate::pgcatalog::row_type_oid(&alteration.table.schema, &alteration.table.name);
+        for ((schema, name), address) in crate::dolt::procedures::table_map(self.db, &self.txn.root.clone())? {
+            let other = TableDef::load(self.db, &schema, &name, address)?;
+            if let Some(column) = other.columns.iter().find(|c| c.ty.oid == row_type) {
+                return Err(PgError::new(
+                    code::FEATURE_NOT_SUPPORTED,
+                    format!(
+                        "cannot alter table \"{}\" because column \"{name}.{}\" uses its row type",
+                        alteration.table.name, column.name
+                    ),
+                ));
+            }
+        }
         let Some(NodeEnum::ColumnDef(def)) = cmd.def.as_deref().and_then(|d| d.node.as_ref()) else {
             return Err(PgError::internal("ALTER COLUMN TYPE without a type"));
         };
@@ -477,8 +491,21 @@ impl Ctx<'_> {
         let mut converted = Vec::with_capacity(rows.len());
         for mut row in rows {
             row[i] = expr.eval(self, &row)?;
+            if row[i].is_null() && !old.nullable {
+                return Err(PgError {
+                    objects: table_objects(&alteration.table, Some(&old.name), None),
+                    ..PgError::new(
+                        code::NOT_NULL_VIOLATION,
+                        format!(
+                            "column \"{}\" of relation \"{}\" contains null values",
+                            old.name, alteration.table.name
+                        ),
+                    )
+                });
+            }
             converted.push(row);
         }
+        self.check_retyped_column(&alteration.table, &old.name, ty.oid)?;
         alteration.rows = Some(converted);
         let column = &mut alteration.table.columns[i];
         column.ty = ty;
@@ -508,7 +535,7 @@ impl Ctx<'_> {
             ConstrType::ConstrCheck | ConstrType::ConstrUnique => {
                 parts.add_constraint(&alteration.table.name, constraint)?;
                 for (name, expr) in parts.checks {
-                    self.add_check(alteration, &name, &expr)?;
+                    self.add_check(alteration, &name, &expr, !constraint.skip_validation)?;
                 }
                 for (name, keys, deferral) in parts.uniques {
                     self.add_unique(alteration, &name, keys, deferral)?;
@@ -545,8 +572,8 @@ impl Ctx<'_> {
         ))
     }
 
-    /// add_check adds a check constraint after checking every row against it.
-    fn add_check(&mut self, alteration: &mut Alteration, name: &str, expr: &Node) -> Result<()> {
+    /// add_check adds a check constraint, after checking every row against it unless it is NOT VALID.
+    fn add_check(&mut self, alteration: &mut Alteration, name: &str, expr: &Node, validate: bool) -> Result<()> {
         let schema = alteration.table.schema.clone();
         let mut constraints = self.constraint_names(&schema)?;
         constraints.extend(alteration.table.checks.iter().map(|c| c.name.clone()));
@@ -561,13 +588,24 @@ impl Ctx<'_> {
         } else {
             name.to_string()
         };
+        if validate {
+            self.check_rows(alteration, &name, expr)?;
+        } else {
+            Binder::new(self, table_scope(&alteration.table, None)).bind(expr)?;
+        }
+        alteration.table.checks.push(Check { name, expression: expression_text(expr)? });
+        Ok(())
+    }
+
+    /// check_rows fails as Postgres does when a row of the table breaks a check constraint.
+    fn check_rows(&mut self, alteration: &mut Alteration, name: &str, expr: &Node) -> Result<()> {
         let bound = Binder::new(self, table_scope(&alteration.table, None)).bind(expr)?;
         let condition = coerce(bound, crate::expr::typ(crate::oid::BOOL), false, -1)?.0;
         let rows = self.rows(alteration)?.clone();
         for row in &rows {
             if condition.eval(self, row)? == Value::Bool(false) {
                 return Err(PgError {
-                    objects: table_objects(&alteration.table, None, Some(&name)),
+                    objects: table_objects(&alteration.table, None, Some(name)),
                     ..PgError::new(
                         code::CHECK_VIOLATION,
                         format!(
@@ -578,8 +616,22 @@ impl Ctx<'_> {
                 });
             }
         }
-        alteration.table.checks.push(Check { name, expression: expression_text(expr)? });
         Ok(())
+    }
+
+    /// validate_constraint runs VALIDATE CONSTRAINT, checking every row against a check constraint or foreign key.
+    fn validate_constraint(&mut self, alteration: &mut Alteration, name: &str) -> Result<()> {
+        if let Some(check) = alteration.table.checks.iter().find(|c| c.name == name).cloned() {
+            let expr = crate::parse::expression_node(&check.expression)?;
+            return self.check_rows(alteration, name, &expr);
+        }
+        if self.validate_foreign_key(&alteration.table, name)? {
+            return Ok(());
+        }
+        Err(PgError::new(
+            code::UNDEFINED_OBJECT,
+            format!("constraint \"{name}\" of relation \"{}\" does not exist", alteration.table.name),
+        ))
     }
 
     /// add_unique adds a unique index after checking the rows for duplicates.
@@ -774,7 +826,7 @@ impl Ctx<'_> {
                 ));
                 return Ok(Outcome::command(tag));
             }
-            Err(err) => return Err(err),
+            Err(err) => return Err(PgError { position: None, ..err }),
         };
         let mut alteration = Alteration::new(table);
         match kind {

@@ -75,14 +75,15 @@ fn dolt_schemas_schema() -> Vec<u8> {
     })
 }
 
-/// relations returns the tables a query reads, by name.
-fn relations(select: &SelectStmt) -> Vec<String> {
+/// relations returns the tables a query reads, by their schema, which is empty when unqualified, and name.
+fn relations(select: &SelectStmt) -> Vec<(String, String)> {
     let mut names = Vec::new();
     for (node, ..) in NodeEnum::SelectStmt(Box::new(select.clone())).nodes() {
-        if let NodeRef::RangeVar(relation) = node
-            && !names.contains(&relation.relname)
-        {
-            names.push(relation.relname.clone());
+        if let NodeRef::RangeVar(relation) = node {
+            let name = (relation.schemaname.clone(), relation.relname.clone());
+            if !names.contains(&name) {
+                names.push(name);
+            }
         }
     }
     names
@@ -307,7 +308,8 @@ impl Ctx<'_> {
     pub fn view_dependents(&mut self, schema: &str, relation: &str) -> Result<Vec<String>> {
         let mut dependents = Vec::new();
         for (name, fragment) in self.views(schema)? {
-            if name != relation && relations(&view_query(&fragment)?.0).iter().any(|r| r == relation) {
+            let refers = |(s, r): &(String, String)| r == relation && (s.is_empty() || s == schema);
+            if name != relation && relations(&view_query(&fragment)?.0).iter().any(refers) {
                 dependents.push(name);
             }
         }
@@ -338,9 +340,10 @@ impl Ctx<'_> {
             return Ok(());
         }
         if DropBehavior::try_from(behavior) != Ok(DropBehavior::DropCascade) {
+            let shown = self.shown_relation(schema, relation);
             let detail: Vec<String> = constraints
                 .iter()
-                .map(|(c, t)| format!("constraint {c} on table {t} depends on {kind} {relation}"))
+                .map(|(c, t)| format!("constraint {c} on table {t} depends on {kind} {shown}"))
                 .chain(found.iter().map(|(v, on, kind)| format!("view {v} depends on {kind} {on}")))
                 .collect();
             return Err(PgError {
@@ -348,7 +351,7 @@ impl Ctx<'_> {
                 hint: Some("Use DROP ... CASCADE to drop the dependent objects too.".into()),
                 ..PgError::new(
                     code::DEPENDENT_OBJECTS_STILL_EXIST,
-                    format!("cannot drop {kind} {relation} because other objects depend on it"),
+                    format!("cannot drop {kind} {shown} because other objects depend on it"),
                 )
             });
         }

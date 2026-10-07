@@ -22,6 +22,8 @@ mod infoschema;
 pub mod reg;
 pub(crate) mod routines;
 mod rows;
+
+pub(crate) use rows::row_type_oid;
 pub mod snapshot;
 
 use std::collections::HashMap;

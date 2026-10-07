@@ -266,6 +266,21 @@ fn parent_violation(fk: &ForeignKeyDef, values: &[Value]) -> PgError {
 }
 
 /// family returns the operator family that compares a type's values with the other types of its family, or the type
+/// key_types fails as Postgres does when a foreign key pairs columns, each given with its type, that cannot compare.
+fn key_types(name: &str, (child, ct): (&str, u32), (parent, pt): (&str, u32)) -> Result<()> {
+    if family(ct) == family(pt) || crate::expr::implicitly_converts(ct, pt) {
+        return Ok(());
+    }
+    Err(PgError {
+        detail: Some(format!(
+            "Key columns \"{child}\" and \"{parent}\" are of incompatible types: {} and {}.",
+            crate::cast::type_display(ct),
+            crate::cast::type_display(pt)
+        )),
+        ..PgError::new(code::DATATYPE_MISMATCH, format!("foreign key constraint \"{name}\" cannot be implemented"))
+    })
+}
+
 /// itself for a family of one.
 fn family(ty: u32) -> u32 {
     use crate::oid::*;
@@ -384,22 +399,8 @@ impl Ctx<'_> {
             constraint.conname.clone()
         };
         for (&c, &p) in columns.iter().zip(&referenced) {
-            let (ct, pt) = (child.columns[c].ty.oid, parent.columns[p].ty.oid);
-            if family(ct) != family(pt) && !crate::expr::implicitly_converts(ct, pt) {
-                return Err(PgError {
-                    detail: Some(format!(
-                        "Key columns \"{}\" and \"{}\" are of incompatible types: {} and {}.",
-                        child.columns[c].name,
-                        parent.columns[p].name,
-                        crate::cast::type_display(ct),
-                        crate::cast::type_display(pt)
-                    )),
-                    ..PgError::new(
-                        code::DATATYPE_MISMATCH,
-                        format!("foreign key constraint \"{name}\" cannot be implemented"),
-                    )
-                });
-            }
+            let (child_column, parent_column) = (&child.columns[c], &parent.columns[p]);
+            key_types(&name, (&child_column.name, child_column.ty.oid), (&parent_column.name, parent_column.ty.oid))?;
         }
         let mut fks = self.foreign_keys()?;
         if fks.iter().any(|fk| fk.name == name && fk.child_table == child.name && fk.child_schema == child.schema) {
@@ -653,8 +654,10 @@ impl Ctx<'_> {
             })
             .cloned()
             .collect();
-        let constraints: Vec<(String, String)> =
-            referencing.iter().map(|fk| (fk.name.clone(), fk.child_table.clone())).collect();
+        let constraints: Vec<(String, String)> = referencing
+            .iter()
+            .map(|fk| (fk.name.clone(), self.shown_relation(&fk.child_schema, &fk.child_table)))
+            .collect();
         self.drop_dependents(schema, table, "table", behavior, &constraints)?;
         for fk in &referencing {
             self.drop_other_foreign_key(fk)?;
@@ -860,6 +863,40 @@ impl Ctx<'_> {
     /// whether the table has it.
     pub fn set_foreign_key_deferral(&mut self, table: &TableDef, name: &str, deferral: (bool, bool)) -> Result<bool> {
         self.update_foreign_key(table, name, |fk| (fk.deferrable, fk.initially_deferred) = deferral)
+    }
+
+    /// check_retyped_column fails as Postgres does when a column's new type cannot compare with a column that a
+    /// foreign key pairs it with.
+    pub fn check_retyped_column(&mut self, table: &TableDef, column: &str, ty: u32) -> Result<()> {
+        for fk in self.foreign_keys()? {
+            for (c, p) in fk.child_columns.iter().zip(&fk.parent_columns) {
+                let (is_child, is_parent) = (
+                    fk.child_schema == table.schema && fk.child_table == table.name && c == column,
+                    fk.parent_schema == table.schema && fk.parent_table == table.name && p == column,
+                );
+                if is_child && let Some(parent) = self.txn.table(self.db, &fk.parent_schema, &fk.parent_table)? {
+                    let pt = parent.columns.iter().find(|x| &x.name == p).map_or(ty, |x| x.ty.oid);
+                    key_types(&fk.name, (c, ty), (p, pt))?;
+                }
+                if is_parent && let Some(child) = self.txn.table(self.db, &fk.child_schema, &fk.child_table)? {
+                    let ct = child.columns.iter().find(|x| &x.name == c).map_or(ty, |x| x.ty.oid);
+                    key_types(&fk.name, (c, ct), (p, ty))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// validate_foreign_key checks every row of a table against its foreign key and marks the key valid, as VALIDATE
+    /// CONSTRAINT does, returning whether the table has the foreign key.
+    pub fn validate_foreign_key(&mut self, table: &TableDef, name: &str) -> Result<bool> {
+        let fks = self.foreign_keys()?;
+        let found =
+            fks.iter().find(|fk| fk.child_schema == table.schema && fk.child_table == table.name && fk.name == name);
+        let Some(fk) = found.cloned() else { return Ok(false) };
+        let changes: Vec<Change> = scan(self.db, table)?.into_iter().map(|r| (None, Some(r))).collect();
+        self.check_children(&fk, table, &changes)?;
+        self.update_foreign_key(table, name, |fk| fk.not_valid = false)
     }
 
     /// update_foreign_key changes a table's foreign key, returning whether the table has it.

@@ -163,6 +163,15 @@ impl Ctx<'_> {
         Ok(Some(doltdb::root::Root::decode(&crate::txn::read(self.db, &address)?)?))
     }
 
+    /// shown_relation names a relation as Postgres' messages do: qualified by its schema unless that schema is on the
+    /// search path.
+    pub fn shown_relation(&self, schema: &str, name: &str) -> String {
+        match self.session.search_path().iter().any(|s| s == schema) {
+            true => name.to_string(),
+            false => format!("{schema}.{name}"),
+        }
+    }
+
     /// creation_schema returns the schema that an unqualified new object goes in: the first schema of the search
     /// path that exists.
     pub fn creation_schema(&self) -> Result<String> {
