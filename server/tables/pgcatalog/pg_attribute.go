@@ -381,34 +381,7 @@ func (p PgAttributeHandler) LookupPartitions(context *sql.Context, lookup sql.In
 }
 
 // pgAttributeSchema is the schema for pg_attribute.
-var pgAttributeSchema = sql.Schema{
-	{Name: "attrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "atttypid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attlen", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attnum", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attcacheoff", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "atttypmod", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attndims", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attbyval", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attalign", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attstorage", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attcompression", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attnotnull", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "atthasdef", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "atthasmissing", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attidentity", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attgenerated", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attisdropped", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attislocal", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attinhcount", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attstattarget", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attcollation", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attacl", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgAttributeName},        // TODO: type aclitem[]
-	{Name: "attoptions", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgAttributeName},    // TODO: collation C
-	{Name: "attfdwoptions", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgAttributeName}, // TODO: collation C
-	{Name: "attmissingval", Type: pgtypes.AnyArray, Default: nil, Nullable: true, Source: PgAttributeName},
-}
+var pgAttributeSchema = pgtypes.PgAttributeSchema
 
 // pgAttribute represents a row in the pg_attribute table.
 // We store oids in their native format as well so that we can do range scans on them.

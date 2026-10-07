@@ -29,6 +29,9 @@ func nodeSelectClause(ctx *Context, node *tree.SelectClause) (*vitess.Select, er
 	if node == nil {
 		return nil, nil
 	}
+	parentRows := ctx.catalogRows
+	ctx.catalogRows = catalogRowsForTables(parentRows, node.From.Tables)
+	defer func() { ctx.catalogRows = parentRows }()
 	selectExprs, err := nodeSelectExprs(ctx, node.Exprs)
 	if err != nil {
 		return nil, err
