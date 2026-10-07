@@ -2133,9 +2133,9 @@ fn conjuncts(predicate: Expr, out: &mut Vec<Expr>) {
     }
 }
 
-/// push_down filters a plan's rows by a predicate, applying the conditions that only read the left input of an inner
-/// lateral join to that input, so that the lateral side never runs for rows they reject, as Postgres plans it, and
-/// giving a commit diff table the commits its conditions name.
+/// push_down filters a plan's rows by a predicate, applying each condition of an inner join to the input it alone
+/// reads and joining by the rest, so that the join never pairs rows they reject and a lateral side never runs for
+/// them, as Postgres plans it, and giving a commit diff table the commits its conditions name.
 fn push_down(plan: Plan, predicate: Expr) -> Plan {
     if let Plan::System(crate::dolt::tables::SystemTable::User(mut table)) = plan {
         let mut all = Vec::new();
@@ -2146,30 +2146,54 @@ fn push_down(plan: Plan, predicate: Expr) -> Plan {
             predicate,
         };
     }
-    let Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral: true } = plan else {
+    let Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral } = plan else {
         return Plan::Filter { input: Box::new(plan), predicate };
     };
     let width = left.width();
     let mut all = Vec::new();
     conjuncts(predicate, &mut all);
-    let (pushed, kept): (Vec<Expr>, Vec<Expr>) = all.into_iter().partition(|c| {
-        let mut left_only = true;
+    let (mut to_left, mut to_right, mut to_join) = (Vec::new(), Vec::new(), Vec::new());
+    for c in all {
+        let (mut reads_left, mut reads_right, mut subquery) = (false, false, false);
         c.visit(&mut |e| match e {
-            Expr::Column(i) if *i >= width => left_only = false,
-            Expr::Exists(_) | Expr::Scalar(_) | Expr::AnySubquery(..) => left_only = false,
+            Expr::Column(i) if *i >= width => reads_right = true,
+            Expr::Column(_) => reads_left = true,
+            Expr::Exists(_) | Expr::Scalar(_) | Expr::AnySubquery(..) => subquery = true,
             _ => {}
         });
-        left_only
-    });
+        match (reads_left, reads_right, subquery) {
+            (_, false, false) => to_left.push(c),
+            (false, true, false) if !lateral => to_right.push(shift_columns(c, width)),
+            _ => to_join.push(c),
+        }
+    }
     let and = |conditions: Vec<Expr>| conditions.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
-    let left = match and(pushed) {
+    let left = match and(to_left) {
         Some(condition) => push_down(*left, condition),
         None => *left,
     };
-    let join = Plan::Join { left: Box::new(left), right, kind: JoinKind::Inner, condition, lateral: true };
-    match and(kept) {
-        Some(predicate) => Plan::Filter { input: Box::new(join), predicate },
-        None => join,
+    let right = match and(to_right) {
+        Some(condition) => push_down(*right, condition),
+        None => *right,
+    };
+    if lateral {
+        let join =
+            Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral };
+        return match and(to_join) {
+            Some(predicate) => Plan::Filter { input: Box::new(join), predicate },
+            None => join,
+        };
+    }
+    let condition = and(condition.into_iter().chain(to_join).collect());
+    Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral }
+}
+
+/// shift_columns moves an expression's column references back by `width`, so that it reads the right input of a join
+/// on its own.
+fn shift_columns(expr: Expr, width: usize) -> Expr {
+    match expr {
+        Expr::Column(i) => Expr::Column(i - width),
+        other => other.map_children(&mut |e| shift_columns(e, width)),
     }
 }
 

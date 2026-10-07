@@ -39,6 +39,38 @@ pub const FUNCTIONS: &[Function] = &[
         implementation: pg_get_indexdef,
     },
     Function {
+        name: "pg_get_expr",
+        args: &[super::ANY, crate::oid::OID],
+        ret: TEXT,
+        strict: true,
+        variadic: false,
+        implementation: pg_get_expr,
+    },
+    Function {
+        name: "pg_get_expr",
+        args: &[super::ANY, crate::oid::OID, BOOL],
+        ret: TEXT,
+        strict: true,
+        variadic: false,
+        implementation: pg_get_expr,
+    },
+    Function {
+        name: "pg_get_constraintdef",
+        args: &[crate::oid::OID],
+        ret: TEXT,
+        strict: true,
+        variadic: false,
+        implementation: pg_get_constraintdef,
+    },
+    Function {
+        name: "pg_get_constraintdef",
+        args: &[crate::oid::OID, BOOL],
+        ret: TEXT,
+        strict: true,
+        variadic: false,
+        implementation: pg_get_constraintdef,
+    },
+    Function {
         name: "format_type",
         args: &[crate::oid::OID, crate::oid::INT4],
         ret: TEXT,
@@ -207,8 +239,33 @@ fn format_type(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Text(crate::cast::format_type(type_oid, modifier).unwrap_or_else(|| "???".into())))
 }
 
-/// pg_get_indexdef returns an index's CREATE INDEX statement, or one of its columns for a positive column number, or
-/// NULL for an OID that no index has.
+/// oid_arg returns the OID an argument holds.
+fn oid_arg(value: &Value) -> u32 {
+    match value {
+        Value::Oid(oid) => *oid,
+        Value::Reg(reg) => reg.oid,
+        Value::Int4(i) => *i as u32,
+        Value::Int8(i) => *i as u32,
+        _ => 0,
+    }
+}
+
+/// pg_get_expr prints an expression over a relation's columns, prettily when asked.
+fn pg_get_expr(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let expression = args[0].output().unwrap_or_default();
+    let pretty = matches!(args.get(2), Some(Value::Bool(true)));
+    Ok(Value::Text(ctx.expression_definition(&expression, oid_arg(&args[1]), pretty)?))
+}
+
+/// pg_get_constraintdef prints a constraint's definition, prettily when asked, or returns NULL for an OID that no
+/// constraint has.
+fn pg_get_constraintdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let pretty = matches!(args.get(1), Some(Value::Bool(true)));
+    Ok(ctx.constraint_definition_of(oid_arg(&args[0]), pretty)?.map_or(Value::Null, Value::Text))
+}
+
+/// pg_get_indexdef returns an index's CREATE INDEX statement, prettily when asked, or one of its columns for a positive
+/// column number, or NULL for an OID that no index has.
 fn pg_get_indexdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let index = match &args[0] {
         Value::Oid(oid) => *oid,
@@ -219,5 +276,6 @@ fn pg_get_indexdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         Some(Value::Int4(column)) => *column,
         _ => 0,
     };
-    Ok(ctx.index_definition_of(index, column)?.map_or(Value::Null, Value::Text))
+    let pretty = matches!(args.get(2), Some(Value::Bool(true)));
+    Ok(ctx.index_definition_of(index, column, pretty)?.map_or(Value::Null, Value::Text))
 }

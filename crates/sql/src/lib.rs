@@ -52,6 +52,7 @@ mod plpgsql;
 pub mod query;
 mod roles;
 pub mod routines;
+pub mod ruleutils;
 pub mod sequences;
 pub mod settings;
 pub mod storage;

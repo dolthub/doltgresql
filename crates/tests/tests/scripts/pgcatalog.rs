@@ -39009,7 +39009,7 @@ WHERE pg_catalog.pg_attribute.attidentity != '' AND pg_catalog.pg_sequence.seqre
 FROM pg_catalog.pg_class LEFT OUTER JOIN pg_catalog.pg_attribute ON pg_catalog.pg_class.oid = pg_catalog.pg_attribute.attrelid AND pg_catalog.pg_attribute.attnum > 0 AND NOT pg_catalog.pg_attribute.attisdropped LEFT OUTER JOIN pg_catalog.pg_description ON pg_catalog.pg_description.objoid = pg_catalog.pg_attribute.attrelid AND pg_catalog.pg_description.objsubid = pg_catalog.pg_attribute.attnum JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
 WHERE pg_catalog.pg_class.relkind = ANY (ARRAY['r', 'p', 'f', 'v', 'm']) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != 'pg_catalog' AND pg_catalog.pg_class.relname IN ('dolt_log') ORDER BY pg_catalog.pg_class.relname, pg_catalog.pg_attribute.attnum"#,
                     expected: Expected::Rows {
-                        columns: &[Column("name", NAME), Column("format_type", TEXT), Column("default", TEXT), Column("not_null", BOOL), Column("table_name", NAME), Column("comment", TEXT), Column("generated", CHAR), Column("identity_options", TEXT)],
+                        columns: &[Column("name", NAME), Column("format_type", TEXT), Column("default", TEXT), Column("not_null", BOOL), Column("table_name", NAME), Column("comment", TEXT), Column("generated", CHAR), Column("identity_options", JSON)],
                         rows: &[
                             &[T("commit_hash"), T("text"), Null, T("t"), T("dolt_log"), Null, T(""), Null],
                             &[T("committer"), T("text"), Null, T("t"), T("dolt_log"), Null, T(""), Null],
@@ -39110,7 +39110,7 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
        AND pg_catalog.pg_class.relname IN ('dolt_log') 
        ORDER BY pg_catalog.pg_class.relname, pg_catalog.pg_attribute.attnum"#,
                     expected: Expected::Rows {
-                        columns: &[Column("name", NAME), Column("format_type", TEXT), Column("default", TEXT), Column("not_null", BOOL), Column("table_name", NAME), Column("comment", TEXT), Column("generated", CHAR), Column("identity_options", TEXT)],
+                        columns: &[Column("name", NAME), Column("format_type", TEXT), Column("default", TEXT), Column("not_null", BOOL), Column("table_name", NAME), Column("comment", TEXT), Column("generated", CHAR), Column("identity_options", JSON)],
                         rows: &[
                             &[T("commit_hash"), T("text"), Null, T("t"), T("dolt_log"), Null, T(""), Null],
                             &[T("committer"), T("text"), Null, T("t"), T("dolt_log"), Null, T(""), Null],

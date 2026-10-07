@@ -17,6 +17,9 @@
 use crate::array::Array;
 use crate::catalog::table::TableDef;
 use crate::catalog::{ColumnType, builtin_type, id, oids};
+
+/// SECTION_COLUMN_DEFAULT is the ID section of column defaults.
+const SECTION_COLUMN_DEFAULT: u8 = 5;
 use crate::error::Result;
 use crate::foreign::Rule;
 use crate::oid as types;
@@ -254,6 +257,7 @@ impl Ctx<'_> {
             "pg_class" => self.pg_class(rows),
             "pg_attribute" => self.pg_attribute(rows),
             "pg_index" => self.pg_index(rows),
+            "pg_attrdef" => self.pg_attrdef(rows),
             "pg_indexes" => self.pg_indexes(rows),
             "pg_constraint" => self.pg_constraint(rows),
             "pg_tables" => self.pg_tables(rows),
@@ -847,16 +851,16 @@ impl Ctx<'_> {
                     ("schemaname", text(table.schema.clone())),
                     ("tablename", text(table.name.clone())),
                     ("indexname", text(index.name.clone())),
-                    ("indexdef", text(index_definition(table, &index))),
+                    ("indexdef", text(index_definition(table, &index, true))),
                 ]);
             }
         }
         Ok(())
     }
 
-    /// index_definition_of returns the definition of the index with the OID as pg_get_indexdef prints it, or the name
-    /// of one of its columns for a positive column number, or None when no index has the OID.
-    pub(crate) fn index_definition_of(&mut self, index: u32, column: i32) -> Result<Option<String>> {
+    /// index_definition_of returns the definition of the index with the OID as pg_get_indexdef prints it, prettily
+    /// when asked, or the name of one of its columns for a nonzero column number, or None when no index has the OID.
+    pub(crate) fn index_definition_of(&mut self, index: u32, column: i32, pretty: bool) -> Result<Option<String>> {
         let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
             for candidate in table_indexes(table) {
@@ -864,13 +868,137 @@ impl Ctx<'_> {
                     continue;
                 }
                 return Ok(Some(match usize::try_from(column) {
-                    Ok(position) if position >= 1 => candidate
+                    Ok(0) => index_definition(
+                        table,
+                        &candidate,
+                        !pretty || !self.session.search_path().contains(&table.schema),
+                    ),
+                    Ok(position) => candidate
                         .columns
                         .get(position - 1)
                         .map(|&c| crate::engine::quote_identifier(&table.columns[c].name))
                         .unwrap_or_default(),
-                    _ => index_definition(table, &candidate),
+                    Err(_) => String::new(),
                 }));
+            }
+        }
+        Ok(None)
+    }
+
+    /// pg_attrdef lists the defaults and generation expressions of the user tables' columns.
+    fn pg_attrdef(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            let columns: Vec<(String, ColumnType)> = table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect();
+            for (i, column) in table.columns.iter().enumerate().filter(|(_, c)| !c.default.is_empty()) {
+                let mut analyzer = crate::ruleutils::Analyzer::new(self, columns.clone());
+                let expression = analyzer.deparse(&column.default, Some(column.ty), false)?;
+                rows.push(vec![
+                    (
+                        "oid",
+                        oid(oids::oid(&id::new(SECTION_COLUMN_DEFAULT, &[&table.schema, &table.name, &column.name]))),
+                    ),
+                    ("adrelid", oid(table_oid(&table.schema, &table.name))),
+                    ("adnum", int2(i as i16 + 1)),
+                    ("adbin", text(expression)),
+                ]);
+            }
+        }
+        Ok(())
+    }
+
+    /// expression_definition prints an expression over a relation's columns as pg_get_expr does.
+    pub(crate) fn expression_definition(&mut self, expression: &str, relation: u32, pretty: bool) -> Result<String> {
+        let snapshot = self.snapshot()?;
+        let columns = snapshot
+            .tables
+            .iter()
+            .find(|t| table_oid(&t.schema, &t.name) == relation)
+            .map(|t| t.columns.iter().map(|c| (c.name.clone(), c.ty)).collect())
+            .unwrap_or_default();
+        crate::ruleutils::Analyzer::new(self, columns).deparse(expression, None, pretty)
+    }
+
+    /// constraint_definition_of prints the constraint with the OID as pg_get_constraintdef does, or returns None when
+    /// no constraint has the OID.
+    pub(crate) fn constraint_definition_of(&mut self, constraint: u32, pretty: bool) -> Result<Option<String>> {
+        let snapshot = self.snapshot()?;
+        let deferral = |deferrable: bool, deferred: bool| {
+            let mut suffix = String::new();
+            if deferrable {
+                suffix.push_str(" DEFERRABLE");
+            }
+            if deferred {
+                suffix.push_str(" INITIALLY DEFERRED");
+            }
+            suffix
+        };
+        let names = |table: &TableDef, columns: &[usize]| -> String {
+            let names: Vec<String> =
+                columns.iter().map(|&c| crate::engine::quote_identifier(&table.columns[c].name)).collect();
+            names.join(", ")
+        };
+        for table in &snapshot.tables {
+            for index in table_indexes(table).into_iter().filter(|i| i.unique) {
+                let section = if index.primary { 23 } else { 36 };
+                if constraint_oid(section, &table.schema, &table.name, &index.name) == constraint {
+                    let kind = if index.primary { "PRIMARY KEY" } else { "UNIQUE" };
+                    let suffix = deferral(index.deferrable, index.initially_deferred);
+                    return Ok(Some(format!("{kind} ({}){suffix}", names(table, &index.columns))));
+                }
+            }
+            for check in &table.checks {
+                if constraint_oid(3, &table.schema, &table.name, &check.name) == constraint {
+                    let columns = table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect();
+                    let text =
+                        crate::ruleutils::Analyzer::new(self, columns).deparse(&check.expression, None, pretty)?;
+                    return Ok(Some(format!("CHECK ({text})")));
+                }
+            }
+            for fk in
+                snapshot.foreign_keys.iter().filter(|f| f.child_schema == table.schema && f.child_table == table.name)
+            {
+                if constraint_oid(11, &table.schema, &table.name, &fk.name) != constraint {
+                    continue;
+                }
+                let quote = |names: &[String]| {
+                    names.iter().map(|n| crate::engine::quote_identifier(n)).collect::<Vec<_>>().join(", ")
+                };
+                let parent = if self.session.search_path().contains(&fk.parent_schema) {
+                    crate::engine::quote_identifier(&fk.parent_table)
+                } else {
+                    format!(
+                        "{}.{}",
+                        crate::engine::quote_identifier(&fk.parent_schema),
+                        crate::engine::quote_identifier(&fk.parent_table)
+                    )
+                };
+                let mut text = format!(
+                    "FOREIGN KEY ({}) REFERENCES {parent}({})",
+                    quote(&fk.child_columns),
+                    quote(&fk.parent_columns)
+                );
+                let action = |rule: Rule| match rule {
+                    Rule::NoAction => None,
+                    Rule::Restrict => Some("RESTRICT"),
+                    Rule::Cascade => Some("CASCADE"),
+                    Rule::SetNull => Some("SET NULL"),
+                    Rule::SetDefault => Some("SET DEFAULT"),
+                };
+                if let Some(action) = action(fk.on_update) {
+                    text.push_str(&format!(" ON UPDATE {action}"));
+                }
+                if let Some(action) = action(fk.on_delete) {
+                    text.push_str(&format!(" ON DELETE {action}"));
+                }
+                if fk.match_full {
+                    text.push_str(" MATCH FULL");
+                }
+                text.push_str(&deferral(fk.deferrable, fk.initially_deferred));
+                if fk.not_valid {
+                    text.push_str(" NOT VALID");
+                }
+                return Ok(Some(text));
             }
         }
         Ok(None)
@@ -1116,8 +1244,9 @@ fn rule_letter(rule: Rule) -> &'static str {
     }
 }
 
-/// index_definition returns an index's CREATE INDEX statement as pg_get_indexdef prints it.
-pub fn index_definition(table: &TableDef, index: &TableIndex) -> String {
+/// index_definition returns an index's CREATE INDEX statement as pg_get_indexdef prints it, naming its table with
+/// the schema when asked.
+pub fn index_definition(table: &TableDef, index: &TableIndex, qualified: bool) -> String {
     let rendering = index.vector.and_then(|distance| {
         crate::extensions::vector_rendering(distance, table.columns[*index.columns.first()?].ty.oid)
     });
@@ -1140,11 +1269,11 @@ pub fn index_definition(table: &TableDef, index: &TableIndex) -> String {
             column
         })
         .collect();
+    let schema = if qualified { format!("{}.", crate::engine::quote_identifier(&table.schema)) } else { String::new() };
     format!(
-        "CREATE {}INDEX {} ON {}.{} USING {} ({})",
+        "CREATE {}INDEX {} ON {schema}{} USING {} ({})",
         if index.unique { "UNIQUE " } else { "" },
         crate::engine::quote_identifier(&index.name),
-        crate::engine::quote_identifier(&table.schema),
         crate::engine::quote_identifier(&table.name),
         rendering.as_ref().map_or("btree", |(method, _)| method),
         columns.join(", ")
