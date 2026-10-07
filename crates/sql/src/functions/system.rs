@@ -181,6 +181,8 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_get_function_sqlbody", &[OID], TEXT, pg_get_function_sqlbody),
     f("pg_get_triggerdef", &[OID], TEXT, pg_get_triggerdef),
     f("pg_get_triggerdef", &[OID, BOOL], TEXT, pg_get_triggerdef),
+    f("pg_get_ruledef", &[OID], TEXT, pg_get_ruledef),
+    f("pg_get_ruledef", &[OID, BOOL], TEXT, pg_get_ruledef),
     f("pg_get_viewdef", &[OID], TEXT, pg_get_viewdef),
     f("pg_get_viewdef", &[OID, BOOL], TEXT, pg_get_viewdef),
     f("pg_get_viewdef", &[OID, INT4], TEXT, pg_get_viewdef),
@@ -512,4 +514,28 @@ fn pg_get_viewdef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         Some(view) => Ok(Value::Text(ctx.view_definition(&view.statement, pretty, wrap)?)),
         None => Ok(crate::pgcatalog::builtin_view_definition(relation).map_or(Value::Null, |d| Value::Text(d.into()))),
     }
+}
+
+/// pg_get_ruledef prints the `_RETURN` rule of a view as a CREATE RULE statement, prettily when asked, or returns NULL
+/// for an OID that no rule has.
+fn pg_get_ruledef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    use crate::catalog::{id, oids};
+    let rule = oid_arg(&args[0]);
+    let pretty = matches!(args.get(1), Some(Value::Bool(true)));
+    let snapshot = ctx.snapshot()?;
+    let Some(view) = snapshot
+        .views
+        .iter()
+        .find(|v| oids::oid(&id::new(id::SECTION_TRIGGER, &[&v.schema, &v.name, "_RETURN"])) == rule)
+    else {
+        return Ok(Value::Null);
+    };
+    let quote = crate::engine::quote_identifier;
+    let relation = if pretty && ctx.session.search_path().contains(&view.schema) {
+        quote(&view.name)
+    } else {
+        format!("{}.{}", quote(&view.schema), quote(&view.name))
+    };
+    let definition = ctx.view_definition(&view.statement, pretty, 0)?;
+    Ok(Value::Text(format!("CREATE RULE \"_RETURN\" AS\n    ON SELECT TO {relation} DO INSTEAD {definition}")))
 }

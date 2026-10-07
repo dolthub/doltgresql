@@ -599,8 +599,35 @@ impl Ctx<'_> {
             position: position(location),
             ..PgError::new(code::SYNTAX_ERROR, "INSERT has more expressions than target columns")
         };
-        let source = if select.values_lists.is_empty() || !select.sort_clause.is_empty() || select.limit_count.is_some()
+        let set_row = match select.values_lists.as_slice() {
+            [list] => match list.node.as_ref() {
+                Some(NodeEnum::List(list)) if list.items.iter().any(calls_set_function) => Some(list.items.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let source = if select.values_lists.is_empty()
+            || !select.sort_clause.is_empty()
+            || select.limit_count.is_some()
+            || set_row.is_some()
         {
+            let projected;
+            let select = match set_row {
+                Some(items) => {
+                    let target_list = items
+                        .into_iter()
+                        .map(|item| pg_query::Node {
+                            node: Some(NodeEnum::ResTarget(Box::new(pg_query::protobuf::ResTarget {
+                                val: Some(Box::new(item)),
+                                ..Default::default()
+                            }))),
+                        })
+                        .collect();
+                    projected = pg_query::protobuf::SelectStmt { target_list, ..Default::default() };
+                    &projected
+                }
+                None => select,
+            };
             let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
             if query.columns.len() > targets.len() {
                 return Err(too_many(-1));
@@ -615,6 +642,7 @@ impl Ctx<'_> {
             InsertSource::Select(Box::new(query.plan))
         } else {
             let mut binder = Binder::new(self, Scope::default());
+            binder.clause = "VALUES";
             let mut rows = Vec::new();
             for list in &select.values_lists {
                 let Some(NodeEnum::List(list)) = list.node.as_ref() else { continue };
@@ -1262,4 +1290,21 @@ impl DeletePlan {
         let tag = format!("DELETE {}", deleted.len());
         outcome(ctx, &self.returning, &deleted, tag)
     }
+}
+
+/// calls_set_function reports whether an expression calls a set-returning function.
+fn calls_set_function(node: &pg_query::Node) -> bool {
+    let wrapped = NodeEnum::ResTarget(Box::new(pg_query::protobuf::ResTarget {
+        val: Some(Box::new(node.clone())),
+        ..Default::default()
+    }));
+    wrapped.nodes().into_iter().any(|(node, ..)| match node {
+        pg_query::NodeRef::FuncCall(call) => call
+            .funcname
+            .iter()
+            .filter_map(crate::expr::node_name)
+            .next_back()
+            .is_some_and(crate::functions::returns_set),
+        _ => false,
+    })
 }

@@ -7817,6 +7817,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7828,6 +7829,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7839,6 +7841,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7850,6 +7853,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7877,6 +7881,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7888,6 +7893,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
             ],
@@ -7944,6 +7950,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7955,6 +7962,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7966,6 +7974,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7977,6 +7986,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -8004,6 +8014,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -8015,6 +8026,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -8026,6 +8038,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -8037,6 +8050,7 @@ fn test_schema_visibility_inquiry_functions() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("The OID is one Doltgres gives an object, which names nothing in Postgres"),
                     ..A
                 },
                 ScriptTestAssertion {

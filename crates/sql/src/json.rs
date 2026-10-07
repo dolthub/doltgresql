@@ -796,16 +796,26 @@ impl Json {
     }
 }
 
-/// compare orders jsonb values as Postgres' jsonb btree ordering does.
+/// compare orders jsonb values as Postgres' jsonb btree ordering does, where a scalar is a one-element array that
+/// sorts before the other arrays of one element.
 pub fn compare(a: &Json, b: &Json) -> Ordering {
+    let scalar = |j: &Json| !matches!(j, Json::Array(_) | Json::Object(_));
     match (a, b) {
-        (Json::Array(x), Json::Array(y)) => x
-            .len()
-            .cmp(&y.len())
-            .then_with(|| x.iter().zip(y).map(|(p, q)| compare(p, q)).find(|o| o.is_ne()).unwrap_or(Ordering::Equal)),
+        (Json::Array(x), y) if scalar(y) => x.len().cmp(&1).then(Ordering::Greater),
+        (x, Json::Array(y)) if scalar(x) => 1.cmp(&y.len()).then(Ordering::Less),
+        _ => compare_nested(a, b),
+    }
+}
+
+/// compare_nested orders jsonb values below the top level as Postgres' jsonb btree ordering does.
+fn compare_nested(a: &Json, b: &Json) -> Ordering {
+    match (a, b) {
+        (Json::Array(x), Json::Array(y)) => x.len().cmp(&y.len()).then_with(|| {
+            x.iter().zip(y).map(|(p, q)| compare_nested(p, q)).find(|o| o.is_ne()).unwrap_or(Ordering::Equal)
+        }),
         (Json::Object(x), Json::Object(y)) => x.len().cmp(&y.len()).then_with(|| {
             for ((k1, v1), (k2, v2)) in x.iter().zip(y) {
-                let o = compare_keys(k1, k2).then_with(|| compare(v1, v2));
+                let o = k1.as_bytes().cmp(k2.as_bytes()).then_with(|| compare_nested(v1, v2));
                 if o.is_ne() {
                     return o;
                 }

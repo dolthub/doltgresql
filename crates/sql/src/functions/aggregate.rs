@@ -15,7 +15,6 @@
 //! Aggregate functions, which fold the rows of a group into one value.
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
 
 use crate::cast::type_display;
 use crate::error::{PgError, Result, code};
@@ -218,7 +217,7 @@ impl Accumulator {
     pub fn finish(self, ctx: &mut Ctx<'_>, call: &AggCall) -> Result<Value> {
         let aggregate = &AGGREGATES[call.index];
         let mut rows: Vec<(Vec<Value>, Vec<Value>)> = self.keys.into_iter().zip(self.rows).collect();
-        if !call.order.is_empty() {
+        if !call.order.is_empty() || call.distinct {
             rows.sort_by(|a, b| {
                 for (i, (_, descending, nulls_first)) in call.order.iter().enumerate() {
                     let ordering = match (&a.0[i], &b.0[i]) {
@@ -246,17 +245,15 @@ impl Accumulator {
                         return ordering;
                     }
                 }
-                Ordering::Equal
+                match call.distinct {
+                    true => compare_rows(&a.1, &b.1),
+                    false => Ordering::Equal,
+                }
             });
         }
         let mut args: Vec<Vec<Value>> = rows.into_iter().map(|(_, args)| args).collect();
         if call.distinct {
-            let mut seen = HashSet::new();
-            args.retain(|row| {
-                seen.insert(
-                    row.iter().map(|v| v.output().unwrap_or_else(|| "\u{0}".into())).collect::<Vec<_>>().join("\u{1}"),
-                )
-            });
+            args.dedup_by(|a, b| compare_rows(a, b) == Ordering::Equal);
         }
         if let Some(user) = &call.user {
             return crate::aggregates::run(ctx, user, args);
@@ -293,7 +290,7 @@ impl Accumulator {
                     return Ok(Value::Null);
                 }
                 let element = crate::expr::element_type(call.ret);
-                if crate::array::is_array_type(aggregate.args[0]) {
+                if aggregate.args[0] == ANYARRAY {
                     return array_agg_arrays(element, values);
                 }
                 return Ok(Value::Array(Box::new(crate::array::Array::one_dimensional(element, values))));
@@ -346,8 +343,18 @@ fn json_aggregate(kind: Kind, rows: Vec<Vec<Value>>) -> Result<Value> {
     }
     Ok(match kind {
         Kind::JsonAgg => {
-            let parts = rows.iter().map(|r| datum_json_text(&r[0])).collect::<Result<Vec<_>>>()?;
-            Value::Json(format!("[{}]", parts.join(", ")))
+            let mut out = String::from("[");
+            for (i, row) in rows.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                    if matches!(row[0], Value::Array(_) | Value::Record(_) | Value::Composite(_)) {
+                        out.push_str("\n ");
+                    }
+                }
+                out.push_str(&datum_json_text(&row[0])?);
+            }
+            out.push(']');
+            Value::Json(out)
         }
         Kind::JsonbAgg => {
             let values = rows.iter().map(|r| datum_to_json(&r[0])).collect::<Result<Vec<_>>>()?;
@@ -451,6 +458,22 @@ fn avg(values: &[Value], ret: u32) -> Result<Value> {
     Ok(Value::Numeric(total.div(&Numeric::from_i64(values.len() as i64))?))
 }
 
+/// compare_rows orders two rows of aggregate arguments as a DISTINCT aggregate sorts them: ascending, with NULLs last.
+fn compare_rows(left: &[Value], right: &[Value]) -> Ordering {
+    for (l, r) in left.iter().zip(right) {
+        let ordering = match (l, r) {
+            (Value::Null, Value::Null) => Ordering::Equal,
+            (Value::Null, _) => Ordering::Greater,
+            (_, Value::Null) => Ordering::Less,
+            (l, r) => compare_values(l, r),
+        };
+        if ordering != Ordering::Equal {
+            return ordering;
+        }
+    }
+    Ordering::Equal
+}
+
 /// variance computes a variance or standard deviation as Postgres does: by the Youngs-Cramer algorithm for floats,
 /// and from the sums of the values and their squares for numerics.
 fn variance(values: &[Value], kind: Kind, ret: u32) -> Result<Value> {
@@ -464,12 +487,20 @@ fn variance(values: &[Value], kind: Kind, ret: u32) -> Result<Value> {
         let (mut count, mut sx, mut sxx) = (0.0f64, 0.0f64, 0.0f64);
         for v in values {
             let x = float_of(v);
-            let previous = count;
+            let (previous, previous_sx) = (count, sx);
             count += 1.0;
             sx += x;
             if previous > 0.0 {
                 let tmp = x * count - sx;
                 sxx += tmp * tmp / (count * previous);
+                if sx.is_infinite() || sxx.is_infinite() {
+                    if !previous_sx.is_infinite() && !x.is_infinite() {
+                        return Err(PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "value out of range: overflow"));
+                    }
+                    sxx = f64::NAN;
+                }
+            } else if x.is_infinite() || x.is_nan() {
+                sxx = f64::NAN;
             }
         }
         let var = if sample { sxx / (count - 1.0) } else { sxx / count };

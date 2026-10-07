@@ -532,7 +532,8 @@ impl<'b, 'a> Binder<'b, 'a> {
     /// column binds a column reference.
     fn column(&mut self, column: &pg_query::protobuf::ColumnRef) -> Result<Bound> {
         let names: Vec<&str> = column.fields.iter().filter_map(node_name).collect();
-        if names.len() != column.fields.len() {
+        let star = matches!(column.fields.last().and_then(|f| f.node.as_ref()), Some(NodeEnum::AStar(_)));
+        if names.len() + usize::from(star) != column.fields.len() || (star && names.len() != 1) {
             return Err(PgError::unsupported("this column reference"));
         }
         let (table, name) = match names.as_slice() {
@@ -543,7 +544,7 @@ impl<'b, 'a> Binder<'b, 'a> {
         };
         let full = names.join(".");
         let depth_count = self.scopes.len();
-        for depth in 0..depth_count {
+        for depth in (0..depth_count).filter(|_| !star) {
             let scope = &self.scopes[depth_count - 1 - depth];
             let mut found = scope.columns.iter().enumerate().filter(|(_, c)| {
                 c.name == name
@@ -581,6 +582,9 @@ impl<'b, 'a> Binder<'b, 'a> {
                 let row = Expr::Row(columns.into_iter().map(|(_, e, _)| e).collect());
                 return Ok((Expr::Cast(Box::new(row), typ(type_oid), false), typ(type_oid)));
             }
+        }
+        if star {
+            return Err(PgError::unsupported("this column reference"));
         }
         if let Some((routine, params)) = &self.ctx.named_params
             && let Some(index) = match names.as_slice() {
@@ -711,6 +715,28 @@ impl<'b, 'a> Binder<'b, 'a> {
             }
         }
         if call.over.is_some() {
+            let wrong = |message: String| PgError {
+                position: position(call.location),
+                ..PgError::new(code::WRONG_OBJECT_TYPE, message)
+            };
+            if call.agg_distinct && crate::aggregates::exists(schema, name) {
+                return Err(PgError {
+                    position: position(call.location),
+                    ..PgError::new(code::FEATURE_NOT_SUPPORTED, "DISTINCT is not implemented for window functions")
+                });
+            }
+            if schema.is_some_and(|s| s != "pg_catalog")
+                && !crate::aggregates::exists(schema, name)
+                && !self.ctx.routines_named(schema, name)?.is_empty()
+            {
+                let display = names.join(".");
+                if call.agg_distinct {
+                    return Err(wrong(format!("DISTINCT specified, but {display} is not an aggregate function")));
+                }
+                return Err(wrong(format!(
+                    "OVER specified, but {display} is not a window function nor an aggregate function"
+                )));
+            }
             return self.window_call(name, call);
         }
         if crate::window::is_window_function(name) {
@@ -756,7 +782,10 @@ impl<'b, 'a> Binder<'b, 'a> {
                 args.push(coerce((expr, ty), typ(target), false, arg_location(node))?.0);
             }
         }
-        let call_expr = Expr::Func(resolved.index, args);
+        let mut call_expr = Expr::Func(resolved.index, args);
+        if functions::function(resolved.index).ret == functions::ANYARRAY && resolved.ret != functions::ANYARRAY {
+            call_expr = Expr::Cast(Box::new(call_expr), typ(resolved.ret), false);
+        }
         if functions::returns_set(name) {
             let Some(set_functions) = self.set_functions.as_mut() else {
                 return Err(PgError {
@@ -1309,7 +1338,7 @@ impl<'b, 'a> Binder<'b, 'a> {
         };
         let mut types: Vec<(ColumnType, i32)> = results.iter().map(|((_, t), l)| (*t, *l)).collect();
         if let Some(((_, t), l)) = &default {
-            types.push((*t, *l));
+            types.insert(0, (*t, *l));
         }
         let ty = common_type(&types, "CASE")?;
         let mut whens = Vec::new();

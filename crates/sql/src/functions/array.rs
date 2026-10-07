@@ -282,6 +282,12 @@ fn array_fill(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             .collect()
     };
     let lengths = ints(&args[1])?;
+    if lengths.len() > 6 {
+        return Err(PgError::new(
+            code::PROGRAM_LIMIT_EXCEEDED,
+            format!("number of array dimensions ({}) exceeds the maximum allowed (6)", lengths.len()),
+        ));
+    }
     let lowers = match args.get(2) {
         Some(v) => ints(v)?,
         None => vec![1; lengths.len()],
@@ -292,14 +298,25 @@ fn array_fill(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             ..PgError::new(code::ARRAY_SUBSCRIPT_ERROR, "wrong number of array subscripts")
         });
     }
+    let too_large = || PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "array size exceeds the maximum allowed (134217727)");
+    let mut count = i64::from(!lengths.is_empty());
+    for &n in &lengths {
+        if n < 0 {
+            return Err(too_large());
+        }
+        count = i32::try_from(count * n as i64).map_err(|_| too_large())? as i64;
+    }
+    if count > 134217727 {
+        return Err(too_large());
+    }
+    if let Some((_, &lower)) = lengths.iter().zip(&lowers).find(|(n, l)| n.checked_add(**l).is_none()) {
+        return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, format!("array lower bound is too large: {lower}")));
+    }
     let element = value_type(&args[0]);
-    if lengths.is_empty() || lengths.contains(&0) {
+    if count == 0 {
         return Ok(Value::Array(Box::new(Array { element, dims: Vec::new(), values: Vec::new() })));
     }
-    if lengths.iter().any(|&n| n < 0) {
-        return Err(PgError::new(code::ARRAY_SUBSCRIPT_ERROR, "array size exceeds the maximum allowed (134217727)"));
-    }
-    let count = lengths.iter().map(|&n| n as usize).product();
+    let count = count as usize;
     let dims = lengths.into_iter().zip(lowers).collect();
     Ok(Value::Array(Box::new(Array { element, dims, values: vec![args[0].clone(); count] })))
 }

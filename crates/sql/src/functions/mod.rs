@@ -254,7 +254,7 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
     let f = r.functions[index];
     // A polymorphic parameter takes the type of its argument, and the result follows it.
     let mut element = None;
-    for (&p, &t) in params.iter().zip(types) {
+    for (&p, &t) in params.iter().zip(types).filter(|(_, t)| **t != oid::UNKNOWN) {
         match p {
             ANYELEMENT | ANYNONARRAY => element = element.or(Some(t)),
             ANYARRAY => {

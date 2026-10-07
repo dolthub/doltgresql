@@ -255,12 +255,13 @@ impl<'b, 'a> Binder<'b, 'a> {
                 (WindowKind::Aggregate(index), args, typ(ret))
             }
             None => {
+                let message = match call.agg_distinct {
+                    true => format!("DISTINCT specified, but {name} is not an aggregate function"),
+                    false => format!("OVER specified, but {name} is not a window function nor an aggregate function"),
+                };
                 return Err(PgError {
                     position: position(call.location),
-                    ..PgError::new(
-                        code::WRONG_OBJECT_TYPE,
-                        format!("OVER specified, but {name} is not a window function nor an aggregate function"),
-                    )
+                    ..PgError::new(code::WRONG_OBJECT_TYPE, message)
                 });
             }
         };

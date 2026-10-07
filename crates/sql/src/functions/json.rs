@@ -19,7 +19,7 @@ use crate::array::Array;
 use crate::error::{PgError, Result, code};
 use crate::json::{self, Json};
 use crate::numeric::Numeric;
-use crate::oid::{BOOL, INT4, JSON, JSONB, TEXT, TEXT_ARRAY};
+use crate::oid::{BOOL, INT4, JSON, JSONB, RECORD, TEXT, TEXT_ARRAY};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -114,7 +114,9 @@ pub const FUNCTIONS: &[Function] = &[
     f("to_json", &[ANYELEMENT], JSON, to_json),
     f("to_jsonb", &[ANYELEMENT], JSONB, to_jsonb),
     f("row_to_json", &[ANYELEMENT], JSON, to_json),
+    f("row_to_json", &[RECORD, BOOL], JSON, to_json_pretty),
     f("array_to_json", &[ANYARRAY], JSON, to_json),
+    f("array_to_json", &[ANYARRAY, BOOL], JSON, to_json_pretty),
     v("json_build_object", JSON, build_object),
     v("jsonb_build_object", JSONB, build_object_b),
     v("json_build_array", JSON, build_array),
@@ -208,7 +210,16 @@ fn field(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// element implements -> with an index.
 fn element(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let index = int_arg(&args[1]);
-    raw_part(&args[0], &|j| j.index(index).cloned(), &|r| r.index(index))
+    raw_part(&args[0], &|j| scalar_element(j, index).cloned(), &|r| r.index(index))
+}
+
+/// scalar_element returns the element at an index of a jsonb array, where a scalar is the one element of an array, as
+/// Postgres stores a scalar.
+fn scalar_element(json: &Json, index: i64) -> Option<&Json> {
+    match json {
+        Json::Array(_) | Json::Object(_) => json.index(index),
+        scalar => (index == 0 || index == -1).then_some(scalar),
+    }
 }
 
 /// scalar returns a value as ->> returns it.
@@ -225,7 +236,7 @@ fn field_text(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// element_text implements ->> with an index.
 fn element_text(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let index = int_arg(&args[1]);
-    raw_text(&args[0], &|j| j.index(index).cloned(), &|r| r.index(index))
+    raw_text(&args[0], &|j| scalar_element(j, index).cloned(), &|r| r.index(index))
 }
 
 /// path_steps returns a text array argument's elements.
@@ -440,14 +451,12 @@ fn object_keys(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     {
         return Ok(Value::Set(items.into_iter().map(|(k, _)| Value::Text(k)).collect()));
     }
+    let name = if matches!(args[0], Value::Json(_)) { "json_object_keys" } else { "jsonb_object_keys" };
     match document(&args[0])? {
         Json::Object(items) => Ok(Value::Set(items.into_iter().map(|(k, _)| Value::Text(k)).collect())),
         other => Err(PgError::new(
             code::INVALID_PARAMETER_VALUE,
-            format!(
-                "cannot call jsonb_object_keys on {}",
-                if matches!(other, Json::Array(_)) { "an array" } else { "a scalar" }
-            ),
+            format!("cannot call {name} on {}", if matches!(other, Json::Array(_)) { "an array" } else { "a scalar" }),
         )),
     }
 }
@@ -548,7 +557,11 @@ fn strip(json: Json) -> Json {
 
 /// strip_nulls removes object fields whose values are null, recursively.
 fn strip_nulls(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(wrap(&args[0], strip(document(&args[0])?)))
+    let stripped = strip(document(&args[0])?);
+    Ok(match args[0] {
+        Value::Json(_) => Value::Json(stripped.compact()),
+        _ => wrap(&args[0], stripped),
+    })
 }
 
 /// write_pretty prints a value as jsonb_pretty does, indenting nested values by four spaces.
@@ -731,9 +744,13 @@ fn iso_8601(value: &Value, text: String) -> String {
         Value::Timestamp(_) => text.replacen(' ', "T", 1),
         Value::TimestampTz(_) => {
             let text = text.replacen(' ', "T", 1);
+            let (text, era) = match text.strip_suffix(" BC") {
+                Some(text) => (text.to_string(), " BC"),
+                None => (text, ""),
+            };
             match text.rfind(['+', '-']) {
-                Some(i) if i > 10 && text.len() - i == 3 => format!("{text}:00"),
-                _ => text,
+                Some(i) if i > 10 && text.len() - i == 3 => format!("{text}:00{era}"),
+                _ => format!("{text}{era}"),
             }
         }
         _ => text,
@@ -756,6 +773,12 @@ fn array_to_json(array: &Array) -> Result<Json> {
 /// datum_json_text returns a value as json text, as to_json and the json builders write each value: json as written,
 /// jsonb as it prints, and arrays and records without spaces.
 pub fn datum_json_text(value: &Value) -> Result<String> {
+    separated_json_text(value, ",")
+}
+
+/// separated_json_text converts a value to json text, separating the elements of an array's outer dimension and a row's fields
+/// with the separator, as array_to_json and row_to_json do with line feeds.
+fn separated_json_text(value: &Value, separator: &str) -> Result<String> {
     Ok(match value {
         Value::Json(text) => text.clone(),
         Value::Jsonb(json) => json.to_text(),
@@ -768,13 +791,13 @@ pub fn datum_json_text(value: &Value) -> Result<String> {
             for &(length, _) in array.dims.iter().skip(1).rev() {
                 level = level.chunks(length.max(1) as usize).map(|c| format!("[{}]", c.join(","))).collect();
             }
-            format!("[{}]", level.join(","))
+            format!("[{}]", level.join(separator))
         }
         Value::Record(fields) => {
             let mut out = String::from("{");
             for (i, field) in fields.iter().enumerate() {
                 if i > 0 {
-                    out.push(',');
+                    out.push_str(separator);
                 }
                 out.push_str(&format!("\"f{}\":", i + 1));
                 out.push_str(&datum_json_text(field)?);
@@ -786,7 +809,7 @@ pub fn datum_json_text(value: &Value) -> Result<String> {
             let mut out = String::from("{");
             for (i, (name, field)) in field_names(c).into_iter().zip(&c.fields).enumerate() {
                 if i > 0 {
-                    out.push(',');
+                    out.push_str(separator);
                 }
                 out.push_str(&Json::String(name).plain());
                 out.push(':');
@@ -794,6 +817,13 @@ pub fn datum_json_text(value: &Value) -> Result<String> {
             }
             out.push('}');
             out
+        }
+        Value::Float4(_) | Value::Float8(_) => {
+            let text = value.output().unwrap_or_default();
+            match text.parse::<f64>().is_ok_and(f64::is_finite) {
+                true => text,
+                false => Json::String(text).plain(),
+            }
         }
         other => datum_to_json(other)?.plain(),
     })
@@ -804,6 +834,12 @@ fn to_json(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Json(datum_json_text(&args[0])?))
 }
 
+/// to_json_pretty converts an array or row to json, with line feeds between its outer elements when asked.
+fn to_json_pretty(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let separator = if args[1] == Value::Bool(true) { ",\n " } else { "," };
+    Ok(Value::Json(separated_json_text(&args[0], separator)?))
+}
+
 /// to_jsonb converts a value to jsonb.
 fn to_jsonb(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Jsonb(Box::new(json::normalize(datum_to_json(&args[0])?))))
@@ -811,15 +847,15 @@ fn to_jsonb(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 
 /// object_texts reads json_build_object's alternating keys and values, with each value as json text.
 fn object_texts(args: &[Value]) -> Result<Vec<(String, String)>> {
-    let pairs = object_pairs(args)?;
+    let pairs = object_pairs(args, "json_build_object")?;
     pairs.into_iter().zip(args.chunks(2)).map(|((key, _), pair)| Ok((key, datum_json_text(&pair[1])?))).collect()
 }
 
 /// object_pairs reads build_object's alternating keys and values.
-fn object_pairs(args: &[Value]) -> Result<Vec<(String, Json)>> {
+fn object_pairs(args: &[Value], function: &str) -> Result<Vec<(String, Json)>> {
     if !args.len().is_multiple_of(2) {
         return Err(PgError {
-            hint: Some("The arguments of json_build_object() must consist of alternating keys and values.".into()),
+            hint: Some(format!("The arguments of {function}() must consist of alternating keys and values.")),
             ..PgError::new(code::INVALID_PARAMETER_VALUE, "argument list must have even number of elements")
         });
     }
@@ -851,7 +887,7 @@ fn build_object(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 
 /// build_object_b builds a jsonb object.
 fn build_object_b(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Jsonb(Box::new(json::normalize(Json::Object(object_pairs(args)?)))))
+    Ok(Value::Jsonb(Box::new(json::normalize(Json::Object(object_pairs(args, "jsonb_build_object")?)))))
 }
 
 /// build_array builds a json array.

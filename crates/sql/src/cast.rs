@@ -62,20 +62,21 @@ pub fn format_type(type_oid: u32, modifier: Option<i32>) -> Option<String> {
     let typmod = modifier.filter(|m| *m >= 0);
     let with = |name: &str, suffix: String| Some(format!("{name}{suffix}"));
     let precision = |p: i32| format!("({p})");
+    let length = |m: i32| if m > 4 { precision(m - 4) } else { String::new() };
     match type_oid {
         oid::BPCHAR => match (typmod, modifier) {
-            (Some(m), _) => return with("character", precision(m - 4)),
+            (Some(m), _) => return with("character", length(m)),
             (None, None) => return Some("character".into()),
             _ => {}
         },
-        oid::VARCHAR => return with("character varying", typmod.map(|m| precision(m - 4)).unwrap_or_default()),
+        oid::VARCHAR => return with("character varying", typmod.map(length).unwrap_or_default()),
         oid::BIT => match (typmod, modifier) {
             (Some(m), _) => return with("bit", precision(m)),
             _ => return Some("bit".into()),
         },
         oid::VARBIT => return with("bit varying", typmod.map(precision).unwrap_or_default()),
         oid::NUMERIC => {
-            let suffix = typmod.map(|m| {
+            let suffix = typmod.filter(|m| *m >= 4).map(|m| {
                 let packed = m - 4;
                 format!("({},{})", packed >> 16, ((packed & 0x7ff) ^ 1024) - 1024)
             });
@@ -91,9 +92,10 @@ pub fn format_type(type_oid: u32, modifier: Option<i32>) -> Option<String> {
             return Some(format!("{name}{} {zone} time zone", typmod.map(precision).unwrap_or_default()));
         }
         oid::INTERVAL => return with("interval", typmod.map(|m| precision(m & 0xffff)).unwrap_or_default()),
-        oid::BOOL | oid::INT2 | oid::INT4 | oid::INT8 | oid::FLOAT4 | oid::FLOAT8 | oid::CHAR => {
+        oid::BOOL | oid::INT2 | oid::INT4 | oid::INT8 | oid::FLOAT4 | oid::FLOAT8 => {
             return Some(type_display(type_oid).into_owned());
         }
+        oid::CHAR => return with("\"char\"", typmod.map(precision).unwrap_or_default()),
         _ => {}
     }
     let name = if let Some(builtin) = builtin_type(type_oid) {
@@ -753,7 +755,7 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
                 Value::Int8(i) => i as f64,
                 Value::Float4(f) => f as f64,
                 Value::Float8(f) => f,
-                Value::Numeric(n) => n.to_f64(),
+                Value::Numeric(n) => return input(&n.to_string(), to.oid),
                 Value::Text(text) => return input(&text, to.oid),
                 other => return Err(cannot_cast(&other, to.oid)),
             };
