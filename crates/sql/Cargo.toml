@@ -31,6 +31,7 @@ sha2 = "0.10"
 store = { path = "../store" }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 zstd = "0.13"
+fancy-regex = "0.19.2"
 
 [lints]
 workspace = true

@@ -1951,3 +1951,103 @@ fn test_vacuum_comment_and_system_check_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_create_table_like_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "create table like",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE src (id int PRIMARY KEY, a text NOT NULL DEFAULT 'x', b int CHECK (b > 0), c int GENERATED ALWAYS AS (b * 2) STORED, u int UNIQUE);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE l1 (LIKE src);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE l2 (LIKE src INCLUDING ALL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE l3 (extra int, LIKE src INCLUDING DEFAULTS INCLUDING CONSTRAINTS, more text);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE l4 (LIKE nosuch);",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "nosuch" does not exist"#, position: 23, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c.relname, a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull, pg_get_expr(d.adbin, d.adrelid) FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum WHERE c.relname IN ('l1','l2','l3') AND a.attnum > 0 ORDER BY 1, a.attnum;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("attname", NAME), Column("format_type", TEXT), Column("attnotnull", BOOL), Column("pg_get_expr", TEXT)],
+                        rows: &[
+                            &[T("l1"), T("id"), T("integer"), T("t"), Null],
+                            &[T("l1"), T("a"), T("text"), T("t"), Null],
+                            &[T("l1"), T("b"), T("integer"), T("f"), Null],
+                            &[T("l1"), T("c"), T("integer"), T("f"), Null],
+                            &[T("l1"), T("u"), T("integer"), T("f"), Null],
+                            &[T("l2"), T("id"), T("integer"), T("t"), Null],
+                            &[T("l2"), T("a"), T("text"), T("t"), T("'x'::text")],
+                            &[T("l2"), T("b"), T("integer"), T("f"), Null],
+                            &[T("l2"), T("c"), T("integer"), T("f"), T("(b * 2)")],
+                            &[T("l2"), T("u"), T("integer"), T("f"), Null],
+                            &[T("l3"), T("extra"), T("integer"), T("f"), Null],
+                            &[T("l3"), T("id"), T("integer"), T("t"), Null],
+                            &[T("l3"), T("a"), T("text"), T("t"), T("'x'::text")],
+                            &[T("l3"), T("b"), T("integer"), T("f"), Null],
+                            &[T("l3"), T("c"), T("integer"), T("f"), Null],
+                            &[T("l3"), T("u"), T("integer"), T("f"), Null],
+                            &[T("l3"), T("more"), T("text"), T("f"), Null],
+                        ],
+                        tag: "SELECT 17",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT conrelid::regclass, conname, contype, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid IN ('l1'::regclass, 'l2'::regclass, 'l3'::regclass) ORDER BY 1::text, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("conrelid", REGCLASS), Column("conname", NAME), Column("contype", CHAR), Column("pg_get_constraintdef", TEXT)],
+                        rows: &[
+                            &[T("l2"), T("l2_pkey"), T("p"), T("PRIMARY KEY (id)")],
+                            &[T("l2"), T("l2_u_key"), T("u"), T("UNIQUE (u)")],
+                            &[T("l2"), T("src_b_check"), T("c"), T("CHECK ((b > 0))")],
+                            &[T("l3"), T("src_b_check"), T("c"), T("CHECK ((b > 0))")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO l1 (id, a) VALUES (1, 'q');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO l2 (id, b) VALUES (1, 5);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM l2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("a", TEXT), Column("b", INT4), Column("c", INT4), Column("u", INT4)],
+                        rows: &[
+                            &[T("1"), T("x"), T("5"), T("10"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

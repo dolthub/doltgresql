@@ -14,7 +14,7 @@
 
 //! Pattern matching: LIKE, SIMILAR TO, and Postgres' POSIX regular expressions.
 
-use regex::{Regex, RegexBuilder};
+use fancy_regex::{Regex, RegexBuilder};
 
 use super::{ANY, Function, text};
 use crate::array::Array;
@@ -43,6 +43,9 @@ pub const FUNCTIONS: &[Function] = &[
     f("similar_to_escape", &[TEXT, TEXT], TEXT, similar_to_escape),
     f("regexp_replace", &[TEXT, TEXT, TEXT], TEXT, regexp_replace),
     f("regexp_replace", &[TEXT, TEXT, TEXT, TEXT], TEXT, regexp_replace),
+    f("regexp_replace", &[TEXT, TEXT, TEXT, INT4], TEXT, regexp_replace_from),
+    f("regexp_replace", &[TEXT, TEXT, TEXT, INT4, INT4], TEXT, regexp_replace_from),
+    f("regexp_replace", &[TEXT, TEXT, TEXT, INT4, INT4, TEXT], TEXT, regexp_replace_from),
     f("regexp_match", &[TEXT, TEXT], TEXT_ARRAY, regexp_match),
     f("regexp_match", &[TEXT, TEXT, TEXT], TEXT_ARRAY, regexp_match),
     f("regexp_matches", &[TEXT, TEXT], TEXT_ARRAY, regexp_matches),
@@ -50,6 +53,19 @@ pub const FUNCTIONS: &[Function] = &[
     f("regexp_like", &[TEXT, TEXT], BOOL, regexp_like),
     f("regexp_like", &[TEXT, TEXT, TEXT], BOOL, regexp_like),
     f("regexp_count", &[TEXT, TEXT], INT4, regexp_count),
+    f("regexp_count", &[TEXT, TEXT, INT4], INT4, regexp_count),
+    f("regexp_count", &[TEXT, TEXT, INT4, TEXT], INT4, regexp_count),
+    f("regexp_instr", &[TEXT, TEXT], INT4, regexp_instr),
+    f("regexp_instr", &[TEXT, TEXT, INT4], INT4, regexp_instr),
+    f("regexp_instr", &[TEXT, TEXT, INT4, INT4], INT4, regexp_instr),
+    f("regexp_instr", &[TEXT, TEXT, INT4, INT4, INT4], INT4, regexp_instr),
+    f("regexp_instr", &[TEXT, TEXT, INT4, INT4, INT4, TEXT], INT4, regexp_instr),
+    f("regexp_instr", &[TEXT, TEXT, INT4, INT4, INT4, TEXT, INT4], INT4, regexp_instr),
+    f("regexp_substr", &[TEXT, TEXT], TEXT, regexp_substr),
+    f("regexp_substr", &[TEXT, TEXT, INT4], TEXT, regexp_substr),
+    f("regexp_substr", &[TEXT, TEXT, INT4, INT4], TEXT, regexp_substr),
+    f("regexp_substr", &[TEXT, TEXT, INT4, INT4, TEXT], TEXT, regexp_substr),
+    f("regexp_substr", &[TEXT, TEXT, INT4, INT4, TEXT, INT4], TEXT, regexp_substr),
     f("regexp_split_to_array", &[TEXT, TEXT], TEXT_ARRAY, regexp_split_to_array),
     f("regexp_split_to_array", &[TEXT, TEXT, TEXT], TEXT_ARRAY, regexp_split_to_array),
     f("regexp_split_to_table", &[TEXT, TEXT], TEXT, regexp_split_to_table),
@@ -274,15 +290,26 @@ fn compile(pattern: &str, flags: &str) -> Result<Regex> {
     })
 }
 
+/// matching converts the error of running a regular expression, such as running out of backtracking, to Postgres'.
+fn matching<T>(result: std::result::Result<T, fancy_regex::Error>) -> Result<T> {
+    result.map_err(|e| {
+        PgError::new(code::INVALID_REGULAR_EXPRESSION, format!("invalid regular expression: {}", regex_error(&e)))
+    })
+}
+
 /// regex_error summarizes a regular expression error as briefly as Postgres' messages do.
-pub(crate) fn regex_error(err: &regex::Error) -> String {
+pub(crate) fn regex_error(err: &dyn std::fmt::Display) -> String {
     let text = err.to_string();
     let lower = text.to_lowercase();
-    if lower.contains("unclosed group") || lower.contains("unopened group") {
+    if lower.contains("unclosed group")
+        || lower.contains("unopened group")
+        || lower.contains("unclosed open paren")
+        || lower.contains("parenthesis")
+    {
         "parentheses () not balanced".into()
-    } else if lower.contains("unclosed character class") {
+    } else if lower.contains("unclosed character class") || lower.contains("invalid character class") {
         "brackets [] not balanced".into()
-    } else if lower.contains("repetition") {
+    } else if lower.contains("repetition") || lower.contains("target of repeat") {
         "quantifier operand invalid".into()
     } else {
         text.lines().last().unwrap_or_default().trim().to_string()
@@ -315,7 +342,7 @@ pub(crate) fn translate_regex(pattern: &str) -> String {
 
 /// regex_value matches text against a regular expression, optionally ignoring case.
 fn regex_value(args: &[Value], fold: bool) -> Result<bool> {
-    Ok(compile(text(&args[1]), if fold { "i" } else { "" })?.is_match(text(&args[0])))
+    matching(compile(text(&args[1]), if fold { "i" } else { "" })?.is_match(text(&args[0])))
 }
 
 /// regex_match implements ~.
@@ -372,15 +399,12 @@ fn regexp_replace(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let regex = compile(text(&args[1]), flags)?;
     let replace = replacement(text(&args[2]));
     let source = text(&args[0]);
-    Ok(Value::Text(if flags.contains('g') {
-        regex.replace_all(source, replace.as_str()).into_owned()
-    } else {
-        regex.replace(source, replace.as_str()).into_owned()
-    }))
+    let limit = if flags.contains('g') { 0 } else { 1 };
+    Ok(Value::Text(matching(regex.try_replacen(source, limit, replace.as_str()))?.into_owned()))
 }
 
 /// captures returns a match's capture groups as a text array, or the whole match without groups.
-fn captures(regex: &Regex, caps: &regex::Captures<'_>) -> Value {
+fn captures(regex: &Regex, caps: &fancy_regex::Captures<'_, str>) -> Value {
     let values = if regex.captures_len() > 1 {
         (1..regex.captures_len()).map(|i| caps.get(i).map_or(Value::Null, |m| Value::Text(m.as_str().into()))).collect()
     } else {
@@ -399,7 +423,7 @@ fn regexp_match(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         });
     }
     let regex = compile(text(&args[1]), flags)?;
-    Ok(regex.captures(text(&args[0])).map_or(Value::Null, |c| captures(&regex, &c)))
+    Ok(matching(regex.captures(text(&args[0])))?.map_or(Value::Null, |c| captures(&regex, &c)))
 }
 
 /// regexp_matches returns the capture groups of the first match, or of every match with the g flag, as rows.
@@ -408,21 +432,132 @@ fn regexp_matches(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let regex = compile(text(&args[1]), flags)?;
     let source = text(&args[0]);
     let rows: Vec<Value> = if flags.contains('g') {
-        regex.captures_iter(source).map(|c| captures(&regex, &c)).collect()
+        regex.captures_iter(source).map(|c| matching(c).map(|c| captures(&regex, &c))).collect::<Result<_>>()?
     } else {
-        regex.captures(source).map(|c| captures(&regex, &c)).into_iter().collect()
+        matching(regex.captures(source))?.map(|c| captures(&regex, &c)).into_iter().collect()
     };
     Ok(Value::Set(rows))
 }
 
 /// regexp_like reports whether text matches.
 fn regexp_like(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Bool(compile(text(&args[1]), flags(args, 2))?.is_match(text(&args[0]))))
+    Ok(Value::Bool(matching(compile(text(&args[1]), flags(args, 2))?.is_match(text(&args[0])))?))
 }
 
-/// regexp_count counts the matches.
+/// regexp_count counts the matches at or after a starting character.
 fn regexp_count(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Int4(compile(text(&args[1]), "")?.find_iter(text(&args[0])).count() as i32))
+    let start = parameter(args, 2, "start", 1)?;
+    let regex = compile(text(&args[1]), single_flags(args, 3, "regexp_count")?)?;
+    Ok(Value::Int4(matches_from(&regex, text(&args[0]), start)?.len() as i32))
+}
+
+/// regexp_instr returns the character position of the start, or end, of a match or of one of its groups, as Postgres'
+/// regexp_instr does, or 0 without one.
+fn regexp_instr(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let (start, n) = (parameter(args, 2, "start", 1)?, parameter(args, 3, "n", 1)?);
+    let end = match args.get(4) {
+        Some(Value::Int4(e)) if !matches!(e, 0 | 1) => {
+            return Err(PgError::new(
+                code::INVALID_PARAMETER_VALUE,
+                format!("invalid value for parameter \"endoption\": {e}"),
+            ));
+        }
+        Some(Value::Int4(e)) => *e == 1,
+        _ => false,
+    };
+    let group = parameter(args, 6, "subexpr", 0)?;
+    let regex = compile(text(&args[1]), single_flags(args, 5, "regexp_instr")?)?;
+    let source = text(&args[0]);
+    let Some(caps) = matches_from(&regex, source, start)?.into_iter().nth(n as usize - 1) else {
+        return Ok(Value::Int4(0));
+    };
+    Ok(Value::Int4(match caps.get(group as usize) {
+        Some(m) => source[..if end { m.end() } else { m.start() }].chars().count() as i32 + 1,
+        None => 0,
+    }))
+}
+
+/// regexp_substr returns the text of a match or of one of its groups, or NULL without one.
+fn regexp_substr(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let (start, n) = (parameter(args, 2, "start", 1)?, parameter(args, 3, "n", 1)?);
+    let group = parameter(args, 5, "subexpr", 0)?;
+    let regex = compile(text(&args[1]), single_flags(args, 4, "regexp_substr")?)?;
+    let found = matches_from(&regex, text(&args[0]), start)?.into_iter().nth(n as usize - 1);
+    Ok(found
+        .and_then(|caps| caps.get(group as usize).map(|m| Value::Text(m.as_str().to_string())))
+        .unwrap_or(Value::Null))
+}
+
+/// regexp_replace_from replaces the matches at or after a starting character: every one when N is 0 or the g flag is
+/// given, and otherwise the Nth, which is the first without N.
+fn regexp_replace_from(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let start = parameter(args, 3, "start", 1)?;
+    let n = match args.get(4) {
+        Some(Value::Int4(n)) if *n < 0 => {
+            return Err(PgError::new(code::INVALID_PARAMETER_VALUE, format!("invalid value for parameter \"n\": {n}")));
+        }
+        Some(Value::Int4(n)) => *n,
+        _ => 1,
+    };
+    let flags = flags(args, 5);
+    let regex = compile(text(&args[1]), flags)?;
+    let replace = replacement(text(&args[2]));
+    let source = text(&args[0]);
+    let (mut out, mut last) = (String::new(), 0);
+    for (i, caps) in matches_from(&regex, source, start)?.into_iter().enumerate() {
+        if n != 0 && !flags.contains('g') && i as i32 + 1 != n {
+            continue;
+        }
+        let whole = caps.get(0).expect("a match has its whole text");
+        out.push_str(&source[last..whole.start()]);
+        caps.expand(&replace, &mut out);
+        last = whole.end();
+    }
+    out.push_str(&source[last..]);
+    Ok(Value::Text(out))
+}
+
+/// parameter reads an integer argument that must be positive, or for subexpr not negative, failing as Postgres does,
+/// with a default for an argument the call leaves out.
+fn parameter(args: &[Value], index: usize, name: &str, default: i32) -> Result<i32> {
+    let minimum = if name == "subexpr" { 0 } else { 1 };
+    match args.get(index) {
+        Some(Value::Int4(n)) if *n < minimum => {
+            Err(PgError::new(code::INVALID_PARAMETER_VALUE, format!("invalid value for parameter \"{name}\": {n}")))
+        }
+        Some(Value::Int4(n)) => Ok(*n),
+        _ => Ok(default),
+    }
+}
+
+/// single_flags returns an optional flags argument, failing as Postgres does for the g flag, which the function
+/// cannot take.
+fn single_flags<'a>(args: &'a [Value], index: usize, function: &str) -> Result<&'a str> {
+    let flags = flags(args, index);
+    if flags.contains('g') {
+        return Err(PgError::new(
+            code::INVALID_PARAMETER_VALUE,
+            format!("{function}() does not support the \"global\" option"),
+        ));
+    }
+    Ok(flags)
+}
+
+/// matches_from returns the matches of a regular expression in text that start at or after a 1-based character,
+/// where the text before it still counts for anchors.
+fn matches_from<'t>(regex: &Regex, source: &'t str, start: i32) -> Result<Vec<fancy_regex::Captures<'t, str>>> {
+    let mut position = source.char_indices().nth(start as usize - 1).map_or(source.len(), |(i, _)| i);
+    let mut found = Vec::new();
+    while position <= source.len() {
+        let Some(caps) = matching(regex.captures_from_pos(source, position))? else { break };
+        let whole = caps.get(0).expect("a match has its whole text");
+        position = match whole.end() == whole.start() {
+            true => whole.end() + source[whole.end()..].chars().next().map_or(1, char::len_utf8),
+            false => whole.end(),
+        };
+        found.push(caps);
+    }
+    Ok(found)
 }
 
 /// split splits text at the matches, as Postgres does, ignoring empty matches at the ends of the text or right after
@@ -433,6 +568,7 @@ fn split(args: &[Value]) -> Result<Vec<Value>> {
     let mut parts = Vec::new();
     let mut start = 0;
     for m in regex.find_iter(source) {
+        let m = matching(m)?;
         if m.start() == m.end() && (m.start() == start || m.start() == source.len()) {
             continue;
         }
@@ -456,7 +592,7 @@ fn regexp_split_to_table(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// substring_regex returns the first parenthesized group of the first match, or the whole match without groups.
 fn substring_regex(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let regex = compile(text(&args[1]), "")?;
-    Ok(match regex.captures(text(&args[0])) {
+    Ok(match matching(regex.captures(text(&args[0])))? {
         Some(caps) if regex.captures_len() > 1 => caps.get(1).map_or(Value::Null, |m| Value::Text(m.as_str().into())),
         Some(caps) => Value::Text(caps[0].to_string()),
         None => Value::Null,
@@ -485,7 +621,7 @@ fn substring_similar(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         }
     };
     let compiled = compile(&regex, "")?;
-    Ok(match compiled.captures(text(&args[0])) {
+    Ok(match matching(compiled.captures(text(&args[0])))? {
         Some(caps) if parts.len() == 3 => caps.get(1).map_or(Value::Null, |m| Value::Text(m.as_str().into())),
         Some(caps) => Value::Text(caps[0].to_string()),
         None => Value::Null,

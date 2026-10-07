@@ -14584,3 +14584,173 @@ fn test_catalog_encoding_and_ordering_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_regex_feature_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "regular expression features and forms",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"select 'Programmer' ~ '(\w).*?\1' as t;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("t", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 'aa bb cc' ~ '(^(?!aa))+';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 'foobar' ~ 'foo(?=bar)', 'foobaz' ~ 'foo(?=bar)', 'foobar' ~ '(?<=foo)bar', 'xbar' ~ '(?<!foo)bar';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"select regexp_replace('aaa bbb', '(a)\1', 'X', 'g');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("regexp_replace", TEXT)],
+                        rows: &[
+                            &[T("Xa bbb")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_matches('abcabc', '(b)(c)', 'g');",
+                    expected: Expected::Rows {
+                        columns: &[Column("regexp_matches", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{b,c}")],
+                            &[T("{b,c}")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"select regexp_count('abcabc', 'b'), regexp_split_to_array('a1b2c', '\d'), substring('foobar' from 'o(b)a');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("regexp_count", INT4), Column("regexp_split_to_array", TEXT_ARRAY), Column("substring", TEXT)],
+                        rows: &[
+                            &[T("2"), T("{a,b,c}"), T("b")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 'abc' ~ '(';",
+                    expected: Expected::Error(Diagnostic { code: "2201B", message: "invalid regular expression: parentheses () not balanced", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 'abc' ~ '[';",
+                    expected: Expected::Error(Diagnostic { code: "2201B", message: "invalid regular expression: brackets [] not balanced", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select 'abc' ~ '*';",
+                    expected: Expected::Error(Diagnostic { code: "2201B", message: "invalid regular expression: quantifier operand invalid", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 0, 'i');",
+                    expected: Expected::Rows {
+                        columns: &[Column("regexp_replace", TEXT)],
+                        rows: &[
+                            &[T("X PXstgrXSQL fXnctXXn")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_replace('abcabcabc', 'b', 'X', 2), regexp_replace('abcabcabc', 'b', 'X', 1, 2), regexp_replace('abcabcabc', 'B', 'X', 1, 0, 'i'), regexp_replace('abcabc', '^a', 'X', 2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("regexp_replace", TEXT), Column("regexp_replace", TEXT), Column("regexp_replace", TEXT), Column("regexp_replace", TEXT)],
+                        rows: &[
+                            &[T("aXcabcabc"), T("abcaXcabc"), T("aXcaXcaXc"), T("abcabc")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_count('abcabc', 'b', 3), regexp_count('ABC', 'b', 1, 'i');",
+                    expected: Expected::Rows {
+                        columns: &[Column("regexp_count", INT4), Column("regexp_count", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_instr('abcabc', 'b'), regexp_instr('abcabc', 'b', 1, 2), regexp_instr('abcabc', 'b', 1, 1, 1), regexp_instr('abcabc', '(b)(c)', 1, 1, 0, '', 2), regexp_instr('abc', 'z');",
+                    expected: Expected::Rows {
+                        columns: &[Column("regexp_instr", INT4), Column("regexp_instr", INT4), Column("regexp_instr", INT4), Column("regexp_instr", INT4), Column("regexp_instr", INT4)],
+                        rows: &[
+                            &[T("2"), T("5"), T("3"), T("3"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_substr('abcabc', 'b.'), regexp_substr('abcabc', 'b.', 1, 2), regexp_substr('abcabc', '(b)(c)', 1, 1, '', 2), regexp_substr('abc', 'z');",
+                    expected: Expected::Rows {
+                        columns: &[Column("regexp_substr", TEXT), Column("regexp_substr", TEXT), Column("regexp_substr", TEXT), Column("regexp_substr", TEXT)],
+                        rows: &[
+                            &[T("bc"), T("bc"), T("c"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_count('abc', 'b', 0);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"invalid value for parameter "start": 0"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_instr('abc', 'b', 1, 1, 2);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"invalid value for parameter "endoption": 2"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "select regexp_substr('abc', 'b', 1, 1, 'g');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"regexp_substr() does not support the "global" option"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

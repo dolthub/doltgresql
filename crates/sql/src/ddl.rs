@@ -536,11 +536,70 @@ impl Ctx<'_> {
             return Err(PgError::new(code::DUPLICATE_TABLE, message));
         }
         self.check_nonlocal_name(&relation.relname)?;
+        let mut liked = Vec::new();
+        for element in &create.table_elts {
+            match element.node.as_ref() {
+                Some(NodeEnum::TableLikeClause(clause)) => liked.extend(self.like(clause)?),
+                _ => liked.push(element.clone()),
+            }
+        }
+        let create = &CreateStmt { table_elts: liked, ..create.clone() };
         if create.inh_relations.is_empty() {
             return self.create_table_in(create, schema);
         }
         let table_elts = self.inherit(create)?;
         self.create_table_in(&CreateStmt { table_elts, inh_relations: Vec::new(), ..create.clone() }, schema)
+    }
+
+    /// like returns the table elements that `LIKE table` copies, as Postgres' transformTableLikeClause does: the
+    /// columns with their NOT NULL constraints, their defaults and generation expressions when it includes them, the
+    /// check constraints with INCLUDING CONSTRAINTS, and the primary key and unique constraints with INCLUDING INDEXES.
+    fn like(&mut self, clause: &pg_query::protobuf::TableLikeClause) -> Result<Vec<Node>> {
+        //TODO: copy the table's other indexes with INCLUDING INDEXES, and its comments with INCLUDING COMMENTS
+        let relation = clause.relation.as_ref().ok_or_else(|| PgError::internal("LIKE without a table"))?;
+        let table = self.resolve_table(relation)?;
+        let including = |bit: u32| clause.options & (1 << bit) != 0;
+        let mut definitions: Vec<String> = table
+            .columns
+            .iter()
+            .map(|c| {
+                let kept = if c.generated { including(4) } else { including(3) };
+                let column = ColumnDef {
+                    default: if kept { c.default.clone() } else { String::new() },
+                    generated: c.generated && kept,
+                    ..c.clone()
+                };
+                crate::dolt::patch::column_definition(&column)
+            })
+            .collect();
+        if including(2) {
+            definitions.extend(
+                table.checks.iter().map(|c| {
+                    format!("CONSTRAINT {} CHECK ({})", crate::engine::quote_identifier(&c.name), c.expression)
+                }),
+            );
+        }
+        if including(6) {
+            let names = |columns: &[usize]| {
+                let names: Vec<String> =
+                    columns.iter().map(|&c| crate::engine::quote_identifier(&table.columns[c].name)).collect();
+                names.join(", ")
+            };
+            if !table.keyless() {
+                definitions.push(format!("PRIMARY KEY ({})", names(&table.key_columns)));
+            }
+            let uniques =
+                table.indexes.iter().filter(|i| i.unique && !i.system && i.columns.iter().all(|&c| c < HIDDEN_BASE));
+            definitions.extend(uniques.map(|i| format!("UNIQUE ({})", names(&i.columns))));
+        }
+        let parsed =
+            pg_query::parse(&format!("CREATE TABLE liked ({})", definitions.join(", "))).map_err(PgError::internal)?;
+        let Some(NodeEnum::CreateStmt(liked)) =
+            parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
+        else {
+            return Err(PgError::internal("the columns of LIKE"));
+        };
+        Ok(liked.table_elts)
     }
 
     /// inherit returns a CREATE TABLE's elements with the columns and check constraints of the tables it inherits from
