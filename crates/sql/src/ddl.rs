@@ -1138,10 +1138,10 @@ pub(crate) fn new_index(name: String, columns: Vec<usize>, unique: bool) -> Inde
 }
 
 /// NAMEDATALEN_MAX is the longest identifier Postgres keeps, in bytes.
-const NAMEDATALEN_MAX: usize = 63;
+pub(crate) const NAMEDATALEN_MAX: usize = 63;
 
 /// clip returns the longest prefix of a name within a byte length that ends on a character boundary.
-fn clip(name: &str, len: usize) -> &str {
+pub(crate) fn clip(name: &str, len: usize) -> &str {
     let mut end = len.min(name.len());
     while !name.is_char_boundary(end) {
         end -= 1;

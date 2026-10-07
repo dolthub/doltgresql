@@ -882,8 +882,24 @@ fn bind_assignments(
                 format!("column \"{}\" of relation \"{}\" does not exist", target.name, table.name),
             )
         })?;
+        let value = target.val.as_deref().ok_or_else(|| PgError::internal("an assignment without a value"))?;
+        let column = &table.columns[i];
         if !target.indirection.is_empty() {
-            return Err(PgError::unsupported("this assignment"));
+            if !crate::array::is_array_type(column.ty.oid) {
+                return Err(PgError::unsupported("this assignment"));
+            }
+            let (subscripts, slice) = binder.subscripts(&target.indirection)?;
+            let element = crate::expr::element_type(column.ty.oid);
+            let ty = if slice { column.ty } else { ColumnType { oid: element, modifier: column.ty.modifier } };
+            let bound = binder.bind(value)?;
+            let value = assign(bound, ty, &column.name, arg_location(value))?.0;
+            let base = match assignments.iter().position(|(c, _)| *c == i) {
+                Some(at) => assignments.remove(at).1,
+                None => Expr::Column(i),
+            };
+            let expr = Expr::SubscriptAssign(Box::new(base), element, subscripts, slice, Box::new(value));
+            assignments.push((i, expr));
+            continue;
         }
         if assignments.iter().any(|(c, _)| *c == i) {
             return Err(PgError::new(
@@ -891,8 +907,6 @@ fn bind_assignments(
                 format!("multiple assignments to same column \"{}\"", target.name),
             ));
         }
-        let value = target.val.as_deref().ok_or_else(|| PgError::internal("an assignment without a value"))?;
-        let column = &table.columns[i];
         let expr = if matches!(value.node.as_ref(), Some(NodeEnum::SetToDefault(_))) {
             Expr::Default(i)
         } else if column.generated {

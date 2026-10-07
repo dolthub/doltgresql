@@ -47,6 +47,8 @@ pub enum Kind {
     Array(u32),
     /// A base type that an extension provides.
     Base(&'static crate::extensions::BaseType),
+    /// A shell type, which CREATE TYPE names before defining it.
+    Shell,
 }
 
 /// Domain is a type that restricts the values of its base type.
@@ -142,6 +144,7 @@ impl UserType {
                 default: (!definition.default.is_empty())
                     .then(|| String::from_utf8_lossy(&definition.default).into_owned()),
             }),
+            b"p" => Kind::Shell,
             _ if definition.elem.is_empty() => {
                 let send = id::segments(&definition.send_func).into_iter().nth(1).unwrap_or_default();
                 match crate::extensions::base_type(&send) {
@@ -424,6 +427,20 @@ pub fn row_type(table: &crate::catalog::table::TableDef) -> SerializedType {
     definition
 }
 
+/// shell_type returns the definition Go stores for a shell type.
+fn shell_type(schema: &str, name: &str) -> SerializedType {
+    let mut t = new_type(schema, name);
+    t.typ_length = 4;
+    t.passed_by_val = true;
+    t.typ_type = b"p".to_vec();
+    t.typ_category = b"P".to_vec();
+    t.is_defined = false;
+    t.array = Vec::new();
+    t.input_func = function_ref("shell_in", &["cstring"]);
+    t.output_func = function_ref("shell_out", &["void"]);
+    t
+}
+
 /// array_type returns the definition Go stores for the array type of a type.
 pub fn array_type(base: &SerializedType) -> SerializedType {
     let mut segments = id::segments(&base.id).into_iter();
@@ -517,13 +534,47 @@ impl Ctx<'_> {
     /// table's row type already has the name.
     fn new_type_schema(&mut self, schema: &str, name: &str) -> Result<String> {
         let schema = self.target_schema(schema, -1)?;
-        let taken = self.user_types()?.values().any(|t| t.schema == schema && t.name == name)
-            || crate::catalog::builtin_type_named(name).is_some() && schema == "pg_catalog"
-            || self.txn.root.table(self.db, &schema, name)?.is_some();
+        let existing = self.user_types()?.values().find(|t| t.schema == schema && t.name == name).cloned();
+        if let Some(array) = existing.as_ref().filter(|t| t.is_array()) {
+            self.move_array_type(array)?;
+        }
+        let taken =
+            self.user_types()?.values().any(|t| t.schema == schema && t.name == name && !matches!(t.kind, Kind::Shell))
+                || crate::catalog::builtin_type_named(name).is_some() && schema == "pg_catalog"
+                || self.txn.root.table(self.db, &schema, name)?.is_some();
         if taken {
             return Err(PgError::new(code::DUPLICATE_OBJECT, format!("type \"{name}\" already exists")));
         }
         Ok(schema)
+    }
+
+    /// move_array_type gives an array type the next name that adds underscores to its own, freeing its name for a new
+    /// type, as Postgres' moveArrayTypeName does.
+    fn move_array_type(&mut self, array: &UserType) -> Result<()> {
+        let types = self.user_types()?;
+        let mut name = format!("_{}", array.name);
+        while types.values().any(|t| t.schema == array.schema && t.name == name) {
+            name.insert(0, '_');
+        }
+        let mut moved = array.definition.clone();
+        moved.id = id::new(SECTION_TYPE, &[&array.schema, &name]);
+        moved.internal_name = Vec::new();
+        self.txn.root.put_object(self.db, COLLECTION, &array.definition.id, None)?;
+        store(self.db, &mut self.txn.root, &moved)?;
+        if let Some(element) = types.values().find(|t| t.definition.array == array.definition.id) {
+            let mut definition = element.definition.clone();
+            definition.array = moved.id.clone();
+            store(self.db, &mut self.txn.root, &definition)?;
+        }
+        Ok(())
+    }
+
+    /// create_shell runs CREATE TYPE with only a name, which records a shell type to define later.
+    pub fn create_shell(&mut self, define: &pg_query::protobuf::DefineStmt) -> Result<crate::Outcome> {
+        let (schema, name) = type_names(&define.defnames);
+        let schema = self.new_type_schema(&schema, &name)?;
+        store(self.db, &mut self.txn.root, &shell_type(&schema, &name))?;
+        Ok(crate::Outcome::command("CREATE TYPE"))
     }
 
     /// store_type writes a type and its array type to the working root.
@@ -683,17 +734,14 @@ impl Ctx<'_> {
                 ..Default::default()
             }))
         };
-        if value.is_null() {
-            if domain.not_null {
-                return Err(PgError {
-                    objects: objects(),
-                    ..PgError::new(
-                        code::NOT_NULL_VIOLATION,
-                        format!("domain {} does not allow null values", user_type.name),
-                    )
-                });
-            }
-            return Ok(());
+        if value.is_null() && domain.not_null {
+            return Err(PgError {
+                objects: objects(),
+                ..PgError::new(
+                    code::NOT_NULL_VIOLATION,
+                    format!("domain {} does not allow null values", user_type.name),
+                )
+            });
         }
         for (name, text) in &domain.checks {
             let node = crate::parse::expression_node(text)?;

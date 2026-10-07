@@ -123,6 +123,15 @@ impl Ctx<'_> {
         match type_oid {
             types::REGCLASS => {
                 let names = crate::sequences::parse_qualified_name(text)?;
+                if let [catalog, ..] = names.as_slice()
+                    && names.len() == 3
+                    && *catalog != self.session.database
+                {
+                    return Err(PgError::new(
+                        code::FEATURE_NOT_SUPPORTED,
+                        format!("cross-database references are not implemented: \"{}\"", names.join(".")),
+                    ));
+                }
                 let (schema, name) = match names.as_slice() {
                     [name] => (None, name.clone()),
                     [schema, name] | [_, schema, name] => (Some(schema.clone()), name.clone()),
@@ -143,7 +152,8 @@ impl Ctx<'_> {
                         return Ok(Reg { type_oid, oid: r.oid, name: self.visible_name(r) });
                     }
                 }
-                Err(PgError::new(code::UNDEFINED_TABLE, format!("relation \"{text}\" does not exist")))
+                let shown = schema.map_or(name.clone(), |schema| format!("{schema}.{name}"));
+                Err(PgError::new(code::UNDEFINED_TABLE, format!("relation \"{shown}\" does not exist")))
             }
             types::REGTYPE => {
                 let ty = parse_type_name(text)?;
@@ -401,17 +411,24 @@ impl Ctx<'_> {
 
 /// parse_type_name reads a type name as Postgres' parseTypeString does, returning the type's OID.
 fn parse_type_name(text: &str) -> Result<u32> {
-    let undefined = || PgError::new(code::UNDEFINED_OBJECT, format!("type \"{text}\" does not exist"));
-    let parsed = pg_query::parse(&format!("SELECT NULL::{text}"))
-        .map_err(|_| PgError::new(code::SYNTAX_ERROR, format!("invalid type name \"{text}\"")))?;
-    let mut type_name = None;
-    for (node, ..) in parsed.protobuf.nodes() {
-        if let pg_query::NodeRef::TypeCast(cast) = node {
-            type_name = cast.type_name.clone();
-        }
-    }
-    let type_name = type_name.ok_or_else(undefined)?;
-    crate::expr::resolve_type_name(&type_name).map(|t| t.oid).map_err(|_| undefined())
+    let invalid = || PgError::new(code::SYNTAX_ERROR, format!("invalid type name \"{text}\""));
+    let statements =
+        crate::parse::parse(&format!("SELECT NULL::{text}")).map_err(|err| PgError { position: None, ..err })?;
+    let Some(crate::parse::Statement::Postgres { node: pg_query::NodeEnum::SelectStmt(select), .. }) =
+        statements.first()
+    else {
+        return Err(invalid());
+    };
+    let target = select.target_list.first().and_then(|t| t.node.as_ref());
+    let Some(pg_query::NodeEnum::ResTarget(target)) = target else { return Err(invalid()) };
+    let Some(pg_query::NodeEnum::TypeCast(cast)) = target.val.as_ref().and_then(|v| v.node.as_ref()) else {
+        return Err(invalid());
+    };
+    let type_name = cast.type_name.clone().ok_or_else(invalid)?;
+    let names: Vec<String> = type_name.names.iter().filter_map(crate::expr::node_name).map(str::to_string).collect();
+    crate::expr::resolve_type_name(&type_name)
+        .map(|t| t.oid)
+        .map_err(|_| PgError::new(code::UNDEFINED_OBJECT, format!("type \"{}\" does not exist", names.join("."))))
 }
 
 /// single_name reads the one name that regnamespace and regrole take, failing as Postgres does for a qualified name.

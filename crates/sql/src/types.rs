@@ -169,7 +169,9 @@ impl Value {
                 datetime::format_timestamp(*ts, Some((offset, &name)), f)
             }),
             Value::Interval(iv) => datetime::with_format(|f| datetime::format_interval(iv, f.interval_style)),
-            Value::Array(a) if array::is_vector_type(a.element) => {
+            Value::Array(a)
+                if array::is_vector_type(a.element) && !a.values.iter().any(|v| matches!(v, Value::Array(_))) =>
+            {
                 a.values.iter().map(|v| v.output().unwrap_or_default()).collect::<Vec<_>>().join(" ")
             }
             Value::Array(a) => array::format(a, &|v| v.output().unwrap_or_default()),

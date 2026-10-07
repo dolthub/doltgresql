@@ -173,6 +173,12 @@ pub fn resolve_type(names: &[String], modifiers: &[String], array: bool, positio
         _ => None,
     };
     if let Some(user_type) = user_type {
+        if matches!(user_type.kind, crate::usertypes::Kind::Shell) {
+            return Err(PgError {
+                position,
+                ..PgError::new(code::UNDEFINED_OBJECT, format!("type \"{}\" is only a shell", names.join(".")))
+            });
+        }
         let oid = match (array, user_type.is_array()) {
             (false, _) => user_type.oid,
             (true, false) => user_type.array,

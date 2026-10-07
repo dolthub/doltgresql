@@ -864,7 +864,10 @@ fn tokens(text: &str) -> Vec<String> {
         } else if c == 'Z' && !current.is_empty() && current.contains(':') && i + 1 == chars.len() {
             out.push(std::mem::take(&mut current));
             current.push('Z');
-        } else if (c.is_ascii_alphabetic() && !current.is_empty() && current.bytes().all(|b| b.is_ascii_digit()))
+        } else if (c.is_ascii_alphabetic()
+            && !current.is_empty()
+            && (current.bytes().all(|b| b.is_ascii_digit())
+                || (current.contains(':') && current.starts_with(|d: char| d.is_ascii_digit()))))
             || (c.is_ascii_digit()
                 && current.chars().all(|l| l.is_ascii_alphabetic())
                 && (month_number(&current).is_some() || is_weekday(&current)))
@@ -961,6 +964,23 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
         if is_weekday(word) {
             continue;
         }
+        if let Some((whole, fraction)) = word.split_once('.')
+            && whole.len() == 6
+            && whole.bytes().chain(fraction.bytes()).all(|b| b.is_ascii_digit())
+            && p.hour.is_none()
+            && (matches!(kind, Kind::Time | Kind::TimeTz) || p.day.is_some())
+        {
+            let field = format!("{}:{}:{}.{fraction}", &whole[..2], &whole[2..4], &whole[4..]);
+            let (h, m, s, us) = parse_time_field(&field).ok_or_else(|| invalid(kind, text))?;
+            (p.hour, p.minute, p.second, p.micros) = (Some(h), m, s, us);
+            continue;
+        }
+        if word.starts_with(|c: char| c.is_ascii_alphabetic())
+            && let Some(zone) = Zone::named(word)
+        {
+            p.zone = Some(zone);
+            continue;
+        }
         if word.contains(['-', '/', '.']) && word.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) {
             let parts: Vec<&str> = word.split(['-', '/', '.']).collect();
             if parts.len() == 3 && parts.iter().all(|s| !s.is_empty()) {
@@ -988,13 +1008,14 @@ fn parse_datetime(text: &str, kind: Kind, order: Order) -> Result<Parsed> {
                 p.day = word[6..].parse().ok();
                 continue;
             }
-            if p.year.is_none() && p.month.is_none() && word.len() == 6 && words.len() == 1 {
+            let time_only = matches!(kind, Kind::Time | Kind::TimeTz);
+            if p.year.is_none() && p.month.is_none() && word.len() == 6 && words.len() == 1 && !time_only {
                 p.year = Some(two_digit_year(word[..2].parse().unwrap_or(0)));
                 p.month = word[2..4].parse().ok();
                 p.day = word[4..].parse().ok();
                 continue;
             }
-            if p.hour.is_none() && p.year.is_some() && p.day.is_some() && matches!(word.len(), 4 | 6) {
+            if p.hour.is_none() && ((p.year.is_some() && p.day.is_some()) || time_only) && matches!(word.len(), 4 | 6) {
                 p.hour = word[..2].parse().ok();
                 p.minute = word[2..4].parse().unwrap_or(0);
                 p.second = word.get(4..6).and_then(|s| s.parse().ok()).unwrap_or(0);

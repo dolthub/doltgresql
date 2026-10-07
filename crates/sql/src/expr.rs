@@ -174,6 +174,9 @@ pub enum Expr {
     Array(u32, Vec<Expr>, bool),
     /// Subscripts of an array, as lower and upper bounds, which select a slice when the flag is set.
     Subscript(Box<Expr>, Vec<(Option<Expr>, Option<Expr>)>, bool),
+    /// An array of the element type with a value stored at subscripts, or over a slice when the flag is set, which an
+    /// UPDATE's subscripted assignment computes.
+    SubscriptAssign(Box<Expr>, u32, Vec<(Option<Expr>, Option<Expr>)>, bool, Box<Expr>),
     /// A comparison against each element of an array, which holds for every element when the flag is set.
     AnyArray(Box<Expr>, Box<Expr>, bool),
     ArrayOp(ArrayOp, Box<Expr>, Box<Expr>),
@@ -1717,6 +1720,33 @@ impl<'b, 'a> Binder<'b, 'a> {
         Ok((Expr::Array(ty.oid, items, false), typ(array_of(ty.oid))))
     }
 
+    /// subscripts binds array subscripts as lower and upper bounds, reporting whether any selects a slice, which makes
+    /// a lone subscript `n` the slice `1:n`.
+    pub fn subscripts(&mut self, items: &[Node]) -> Result<(Subscripts, bool)> {
+        let mut subscripts = Vec::new();
+        let mut slice = false;
+        for item in items {
+            let Some(NodeEnum::AIndices(indices)) = item.node.as_ref() else {
+                return Err(PgError::unsupported("field selection"));
+            };
+            slice |= indices.is_slice;
+            let mut bound_index = |node: &Option<Box<Node>>| -> Result<Option<Expr>> {
+                match node.as_deref() {
+                    Some(node) => {
+                        let bound = self.bind(node)?;
+                        let location = arg_location(node);
+                        Ok(Some(subscript_int(bound, location)?))
+                    }
+                    None => Ok(None),
+                }
+            };
+            let lower = bound_index(&indices.lidx)?;
+            let upper = bound_index(&indices.uidx)?;
+            subscripts.push(if indices.is_slice { (lower, upper) } else { (Some(Expr::Const(Value::Int4(1))), upper) });
+        }
+        Ok((subscripts, slice))
+    }
+
     /// indirection binds subscripts of an array.
     fn indirection(&mut self, indirection: &pg_query::protobuf::AIndirection) -> Result<Bound> {
         let arg = indirection.arg.as_deref().ok_or_else(|| PgError::internal("no subscripted value"))?;
@@ -1756,27 +1786,7 @@ impl<'b, 'a> Binder<'b, 'a> {
         if items.is_empty() {
             return Ok((base, ty));
         }
-        let mut subscripts = Vec::new();
-        let mut slice = false;
-        for item in items {
-            let Some(NodeEnum::AIndices(indices)) = item.node.as_ref() else {
-                return Err(PgError::unsupported("field selection"));
-            };
-            slice |= indices.is_slice;
-            let mut bound_index = |node: &Option<Box<Node>>| -> Result<Option<Expr>> {
-                match node.as_deref() {
-                    Some(node) => {
-                        let bound = self.bind(node)?;
-                        let location = arg_location(node);
-                        Ok(Some(subscript_int(bound, location)?))
-                    }
-                    None => Ok(None),
-                }
-            };
-            let lower = bound_index(&indices.lidx)?;
-            let upper = bound_index(&indices.uidx)?;
-            subscripts.push(if indices.is_slice { (lower, upper) } else { (Some(Expr::Const(Value::Int4(1))), upper) });
-        }
+        let (subscripts, slice) = self.subscripts(items)?;
         if !is_array_type(ty.oid) {
             return Err(PgError {
                 position: position(arg_location(arg)),
@@ -1851,6 +1861,9 @@ impl<'b, 'a> Binder<'b, 'a> {
         Ok(Some((Expr::Compare(cmp, Box::new(l), Box::new(r)), typ(oid::BOOL))))
     }
 }
+
+/// Subscripts are an array's subscripts as lower and upper bounds.
+pub type Subscripts = Vec<(Option<Expr>, Option<Expr>)>;
 
 /// subscript_int converts an array subscript to an integer.
 fn subscript_int(bound: Bound, location: i32) -> Result<Expr> {
@@ -1981,6 +1994,9 @@ impl<'b, 'a> Binder<'b, 'a> {
             ("+", oid::TIME, oid::INTERVAL) => (D::TimePlusInterval, oid::TIME, oid::INTERVAL, oid::TIME),
             ("+", oid::INTERVAL, oid::TIME) => (D::TimePlusInterval, oid::INTERVAL, oid::TIME, oid::TIME),
             ("-", oid::TIME, oid::INTERVAL) => (D::TimeMinusInterval, oid::TIME, oid::INTERVAL, oid::TIME),
+            ("+", oid::TIMETZ, oid::INTERVAL) => (D::TimePlusInterval, oid::TIMETZ, oid::INTERVAL, oid::TIMETZ),
+            ("+", oid::INTERVAL, oid::TIMETZ) => (D::TimePlusInterval, oid::INTERVAL, oid::TIMETZ, oid::TIMETZ),
+            ("-", oid::TIMETZ, oid::INTERVAL) => (D::TimeMinusInterval, oid::TIMETZ, oid::INTERVAL, oid::TIMETZ),
             ("-", oid::TIME, oid::TIME) => (D::TimeMinusTime, oid::TIME, oid::TIME, oid::INTERVAL),
             ("+", oid::INTERVAL, oid::INTERVAL) => {
                 (D::IntervalPlusInterval, oid::INTERVAL, oid::INTERVAL, oid::INTERVAL)
@@ -2069,6 +2085,7 @@ pub fn arg_location(node: &Node) -> i32 {
         Some(NodeEnum::FuncCall(f)) => f.location,
         Some(NodeEnum::RowExpr(r)) => r.location,
         Some(NodeEnum::SubLink(s)) => s.location,
+        Some(NodeEnum::AArrayExpr(a)) => a.location,
         _ => -1,
     }
 }
@@ -2148,7 +2165,8 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
     if from.oid == to.oid && !explicit && to.modifier == -1 {
         return Ok((expr, to));
     }
-    let opaque = |t: u32| matches!(t, oid::BYTEA | oid::UUID | oid::BIT | oid::VARBIT);
+    let opaque =
+        |t: u32| matches!(t, oid::BYTEA | oid::UUID | oid::BIT | oid::VARBIT) || crate::basetypes::get(t).is_some();
     let bits_or_ints = |t: u32| matches!(t, oid::BIT | oid::VARBIT | oid::INT4 | oid::INT8);
     let textual = is_string(from.oid) || is_string(to.oid);
     let context = if explicit { crate::casts::EXPLICIT } else { crate::casts::IMPLICIT };
@@ -2161,6 +2179,8 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         && !textual;
     let composite =
         |t: u32| crate::usertypes::get(t).is_some_and(|u| matches!(u.kind, crate::usertypes::Kind::Composite(_)));
+    let other = if from.oid == oid::BOOL { to.oid } else { from.oid };
+    let boolean = (from.oid == oid::BOOL) != (to.oid == oid::BOOL) && !textual && other != oid::INT4;
     let allowed = (explicit
         && (is_array_type(from.oid) == is_array_type(to.oid) || textual)
         && !(composite(from.oid) && composite(to.oid))
@@ -2168,6 +2188,7 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         && !xml_only_textual
         && !transaction_id
         && !oid_without_cast(from.oid, to.oid)
+        && !boolean
         || implicitly_converts(from.oid, to.oid))
         && !(crate::array::is_vector_type(to.oid) && is_array_type(from.oid));
     if !allowed {
@@ -2679,6 +2700,37 @@ impl Expr {
                     Value::Array(Box::new(Array::one_dimensional(*element, values)))
                 }
             }
+            Expr::SubscriptAssign(base, element, subscripts, slice, value) => {
+                let array = match base.eval(ctx, row)? {
+                    Value::Array(array) => *array,
+                    _ => crate::array::Array { element: *element, dims: Vec::new(), values: Vec::new() },
+                };
+                let mut bounds = Vec::with_capacity(subscripts.len());
+                for (lower, upper) in subscripts {
+                    let mut bound = |e: &Option<Expr>| -> Result<Option<i32>> {
+                        let Some(e) = e else { return Ok(None) };
+                        match e.eval(ctx, row)? {
+                            Value::Int4(i) => Ok(Some(i)),
+                            _ => Err(PgError::new(
+                                code::NULL_VALUE_NOT_ALLOWED,
+                                "array subscript in assignment must not be null",
+                            )),
+                        }
+                    };
+                    bounds.push((bound(lower)?, bound(upper)?));
+                }
+                let assigned = if *slice {
+                    let source = match value.eval(ctx, row)? {
+                        Value::Array(source) => Some(*source),
+                        _ => None,
+                    };
+                    crate::array::assign_slice(array, &bounds, source)?
+                } else {
+                    let indexes: Vec<i32> = bounds.iter().map(|(_, upper)| upper.unwrap_or_default()).collect();
+                    crate::array::assign_element(array, &indexes, value.eval(ctx, row)?)?
+                };
+                Value::Array(Box::new(assigned))
+            }
             Expr::Subscript(base, subscripts, slice) => {
                 let Value::Array(array) = base.eval(ctx, row)? else { return Ok(Value::Null) };
                 let mut bounds = Vec::with_capacity(subscripts.len());
@@ -2931,6 +2983,11 @@ impl Expr {
                 let subscripts = subscripts.into_iter().map(|(l, u)| (l.map(&mut *f), u.map(&mut *f))).collect();
                 Expr::Subscript(base, subscripts, slice)
             }
+            Expr::SubscriptAssign(base, element, subscripts, slice, value) => {
+                let (base, value) = (b(base), b(value));
+                let subscripts = subscripts.into_iter().map(|(l, u)| (l.map(&mut *f), u.map(&mut *f))).collect();
+                Expr::SubscriptAssign(base, element, subscripts, slice, value)
+            }
             Expr::AnyArray(c, a, all) => {
                 let c = b(c);
                 Expr::AnyArray(c, b(a), all)
@@ -2985,6 +3042,13 @@ impl Expr {
                 for (l, u) in subscripts {
                     l.iter().chain(u).for_each(|e| e.visit(f));
                 }
+            }
+            Expr::SubscriptAssign(base, _, subscripts, _, value) => {
+                base.visit(f);
+                for (l, u) in subscripts {
+                    l.iter().chain(u).for_each(|e| e.visit(f));
+                }
+                value.visit(f);
             }
             Expr::Case(whens, otherwise) => {
                 for (c, r) in whens {
@@ -3063,6 +3127,13 @@ fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
         }
         (DateOp::TimeMinusInterval, Value::Time(t), Value::Interval(iv)) => {
             Value::Time((t - iv.micros).rem_euclid(USECS_PER_DAY))
+        }
+        (DateOp::TimePlusInterval, Value::TimeTz(t, zone), Value::Interval(iv))
+        | (DateOp::TimePlusInterval, Value::Interval(iv), Value::TimeTz(t, zone)) => {
+            Value::TimeTz((t + iv.micros).rem_euclid(USECS_PER_DAY), zone)
+        }
+        (DateOp::TimeMinusInterval, Value::TimeTz(t, zone), Value::Interval(iv)) => {
+            Value::TimeTz((t - iv.micros).rem_euclid(USECS_PER_DAY), zone)
         }
         (DateOp::TimeMinusTime, Value::Time(a), Value::Time(b)) => {
             Value::Interval(dt::Interval { months: 0, days: 0, micros: a - b })

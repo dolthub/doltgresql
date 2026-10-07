@@ -1142,6 +1142,12 @@ impl Session {
                 let mut parameters = Vec::new();
                 return self.with_ctx(&mut parameters, params, |ctx| ctx.create_function(create, &extras.text));
             }
+            NodeEnum::DefineStmt(define)
+                if define.kind == pg_query::protobuf::ObjectType::ObjectType as i32 && define.definition.is_empty() =>
+            {
+                let mut parameters = Vec::new();
+                return self.with_ctx(&mut parameters, params, |ctx| ctx.create_shell(define));
+            }
             NodeEnum::DefineStmt(define) if define.kind == pg_query::protobuf::ObjectType::ObjectAggregate as i32 => {
                 let mut parameters = Vec::new();
                 return self.with_ctx(&mut parameters, params, |ctx| ctx.create_aggregate(define));

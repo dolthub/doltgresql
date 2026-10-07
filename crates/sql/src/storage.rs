@@ -285,6 +285,7 @@ fn deserialize_user_value(field: &[u8], user_type: &crate::usertypes::UserType) 
     use crate::usertypes::Kind;
     let corrupt = || PgError::internal(format!("a stored value of type {} is corrupt", user_type.name));
     match &user_type.kind {
+        Kind::Shell => Err(corrupt()),
         Kind::Enum(_) => match deserialize_value(field, ColumnType { oid: crate::oid::TEXT, modifier: -1 })? {
             Value::Text(label) => Ok(Value::Enum(Box::new(crate::types::EnumValue { type_oid: user_type.oid, label }))),
             _ => Err(corrupt()),

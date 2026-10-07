@@ -47,6 +47,7 @@ fn test_composite_types() {
                         ],
                         tag: "SELECT 1",
                     },
+                    skip: Some("Postgres lists its background processes in pg_stat_activity, which Doltgres does not run"),
                     ..A
                 },
             ],
@@ -178,6 +179,7 @@ fn test_enum_types() {
                 ScriptTestAssertion {
                     query: "CREATE TYPE failure AS ENUM ('ok','ok');",
                     expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "pg_enum_typid_label_index""#, detail: "Key (enumtypid, enumlabel)=(16397, ok) already exists.", schema: "pg_catalog", table: "pg_enum", constraint: "pg_enum_typid_label_index", ..E }),
+                    skip: Some("the detail names the OID Postgres assigned to the type, while Doltgres derives its OIDs from names"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -8552,6 +8554,176 @@ fn test_builtin_base_types() {
                             &[T("1/2")],
                         ],
                         tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_input_edge_cases() {
+    run_scripts(&[
+        ScriptTest {
+            name: "datetime, reg type, and name input, polymorphic arguments, and grouping of equal values",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT TIME WITHOUT TIME ZONE '040506.789+08';",
+                    expected: Expected::Rows {
+                        columns: &[Column("time", TIME)],
+                        rows: &[
+                            &[T("04:05:06.789")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT TIME '0405', TIME '040506', TIMETZ '040506+02';",
+                    expected: Expected::Rows {
+                        columns: &[Column("time", TIME), Column("time", TIME), Column("timetz", TIMETZ)],
+                        rows: &[
+                            &[T("04:05:00"), T("04:05:06"), T("04:05:06+02")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT TIMESTAMP 'Feb 10 5:32PM 1997', TIMESTAMP 'Feb 10 16:32:05 99', TIMESTAMP '2022-01-01 10:00am';",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamp", TIMESTAMP), Column("timestamp", TIMESTAMP), Column("timestamp", TIMESTAMP)],
+                        rows: &[
+                            &[T("1997-02-10 17:32:00"), T("1999-02-10 16:32:05"), T("2022-01-01 10:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT TIMESTAMPTZ '2022-02-01 23:45:01 America/New_York' = TIMESTAMPTZ '2022-02-02 04:45:01 UTC';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '20220101 040506.5'::TIMESTAMP;",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamp", TIMESTAMP)],
+                        rows: &[
+                            &[T("2022-01-01 04:05:06.5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(ARRAY[1], ARRAY[2]);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_append(integer[], integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_append(ARRAY[1], 2::BIGINT);",
+                    expected: Expected::Rows {
+                        columns: &[Column("array_append", INT8_ARRAY)],
+                        rows: &[
+                            &[T("{1,2}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT x, count(*) FROM (VALUES (25::NUMERIC), (25.0), (25.00), (26)) t(x) GROUP BY x ORDER BY x;",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", NUMERIC), Column("count", INT8)],
+                        rows: &[
+                            &[T("25"), T("3")],
+                            &[T("26"), T("1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT DISTINCT x FROM (VALUES ('{"a": 1}'::JSONB), ('{"a": 1.0}')) t(x);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("x", JSONB)],
+                        rows: &[
+                            &[T(r#"{"a": 1}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT x FROM (VALUES ('-0'::FLOAT8), (0)) t(x) GROUP BY x;",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", FLOAT8)],
+                        rows: &[
+                            &[T("-0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'Testing2'::REGCLASS;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "testing2" does not exist"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a.b.c.d'::REGCLASS;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "improper relation name (too many dotted names): a.b.c.d", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'otherdb.public.t'::REGCLASS;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cross-database references are not implemented: "otherdb.public.t""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"integer"'::REGTYPE;"#,
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "integer" does not exist"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '"integer'::REGTYPE;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated quoted identifier at or near ""integer""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT repeat('x', 70)::NAME, length(repeat('x', 70)::NAME);",
+                    expected: Expected::Rows {
+                        columns: &[Column("repeat", NAME), Column("length", INT4)],
+                        rows: &[
+                            &[T("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"), T("63")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT true::NAME, false::TEXT;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", NAME), Column("text", TEXT)],
+                        rows: &[
+                            &[T("t"), T("false")],
+                        ],
+                        tag: "SELECT 1",
                     },
                     ..A
                 },

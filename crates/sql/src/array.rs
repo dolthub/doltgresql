@@ -846,3 +846,112 @@ mod tests {
         assert_eq!(compare(&ints(&[1, 3]), &ints(&[1, 2, 0])), Ordering::Greater);
     }
 }
+
+/// subscript_error returns Postgres' error for a subscript that an array assignment cannot take.
+fn subscript_error(message: &str) -> PgError {
+    PgError::new(code::ARRAY_SUBSCRIPT_ERROR, message)
+}
+
+/// offset returns the position in row order of the element at the subscripts.
+fn offset(dims: &[(i32, i32)], subscripts: &[i32]) -> usize {
+    dims.iter().zip(subscripts).fold(0, |at, ((n, lower), i)| at * *n as usize + (i - lower) as usize)
+}
+
+/// extend widens a one-dimensional array with NULLs to reach from the lower to the upper subscript.
+fn extend(array: &mut Array, lower: i32, upper: i32) {
+    let (n, lb) = array.dims[0];
+    if lower < lb {
+        array.values.splice(0..0, std::iter::repeat_n(Value::Null, (lb - lower) as usize));
+        array.dims[0] = (n + lb - lower, lower);
+    }
+    let (n, lb) = array.dims[0];
+    if upper >= lb + n {
+        array.values.resize((upper - lb + 1) as usize, Value::Null);
+        array.dims[0] = (upper - lb + 1, lb);
+    }
+}
+
+/// assign_element stores a value at the subscripts of an array, starting an empty array there and widening a
+/// one-dimensional one, as Postgres' array_set_element does.
+pub fn assign_element(mut array: Array, subscripts: &[i32], value: Value) -> Result<Array> {
+    if array.dims.is_empty() {
+        array.dims = subscripts.iter().map(|&i| (1, i)).collect();
+        array.values = vec![value];
+        return Ok(array);
+    }
+    if array.dims.len() != subscripts.len() {
+        return Err(subscript_error("wrong number of array subscripts"));
+    }
+    if array.dims.len() == 1 {
+        extend(&mut array, subscripts[0], subscripts[0]);
+    } else if array.dims.iter().zip(subscripts).any(|((n, lower), i)| i < lower || *i >= lower + n) {
+        return Err(subscript_error("array subscript out of range"));
+    }
+    let at = offset(&array.dims, subscripts);
+    array.values[at] = value;
+    Ok(array)
+}
+
+/// assign_slice stores a source array's elements, in row order, over a slice of an array, leaving the array alone
+/// for a NULL source, as Postgres' array_set_slice does. A missing bound is the array's own.
+pub fn assign_slice(mut array: Array, bounds: &[(Option<i32>, Option<i32>)], source: Option<Array>) -> Result<Array> {
+    let Some(source) = source else { return Ok(array) };
+    let too_small = || subscript_error("source array too small");
+    if array.dims.is_empty() {
+        let mut dims = Vec::with_capacity(bounds.len());
+        for bound in bounds {
+            let (Some(lower), Some(upper)) = *bound else {
+                return Err(PgError {
+                    detail: Some(
+                        "When assigning to a slice of an empty array value, slice boundaries must be fully specified."
+                            .into(),
+                    ),
+                    ..subscript_error("array slice subscript must provide both boundaries")
+                });
+            };
+            dims.push((1 + upper - lower, lower));
+        }
+        let count = dims.iter().map(|(n, _)| (*n).max(0) as usize).product::<usize>();
+        if source.values.len() < count {
+            return Err(too_small());
+        }
+        array.dims = dims;
+        array.values = source.values.into_iter().take(count).collect();
+        return Ok(array);
+    }
+    if array.dims.len() < bounds.len() {
+        return Err(subscript_error("wrong number of array subscripts"));
+    }
+    let mut ranges = Vec::with_capacity(array.dims.len());
+    for (d, &(n, lb)) in array.dims.iter().enumerate() {
+        let (lower, upper) = bounds.get(d).copied().unwrap_or((None, None));
+        let (lower, upper) = (lower.unwrap_or(lb), upper.unwrap_or(lb + n - 1));
+        if lower > upper {
+            return Err(subscript_error("upper bound cannot be less than lower bound"));
+        }
+        if array.dims.len() > 1 && d < bounds.len() && (lower < lb || upper >= lb + n) {
+            return Err(subscript_error("array subscript out of range"));
+        }
+        ranges.push((lower, upper));
+    }
+    if array.dims.len() == 1 {
+        extend(&mut array, ranges[0].0, ranges[0].1);
+    }
+    let count = ranges.iter().map(|(lower, upper)| (upper - lower + 1) as usize).product::<usize>();
+    if source.values.len() < count {
+        return Err(too_small());
+    }
+    let mut subscripts: Vec<i32> = ranges.iter().map(|(lower, _)| *lower).collect();
+    for value in source.values.into_iter().take(count) {
+        let at = offset(&array.dims, &subscripts);
+        array.values[at] = value;
+        for d in (0..subscripts.len()).rev() {
+            if subscripts[d] < ranges[d].1 {
+                subscripts[d] += 1;
+                break;
+            }
+            subscripts[d] = ranges[d].0;
+        }
+    }
+    Ok(array)
+}

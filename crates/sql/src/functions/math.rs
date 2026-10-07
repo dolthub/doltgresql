@@ -754,16 +754,7 @@ fn scale(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 
 /// trim_scale removes a numeric's trailing fractional zeroes.
 fn trim_scale(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    let n = numeric(&args[0]);
-    let Numeric::Finite { coefficient, scale, .. } = &n else { return Ok(Value::Numeric(n)) };
-    let mut trimmed = *scale;
-    let ten = num_bigint::BigUint::from(10u32);
-    let mut c = coefficient.clone();
-    while trimmed > 0 && (&c % &ten) == num_bigint::BigUint::ZERO {
-        c /= &ten;
-        trimmed -= 1;
-    }
-    Ok(Value::Numeric(n.with_scale(trimmed)))
+    Ok(Value::Numeric(numeric(&args[0]).trimmed()))
 }
 
 /// bucket_error returns Postgres' error for invalid width_bucket arguments.

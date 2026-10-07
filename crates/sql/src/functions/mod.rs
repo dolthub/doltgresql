@@ -231,8 +231,11 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
         )
     };
     let indexes = r.by_name.get(name).ok_or_else(not_found)?;
-    let candidates: Vec<(usize, Vec<u32>)> =
-        indexes.iter().filter_map(|&i| Some((i, parameter_types(r.functions[i], types.len())?))).collect();
+    let candidates: Vec<(usize, Vec<u32>)> = indexes
+        .iter()
+        .filter_map(|&i| Some((i, parameter_types(r.functions[i], types.len())?)))
+        .filter(|(_, params)| consistent(params, types))
+        .collect();
     let mut candidates = best_candidates(types, candidates);
     if candidates.is_empty() {
         return Err(not_found());
@@ -252,19 +255,23 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
     }
     let (index, params) = candidates.pop().expect("a candidate");
     let f = r.functions[index];
-    // A polymorphic parameter takes the type of its argument, and the result follows it.
-    let mut element = None;
+    // A polymorphic parameter takes the common type of its arguments, and the result follows it.
+    let mut element: Option<u32> = None;
     for (&p, &t) in params.iter().zip(types).filter(|(_, t)| **t != oid::UNKNOWN) {
-        match p {
-            ANYELEMENT | ANYNONARRAY => element = element.or(Some(t)),
-            ANYARRAY => {
-                element = element.or_else(|| match builtin_type(t) {
-                    Some(b) => Some(b.elem),
-                    None => is_array(t).then(|| crate::expr::element_type(t)),
-                })
+        let implied = match p {
+            ANYELEMENT | ANYNONARRAY => Some(t),
+            ANYARRAY => match builtin_type(t) {
+                Some(b) => Some(b.elem),
+                None => is_array(t).then(|| crate::expr::element_type(t)),
+            },
+            _ => None,
+        };
+        element = match (element, implied) {
+            (Some(current), Some(implied)) if current != implied && implicitly_castable(current, implied) => {
+                Some(implied)
             }
-            _ => {}
-        }
+            (current, implied) => current.or(implied),
+        };
     }
     let element = element.filter(|&e| e != oid::UNKNOWN).unwrap_or(oid::TEXT);
     let arg_types = params
@@ -289,6 +296,25 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
         other => other,
     };
     Ok(Resolved { index, arg_types, ret })
+}
+
+/// consistent reports whether the arguments of an overload's polymorphic parameters, read as their domains' base
+/// types, can share one element type, as Postgres requires.
+fn consistent(params: &[u32], types: &[u32]) -> bool {
+    let mut element = None;
+    for (&p, &t) in params.iter().zip(types).filter(|(_, t)| **t != oid::UNKNOWN) {
+        let t = crate::usertypes::base_type(crate::expr::typ(t)).oid;
+        let implied = match p {
+            ANYELEMENT | ANYNONARRAY => t,
+            ANYARRAY => crate::expr::element_type(t),
+            _ => continue,
+        };
+        let first = *element.get_or_insert(implied);
+        if !implicitly_castable(first, implied) && !implicitly_castable(implied, first) {
+            return false;
+        }
+    }
+    true
 }
 
 /// overload_types returns the parameter types each built-in overload of the name gives a number of arguments.

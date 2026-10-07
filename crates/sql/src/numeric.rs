@@ -114,6 +114,19 @@ impl Numeric {
         }
     }
 
+    /// trimmed returns the value without its trailing fractional zeroes.
+    pub fn trimmed(&self) -> Numeric {
+        let Numeric::Finite { coefficient, scale, .. } = self else { return self.clone() };
+        let mut trimmed = *scale;
+        let ten = BigUint::from(10u32);
+        let mut c = coefficient.clone();
+        while trimmed > 0 && (&c % &ten).is_zero() {
+            c /= &ten;
+            trimmed -= 1;
+        }
+        self.with_scale(trimmed)
+    }
+
     /// with_scale returns the value rounded half away from zero, or padded, to the scale.
     pub fn with_scale(&self, new_scale: u32) -> Numeric {
         let Numeric::Finite { negative, coefficient, scale } = self else { return self.clone() };

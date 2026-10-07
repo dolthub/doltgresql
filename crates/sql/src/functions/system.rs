@@ -82,6 +82,14 @@ pub const FUNCTIONS: &[Function] = &[
         implementation: pg_get_constraintdef,
     },
     Function {
+        name: "enum_in",
+        args: &[crate::oid::CSTRING, crate::oid::OID],
+        ret: crate::oid::ANYENUM,
+        strict: true,
+        variadic: false,
+        implementation: enum_in,
+    },
+    Function {
         name: "format_type",
         args: &[crate::oid::OID, crate::oid::INT4],
         ret: TEXT,
@@ -282,6 +290,18 @@ fn format_type(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         return Ok(Value::Text("-".into()));
     }
     Ok(Value::Text(crate::cast::format_type(type_oid, modifier).unwrap_or_else(|| "???".into())))
+}
+
+/// enum_in reads a label as a value of the enum type with the OID, failing as Postgres does for an OID that names no
+/// enum type.
+fn enum_in(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let type_oid = oid_arg(&args[1]);
+    match crate::usertypes::get(type_oid) {
+        Some(t) if matches!(t.kind, crate::usertypes::Kind::Enum(_)) => {
+            crate::cast::input(&args[0].output().unwrap_or_default(), type_oid)
+        }
+        _ => Err(PgError::new(code::INTERNAL_ERROR, format!("cache lookup failed for type {type_oid}"))),
+    }
 }
 
 /// oid_arg returns the OID an argument holds.

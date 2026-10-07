@@ -349,7 +349,8 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
         oid::XID | oid::CID => Value::Oid(strtoul(text) as u32),
         oid::OID => Value::Oid(parse_oid(text, type_oid)?),
         oid::CHAR => char_value(text),
-        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN => Value::Text(text.to_string()),
+        oid::NAME => Value::Text(crate::ddl::clip(text, crate::ddl::NAMEDATALEN_MAX).to_string()),
+        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::UNKNOWN | oid::CSTRING => Value::Text(text.to_string()),
         oid::BYTEA => Value::Bytea(crate::binary::parse_bytea(text)?),
         oid::XML => {
             let warnings = crate::xml::check(text, crate::xml::document_option())?;
@@ -552,6 +553,7 @@ fn is_string_type(type_oid: u32) -> bool {
 fn user_input(text: &str, user_type: &crate::usertypes::UserType) -> Result<Value> {
     use crate::usertypes::Kind;
     match &user_type.kind {
+        Kind::Shell => Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "cannot accept a value of a shell type")),
         Kind::Enum(labels) => {
             if !labels.iter().any(|l| l == text) {
                 return Err(PgError::new(
@@ -802,13 +804,16 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
             Value::Text(text) => input(&text, to.oid)?,
             other => return Err(cannot_cast(&other, to.oid)),
         },
-        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN => {
+        oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::NAME | oid::UNKNOWN | oid::CSTRING => {
             let text = match value {
-                Value::Bool(b) => if b { "true" } else { "false" }.to_string(),
+                Value::Bool(b) if to.oid != oid::NAME => if b { "true" } else { "false" }.to_string(),
                 Value::Text(text) if to.oid == oid::BPCHAR => text,
                 Value::Text(text) | Value::Xml(text) => text,
                 other => other.output().unwrap_or_default(),
             };
+            if to.oid == oid::NAME {
+                return Ok(Value::Text(crate::ddl::clip(&text, crate::ddl::NAMEDATALEN_MAX).to_string()));
+            }
             Value::Text(apply_length(text, to, explicit)?)
         }
         oid::CHAR => match value {

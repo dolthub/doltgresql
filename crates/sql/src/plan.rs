@@ -1409,11 +1409,29 @@ impl<'b, 'a> Planner<'b, 'a> {
             plan = Plan::Window { input: Box::new(plan), calls };
         }
         if !set_functions.is_empty() {
-            let input_width = plan.width();
-            let place = |expr: Expr| replace_set_functions(expr, input_width);
+            let mut levels: Vec<usize> = Vec::with_capacity(set_functions.len());
+            for function in &set_functions {
+                let mut level = 0;
+                function.visit(&mut |e| {
+                    if let Expr::SetRef(j) = e {
+                        level = level.max(levels.get(*j).map_or(0, |l| l + 1));
+                    }
+                });
+                levels.push(level);
+            }
+            let mut columns = vec![0; set_functions.len()];
+            for level in 0..=levels.iter().copied().max().unwrap_or(0) {
+                let input_width = plan.width();
+                let mut functions = Vec::new();
+                for (k, function) in set_functions.iter().enumerate().filter(|(k, _)| levels[*k] == level) {
+                    columns[k] = input_width + functions.len();
+                    functions.push(replace_set_functions(function.clone(), &columns));
+                }
+                plan = Plan::ProjectSet { input: Box::new(plan), functions };
+            }
+            let place = |expr: Expr| replace_set_functions(expr, &columns);
             targets = targets.into_iter().map(|(e, t, n, l)| (place(e), t, n, l)).collect();
             sorts = sorts.into_iter().map(|(e, d, n)| (place(e), d, n)).collect();
-            plan = Plan::ProjectSet { input: Box::new(plan), functions: set_functions };
         }
         let width = targets.len();
         let types: Vec<ColumnType> = targets.iter().map(|t| t.1).collect();
@@ -1594,11 +1612,12 @@ fn compare_sorted(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
     Ordering::Equal
 }
 
-/// replace_set_functions replaces set-returning call references with the columns a ProjectSet node appends.
-fn replace_set_functions(expr: Expr, input_width: usize) -> Expr {
+/// replace_set_functions replaces set-returning call references with the columns that ProjectSet nodes append for
+/// them.
+fn replace_set_functions(expr: Expr, columns: &[usize]) -> Expr {
     match expr {
-        Expr::SetRef(k) => Expr::Column(input_width + k),
-        other => other.map_children(&mut |child| replace_set_functions(child, input_width)),
+        Expr::SetRef(k) => Expr::Column(columns[k]),
+        other => other.map_children(&mut |child| replace_set_functions(child, columns)),
     }
 }
 
@@ -1796,9 +1815,32 @@ pub fn rows_equal(a: &[Value], b: &[Value]) -> bool {
 /// row_key returns a hashable key of a row for DISTINCT and set operations.
 fn row_key(row: &[Value]) -> String {
     row.iter()
-        .map(|v| v.output().map_or("\u{0}N".to_string(), |s| format!("{}\u{1}{s}", type_tag(v))))
+        .map(|v| group_text(v).map_or("\u{0}N".to_string(), |s| format!("{}\u{1}{s}", type_tag(v))))
         .collect::<Vec<_>>()
         .join("\u{2}")
+}
+
+/// group_text returns the text that a value groups and deduplicates by, which values that compare equal share:
+/// numbers without trailing fractional zeroes and zero without its sign.
+fn group_text(value: &Value) -> Option<String> {
+    match value {
+        Value::Numeric(n) => Some(n.trimmed().to_string()),
+        Value::Float4(f) if *f == 0.0 => Some("0".into()),
+        Value::Float8(f) if *f == 0.0 => Some("0".into()),
+        Value::Jsonb(json) => Some(trimmed_json(json).to_text()),
+        other => other.output(),
+    }
+}
+
+/// trimmed_json returns a jsonb value with its numbers' trailing fractional zeroes removed.
+fn trimmed_json(json: &crate::json::Json) -> crate::json::Json {
+    use crate::json::Json;
+    match json {
+        Json::Number(n) => Json::Number(n.trimmed()),
+        Json::Array(items) => Json::Array(items.iter().map(trimmed_json).collect()),
+        Json::Object(fields) => Json::Object(fields.iter().map(|(k, v)| (k.clone(), trimmed_json(v))).collect()),
+        other => other.clone(),
+    }
 }
 
 /// type_tag distinguishes values whose text is the same but which differ.
