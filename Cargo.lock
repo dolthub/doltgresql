@@ -1373,6 +1373,7 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "doltdb",
  "hmac",
  "pbkdf2",
  "pgproto",

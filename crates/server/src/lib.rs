@@ -140,6 +140,7 @@ pub fn serve(config: &Config) -> Result<(), String> {
     {
         return Err(message);
     }
+    let _ = doltdb::database::LOGGER.set(log);
     let server = Arc::new(Server::new(config)?);
     if config.auto_gc {
         let engine = server.engine.clone();

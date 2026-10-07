@@ -121,6 +121,39 @@ pub enum GcMode {
     Shallow,
 }
 
+/// LOGGER writes a line to the server's log, once the server sets it.
+pub static LOGGER: std::sync::OnceLock<fn(&str)> = std::sync::OnceLock::new();
+
+/// MAX_TABLES is how many files a generation holds before its next manifest update conjoins them, as Dolt's
+/// defaultMaxTables.
+const MAX_TABLES: usize = 256;
+
+/// log writes a line to the server's log.
+fn log(line: &str) {
+    if let Some(logger) = LOGGER.get() {
+        logger(line);
+    }
+}
+
+/// choose_conjoinees chooses the files to conjoin as Dolt's inlineConjoiner does: the smallest ones by chunk count,
+/// for as long as their sum is above the next file's count or too many files would remain.
+fn choose_conjoinees(specs: &[store::TableSpec]) -> Vec<store::TableSpec> {
+    let mut sorted = specs.to_vec();
+    sorted.sort_by_key(|spec| spec.chunk_count);
+    let mut i = 2;
+    let mut sum = sorted[0].chunk_count + sorted[1].chunk_count;
+    while i < sorted.len() {
+        let next = sorted[i].chunk_count;
+        if sum <= next && sorted.len() - i < MAX_TABLES {
+            break;
+        }
+        sum += next;
+        i += 1;
+    }
+    sorted.truncate(i);
+    sorted
+}
+
 /// GcConfig is how a garbage collection writes, as Dolt's chunks.GCConfig: its mode, whether it writes archives
 /// rather than table files, and the size of the incremental files of leaf chunks, or 0 for none.
 #[derive(Clone, Copy, Debug)]
@@ -268,6 +301,18 @@ impl Database {
             };
             if mode == GcMode::Full {
                 moved.append(&mut old_chunks);
+            }
+            let database = dir.parent().and_then(Path::parent).and_then(Path::file_name);
+            let database = database.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if specs.len() > MAX_TABLES {
+                specs = conjoin(&old_dir, specs, &database)?;
+            } else if mode == GcMode::Full
+                && store::Manifest::read(&old_dir)?.is_some_and(|m| m.specs.len() > MAX_TABLES)
+            {
+                log(&format!(
+                    "level=info msg=\"conjoin dynamically disabled. not conjoining.\" database={database} generation=old \
+                     pkg=store.noms"
+                ));
             }
             let (archive, size) = (config.archive, config.incremental_file_size);
             let mut add = |spec: &store::TableSpec| match mode {
@@ -619,6 +664,40 @@ impl Database {
     pub fn close(self) -> Result<()> {
         Ok(self.store.close()?)
     }
+}
+
+/// conjoin writes the chunks of the files that Dolt's conjoiner chooses among an old generation's files to one file,
+/// returning the generation's files with that one in their place, and logging as Dolt does.
+fn conjoin(dir: &Path, specs: Vec<store::TableSpec>, database: &str) -> Result<Vec<store::TableSpec>> {
+    log(&format!(
+        "level=info msg=\"beginning conjoin of database\" database={database} generation=old pkg=store.noms \
+         upstream_len={}",
+        specs.len()
+    ));
+    let chosen = choose_conjoinees(&specs);
+    let mut chunks = Vec::new();
+    let mut archive = false;
+    for spec in &chosen {
+        let path = dir.join(format!("{}.darc", spec.name));
+        let mut add = |chunk: Chunk| {
+            chunks.push((chunk, false));
+            Ok(())
+        };
+        if path.exists() {
+            archive = true;
+            store::ArchiveReader::open(&path)?.for_each(&mut add)?;
+        } else {
+            store::TableReader::open(&dir.join(spec.name.to_string()))?.for_each(&mut add)?;
+        }
+    }
+    let mut conjoined = store::write_files(dir, chunks, archive, 0, &mut |_| Ok(()))?;
+    conjoined.extend(specs.into_iter().filter(|spec| !chosen.iter().any(|c| c.name == spec.name)));
+    log(&format!(
+        "level=info msg=\"conjoin completed successfully\" database={database} generation=old \
+         new_upstream_len={} pkg=store.noms",
+        conjoined.len()
+    ));
+    Ok(conjoined)
 }
 
 /// closure_keys returns the keys of the commit closure at the node in order.
