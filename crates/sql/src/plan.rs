@@ -1040,7 +1040,8 @@ impl<'b, 'a> Planner<'b, 'a> {
         Ok((query.plan, Scope { columns }))
     }
 
-    /// plan_catalog plans a scan of a system catalog relation.
+    /// plan_catalog plans a scan of a system catalog relation, whose table columns come from the catalog's OID and their
+    /// attribute numbers, as Postgres describes them.
     fn plan_catalog(
         &mut self,
         catalog: &'static crate::pgcatalog::CatalogTable,
@@ -1058,7 +1059,10 @@ impl<'b, 'a> Planner<'b, 'a> {
                 name: renames.get(i).map_or(column.name.to_string(), |r| r.to_string()),
                 ty: typ(column.type_oid),
                 hidden: false,
-                origin: (0, 0),
+                origin: match crate::pgcatalog::builtin_view_definition(catalog.oid) {
+                    Some(_) => (0, 0),
+                    None => (catalog.oid, i as u16 + 1),
+                },
             })
             .collect();
         (Plan::Catalog(catalog), Scope { columns })

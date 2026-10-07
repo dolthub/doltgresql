@@ -470,6 +470,7 @@ fn test_regressions() {
                         ],
                         tag: "SELECT 4",
                     },
+                    skip: Some("xmin shows the transactions that wrote Postgres' catalog rows, which Doltgres has no row versions for"),
                     ..A
                 },
             ],

@@ -530,8 +530,8 @@ impl<'r> Frame<'r> {
         let variable = &self.variables[self.variable(base)?];
         match (field, &variable.columns) {
             (None, None) if variable.ty.oid != oid::RECORD => Ok((variable.value.clone(), variable.ty)),
+            (None | Some("*"), None) if variable.ty.oid == oid::RECORD => Ok((Value::Null, typ(oid::RECORD))),
             (None | Some("*"), _) => {
-                self.require_assigned(base, variable)?;
                 let value = match (&variable.value, &variable.columns) {
                     (Value::Record(fields), Some(columns)) => {
                         let type_oid = match variable.ty.oid {
@@ -558,14 +558,6 @@ impl<'r> Frame<'r> {
                 format!("could not identify column \"{field}\" in record data type"),
             )),
         }
-    }
-
-    /// require_assigned fails for a RECORD that nothing was assigned to yet.
-    fn require_assigned(&self, name: &str, variable: &Variable) -> Result<()> {
-        if variable.columns.is_none() && variable.ty.oid == oid::RECORD {
-            return Err(not_assigned(name));
-        }
-        Ok(())
     }
 
     /// assign stores a value in a variable or a record's field, converting it to the type it holds, where a composite
@@ -1220,6 +1212,9 @@ impl<'r> Frame<'r> {
             options.insert(key, value);
         }
         if let Some(text) = options.remove(RAISE_MESSAGE) {
+            if !format.is_empty() {
+                return Err(PgError::new(code::SYNTAX_ERROR, "RAISE option already specified: MESSAGE"));
+            }
             message = text;
         }
         let code = match options.get(RAISE_ERRCODE) {

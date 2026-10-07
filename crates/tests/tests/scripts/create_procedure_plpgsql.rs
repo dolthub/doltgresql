@@ -446,10 +446,10 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "CALL interpreted_merging(55);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function interpreted_merging(integer) does not exist", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "procedure interpreted_merging(integer) does not exist", hint: "No procedure matches the given name and argument types. You might need to add explicit type casts.", position: 6, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -698,10 +698,10 @@ $$ LANGUAGE plpgsql;"#,
                     expected: Expected::Tag("DELETE 1"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "dolt_conflicts_interpreted_example(text)";"#,
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: dolt_conflicts_interpreted_example(text)", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_conflicts_interpreted_example(text)" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {

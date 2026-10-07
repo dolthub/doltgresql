@@ -634,6 +634,9 @@ impl<'b, 'a> Binder<'b, 'a> {
                 ..PgError::new(code::UNDEFINED_TABLE, format!("missing FROM-clause entry for table \"{table}\""))
             });
         }
+        if let Some(bound) = self.system_column(table, name) {
+            return Ok(bound);
+        }
         Err(PgError {
             position: position(column.location),
             ..PgError::new(code::UNDEFINED_COLUMN, format!("column \"{full}\" does not exist"))
@@ -1637,7 +1640,11 @@ impl<'b, 'a> Binder<'b, 'a> {
             if let Some(bound) = self.datetime_binary(op, &left, &right, location)? {
                 return Ok(bound);
             }
-            if !(is_datetime(lt) && (rt == oid::UNKNOWN || rt == lt) || is_datetime(rt) && lt == oid::UNKNOWN) {
+            let concatenated = op == "||" && (is_string(lt) || is_string(rt));
+            if !(is_datetime(lt) && (rt == oid::UNKNOWN || rt == lt)
+                || is_datetime(rt) && lt == oid::UNKNOWN
+                || concatenated)
+            {
                 return Err(missing());
             }
         }
@@ -1811,6 +1818,27 @@ impl<'b, 'a> Binder<'b, 'a> {
             subscripts.push(if indices.is_slice { (lower, upper) } else { (Some(Expr::Const(Value::Int4(1))), upper) });
         }
         Ok((subscripts, slice))
+    }
+
+    /// system_column binds a system column of the one table that a name refers to: tableoid as the table's OID, and
+    /// the transaction and command columns as Postgres shows them for frozen rows, since Doltgres keeps no row versions.
+    fn system_column(&self, table: Option<&str>, name: &str) -> Option<Bound> {
+        let (value, ty) = match name {
+            "xmin" => (Value::Oid(2), oid::XID),
+            "xmax" => (Value::Oid(0), oid::XID),
+            "cmin" | "cmax" => (Value::Oid(0), oid::CID),
+            "tableoid" => (Value::Null, oid::OID),
+            _ => return None,
+        };
+        let scope = self.scopes.iter().rev().find(|s| s.columns.iter().any(|c| table.is_none_or(|t| c.table == t)))?;
+        let mut tables =
+            scope.columns.iter().filter(|c| table.is_none_or(|t| c.table == t) && c.origin.0 != 0).map(|c| c.origin.0);
+        let table_oid = tables.next()?;
+        if table.is_none() && tables.any(|t| t != table_oid) {
+            return None;
+        }
+        let value = if name == "tableoid" { Value::Oid(table_oid) } else { value };
+        Some((Expr::Const(value), typ(ty)))
     }
 
     /// indirection binds subscripts of an array.

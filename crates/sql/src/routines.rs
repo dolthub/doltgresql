@@ -713,8 +713,10 @@ impl Ctx<'_> {
                 } else {
                     Vec::new()
                 };
-                self.check_sql_body(&name, &params, &body, ret, &columns)
-                    .map_err(|err| PgError { position: err.position.map(|p| p + offset), ..err })?;
+                if self.session.setting_on("check_function_bodies") {
+                    self.check_sql_body(&name, &params, &body, ret, &columns)
+                        .map_err(|err| PgError { position: err.position.map(|p| p + offset), ..err })?;
+                }
                 function.sql_definition = body.into_bytes();
             }
             "plpgsql" => {

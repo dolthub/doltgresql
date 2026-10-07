@@ -404,9 +404,11 @@ impl Block {
 }
 
 /// substitute replaces each variable an expression names, or field of one, with `$N`, returning the expression, with
-/// its tokens rejoined by spaces as Go does, and the names the parameters bind, where a name before `(` is a function.
+/// its tokens rejoined by spaces as Go does, and the names the parameters bind, where a name before `(` is a function
+/// and the columns that an INSERT lists or an UPDATE sets stay column names.
 fn substitute(expression: &str, names: &Names) -> Result<(String, Vec<String>)> {
     let tokens = pg_query::scan(expression).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?.tokens;
+    let targets = assignment_targets(expression);
     let text = |i: usize| &expression[tokens[i].start as usize..tokens[i].end as usize];
     let is = |i: usize, token: Token| tokens.get(i).is_some_and(|t| t.token == token as i32);
     let mut out = String::new();
@@ -416,7 +418,7 @@ fn substitute(expression: &str, names: &Names) -> Result<(String, Vec<String>)> 
         let mut substring = text(i).to_string();
         let after_dot = i > 0 && is(i - 1, Token::Ascii46);
         let normalized = names.aliases.resolve(&normalize_identifier(&substring));
-        if !after_dot && names.contains(&normalized) {
+        if !after_dot && !targets.contains(&tokens[i].start) && names.contains(&normalized) {
             let mut binding = normalized;
             while i + 2 < tokens.len() && is(i + 1, Token::Ascii46) {
                 let field = text(i + 2);
@@ -441,6 +443,34 @@ fn substitute(expression: &str, names: &Names) -> Result<(String, Vec<String>)> 
         i += 1;
     }
     Ok((out, bindings))
+}
+
+/// assignment_targets returns where the column names that an INSERT lists or an UPDATE sets start, which name the
+/// table's columns rather than variables, as PL/pgSQL's parser hooks leave them.
+fn assignment_targets(text: &str) -> std::collections::HashSet<i32> {
+    let mut targets = std::collections::HashSet::new();
+    let Ok(parsed) = pg_query::parse(text) else { return targets };
+    let names = |list: &[pg_query::Node]| -> Vec<i32> {
+        list.iter()
+            .filter_map(|n| match n.node.as_ref() {
+                Some(pg_query::NodeEnum::ResTarget(t)) => Some(t.location),
+                _ => None,
+            })
+            .collect()
+    };
+    for statement in parsed.protobuf.stmts.iter().filter_map(|s| s.stmt.as_ref()).filter_map(|s| s.node.as_ref()) {
+        match statement {
+            pg_query::NodeEnum::InsertStmt(insert) => {
+                targets.extend(names(&insert.cols));
+                if let Some(clause) = insert.on_conflict_clause.as_ref() {
+                    targets.extend(names(&clause.target_list));
+                }
+            }
+            pg_query::NodeEnum::UpdateStmt(update) => targets.extend(names(&update.target_list)),
+            _ => {}
+        }
+    }
+    targets
 }
 
 /// get returns a field of a JSON object.
@@ -506,7 +536,8 @@ pub fn compile_json(function: &Json, body: &str) -> Result<Vec<Operation>> {
     Ok(ops)
 }
 
-/// convert_function converts a function's datums and body into its top-level block.
+/// convert_function converts a function's datums and body into its top-level block, where a record datum without a
+/// number or line is a parameter of a composite type.
 fn convert_function(function: &Json, body: &str) -> Result<Block> {
     let datums = list(function, "datums");
     let action = get(function, "action").and_then(|a| get(a, "PLpgSQL_stmt_block")).cloned().unwrap_or(Json::Null);
@@ -528,6 +559,16 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
                     block.records[number].name = text(value, "refname");
                     block.records[number].default = query(value, "default_val");
                     block.records[number].datum = index as i32;
+                } else if get(value, "lineno").is_none()
+                    && ![new_number, old_number].iter().any(|&n| n != 0 && n == int(value, "dno"))
+                {
+                    block.variables.push(Variable {
+                        name: text(value, "refname"),
+                        type_name: String::new(),
+                        is_parameter: true,
+                        default: String::new(),
+                        datum: index as i32,
+                    });
                 }
             }
             "PLpgSQL_recfield" => {

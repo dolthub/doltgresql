@@ -2287,10 +2287,10 @@ $$ LANGUAGE plpgsql;"#,
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "SELECT interpreted_merging(67);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function interpreted_merging(integer) does not exist", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function interpreted_merging(integer) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
                     ..A
                 },
                 // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
@@ -4494,6 +4494,202 @@ fn test_plpgsql_rules() {
                     query: "SELECT unassigned();",
                     expected: Expected::Error(Diagnostic { code: "55000", message: r#"record "r" is not assigned yet"#, detail: "The tuple structure of a not-yet-assigned record is indeterminate.", ..E }),
                     flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_plpgsql_binding_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "PL/pgSQL variables and column names",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tjv (id serial, ops jsonb, gross int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION p1() RETURNS int LANGUAGE plpgsql AS $$ DECLARE ops jsonb; BEGIN ops := '[1]'; INSERT INTO tjv (ops, gross) VALUES (ops, 5); RETURN 1; END; $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT p1();",
+                    expected: Expected::Rows {
+                        columns: &[Column("p1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION p2() RETURNS int LANGUAGE plpgsql AS $$ DECLARE gross int := 9; BEGIN UPDATE tjv SET gross = gross; RETURN 1; END; $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT p2();",
+                    expected: Expected::Error(Diagnostic { code: "42702", message: r#"column reference "gross" is ambiguous"#, detail: "It could refer to either a PL/pgSQL variable or a table column.", ..E }),
+                    flow: Flow::Query,
+                    skip: Some("PL/pgSQL binds a name that is both a variable and a column to the variable, where Postgres reports the conflict"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ops, gross FROM tjv;",
+                    expected: Expected::Rows {
+                        columns: &[Column("ops", JSONB), Column("gross", INT4)],
+                        rows: &[
+                            &[T("[1]"), T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("PL/pgSQL binds a name that is both a variable and a column to the variable, where Postgres reports the conflict"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE transv (vmid integer, price int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO transv VALUES (1, 44);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION n1(t public.transv) RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN t.price; END; $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT n1(transv.*) FROM transv;",
+                    expected: Expected::Rows {
+                        columns: &[Column("n1", INT4)],
+                        rows: &[
+                            &[T("44")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Unassigned records and RAISE options",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION u1() RETURNS text LANGUAGE plpgsql AS $$ DECLARE r RECORD; BEGIN RETURN to_jsonb(r)::text; END; $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT u1() IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION u3() RETURNS bool LANGUAGE plpgsql AS $$ DECLARE r RECORD; BEGIN RETURN r IS NULL; END; $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT u3();",
+                    expected: Expected::Rows {
+                        columns: &[Column("u3", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION r1() RETURNS text LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'one' USING MESSAGE = 'two'; RETURN 'x'; END; $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT r1();",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "RAISE option already specified: MESSAGE", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Function bodies, concatenation, and system columns",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET check_function_bodies = false;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION later_table() RETURNS SETOF int LANGUAGE sql AS $$ SELECT id FROM not_created_yet $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET check_function_bodies = true;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a'::text || '2020-01-01'::timestamp, '2020-01-01'::timestamp || 'a'::text;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TEXT), Column("?column?", TEXT)],
+                        rows: &[
+                            &[T("a2020-01-01 00:00:00"), T("2020-01-01 00:00:00a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE st (a int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO st VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT tableoid = 'st'::regclass, cmin, xmax FROM st;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("cmin", CID), Column("xmax", XID)],
+                        rows: &[
+                            &[T("t"), T("0"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c.tableoid::regclass, n.tableoid::regclass FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE c.relname = 'st';",
+                    expected: Expected::Rows {
+                        columns: &[Column("tableoid", REGCLASS), Column("tableoid", REGCLASS)],
+                        rows: &[
+                            &[T("pg_class"), T("pg_namespace")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
             ],
