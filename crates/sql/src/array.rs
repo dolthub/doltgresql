@@ -785,71 +785,6 @@ pub fn is_array_type(type_oid: u32) -> bool {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::oid;
-
-    /// text_array parses text into a text array.
-    fn text_array(text: &str) -> Result<Array> {
-        parse(text, oid::TEXT, &|s| Ok(Value::Text(s.to_string())))
-    }
-
-    #[test]
-    fn literals_parse_and_print_as_postgres_does() {
-        let a = text_array(r#"{"this", "is", null, "NULL", quoted , {} }"#);
-        assert!(a.is_err());
-        let a = text_array(r#"{"this", "is", null, "NULL", " sp "}"#).unwrap();
-        assert_eq!(format(&a, &|v| v.output().unwrap_or_default()), r#"{this,is,NULL,"NULL"," sp "}"#);
-        let a = text_array("{{1,2},{3,4}}").unwrap();
-        assert_eq!(a.dims, vec![(2, 1), (2, 1)]);
-        let a = text_array("[0:1]={a,b}").unwrap();
-        assert_eq!(format(&a, &|v| v.output().unwrap_or_default()), "[0:1]={a,b}");
-        assert_eq!(text_array("{}").unwrap().dims, vec![]);
-    }
-
-    #[test]
-    fn malformed_literals_report_postgres_details() {
-        for (text, detail) in [
-            ("{{1,2},{3}}", "Multidimensional arrays must have sub-arrays with matching dimensions."),
-            ("{{}}", "Unexpected \"}\" character."),
-            ("{a,}", "Unexpected \"}\" character."),
-            ("{a,b,c\"}", "Unexpected array element."),
-            ("{a,b,c", "Unexpected end of input."),
-            ("{a,b,\"c}", "Unexpected end of input."),
-            ("{a\",b,c}", "Unexpected array element."),
-            ("{1,{2}}", "Unexpected \"{\" character."),
-            ("{\"abc\"\"\",\"def\"}", "Unexpected array element."),
-            ("a,b,c}", "Array value must start with \"{\" or dimension information."),
-            ("{a} b", "Junk after closing right brace."),
-        ] {
-            let err = text_array(text).unwrap_err();
-            assert_eq!(err.detail.as_deref(), Some(detail), "{text}");
-        }
-    }
-
-    #[test]
-    fn values_nest_slice_and_concatenate_as_postgres_does() {
-        let ints = |values: &[i32]| Array::one_dimensional(oid::INT4, values.iter().map(|&i| Value::Int4(i)).collect());
-        let print = |a: &Array| format(a, &|v| v.output().unwrap_or_default());
-        let square =
-            nest(oid::INT4, vec![Value::Array(Box::new(ints(&[1, 2]))), Value::Array(Box::new(ints(&[3, 4])))]);
-        let square = square.unwrap();
-        assert_eq!(print(&square), "{{1,2},{3,4}}");
-        assert!(
-            nest(oid::INT4, vec![Value::Array(Box::new(ints(&[1]))), Value::Array(Box::new(ints(&[1, 2])))]).is_err()
-        );
-        assert_eq!(element(&square, &[2, 1]), Some(&Value::Int4(3)));
-        assert_eq!(element(&square, &[3, 1]), None);
-        assert_eq!(print(&slice(&square, &[(Some(1), Some(2)), (Some(2), None)])), "{{2},{4}}");
-        assert_eq!(print(&slice(&ints(&[1, 2, 3]), &[(Some(5), None)])), "{}");
-        assert_eq!(print(&concat(square.clone(), ints(&[5, 6])).unwrap()), "{{1,2},{3,4},{5,6}}");
-        assert!(concat(square, ints(&[5])).is_err());
-        assert_eq!(compare(&ints(&[1, 2]), &ints(&[1, 2, 0])), Ordering::Less);
-        assert_eq!(compare(&ints(&[1, 3]), &ints(&[1, 2, 0])), Ordering::Greater);
-    }
-}
-
 /// subscript_error returns Postgres' error for a subscript that an array assignment cannot take.
 fn subscript_error(message: &str) -> PgError {
     PgError::new(code::ARRAY_SUBSCRIPT_ERROR, message)
@@ -957,4 +892,69 @@ pub fn assign_slice(mut array: Array, bounds: &[(Option<i32>, Option<i32>)], sou
         }
     }
     Ok(array)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::oid;
+
+    /// text_array parses text into a text array.
+    fn text_array(text: &str) -> Result<Array> {
+        parse(text, oid::TEXT, &|s| Ok(Value::Text(s.to_string())))
+    }
+
+    #[test]
+    fn literals_parse_and_print_as_postgres_does() {
+        let a = text_array(r#"{"this", "is", null, "NULL", quoted , {} }"#);
+        assert!(a.is_err());
+        let a = text_array(r#"{"this", "is", null, "NULL", " sp "}"#).unwrap();
+        assert_eq!(format(&a, &|v| v.output().unwrap_or_default()), r#"{this,is,NULL,"NULL"," sp "}"#);
+        let a = text_array("{{1,2},{3,4}}").unwrap();
+        assert_eq!(a.dims, vec![(2, 1), (2, 1)]);
+        let a = text_array("[0:1]={a,b}").unwrap();
+        assert_eq!(format(&a, &|v| v.output().unwrap_or_default()), "[0:1]={a,b}");
+        assert_eq!(text_array("{}").unwrap().dims, vec![]);
+    }
+
+    #[test]
+    fn malformed_literals_report_postgres_details() {
+        for (text, detail) in [
+            ("{{1,2},{3}}", "Multidimensional arrays must have sub-arrays with matching dimensions."),
+            ("{{}}", "Unexpected \"}\" character."),
+            ("{a,}", "Unexpected \"}\" character."),
+            ("{a,b,c\"}", "Unexpected array element."),
+            ("{a,b,c", "Unexpected end of input."),
+            ("{a,b,\"c}", "Unexpected end of input."),
+            ("{a\",b,c}", "Unexpected array element."),
+            ("{1,{2}}", "Unexpected \"{\" character."),
+            ("{\"abc\"\"\",\"def\"}", "Unexpected array element."),
+            ("a,b,c}", "Array value must start with \"{\" or dimension information."),
+            ("{a} b", "Junk after closing right brace."),
+        ] {
+            let err = text_array(text).unwrap_err();
+            assert_eq!(err.detail.as_deref(), Some(detail), "{text}");
+        }
+    }
+
+    #[test]
+    fn values_nest_slice_and_concatenate_as_postgres_does() {
+        let ints = |values: &[i32]| Array::one_dimensional(oid::INT4, values.iter().map(|&i| Value::Int4(i)).collect());
+        let print = |a: &Array| format(a, &|v| v.output().unwrap_or_default());
+        let square =
+            nest(oid::INT4, vec![Value::Array(Box::new(ints(&[1, 2]))), Value::Array(Box::new(ints(&[3, 4])))]);
+        let square = square.unwrap();
+        assert_eq!(print(&square), "{{1,2},{3,4}}");
+        assert!(
+            nest(oid::INT4, vec![Value::Array(Box::new(ints(&[1]))), Value::Array(Box::new(ints(&[1, 2])))]).is_err()
+        );
+        assert_eq!(element(&square, &[2, 1]), Some(&Value::Int4(3)));
+        assert_eq!(element(&square, &[3, 1]), None);
+        assert_eq!(print(&slice(&square, &[(Some(1), Some(2)), (Some(2), None)])), "{{2},{4}}");
+        assert_eq!(print(&slice(&ints(&[1, 2, 3]), &[(Some(5), None)])), "{}");
+        assert_eq!(print(&concat(square.clone(), ints(&[5, 6])).unwrap()), "{{1,2},{3,4},{5,6}}");
+        assert!(concat(square, ints(&[5])).is_err());
+        assert_eq!(compare(&ints(&[1, 2]), &ints(&[1, 2, 0])), Ordering::Less);
+        assert_eq!(compare(&ints(&[1, 3]), &ints(&[1, 2, 0])), Ordering::Greater);
+    }
 }

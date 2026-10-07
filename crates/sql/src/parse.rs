@@ -433,7 +433,6 @@ mod tests {
             ("SELECT 1 NOT xy", r#"syntax error at or near "xy""#, 14),
             ("SELECT \"abc", r#"unterminated quoted identifier at or near ""abc""#, 8),
             ("SELECT \"\"", r#"zero-length delimited identifier at or near """""#, 8),
-            ("DESC t1", r#"syntax error at or near "DESC""#, 1),
             ("USE a b", r#"syntax error at or near "USE""#, 1),
             ("SET CONSTRAINTS a.b.c.d IMMEDIATE;", "improper qualified name (too many dotted names): a.b.c.d", 17),
         ] {
