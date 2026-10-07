@@ -70,8 +70,8 @@ pub struct Setting {
     pub enum_values: Vec<String>,
 }
 
-/// Definitions indexes the settings by lowercase name, where the settings past `shown` are ones that pg_settings and
-/// SHOW ALL leave out.
+/// Definitions indexes the settings by lowercase name, where the settings past `shown`, Dolt's and the hidden ones, are
+/// ones that pg_settings and SHOW ALL leave out.
 struct Definitions {
     settings: Vec<Setting>,
     shown: usize,
@@ -105,6 +105,7 @@ fn definitions() -> &'static Definitions {
                 })
             })
             .collect();
+        let shown = settings.len();
         for &(name, kind, default) in DOLT_VARIABLES {
             settings.push(Setting {
                 name: name.to_string(),
@@ -120,7 +121,6 @@ fn definitions() -> &'static Definitions {
                 enum_values: Vec::new(),
             });
         }
-        let shown = settings.len();
         settings.push(Setting {
             name: "default_with_oids".into(),
             default: "off".into(),

@@ -125,11 +125,11 @@ fn test_create_view_statements() {
                     expected: Expected::Tag("SET"),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "SHOW search_path;",
                     expected: Expected::Rows {
-                        columns: &[Column("@@session.search_path", TEXT)],
+                        columns: &[Column("search_path", TEXT)],
                         rows: &[
                             &[T("testschema")],
                         ],
@@ -186,11 +186,11 @@ fn test_create_view_statements() {
                     expected: Expected::Tag("SET"),
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "SHOW search_path;",
                     expected: Expected::Rows {
-                        columns: &[Column("@@session.search_path", TEXT)],
+                        columns: &[Column("search_path", TEXT)],
                         rows: &[
                             &[T("testschema, myschema")],
                         ],
@@ -198,11 +198,18 @@ fn test_create_view_statements() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so the Go server's output is expected.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "select v1 from myview order by pk;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: myview", ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("v1", INT4)],
+                        rows: &[
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {

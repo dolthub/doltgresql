@@ -1340,6 +1340,7 @@ impl Ctx<'_> {
         } else {
             let empty = Hash::of(&empty_rows());
             stored.put_index(self.db, &index.name, Some(empty))?;
+            keys.dedup_by(|a, b| table.compare_index_keys(&index, &a.0, &b.0) == std::cmp::Ordering::Equal);
             let edits = keys.into_iter().map(|(k, _)| (k, Some(prolly::val::build_tuple(&[])))).collect();
             let compare = |a: &[u8], b: &[u8]| table.compare_index_keys(&index, a, b);
             stored.edit_index(self.db, &index.name, empty, edits, &compare, &table.index_encodings(&index))?;

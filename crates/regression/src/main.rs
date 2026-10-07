@@ -71,7 +71,7 @@ fn run_replay(root: &Path, target: &str, out: &Path, only: &[String]) -> Result<
             file,
             port: server.port,
             messages,
-            print_queries: false,
+            print_queries: std::env::var_os("REGRESSION_PRINT").is_some(),
             fail_psql: true,
             fail_queries: &QUERIES_TO_SKIP,
             password: "password",

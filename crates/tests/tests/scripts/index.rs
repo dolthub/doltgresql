@@ -5586,3 +5586,58 @@ fn test_expression_and_partial_index_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_keyless_duplicate_index_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "index on duplicate keyless rows",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE kt (i inet);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO kt VALUES ('10.1.1.1'), ('10.1.1.1'), ('10.0.0.0/8');",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX kt_idx ON kt(i);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM kt WHERE i = '10.1.1.1';",
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INET)],
+                        rows: &[
+                            &[T("10.1.1.1")],
+                            &[T("10.1.1.1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM kt WHERE i = '10.1.1.1';",
+                    expected: Expected::Tag("DELETE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM kt;",
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INET)],
+                        rows: &[
+                            &[T("10.0.0.0/8")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

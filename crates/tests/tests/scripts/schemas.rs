@@ -1215,56 +1215,45 @@ fn test_schemas() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column types, with the session's database name as the catalog.
                 ScriptTestAssertion {
                     query: "SELECT catalog_name, schema_name FROM information_schema.schemata;",
                     expected: Expected::Rows {
-                        columns: &[Column("catalog_name", VARCHAR), Column("schema_name", VARCHAR)],
+                        columns: &[Column("catalog_name", NAME), Column("schema_name", NAME)],
                         rows: &[
-                            &[T("postgres"), T("dolt")],
-                            &[T("postgres"), T("myschema")],
-                            &[T("postgres"), T("pg_catalog")],
-                            &[T("postgres"), T("public")],
-                            &[T("postgres"), T("information_schema")],
-                            &[T("postgres/main"), T("dolt")],
-                            &[T("postgres/main"), T("myschema")],
-                            &[T("postgres/main"), T("pg_catalog")],
                             &[T("postgres/main"), T("public")],
                             &[T("postgres/main"), T("information_schema")],
+                            &[T("postgres/main"), T("pg_catalog")],
+                            &[T("postgres/main"), T("pg_toast")],
+                            &[T("postgres/main"), T("myschema")],
                         ],
-                        tag: "SELECT 10",
+                        tag: "SELECT 5",
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column types, with the session's database name as the catalog.
                 ScriptTestAssertion {
                     query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/main';",
                     expected: Expected::Rows {
-                        columns: &[Column("schema_name", VARCHAR)],
+                        columns: &[Column("schema_name", NAME)],
                         rows: &[
-                            &[T("dolt")],
-                            &[T("myschema")],
-                            &[T("pg_catalog")],
                             &[T("public")],
                             &[T("information_schema")],
+                            &[T("pg_catalog")],
+                            &[T("pg_toast")],
+                            &[T("myschema")],
                         ],
                         tag: "SELECT 5",
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column types, with the session's database name as the catalog.
                 ScriptTestAssertion {
                     query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres';",
                     expected: Expected::Rows {
-                        columns: &[Column("schema_name", VARCHAR)],
-                        rows: &[
-                            &[T("dolt")],
-                            &[T("myschema")],
-                            &[T("pg_catalog")],
-                            &[T("public")],
-                            &[T("information_schema")],
-                        ],
-                        tag: "SELECT 5",
+                        columns: &[Column("schema_name", NAME)],
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     ..A
                 },
@@ -1380,36 +1369,30 @@ fn test_schemas() {
                     expected: Expected::Tag("CREATE TABLE"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column types, with the session's database name as the catalog.
                 ScriptTestAssertion {
                     query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres/newbranch';",
                     expected: Expected::Rows {
-                        columns: &[Column("schema_name", VARCHAR)],
+                        columns: &[Column("schema_name", NAME)],
                         rows: &[
-                            &[T("dolt")],
-                            &[T("myschema")],
-                            &[T("newbranchschema")],
-                            &[T("pg_catalog")],
                             &[T("public")],
                             &[T("information_schema")],
+                            &[T("pg_catalog")],
+                            &[T("pg_toast")],
+                            &[T("myschema")],
+                            &[T("newbranchschema")],
                         ],
                         tag: "SELECT 6",
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' column types, with the session's database name as the catalog.
                 ScriptTestAssertion {
                     query: "SELECT schema_name FROM information_schema.schemata WHERE catalog_name = 'postgres';",
                     expected: Expected::Rows {
-                        columns: &[Column("schema_name", VARCHAR)],
-                        rows: &[
-                            &[T("dolt")],
-                            &[T("myschema")],
-                            &[T("pg_catalog")],
-                            &[T("public")],
-                            &[T("information_schema")],
-                        ],
-                        tag: "SELECT 5",
+                        columns: &[Column("schema_name", NAME)],
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     ..A
                 },

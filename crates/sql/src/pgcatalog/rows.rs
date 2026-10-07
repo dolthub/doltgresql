@@ -108,10 +108,17 @@ fn builtin_proc(function: &[u8]) -> Value {
 
 /// proc_named returns a regproc value for a built-in function by name.
 fn proc_named(name: &str) -> Value {
-    let oid = crate::pgcatalog::reg::builtin_column("pg_proc", "proname")
-        .into_iter()
-        .find(|(_, n)| n.output().as_deref() == Some(name))
-        .map_or(0, |(o, _)| o);
+    static OIDS: std::sync::OnceLock<std::collections::HashMap<String, u32>> = std::sync::OnceLock::new();
+    let oids = OIDS.get_or_init(|| {
+        let mut oids = std::collections::HashMap::new();
+        for (oid, name) in crate::pgcatalog::reg::builtin_column("pg_proc", "proname") {
+            if let Some(name) = name.output() {
+                oids.entry(name).or_insert(oid);
+            }
+        }
+        oids
+    });
+    let oid = oids.get(name).copied().unwrap_or(0);
     Value::Reg(Box::new(Reg { type_oid: types::REGPROC, oid, name: name.to_string() }))
 }
 
