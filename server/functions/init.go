@@ -73,9 +73,15 @@ func initTypeFunctions() {
 	initXml()
 }
 
+// initInformationSchemaFunctions initializes all information_schema functions in this package.
+func initInformationSchemaFunctions() {
+	initPgCharMaxLength()
+}
+
 // Init initializes all functions in this package.
 func Init() {
 	initTypeFunctions()
+	initInformationSchemaFunctions()
 	initAbs()
 	initAcos()
 	initAcosd()
@@ -168,7 +174,6 @@ func Init() {
 	initOctetLength()
 	initPgAvailableExtensionVersions()
 	initPgBackendPid()
-	initPgCharMaxLength()
 	initPgCharToEncoding()
 	initPgCollationIsVisible()
 	initPgConversionIsVisible()
