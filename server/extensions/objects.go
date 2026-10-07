@@ -47,10 +47,14 @@ func CreateObjects(ctx *sql.Context, ext *extdef.Extension, schemaName string) e
 	return extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl}.materialize(ctx)
 }
 
-// CheckDependents returns an error if a table, a CHECK constraint, or a view depends on an object that the given
-// extension declares in the given schema.
+// CheckDependents returns an error if a table, a domain, a CHECK constraint, or a view depends on an object that the
+// given extension declares in the given schema.
 func CheckDependents(ctx *sql.Context, ext *extdef.Extension, schemaName string) error {
-	return extensionObjects{ext: ext, schemaName: schemaName}.checkDependents(ctx)
+	typColl, err := core.GetTypesCollectionFromContext(ctx, "")
+	if err != nil {
+		return err
+	}
+	return extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl}.checkDependents(ctx)
 }
 
 // DropObjects removes every object that the given extension declares from the given schema.
@@ -310,7 +314,8 @@ func (e extensionObjects) drop(ctx *sql.Context) error {
 	return e.dropTypes(ctx)
 }
 
-// checkDependents returns an error if a table, a CHECK constraint, or a view depends on one of the declared objects.
+// checkDependents returns an error if a table, a domain, a CHECK constraint, or a view depends on one of the declared
+// objects.
 func (e extensionObjects) checkDependents(ctx *sql.Context) error {
 	finder := dependencyFinder{ext: e.ext, typeIDs: e.declaredTypeIDs()}
 	db, err := core.GetSqlDatabaseFromContext(ctx, "")
@@ -341,6 +346,17 @@ func (e extensionObjects) checkDependents(ctx *sql.Context) error {
 			if err = finder.walkTable(ctx, table); err != nil {
 				return err
 			}
+		}
+	}
+	if !finder.found {
+		err = e.typColl.IterateTypes(ctx, func(typ *pgtypes.DoltgresType) (stop bool, err error) {
+			if typ.TypType == pgtypes.TypeType_Domain && !finder.found {
+				err = finder.walkDomain(typ)
+			}
+			return false, err
+		})
+		if err != nil {
+			return err
 		}
 	}
 	if !finder.found {
@@ -529,8 +545,8 @@ func (e extensionObjects) supportFuncID(ctx *sql.Context, symbol string) (uint32
 	return pgtypes.ToFuncID(funcID), nil
 }
 
-// dependencyFinder finds whether a table, a CHECK constraint, or a view uses an object that an extension declares.
-// Routines are matched by name, since stored expressions do not keep the schema of the routines they call.
+// dependencyFinder finds whether a table, a domain, a CHECK constraint, or a view uses an object that an extension
+// declares. Routines are matched by name, since stored expressions do not keep the schema of the routines they call.
 type dependencyFinder struct {
 	ext     *extdef.Extension
 	typeIDs []id.Type
@@ -587,6 +603,24 @@ func (f *dependencyFinder) walkTable(ctx *sql.Context, table sql.Table) error {
 	}
 	for _, check := range checks {
 		if err = f.walkText(check.CheckExpression); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkDomain checks the base type, the default, and the CHECK constraints of the given domain.
+func (f *dependencyFinder) walkDomain(domain *pgtypes.DoltgresType) error {
+	if slices.Contains(f.typeIDs, domain.BaseTypeType.ID) {
+		f.found = true
+	}
+	if len(domain.Default) > 0 {
+		if err := f.walkText(domain.Default); err != nil {
+			return err
+		}
+	}
+	for _, check := range domain.Checks {
+		if err := f.walkText(check.CheckExpression); err != nil {
 			return err
 		}
 	}

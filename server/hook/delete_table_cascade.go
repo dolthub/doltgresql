@@ -429,13 +429,19 @@ func newTableRefCollector() *tableRefCollector {
 	return &tableRefCollector{cteNames: make(map[string]struct{})}
 }
 
-// VisitPre implements the interface tree.Visitor. It recurses into subqueries appearing in expression position.
+// VisitPre implements the interface tree.Visitor. It recurses into subqueries and window definitions appearing in
+// expression position.
 func (c *tableRefCollector) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
 	if c.visitor != nil {
 		c.visitor.VisitPre(expr)
 	}
-	if subquery, ok := expr.(*tree.Subquery); ok {
-		c.collectSelectStatement(subquery.Select)
+	switch expr := expr.(type) {
+	case *tree.Subquery:
+		c.collectSelectStatement(expr.Select)
+	case *tree.FuncExpr:
+		if expr.WindowDef != nil {
+			c.collectWindowDef(expr.WindowDef)
+		}
 	}
 	return true, expr
 }
@@ -498,6 +504,9 @@ func (c *tableRefCollector) collectSelectStatement(stmt tree.SelectStatement) {
 		for _, expr := range stmt.DistinctOn {
 			c.collectExpr(expr)
 		}
+		for _, window := range stmt.Window {
+			c.collectWindowDef(window)
+		}
 	case *tree.UnionClause:
 		c.collectSelect(stmt.Left)
 		c.collectSelect(stmt.Right)
@@ -507,6 +516,16 @@ func (c *tableRefCollector) collectSelectStatement(stmt tree.SelectStatement) {
 				c.collectExpr(expr)
 			}
 		}
+	}
+}
+
+// collectWindowDef collects the table references from the partitions and ordering of the given window definition.
+func (c *tableRefCollector) collectWindowDef(window *tree.WindowDef) {
+	for _, expr := range window.Partitions {
+		c.collectExpr(expr)
+	}
+	for _, order := range window.OrderBy {
+		c.collectExpr(order.Expr)
 	}
 }
 
