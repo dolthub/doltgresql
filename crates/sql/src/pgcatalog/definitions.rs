@@ -106,7 +106,7 @@ fn float_text(value: f64) -> String {
 }
 
 /// quote_literal quotes text as a string literal.
-fn quote_literal(text: &str) -> String {
+pub(crate) fn quote_literal(text: &str) -> String {
     format!("'{}'", text.replace('\'', "''"))
 }
 

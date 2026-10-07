@@ -16,7 +16,7 @@
 //! that describe the working root value.
 
 mod builtin;
-mod definitions;
+pub(crate) mod definitions;
 mod extensions;
 mod infoschema;
 pub mod reg;

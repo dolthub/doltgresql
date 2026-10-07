@@ -1438,10 +1438,18 @@ fn test_schemas() {
                 r#"CREATE TABLE "hasTables".t1 (pk BIGINT PRIMARY KEY, v1 BIGINT);"#,
             ],
             assertions: &[
+                // Doltgres-specific: Postgres lacks this statement, so this expectation follows psql's describe commands.
                 ScriptTestAssertion {
                     query: "Show schemas",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "schemas""#, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("Name", NAME), Column("Owner", NAME)],
+                        rows: &[
+                            &[T("dropme"), T("postgres")],
+                            &[T("hasTables"), T("postgres")],
+                            &[T("public"), T("pg_database_owner")],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -1449,10 +1457,17 @@ fn test_schemas() {
                     expected: Expected::Tag("DROP SCHEMA"),
                     ..A
                 },
+                // Doltgres-specific: Postgres lacks this statement, so this expectation follows psql's describe commands.
                 ScriptTestAssertion {
                     query: "Show schemas",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "schemas""#, ..E }),
-                    flow: Flow::Query,
+                    expected: Expected::Rows {
+                        columns: &[Column("Name", NAME), Column("Owner", NAME)],
+                        rows: &[
+                            &[T("hasTables"), T("postgres")],
+                            &[T("public"), T("pg_database_owner")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {

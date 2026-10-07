@@ -736,6 +736,12 @@ impl Session {
         let mut columns = None;
         if let Some(Statement::Postgres { node: NodeEnum::VariableShowStmt(show), .. }) = &statement {
             columns = Some(show_columns(&show.name));
+        } else if let Some(Statement::Describe { .. }) = &statement {
+            columns = Some(crate::listing::describe_columns());
+        } else if let Some(Statement::ShowCreateTable { .. }) = &statement {
+            columns = Some(crate::listing::show_create_columns());
+        } else if let Some(Statement::Listing { kind, from }) = &statement {
+            columns = Some(self.with_ctx(&mut parameters, &[], |ctx| ctx.plan_listing(kind, from))?.columns);
         } else if let Some(Statement::Postgres { node, .. }) = &statement
             && describable(node)
         {
@@ -957,6 +963,18 @@ impl Session {
                 let value = self.with_ctx(&mut parameters, params, |ctx| ctx.constant_text(value))?;
                 self.state.settings.set(name, Some(&value), *local, self.state.explicit)?;
                 Ok(Outcome::command("SET"))
+            }
+            Statement::Describe { relation, extras } => {
+                let mut parameters = Vec::new();
+                self.with_ctx(&mut parameters, params, |ctx| ctx.describe_table(relation, extras))
+            }
+            Statement::ShowCreateTable { relation, extras } => {
+                let mut parameters = Vec::new();
+                self.with_ctx(&mut parameters, params, |ctx| ctx.show_create_table(relation, extras))
+            }
+            Statement::Listing { kind, from } => {
+                let mut parameters = Vec::new();
+                self.with_ctx(&mut parameters, params, |ctx| ctx.list_objects(kind, from))
             }
             Statement::Postgres { node, extras } => self.postgres(node, extras, params),
         }

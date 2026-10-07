@@ -66,7 +66,7 @@ fn type_text(ty: ColumnType) -> String {
 }
 
 /// column_definition returns a column's definition as Doltgres' schema formatter writes it, quoting a stored default
-/// that is not already a parenthesized expression, a string, or NULL, as Dolt does.
+/// that is a bare constant as Dolt does, and parenthesizing one that is an expression.
 fn column_definition(column: &ColumnDef) -> String {
     let mut out = format!("{} {}", quote_identifier(&column.name), type_text(column.ty));
     if !column.nullable {
@@ -76,14 +76,13 @@ fn column_definition(column: &ColumnDef) -> String {
     if column.generated {
         out.push_str(&format!(" GENERATED ALWAYS AS ({stored}) STORED"));
     } else if !stored.is_empty() {
-        let bare = !stored.starts_with('(')
-            && !stored.ends_with(')')
-            && !stored.starts_with('\'')
-            && !stored.ends_with('\'')
-            && stored != "NULL";
-        match bare {
-            true => out.push_str(&format!(" DEFAULT '{stored}'")),
-            false => out.push_str(&format!(" DEFAULT {stored}")),
+        let constant = crate::parse::expression_node(stored)
+            .is_ok_and(|node| matches!(node.node, Some(pg_query::NodeEnum::AConst(_))));
+        let enclosed = stored == "NULL" || (stored.starts_with('(') && stored.ends_with(')'));
+        match (enclosed || stored.starts_with('\''), constant) {
+            (true, _) => out.push_str(&format!(" DEFAULT {stored}")),
+            (false, true) => out.push_str(&format!(" DEFAULT '{stored}'")),
+            (false, false) => out.push_str(&format!(" DEFAULT ({stored})")),
         }
     }
     out

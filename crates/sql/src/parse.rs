@@ -31,7 +31,16 @@ pub enum Statement {
     Use(String),
     /// `SET` of a configuration parameter to an expression, which Postgres' grammar limits to constants.
     SetExpression { name: String, local: bool, value: Node },
+    /// `DESCRIBE`, `DESC`, or `EXPLAIN` of a table, with the table's `AS OF` revision in its extras.
+    Describe { relation: pg_query::protobuf::RangeVar, extras: Extras },
+    /// `SHOW CREATE TABLE` of a table, with the table's `AS OF` revision in its extras.
+    ShowCreateTable { relation: pg_query::protobuf::RangeVar, extras: Extras },
+    /// `SHOW TABLES`, `SEQUENCES`, `SCHEMAS`, `DATABASES`, or `INDEXES`, with the parts of the name after `FROM`.
+    Listing { kind: String, from: Vec<String> },
 }
+
+/// LISTINGS are the kinds of objects that a `SHOW` lists.
+pub const LISTINGS: [&str; 5] = ["tables", "sequences", "schemas", "databases", "indexes"];
 
 /// Extras are the Doltgres-only clauses of a Postgres statement.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -63,6 +72,11 @@ fn postgres_statements(query: &str, result: pg_query::ParseResult, extras: Extra
             let end = if raw.stmt_len == 0 { query.len() } else { (start + raw.stmt_len as usize).min(query.len()) };
             let text = query.get(start..end).unwrap_or_default().trim().to_string();
             let node = raw.stmt.and_then(|stmt| stmt.node)?;
+            if let NodeEnum::VariableShowStmt(show) = &node
+                && LISTINGS.contains(&show.name.as_str())
+            {
+                return Some(Statement::Listing { kind: show.name.clone(), from: Vec::new() });
+            }
             Some(Statement::Postgres { node, extras: Extras { text, ..extras.clone() } })
         })
         .collect()
@@ -120,7 +134,62 @@ fn extended_statement(query: &str, tokens: &[ScanToken]) -> Option<Vec<Statement
     if words.keyword(0, "set") {
         return set_expression(&words).map(|statement| vec![statement]);
     }
+    if words.keyword(0, "show")
+        && let Some(statement) = listing(&words)
+    {
+        return Some(vec![statement]);
+    }
+    if words.keyword(0, "show")
+        && words.keyword(1, "create")
+        && words.keyword(2, "table")
+        && let Some((relation, extras)) = table_reference(query, &words, 3)
+    {
+        return Some(vec![Statement::ShowCreateTable { relation, extras }]);
+    }
+    if ["describe", "desc", "explain"].iter().any(|word| words.keyword(0, word))
+        && let Some((relation, extras)) = table_reference(query, &words, 1)
+    {
+        return Some(vec![Statement::Describe { relation, extras }]);
+    }
     cut_statement(query, range, &words)
+}
+
+/// listing parses `SHOW kind {FROM | IN} name[.name]`.
+fn listing(words: &Words<'_>) -> Option<Statement> {
+    let kind = words.name(1).filter(|kind| LISTINGS.contains(&kind.as_str()) && kind != "databases")?;
+    if !(words.keyword(2, "from") || words.keyword(2, "in")) {
+        return None;
+    }
+    let mut from = vec![words.name(3)?];
+    let mut index = 4;
+    while words.kind(index) == Token::Ascii46 as i32 {
+        from.push(words.name(index + 1)?);
+        index += 2;
+    }
+    (index == words.tokens.len()).then_some(Statement::Listing { kind, from })
+}
+
+/// table_reference parses the rest of a statement from a token as a table with an optional `AS OF`, by reading it as
+/// `TABLE` of the table, written over the tokens before it and moving the locations back to the query's.
+fn table_reference(query: &str, words: &Words<'_>, first: usize) -> Option<(pg_query::protobuf::RangeVar, Extras)> {
+    let rest = words.tokens.get(first)?.start as usize;
+    let end = words.tokens.last()?.end as usize;
+    let shift = 6usize.saturating_sub(rest);
+    let mut text = " ".repeat(rest + shift - 6);
+    text.push_str("TABLE ");
+    text.push_str(&query[rest..end]);
+    let tokens = pg_query::scan(&text).ok()?.tokens;
+    let statements = extended_statement(&text, &tokens)?;
+    let [Statement::Postgres { node: NodeEnum::SelectStmt(select), extras }] = statements.as_slice() else {
+        return None;
+    };
+    let [from] = select.from_clause.as_slice() else { return None };
+    let Some(NodeEnum::RangeVar(relation)) = &from.node else { return None };
+    let back = |location: i32| location - shift as i32;
+    let relation = pg_query::protobuf::RangeVar { location: back(relation.location), ..relation.clone() };
+    let as_of = extras.as_of.iter().map(|(location, revision)| (back(*location), revision.clone())).collect();
+    let text = query[words.tokens[0].start as usize..end].to_string();
+    Some((relation, Extras { as_of, text, ..extras.clone() }))
 }
 
 /// isolate returns the query with everything outside the range replaced by spaces, so that the locations the parser

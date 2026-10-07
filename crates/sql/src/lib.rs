@@ -45,6 +45,7 @@ pub mod indexscan;
 pub mod json;
 pub mod jsonpath;
 pub mod jsontable;
+mod listing;
 pub mod numeric;
 pub mod numeric_math;
 pub mod operators;
