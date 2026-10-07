@@ -67,6 +67,7 @@ pub const FUNCTIONS: &[Function] = &[
     n("array_fill", &[ANYELEMENT, INT4_ARRAY, INT4_ARRAY], ANYARRAY, array_fill),
     f("trim_array", &[ANYARRAY, INT4], ANYARRAY, trim_array),
     f("unnest", &[ANYARRAY], ANYELEMENT, unnest),
+    f("__doltgres_foreach_slice", &[ANYARRAY, INT4], ANYARRAY, foreach_slice),
     f("generate_subscripts", &[ANYARRAY, INT4], INT4, generate_subscripts),
     f("generate_subscripts", &[ANYARRAY, INT4, BOOL], INT4, generate_subscripts),
 ];
@@ -339,6 +340,36 @@ fn trim_array(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// unnest returns an array's elements as rows.
 fn unnest(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Set(arr(&args[0]).map_or_else(Vec::new, |a| a.values.clone())))
+}
+
+/// foreach_slice returns the subarrays of an array's last dimensions as rows, which PL/pgSQL's FOREACH SLICE iterates
+/// over, as Go's internal __doltgres_foreach_slice does.
+fn foreach_slice(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let Some(array) = arr(&args[0]) else { return Ok(Value::Set(Vec::new())) };
+    let Value::Int4(slice) = args[1] else { return Ok(Value::Set(Vec::new())) };
+    let dimensions = array.dims.len() as i32;
+    if slice < 0 || slice > dimensions {
+        return Err(PgError::new(
+            code::ARRAY_SUBSCRIPT_ERROR,
+            format!("slice dimension ({slice}) is out of the valid range 0..{dimensions}"),
+        ));
+    }
+    if slice == 0 {
+        return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "slice dimension must be greater than zero"));
+    }
+    let inner = array.dims[(dimensions - slice) as usize..].to_vec();
+    let size: usize = inner.iter().map(|(length, _)| *length as usize).product();
+    let rows = match size {
+        0 => Vec::new(),
+        size => array
+            .values
+            .chunks(size)
+            .map(|values| {
+                Value::Array(Box::new(Array { element: array.element, dims: inner.clone(), values: values.to_vec() }))
+            })
+            .collect(),
+    };
+    Ok(Value::Set(rows))
 }
 
 /// generate_subscripts returns the subscripts of a dimension as rows, in reverse when asked.

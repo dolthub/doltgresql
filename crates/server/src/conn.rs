@@ -186,6 +186,9 @@ impl Conn {
             .filter(|(name, _)| !matches!(name.as_str(), "user" | "database" | "options" | "replication"))
             .cloned()
             .collect();
+        if let Some(options) = parameter("options") {
+            startup.extend(command_line_settings(&options));
+        }
         if !startup.iter().any(|(name, _)| name.eq_ignore_ascii_case("DateStyle")) {
             startup.push(("DateStyle".into(), "ISO, MDY".into()));
         }
@@ -632,4 +635,40 @@ fn message_name(message: &FrontendMessage) -> &'static str {
         FrontendMessage::Flush => "Flush",
         _ => "client",
     }
+}
+
+/// command_line_settings returns the settings that a startup packet's options give as `-c name=value` or
+/// `--name=value`, split at spaces that no backslash escapes, as Postgres' pg_split_opts and process_postgres_switches
+/// read them, with dashes in names read as underscores.
+fn command_line_settings(options: &str) -> Vec<(String, String)> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut chars = options.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => word.extend(chars.next()),
+            c if c.is_ascii_whitespace() => {
+                if !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+            }
+            c => word.push(c),
+        }
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    let mut out = Vec::new();
+    let mut words = words.into_iter();
+    while let Some(word) = words.next() {
+        let setting = match word.strip_prefix("--") {
+            Some(setting) => Some(setting.to_string()),
+            None if word == "-c" => words.next(),
+            None => word.strip_prefix("-c").map(str::to_string),
+        };
+        if let Some((name, value)) = setting.as_deref().and_then(|s| s.split_once('=')) {
+            out.push((name.replace('-', "_"), value.to_string()));
+        }
+    }
+    out
 }

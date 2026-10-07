@@ -395,17 +395,19 @@ pub fn call(ctx: &mut Ctx<'_>, routine: &Routine, ops: &[Operation], args: Vec<V
 
 /// call_trigger runs a trigger function with its NEW and OLD rows, in the table's columns, and its special
 /// variables, returning the row the function returned, or None when it returned NULL.
+#[allow(clippy::too_many_arguments)]
 pub fn call_trigger(
     ctx: &mut Ctx<'_>,
     routine: &Routine,
     ops: &[Operation],
+    row_type: ColumnType,
     columns: &[(String, ColumnType)],
     new: Option<Vec<Value>>,
     old: Option<Vec<Value>>,
     special: Vec<(&str, Value)>,
 ) -> Result<Option<Vec<Value>>> {
     let mut frame = Frame::new(routine, ops);
-    frame.declare_rows(columns, new, old);
+    frame.declare_rows(row_type, columns, new, old);
     for (name, value) in special {
         let ty = TRIGGER_VARIABLES.iter().find(|(n, _)| *n == name).map_or(oid::TEXT, |(_, t)| *t);
         frame.declare(name, Variable::scalar(typ(ty), value));
@@ -418,12 +420,13 @@ pub fn call_condition(
     ctx: &mut Ctx<'_>,
     routine: &Routine,
     ops: &[Operation],
+    row_type: ColumnType,
     columns: &[(String, ColumnType)],
     new: Option<Vec<Value>>,
     old: Option<Vec<Value>>,
 ) -> Result<Value> {
     let mut frame = Frame::new(routine, ops);
-    frame.declare_rows(columns, new, old);
+    frame.declare_rows(row_type, columns, new, old);
     frame.run(ctx)
 }
 
@@ -466,12 +469,19 @@ impl<'r> Frame<'r> {
         }
     }
 
-    /// declare_rows declares a trigger's NEW and OLD records with the table's columns, which are NULL when the event
+    /// declare_rows declares a trigger's NEW and OLD records of the table's row type, which are NULL when the event
     /// has no such row.
-    fn declare_rows(&mut self, columns: &[(String, ColumnType)], new: Option<Vec<Value>>, old: Option<Vec<Value>>) {
+    fn declare_rows(
+        &mut self,
+        row_type: ColumnType,
+        columns: &[(String, ColumnType)],
+        new: Option<Vec<Value>>,
+        old: Option<Vec<Value>>,
+    ) {
         for (name, row) in [("new", new), ("old", old)] {
             let record = Variable::record(columns.to_vec(), None);
-            self.declare(name, Variable { value: row.map_or(Value::Null, Value::Record), fixed: true, ..record });
+            let value = row.map_or(Value::Null, Value::Record);
+            self.declare(name, Variable { ty: row_type, value, fixed: true, ..record });
         }
     }
 
@@ -513,12 +523,15 @@ impl<'r> Frame<'r> {
                 self.require_assigned(base, variable)?;
                 let value = match (&variable.value, &variable.columns) {
                     (Value::Record(fields), Some(columns)) => {
-                        let type_oid = crate::usertypes::transient("record", columns);
+                        let type_oid = match variable.ty.oid {
+                            oid::RECORD => crate::usertypes::transient("record", columns),
+                            row_type => row_type,
+                        };
                         Value::Composite(Box::new(crate::types::CompositeValue { type_oid, fields: fields.clone() }))
                     }
                     (value, _) => value.clone(),
                 };
-                Ok((value, typ(oid::RECORD)))
+                Ok((value, variable.ty))
             }
             (Some(field), Some(columns)) => {
                 let index = field_index(columns, field).ok_or_else(|| record_has_no_field(base, field))?;
@@ -544,7 +557,8 @@ impl<'r> Frame<'r> {
         Ok(())
     }
 
-    /// assign stores a value in a variable or a record's field, converting it to the type it holds.
+    /// assign stores a value in a variable or a record's field, converting it to the type it holds, where a composite
+    /// value gives a RECORD its fields.
     fn assign(&mut self, name: &str, value: Value) -> Result<()> {
         if let Some((base, field)) = name.split_once('.') {
             let index = self.variable(base)?;
@@ -582,6 +596,15 @@ impl<'r> Frame<'r> {
                     return Err(PgError::new(code::DATATYPE_MISMATCH, format!("cannot assign {value:?} to a record")));
                 }
             };
+            return Ok(());
+        }
+        if variable.ty.oid == oid::RECORD
+            && let Value::Composite(composite) = &value
+            && let Some(crate::usertypes::Kind::Composite(attributes)) =
+                crate::usertypes::get(composite.type_oid).map(|t| t.kind.clone())
+        {
+            variable.columns = Some(attributes);
+            variable.value = Value::Record(composite.fields.clone());
             return Ok(());
         }
         variable.value =
@@ -632,8 +655,74 @@ impl<'r> Frame<'r> {
         }
     }
 
-    /// query runs an embedded statement with the variables its parameters bind.
+    /// expand_stars returns a statement whose `name.*` parameters for a record bind each of the record's fields in
+    /// turn where they make up a whole item of the SELECT list, as Postgres expands a whole-row reference there into
+    /// its columns, and leaves them whole elsewhere.
+    fn expand_stars(&self, sql: &str, bindings: &[String]) -> Result<(String, Vec<String>)> {
+        let fields = |binding: &String| -> Option<Vec<String>> {
+            let base = binding.strip_suffix(".*")?;
+            let columns = self.variables[self.find(base)?].columns.as_ref()?;
+            Some(columns.iter().map(|(name, _)| format!("{base}.{name}")).collect())
+        };
+        if !bindings.iter().any(|b| fields(b).is_some()) {
+            return Ok((sql.to_string(), bindings.to_vec()));
+        }
+        use pg_query::protobuf::Token;
+        let tokens = pg_query::scan(sql).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?.tokens;
+        let mut whole = std::collections::HashSet::new();
+        let mut depth = 0;
+        for (i, token) in tokens.iter().enumerate() {
+            match token.token {
+                t if t == Token::Ascii40 as i32 => depth += 1,
+                t if t == Token::Ascii41 as i32 => depth -= 1,
+                t if t == Token::Param as i32 && depth == 0 => {
+                    let before = i.checked_sub(1).map(|j| tokens[j].token);
+                    let after = tokens.get(i + 1).map(|t| t.token);
+                    let starts = matches!(before, Some(t) if t == Token::Select as i32 || t == Token::Ascii44 as i32);
+                    let ends = match after {
+                        None => true,
+                        Some(t) => {
+                            [Token::Ascii44, Token::Ascii59, Token::From, Token::Into].iter().any(|e| *e as i32 == t)
+                        }
+                    };
+                    if starts && ends {
+                        whole.insert(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut expanded: Vec<String> = bindings.to_vec();
+        let mut numbers: Vec<Vec<usize>> = vec![Vec::new(); bindings.len()];
+        for (k, binding) in bindings.iter().enumerate() {
+            if let Some(names) = fields(binding) {
+                numbers[k] = (expanded.len() + 1..=expanded.len() + names.len()).collect();
+                expanded.extend(names);
+            }
+        }
+        let mut out = String::new();
+        let mut last = 0;
+        for (_, token) in tokens.iter().enumerate().filter(|(i, _)| whole.contains(i)) {
+            let (start, end) = (token.start as usize, token.end as usize);
+            let Some(list) = sql[start + 1..end].parse::<usize>().ok().and_then(|n| numbers.get(n.wrapping_sub(1)))
+            else {
+                continue;
+            };
+            if list.is_empty() {
+                continue;
+            }
+            out.push_str(&sql[last..start]);
+            out.push_str(&list.iter().map(|n| format!("${n}")).collect::<Vec<_>>().join(", "));
+            last = end;
+        }
+        out.push_str(&sql[last..]);
+        Ok((out, expanded))
+    }
+
+    /// query runs an embedded statement with the variables its parameters bind, expanding whole-row references.
     fn query(&self, ctx: &mut Ctx<'_>, sql: &str, bindings: &[String]) -> Result<QueryResult> {
+        let (sql, bindings) = self.expand_stars(sql, bindings)?;
+        let (sql, bindings) = (sql.as_str(), bindings.as_slice());
         let statement = parse(sql)?;
         let mut values = Vec::with_capacity(bindings.len());
         let mut types = Vec::with_capacity(bindings.len());
@@ -686,9 +775,14 @@ impl<'r> Frame<'r> {
         Ok((value, result.columns[0].1))
     }
 
-    /// evaluate evaluates expression text from the source, such as a RAISE argument, with the variables it names.
+    /// evaluate evaluates expression text from the source, such as a RAISE argument, with the variables it names,
+    /// leaving a whole-row reference unparenthesized so that it expands into its columns.
     fn evaluate(&self, ctx: &mut Ctx<'_>, expression: &str) -> Result<(Value, ColumnType)> {
-        let (sql, bindings) = self.substitute(&format!("SELECT ({expression})"))?;
+        let sql = match expression.trim().ends_with(".*") {
+            true => format!("SELECT {expression}"),
+            false => format!("SELECT ({expression})"),
+        };
+        let (sql, bindings) = self.substitute(&sql)?;
         self.single(ctx, &sql, &bindings)
     }
 

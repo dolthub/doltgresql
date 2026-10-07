@@ -337,9 +337,22 @@ impl Value {
                     }
                     Ok(Value::Bit(crate::binary::unpack_bits(&bytes[4..], length)))
                 }
-                _ => match base_type(type_oid) {
-                    Some(base) => Ok(Value::Base(Box::new(BaseValue { type_oid, data: (base.receive)(bytes, -1)? }))),
-                    None => Err(PgError::unsupported(format!("binary parameters of type {type_oid}"))),
+                oid::CID => Ok(Value::Oid(u32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?))),
+                t if crate::cast::is_reg_type(t) => {
+                    Ok(Value::Text(u32::from_be_bytes(bytes.try_into().map_err(|_| invalid())?).to_string()))
+                }
+                _ => match (base_type(type_oid), crate::usertypes::get(type_oid).map(|t| t.kind.clone())) {
+                    (Some(base), _) => {
+                        Ok(Value::Base(Box::new(BaseValue { type_oid, data: (base.receive)(bytes, -1)? })))
+                    }
+                    (None, Some(crate::usertypes::Kind::Enum(_))) => Value::decode(type_oid, 0, Some(bytes)),
+                    (None, Some(crate::usertypes::Kind::Domain(domain))) => {
+                        Value::decode(domain.base.oid, BINARY_FORMAT, Some(bytes))
+                    }
+                    (None, Some(crate::usertypes::Kind::Composite(attributes))) => {
+                        receive_record(type_oid, &attributes, bytes)
+                    }
+                    _ => Err(PgError::unsupported(format!("binary parameters of type {type_oid}"))),
                 },
             };
         }
@@ -363,6 +376,44 @@ pub fn base_type(type_oid: u32) -> Option<&'static crate::extensions::BaseType> 
         crate::usertypes::Kind::Base(definition) => Some(definition),
         _ => None,
     }
+}
+
+/// receive_record reads a composite value from Postgres' binary record format, the field count, then each field's type
+/// OID, length, and data, as record_recv does.
+fn receive_record(type_oid: u32, attributes: &[(String, crate::catalog::ColumnType)], bytes: &[u8]) -> Result<Value> {
+    let short = || PgError::new(code::PROTOCOL_VIOLATION, "insufficient data left in message");
+    let mut at = 0;
+    let mut take = |n: usize| -> Result<&[u8]> {
+        let slice = bytes.get(at..at + n).ok_or_else(short)?;
+        at += n;
+        Ok(slice)
+    };
+    let count = i32::from_be_bytes(take(4)?.try_into().map_err(|_| short())?);
+    if count != attributes.len() as i32 {
+        return Err(PgError::new(
+            code::DATATYPE_MISMATCH,
+            format!("wrong number of columns: {count}, expected {}", attributes.len()),
+        ));
+    }
+    let mut fields = Vec::with_capacity(attributes.len());
+    for (_, ty) in attributes {
+        let field_type = u32::from_be_bytes(take(4)?.try_into().map_err(|_| short())?);
+        if field_type != ty.oid {
+            return Err(PgError::new(
+                code::DATATYPE_MISMATCH,
+                format!("wrong data type: {field_type}, expected {}", ty.oid),
+            ));
+        }
+        let length = i32::from_be_bytes(take(4)?.try_into().map_err(|_| short())?);
+        let data = match length {
+            -1 => None,
+            n if n < -1 => return Err(short()),
+            n => Some(take(n as usize)?),
+        };
+        let value = Value::decode(field_type, BINARY_FORMAT, data)?;
+        fields.push(crate::cast::cast_value(value, *ty, false)?);
+    }
+    Ok(Value::Composite(Box::new(CompositeValue { type_oid, fields })))
 }
 
 /// format_record prints a record's fields as Postgres' record_out does, quoting fields that need it.

@@ -185,6 +185,14 @@ pub fn register(definition: SerializedType) -> u32 {
     oid
 }
 
+/// register_row_type makes a table's row type and its array type known to this thread's statement, returning the row
+/// type's OID.
+pub fn register_row_type(table: &crate::catalog::table::TableDef) -> u32 {
+    let definition = row_type(table);
+    register(array_type(&definition));
+    register(definition)
+}
+
 /// table_row_type returns the OID of the registered row type of the table with the OID.
 pub fn table_row_type(table_oid: u32) -> Option<u32> {
     REGISTRY.with(|r| {
@@ -504,7 +512,7 @@ impl Ctx<'_> {
         };
         for schema in schemas {
             if let Some(table) = self.txn.table(self.db, &schema, name)? {
-                register(row_type(&table));
+                register_row_type(&table);
                 return Ok(());
             }
         }

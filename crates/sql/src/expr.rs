@@ -623,17 +623,19 @@ impl<'b, 'a> Binder<'b, 'a> {
 }
 
 impl<'b, 'a> Binder<'b, 'a> {
-    /// whole_row_columns returns the visible columns of the FROM item a name refers to, with their expressions, in the
-    /// innermost scope that has it, which a whole-row reference such as `t` or `t.*` stands for.
+    /// whole_row_columns returns the visible columns of the FROM item a name refers to, or its hidden ones when it has
+    /// only those, as a trigger condition's `old` and `new` do, with their expressions, in the innermost scope that has
+    /// it, which a whole-row reference such as `t` or `t.*` stands for.
     fn whole_row_columns(&mut self, table: &str) -> Vec<(String, Expr, ColumnType)> {
         let depth_count = self.scopes.len();
         for depth in 0..depth_count {
             let scope = &self.scopes[depth_count - 1 - depth];
+            let only_hidden = scope.columns.iter().filter(|c| c.table == table).all(|c| c.hidden);
             let columns: Vec<(usize, String, ColumnType)> = scope
                 .columns
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| c.table == table && !c.hidden)
+                .filter(|(_, c)| c.table == table && (only_hidden || !c.hidden))
                 .map(|(i, c)| (i, c.name.clone(), c.ty))
                 .collect();
             if columns.is_empty() {
@@ -657,9 +659,10 @@ impl<'b, 'a> Binder<'b, 'a> {
 
     /// whole_row_table returns the OID of the table whose every column, in order, a whole-row reference covers.
     fn whole_row_table(&self, table: &str) -> Option<u32> {
-        let scope = self.scopes.iter().rev().find(|s| s.columns.iter().any(|c| c.table == table && !c.hidden))?;
+        let scope = self.scopes.iter().rev().find(|s| s.columns.iter().any(|c| c.table == table))?;
+        let only_hidden = scope.columns.iter().filter(|c| c.table == table).all(|c| c.hidden);
         let origins: Vec<(u32, u16)> =
-            scope.columns.iter().filter(|c| c.table == table && !c.hidden).map(|c| c.origin).collect();
+            scope.columns.iter().filter(|c| c.table == table && (only_hidden || !c.hidden)).map(|c| c.origin).collect();
         let table_oid = origins.first()?.0;
         let in_order = origins.iter().enumerate().all(|(i, o)| o.0 == table_oid && usize::from(o.1) == i + 1);
         (table_oid != 0 && in_order).then_some(table_oid)
@@ -786,7 +789,10 @@ impl<'b, 'a> Binder<'b, 'a> {
             }
         }
         let mut call_expr = Expr::Func(resolved.index, args);
-        if functions::function(resolved.index).ret == functions::ANYARRAY && resolved.ret != functions::ANYARRAY {
+        if functions::function(resolved.index).ret == functions::ANYARRAY
+            && resolved.ret != functions::ANYARRAY
+            && !functions::returns_set(name)
+        {
             call_expr = Expr::Cast(Box::new(call_expr), typ(resolved.ret), false);
         }
         if functions::returns_set(name) {

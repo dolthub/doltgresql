@@ -18,12 +18,14 @@
 mod geometric;
 mod money;
 mod network;
+mod tid;
 
 use crate::extensions::BaseType;
 
 /// get returns the definition of a built-in base type by its OID.
 pub fn get(type_oid: u32) -> Option<&'static BaseType> {
     Some(match type_oid {
+        27 => &tid::TID,
         600 => &geometric::POINT,
         601 => &geometric::LSEG,
         602 => &geometric::PATH,

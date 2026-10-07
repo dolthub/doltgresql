@@ -453,12 +453,12 @@ impl Numeric {
     }
 
     /// send returns Postgres' binary format: the digit group count, weight, sign, display scale, and base-10000
-    /// groups.
+    /// groups, where infinities carry the display scale of 32 that Postgres reads from their short header's bits.
     pub fn send(&self) -> Vec<u8> {
         let (sign, groups, weight, scale): (u16, Vec<u16>, i16, u16) = match self {
             Numeric::NaN => (0xC000, Vec::new(), 0, 0),
-            Numeric::Infinity => (0xD000, Vec::new(), 0, 0),
-            Numeric::NegativeInfinity => (0xF000, Vec::new(), 0, 0),
+            Numeric::Infinity => (0xD000, Vec::new(), 0, 32),
+            Numeric::NegativeInfinity => (0xF000, Vec::new(), 0, 32),
             Numeric::Finite { negative, coefficient, scale } => {
                 if coefficient.is_zero() {
                     (0, Vec::new(), 0, *scale as u16)

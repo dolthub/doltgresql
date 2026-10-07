@@ -113,6 +113,7 @@ const SET_RETURNING: &[&str] = &[
     "generate_series",
     "generate_subscripts",
     "unnest",
+    "__doltgres_foreach_slice",
     "regexp_matches",
     "regexp_split_to_table",
     "dolt_log",

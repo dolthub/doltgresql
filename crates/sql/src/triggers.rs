@@ -117,6 +117,7 @@ pub struct Fired {
 /// Triggers are the triggers of a table that a statement may fire, in name order, as Postgres fires them.
 pub struct Triggers {
     table: TableDef,
+    row_type: ColumnType,
     columns: Vec<(String, ColumnType)>,
     list: Vec<Fired>,
 }
@@ -156,7 +157,8 @@ impl Ctx<'_> {
         }
         list.sort_by(|a, b| a.name.cmp(&b.name));
         let columns = table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect();
-        Ok(Triggers { table: table.clone(), columns, list })
+        let row_type = crate::expr::typ(crate::usertypes::register_row_type(table));
+        Ok(Triggers { table: table.clone(), row_type, columns, list })
     }
 
     /// trigger_function returns the function a trigger runs, which Go names by schema and name, finding an
@@ -286,14 +288,16 @@ impl Ctx<'_> {
         clause: &pg_query::Node,
     ) -> Result<Vec<objects::Operation>> {
         let mut scope = crate::expr::Scope::default();
+        let table_oid = crate::pgcatalog::snapshot::table_oid(&table.schema, &table.name);
+        crate::usertypes::register_row_type(table);
         for record in ["new", "old"] {
-            for column in &table.columns {
+            for (i, column) in table.columns.iter().enumerate() {
                 scope.columns.push(crate::expr::ScopeColumn {
                     table: record.into(),
                     name: column.name.clone(),
                     ty: column.ty,
                     hidden: true,
-                    origin: (0, 0),
+                    origin: (table_oid, i as u16 + 1),
                 });
             }
         }
@@ -535,6 +539,7 @@ impl Triggers {
             ctx,
             when,
             ops,
+            self.row_type,
             &self.columns,
             new.map(<[Value]>::to_vec),
             old.map(<[Value]>::to_vec),
@@ -582,7 +587,8 @@ impl Triggers {
             Event::Delete => (old.map(<[Value]>::to_vec), None),
             _ => (old.map(<[Value]>::to_vec), new),
         };
-        crate::plpgsql::call_trigger(ctx, &fired.function, ops, &self.columns, new, old, special)
+        crate::plpgsql::call_trigger(ctx, &fired.function, ops, self.row_type, &self.columns, new, old, special)
+            .map_err(|err| PgError { position: None, ..err })
     }
 }
 
