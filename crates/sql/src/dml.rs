@@ -745,6 +745,9 @@ impl Ctx<'_> {
     /// plan_insert_statement plans an INSERT whose WITH queries are in scope.
     fn plan_insert_statement(&mut self, insert: &InsertStmt) -> Result<InsertPlan> {
         let relation = insert.relation.as_ref().ok_or_else(|| PgError::internal("INSERT without a table"))?;
+        if let Some(catalog) = self.system_catalog(&relation.schemaname, &relation.relname) {
+            return Err(self.catalog_insert_error(catalog, insert)?);
+        }
         let table = self.resolve_target(relation, "a")?;
         let object = Object::Table(table.schema.clone(), table.name.clone());
         self.require(&object, "a", relation.location)?;
@@ -815,6 +818,19 @@ impl Ctx<'_> {
                 }
                 None => select,
             };
+            for (target, &column) in select.target_list.iter().zip(&targets) {
+                let Some(NodeEnum::ResTarget(target)) = target.node.as_ref() else { continue };
+                let Some(NodeEnum::ParamRef(param)) = target.val.as_deref().and_then(|v| v.node.as_ref()) else {
+                    continue;
+                };
+                let index = param.number as usize - 1;
+                if self.parameters.len() <= index {
+                    self.parameters.resize(index + 1, 0);
+                }
+                if self.parameters[index] == 0 {
+                    self.parameters[index] = table.columns[column].ty.oid;
+                }
+            }
             let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
             if query.columns.len() > targets.len() {
                 return Err(too_many(-1));
@@ -867,6 +883,69 @@ impl Ctx<'_> {
         let scope = table_scope(&table, alias.as_deref());
         let returning = self.plan_returning(scope, &insert.returning_list)?;
         Ok(InsertPlan { table, rules, targets, source, on_conflict, returning })
+    }
+
+    /// system_catalog returns the pg_catalog table that a schema and name denote, where an unqualified name means
+    /// pg_catalog first unless the search path names pg_catalog itself.
+    pub(crate) fn system_catalog(&self, schema: &str, name: &str) -> Option<&'static crate::pgcatalog::CatalogTable> {
+        let implicit = schema.is_empty() && !self.session.search_path().iter().any(|s| s == "pg_catalog");
+        (schema == "pg_catalog" || implicit)
+            .then(|| crate::pgcatalog::lookup("pg_catalog", name))
+            .flatten()
+            .filter(|c| c.kind == "r")
+    }
+
+    /// catalog_insert_error returns Postgres' error for inserting into a system catalog when the first row leaves a
+    /// column NULL that the catalog requires, and otherwise reports that Doltgres cannot change system catalogs.
+    fn catalog_insert_error(
+        &mut self,
+        catalog: &crate::pgcatalog::CatalogTable,
+        insert: &InsertStmt,
+    ) -> Result<PgError> {
+        let mut row = vec![Value::Null; catalog.columns.len()];
+        let targets: Vec<usize> = match insert.cols.is_empty() {
+            true => (0..catalog.columns.len()).collect(),
+            false => insert
+                .cols
+                .iter()
+                .filter_map(|c| match c.node.as_ref() {
+                    Some(NodeEnum::ResTarget(t)) => catalog.columns.iter().position(|c| c.name == t.name),
+                    _ => None,
+                })
+                .collect(),
+        };
+        let first = match insert.select_stmt.as_deref().and_then(|n| n.node.as_ref()) {
+            Some(NodeEnum::SelectStmt(select)) => select.values_lists.first().cloned(),
+            _ => None,
+        };
+        if let Some(NodeEnum::List(list)) = first.and_then(|n| n.node) {
+            for (item, &target) in list.items.iter().zip(&targets) {
+                row[target] = match Binder::new(self, Scope::default()).bind(item)?.0 {
+                    Expr::Const(value) => value,
+                    _ => Value::Text(String::new()),
+                };
+            }
+        }
+        let Some(column) = catalog.columns.iter().zip(&row).position(|(c, v)| c.not_null && v.is_null()) else {
+            return Ok(PgError::unsupported("inserting into system catalogs"));
+        };
+        let shown: Vec<String> = row.iter().map(|v| v.output().unwrap_or_else(|| "null".into())).collect();
+        Ok(PgError {
+            detail: Some(format!("Failing row contains ({}).", shown.join(", "))),
+            objects: Some(Box::new(crate::error::ErrorObjects {
+                schema: Some(catalog.schema.into()),
+                table: Some(catalog.name.into()),
+                column: Some(catalog.columns[column].name.into()),
+                ..Default::default()
+            })),
+            ..PgError::new(
+                code::NOT_NULL_VIOLATION,
+                format!(
+                    "null value in column \"{}\" of relation \"{}\" violates not-null constraint",
+                    catalog.columns[column].name, catalog.name
+                ),
+            )
+        })
     }
 
     /// plan_copy plans inserting rows of values into columns of a table, as COPY FROM does.

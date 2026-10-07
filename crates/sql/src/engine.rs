@@ -666,8 +666,9 @@ impl Session {
         let branch = branch.as_str();
         let handle = self.state.engine.database(database)?;
         let mut db = lock(&handle)?;
+        let spec = crate::dolt::history::tag_spelling(&mut db, branch)?;
         if db.head(&doltdb::create::branch_ref(branch))?.is_none()
-            && crate::dolt::history::resolve(&mut db, store::Hash::default(), branch).is_err()
+            && crate::dolt::history::resolve(&mut db, store::Hash::default(), &spec).is_err()
         {
             return Err(not_found());
         }

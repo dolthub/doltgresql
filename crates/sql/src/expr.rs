@@ -2726,18 +2726,22 @@ fn figure_name_strength(node: &Node) -> (String, u8) {
             Ok(pg_query::protobuf::SubLinkType::ExistsSublink) => strong("exists"),
             Ok(pg_query::protobuf::SubLinkType::ArraySublink) => strong("array"),
             Ok(pg_query::protobuf::SubLinkType::ExprSublink) => {
-                match link.subselect.as_deref().and_then(|n| n.node.as_ref()) {
-                    Some(NodeEnum::SelectStmt(select)) => select
-                        .target_list
-                        .first()
-                        .and_then(|t| match t.node.as_ref() {
-                            Some(NodeEnum::ResTarget(t)) if !t.name.is_empty() => Some(strong(&t.name)),
-                            Some(NodeEnum::ResTarget(t)) => t.val.as_deref().map(figure_name_strength),
-                            _ => None,
-                        })
-                        .unwrap_or_else(|| ("?column?".into(), 0)),
-                    _ => ("?column?".into(), 0),
+                let mut select = match link.subselect.as_deref().and_then(|n| n.node.as_ref()) {
+                    Some(NodeEnum::SelectStmt(select)) => &**select,
+                    _ => return ("?column?".into(), 0),
+                };
+                while let Some(left) = select.larg.as_deref() {
+                    select = left;
                 }
+                select
+                    .target_list
+                    .first()
+                    .and_then(|t| match t.node.as_ref() {
+                        Some(NodeEnum::ResTarget(t)) if !t.name.is_empty() => Some(strong(&t.name)),
+                        Some(NodeEnum::ResTarget(t)) => t.val.as_deref().map(|v| strong(&figure_name_strength(v).0)),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| ("?column?".into(), 0))
             }
             _ => ("?column?".into(), 0),
         },
@@ -3215,6 +3219,34 @@ impl Expr {
 }
 
 impl Expr {
+    /// foldable reports whether some part of the expression other than a constant or parameter reads no row and calls
+    /// no volatile function.
+    pub fn foldable(&self) -> bool {
+        let mut found = false;
+        self.visit(&mut |e| {
+            if !matches!(e, Expr::Const(_) | Expr::Param(_)) && crate::indexscan::is_constant(e) {
+                found = true;
+            }
+        });
+        found
+    }
+
+    /// fold replaces each largest part of the expression that reads no row and calls no volatile function with its
+    /// value, keeping a part whose evaluation fails so that its error waits for a row, as Postgres folds constants
+    /// once it knows the parameters.
+    pub fn fold(self, ctx: &mut Ctx<'_>) -> Expr {
+        if matches!(self, Expr::Const(_)) {
+            return self;
+        }
+        if crate::indexscan::is_constant(&self) {
+            return match self.eval(ctx, &[]) {
+                Ok(value) => Expr::Const(value),
+                Err(_) => self,
+            };
+        }
+        self.map_children(&mut |child| child.fold(ctx))
+    }
+
     /// map_children rebuilds the expression with each child replaced, leaving subquery plans alone.
     pub fn map_children(self, f: &mut dyn FnMut(Expr) -> Expr) -> Expr {
         let mut b = |e: Box<Expr>| Box::new(f(*e));

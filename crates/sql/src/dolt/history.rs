@@ -142,6 +142,14 @@ fn ancestor_instructions(spec: &str) -> Result<Vec<usize>> {
     Ok(instructions)
 }
 
+/// tag_spelling returns the stored name of the tag that a revision names in any case, as Dolt's revision databases
+/// match tags, or the revision as given when no tag matches.
+pub fn tag_spelling(db: &mut Database, revision: &str) -> Result<String> {
+    let tags = db.datasets()?;
+    let tag =
+        tags.iter().find_map(|(name, _)| name.strip_prefix("refs/tags/").filter(|t| t.eq_ignore_ascii_case(revision)));
+    Ok(tag.unwrap_or(revision).to_string())
+}
 /// resolve returns the commit that a commit spec names: HEAD, a commit hash, or a branch, tag, or remote ref, with
 /// an optional ancestor spec, as Dolt's Resolve does.
 pub fn resolve(db: &mut Database, head: Hash, spec: &str) -> Result<Hash> {

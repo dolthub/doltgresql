@@ -125,6 +125,7 @@ impl Ctx<'_> {
             "key_column_usage" => self.information_schema_key_column_usage(rows),
             "referential_constraints" => self.information_schema_referential_constraints(rows),
             "triggers" => self.information_schema_triggers(rows),
+            "check_constraints" => self.information_schema_check_constraints(rows),
             _ => Ok(()),
         }
     }
@@ -271,6 +272,39 @@ impl Ctx<'_> {
                 ("increment", text(sequence.increment.to_string())),
                 ("cycle_option", yes_no(sequence.cycle)),
             ]);
+        }
+        Ok(())
+    }
+
+    /// information_schema_check_constraints lists the check constraints of the user tables, and a NOT NULL check for each
+    /// of their columns that cannot be NULL.
+    fn information_schema_check_constraints(&mut self, rows: &mut Rows<'_>) -> Result<()> {
+        //TODO: list the checks of domains too, which needs the deparser to print VALUE
+        let database = self.session.display.clone();
+        let snapshot = self.snapshot()?;
+        for table in &snapshot.tables {
+            let mut checks = Vec::new();
+            for check in &table.checks {
+                let columns = table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect();
+                let clause = crate::ruleutils::Analyzer::new(self, columns).deparse(&check.expression, None, false)?;
+                checks.push((check.name.clone(), format!("({clause})")));
+            }
+            let relation = crate::pgcatalog::snapshot::table_oid(&table.schema, &table.name);
+            let namespace = crate::pgcatalog::snapshot::namespace_oid(&table.schema);
+            for (i, column) in table.columns.iter().enumerate().filter(|(_, c)| !c.nullable) {
+                checks.push((
+                    format!("{namespace}_{relation}_{}_not_null", i + 1),
+                    format!("{} IS NOT NULL", column.name),
+                ));
+            }
+            for (name, clause) in checks {
+                rows.push(vec![
+                    ("constraint_catalog", text(database.clone())),
+                    ("constraint_schema", text(table.schema.clone())),
+                    ("constraint_name", text(name)),
+                    ("check_clause", text(clause)),
+                ]);
+            }
         }
         Ok(())
     }

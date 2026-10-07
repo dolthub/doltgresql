@@ -702,9 +702,8 @@ impl Ctx<'_> {
                     let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("a check"))?;
                     self.bind_domain_check(expr, base).map_err(|err| PgError { position: None, ..err })?;
                     let check = if constraint.conname.is_empty() {
-                        let count =
-                            domain.checks.iter().filter(|(n, _)| n.starts_with(&format!("{name}_check"))).count();
-                        if count == 0 { format!("{name}_check") } else { format!("{name}_check{count}") }
+                        let taken: Vec<String> = domain.checks.iter().map(|(n, _)| n.clone()).collect();
+                        crate::ddl::choose_relation_name(&name, "", "check", &taken)
                     } else {
                         constraint.conname.clone()
                     };

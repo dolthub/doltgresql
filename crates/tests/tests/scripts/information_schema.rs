@@ -4095,3 +4095,79 @@ UNION ALL
         },
     ]);
 }
+
+#[test]
+fn test_check_constraint_view_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "check constraints view",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t3333 (z TEXT PRIMARY KEY CHECK (z ~ '^[0-9]+$'), y TEXT CONSTRAINT y_chk CHECK (regexp_like(y, '^[a-z]+$')), w int NOT NULL CHECK (w > 0 AND w < 10));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT constraint_schema, constraint_name, check_clause FROM information_schema.check_constraints WHERE constraint_schema = 'public' AND constraint_name NOT LIKE '%not_null' ORDER BY 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("constraint_schema", NAME), Column("constraint_name", NAME), Column("check_clause", VARCHAR)],
+                        rows: &[
+                            &[T("public"), T("t3333_w_check"), T("(((w > 0) AND (w < 10)))")],
+                            &[T("public"), T("t3333_z_check"), T("((z ~ '^[0-9]+$'::text))")],
+                            &[T("public"), T("y_chk"), T("(regexp_like(y, '^[a-z]+$'::text))")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM information_schema.check_constraints WHERE constraint_schema = 'public' AND check_clause = 'w IS NOT NULL';",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "names of scalar subqueries",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT (SELECT 1)::int, (SELECT 'x')::text, (SELECT 1 AS a)::int, (SELECT 1 UNION SELECT 2 LIMIT 1)::int;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4), Column("?column?", TEXT), Column("a", INT4), Column("?column?", INT4)],
+                        rows: &[
+                            &[T("1"), T("x"), T("1"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN dn AS integer CONSTRAINT dn_check1 CHECK (VALUE > 300) CHECK (VALUE < 400) CHECK (VALUE <> 350);",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT conname FROM pg_constraint WHERE conname LIKE 'dn_check%' ORDER BY conname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("conname", NAME)],
+                        rows: &[
+                            &[T("dn_check")],
+                            &[T("dn_check1")],
+                            &[T("dn_check2")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

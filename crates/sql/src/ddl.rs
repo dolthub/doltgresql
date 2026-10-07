@@ -881,6 +881,12 @@ impl Ctx<'_> {
         for object in &drop.objects {
             let Some(NodeEnum::List(list)) = object.node.as_ref() else { continue };
             let (schema, name) = object_names(&list.items);
+            if self.system_catalog(&schema, &name).is_some() {
+                return Err(PgError::new(
+                    code::INSUFFICIENT_PRIVILEGE,
+                    format!("permission denied: \"{name}\" is a system catalog"),
+                ));
+            }
             let schemas = if schema.is_empty() { self.session.search_path() } else { vec![schema.clone()] };
             let mut found = None;
             for s in schemas {

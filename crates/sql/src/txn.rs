@@ -121,7 +121,10 @@ impl Txn {
             || PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{database}/{branch}\" does not exist"));
         let (head, detached) = match db.head(&branch_ref(branch))? {
             Some(head) => (head, false),
-            None => (crate::dolt::history::resolve(db, Hash::default(), branch).map_err(|_| not_found())?, true),
+            None => {
+                let spec = crate::dolt::history::tag_spelling(db, branch)?;
+                (crate::dolt::history::resolve(db, Hash::default(), &spec).map_err(|_| not_found())?, true)
+            }
         };
         let commit = read(db, &head)?;
         let head_root = Commit::new(Message(&commit))?.root()?;

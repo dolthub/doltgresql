@@ -2581,6 +2581,14 @@ impl Plan {
                 once_filter(ctx, input, predicate, cap)?
             }
             Plan::Filter { input, predicate } => {
+                let folded;
+                let predicate = match predicate.foldable() {
+                    true => {
+                        folded = predicate.clone().fold(ctx);
+                        &folded
+                    }
+                    false => predicate,
+                };
                 let mut out = Vec::new();
                 for row in input.run(ctx)? {
                     if cap.is_some_and(|cap| out.len() >= cap) {

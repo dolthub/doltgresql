@@ -232,7 +232,7 @@ fn swap(op: CmpOp) -> CmpOp {
 
 /// is_constant reports whether an expression reads no column or subquery and calls no volatile function, so that
 /// planning can evaluate it.
-fn is_constant(e: &Expr) -> bool {
+pub(crate) fn is_constant(e: &Expr) -> bool {
     let mut constant = true;
     e.visit(&mut |e| {
         if matches!(
