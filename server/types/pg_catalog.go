@@ -15,6 +15,8 @@
 package types
 
 import (
+	"context"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -34,7 +36,7 @@ func newCatalogRowType(name string, schema sql.Schema) *DoltgresType {
 	for i, col := range schema {
 		attrs[i] = NewCompositeAttribute(nil, relID, col.Name, col.Type.(*DoltgresType), int16(i+1), "")
 	}
-	return NewCompositeType(nil, relID, nil, id.NewType("pg_catalog", name), attrs)
+	return NewCompositeType(context.Background(), relID, nil, id.NewType("pg_catalog", name), attrs)
 }
 
 // PgAttributeSchema is the schema for pg_catalog.pg_attribute.
