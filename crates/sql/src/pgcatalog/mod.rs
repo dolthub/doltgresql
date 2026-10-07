@@ -23,6 +23,7 @@ pub mod reg;
 pub(crate) mod routines;
 mod rows;
 
+pub(crate) use builtin::{Implemented, operator_implementations};
 pub(crate) use rows::{PREDEFINED_ROLES, row_type_oid};
 pub mod snapshot;
 

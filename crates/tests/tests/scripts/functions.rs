@@ -14754,3 +14754,37 @@ fn test_regex_feature_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_operator_implementation_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "operator implementation functions and named arguments",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT int4mi(5, 3), textcat('a', 'b'), int4um(4), float8mul(2, 3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4mi", INT4), Column("textcat", TEXT), Column("int4um", INT4), Column("float8mul", FLOAT8)],
+                        rows: &[
+                            &[T("2"), T("ab"), T("-4"), T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT make_interval(hours := -2, mins := -10, secs := -25.3), make_interval(1, 2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("make_interval", INTERVAL), Column("make_interval", INTERVAL)],
+                        rows: &[
+                            &[T("-02:10:25.3"), T("1 year 2 mons")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

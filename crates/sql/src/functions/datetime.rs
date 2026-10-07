@@ -703,16 +703,20 @@ fn named_zone(name: &str) -> Result<Zone> {
         .ok_or_else(|| PgError::new(code::INVALID_PARAMETER_VALUE, format!("time zone \"{name}\" not recognized")))
 }
 
-/// make_interval builds an interval from years, months, weeks, days, hours, minutes, and seconds.
+/// make_interval builds an interval from years, months, weeks, days, hours, minutes, and seconds, failing as Postgres
+/// does when a part overflows.
 fn make_interval(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    let micros = int(&args[4]) * USECS_PER_HOUR
-        + int(&args[5]) * USECS_PER_MINUTE
-        + (float(&args[6]) * USECS_PER_SEC as f64).round() as i64;
-    Ok(Value::Interval(Interval {
-        months: (int(&args[0]) * 12 + int(&args[1])) as i32,
-        days: (int(&args[2]) * 7 + int(&args[3])) as i32,
-        micros,
-    }))
+    let out_of_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
+    let part = |i: usize| i32::try_from(int(&args[i])).map_err(|_| out_of_range());
+    let seconds = (float(&args[6]) * USECS_PER_SEC as f64).round();
+    if !(i64::MIN as f64..-(i64::MIN as f64)).contains(&seconds) {
+        return Err(out_of_range());
+    }
+    let months = part(0)?.checked_mul(12).and_then(|m| m.checked_add(part(1).ok()?)).ok_or_else(out_of_range)?;
+    let days = part(2)?.checked_mul(7).and_then(|d| d.checked_add(part(3).ok()?)).ok_or_else(out_of_range)?;
+    let micros = int(&args[4]) * USECS_PER_HOUR + int(&args[5]) * USECS_PER_MINUTE;
+    let micros = micros.checked_add(seconds as i64).ok_or_else(out_of_range)?;
+    Ok(Value::Interval(Interval { months, days, micros }))
 }
 
 /// to_timestamp_epoch converts Unix seconds to a timestamptz.

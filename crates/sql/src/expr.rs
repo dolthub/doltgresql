@@ -697,6 +697,71 @@ impl<'b, 'a> Binder<'b, 'a> {
     }
 
     /// func_call binds a call of a built-in function.
+    /// builtin_arguments returns a built-in function call's arguments in parameter order, with defaults for the ones
+    /// it leaves out, when the function names its parameters and the call passes some by name or leaves some out, and
+    /// fails as Postgres does when no such function takes the named arguments.
+    fn builtin_arguments(&mut self, name: &str, call: &pg_query::protobuf::FuncCall) -> Result<Option<Vec<Node>>> {
+        let named = |arg: &Node| match arg.node.as_ref() {
+            Some(NodeEnum::NamedArgExpr(named)) => Some(named.clone()),
+            _ => None,
+        };
+        let any_named = call.args.iter().any(|a| named(a).is_some());
+        let parameters = functions::PARAMETERS.iter().find(|(n, ..)| *n == name);
+        if let Some((_, params, defaults)) = parameters
+            && (any_named || call.args.len() < params.len())
+        {
+            let mut slots: Vec<Option<Node>> = vec![None; params.len()];
+            let mut fits = call.args.len() <= params.len();
+            for (i, arg) in call.args.iter().enumerate() {
+                if !fits {
+                    break;
+                }
+                let slot = match named(arg) {
+                    Some(named) => params.iter().position(|p| *p == named.name),
+                    None => Some(i),
+                };
+                match slot {
+                    Some(slot) if slots[slot].is_none() => {
+                        slots[slot] = Some(named(arg).and_then(|n| n.arg.map(|a| *a)).unwrap_or_else(|| arg.clone()))
+                    }
+                    _ => fits = false,
+                }
+            }
+            let required = params.len() - defaults.len();
+            if fits && slots[..required].iter().all(Option::is_some) {
+                let mut args = Vec::with_capacity(params.len());
+                for (i, slot) in slots.into_iter().enumerate() {
+                    match slot {
+                        Some(node) => args.push(node),
+                        None => args.push(crate::parse::expression_node(defaults[i - required])?),
+                    }
+                }
+                return Ok(Some(args));
+            }
+        }
+        if !any_named {
+            return Ok(None);
+        }
+        let mut shown = Vec::with_capacity(call.args.len());
+        for arg in &call.args {
+            let named = named(arg);
+            let value = named.as_ref().and_then(|n| n.arg.as_deref()).unwrap_or(arg);
+            let ty = type_display(self.bind(value)?.1.oid);
+            shown.push(match named {
+                Some(named) => format!("{} => {ty}", named.name),
+                None => ty.into_owned(),
+            });
+        }
+        Err(PgError {
+            position: position(call.location),
+            hint: Some(
+                "No function matches the given name and argument types. You might need to add explicit type casts."
+                    .into(),
+            ),
+            ..PgError::new(code::UNDEFINED_FUNCTION, format!("function {name}({}) does not exist", shown.join(", ")))
+        })
+    }
+
     /// function_style_cast returns the type that a call of one argument names when Postgres reads the call as a cast,
     /// as func_get_detail does: a type outside the temporary schema unless the name is qualified, taking an untyped
     /// literal or an argument that converts to it without a function.
@@ -842,6 +907,14 @@ impl<'b, 'a> Binder<'b, 'a> {
                 )
             });
         }
+        let filled;
+        let call = match self.builtin_arguments(name, call)? {
+            Some(args) => {
+                filled = pg_query::protobuf::FuncCall { args, ..call.clone() };
+                &filled
+            }
+            None => call,
+        };
         let mut bound = Vec::with_capacity(call.args.len());
         for arg in &call.args {
             let (expr, ty) = self.bind(arg)?;
@@ -851,6 +924,24 @@ impl<'b, 'a> Binder<'b, 'a> {
         let resolved = match functions::resolve(name, &types, call.location) {
             Ok(resolved) => resolved,
             Err(err) => {
+                if err.code == code::UNDEFINED_FUNCTION
+                    && schema.is_none_or(|s| s == "pg_catalog")
+                    && let Some(operator) = operator_function(name, &types)
+                {
+                    let mut operands =
+                        bound.into_iter().zip([operator.1, operator.2].into_iter().skip(2 - types.len()));
+                    let mut next = || -> Result<Bound> {
+                        let (operand, target) = operands.next().ok_or_else(|| PgError::internal("an operand"))?;
+                        coerce(operand, typ(target), false, call.location)
+                    };
+                    return match operator.1 {
+                        0 => unary(&operator.0, next()?, call.location),
+                        _ => {
+                            let left = next()?;
+                            self.binary(&operator.0, left, next()?, call.location)
+                        }
+                    };
+                }
                 if err.code == code::UNDEFINED_FUNCTION
                     && let [(_, from)] = bound.as_slice()
                     && let Some(target) = self.function_style_cast(call, *from)?
@@ -2316,6 +2407,27 @@ impl<'b, 'a> Binder<'b, 'a> {
 }
 
 /// unary binds a prefix operator.
+/// operator_function returns the built-in operator that a function of the name implements for arguments of the types,
+/// preferring the one whose operand types match exactly, so that calling `int4mi(a, b)` runs `a - b` as Postgres does.
+fn operator_function(name: &str, types: &[u32]) -> Option<crate::pgcatalog::Implemented> {
+    let candidates = crate::pgcatalog::operator_implementations().get(name)?;
+    let operands = |(_, left, right): &crate::pgcatalog::Implemented| match left {
+        0 => vec![*right],
+        _ => vec![*left, *right],
+    };
+    let fits = |exact: bool| {
+        candidates.iter().find(|candidate| {
+            let operands = operands(candidate);
+            operands.len() == types.len()
+                && operands
+                    .iter()
+                    .zip(types)
+                    .all(|(&to, &from)| to == from || !exact && functions::implicitly_castable(from, to))
+        })
+    };
+    fits(true).or_else(|| fits(false)).cloned()
+}
+
 fn unary(op: &str, (expr, ty): Bound, location: i32) -> Result<Bound> {
     let ty = if ty.oid == oid::UNKNOWN { typ(oid::FLOAT8) } else { ty };
     match op {

@@ -377,6 +377,7 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
         }
         oid::UUID => Value::Uuid(crate::binary::parse_uuid(text)?),
         oid::BIT | oid::VARBIT => Value::Bit(crate::binary::parse_bits(text)?),
+        oid::JSONPATH => Value::Text(crate::jsonpath::parse(text)?.text()),
         _ => return Err(PgError::unsupported(format!("reading values of type {}", type_display(type_oid)))),
     })
 }
@@ -860,6 +861,10 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
         },
         oid::XML => match value {
             Value::Xml(text) => Value::Xml(text),
+            Value::Text(text) => input(&text, to.oid)?,
+            other => return Err(cannot_cast(&other, to.oid)),
+        },
+        oid::JSONPATH => match value {
             Value::Text(text) => input(&text, to.oid)?,
             other => return Err(cannot_cast(&other, to.oid)),
         },

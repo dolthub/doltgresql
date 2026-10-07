@@ -138,6 +138,233 @@ impl Node {
     }
 }
 
+impl JsonPath {
+    /// text returns the path as the jsonpath type prints it, as Postgres' jsonPathToCstring does.
+    pub fn text(&self) -> String {
+        let mut out = String::new();
+        if !self.lax {
+            out.push_str("strict ");
+        }
+        print(&mut out, &self.expr, true, false);
+        out
+    }
+}
+
+/// priority returns how tightly a node's operator binds, as Postgres' operationPriority ranks it.
+fn priority(node: &Node) -> u8 {
+    match node {
+        Node::Or(..) => 0,
+        Node::And(..) => 1,
+        Node::Compare(..) | Node::StartsWith(..) => 2,
+        Node::Arith(ArithOp::Add | ArithOp::Sub, ..) => 3,
+        Node::Arith(..) => 4,
+        Node::Unary(..) if folded(node).is_none() => 5,
+        Node::Chain(base, _) => priority(base),
+        _ => 6,
+    }
+}
+
+/// folded returns the number that signs applied to a number literal make, as Postgres' parser folds them.
+fn folded(node: &Node) -> Option<Numeric> {
+    match node {
+        Node::Number(n) => Some(n.clone()),
+        Node::Unary(true, operand) => folded(operand).map(|n| n.negate()),
+        Node::Unary(false, operand) => folded(operand),
+        _ => None,
+    }
+}
+
+/// print writes a node as Postgres' printJsonPathItem does, in parentheses when `brackets` asks for them around an
+/// operator, and with a number in parentheses when accessors follow it.
+fn print(out: &mut String, node: &Node, brackets: bool, followed: bool) {
+    let binary = |out: &mut String, left: &Node, op: &str, right: &Node| {
+        if brackets {
+            out.push('(');
+        }
+        print(out, left, priority(left) <= priority(node), false);
+        out.push(' ');
+        out.push_str(op);
+        out.push(' ');
+        print(out, right, priority(right) <= priority(node), false);
+        if brackets {
+            out.push(')');
+        }
+    };
+    match node {
+        Node::Root => out.push('$'),
+        Node::Current => out.push('@'),
+        Node::Last => out.push_str("last"),
+        Node::Null => out.push_str("null"),
+        Node::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Node::Number(n) if followed => out.push_str(&format!("({n})")),
+        Node::Number(n) => out.push_str(&n.to_string()),
+        Node::String(s) => crate::json::escape(out, s),
+        Node::Variable(name) => {
+            out.push('$');
+            crate::json::escape(out, name);
+        }
+        Node::Chain(base, accessors) => {
+            print(out, base, brackets, !accessors.is_empty());
+            for accessor in accessors {
+                print_accessor(out, accessor);
+            }
+        }
+        Node::Unary(..) if let Some(n) = folded(node) => print(out, &Node::Number(n), brackets, followed),
+        Node::Unary(negate, operand) => {
+            if brackets {
+                out.push('(');
+            }
+            out.push(if *negate { '-' } else { '+' });
+            print(out, operand, priority(operand) <= priority(node), false);
+            if brackets {
+                out.push(')');
+            }
+        }
+        Node::Arith(op, left, right) => {
+            let op = match op {
+                ArithOp::Add => "+",
+                ArithOp::Sub => "-",
+                ArithOp::Mul => "*",
+                ArithOp::Div => "/",
+                ArithOp::Mod => "%",
+            };
+            binary(out, left, op, right);
+        }
+        Node::Compare(op, left, right) => {
+            let op = match op {
+                CmpOp::Eq => "==",
+                CmpOp::Ne => "!=",
+                CmpOp::Lt => "<",
+                CmpOp::Le => "<=",
+                CmpOp::Gt => ">",
+                CmpOp::Ge => ">=",
+            };
+            binary(out, left, op, right);
+        }
+        Node::And(left, right) => binary(out, left, "&&", right),
+        Node::Or(left, right) => binary(out, left, "||", right),
+        Node::StartsWith(left, right) => binary(out, left, "starts with", right),
+        Node::Not(operand) => {
+            out.push_str("!(");
+            print(out, operand, false, false);
+            out.push(')');
+        }
+        Node::IsUnknown(operand) => {
+            out.push('(');
+            print(out, operand, false, false);
+            out.push_str(") is unknown");
+        }
+        Node::Exists(operand) => {
+            out.push_str("exists (");
+            print(out, operand, false, false);
+            out.push(')');
+        }
+        Node::LikeRegex(operand, pattern, flags) => {
+            if brackets {
+                out.push('(');
+            }
+            print(out, operand, priority(operand) <= priority(node), false);
+            out.push_str(" like_regex ");
+            crate::json::escape(out, pattern);
+            let flags: String = "ismxq".chars().filter(|&f| flags.contains(f)).collect();
+            if !flags.is_empty() {
+                out.push_str(&format!(" flag \"{flags}\""));
+            }
+            if brackets {
+                out.push(')');
+            }
+        }
+    }
+}
+
+/// print_accessor writes an accessor that follows a primary, as printJsonPathItem prints an item's next item.
+fn print_accessor(out: &mut String, accessor: &Accessor) {
+    match accessor {
+        Accessor::Key(key) => {
+            out.push('.');
+            crate::json::escape(out, key);
+        }
+        Accessor::AnyKey => out.push_str(".*"),
+        Accessor::AnyArray => out.push_str("[*]"),
+        Accessor::Index(subscripts) => {
+            out.push('[');
+            for (i, (from, to)) in subscripts.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                print(out, from, false, false);
+                if let Some(to) = to {
+                    out.push_str(" to ");
+                    print(out, to, false, false);
+                }
+            }
+            out.push(']');
+        }
+        Accessor::Any(first, last) => {
+            let level = |n: u32| if n == ANY_LAST { "last".to_string() } else { n.to_string() };
+            match (*first, *last) {
+                (0, ANY_LAST) => out.push_str(".**"),
+                (first, last) if first == last => out.push_str(&format!(".**{{{}}}", level(first))),
+                (first, last) => out.push_str(&format!(".**{{{} to {}}}", level(first), level(last))),
+            }
+        }
+        Accessor::Filter(predicate) => {
+            out.push_str("?(");
+            print(out, predicate, false, false);
+            out.push(')');
+        }
+        Accessor::Method(method) => {
+            let name = match method {
+                Method::Abs => "abs",
+                Method::Size => "size",
+                Method::Type => "type",
+                Method::Floor => "floor",
+                Method::Double => "double",
+                Method::Ceiling => "ceiling",
+                Method::KeyValue => "keyvalue",
+                Method::Bigint => "bigint",
+                Method::Boolean => "boolean",
+                Method::Date => "date",
+                Method::Integer => "integer",
+                Method::Number => "number",
+                Method::String => "string",
+            };
+            out.push_str(&format!(".{name}()"));
+        }
+        Accessor::Datetime(template) => {
+            out.push_str(".datetime(");
+            if let Some(template) = template {
+                crate::json::escape(out, template);
+            }
+            out.push(')');
+        }
+        Accessor::Decimal(precision, scale) => {
+            out.push_str(".decimal(");
+            if let Some(precision) = precision {
+                print(out, precision, false, false);
+            }
+            if let Some(scale) = scale {
+                out.push(',');
+                print(out, scale, false, false);
+            }
+            out.push(')');
+        }
+        Accessor::Time(kind, precision) => {
+            let name = match kind {
+                TimeMethod::Time => "time",
+                TimeMethod::TimeTz => "time_tz",
+                TimeMethod::Timestamp => "timestamp",
+                TimeMethod::TimestampTz => "timestamp_tz",
+            };
+            out.push_str(&format!(".{name}("));
+            if let Some(precision) = precision {
+                out.push_str(&precision.to_string());
+            }
+            out.push(')');
+        }
+    }
+}
+
 /// Token is a lexical token of a path, with the source text that errors quote.
 #[derive(Clone, Debug, PartialEq)]
 enum Token {
@@ -220,21 +447,15 @@ fn lex(text: &str) -> Result<Vec<(Token, String)>> {
             continue;
         }
         if c == '$' && i + 1 < chars.len() && (chars[i + 1] == '"' || is_other(chars[i + 1])) {
-            let name = if chars[i + 1] == '"' {
-                let (value, end) = quoted(&chars, i + 1)?;
-                i = end;
-                value
-            } else {
-                i += 1;
-                while i < chars.len() && is_other(chars[i]) {
-                    i += 1;
-                }
-                chars[start + 1..i].iter().collect()
+            let (name, end) = match chars[i + 1] {
+                '"' => quoted(&chars, i + 1)?,
+                _ => name(&chars, i + 1)?,
             };
+            i = end;
             tokens.push((Token::Variable(name), chars[start..i].iter().collect()));
             continue;
         }
-        if c.is_ascii_digit() {
+        if c.is_ascii_digit() || c == '.' && chars.get(i + 1).is_some_and(|c| c.is_ascii_digit()) {
             let (value, end) = number(&chars, i)?;
             i = end;
             tokens.push((Token::Number(value), chars[start..i].iter().collect()));
@@ -248,12 +469,10 @@ fn lex(text: &str) -> Result<Vec<(Token, String)>> {
             tokens.push((Token::Punct(punct), punct.to_string()));
             continue;
         }
-        if is_other(c) {
-            while i < chars.len() && is_other(chars[i]) {
-                i += 1;
-            }
-            let word: String = chars[start..i].iter().collect();
-            tokens.push((Token::Identifier(word.clone()), word));
+        if is_other(c) || c == '\\' {
+            let (word, end) = name(&chars, i)?;
+            i = end;
+            tokens.push((Token::Identifier(word), chars[start..i].iter().collect()));
             continue;
         }
         return Err(syntax_error(Some(&c.to_string())));
@@ -269,48 +488,131 @@ fn quoted(chars: &[char], start: usize) -> Result<(String, usize)> {
     while i < chars.len() {
         match chars[i] {
             '"' => return Ok((value, i + 1)),
-            '\\' => {
-                i += 1;
-                let Some(&escaped) = chars.get(i) else { break };
-                match escaped {
-                    'b' => value.push('\u{8}'),
-                    'f' => value.push('\u{c}'),
-                    'n' => value.push('\n'),
-                    'r' => value.push('\r'),
-                    't' => value.push('\t'),
-                    'v' => value.push('\u{b}'),
-                    'x' => {
-                        let digits: String =
-                            chars[i + 1..].iter().take(2).take_while(|c| c.is_ascii_hexdigit()).collect();
-                        let code = u32::from_str_radix(&digits, 16)
-                            .map_err(|_| syntax_error(Some(&chars[start..i + 1].iter().collect::<String>())))?;
-                        value.push(char::from_u32(code).unwrap_or('\u{fffd}'));
-                        i += digits.len();
-                    }
-                    'u' => {
-                        let (digits, skip) = if chars.get(i + 1) == Some(&'{') {
-                            let digits: String = chars[i + 2..].iter().take_while(|c| c.is_ascii_hexdigit()).collect();
-                            (digits.clone(), digits.len() + 2)
-                        } else {
-                            let digits: String = chars[i + 1..].iter().take(4).collect();
-                            (digits, 4)
-                        };
-                        let code = u32::from_str_radix(&digits, 16)
-                            .map_err(|_| syntax_error(Some(&chars[start..i + 1].iter().collect::<String>())))?;
-                        value.push(char::from_u32(code).unwrap_or('\u{fffd}'));
-                        i += skip;
-                    }
-                    other => value.push(other),
-                }
-                i += 1;
-            }
+            '\\' => i = escape(chars, i, &mut value)?,
             other => {
                 value.push(other);
                 i += 1;
             }
         }
     }
-    Err(syntax_error(None))
+    Err(PgError::new(code::SYNTAX_ERROR, "unexpected end of quoted string at end of jsonpath input"))
+}
+
+/// name reads the unquoted name that starts at a position, with its escapes, returning its value and the position
+/// after it.
+fn name(chars: &[char], start: usize) -> Result<(String, usize)> {
+    let mut value = String::new();
+    let mut i = start;
+    while i < chars.len() {
+        match chars[i] {
+            '\\' => i = escape(chars, i, &mut value)?,
+            c if is_other(c) => {
+                value.push(c);
+                i += 1;
+            }
+            _ => break,
+        }
+    }
+    Ok((value, i))
+}
+
+/// escape reads the backslash escape at a position into a value, returning the position after it, as the jsonpath
+/// scanner does: a run of `\u` escapes is read together so that surrogate pairs combine.
+fn escape(chars: &[char], start: usize, value: &mut String) -> Result<usize> {
+    let near = |end: usize, message: &str| {
+        let text: String = chars[start..end.min(chars.len())].iter().collect();
+        PgError::new(code::SYNTAX_ERROR, format!("{message} at or near \"{text}\" of jsonpath input"))
+    };
+    let hex = |from: usize, max: usize| {
+        chars[from.min(chars.len())..].iter().take(max).take_while(|c| c.is_ascii_hexdigit()).count()
+    };
+    let Some(&escaped) = chars.get(start + 1) else {
+        return Err(PgError::new(code::SYNTAX_ERROR, "unexpected end after backslash at end of jsonpath input"));
+    };
+    let simple = match escaped {
+        'b' => Some('\u{8}'),
+        'f' => Some('\u{c}'),
+        'n' => Some('\n'),
+        'r' => Some('\r'),
+        't' => Some('\t'),
+        'v' => Some('\u{b}'),
+        'x' | 'u' => None,
+        other => Some(other),
+    };
+    if let Some(c) = simple {
+        value.push(c);
+        return Ok(start + 2);
+    }
+    if escaped == 'x' {
+        if hex(start + 2, 2) < 2 {
+            return Err(near(start + 2 + hex(start + 2, 2), "invalid hexadecimal character sequence"));
+        }
+        let code: String = chars[start + 2..start + 4].iter().collect();
+        push_code(value, u32::from_str_radix(&code, 16).unwrap_or(0))?;
+        return Ok(start + 4);
+    }
+    let mut codes = Vec::new();
+    let mut i = start;
+    while chars.get(i) == Some(&'\\') && chars.get(i + 1) == Some(&'u') {
+        let (digits, end) = match chars.get(i + 2) {
+            Some('{') => {
+                let n = hex(i + 3, 7);
+                if n == 0 || n > 6 || chars.get(i + 3 + n) != Some(&'}') {
+                    return Err(near(i + 3 + n.min(6), "invalid unicode sequence"));
+                }
+                (chars[i + 3..i + 3 + n].iter().collect::<String>(), i + 4 + n)
+            }
+            _ => {
+                let n = hex(i + 2, 4);
+                if n < 4 {
+                    return Err(near(i + 2 + n, "invalid unicode sequence"));
+                }
+                (chars[i + 2..i + 6].iter().collect::<String>(), i + 6)
+            }
+        };
+        codes.push(u32::from_str_radix(&digits, 16).unwrap_or(0));
+        i = end;
+    }
+    let surrogate = |detail: &str| PgError {
+        detail: Some(detail.into()),
+        ..PgError::new(code::SYNTAX_ERROR, "invalid input syntax for type jsonpath")
+    };
+    let mut high: Option<u32> = None;
+    for code in codes {
+        let code = match code {
+            0xD800..=0xDBFF => {
+                if high.is_some() {
+                    return Err(surrogate("Unicode high surrogate must not follow a high surrogate."));
+                }
+                high = Some(code);
+                continue;
+            }
+            0xDC00..=0xDFFF => match high.take() {
+                Some(high) => 0x10000 + ((high - 0xD800) << 10) + (code - 0xDC00),
+                None => return Err(surrogate("Unicode low surrogate must follow a high surrogate.")),
+            },
+            _ if high.is_some() => return Err(surrogate("Unicode low surrogate must follow a high surrogate.")),
+            code => code,
+        };
+        push_code(value, code)?;
+    }
+    if high.is_some() {
+        return Err(surrogate("Unicode low surrogate must follow a high surrogate."));
+    }
+    Ok(i)
+}
+
+/// push_code adds the character with a code point to a value, refusing the zero character, which text cannot hold.
+fn push_code(value: &mut String, code: u32) -> Result<()> {
+    if code == 0 {
+        return Err(PgError {
+            detail: Some("\\u0000 cannot be converted to text.".into()),
+            ..PgError::new(code::UNTRANSLATABLE_CHARACTER, "unsupported Unicode escape sequence")
+        });
+    }
+    let c = char::from_u32(code).ok_or_else(|| PgError::new(code::SYNTAX_ERROR, "invalid Unicode code point"))?;
+    value.push(c);
+    Ok(())
 }
 
 /// number reads the numeric literal that starts at a position, returning its value and the position after it.
@@ -335,8 +637,8 @@ fn number(chars: &[char], start: usize) -> Result<(Numeric, usize)> {
         let parsed = num_bigint::BigUint::parse_bytes(digits.as_bytes(), radix);
         (parsed.map(|n| Numeric::Finite { negative: false, coefficient: n, scale: 0 }), i)
     } else {
-        let mut i = digits_from(start, 10);
-        if chars.get(i) == Some(&'.') && chars.get(i + 1).is_some_and(|c| c.is_ascii_digit()) {
+        let mut i = if chars[start] == '0' { start + 1 } else { digits_from(start, 10) };
+        if chars.get(i) == Some(&'.') {
             i = digits_from(i + 1, 10);
         }
         if matches!(chars.get(i), Some('e' | 'E')) {
@@ -352,11 +654,7 @@ fn number(chars: &[char], start: usize) -> Result<(Numeric, usize)> {
         (Numeric::parse(&text).ok(), i)
     };
     if i < chars.len() && is_other(chars[i]) {
-        let mut end = i;
-        while end < chars.len() && is_other(chars[end]) {
-            end += 1;
-        }
-        let junk: String = chars[start..end].iter().collect();
+        let junk: String = chars[start..=i].iter().collect();
         return Err(PgError::new(
             code::SYNTAX_ERROR,
             format!("trailing junk after numeric literal at or near \"{junk}\" of jsonpath input"),
@@ -802,22 +1100,17 @@ impl Parser {
 /// check_flags checks the flags of a `like_regex` predicate and compiles its pattern, as Postgres does when it parses
 /// one.
 fn check_flags(pattern: &str, flags: &str) -> Result<()> {
-    for flag in flags.chars() {
-        match flag {
-            'i' | 's' | 'm' | 'q' => {}
-            'x' => {
-                return Err(PgError::new(
-                    code::FEATURE_NOT_SUPPORTED,
-                    "XQuery \"x\" flag (expanded regular expressions) is not implemented",
-                ));
-            }
-            other => {
-                return Err(PgError {
-                    detail: Some(format!("Unrecognized flag character \"{other}\" in LIKE_REGEX predicate.")),
-                    ..PgError::new(code::SYNTAX_ERROR, "invalid input syntax for type jsonpath")
-                });
-            }
-        }
+    if let Some(other) = flags.chars().find(|f| !matches!(f, 'i' | 's' | 'm' | 'x' | 'q')) {
+        return Err(PgError {
+            detail: Some(format!("Unrecognized flag character \"{other}\" in LIKE_REGEX predicate.")),
+            ..PgError::new(code::SYNTAX_ERROR, "invalid input syntax for type jsonpath")
+        });
+    }
+    if flags.contains('x') && !flags.contains('q') {
+        return Err(PgError::new(
+            code::FEATURE_NOT_SUPPORTED,
+            "XQuery \"x\" flag (expanded regular expressions) is not implemented",
+        ));
     }
     exec::regex(pattern, flags).map(|_| ())
 }

@@ -140,7 +140,7 @@ impl ColumnType {
             "xid" => encoding::UINT32,
             "varchar" if self.modifier == -1 => encoding::STRING_ADAPTIVE,
             "varchar" | "name" | "char" => encoding::STRING,
-            "bpchar" | "text" | "xml" => encoding::STRING_ADAPTIVE,
+            "bpchar" | "text" | "xml" | "jsonpath" => encoding::STRING_ADAPTIVE,
             _ if t.definition.typ_length > 0 => encoding::EXTENDED,
             _ => encoding::EXTENDED_ADAPTIVE,
         }

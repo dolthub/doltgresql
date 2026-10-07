@@ -236,6 +236,7 @@ impl Value {
             Value::Xml(text) => crate::xml::send(text).into_bytes(),
             Value::Jsonb(json) => [&[1u8][..], json.to_text().as_bytes()].concat(),
             Value::Text(_) if type_oid == oid::UNKNOWN => return self.output().map(String::into_bytes),
+            Value::Text(s) if type_oid == oid::JSONPATH => [&[1u8][..], s.as_bytes()].concat(),
             Value::Text(s) if type_oid == oid::CHAR => match s.strip_prefix('\\') {
                 Some(octal) if octal.len() == 3 => vec![u8::from_str_radix(octal, 8).unwrap_or(0)],
                 _ => s.bytes().take(1).collect(),
@@ -327,6 +328,9 @@ impl Value {
                 }
                 oid::JSON => Ok(Value::Json(String::from_utf8(bytes.to_vec()).map_err(|_| invalid())?)),
                 oid::XML => crate::cast::input(std::str::from_utf8(bytes).map_err(|_| invalid())?, oid::XML),
+                oid::JSONPATH if bytes.first() == Some(&1) => {
+                    crate::cast::input(std::str::from_utf8(&bytes[1..]).map_err(|_| invalid())?, oid::JSONPATH)
+                }
                 oid::BYTEA => Ok(Value::Bytea(bytes.to_vec())),
                 oid::UUID => Ok(Value::Uuid(bytes.try_into().map_err(|_| invalid())?)),
                 oid::BIT | oid::VARBIT if bytes.len() >= 4 => {

@@ -24,6 +24,7 @@ mod binary;
 mod catalog;
 pub mod datetime;
 pub mod json;
+mod jsonpath;
 mod math;
 pub(crate) mod pattern;
 mod series;
@@ -85,6 +86,7 @@ fn registry() -> &'static Registry {
             array::FUNCTIONS,
             pattern::FUNCTIONS,
             json::FUNCTIONS,
+            jsonpath::FUNCTIONS,
             binary::FUNCTIONS,
             xml::FUNCTIONS,
             catalog::FUNCTIONS,
@@ -120,6 +122,8 @@ const SET_RETURNING: &[&str] = &[
     "dolt_diff_summary",
     "dolt_diff_stat",
     "dolt_preview_merge_conflicts_summary",
+    "jsonb_path_query",
+    "jsonb_path_query_tz",
     "jsonb_object_keys",
     "json_object_keys",
     "jsonb_array_elements",
@@ -134,6 +138,29 @@ const SET_RETURNING: &[&str] = &[
 ];
 
 /// returns_set reports whether a function returns rows.
+/// PATH_PARAMETERS are the parameters of the SQL/JSON path functions, with the defaults of the last two.
+const PATH_PARAMETERS: (&[&str], &[&str]) = (&["target", "path", "vars", "silent"], &["'{}'::jsonb", "false"]);
+
+/// PARAMETERS names the parameters of the built-in functions that calls may pass by name or leave out, with the
+/// defaults of their trailing parameters, as pg_proc's proargnames and proargdefaults hold them.
+pub const PARAMETERS: &[(&str, &[&str], &[&str])] = &[
+    ("jsonb_path_exists", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_exists_tz", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_match", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_match_tz", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_query", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_query_tz", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_query_array", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_query_array_tz", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_query_first", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    ("jsonb_path_query_first_tz", PATH_PARAMETERS.0, PATH_PARAMETERS.1),
+    (
+        "make_interval",
+        &["years", "months", "weeks", "days", "hours", "mins", "secs"],
+        &["0", "0", "0", "0", "0", "0", "0.0"],
+    ),
+];
+
 pub fn returns_set(name: &str) -> bool {
     SET_RETURNING.contains(&name)
 }

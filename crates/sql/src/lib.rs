@@ -136,6 +136,8 @@ pub mod oid {
     pub const INT2VECTOR: u32 = 22;
     pub const OIDVECTOR: u32 = 30;
     pub const XML_ARRAY: u32 = 143;
+    pub const JSONPATH: u32 = 4072;
+    pub const JSONPATH_ARRAY: u32 = 4073;
 }
 
 /// Column describes a result column.

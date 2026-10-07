@@ -118,3 +118,34 @@ pub fn rows(table: &CatalogTable) -> Vec<Vec<Value>> {
         })
         .clone()
 }
+
+/// Implemented is an operator that a function implements: its name and its left and right operand types, with a left
+/// type of 0 for a prefix operator.
+pub type Implemented = (String, u32, u32);
+
+/// operator_implementations returns the built-in operators by the name of the function that implements each, as
+/// pg_operator's oprcode names it.
+pub fn operator_implementations() -> &'static HashMap<String, Vec<Implemented>> {
+    static IMPLEMENTATIONS: OnceLock<HashMap<String, Vec<Implemented>>> = OnceLock::new();
+    IMPLEMENTATIONS.get_or_init(|| {
+        let mut implementations: HashMap<String, Vec<Implemented>> = HashMap::new();
+        let Some(table) = super::lookup("pg_catalog", "pg_operator") else { return implementations };
+        let column = |name: &str| table.columns.iter().position(|c| c.name == name);
+        let (Some(name), Some(left), Some(right), Some(code)) =
+            (column("oprname"), column("oprleft"), column("oprright"), column("oprcode"))
+        else {
+            return implementations;
+        };
+        for row in rows(table) {
+            let oid = |value: &Value| match value {
+                Value::Oid(oid) => *oid,
+                _ => 0,
+            };
+            if let (Value::Text(operator), Value::Reg(function)) = (&row[name], &row[code]) {
+                let operator = (operator.clone(), oid(&row[left]), oid(&row[right]));
+                implementations.entry(function.name.clone()).or_default().push(operator);
+            }
+        }
+        implementations
+    })
+}

@@ -1286,8 +1286,7 @@ impl<'a> Exec<'a> {
             (Value::Date(d), Value::Timestamp(ts)) => Some((i64::from(*d) * USECS_PER_DAY).cmp(ts)),
             (Value::Timestamp(ts), Value::Date(d)) => Some(ts.cmp(&(i64::from(*d) * USECS_PER_DAY))),
             (Value::Time(t), Value::TimeTz(..)) | (Value::TimeTz(..), Value::Time(t)) => {
-                let (from, to) = if matches!(a, Value::Time(_)) { ("time", "timetz") } else { ("timetz", "time") };
-                self.require_tz(from, to)?;
+                self.require_tz("time", "timetz")?;
                 let east = dt::with_format(|f| f.zone.offset_at(dt::clock()).0);
                 let tz = match (a, b) {
                     (Value::TimeTz(x, w), _) | (_, Value::TimeTz(x, w)) => x + i64::from(*w) * USECS_PER_SEC,
@@ -1300,7 +1299,8 @@ impl<'a> Exec<'a> {
                 Value::Date(_) | Value::Timestamp(_) | Value::TimestampTz(_),
                 Value::Date(_) | Value::Timestamp(_) | Value::TimestampTz(_),
             ) => {
-                self.require_tz(name(a), name(b))?;
+                let zoneless = if matches!(a, Value::TimestampTz(_)) { b } else { a };
+                self.require_tz(name(zoneless), "timestamptz")?;
                 match (as_utc(a), as_utc(b)) {
                     (Some(x), Some(y)) => Some(x.cmp(&y)),
                     _ => None,
@@ -1446,6 +1446,13 @@ pub struct Options<'a> {
 
 /// query returns the items that a path finds in a document, or None when an error occurred that was not thrown.
 pub fn query(path: &JsonPath, document: &Item, options: &Options<'_>) -> Result<Option<Vec<Item>>> {
+    let mut items = Vec::new();
+    Ok(query_into(path, document, options, &mut items)?.then_some(items))
+}
+
+/// query_into adds the items that a path finds in a document to a list, keeping the ones it found before an error
+/// that was not thrown, as Postgres' executeJsonPath does, and reports whether no such error occurred.
+pub fn query_into(path: &JsonPath, document: &Item, options: &Options<'_>, items: &mut Vec<Item>) -> Result<bool> {
     let mut exec = Exec {
         vars: options.vars,
         root: document.clone(),
@@ -1456,9 +1463,7 @@ pub fn query(path: &JsonPath, document: &Item, options: &Options<'_>) -> Result<
         use_tz: options.use_tz,
         innermost_size: None,
     };
-    let mut items = Vec::new();
-    let res = exec.item(&path.expr, &[], document, Some(&mut items))?;
-    Ok(if res == Res::Error { None } else { Some(items) })
+    Ok(exec.item(&path.expr, &[], document, Some(items))? != Res::Error)
 }
 
 /// exists reports whether a path finds any item in a document, or returns None when an error occurred that was not

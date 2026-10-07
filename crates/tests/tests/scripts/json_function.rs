@@ -4201,3 +4201,109 @@ fn test_to_jsonb() {
         },
     ]);
 }
+
+#[test]
+fn test_jsonpath() {
+    run_scripts(&[
+        ScriptTest {
+            name: "jsonpath type and path functions",
+            set_up_script: &["CREATE TABLE jp (id INT PRIMARY KEY, p jsonpath);"],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT '$.a ? (@ > -1 && @.b == "x")'::jsonpath, '$.a + 1 * 2'::jsonpath, 'strict $[1 to 2, last]'::jsonpath;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonpath", JSONPATH), Column("jsonpath", JSONPATH), Column("jsonpath", JSONPATH)],
+                        rows: &[
+                            &[T(r#"$."a"?(@ > -1 && @."b" == "x")"#), T(r#"($."a" + 1 * 2)"#), T("strict $[1 to 2,last]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_path_query_array('{"a":[1,2,3]}', '$.a[*] ? (@ >= $min)', '{"min":2}');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_path_query_array", JSONB)],
+                        rows: &[
+                            &[T("[2, 3]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_path_query('{"a":[1,2,3]}', '$.a[*] ? (@ > 1)');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_path_query", JSONB)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_path_query('{"a":[1,2,3]}', '$.a[*] + 1');"#,
+                    expected: Expected::Error(Diagnostic { code: "22038", message: "left operand of jsonpath operator + is not a single numeric value", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '{"a":1}'::jsonb @? '$.a', '{"a":1}'::jsonb @@ '$.a == 2';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_path_query_first('[{"a": 1}, {}]', 'strict $[*].a', silent => true), jsonb_path_exists('[1]', 'strict $.a', silent => true);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_path_query_first", JSONB), Column("jsonb_path_exists", BOOL)],
+                        rows: &[
+                            &[T("1"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT jsonb_path_match('[1]', '$');",
+                    expected: Expected::Error(Diagnostic { code: "22038", message: "single boolean result is expected", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1.a'::jsonpath;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"trailing junk after numeric literal at or near "1.a" of jsonpath input"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jp VALUES (1, '$.a ? (@ > 1)'), (2, 'strict $');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM jp ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("p", JSONPATH)],
+                        rows: &[
+                            &[T("1"), T(r#"$."a"?(@ > 1)"#)],
+                            &[T("2"), T("strict $")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT jsonb_path_query('[1]', '$', foo => true);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function jsonb_path_query(unknown, unknown, foo => boolean) does not exist", position: 8, hint: "No function matches the given name and argument types. You might need to add explicit type casts.", ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
