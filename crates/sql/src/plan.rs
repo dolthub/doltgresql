@@ -300,6 +300,9 @@ impl<'b, 'a> Planner<'b, 'a> {
             let mut aliases: Vec<String> = cte.aliascolnames.iter().filter_map(node_name).map(str::to_string).collect();
             let op = SetOperation::try_from(query.op).unwrap_or(SetOperation::SetopNone);
             let recursive = with.recursive && op == SetOperation::SetopUnion && references(query, &cte.ctename);
+            if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
+                self.check_search_and_cycle(cte, query, recursive)?;
+            }
             let planned = if recursive {
                 if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
                     let rewritten = rewrite_search_and_cycle(cte, query, &mut aliases)?;
@@ -320,6 +323,95 @@ impl<'b, 'a> Planner<'b, 'a> {
                 plan: Some(planned.plan),
                 work_table,
             });
+        }
+        Ok(())
+    }
+
+    /// check_search_and_cycle fails as Postgres' transformWithClause and analyzeCTE do for a SEARCH or CYCLE clause
+    /// that its WITH query cannot have.
+    fn check_search_and_cycle(
+        &mut self,
+        cte: &pg_query::protobuf::CommonTableExpr,
+        query: &SelectStmt,
+        recursive: bool,
+    ) -> Result<()> {
+        if !recursive {
+            return Err(PgError {
+                position: position(cte.location),
+                ..PgError::new(code::SYNTAX_ERROR, "WITH query is not recursive")
+            });
+        }
+        let leaf = |side: Option<&SelectStmt>| {
+            side.is_some_and(|s| {
+                SetOperation::try_from(s.op).unwrap_or(SetOperation::SetopNone) == SetOperation::SetopNone
+            })
+        };
+        if !leaf(query.larg.as_deref()) {
+            return Err(PgError::new(
+                code::FEATURE_NOT_SUPPORTED,
+                "with a SEARCH or CYCLE clause, the left side of the UNION must be a SELECT",
+            ));
+        }
+        if !leaf(query.rarg.as_deref()) {
+            return Err(PgError::new(
+                code::SYNTAX_ERROR,
+                "with a SEARCH or CYCLE clause, the right side of the UNION must be a SELECT",
+            ));
+        }
+        let Some(cycle) = cte.cycle_clause.as_ref() else { return Ok(()) };
+        let names: Vec<String> = match cte.aliascolnames.is_empty() {
+            true => self
+                .plan_query(query.larg.as_deref().expect("a UNION has a left side"))?
+                .columns
+                .iter()
+                .map(|c| c.name.clone())
+                .collect(),
+            false => cte.aliascolnames.iter().filter_map(node_name).map(str::to_string).collect(),
+        };
+        let at = |message: String, code: &'static str| PgError {
+            position: position(cycle.location),
+            ..PgError::new(code, message)
+        };
+        let mut seen = Vec::new();
+        for column in cycle.cycle_col_list.iter().filter_map(node_name) {
+            if seen.contains(&column) {
+                return Err(at(format!("cycle column \"{column}\" specified more than once"), code::DUPLICATE_COLUMN));
+            }
+            if !names.iter().any(|n| n == column) {
+                return Err(at(format!("cycle column \"{column}\" not in WITH query column list"), code::SYNTAX_ERROR));
+            }
+            seen.push(column);
+        }
+        if cycle.cycle_mark_column == cycle.cycle_path_column {
+            return Err(at(
+                "cycle mark column name and cycle path column name are the same".into(),
+                code::SYNTAX_ERROR,
+            ));
+        }
+        for added in [&cycle.cycle_mark_column, &cycle.cycle_path_column] {
+            if !names.contains(added) {
+                continue;
+            }
+            let right =
+                NodeEnum::SelectStmt(Box::new(query.rarg.as_deref().expect("a UNION has a right side").clone()));
+            let location = right.nodes().into_iter().find_map(|(n, ..)| match n {
+                pg_query::NodeRef::ColumnRef(c) if c.fields.iter().filter_map(node_name).next_back() == Some(added) => {
+                    Some(c.location)
+                }
+                _ => None,
+            });
+            return Err(PgError {
+                position: position(location.unwrap_or(cycle.location)),
+                ..PgError::new(code::AMBIGUOUS_COLUMN, format!("column reference \"{added}\" is ambiguous"))
+            });
+        }
+        if let (Some(value), Some(default)) = (cycle.cycle_mark_value.as_deref(), cycle.cycle_mark_default.as_deref()) {
+            let mut binder = self.binder(Scope::default());
+            let types = [
+                (binder.bind(value)?.1, crate::expr::arg_location(value)),
+                (binder.bind(default)?.1, crate::expr::arg_location(default)),
+            ];
+            crate::expr::common_type(&types, "CYCLE")?;
         }
         Ok(())
     }
@@ -1816,6 +1908,20 @@ fn rewrite_search_and_cycle(
         return Err(PgError::internal("a recursive query without both terms"));
     };
     let (mut left, mut right) = (left.clone(), right.clone());
+    if let Some(Some(NodeEnum::List(first))) = left.values_lists.first().map(|v| v.node.as_ref()) {
+        let columns: Vec<String> = (1..=first.items.len()).map(|i| format!("column{i}")).collect();
+        let shown: Vec<String> =
+            columns.iter().enumerate().map(|(i, c)| format!("{c} AS {}", q(aliases.get(i).unwrap_or(c)))).collect();
+        let values = pg_query::NodeRef::SelectStmt(&left).deparse().map_err(PgError::internal)?;
+        let text = format!("SELECT {} FROM ({values}) AS anchor({})", shown.join(", "), columns.join(", "));
+        let parsed = pg_query::parse(&text).map_err(PgError::internal)?;
+        let Some(NodeEnum::SelectStmt(select)) =
+            parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
+        else {
+            return Err(PgError::internal("an anchor of VALUES"));
+        };
+        left = *select;
+    }
     let names: Vec<String> = if aliases.is_empty() {
         left.target_list
             .iter()
@@ -2006,6 +2112,12 @@ impl Plan {
 
     /// run runs the plan and returns its rows.
     pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+        self.run_capped(ctx, None)
+    }
+
+    /// run_capped runs the plan when a LIMIT above it needs only some rows, which lets a recursive WITH query stop
+    /// once it has that many, as Postgres' lazy execution does.
+    fn run_capped(&self, ctx: &mut Ctx<'_>, cap: Option<usize>) -> Result<Vec<Vec<Value>>> {
         Ok(match self {
             Plan::OneRow => vec![Vec::new()],
             Plan::Scan(table) => scan(ctx.db, table)?,
@@ -2043,7 +2155,7 @@ impl Plan {
                     result = dedupe(result, &[]);
                 }
                 let mut working = result.clone();
-                while !working.is_empty() {
+                while !working.is_empty() && cap.is_none_or(|cap| result.len() < cap) {
                     let previous = ctx.work_tables.insert(*work_table, working);
                     let rows = step.run(ctx);
                     match previous {
@@ -2105,7 +2217,7 @@ impl Plan {
                 out
             }
             Plan::Project { input, exprs } => {
-                let rows = input.run(ctx)?;
+                let rows = input.run_capped(ctx, cap)?;
                 let mut out = Vec::with_capacity(rows.len());
                 for row in rows {
                     out.push(exprs.iter().map(|e| e.eval(ctx, &row)).collect::<Result<Vec<_>>>()?);
@@ -2260,7 +2372,8 @@ impl Plan {
             Plan::Limit { input, limit, offset } => {
                 let offset = limit_value(offset, ctx, "OFFSET", code::INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE)?;
                 let limit = limit_value(limit, ctx, "LIMIT", code::INVALID_ROW_COUNT_IN_LIMIT_CLAUSE)?;
-                let rows = input.run(ctx)?.into_iter().skip(offset.unwrap_or(0) as usize);
+                let needed = limit.map(|limit| (limit + offset.unwrap_or(0)) as usize);
+                let rows = input.run_capped(ctx, needed)?.into_iter().skip(offset.unwrap_or(0) as usize);
                 match limit {
                     Some(limit) => rows.take(limit as usize).collect(),
                     None => rows.collect(),
