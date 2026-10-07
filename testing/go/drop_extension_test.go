@@ -425,5 +425,145 @@ func TestDropExtension(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "drop extension whose functions are used by a domain",
+			SetUpScript: []string{
+				`CREATE EXTENSION "uuid-ossp";`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE DOMAIN defaulted_uuid AS uuid DEFAULT uuid_nil();`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `DROP EXTENSION "uuid-ossp";`,
+					ExpectedErr:     `cannot drop extension uuid-ossp because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+				},
+				{
+					Query:    `DROP DOMAIN defaulted_uuid;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE DOMAIN checked_uuid AS uuid CHECK (VALUE <> uuid_nil());`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `DROP EXTENSION "uuid-ossp";`,
+					ExpectedErr:     `cannot drop extension uuid-ossp because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+				},
+				{
+					Query:    `DROP DOMAIN checked_uuid;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP EXTENSION "uuid-ossp";`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "drop extension whose types are used by a domain",
+			SetUpScript: []string{
+				`CREATE EXTENSION vector;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE DOMAIN based AS vector;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `DROP EXTENSION vector;`,
+					ExpectedErr:     `cannot drop extension vector because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+				},
+				{
+					Query:    `DROP DOMAIN based;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE DOMAIN casted AS text DEFAULT ('[1,2]'::vector)::text;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `DROP EXTENSION vector;`,
+					ExpectedErr:     `cannot drop extension vector because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+				},
+				{
+					Query:    `DROP DOMAIN casted;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE DOMAIN casted_check AS text CHECK (VALUE::vector IS NOT NULL);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `DROP EXTENSION vector;`,
+					ExpectedErr:     `cannot drop extension vector because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+				},
+				{
+					Query:    `DROP DOMAIN casted_check;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP EXTENSION vector;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "drop extension whose functions are used by window functions and unions",
+			SetUpScript: []string{
+				`CREATE EXTENSION "uuid-ossp";`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE VIEW window_view AS SELECT row_number() OVER (ORDER BY uuid_nil()) AS n FROM (VALUES (1)) t (i);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `DROP EXTENSION "uuid-ossp";`,
+					ExpectedErr:     `cannot drop extension uuid-ossp because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+				},
+				{
+					Query:    `DROP VIEW window_view;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE VIEW named_window_view AS SELECT row_number() OVER w AS n FROM (VALUES (1)) t (i) WINDOW w AS (PARTITION BY uuid_ns_url());`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `DROP EXTENSION "uuid-ossp";`,
+					ExpectedErr:     `cannot drop extension uuid-ossp because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+				},
+				{
+					Query:    `DROP VIEW named_window_view;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE VIEW union_view AS SELECT gen_random_uuid() AS n UNION ALL SELECT uuid_ns_oid();`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `DROP EXTENSION "uuid-ossp";`,
+					ExpectedErr:     `cannot drop extension uuid-ossp because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+				},
+				{
+					Query:    `DROP VIEW union_view;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP EXTENSION "uuid-ossp";`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
