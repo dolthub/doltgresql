@@ -2399,6 +2399,31 @@ pub fn figure_name(node: &Node) -> String {
     figure_name_strength(node).0
 }
 
+/// condition converts a bound expression to boolean as Postgres' coerce_to_boolean does, failing for another type with
+/// the name of the clause whose argument it is.
+pub fn condition(bound: Bound, clause: &str, location: i32) -> Result<Expr> {
+    if !matches!(crate::usertypes::base_type(bound.1).oid, oid::BOOL | oid::UNKNOWN) {
+        let shown = crate::cast::type_display(bound.1.oid);
+        return Err(PgError {
+            position: position(location),
+            ..PgError::new(
+                code::DATATYPE_MISMATCH,
+                format!("argument of {clause} must be type boolean, not type {shown}"),
+            )
+        });
+    }
+    Ok(coerce(bound, typ(oid::BOOL), false, location)?.0)
+}
+
+/// figure_index_name returns the name Postgres gives an index column for an expression, which is `expr` when nothing
+/// names it.
+pub fn figure_index_name(node: &Node) -> String {
+    match figure_name_strength(node) {
+        (_, 0) => "expr".into(),
+        (name, _) => name,
+    }
+}
+
 /// figure_name_strength returns the name Postgres gives an expression's column, with how strongly the expression
 /// names it: 2 for columns and functions, 1 for casts and constructs, and 0 for none, as FigureColnameInternal does.
 fn figure_name_strength(node: &Node) -> (String, u8) {

@@ -14,6 +14,7 @@
 
 //! Statements that change rows: INSERT, UPDATE, and DELETE.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
@@ -25,7 +26,7 @@ use prolly::{NodeStore, Tuple, get};
 use crate::auth::Object;
 use crate::cast::cast_value;
 use crate::catalog::ColumnType;
-use crate::catalog::table::{IndexDef, TableDef};
+use crate::catalog::table::{HIDDEN_BASE, IndexDef, TableDef};
 use crate::error::{ErrorObjects, PgError, Result, code};
 use crate::expr::{Binder, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
 use crate::foreign::Change;
@@ -53,6 +54,57 @@ pub struct RowRules {
     checks: Vec<(String, Expr)>,
     /// Each generated column and its expression, over the row.
     generated: Vec<(usize, Expr)>,
+}
+
+/// IndexRules are the bound expressions of a table's indexes: its hidden expression columns, with the text that
+/// error details name them by, and each index's predicate.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct IndexRules {
+    /// Each hidden expression column's expression, over the row.
+    hidden: Vec<Expr>,
+    /// The text that error details name each hidden expression column by.
+    names: Vec<String>,
+    /// Each index's predicate over the row, or None for an index of every row.
+    predicates: Vec<Option<Expr>>,
+}
+
+impl IndexRules {
+    /// column_name returns the name that error details give a column of an index.
+    pub(crate) fn column_name<'t>(&'t self, table: &'t TableDef, column: usize) -> &'t str {
+        match column.checked_sub(HIDDEN_BASE) {
+            Some(k) => &self.names[k],
+            None => &table.columns[column].name,
+        }
+    }
+
+    /// hidden returns the expressions of the hidden expression columns.
+    pub(crate) fn hidden(&self) -> &[Expr] {
+        &self.hidden
+    }
+
+    /// predicates returns each index's predicate.
+    pub(crate) fn predicates(&self) -> &[Option<Expr>] {
+        &self.predicates
+    }
+
+    /// indexed returns a row extended with its hidden expression columns' values, and whether each index holds it.
+    pub(crate) fn indexed<'r>(&self, ctx: &mut Ctx<'_>, row: &'r [Value]) -> Result<(Cow<'r, [Value]>, Vec<bool>)> {
+        let mut held = Vec::with_capacity(self.predicates.len());
+        for predicate in &self.predicates {
+            held.push(match predicate {
+                Some(predicate) => predicate.is_true(ctx, row)?,
+                None => true,
+            });
+        }
+        if self.hidden.is_empty() {
+            return Ok((Cow::Borrowed(row), held));
+        }
+        let mut extended = row.to_vec();
+        for expr in &self.hidden {
+            extended.push(expr.eval(ctx, row)?);
+        }
+        Ok((Cow::Owned(extended), held))
+    }
 }
 
 /// Returning is a RETURNING list: its expressions over the written rows, and its result columns.
@@ -197,17 +249,26 @@ fn check_row(ctx: &mut Ctx<'_>, table: &TableDef, rules: &RowRules, row: &mut [V
 
 /// parse_expression parses the SQL text of a stored expression.
 pub fn parse_expression(text: &str) -> Result<pg_query::Node> {
+    parse_expressions(text)?.into_iter().next().ok_or_else(|| PgError::internal("an empty expression"))
+}
+
+/// parse_expressions parses the SQL text of a comma-separated list of stored expressions.
+pub fn parse_expressions(text: &str) -> Result<Vec<pg_query::Node>> {
     let result = pg_query::parse(&format!("SELECT {text}")).map_err(PgError::internal)?;
     let statement = result.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node);
     let Some(NodeEnum::SelectStmt(select)) = statement else {
         return Err(PgError::internal(format!("a stored expression that is not one: {text}")));
     };
-    match select.target_list.into_iter().next().and_then(|t| t.node) {
-        Some(NodeEnum::ResTarget(target)) => {
-            target.val.map(|v| *v).ok_or_else(|| PgError::internal("an empty expression"))
+    let mut out = Vec::with_capacity(select.target_list.len());
+    for target in select.target_list {
+        match target.node {
+            Some(NodeEnum::ResTarget(target)) => {
+                out.push(target.val.map(|v| *v).ok_or_else(|| PgError::internal("an empty expression"))?)
+            }
+            _ => return Err(PgError::internal(format!("a stored expression that is not one: {text}"))),
         }
-        _ => Err(PgError::internal(format!("a stored expression that is not one: {text}"))),
     }
+    Ok(out)
 }
 
 /// duplicate_key returns Postgres' error for a row whose primary key already exists.
@@ -229,10 +290,11 @@ fn duplicate_key(table: &TableDef, row: &[Value]) -> PgError {
     }
 }
 
-/// unique_violation returns Postgres' error for a row that duplicates another's values in a unique index.
-pub(crate) fn unique_violation(table: &TableDef, index: &IndexDef, row: &[Value]) -> PgError {
-    let names: Vec<&str> = index.columns.iter().map(|&i| table.columns[i].name.as_str()).collect();
-    let values: Vec<Value> = index.columns.iter().map(|&i| row[i].clone()).collect();
+/// unique_violation returns Postgres' error for a row, extended with its hidden expression columns, that duplicates
+/// another's values in a unique index.
+pub(crate) fn unique_violation(table: &TableDef, rules: &IndexRules, index: &IndexDef, row: &[Value]) -> PgError {
+    let names: Vec<&str> = index.columns.iter().map(|&i| rules.column_name(table, i)).collect();
+    let values: Vec<Value> = index.columns.iter().map(|&i| row[table.row_position(i)].clone()).collect();
     PgError {
         detail: Some(format!("Key ({})=({}) already exists.", names.join(", "), row_text(&values))),
         objects: Some(Box::new(ErrorObjects {
@@ -254,6 +316,7 @@ type KeyEdits = Vec<(Vec<u8>, Option<Vec<u8>>)>;
 /// Edits collects changes to a table's primary index and secondary indexes by key.
 struct Edits<'a> {
     table: &'a TableDef,
+    rules: IndexRules,
     edits: Vec<(Vec<u8>, Option<Vec<u8>>)>,
     /// Each secondary index's changes, in the order of the table's indexes.
     index_edits: Vec<KeyEdits>,
@@ -265,26 +328,27 @@ struct Edits<'a> {
 
 impl<'a> Edits<'a> {
     /// new starts collecting changes to the table.
-    fn new(table: &'a TableDef) -> Edits<'a> {
-        Edits {
+    fn new(ctx: &mut Ctx<'_>, table: &'a TableDef) -> Result<Edits<'a>> {
+        Ok(Edits {
             table,
+            rules: ctx.index_rules(table)?,
             edits: Vec::new(),
             index_edits: vec![Vec::new(); table.indexes.len()],
             deferred: vec![false; table.indexes.len()],
             deferred_checks: Vec::new(),
-        }
+        })
     }
 
     /// deferring starts collecting changes to the table, leaving the checks of the unique constraints that are deferred
     /// now to the commit.
-    fn deferring(ctx: &Ctx<'_>, table: &'a TableDef) -> Edits<'a> {
-        let mut edits = Edits::new(table);
+    fn deferring(ctx: &mut Ctx<'_>, table: &'a TableDef) -> Result<Edits<'a>> {
+        let mut edits = Edits::new(ctx, table)?;
         edits.deferred = table
             .indexes
             .iter()
             .map(|i| i.unique && ctx.is_deferred(&table.schema, &i.name, i.deferrable, i.initially_deferred))
             .collect();
-        edits
+        Ok(edits)
     }
 
     /// owe records the unique checks that the deferred constraints of the collected changes owe.
@@ -352,9 +416,11 @@ impl<'a> Edits<'a> {
     }
 
     /// conflicting_row returns an existing row that a row would duplicate in the target's unique constraints.
-    fn conflicting_row(&self, db: &mut Database, row: &[Value], target: &ConflictTarget) -> Result<Option<Vec<Value>>> {
+    fn conflicting_row(&self, ctx: &mut Ctx<'_>, row: &[Value], target: &ConflictTarget) -> Result<Option<Vec<Value>>> {
+        let (row, held) = self.rules.indexed(ctx, row)?;
+        let db = &mut *ctx.db;
         if !self.table.keyless() && matches!(target, ConflictTarget::Any | ConflictTarget::Primary) {
-            let (key, _) = self.table.encode_row(db, row)?;
+            let (key, _) = self.table.encode_row(db, &row)?;
             if let Some(value) = self.current(db, &key)? {
                 return Ok(Some(self.table.decode_row(db, &key, &value)?.0));
             }
@@ -365,11 +431,11 @@ impl<'a> Edits<'a> {
                 ConflictTarget::Index(t) => *t == i,
                 ConflictTarget::Primary => false,
             };
-            if !wanted || index.columns.iter().any(|&c| row[c].is_null()) {
+            if !wanted || !held[i] || index.columns.iter().any(|&c| row[self.table.row_position(c)].is_null()) {
                 continue;
             }
-            let (primary, _) = self.table.encode_row(db, row)?;
-            let key = self.table.index_key(db, index, row, &primary)?;
+            let (primary, _) = self.table.encode_row(db, &row)?;
+            let key = self.table.index_key(db, index, &row, &primary)?;
             if let Some(found) = self.index_match(db, i, &key)? {
                 let primary = self.primary_of(index, &found)?;
                 if let Some(value) = self.current(db, &primary)? {
@@ -380,16 +446,20 @@ impl<'a> Edits<'a> {
         Ok(None)
     }
 
-    /// index_row adds a row's keys to the secondary indexes, or removes them, checking unique indexes as it adds.
-    fn index_row(&mut self, db: &mut Database, row: &[Value], primary: &[u8], add: bool) -> Result<()> {
-        for i in 0..self.table.indexes.len() {
+    /// index_row adds a row's keys to the secondary indexes that hold it, or removes them, checking unique indexes as
+    /// it adds.
+    fn index_row(&mut self, ctx: &mut Ctx<'_>, row: &[Value], primary: &[u8], add: bool) -> Result<()> {
+        let (row, held) = self.rules.indexed(ctx, row)?;
+        let db = &mut *ctx.db;
+        for i in (0..self.table.indexes.len()).filter(|&i| held[i]) {
             let index = &self.table.indexes[i];
-            let key = self.table.index_key(db, index, row, primary)?;
-            let checked = add && index.unique && index.columns.iter().all(|&c| !row[c].is_null());
+            let key = self.table.index_key(db, index, &row, primary)?;
+            let value = |c: usize| &row[self.table.row_position(c)];
+            let checked = add && index.unique && index.columns.iter().all(|&c| !value(c).is_null());
             if checked && self.deferred[i] {
-                self.deferred_checks.push((i, index.columns.iter().map(|&c| row[c].clone()).collect()));
+                self.deferred_checks.push((i, index.columns.iter().map(|&c| value(c).clone()).collect()));
             } else if checked && self.index_taken(db, i, &key)? {
-                return Err(unique_violation(self.table, index, row));
+                return Err(unique_violation(self.table, &self.rules, index, &row));
             }
             let value = add.then(|| prolly::val::build_tuple(&[]));
             self.index_edits[i].push((key, value));
@@ -417,32 +487,32 @@ impl<'a> Edits<'a> {
     }
 
     /// insert adds a row, failing on a duplicate primary key, and adding to the cardinality of a keyless row.
-    fn insert(&mut self, db: &mut Database, row: &[Value]) -> Result<()> {
-        let (key, mut value) = self.table.encode_row(db, row)?;
-        if let Some(existing) = self.current(db, &key)? {
+    fn insert(&mut self, ctx: &mut Ctx<'_>, row: &[Value]) -> Result<()> {
+        let (key, mut value) = self.table.encode_row(ctx.db, row)?;
+        if let Some(existing) = self.current(ctx.db, &key)? {
             if !self.table.keyless() {
                 return Err(duplicate_key(self.table, row));
             }
             value = with_cardinality(&existing, cardinality(&existing) + 1);
         } else {
-            self.index_row(db, row, &key, true)?;
+            self.index_row(ctx, row, &key, true)?;
         }
         self.edits.push((key, Some(value)));
         Ok(())
     }
 
     /// delete removes one copy of a row.
-    fn delete(&mut self, db: &mut Database, row: &[Value]) -> Result<()> {
-        let (key, _) = self.table.encode_row(db, row)?;
+    fn delete(&mut self, ctx: &mut Ctx<'_>, row: &[Value]) -> Result<()> {
+        let (key, _) = self.table.encode_row(ctx.db, row)?;
         if self.table.keyless()
-            && let Some(existing) = self.current(db, &key)?
+            && let Some(existing) = self.current(ctx.db, &key)?
             && cardinality(&existing) > 1
         {
             let value = with_cardinality(&existing, cardinality(&existing) - 1);
             self.edits.push((key, Some(value)));
             return Ok(());
         }
-        self.index_row(db, row, &key, false)?;
+        self.index_row(ctx, row, &key, false)?;
         self.edits.push((key, None));
         Ok(())
     }
@@ -550,6 +620,28 @@ impl Ctx<'_> {
             checks.push((check.name.clone(), coerce(bound, typ(oid::BOOL), false, -1)?.0));
         }
         Ok(RowRules { defaults, checks, generated })
+    }
+
+    /// index_rules binds a table's hidden expression columns and index predicates.
+    pub(crate) fn index_rules(&mut self, table: &TableDef) -> Result<IndexRules> {
+        let mut rules = IndexRules::default();
+        for column in &table.hidden {
+            let bound = Binder::new(self, table_scope(table, None)).bind(&parse_expression(&column.default)?)?;
+            rules.hidden.push(assign(bound, column.ty, &column.name, -1)?.0);
+            let columns = table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect();
+            rules.names.push(crate::ruleutils::Analyzer::new(self, columns).index_column(&column.default, true)?);
+        }
+        for index in &table.indexes {
+            rules.predicates.push(match index.predicate.is_empty() {
+                true => None,
+                false => {
+                    let node = parse_expression(&index.predicate)?;
+                    let bound = Binder::new(self, table_scope(table, None)).bind(&node)?;
+                    Some(coerce(bound, typ(oid::BOOL), false, -1)?.0)
+                }
+            });
+        }
+        Ok(rules)
     }
 
     /// plan_insert plans an INSERT.
@@ -769,7 +861,9 @@ impl Ctx<'_> {
                 };
                 if !table.keyless() && same(&table.key_columns) {
                     ConflictTarget::Primary
-                } else if let Some(i) = table.indexes.iter().position(|ix| ix.unique && same(&ix.columns)) {
+                } else if let Some(i) =
+                    table.indexes.iter().position(|ix| ix.unique && ix.predicate.is_empty() && same(&ix.columns))
+                {
                     ConflictTarget::Index(i)
                 } else {
                     return Err(no_match());
@@ -826,7 +920,7 @@ impl Ctx<'_> {
         let mut binder = Binder::new(self, scope.clone());
         binder.clause = "WHERE";
         let filter = match update.where_clause.as_deref() {
-            Some(node) => Some(coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0),
+            Some(node) => Some(crate::expr::condition(binder.bind(node)?, "WHERE", arg_location(node))?),
             None => None,
         };
         let assignments = bind_assignments(&mut binder, &table, &update.target_list)?;
@@ -858,7 +952,7 @@ impl Ctx<'_> {
         let mut binder = Binder::new(self, scope.clone());
         binder.clause = "WHERE";
         let filter = match delete.where_clause.as_deref() {
-            Some(node) => Some(coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0),
+            Some(node) => Some(crate::expr::condition(binder.bind(node)?, "WHERE", arg_location(node))?),
             None => None,
         };
         let returning = self.plan_returning(scope, &delete.returning_list)?;
@@ -1008,15 +1102,15 @@ impl InsertPlan {
             return outcome(ctx, &self.returning, &rows, tag);
         };
         let table = &self.table;
-        let mut edits = Edits::deferring(ctx, table);
+        let mut edits = Edits::deferring(ctx, table)?;
         let mut written = Vec::new();
         let mut changes: Vec<Change> = Vec::new();
         let mut touched: Vec<Vec<u8>> = Vec::new();
         for row in rows {
             let Some(mut row) = triggers.before_row(ctx, Event::Insert, None, Some(row), &[])? else { continue };
             check_row(ctx, table, &self.rules, &mut row)?;
-            let Some(existing) = edits.conflicting_row(ctx.db, &row, &on_conflict.target)? else {
-                edits.insert(ctx.db, &row)?;
+            let Some(existing) = edits.conflicting_row(ctx, &row, &on_conflict.target)? else {
+                edits.insert(ctx, &row)?;
                 touched.push(table.encode_row(ctx.db, &row)?.0);
                 changes.push((None, Some(row.clone())));
                 written.push(row);
@@ -1057,8 +1151,8 @@ impl InsertPlan {
                 continue;
             };
             check_row(ctx, table, &self.rules, &mut new_row)?;
-            edits.delete(ctx.db, &existing)?;
-            edits.insert(ctx.db, &new_row)?;
+            edits.delete(ctx, &existing)?;
+            edits.insert(ctx, &new_row)?;
             touched.push(table.encode_row(ctx.db, &new_row)?.0);
             changes.push((Some(existing), Some(new_row.clone())));
             written.push(new_row);
@@ -1108,9 +1202,9 @@ fn insert_checked_rows(
     for row in &mut rows {
         check_row(ctx, table, rules, row)?;
     }
-    let mut edits = Edits::deferring(ctx, table);
+    let mut edits = Edits::deferring(ctx, table)?;
     for row in &rows {
-        edits.insert(ctx.db, row)?;
+        edits.insert(ctx, row)?;
     }
     edits.owe(ctx);
     edits.apply(ctx.db, ctx.txn)?;
@@ -1120,22 +1214,20 @@ fn insert_checked_rows(
 /// write_rows inserts rows already in a table's column order and types, without checking them, as rebuilding a table
 /// does.
 pub fn write_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: &[Vec<Value>]) -> Result<()> {
-    let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
-    let mut edits = Edits::new(table);
+    let mut edits = Edits::new(ctx, table)?;
     for row in rows {
-        edits.insert(db, row)?;
+        edits.insert(ctx, row)?;
     }
-    edits.apply(db, txn)
+    edits.apply(ctx.db, ctx.txn)
 }
 
 /// delete_rows deletes rows read from a table.
 pub fn delete_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: &[Vec<Value>]) -> Result<()> {
-    let (db, txn) = (&mut *ctx.db, &mut *ctx.txn);
-    let mut edits = Edits::new(table);
+    let mut edits = Edits::new(ctx, table)?;
     for row in rows {
-        edits.delete(db, row)?;
+        edits.delete(ctx, row)?;
     }
-    edits.apply(db, txn)
+    edits.apply(ctx.db, ctx.txn)
 }
 
 /// apply_changes checks and writes the changes that a foreign key's action makes to a referencing table.
@@ -1147,15 +1239,15 @@ pub(crate) fn apply_changes(ctx: &mut Ctx<'_>, table: &TableDef, changes: &[Chan
             check_row(ctx, table, &rules, row)?;
         }
     }
-    let mut edits = Edits::deferring(ctx, table);
+    let mut edits = Edits::deferring(ctx, table)?;
     for (old, _) in &changes {
         if let Some(row) = old {
-            edits.delete(ctx.db, row)?;
+            edits.delete(ctx, row)?;
         }
     }
     for (_, new) in &changes {
         if let Some(row) = new {
-            edits.insert(ctx.db, row)?;
+            edits.insert(ctx, row)?;
         }
     }
     edits.owe(ctx);
@@ -1239,12 +1331,12 @@ impl UpdatePlan {
             check_row(ctx, &self.table, &self.rules, &mut new_row)?;
             changes.push((row, new_row, from_row));
         }
-        let mut edits = Edits::deferring(ctx, &self.table);
+        let mut edits = Edits::deferring(ctx, &self.table)?;
         for (row, _, _) in &changes {
-            edits.delete(ctx.db, row)?;
+            edits.delete(ctx, row)?;
         }
         for (_, new_row, _) in &changes {
-            edits.insert(ctx.db, new_row)?;
+            edits.insert(ctx, new_row)?;
         }
         edits.owe(ctx);
         edits.apply(ctx.db, ctx.txn)?;
@@ -1284,9 +1376,9 @@ impl DeletePlan {
                 doomed.push((row, using_row));
             }
         }
-        let mut edits = Edits::new(&self.table);
+        let mut edits = Edits::new(ctx, &self.table)?;
         for (row, _) in &doomed {
-            edits.delete(ctx.db, row)?;
+            edits.delete(ctx, row)?;
         }
         edits.apply(ctx.db, ctx.txn)?;
         let changes: Vec<Change> = doomed.iter().map(|(row, _)| (Some(row.clone()), None)).collect();

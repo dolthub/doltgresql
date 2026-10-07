@@ -116,14 +116,18 @@ fn foreign_key_clause(key: &ForeignKeyDef) -> String {
     )
 }
 
-/// index_columns returns an index's quoted columns with the directions of descending ones.
+/// index_columns returns an index's quoted columns, or the expressions of its expression columns, with the directions
+/// of descending ones.
 fn index_columns(table: &TableDef, columns: &[usize], descending: &[bool]) -> String {
     let parts: Vec<String> = columns
         .iter()
         .enumerate()
         .map(|(i, &c)| {
             let desc = if descending.get(i).copied().unwrap_or(false) { " DESC" } else { "" };
-            format!("{}{desc}", quote_identifier(&table.columns[c].name))
+            match c.checked_sub(crate::catalog::table::HIDDEN_BASE) {
+                Some(k) => format!("{}{desc}", table.hidden[k].default),
+                None => format!("{}{desc}", quote_identifier(&table.columns[c].name)),
+            }
         })
         .collect();
     parts.join(",")
@@ -332,8 +336,9 @@ fn schema_statements(old: Option<&Side>, new: Option<&Side>) -> Vec<String> {
             out.push(format!("ALTER TABLE {name} ADD PRIMARY KEY ({});", quoted_list(&names)));
         }
     }
-    let index_text =
-        |t: &TableDef, i: &crate::catalog::table::IndexDef| (i.unique, index_columns(t, &i.columns, &i.descending));
+    let index_text = |t: &TableDef, i: &crate::catalog::table::IndexDef| {
+        (i.unique, index_columns(t, &i.columns, &i.descending), i.predicate.clone())
+    };
     for index in from.indexes.iter().filter(|i| !i.system) {
         let kept = to.indexes.iter().find(|i| i.name == index.name);
         if kept.is_none_or(|k| index_text(to, k) != index_text(from, index)) {
@@ -345,7 +350,12 @@ fn schema_statements(old: Option<&Side>, new: Option<&Side>) -> Vec<String> {
         if kept.is_none_or(|k| index_text(from, k) != index_text(to, index)) {
             let unique = if index.unique { "UNIQUE " } else { "" };
             let columns = index_columns(to, &index.columns, &index.descending);
-            out.push(format!("CREATE {unique}INDEX {} ON {name} ({columns});", quote_identifier(&index.name)));
+            let predicate =
+                if index.predicate.is_empty() { String::new() } else { format!(" WHERE {}", index.predicate) };
+            out.push(format!(
+                "CREATE {unique}INDEX {} ON {name} ({columns}){predicate};",
+                quote_identifier(&index.name)
+            ));
         }
     }
     let owned = |side: &Side| -> Vec<ForeignKeyDef> {

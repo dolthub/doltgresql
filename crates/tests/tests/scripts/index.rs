@@ -5326,3 +5326,263 @@ fn test_index_scans() {
         },
     ]);
 }
+
+#[test]
+fn test_expression_and_partial_index_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "expression and partial index catalogs",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t (pk int primary key, name varchar(20), c1 int, c2 int, flag bool);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON t (lower(name));",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON t ((c1 + c2), (c1 * c2));",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON t (coalesce(name, ''), c1);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON t ((name::text));",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE UNIQUE INDEX ON t (c1) WHERE flag AND c2 > 1;",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 't' ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("indexname", NAME), Column("indexdef", TEXT)],
+                        rows: &[
+                            &[T("t_c1_idx"), T("CREATE UNIQUE INDEX t_c1_idx ON public.t USING btree (c1) WHERE (flag AND (c2 > 1))")],
+                            &[T("t_coalesce_c1_idx"), T("CREATE INDEX t_coalesce_c1_idx ON public.t USING btree (COALESCE(name, ''::character varying), c1)")],
+                            &[T("t_expr_expr1_idx"), T("CREATE INDEX t_expr_expr1_idx ON public.t USING btree (((c1 + c2)), ((c1 * c2)))")],
+                            &[T("t_lower_idx"), T("CREATE INDEX t_lower_idx ON public.t USING btree (lower((name)::text))")],
+                            &[T("t_name_idx"), T("CREATE INDEX t_name_idx ON public.t USING btree (((name)::text))")],
+                            &[T("t_pkey"), T("CREATE UNIQUE INDEX t_pkey ON public.t USING btree (pk)")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c.relname, a.attname, a.attnum, a.atttypid::regtype FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid WHERE c.relname LIKE 't_%' AND c.relkind = 'i' ORDER BY 1, 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("attname", NAME), Column("attnum", INT2), Column("atttypid", REGTYPE)],
+                        rows: &[
+                            &[T("t_c1_idx"), T("c1"), T("1"), T("integer")],
+                            &[T("t_coalesce_c1_idx"), T("coalesce"), T("1"), T("character varying")],
+                            &[T("t_coalesce_c1_idx"), T("c1"), T("2"), T("integer")],
+                            &[T("t_expr_expr1_idx"), T("expr"), T("1"), T("integer")],
+                            &[T("t_expr_expr1_idx"), T("expr1"), T("2"), T("integer")],
+                            &[T("t_lower_idx"), T("lower"), T("1"), T("text")],
+                            &[T("t_name_idx"), T("name"), T("1"), T("text")],
+                            &[T("t_pkey"), T("pk"), T("1"), T("integer")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT indexrelid::regclass, indkey, indexprs IS NOT NULL, indpred IS NOT NULL, pg_get_expr(indpred, indrelid), pg_get_expr(indexprs, indrelid) FROM pg_index WHERE indrelid = 't'::regclass ORDER BY indexrelid::regclass::text;",
+                    expected: Expected::Rows {
+                        columns: &[Column("indexrelid", REGCLASS), Column("indkey", INT2VECTOR), Column("?column?", BOOL), Column("?column?", BOOL), Column("pg_get_expr", TEXT), Column("pg_get_expr", TEXT)],
+                        rows: &[
+                            &[T("t_c1_idx"), T("3"), T("f"), T("t"), T("(flag AND (c2 > 1))"), Null],
+                            &[T("t_coalesce_c1_idx"), T("0 3"), T("t"), T("f"), Null, T("COALESCE(name, ''::character varying)")],
+                            &[T("t_expr_expr1_idx"), T("0 0"), T("t"), T("f"), Null, T("(c1 + c2), (c1 * c2)")],
+                            &[T("t_lower_idx"), T("0"), T("t"), T("f"), Null, T("lower((name)::text)")],
+                            &[T("t_name_idx"), T("0"), T("t"), T("f"), Null, T("(name)::text")],
+                            &[T("t_pkey"), T("1"), T("f"), T("f"), Null, Null],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_get_indexdef('t_lower_idx'::regclass, 1, true), pg_get_indexdef('t_expr_expr1_idx'::regclass, 2, false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_get_indexdef", TEXT), Column("pg_get_indexdef", TEXT)],
+                        rows: &[
+                            &[T("lower(name::text)"), T("((c1 * c2))")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT conname FROM pg_constraint WHERE conrelid = 't'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("conname", NAME)],
+                        rows: &[
+                            &[T("t_pkey")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (1, 'a', 1, 2, true), (2, 'b', 1, 3, true);",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "t_c1_idx""#, detail: "Key (c1)=(1) already exists.", schema: "public", table: "t", constraint: "t_c1_idx", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (3, 'c', 1, 1, true), (4, 'd', 1, 3, false);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk FROM t WHERE lower(name) = 'c' AND c1 + c2 = 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "expression index errors",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE e (id int primary key, name text, ts timestamptz);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON e ((random() > 0.5));",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: "functions in index expression must be marked IMMUTABLE", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON e ((count(*)));",
+                    expected: Expected::Error(Diagnostic { code: "42803", message: "aggregate functions are not allowed in index expressions", position: 21, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON e ((SELECT 1));",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "SELECT""#, position: 21, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON e (id) WHERE id > (SELECT 1);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot use subquery in index predicate", position: 35, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON e (id) WHERE id;",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "argument of WHERE must be type boolean, not type integer", position: 30, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON e ((missing + 1));",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "missing" does not exist"#, position: 21, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ON e (name) TABLESPACE nowhere;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"tablespace "nowhere" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "expression indexes follow column changes",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE r (id int primary key, a int, b int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO r VALUES (1, 1, 2), (2, 3, 4);",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX r_sum ON r ((a + b));",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX r_part ON r (id) WHERE b > 2;",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE r RENAME COLUMN a TO aa;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT indexdef FROM pg_indexes WHERE tablename = 'r' ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("indexdef", TEXT)],
+                        rows: &[
+                            &[T("CREATE INDEX r_part ON public.r USING btree (id) WHERE (b > 2)")],
+                            &[T("CREATE INDEX r_sum ON public.r USING btree (((aa + b)))")],
+                            &[T("CREATE UNIQUE INDEX r_pkey ON public.r USING btree (id)")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM r WHERE aa + b = 7;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE r DROP COLUMN b;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT indexname FROM pg_indexes WHERE tablename = 'r' ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("indexname", NAME)],
+                        rows: &[
+                            &[T("r_pkey")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

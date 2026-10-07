@@ -195,7 +195,7 @@ impl Ctx<'_> {
                 "ef_construction must be greater than or equal to 2 * m",
             ));
         }
-        let name = self.index_name(stmt, &table, &[column])?;
+        let name = self.index_name(stmt, &table, &[table.columns[column].name.clone()])?;
         let Some(name) = name else { return Ok(Outcome::command("CREATE INDEX")) };
         if let Some(lists) = param("lists") {
             let rows = crate::query::scan(self.db, &table)?;

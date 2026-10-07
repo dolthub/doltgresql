@@ -212,7 +212,7 @@ impl Ctx<'_> {
                         for (&c, v) in index.columns.iter().zip(values) {
                             row[c] = v.clone();
                         }
-                        return Err(crate::dml::unique_violation(&def, &index, &row));
+                        return Err(crate::dml::unique_violation(&def, &Default::default(), &index, &row));
                     }
                 }
             }

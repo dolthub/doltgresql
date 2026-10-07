@@ -177,6 +177,17 @@ impl<'c, 'a> Analyzer<'c, 'a> {
         Ok(Printer { pretty, indents: true, level: 0, wrap: 0 }.print(&analyzed, None, false))
     }
 
+    /// index_column prints an index expression as pg_get_indexdef does, in parentheses unless it looks like a function
+    /// call.
+    pub fn index_column(&mut self, text: &str, pretty: bool) -> Result<String> {
+        let analyzed = self.analyze(&crate::dml::parse_expression(text)?)?;
+        let printed = Printer { pretty, indents: true, level: 0, wrap: 0 }.print(&analyzed, None, false);
+        Ok(match analyzed {
+            TExpr::Func(..) | TExpr::Coalesce(..) | TExpr::MinMax(..) | TExpr::Keyword(..) => printed,
+            _ => format!("({printed})"),
+        })
+    }
+
     /// constant returns a constant of a type, normalizing its text through the type's input and output when it can.
     fn constant(&mut self, text: &str, ty: ColumnType) -> TExpr {
         let normalized = if crate::cast::is_reg_type(ty.oid) {

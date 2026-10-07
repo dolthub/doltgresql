@@ -15,7 +15,7 @@
 //! The rows of the pg_catalog relations.
 
 use crate::array::Array;
-use crate::catalog::table::TableDef;
+use crate::catalog::table::{HIDDEN_BASE, TableDef};
 use crate::catalog::{ColumnType, builtin_type, id, oids};
 
 /// SECTION_COLUMN_DEFAULT is the ID section of column defaults.
@@ -48,40 +48,6 @@ pub(crate) const PREDEFINED_ROLES: [(u32, &str); 12] = [
     (6181, "pg_read_all_data"),
     (6182, "pg_write_all_data"),
 ];
-
-/// DEFAULT_BTREE_OPCLASSES maps a type to the OID and name of its default btree operator class.
-const DEFAULT_BTREE_OPCLASSES: [(u32, u32, &str); 22] = [
-    (16, 10003, "bool_ops"),
-    (17, 10006, "bytea_ops"),
-    (18, 10007, "char_ops"),
-    (19, 10028, "name_ops"),
-    (20, 3124, "int8_ops"),
-    (21, 1979, "int2_ops"),
-    (23, 1978, "int4_ops"),
-    (25, 3126, "text_ops"),
-    (26, 1981, "oid_ops"),
-    (700, 10012, "float4_ops"),
-    (701, 3123, "float8_ops"),
-    (1042, 10004, "bpchar_ops"),
-    (1043, 3126, "text_ops"),
-    (1082, 3122, "date_ops"),
-    (1083, 10038, "time_ops"),
-    (1114, 3128, "timestamp_ops"),
-    (1184, 3127, "timestamptz_ops"),
-    (1186, 10022, "interval_ops"),
-    (1266, 10041, "timetz_ops"),
-    (1700, 3125, "numeric_ops"),
-    (2950, 10065, "uuid_ops"),
-    (3802, 10088, "jsonb_ops"),
-];
-
-/// default_opclass returns the default btree operator class of a type.
-pub fn default_opclass(type_oid: u32) -> Option<(u32, &'static str)> {
-    if crate::array::is_array_type(type_oid) {
-        return Some((10000, "array_ops"));
-    }
-    DEFAULT_BTREE_OPCLASSES.iter().find(|(t, ..)| *t == type_oid).map(|&(_, o, n)| (o, n))
-}
 
 /// is_builtin_schema reports whether a schema is one that every Postgres database has.
 pub fn is_builtin_schema(schema: &str) -> bool {
@@ -208,6 +174,37 @@ pub struct TableIndex {
     /// Whether a unique index's constraint is DEFERRABLE, and whether it is INITIALLY DEFERRED.
     pub deferrable: bool,
     pub initially_deferred: bool,
+    /// The names that pg_attribute gives the index's columns.
+    pub names: Vec<String>,
+    /// Each column's operator class, or empty for its type's default.
+    pub op_classes: Vec<String>,
+    /// The predicate of a partial index, or empty for an index of every row.
+    pub predicate: String,
+}
+
+impl TableIndex {
+    /// constraint reports whether a unique index can back a constraint, which needs plain columns and every row.
+    pub fn constraint(&self) -> bool {
+        self.unique && self.predicate.is_empty() && self.columns.iter().all(|&c| c < HIDDEN_BASE)
+    }
+}
+
+/// operator_class_oid returns the OID of a btree operator class by name, or of a type's default class for an empty
+/// name.
+fn operator_class_oid(type_oid: u32, name: &str) -> u32 {
+    let named = super::operator_classes(403).into_iter().find(|c| !name.is_empty() && c.name == name);
+    named.or_else(|| super::default_operator_class(type_oid)).map_or(0, |c| c.oid)
+}
+
+/// index_column_names returns the names Postgres gives the columns of an index: the column names, or for expressions
+/// the names their expressions suggest, with numbers added to repeated ones.
+fn index_column_names(table: &TableDef, columns: &[usize]) -> Vec<String> {
+    let names = columns.iter().map(|&c| match c.checked_sub(HIDDEN_BASE) {
+        Some(k) => crate::dml::parse_expression(&table.hidden[k].default)
+            .map_or_else(|_| "expr".to_string(), |node| crate::expr::figure_index_name(&node)),
+        None => table.columns[c].name.clone(),
+    });
+    crate::ddl::unique_column_names(names.collect())
 }
 
 /// table_indexes returns a table's primary key index and its visible secondary indexes.
@@ -224,6 +221,9 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
             vector: None,
             deferrable: table.primary.deferrable,
             initially_deferred: table.primary.initially_deferred,
+            names: index_column_names(table, &table.key_columns),
+            op_classes: vec![String::new(); table.key_columns.len()],
+            predicate: String::new(),
         });
     }
     for index in table.indexes.iter().filter(|i| !i.system) {
@@ -237,6 +237,9 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
             vector: index.vector,
             deferrable: index.deferrable,
             initially_deferred: index.initially_deferred,
+            names: index_column_names(table, &index.columns),
+            op_classes: index.op_classes.clone(),
+            predicate: index.predicate.clone(),
         });
     }
     out
@@ -734,8 +737,8 @@ impl Ctx<'_> {
                 for (i, &c) in index.columns.iter().enumerate() {
                     attributes.push(Attribute {
                         relation: index_relation,
-                        name: table.columns[c].name.clone(),
-                        ty: table.columns[c].ty,
+                        name: index.names[i].clone(),
+                        ty: table.index_column(c).map_or(ColumnType { oid: 0, modifier: -1 }, |c| c.ty),
                         number: i as i16 + 1,
                         not_null: false,
                         has_default: false,
@@ -829,7 +832,14 @@ impl Ctx<'_> {
         let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
             for index in table_indexes(table) {
-                let types: Vec<u32> = index.columns.iter().map(|&c| table.columns[c].ty.oid).collect();
+                let types: Vec<u32> =
+                    index.columns.iter().map(|&c| table.index_column(c).map_or(0, |c| c.ty.oid)).collect();
+                let expressions: Vec<&str> = index
+                    .columns
+                    .iter()
+                    .filter_map(|c| c.checked_sub(HIDDEN_BASE).map(|k| table.hidden[k].default.as_str()))
+                    .collect();
+                let node_tree = |t: String| if t.is_empty() { Value::Null } else { text(t) };
                 rows.push(vec![
                     ("indexrelid", oid(index_oid(&table.schema, &table.name, &index.name))),
                     ("indrelid", oid(table_oid(&table.schema, &table.name))),
@@ -846,9 +856,14 @@ impl Ctx<'_> {
                     ("indisready", boolean(true)),
                     ("indislive", boolean(true)),
                     ("indisreplident", boolean(false)),
-                    ("indkey", vector(index.columns.iter().map(|c| c + 1))),
+                    ("indkey", vector(index.columns.iter().map(|&c| if c < HIDDEN_BASE { c + 1 } else { 0 }))),
+                    ("indexprs", node_tree(expressions.join(", "))),
+                    ("indpred", node_tree(index.predicate.clone())),
                     ("indcollation", vector(types.iter().map(|&t| type_info(t).collation))),
-                    ("indclass", vector(types.iter().map(|&t| default_opclass(t).map_or(0, |o| o.0)))),
+                    (
+                        "indclass",
+                        vector(types.iter().zip(&index.op_classes).map(|(&t, class)| operator_class_oid(t, class))),
+                    ),
                     (
                         "indoption",
                         vector(
@@ -870,7 +885,7 @@ impl Ctx<'_> {
                     ("schemaname", text(table.schema.clone())),
                     ("tablename", text(table.name.clone())),
                     ("indexname", text(index.name.clone())),
-                    ("indexdef", text(index_definition(table, &index, true))),
+                    ("indexdef", text(self.index_definition(table, &index, true)?)),
                 ]);
             }
         }
@@ -887,16 +902,14 @@ impl Ctx<'_> {
                     continue;
                 }
                 return Ok(Some(match usize::try_from(column) {
-                    Ok(0) => index_definition(
-                        table,
-                        &candidate,
-                        !pretty || !self.session.search_path().contains(&table.schema),
-                    ),
-                    Ok(position) => candidate
-                        .columns
-                        .get(position - 1)
-                        .map(|&c| crate::engine::quote_identifier(&table.columns[c].name))
-                        .unwrap_or_default(),
+                    Ok(0) => {
+                        let qualified = !pretty || !self.session.search_path().contains(&table.schema);
+                        self.index_definition(table, &candidate, qualified)?
+                    }
+                    Ok(position) => match candidate.columns.get(position - 1) {
+                        Some(&c) => self.index_column_text(table, c, pretty)?,
+                        None => String::new(),
+                    },
                     Err(_) => String::new(),
                 }));
             }
@@ -926,7 +939,8 @@ impl Ctx<'_> {
         Ok(())
     }
 
-    /// expression_definition prints an expression over a relation's columns as pg_get_expr does.
+    /// expression_definition prints an expression, or a comma-separated list of them, over a relation's columns as
+    /// pg_get_expr does.
     pub(crate) fn expression_definition(&mut self, expression: &str, relation: u32, pretty: bool) -> Result<String> {
         let snapshot = self.snapshot()?;
         let columns = snapshot
@@ -935,7 +949,70 @@ impl Ctx<'_> {
             .find(|t| table_oid(&t.schema, &t.name) == relation)
             .map(|t| t.columns.iter().map(|c| (c.name.clone(), c.ty)).collect())
             .unwrap_or_default();
-        crate::ruleutils::Analyzer::new(self, columns).deparse(expression, None, pretty)
+        let mut analyzer = crate::ruleutils::Analyzer::new(self, columns);
+        let mut out = Vec::new();
+        for node in crate::dml::parse_expressions(expression)? {
+            out.push(analyzer.deparse(&crate::ddl::expression_text(&node)?, None, pretty)?);
+        }
+        Ok(out.join(", "))
+    }
+
+    /// index_column_text prints a column of an index as pg_get_indexdef does: a column's name, or an expression.
+    fn index_column_text(&mut self, table: &TableDef, column: usize, pretty: bool) -> Result<String> {
+        match column.checked_sub(HIDDEN_BASE) {
+            Some(k) => {
+                let columns = table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect();
+                crate::ruleutils::Analyzer::new(self, columns).index_column(&table.hidden[k].default, pretty)
+            }
+            None => Ok(crate::engine::quote_identifier(&table.columns[column].name)),
+        }
+    }
+
+    /// index_definition returns an index's CREATE INDEX statement as pg_get_indexdef prints it, naming its table with
+    /// the schema when asked.
+    pub fn index_definition(&mut self, table: &TableDef, index: &TableIndex, qualified: bool) -> Result<String> {
+        let rendering = index.vector.and_then(|distance| {
+            crate::extensions::vector_rendering(distance, table.columns[*index.columns.first()?].ty.oid)
+        });
+        let mut columns = Vec::with_capacity(index.columns.len());
+        for (i, &c) in index.columns.iter().enumerate() {
+            let mut column = self.index_column_text(table, c, false)?;
+            let ty = table.index_column(c).map_or(0, |c| c.ty.oid);
+            let class = index.op_classes.get(i).map_or("", String::as_str);
+            if !class.is_empty() && super::default_operator_class(ty).is_none_or(|d| d.name != class) {
+                column.push(' ');
+                column.push_str(class);
+            }
+            match (index.descending[i], index.nulls_first[i]) {
+                (true, true) => column.push_str(" DESC"),
+                (true, false) => column.push_str(" DESC NULLS LAST"),
+                (false, true) => column.push_str(" NULLS FIRST"),
+                (false, false) => {}
+            }
+            if let Some((_, class)) = &rendering {
+                column.push(' ');
+                column.push_str(class);
+            }
+            columns.push(column);
+        }
+        let schema =
+            if qualified { format!("{}.", crate::engine::quote_identifier(&table.schema)) } else { String::new() };
+        let predicate = match index.predicate.is_empty() {
+            true => String::new(),
+            false => {
+                let names = table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect();
+                let text = crate::ruleutils::Analyzer::new(self, names).deparse(&index.predicate, None, false)?;
+                format!(" WHERE {text}")
+            }
+        };
+        Ok(format!(
+            "CREATE {}INDEX {} ON {schema}{} USING {} ({}){predicate}",
+            if index.unique { "UNIQUE " } else { "" },
+            crate::engine::quote_identifier(&index.name),
+            crate::engine::quote_identifier(&table.name),
+            rendering.as_ref().map_or("btree", |(method, _)| method),
+            columns.join(", ")
+        ))
     }
 
     /// constraint_definition_of prints the constraint with the OID as pg_get_constraintdef does, or returns None when
@@ -958,7 +1035,7 @@ impl Ctx<'_> {
             names.join(", ")
         };
         for table in &snapshot.tables {
-            for index in table_indexes(table).into_iter().filter(|i| i.unique) {
+            for index in table_indexes(table).into_iter().filter(TableIndex::constraint) {
                 let section = if index.primary { 23 } else { 36 };
                 if constraint_oid(section, &table.schema, &table.name, &index.name) == constraint {
                     let kind = if index.primary { "PRIMARY KEY" } else { "UNIQUE" };
@@ -1050,7 +1127,7 @@ impl Ctx<'_> {
                     ("connoinherit", boolean(kind != "c")),
                 ]
             };
-            for index in table_indexes(table).into_iter().filter(|i| i.unique) {
+            for index in table_indexes(table).into_iter().filter(TableIndex::constraint) {
                 let (kind, section) = if index.primary { ("p", 23) } else { ("u", 36) };
                 let mut row = base(&index.name, kind, section, (index.deferrable, index.initially_deferred));
                 row.extend([
@@ -1261,42 +1338,6 @@ fn rule_letter(rule: Rule) -> &'static str {
         Rule::SetNull => "n",
         Rule::SetDefault => "d",
     }
-}
-
-/// index_definition returns an index's CREATE INDEX statement as pg_get_indexdef prints it, naming its table with
-/// the schema when asked.
-pub fn index_definition(table: &TableDef, index: &TableIndex, qualified: bool) -> String {
-    let rendering = index.vector.and_then(|distance| {
-        crate::extensions::vector_rendering(distance, table.columns[*index.columns.first()?].ty.oid)
-    });
-    let columns: Vec<String> = index
-        .columns
-        .iter()
-        .enumerate()
-        .map(|(i, &c)| {
-            let mut column = crate::engine::quote_identifier(&table.columns[c].name);
-            match (index.descending[i], index.nulls_first[i]) {
-                (true, true) => column.push_str(" DESC"),
-                (true, false) => column.push_str(" DESC NULLS LAST"),
-                (false, true) => column.push_str(" NULLS FIRST"),
-                (false, false) => {}
-            }
-            if let Some((_, class)) = &rendering {
-                column.push(' ');
-                column.push_str(class);
-            }
-            column
-        })
-        .collect();
-    let schema = if qualified { format!("{}.", crate::engine::quote_identifier(&table.schema)) } else { String::new() };
-    format!(
-        "CREATE {}INDEX {} ON {schema}{} USING {} ({})",
-        if index.unique { "UNIQUE " } else { "" },
-        crate::engine::quote_identifier(&index.name),
-        crate::engine::quote_identifier(&table.name),
-        rendering.as_ref().map_or("btree", |(method, _)| method),
-        columns.join(", ")
-    )
 }
 
 /// TABLE_COUNTERS are the counters of pg_stat_all_tables and its sys and user variants.

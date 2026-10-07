@@ -17,7 +17,7 @@
 use crate::catalog::{ColumnType, builtin_type};
 use crate::error::Result;
 use crate::oid as types;
-use crate::pgcatalog::rows::{is_builtin_schema, table_indexes};
+use crate::pgcatalog::rows::{TableIndex, is_builtin_schema, table_indexes};
 use crate::pgcatalog::{Rows, int4, text};
 use crate::query::Ctx;
 use crate::types::Value;
@@ -267,7 +267,7 @@ impl Ctx<'_> {
         let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
             let mut constraints: Vec<(String, &str, (bool, bool))> = Vec::new();
-            for index in table_indexes(table).into_iter().filter(|i| i.unique) {
+            for index in table_indexes(table).into_iter().filter(TableIndex::constraint) {
                 let kind = if index.primary { "PRIMARY KEY" } else { "UNIQUE" };
                 constraints.push((index.name, kind, (index.deferrable, index.initially_deferred)));
             }
@@ -342,7 +342,7 @@ impl Ctx<'_> {
         let snapshot = self.snapshot()?;
         for table in &snapshot.tables {
             let mut keys: Vec<(String, Vec<String>, Option<Vec<usize>>)> = Vec::new();
-            for index in table_indexes(table).into_iter().filter(|i| i.unique) {
+            for index in table_indexes(table).into_iter().filter(TableIndex::constraint) {
                 keys.push((index.name, index.columns.iter().map(|&c| table.columns[c].name.clone()).collect(), None));
             }
             for fk in

@@ -121,15 +121,18 @@ impl Printer {
                     Some(i) => scan.table.indexes[i].descending.clone(),
                     None => Vec::new(),
                 };
-                let names: Vec<String> = scan
+                let mut names: Vec<String> = scan
                     .index_columns()
                     .iter()
                     .enumerate()
                     .map(|(i, &c)| {
                         let desc = if descending.get(i).copied().unwrap_or(false) { " DESC" } else { "" };
-                        format!("{}{desc}", scan.table.columns[c].name)
+                        format!("{}{desc}", scan.table.index_column(c).map_or("", |c| c.name.as_str()))
                     })
                     .collect();
+                if let Some(index) = scan.index.map(|i| &scan.table.indexes[i]).filter(|i| !i.predicate.is_empty()) {
+                    names.push(index.predicate.clone());
+                }
                 let mut properties = vec![format!("Index Columns: {}", names.join(", "))];
                 match &scan.nearest {
                     Some(nearest) => {

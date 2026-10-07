@@ -54,11 +54,17 @@ pub struct Check {
     pub expression: String,
 }
 
+/// HIDDEN_BASE is the position an index gives a table's first hidden expression column, past any table's columns.
+pub const HIDDEN_BASE: usize = 1 << 20;
+
+/// KEYLESS_HASH is the position an index gives the row hash that ends a keyless table's index keys.
+pub const KEYLESS_HASH: usize = usize::MAX;
+
 /// IndexDef is a secondary index of a table.
 #[derive(Clone, Debug, PartialEq)]
 pub struct IndexDef {
     pub name: String,
-    /// The indexed columns, by position in the table's columns.
+    /// The indexed columns, by position in the table's columns, or past `HIDDEN_BASE` for a hidden expression column.
     pub columns: Vec<usize>,
     pub unique: bool,
     /// Each indexed column's direction and NULLS placement.
@@ -103,6 +109,8 @@ pub struct TableDef {
     pub name: String,
     pub primary: Primary,
     pub columns: Vec<ColumnDef>,
+    /// The hidden virtual columns that hold the expressions of expression indexes, as Dolt stores them.
+    pub hidden: Vec<ColumnDef>,
     pub checks: Vec<Check>,
     pub indexes: Vec<IndexDef>,
     /// The columns of the primary key in key order, empty for a keyless table.
@@ -156,28 +164,36 @@ impl TableDef {
         let table = Table::decode(&db.read_value(&address)?.ok_or_else(missing)?)?;
         let message = db.read_value(&table.schema)?.ok_or_else(missing)?;
         let message = TableSchema::new(Message(&message))?;
-        let columns = message
-            .columns()?
-            .into_iter()
-            .filter(|c| !c.hidden)
-            .map(|c| {
-                Ok(ColumnDef {
-                    name: String::from_utf8_lossy(c.name).into_owned(),
-                    ty: column_type(c.sql_type)?,
-                    tag: c.tag,
-                    encoding: c.encoding,
-                    nullable: c.nullable,
-                    primary_key: c.primary_key,
-                    default: String::from_utf8_lossy(c.default_value).into_owned(),
-                    generated: c.generated,
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let (mut columns, mut hidden, mut positions) = (Vec::new(), Vec::new(), Vec::new());
+        for c in message.columns()? {
+            if c.hidden && !(c.hidden_system && c.is_virtual) {
+                positions.push(None);
+                continue;
+            }
+            let column = ColumnDef {
+                name: String::from_utf8_lossy(c.name).into_owned(),
+                ty: column_type(c.sql_type)?,
+                tag: c.tag,
+                encoding: c.encoding,
+                nullable: c.nullable,
+                primary_key: c.primary_key,
+                default: String::from_utf8_lossy(c.default_value).into_owned(),
+                generated: c.generated,
+            };
+            if c.hidden_system && c.is_virtual {
+                positions.push(Some(HIDDEN_BASE + hidden.len()));
+                hidden.push(column);
+            } else {
+                positions.push(Some(columns.len()));
+                columns.push(column);
+            }
+        }
         let clustered = message.clustered_index()?;
         // A keyless table's index also holds its hidden hash and cardinality columns, which come after the others.
-        let visible = |i: &u16| (*i as usize) < columns.len();
-        let key_columns = clustered.key_columns.iter().filter(|i| visible(i)).map(|&i| i as usize).collect();
-        let value_columns = clustered.value_columns.iter().filter(|i| visible(i)).map(|&i| i as usize).collect();
+        let position = |i: &u16| positions.get(*i as usize).copied().flatten();
+        let stored = |i: &u16| position(i).filter(|&p| p < HIDDEN_BASE);
+        let key_columns = clustered.key_columns.iter().filter_map(stored).collect();
+        let value_columns = clustered.value_columns.iter().filter_map(stored).collect();
         let checks = message
             .checks()?
             .into_iter()
@@ -196,7 +212,7 @@ impl TableDef {
                 let root = roots.iter().find(|(n, _)| *n == name).map(|(_, r)| *r).ok_or_else(missing)?;
                 let count = index.index_columns.len();
                 Ok(IndexDef {
-                    columns: index.index_columns.iter().map(|&i| i as usize).collect(),
+                    columns: index.index_columns.iter().map(|i| position(i).unwrap_or(KEYLESS_HASH)).collect(),
                     unique: index.unique_key,
                     descending: (0..count).map(|i| index.descending.get(i).copied().unwrap_or(false)).collect(),
                     nulls_last: (0..count).map(|i| index.nulls_last.get(i).copied().unwrap_or(false)).collect(),
@@ -228,6 +244,7 @@ impl TableDef {
             name: name.to_string(),
             primary,
             columns,
+            hidden,
             checks,
             indexes,
             key_columns,
@@ -236,12 +253,46 @@ impl TableDef {
         })
     }
 
+    /// index_column returns the column at a position an index gives, a table column or a hidden expression column,
+    /// or None for a keyless table's row hash.
+    pub fn index_column(&self, position: usize) -> Option<&ColumnDef> {
+        match position.checked_sub(HIDDEN_BASE) {
+            Some(k) => self.hidden.get(k),
+            None => self.columns.get(position),
+        }
+    }
+
+    /// drop_index removes an index with the hidden expression columns that only it reads.
+    pub fn drop_index(&mut self, name: &str) {
+        let Some(i) = self.indexes.iter().position(|index| index.name == name) else { return };
+        let index = self.indexes.remove(i);
+        let mut doomed: Vec<usize> = index.columns.iter().filter_map(|c| c.checked_sub(HIDDEN_BASE)).collect();
+        doomed.sort_unstable();
+        for &k in doomed.iter().rev() {
+            self.hidden.remove(k);
+        }
+        for column in self.indexes.iter_mut().flat_map(|index| &mut index.columns) {
+            if let Some(k) = column.checked_sub(HIDDEN_BASE) {
+                *column -= doomed.iter().filter(|&&d| d < k).count();
+            }
+        }
+    }
+
+    /// row_position returns where the value at a position an index gives sits in a row that the hidden columns'
+    /// values extend.
+    pub fn row_position(&self, position: usize) -> usize {
+        match position.checked_sub(HIDDEN_BASE) {
+            Some(k) => self.columns.len() + k,
+            None => position,
+        }
+    }
+
     /// index_key_columns returns the columns of an index's keys: the indexed columns, then the primary key columns
     /// the index lacks, or the hidden row hash of a keyless table, written as the column count.
     pub fn index_key_columns(&self, index: &IndexDef) -> Vec<usize> {
         let mut columns = index.columns.clone();
         if self.keyless() {
-            columns.push(self.columns.len());
+            columns.push(KEYLESS_HASH);
         } else {
             columns.extend(self.key_columns.iter().filter(|c| !index.columns.contains(c)));
         }
@@ -252,7 +303,7 @@ impl TableDef {
     pub fn index_encodings(&self, index: &IndexDef) -> Vec<u8> {
         self.index_key_columns(index)
             .into_iter()
-            .map(|c| self.columns.get(c).map_or(encoding::HASH128, |c| c.encoding))
+            .map(|c| self.index_column(c).map_or(encoding::HASH128, |c| c.encoding))
             .collect()
     }
 
@@ -260,8 +311,8 @@ impl TableDef {
     pub fn index_key(&self, db: &mut Database, index: &IndexDef, row: &[Value], primary: &[u8]) -> Result<Vec<u8>> {
         let mut fields = Vec::new();
         for c in self.index_key_columns(index) {
-            fields.push(match self.columns.get(c) {
-                Some(column) => encode_field(&row[c], column.encoding, column.ty)?,
+            fields.push(match self.index_column(c) {
+                Some(column) => encode_field(&row[self.row_position(c)], column.encoding, column.ty)?,
                 None => Tuple(primary).field(0)?.map(<[u8]>::to_vec),
             });
         }
@@ -298,8 +349,7 @@ impl TableDef {
         for (i, c) in self.index_key_columns(index).into_iter().enumerate().take(fields) {
             let (l, r) = (left.field(i).ok().flatten(), right.field(i).ok().flatten());
             let (encoding, ty) = self
-                .columns
-                .get(c)
+                .index_column(c)
                 .map_or((encoding::HASH128, ColumnType { oid: 0, modifier: -1 }), |c| (c.encoding, c.ty));
             let descending = index.descending.get(i).copied().unwrap_or(false);
             let nulls_last = index.nulls_last.get(i).copied().unwrap_or(false);
@@ -335,6 +385,7 @@ impl TableDef {
     pub fn schema_message(&self) -> Result<Vec<u8>> {
         schema_message(
             &self.columns,
+            &self.hidden,
             &self.key_columns,
             &self.value_columns,
             &self.checks,
@@ -415,23 +466,26 @@ impl TableDef {
     }
 }
 
-/// schema_message writes a Dolt schema of the columns, with the key and value columns of its primary index, its check
-/// constraints, its secondary indexes, whose key columns leave out the row hash that ends a keyless table's keys, and
-/// its primary key constraint.
+/// schema_message writes a Dolt schema of the columns, then the hidden expression columns as Dolt's virtual hidden
+/// system columns, with the key and value columns of its primary index, its check constraints, its secondary indexes,
+/// whose key columns leave out the row hash that ends a keyless table's keys, and its primary key constraint.
 pub fn schema_message(
     columns: &[ColumnDef],
+    hidden: &[ColumnDef],
     key_columns: &[usize],
     value_columns: &[usize],
     checks: &[Check],
     indexes: &[IndexDef],
     primary: &Primary,
 ) -> Result<Vec<u8>> {
+    let all: Vec<(&ColumnDef, bool)> =
+        columns.iter().map(|c| (c, false)).chain(hidden.iter().map(|c| (c, true))).collect();
     let types: Vec<Vec<u8>> =
-        columns.iter().map(|c| c.ty.serialized().map(String::into_bytes)).collect::<Result<_>>()?;
-    let fields = columns
+        all.iter().map(|(c, _)| c.ty.serialized().map(String::into_bytes)).collect::<Result<_>>()?;
+    let fields = all
         .iter()
         .zip(&types)
-        .map(|(c, sql_type)| ColumnFields {
+        .map(|(&(c, is_hidden), sql_type)| ColumnFields {
             name: c.name.as_bytes(),
             sql_type,
             default_value: c.default.as_bytes(),
@@ -443,25 +497,26 @@ pub fn schema_message(
             auto_increment: false,
             nullable: c.nullable,
             generated: c.generated,
-            is_virtual: false,
+            is_virtual: is_hidden,
             adaptive_encoding: crate::storage::marks_adaptive(c.encoding),
             hidden: false,
-            hidden_system: false,
+            hidden_system: is_hidden,
         })
         .collect();
+    let stored = |i: usize| i.checked_sub(HIDDEN_BASE).map_or(i, |k| columns.len() + k) as u16;
     let keyless = key_columns.is_empty();
     let mut sorted: Vec<&IndexDef> = indexes.iter().collect();
     sorted.sort_by(|a, b| a.name.cmp(&b.name));
     let index_fields = sorted
         .into_iter()
         .map(|index| {
-            let mut keys: Vec<u16> = index.columns.iter().map(|&i| i as u16).collect();
+            let mut keys: Vec<u16> = index.columns.iter().map(|&i| stored(i)).collect();
             keys.extend(key_columns.iter().filter(|c| !index.columns.contains(c)).map(|&i| i as u16));
             serial::write::IndexFields {
                 name: index.name.as_bytes(),
                 comment: index.comment.as_bytes(),
                 predicate: index.predicate.as_bytes(),
-                index_columns: index.columns.iter().map(|&i| i as u16).collect(),
+                index_columns: index.columns.iter().map(|&i| stored(i)).collect(),
                 key_columns: keys,
                 prefix_lengths: Vec::new(),
                 descending: if index.system { Vec::new() } else { index.descending.clone() },
@@ -482,11 +537,14 @@ pub fn schema_message(
         })
         .collect();
     // A keyless table's hidden hash and cardinality columns follow the others.
+    let virtual_columns = (columns.len()..columns.len() + hidden.len()).map(|i| i as u16);
     let (key_columns, value_columns): (Vec<u16>, Vec<u16>) = if keyless {
-        let n = columns.len() as u16;
-        (vec![n], std::iter::once(n + 1).chain(value_columns.iter().map(|&i| i as u16)).collect())
+        let n = (columns.len() + hidden.len()) as u16;
+        let values = std::iter::once(n + 1).chain(value_columns.iter().map(|&i| i as u16)).chain(virtual_columns);
+        (vec![n], values.collect())
     } else {
-        (key_columns.iter().map(|&i| i as u16).collect(), value_columns.iter().map(|&i| i as u16).collect())
+        let values = value_columns.iter().map(|&i| i as u16).chain(virtual_columns);
+        (key_columns.iter().map(|&i| i as u16).collect(), values.collect())
     };
     Ok(write_schema(&SchemaFields {
         columns: fields,

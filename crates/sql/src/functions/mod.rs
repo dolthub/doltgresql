@@ -187,7 +187,7 @@ pub fn implicitly_castable(from: u32, to: u32) -> bool {
 }
 
 /// is_preferred reports whether a type is the preferred type of its category.
-fn is_preferred(type_oid: u32) -> bool {
+pub(crate) fn is_preferred(type_oid: u32) -> bool {
     builtin_type(type_oid).is_some_and(|t| t.definition.is_preferred)
 }
 

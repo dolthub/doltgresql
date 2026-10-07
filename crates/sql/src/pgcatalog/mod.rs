@@ -152,7 +152,7 @@ pub fn is_immutable(expr: &pg_query::Node) -> bool {
 
 /// is_volatile reports whether a built-in function has a volatile form, as pg_proc's provolatile shows them.
 pub fn is_volatile(function: &str) -> bool {
-    static VOLATILE: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    static VOLATILE: std::sync::OnceLock<std::collections::HashSet<String>> = OnceLock::new();
     VOLATILE
         .get_or_init(|| {
             let Some(proc) = lookup("pg_catalog", "pg_proc") else { return Default::default() };
@@ -166,6 +166,82 @@ pub fn is_volatile(function: &str) -> bool {
                 .collect()
         })
         .contains(function)
+}
+
+/// OperatorClass is a built-in operator class: its OID, name, input type, and whether it is its type's default.
+#[derive(Clone, Debug)]
+pub struct OperatorClass {
+    pub oid: u32,
+    pub name: String,
+    pub input: u32,
+    pub default: bool,
+}
+
+/// operator_classes returns the built-in operator classes of an index access method, by the method's OID.
+pub fn operator_classes(method: u32) -> Vec<OperatorClass> {
+    static CLASSES: OnceLock<Vec<(u32, OperatorClass)>> = OnceLock::new();
+    let classes = CLASSES.get_or_init(|| {
+        let Some(table) = lookup("pg_catalog", "pg_opclass") else { return Vec::new() };
+        let columns = ["oid", "opcmethod", "opcname", "opcintype", "opcdefault"].map(|c| table.column(c));
+        let [Some(oid), Some(opcmethod), Some(name), Some(input), Some(default)] = columns else { return Vec::new() };
+        let number = |v: &Value| v.output().and_then(|t| t.parse().ok()).unwrap_or(0);
+        builtin::rows(table)
+            .iter()
+            .map(|r| {
+                let class = OperatorClass {
+                    oid: number(&r[oid]),
+                    name: r[name].output().unwrap_or_default(),
+                    input: number(&r[input]),
+                    default: r[default] == Value::Bool(true),
+                };
+                (number(&r[opcmethod]), class)
+            })
+            .collect()
+    });
+    classes.iter().filter(|(m, _)| *m == method).map(|(_, c)| c.clone()).collect()
+}
+
+/// default_operator_class returns a type's default btree operator class, preferring one for the type itself, then
+/// one for a preferred type it coerces to without conversion, as Postgres' GetDefaultOpClass does.
+pub fn default_operator_class(type_oid: u32) -> Option<OperatorClass> {
+    let defaults: Vec<OperatorClass> = operator_classes(403).into_iter().filter(|c| c.default).collect();
+    let exact = defaults.iter().find(|c| c.input == type_oid);
+    let coercible: Vec<&OperatorClass> = defaults.iter().filter(|c| binary_coercible(type_oid, c.input)).collect();
+    let preferred = coercible.iter().find(|c| crate::functions::is_preferred(c.input)).or(coercible.first());
+    exact.or(preferred.copied()).cloned()
+}
+
+/// binary_coercible reports whether values of a type serve as values of another without conversion, as Postgres'
+/// IsBinaryCoercible decides from pg_cast's binary casts and the polymorphic types.
+pub fn binary_coercible(from: u32, to: u32) -> bool {
+    let from = crate::usertypes::base_type(crate::catalog::ColumnType { oid: from, modifier: -1 }).oid;
+    if from == to {
+        return true;
+    }
+    match to {
+        crate::functions::ANYARRAY => return crate::array::is_array_type(from),
+        crate::oid::ANYENUM => {
+            return crate::usertypes::get(from).is_some_and(|t| matches!(t.kind, crate::usertypes::Kind::Enum(_)));
+        }
+        crate::oid::RECORD => {
+            return crate::usertypes::get(from).is_some_and(|t| matches!(t.kind, crate::usertypes::Kind::Composite(_)));
+        }
+        _ => {}
+    }
+    static CASTS: OnceLock<Vec<(u32, u32)>> = OnceLock::new();
+    CASTS
+        .get_or_init(|| {
+            let Some(table) = lookup("pg_catalog", "pg_cast") else { return Vec::new() };
+            let columns = ["castsource", "casttarget", "castmethod"].map(|c| table.column(c));
+            let [Some(source), Some(target), Some(method)] = columns else { return Vec::new() };
+            let number = |v: &Value| v.output().and_then(|t| t.parse().ok()).unwrap_or(0);
+            builtin::rows(table)
+                .iter()
+                .filter(|r| r[method].output().as_deref() == Some("b"))
+                .map(|r| (number(&r[source]), number(&r[target])))
+                .collect()
+        })
+        .contains(&(from, to))
 }
 
 /// Rows collects the rows of a system catalog relation, with each column NULL unless set.

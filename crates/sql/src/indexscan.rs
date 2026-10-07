@@ -18,7 +18,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::catalog::table::TableDef;
+use crate::catalog::table::{HIDDEN_BASE, TableDef};
 use crate::error::Result;
 use crate::expr::{CmpOp, Expr};
 use crate::plan::Plan;
@@ -211,6 +211,8 @@ struct Best<'c> {
 /// Coster chooses an index for a table's filters, as go-mysql-server's indexCoster does.
 struct Coster<'t> {
     table: &'t TableDef,
+    /// The lower-case name and expression of each hidden expression column, which filters match before columns.
+    hidden: Vec<(String, Expr)>,
     next: usize,
     /// The IDs of the leaves that are equalities and of those that test for NULL.
     equalities: BTreeSet<usize>,
@@ -261,8 +263,12 @@ fn is_constant(e: &Expr) -> bool {
 }
 
 impl Coster<'_> {
-    /// column returns the lower-case name of the table column that an expression reads, under any casts.
+    /// column returns the lower-case name of the hidden expression column whose expression an expression is, or of the
+    /// table column that it reads, under any casts.
     fn column(&self, e: &Expr) -> Option<String> {
+        if let Some((name, _)) = self.hidden.iter().find(|(_, h)| h == e) {
+            return Some(name.clone());
+        }
         match e {
             Expr::Column(i) => self.table.columns.get(*i).map(|c| c.name.to_lowercase()),
             Expr::Cast(inner, ..) => self.column(inner),
@@ -610,10 +616,11 @@ impl Coster<'_> {
 }
 
 /// candidates returns the indexes a scan of a table may read: the primary key, then the secondary indexes, leaving out
-/// vector and partial indexes.
-fn candidates(table: &TableDef) -> Vec<Candidate> {
+/// vector indexes and the partial indexes whose predicate is not one of the filters, as go-mysql-server's
+/// canUsePartialIndex does.
+fn candidates(table: &TableDef, predicates: &[Option<Expr>], filters: &[&Expr]) -> Vec<Candidate> {
     let id_of = |c: usize| c + 1;
-    let names = |columns: &[usize]| columns.iter().map(|&c| table.columns[c].name.to_lowercase()).collect();
+    let names = |columns: &[usize]| columns.iter().map(|&c| index_column_name(table, c)).collect();
     let mut out = Vec::new();
     if !table.keyless() {
         out.push(Candidate {
@@ -625,7 +632,8 @@ fn candidates(table: &TableDef) -> Vec<Candidate> {
         });
     }
     for (i, index) in table.indexes.iter().enumerate() {
-        if index.vector.is_some() || !index.predicate.is_empty() {
+        let usable = predicates[i].as_ref().is_none_or(|p| filters.contains(&p));
+        if index.vector.is_some() || !usable {
             continue;
         }
         out.push(Candidate {
@@ -642,9 +650,12 @@ fn candidates(table: &TableDef) -> Vec<Candidate> {
 /// choose returns the index scan that answers a table's filter, as go-mysql-server's getCostedIndexScan chooses it, or
 /// None when a full scan serves as well.
 pub fn choose(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) -> Option<IndexScan> {
-    let mut coster = Coster { table, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new() };
-    let root = coster.build_root(ctx, predicate)?;
-    let candidates = candidates(table);
+    let rules = ctx.index_rules(table).ok()?;
+    let hidden = (0..table.hidden.len()).map(|k| index_column_name(table, HIDDEN_BASE + k));
+    let hidden = hidden.zip(rules.hidden().iter().cloned()).collect();
+    let mut coster = Coster { table, hidden, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new() };
+    let root = coster.build_root(ctx, &with_like_bounds(table, predicate))?;
+    let candidates = candidates(table, rules.predicates(), &conjuncts(predicate));
     let mut best = Best { candidate: None, cost: Cost::default() };
     for candidate in &candidates {
         let cost = coster.cost(&root, candidate);
@@ -654,11 +665,9 @@ pub fn choose(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) -> Option<I
     }
     let chosen = best.candidate?;
     let columns: Vec<(String, crate::catalog::ColumnType)> = match chosen.index {
-        Some(i) => table.indexes[i]
-            .columns
-            .iter()
-            .map(|&c| (table.columns[c].name.to_lowercase(), table.columns[c].ty))
-            .collect(),
+        Some(i) => {
+            table.indexes[i].columns.iter().map(|&c| (index_column_name(table, c), index_type(table, c))).collect()
+        }
         None => {
             table.key_columns.iter().map(|&c| (table.columns[c].name.to_lowercase(), table.columns[c].ty)).collect()
         }
@@ -668,6 +677,71 @@ pub fn choose(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) -> Option<I
         return None;
     }
     Some(IndexScan { table: Box::new(table.clone()), index: chosen.index, ranges, reverse: false, nearest: None })
+}
+
+/// with_like_bounds returns a predicate with each LIKE that its ANDs reach bounded by the fixed prefix of its pattern,
+/// as Doltgres' AddLikePrefixRanges does, so that an index on the column can serve it.
+fn with_like_bounds(table: &TableDef, e: &Expr) -> Expr {
+    let and = |l: Expr, r: Expr| Expr::And(Box::new(l), Box::new(r));
+    match e {
+        Expr::And(l, r) => and(with_like_bounds(table, l), with_like_bounds(table, r)),
+        Expr::Func(f, args) if crate::functions::function(*f).name == "textlike" => {
+            let [column, Expr::Const(Value::Text(pattern))] = args.as_slice() else { return e.clone() };
+            let read = match column {
+                Expr::Cast(inner, ..) => inner.as_ref(),
+                other => other,
+            };
+            let Expr::Column(c) = read else { return e.clone() };
+            if !matches!(table.columns.get(*c).map(|c| c.ty.oid), Some(crate::oid::TEXT | crate::oid::VARCHAR)) {
+                return e.clone();
+            }
+            let prefix = match pattern.find(['%', '_', '\\']) {
+                Some(i) if pattern[i..].starts_with('\\') => return e.clone(),
+                Some(i) => &pattern[..i],
+                None => pattern.as_str(),
+            };
+            if prefix.is_empty() {
+                return e.clone();
+            }
+            let bound = |op: CmpOp, text: String| {
+                Expr::Compare(op, Box::new(column.clone()), Box::new(Expr::Const(Value::Text(text))))
+            };
+            let mut bounds = bound(CmpOp::Ge, prefix.to_string());
+            let last = prefix.chars().next_back().unwrap_or_default();
+            let next = match last {
+                '\u{D7FF}' => Some('\u{E000}'),
+                last => char::from_u32(last as u32 + 1),
+            };
+            if let Some(next) = next {
+                let upper = format!("{}{next}", &prefix[..prefix.len() - last.len_utf8()]);
+                bounds = and(bounds, bound(CmpOp::Lt, upper));
+            }
+            and(bounds, e.clone())
+        }
+        other => other.clone(),
+    }
+}
+
+/// conjuncts returns the expressions that a predicate ANDs together.
+fn conjuncts(predicate: &Expr) -> Vec<&Expr> {
+    match predicate {
+        Expr::And(left, right) => {
+            let mut out = conjuncts(left);
+            out.extend(conjuncts(right));
+            out
+        }
+        other => vec![other],
+    }
+}
+
+/// index_column_name returns the lower-case name of a column at a position an index gives.
+fn index_column_name(table: &TableDef, column: usize) -> String {
+    table.index_column(column).map_or_else(String::new, |c| c.name.to_lowercase())
+}
+
+/// index_type returns the type of a column at a position an index gives.
+fn index_type(table: &TableDef, column: usize) -> crate::catalog::ColumnType {
+    table.index_column(column).map_or(crate::catalog::ColumnType { oid: 0, modifier: -1 }, |c| c.ty)
 }
 
 impl IndexScan {
@@ -752,7 +826,7 @@ impl IndexScan {
             let tuple = prolly::Tuple(&key);
             let mut values = Vec::with_capacity(columns.len());
             for (field, &c) in columns.iter().enumerate() {
-                let column = &table.columns[c];
+                let column = table.index_column(c).expect("an index column");
                 values.push(crate::storage::decode_field(ctx.db, tuple.field(field)?, column.encoding, column.ty)?);
             }
             if self.nearest.is_none() && !self.in_range(&values) {
@@ -814,7 +888,7 @@ fn hash_ordered(table: &TableDef, index: Option<usize>) -> bool {
     };
     unique
         && columns.iter().any(|&c| {
-            let encoding = table.columns[c].encoding;
+            let encoding = table.index_column(c).map_or(0, |c| c.encoding);
             use prolly::val::encoding::*;
             matches!(encoding, BYTES_ADDR | COMMIT_ADDR | STRING_ADDR | JSON_ADDR | GEOM_ADDR | EXTENDED_ADDR)
                 || crate::storage::is_adaptive(encoding)
@@ -936,7 +1010,8 @@ fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
             if !table.keyless() {
                 indexes.push(None);
             }
-            indexes.extend((0..table.indexes.len()).filter(|&i| table.indexes[i].vector.is_none()).map(Some));
+            let whole = |i: usize| table.indexes[i].vector.is_none() && table.indexes[i].predicate.is_empty();
+            indexes.extend((0..table.indexes.len()).filter(|&i| whole(i)).map(Some));
             for index in indexes.into_iter().filter(|&i| !hash_ordered(table, i)) {
                 let columns = match index {
                     Some(i) => table.indexes[i].columns.clone(),

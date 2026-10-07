@@ -24,7 +24,7 @@ use doltdb::root::Root;
 use prolly::Tuple;
 use store::Hash;
 
-use crate::catalog::table::{IndexDef, TableDef};
+use crate::catalog::table::{HIDDEN_BASE, IndexDef, TableDef};
 use crate::dolt::args::error;
 use crate::dolt::artifacts::{self, Artifact};
 use crate::error::Result;
@@ -425,11 +425,12 @@ impl<'a> RowMerger<'a> {
 }
 
 /// apply makes row edits to a table, keeping its secondary indexes in step, and returns the stored table.
-fn apply(db: &mut Database, table: &TableDef, ours: &[Entry], mut edits: Vec<Edit>) -> Result<doltdb::table::Table> {
+fn apply(ctx: &mut Ctx<'_>, table: &TableDef, ours: &[Entry], mut edits: Vec<Edit>) -> Result<doltdb::table::Table> {
     let mut stored = table.table.clone();
     if edits.is_empty() {
         return Ok(stored);
     }
+    let rules = ctx.index_rules(table)?;
     edits.sort_by(|a, b| table.compare_keys(&a.0, &b.0));
     let mut deduped: Vec<Edit> = Vec::with_capacity(edits.len());
     for edit in edits {
@@ -441,19 +442,17 @@ fn apply(db: &mut Database, table: &TableDef, ours: &[Entry], mut edits: Vec<Edi
     let mut index_edits: Vec<Vec<Edit>> = vec![Vec::new(); table.indexes.len()];
     for (key, value) in &deduped {
         let old = ours.binary_search_by(|(k, _)| table.compare_keys(k, key)).ok().map(|i| &ours[i].1);
-        if let Some(old) = old {
-            let (row, _) = table.decode_row(db, key, old)?;
-            for (i, index) in table.indexes.iter().enumerate() {
-                index_edits[i].push((table.index_key(db, index, &row, key)?, None));
-            }
-        }
-        if let Some(value) = value {
-            let (row, _) = table.decode_row(db, key, value)?;
-            for (i, index) in table.indexes.iter().enumerate() {
-                index_edits[i].push((table.index_key(db, index, &row, key)?, Some(prolly::val::build_tuple(&[]))));
+        for (stored, added) in [(old, false), (value.as_ref(), true)] {
+            let Some(stored) = stored else { continue };
+            let (row, _) = table.decode_row(ctx.db, key, stored)?;
+            let (row, held) = rules.indexed(ctx, &row)?;
+            for (i, index) in table.indexes.iter().enumerate().filter(|(i, _)| held[*i]) {
+                let value = added.then(|| prolly::val::build_tuple(&[]));
+                index_edits[i].push((table.index_key(ctx.db, index, &row, key)?, value));
             }
         }
     }
+    let db = &mut *ctx.db;
     stored.edit_rows(
         db,
         deduped,
@@ -488,7 +487,8 @@ fn apply(db: &mut Database, table: &TableDef, ours: &[Entry], mut edits: Vec<Edi
 /// the rows it holds.
 fn unique_indexes<'a>(table: &'a TableDef, rows: &[Entry]) -> Vec<UniqueIndex<'a>> {
     let mut out = Vec::new();
-    for index in table.indexes.iter().filter(|i| i.unique) {
+    let plain = |i: &IndexDef| i.predicate.is_empty() && i.columns.iter().all(|&c| c < HIDDEN_BASE);
+    for index in table.indexes.iter().filter(|i| i.unique && plain(i)) {
         let columns: Vec<String> = index.columns.iter().map(|&c| table.columns[c].name.clone()).collect();
         let info = format!("{{\"Columns\":{},\"Name\":{}}}", json_strings(&columns), json_string(&index.name));
         out.push(UniqueIndex { index, info: info.into_bytes(), rows: HashMap::new() });
@@ -562,7 +562,7 @@ enum TableOutcome {
 
 /// merge_rows merges the rows of a table whose three versions the merge has as rows of one schema.
 fn merge_rows(
-    db: &mut Database,
+    ctx: &mut Ctx<'_>,
     table: &TableDef,
     ours: &[Entry],
     theirs: &[Entry],
@@ -575,15 +575,15 @@ fn merge_rows(
     let mut merger = RowMerger {
         table,
         commits,
-        merged: Merged { artifacts: artifacts::read(db, table)?, new_artifacts: brought, ..Merged::default() },
+        merged: Merged { artifacts: artifacts::read(ctx.db, table)?, new_artifacts: brought, ..Merged::default() },
         uniques: unique_indexes(table, ours),
         current: BTreeMap::new(),
         ours,
     };
     merger.merge(&left, &right);
     let Merged { edits, artifacts: found, new_artifacts } = merger.merged;
-    let mut stored = apply(db, table, ours, edits)?;
-    stored.artifacts = artifacts::write(db, table, found)?;
+    let mut stored = apply(ctx, table, ours, edits)?;
+    stored.artifacts = artifacts::write(ctx.db, table, found)?;
     Ok(TableOutcome::Put(Box::new(stored), new_artifacts))
 }
 
@@ -644,19 +644,19 @@ fn merge_table(
             true => base_rows,
             false => convert(ctx, &base, &ours, &base_rows)?,
         };
-        return merge_rows(ctx.db, &ours, &our_rows, &their_rows, &base_rows, commits, brought);
+        return merge_rows(ctx, &ours, &our_rows, &their_rows, &base_rows, commits, brought);
     }
     if ours.table.schema == base.table.schema {
         let our_rows = convert(ctx, &ours, &theirs, &our_rows)?;
         let base_rows = convert(ctx, &base, &theirs, &base_rows)?;
         let mut target = theirs.clone();
         target.table.artifacts = ours.table.artifacts.clone();
-        return merge_rows(ctx.db, &target, &their_rows, &our_rows, &base_rows, commits, brought);
+        return merge_rows(ctx, &target, &their_rows, &our_rows, &base_rows, commits, brought);
     }
     if theirs.table.schema == base.table.schema {
         let their_rows = convert(ctx, &theirs, &ours, &their_rows)?;
         let base_rows = convert(ctx, &base, &ours, &base_rows)?;
-        return merge_rows(ctx.db, &ours, &our_rows, &their_rows, &base_rows, commits, brought);
+        return merge_rows(ctx, &ours, &our_rows, &their_rows, &base_rows, commits, brought);
     }
     Ok(TableOutcome::SchemaConflict)
 }
@@ -886,7 +886,7 @@ pub fn check_foreign_keys(ctx: &mut Ctx<'_>, merged: &mut Root, base: &Root, the
 /// apply_to_working makes row edits to a table of the working root, keeping its secondary indexes in step.
 pub fn apply_to_working(ctx: &mut Ctx<'_>, table: &TableDef, edits: Vec<Edit>) -> Result<()> {
     let ours = entries(ctx.db, table)?;
-    let stored = apply(ctx.db, table, &ours, edits)?;
+    let stored = apply(ctx, table, &ours, edits)?;
     let address = stored.write(ctx.db)?;
     ctx.txn.root.put_table(ctx.db, &table.schema, &table.name, Some(address))?;
     Ok(())

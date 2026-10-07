@@ -1204,7 +1204,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             match join.quals.as_deref() {
                 Some(quals) => {
                     let mut binder = self.binder(scope.clone());
-                    Some(coerce(binder.bind(quals)?, typ(oid::BOOL), false, -1)?.0)
+                    Some(crate::expr::condition(binder.bind(quals)?, "JOIN/ON", crate::expr::arg_location(quals))?)
                 }
                 None => None,
             }
@@ -1225,7 +1225,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             }
             let mut binder = self.binder(scope.clone());
             binder.clause = "WHERE";
-            let predicate = coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0;
+            let predicate = crate::expr::condition(binder.bind(node)?, "WHERE", crate::expr::arg_location(node))?;
             plan = push_down(plan, predicate);
             plan = self.use_indexes(plan);
         }
@@ -1327,7 +1327,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         let mut having = None;
         if let Some(node) = select.having_clause.as_deref() {
             binder.clause = "HAVING";
-            having = Some(coerce(binder.bind(node)?, typ(oid::BOOL), false, -1)?.0);
+            having = Some(crate::expr::condition(binder.bind(node)?, "HAVING", crate::expr::arg_location(node))?);
         }
         let aggregates = binder.aggregates.take();
         let columns_bound = std::mem::take(&mut binder.columns);

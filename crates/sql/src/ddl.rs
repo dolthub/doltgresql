@@ -27,7 +27,7 @@ use crate::Outcome;
 use crate::auth::Object;
 use crate::cast::type_display;
 use crate::catalog::ColumnType;
-use crate::catalog::table::{Check, ColumnDef, IndexDef, Primary, TableDef, schema_message};
+use crate::catalog::table::{Check, ColumnDef, HIDDEN_BASE, IndexDef, Primary, TableDef, schema_message};
 use crate::error::{PgError, Result, code};
 use crate::expr::{
     Binder, Scope, ScopeColumn, arg_location, assign, assignable, node_name, position, resolve_type_name,
@@ -614,7 +614,7 @@ impl Ctx<'_> {
             kinds.push(EXTENDED_KIND);
         }
         let value_columns: Vec<usize> = (0..columns.len()).filter(|i| !primary_key.contains(i)).collect();
-        let message = schema_message(&columns, &primary_key, &value_columns, &checks, &indexes, &primary)?;
+        let message = schema_message(&columns, &[], &primary_key, &value_columns, &checks, &indexes, &primary)?;
         let (mut address, mut table) = Table::create(self.db, message)?;
         if !indexes.is_empty() {
             let empty = Hash::of(&empty_rows());
@@ -1023,24 +1023,33 @@ impl Ctx<'_> {
             }
             return Err(PgError::unsupported(format!("indexes using {method}")));
         }
-        if stmt.where_clause.is_some() {
-            return Err(PgError::unsupported("partial indexes"));
-        }
-        if !stmt.index_including_params.is_empty() {
-            return Err(PgError::unsupported("indexes with INCLUDE"));
+        if !matches!(stmt.table_space.as_str(), "" | "pg_default") {
+            let message = format!("tablespace \"{}\" does not exist", stmt.table_space);
+            return Err(PgError::new(code::UNDEFINED_OBJECT, message));
         }
         let mut columns = Vec::new();
+        let mut names = Vec::new();
+        let mut expressions = Vec::new();
         let mut descending = Vec::new();
         let mut nulls_last = Vec::new();
         let mut op_classes = Vec::new();
         for param in &stmt.index_params {
             let Some(NodeEnum::IndexElem(elem)) = param.node.as_ref() else { continue };
-            if elem.expr.is_some() {
-                return Err(PgError::unsupported("indexes on expressions"));
-            }
-            let column = table.columns.iter().position(|c| c.name == elem.name).ok_or_else(|| {
-                PgError::new(code::UNDEFINED_COLUMN, format!("column \"{}\" does not exist", elem.name))
-            })?;
+            let (column, ty) = match &elem.expr {
+                Some(expr) => {
+                    let ty = self.index_expression(&table, expr)?;
+                    names.push(crate::expr::figure_index_name(expr));
+                    expressions.push((columns.len(), expression_text(expr)?, ty));
+                    (HIDDEN_BASE + table.hidden.len() + expressions.len() - 1, ty)
+                }
+                None => {
+                    let column = table.columns.iter().position(|c| c.name == elem.name).ok_or_else(|| {
+                        PgError::new(code::UNDEFINED_COLUMN, format!("column \"{}\" does not exist", elem.name))
+                    })?;
+                    names.push(elem.name.clone());
+                    (column, table.columns[column].ty)
+                }
+            };
             let desc = SortByDir::try_from(elem.ordering) == Ok(SortByDir::SortbyDesc);
             let last = match SortByNulls::try_from(elem.nulls_ordering) {
                 Ok(SortByNulls::SortbyNullsFirst) => false,
@@ -1050,25 +1059,76 @@ impl Ctx<'_> {
             columns.push(column);
             descending.push(desc);
             nulls_last.push(last);
-            op_classes.push(elem.opclass.iter().filter_map(node_name).next_back().unwrap_or_default().to_string());
+            op_classes.push(operator_class(elem, ty, method)?);
         }
-        let Some(name) = self.index_name(stmt, &table, &columns)? else { return Ok(Outcome::command("CREATE INDEX")) };
-        let index = IndexDef { descending, nulls_last, op_classes, ..new_index(name, columns, stmt.unique) };
+        let predicate = match stmt.where_clause.as_deref() {
+            Some(node) => {
+                let mut binder = Binder::new(self, crate::dml::table_scope(&table, None));
+                (binder.clause, binder.definition) = ("index predicates", true);
+                crate::expr::condition(binder.bind(node)?, "WHERE", arg_location(node))?;
+                if !crate::pgcatalog::is_immutable(node) {
+                    return Err(PgError::new(
+                        code::INVALID_OBJECT_DEFINITION,
+                        "functions in index predicate must be marked IMMUTABLE",
+                    ));
+                }
+                expression_text(node)?
+            }
+            None => String::new(),
+        };
+        let names = unique_column_names(names);
+        let Some(name) = self.index_name(stmt, &table, &names)? else { return Ok(Outcome::command("CREATE INDEX")) };
+        if !stmt.index_including_params.is_empty() {
+            return Err(PgError::unsupported("indexes with INCLUDE"));
+        }
+        let mut table = table;
+        let mut tags = self.txn.all_tags(self.db)?;
+        tags.extend(table.columns.iter().chain(&table.hidden).map(|c| c.tag));
+        for (position, text, ty) in expressions {
+            let kinds = vec![EXTENDED_KIND; table.columns.len() + table.hidden.len()];
+            let column_name = format!("!hidden!{}!{position}!0", name.to_lowercase());
+            let tag = auto_generate_tag(&tags, &table.name, &kinds, &column_name, EXTENDED_KIND);
+            tags.insert(tag);
+            table.hidden.push(ColumnDef {
+                name: column_name,
+                ty,
+                tag,
+                encoding: ty.encoding(),
+                nullable: true,
+                primary_key: false,
+                default: format!("({text})"),
+                generated: true,
+            });
+        }
+        let index = IndexDef { descending, nulls_last, op_classes, predicate, ..new_index(name, columns, stmt.unique) };
         self.build_index(table, index)?;
         Ok(Outcome::command("CREATE INDEX"))
     }
 
-    /// index_name chooses the name of a new index of a table's columns, returning None after the notice of IF NOT
-    /// EXISTS when the name is taken.
+    /// index_expression checks an index expression over a table's columns as Postgres does, returning its type.
+    fn index_expression(&mut self, table: &TableDef, expr: &Node) -> Result<ColumnType> {
+        let mut binder = Binder::new(self, crate::dml::table_scope(table, None));
+        (binder.clause, binder.definition) = ("index expressions", true);
+        let (_, ty) = binder.bind(expr)?;
+        if !crate::pgcatalog::is_immutable(expr) {
+            return Err(PgError::new(
+                code::INVALID_OBJECT_DEFINITION,
+                "functions in index expression must be marked IMMUTABLE",
+            ));
+        }
+        Ok(ColumnType { modifier: -1, ..ty })
+    }
+
+    /// index_name chooses the name of a new index of a table's columns, named by their column names or, for
+    /// expressions, as Postgres names them, returning None after the notice of IF NOT EXISTS when the name is taken.
     pub(crate) fn index_name(
         &mut self,
         stmt: &IndexStmt,
         table: &TableDef,
-        columns: &[usize],
+        names: &[String],
     ) -> Result<Option<String>> {
         let taken = self.relation_names(&table.schema)?;
         let name = if stmt.idxname.is_empty() {
-            let names: Vec<&str> = columns.iter().map(|&c| table.columns[c].name.as_str()).collect();
             choose_relation_name(&table.name, &names.join("_"), "idx", &taken)
         } else {
             stmt.idxname.clone()
@@ -1084,26 +1144,32 @@ impl Ctx<'_> {
         Ok(Some(name))
     }
 
-    /// build_index adds an index to a table and fills it from the table's rows, failing for duplicates in a unique
-    /// index as Postgres does.
+    /// build_index adds an index to a table and fills it from the table's rows that its predicate holds for, failing
+    /// for duplicates in a unique index as Postgres does.
     pub(crate) fn build_index(&mut self, mut table: TableDef, index: IndexDef) -> Result<()> {
         table.indexes.push(index.clone());
+        let rules = self.index_rules(&table)?;
         let mut keys = Vec::new();
         for row in crate::query::scan(self.db, &table)? {
+            let (row, held) = rules.indexed(self, &row)?;
+            if !held[table.indexes.len() - 1] {
+                continue;
+            }
             let (primary, _) = table.encode_row(self.db, &row)?;
-            keys.push((table.index_key(self.db, &index, &row, &primary)?, row));
+            keys.push((table.index_key(self.db, &index, &row, &primary)?, row.into_owned()));
         }
         keys.sort_by(|a, b| table.compare_index_keys(&index, &a.0, &b.0));
         if index.unique {
             let width = index.columns.len();
             for pair in keys.windows(2) {
-                let null = index.columns.iter().any(|&c| pair[0].1[c].is_null());
+                let value = |c: usize| &pair[0].1[table.row_position(c)];
+                let null = index.columns.iter().any(|&c| value(c).is_null());
                 if !null
                     && table.compare_index_prefix(&index, width, &pair[0].0, &pair[1].0) == std::cmp::Ordering::Equal
                 {
-                    let names: Vec<&str> = index.columns.iter().map(|&c| table.columns[c].name.as_str()).collect();
+                    let names: Vec<&str> = index.columns.iter().map(|&c| rules.column_name(&table, c)).collect();
                     let values: Vec<String> =
-                        index.columns.iter().map(|&c| pair[0].1[c].output().unwrap_or_default()).collect();
+                        index.columns.iter().map(|&c| value(c).output().unwrap_or_default()).collect();
                     return Err(PgError {
                         detail: Some(format!("Key ({})=({}) is duplicated.", names.join(", "), values.join(", "))),
                         objects: Some(Box::new(crate::error::ErrorObjects {
@@ -1175,7 +1241,7 @@ impl Ctx<'_> {
                 None => continue,
             };
             self.drop_referencing_foreign_keys(&mut table, &name, &format!("index {name}"), cascade)?;
-            table.indexes.retain(|i| i.name != name);
+            table.drop_index(&name);
             let mut stored = table.table.clone();
             stored.put_index(self.db, &name, None)?;
             stored.schema = self.db.write_value(table.schema_message()?)?;
@@ -1205,6 +1271,54 @@ pub(crate) fn new_index(name: String, columns: Vec<usize>, unique: bool) -> Inde
         deferrable: false,
         initially_deferred: false,
     }
+}
+
+/// operator_class returns the operator class that an index column names, checking that it exists for the access
+/// method and accepts the column's type as Postgres does, or an empty name for the type's default.
+fn operator_class(elem: &pg_query::protobuf::IndexElem, ty: ColumnType, method: &str) -> Result<String> {
+    let names: Vec<&str> = elem.opclass.iter().filter_map(node_name).collect();
+    let Some(&name) = names.last() else { return Ok(String::new()) };
+    let method = if method.is_empty() { "btree" } else { method };
+    let class = match names.as_slice() {
+        [_] | ["pg_catalog", _] => {
+            let method_oid = if method == "hash" { 405 } else { 403 };
+            crate::pgcatalog::operator_classes(method_oid).into_iter().find(|c| c.name == name)
+        }
+        _ => None,
+    };
+    let Some(class) = class else {
+        return Err(PgError::new(
+            code::UNDEFINED_OBJECT,
+            format!("operator class \"{}\" does not exist for access method \"{method}\"", names.join(".")),
+        ));
+    };
+    if !crate::pgcatalog::binary_coercible(ty.oid, class.input) {
+        return Err(PgError::new(
+            code::DATATYPE_MISMATCH,
+            format!("operator class \"{name}\" does not accept data type {}", type_display(ty.oid)),
+        ));
+    }
+    if !elem.opclassopts.is_empty() {
+        return Err(PgError::new(code::INVALID_PARAMETER_VALUE, format!("operator class {name} has no options")));
+    }
+    Ok(class.name)
+}
+
+/// unique_column_names returns the names of an index's columns with numbers added to repeated ones, as Postgres'
+/// ChooseIndexColumnNames does.
+pub(crate) fn unique_column_names(names: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(names.len());
+    for name in names {
+        let mut candidate = name.clone();
+        let mut suffix = 1;
+        while out.contains(&candidate) {
+            let number = suffix.to_string();
+            candidate = format!("{}{number}", clip(&name, NAMEDATALEN_MAX - number.len()));
+            suffix += 1;
+        }
+        out.push(candidate);
+    }
+    out
 }
 
 /// NAMEDATALEN_MAX is the longest identifier Postgres keeps, in bytes.

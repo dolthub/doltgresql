@@ -175,15 +175,15 @@ fn bucket(db: &Database, node: &Node, shape: &KeyShape) -> Result<Bucket> {
 pub fn build(db: &Database, table: &TableDef, created: i64) -> Result<Vec<Statistic>> {
     let mut out = Vec::new();
     let mut add = |name: &str, root: Node, columns: &[usize]| -> Result<()> {
-        let shape =
-            KeyShape { fields: columns.iter().map(|&c| (table.columns[c].encoding, table.columns[c].ty)).collect() };
+        let column = |c: usize| table.index_column(c).expect("an index column");
+        let shape = KeyShape { fields: columns.iter().map(|&c| (column(c).encoding, column(c).ty)).collect() };
         let buckets = histogram_level(db, root)?.iter().map(|n| bucket(db, n, &shape)).collect::<Result<_>>()?;
         out.push(Statistic {
             schema: table.schema.clone(),
             table: table.name.clone(),
             index: name.to_string(),
-            columns: columns.iter().map(|&c| table.columns[c].name.to_lowercase()).collect(),
-            types: columns.iter().map(|&c| crate::cast::type_display(table.columns[c].ty.oid).into_owned()).collect(),
+            columns: columns.iter().map(|&c| column(c).name.to_lowercase()).collect(),
+            types: columns.iter().map(|&c| crate::cast::type_display(column(c).ty.oid).into_owned()).collect(),
             created,
             buckets,
         });

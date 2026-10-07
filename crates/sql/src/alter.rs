@@ -22,7 +22,7 @@ use pg_query::protobuf::{
 use pg_query::{Node, NodeEnum};
 
 use crate::Outcome;
-use crate::catalog::table::{Check, IndexDef, Primary, TableDef};
+use crate::catalog::table::{Check, HIDDEN_BASE, IndexDef, Primary, TableDef};
 use crate::ddl::{TableParts, check_column, choose_relation_name, constraint_type, expression_text, new_index};
 use crate::dml::{parse_expression, table_scope, write_rows};
 use crate::error::{ErrorObjects, PgError, Result, code};
@@ -429,11 +429,24 @@ impl Ctx<'_> {
                 column.primary_key = false;
             }
         }
-        table.indexes.retain(|index| !index.columns.contains(&i));
         let name = cmd.name.clone();
+        let doomed: Vec<String> = table
+            .indexes
+            .iter()
+            .filter(|index| {
+                references(&index.predicate, &name)
+                    || index.columns.iter().any(|&c| {
+                        c == i || table.index_column(c).is_some_and(|h| h.generated && references(&h.default, &name))
+                    })
+            })
+            .map(|index| index.name.clone())
+            .collect();
+        for index in doomed {
+            table.drop_index(&index);
+        }
         table.checks.retain(|check| !references(&check.expression, &name));
         table.columns.remove(i);
-        let shift = |c: usize| if c > i { c - 1 } else { c };
+        let shift = |c: usize| if c > i && c < HIDDEN_BASE { c - 1 } else { c };
         for index in &mut table.indexes {
             index.columns = index.columns.iter().map(|&c| shift(c)).collect();
         }
@@ -864,6 +877,12 @@ impl Ctx<'_> {
                 for check in &mut alteration.table.checks {
                     check.expression = rename_in_expression(&check.expression, &stmt.subname, &stmt.newname)?;
                 }
+                for column in &mut alteration.table.hidden {
+                    column.default = rename_in_expression(&column.default, &stmt.subname, &stmt.newname)?;
+                }
+                for index in alteration.table.indexes.iter_mut().filter(|i| !i.predicate.is_empty()) {
+                    index.predicate = rename_in_expression(&index.predicate, &stmt.subname, &stmt.newname)?;
+                }
                 let (schema, name) = (alteration.table.schema.clone(), alteration.table.name.clone());
                 self.move_owned_sequences(&schema, &name, &name, Some((&stmt.subname, &stmt.newname)))?;
                 let fks = self.foreign_keys()?;
@@ -920,14 +939,15 @@ impl Ctx<'_> {
                 return self.finish_alteration(Alteration::new(table));
             }
         }
+        let shown = match relation.schemaname.as_str() {
+            "" => relation.relname.clone(),
+            schema => format!("{schema}.{}", relation.relname),
+        };
         if missing_ok {
-            self.session.notice(PgError::notice(
-                "00000",
-                format!("relation \"{}\" does not exist, skipping", relation.relname),
-            ));
+            self.session.notice(PgError::notice("00000", format!("relation \"{shown}\" does not exist, skipping")));
             return Ok(());
         }
-        Err(PgError::new(code::UNDEFINED_TABLE, format!("relation \"{}\" does not exist", relation.relname)))
+        Err(PgError::new(code::UNDEFINED_TABLE, format!("relation \"{shown}\" does not exist")))
     }
 
     /// move_owned_sequences points the sequences a table owns at its new name, or one column at its new name.
