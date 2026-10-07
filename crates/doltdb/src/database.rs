@@ -215,8 +215,9 @@ impl Database {
     /// gc keeps only the chunks reachable from the store root, as Dolt's garbage collection does: a shallow collection
     /// rewrites the new generation's chunks to one table file, and the others move the chunks that commits reach from
     /// the new generation to the old generation, keeping the chunks that only working sets reach in a new generation
-    /// table file, where a full collection also rewrites the old generation's chunks.
-    pub fn gc(&mut self, mode: GcMode) -> Result<()> {
+    /// table file, where a full collection also rewrites the old generation's chunks. It also keeps the chunks that
+    /// the given addresses reach, with the working sets' chunks.
+    pub fn gc(&mut self, mode: GcMode, keep: Vec<Hash>) -> Result<()> {
         let root = self.root();
         let committed: Vec<Hash> = self
             .datasets()?
@@ -233,7 +234,7 @@ impl Database {
             }
         }
         let mut working = Vec::new();
-        for chunk in self.reachable(vec![root], &mut seen)? {
+        for chunk in self.reachable([vec![root], keep].concat(), &mut seen)? {
             match self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.hash)) {
                 true => old_chunks.push(chunk),
                 false => working.push(chunk),

@@ -662,7 +662,7 @@ impl Ctx<'_> {
     /// require fails as Postgres does unless the current role holds a privilege on an object, checking the schema of
     /// tables and sequences for USAGE first.
     pub fn require(&mut self, object: &Object, privilege: &str, location: i32) -> Result<()> {
-        if self.is_superuser() {
+        if self.is_superuser() || self.temporary(object) {
             return Ok(());
         }
         let auth = self.auth()?;
@@ -731,7 +731,7 @@ impl Ctx<'_> {
     /// object, unless it is a superuser, which holds them all anyway.
     pub fn own(&mut self, object: Object) -> Result<()> {
         let role = self.current_role()?;
-        if role.superuser {
+        if role.superuser || self.temporary(&object) {
             return Ok(());
         }
         let privileges: &[&str] = match object {
@@ -748,6 +748,18 @@ impl Ctx<'_> {
         auth.persist()
     }
 
+    /// temporary reports whether an object is in the session's temporary schema, which only the session sees and
+    /// which records no privileges.
+    fn temporary(&self, object: &Object) -> bool {
+        match object {
+            Object::Table(schema, _) | Object::Sequence(schema, _) | Object::Routine(schema, ..) => {
+                *schema == self.session.temp_schema()
+            }
+            Object::Schema(schema) => *schema == self.session.temp_schema(),
+            Object::Database(_) => false,
+        }
+    }
+
     /// forget_object removes the privileges granted on a dropped object.
     pub fn forget_object(&mut self, object: &Object) -> Result<()> {
         let mut auth = self.auth()?;
@@ -758,7 +770,7 @@ impl Ctx<'_> {
     /// require_owner fails as Postgres does unless the current role may use a table's schema and owns the object, inherits
     /// from its owner, or is a superuser.
     pub fn require_owner(&mut self, object: &Object) -> Result<()> {
-        if self.is_superuser() {
+        if self.is_superuser() || self.temporary(object) {
             return Ok(());
         }
         let auth = self.auth()?;

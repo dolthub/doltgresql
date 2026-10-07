@@ -166,6 +166,8 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_sleep_for", &[INTERVAL], crate::routines::VOID, pg_sleep),
     f("pg_sleep_until", &[TIMESTAMPTZ], crate::routines::VOID, pg_sleep),
     f("pg_backend_pid", &[], INT4, pg_backend_pid),
+    f("pg_my_temp_schema", &[], OID, pg_my_temp_schema),
+    f("pg_is_other_temp_schema", &[OID], BOOL, pg_is_other_temp_schema),
     f("txid_current", &[], INT8, txid_current),
     f("pg_postmaster_start_time", &[], TIMESTAMPTZ, pg_postmaster_start_time),
     f("pg_is_in_recovery", &[], BOOL, pg_is_in_recovery),
@@ -203,7 +205,7 @@ pub const FUNCTIONS: &[Function] = &[
 /// current_schemas returns the schemas of the search path that exist, with the ones searched implicitly when asked.
 fn current_schemas(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let implicit = args[0] == Value::Bool(true);
-    let path = if implicit { ctx.effective_search_path() } else { ctx.session.search_path() };
+    let path = if implicit { ctx.effective_search_path() } else { ctx.session.explicit_search_path() };
     let existing = ctx.schema_names();
     let schemas: Vec<Value> =
         path.into_iter().filter(|s| existing.contains(s) || (implicit && s == "pg_catalog")).map(Value::Text).collect();
@@ -271,8 +273,12 @@ fn current_database(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     Ok(Value::Text(ctx.session.display.clone()))
 }
 
-/// current_schema returns the first schema of the search path that exists.
+/// current_schema returns the first schema of the search path that exists, making the temporary schema when the path
+/// names it first.
 fn current_schema(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    if ctx.session.temp_first() {
+        return ctx.temp_schema().map(Value::Text);
+    }
     Ok(ctx.creation_schema().map(Value::Text).unwrap_or(Value::Null))
 }
 
@@ -377,6 +383,20 @@ fn pg_sleep(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// pg_backend_pid returns the session's number, which the server also sends the client as its process ID.
 fn pg_backend_pid(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     Ok(Value::Int4(ctx.session.id as i32))
+}
+
+/// pg_my_temp_schema returns the OID of the session's temporary schema, or 0 when it has none.
+fn pg_my_temp_schema(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Oid(match ctx.session.temp.contains_key(&ctx.session.database) {
+        true => crate::pgcatalog::snapshot::namespace_oid(&ctx.session.temp_schema()),
+        false => 0,
+    }))
+}
+
+/// pg_is_other_temp_schema reports whether a schema is another session's temporary schema, which is never true, since
+/// sessions never see each other's temporary schemas.
+fn pg_is_other_temp_schema(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Bool(false))
 }
 
 /// txid_current returns the transaction's ID, which is always 0, since Doltgres does not number transactions.

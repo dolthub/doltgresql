@@ -62,6 +62,9 @@ pub struct Txn {
     pub started: i64,
     /// Whether the transaction reads a revision that is not a branch, such as a tag, which it cannot change.
     pub detached: bool,
+    /// The schema of the session's temporary tables while a statement runs with them in the root, which writes of
+    /// the root leave out.
+    pub temp_schema: Option<String>,
 }
 
 /// read returns the message at the address, failing when the database lacks it.
@@ -162,6 +165,7 @@ impl Txn {
             rebase,
             started: crate::datetime::clock(),
             detached,
+            temp_schema: None,
         })
     }
 
@@ -172,7 +176,8 @@ impl Txn {
 
     /// working_set_fields writes the working and staged roots and returns the working set that holds them.
     fn working_set_fields(&self, db: &mut Database, user: &str, host: &str) -> Result<WorkingSetFields> {
-        let working_root = db.write_value(self.root.encode())?;
+        let persisted = self.persisted_root(db)?.encode();
+        let working_root = db.write_value(persisted)?;
         let staged_root = db.write_value(self.staged.encode())?;
         let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
         Ok(WorkingSetFields {
@@ -190,15 +195,58 @@ impl Txn {
         })
     }
 
+    /// persisted_root returns the working root without the session's temporary objects, as it is written.
+    fn persisted_root(&self, db: &mut Database) -> Result<Root> {
+        let mut root = self.root.clone();
+        if let Some(schema) = &self.temp_schema {
+            strip_schema(db, &mut root, schema)?;
+        }
+        Ok(root)
+    }
+
+    /// changed_persisted reports whether the transaction changed what it writes back to the working set.
+    fn changed_persisted(&self, db: &mut Database) -> Result<bool> {
+        Ok(self.persisted_root(db)?.encode() != self.original
+            || self.staged.encode() != self.original_staged
+            || self.merge != self.original_merge
+            || self.rebase != self.original_rebase)
+    }
+
+    /// inject_temp puts the session's temporary objects in their schema of the root.
+    pub fn inject_temp(&mut self, db: &mut Database, schema: &str, objects: &TempObjects) -> Result<()> {
+        self.temp_schema = Some(schema.to_string());
+        if !self.root.schemas.iter().any(|s| s == schema.as_bytes()) {
+            self.root.schemas.push(schema.as_bytes().to_vec());
+            self.root.schemas.sort();
+        }
+        for (name, address) in &objects.tables {
+            self.root.put_table(db, schema, name, Some(*address))?;
+        }
+        for (collection, id, address) in &objects.objects {
+            self.root.put_object(db, *collection, id, Some(*address))?;
+        }
+        if !objects.foreign_keys.is_empty() {
+            let mut keys = crate::foreign::load(db, &self.root)?;
+            keys.extend(objects.foreign_keys.iter().cloned());
+            crate::foreign::store(db, &mut self.root, &keys)?;
+        }
+        Ok(())
+    }
+
+    /// take_temp removes the session's temporary objects and their schema from the root, returning them, or None when
+    /// the root holds no temporary schema.
+    pub fn take_temp(&mut self, db: &mut Database) -> Result<Option<TempObjects>> {
+        let Some(schema) = self.temp_schema.take() else { return Ok(None) };
+        if !self.root.schemas.iter().any(|s| s == schema.as_bytes()) {
+            return Ok(None);
+        }
+        strip_schema(db, &mut self.root, &schema).map(Some)
+    }
+
     /// commit writes the working and staged roots back to the working set when the transaction changed them, as the
     /// user connected from the host.
     pub fn commit(self, db: &mut Database, user: &str, host: &str) -> Result<()> {
-        if self.detached
-            || self.root.encode() == self.original
-                && self.staged.encode() == self.original_staged
-                && self.merge == self.original_merge
-                && self.rebase == self.original_rebase
-        {
+        if self.detached || !self.changed_persisted(db)? {
             return Ok(());
         }
         let fields = self.working_set_fields(db, user, host)?;
@@ -212,11 +260,7 @@ impl Txn {
     /// flush writes the working and staged roots to the working set now, when they changed, and continues the
     /// transaction from there.
     pub fn flush(&mut self, db: &mut Database, user: &str, host: &str) -> Result<()> {
-        if self.root.encode() == self.original
-            && self.staged.encode() == self.original_staged
-            && self.merge == self.original_merge
-            && self.rebase == self.original_rebase
-        {
+        if !self.changed_persisted(db)? {
             return Ok(());
         }
         let fields = self.working_set_fields(db, user, host)?;
@@ -225,7 +269,7 @@ impl Txn {
             Err(database::Error::OptimisticLockFailed) => return Err(serialization_failure()),
             Err(err) => return Err(err.into()),
         };
-        self.original = self.root.encode();
+        self.original = self.persisted_root(db)?.encode();
         self.original_staged = self.staged.encode();
         self.original_merge = self.merge.clone();
         self.original_rebase = self.rebase.clone();
@@ -259,7 +303,7 @@ impl Txn {
         self.working_set = Hash::of(&write_working_set(&fields));
         self.head = commit.hash;
         self.head_root = fields.staged_root.unwrap_or_default();
-        self.original = self.root.encode();
+        self.original = self.persisted_root(db)?.encode();
         self.original_staged = self.staged.encode();
         self.original_merge = None;
         Ok(commit.hash)
@@ -294,4 +338,45 @@ impl Txn {
 /// serialization_failure returns the error for a transaction that lost a race with a concurrent one.
 fn serialization_failure() -> PgError {
     PgError::new(code::SERIALIZATION_FAILURE, "could not serialize access due to concurrent update")
+}
+
+/// TempObjects are the tables, root objects, and foreign keys of a session's temporary schema.
+#[derive(Clone, Default)]
+pub struct TempObjects {
+    pub tables: Vec<(String, Hash)>,
+    /// The root objects, each with its collection, ID, and address.
+    pub objects: Vec<(usize, Vec<u8>, Hash)>,
+    pub foreign_keys: Vec<crate::foreign::ForeignKeyDef>,
+}
+
+/// strip_schema removes a schema and everything in it from a root and returns what it removed, leaving a root object
+/// collection it empties unset.
+fn strip_schema(db: &mut Database, root: &mut Root, schema: &str) -> Result<TempObjects> {
+    let (foreign_keys, kept): (Vec<_>, Vec<_>) =
+        crate::foreign::load(db, root)?.into_iter().partition(|key| key.child_schema == schema);
+    let mut removed = TempObjects { foreign_keys, ..TempObjects::default() };
+    if !removed.foreign_keys.is_empty() {
+        crate::foreign::store(db, root, &kept)?;
+    }
+    for collection in 0..serial::write::ROOT_OBJECT_COLLECTIONS {
+        for (id, address) in root.objects(db, collection)? {
+            if crate::catalog::id::segments(&id).first().is_some_and(|s| s == schema) {
+                root.put_object(db, collection, &id, None)?;
+                removed.objects.push((collection, id, address));
+            }
+        }
+        if removed.objects.iter().any(|(c, ..)| *c == collection) && root.objects(db, collection)?.is_empty() {
+            root.root_objects[collection] = None;
+        }
+    }
+    let prefix = doltdb::root::table_key(schema, "");
+    for (key, address) in root.tables(db)? {
+        if let Some(name) = key.strip_prefix(prefix.as_slice()) {
+            let name = String::from_utf8_lossy(name).into_owned();
+            root.put_table(db, schema, &name, None)?;
+            removed.tables.push((name, address));
+        }
+    }
+    root.schemas.retain(|s| s != schema.as_bytes());
+    Ok(removed)
 }

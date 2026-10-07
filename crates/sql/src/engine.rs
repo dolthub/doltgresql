@@ -63,6 +63,8 @@ struct Shared {
     ended: Mutex<std::collections::HashSet<u64>>,
     /// What automatic garbage collection last saw of each open database.
     auto_gc: Mutex<HashMap<String, AutoGc>>,
+    /// The addresses of each session's temporary objects in each database, which garbage collection keeps.
+    temp_roots: Mutex<HashMap<(u64, String), Vec<store::Hash>>>,
 }
 
 /// AutoGc is what automatic garbage collection last saw of a database: its store's sizes, and when its last collection
@@ -221,6 +223,7 @@ impl Engine {
                 activity: Mutex::default(),
                 ended: Mutex::default(),
                 auto_gc: Mutex::default(),
+                temp_roots: Mutex::default(),
             }),
         };
         let databases = std::fs::read_dir(data_dir).map_err(PgError::internal)?;
@@ -278,6 +281,26 @@ impl Engine {
     fn forget_activity(&self, id: u64) {
         let Ok(mut all) = self.shared.activity.lock() else { return };
         all.remove(&id);
+        drop(all);
+        self.set_temp_roots(id, None);
+    }
+
+    /// set_temp_roots records the addresses of a session's temporary objects in a database, or forgets every database's
+    /// when given none.
+    fn set_temp_roots(&self, id: u64, roots: Option<(&str, Vec<store::Hash>)>) {
+        let Ok(mut all) = self.shared.temp_roots.lock() else { return };
+        match roots {
+            Some((database, roots)) => {
+                all.insert((id, database.to_string()), roots);
+            }
+            None => all.retain(|(session, _), _| *session != id),
+        }
+    }
+
+    /// temp_roots returns the addresses of every session's temporary objects in a database.
+    pub fn temp_roots(&self, database: &str) -> Vec<store::Hash> {
+        let Ok(all) = self.shared.temp_roots.lock() else { return Vec::new() };
+        all.iter().filter(|((_, d), _)| d == database).flat_map(|(_, roots)| roots.iter().copied()).collect()
     }
 
     /// auto_gc collects the garbage of each open database whose store has grown enough since it was last looked at, as
@@ -298,7 +321,7 @@ impl Engine {
                 continue;
             }
             let start = std::time::Instant::now();
-            lock(&handle)?.gc(doltdb::database::GcMode::Default)?;
+            lock(&handle)?.gc(doltdb::database::GcMode::Default, self.temp_roots(&name))?;
             let end = std::time::Instant::now();
             let sizes = Some(store_sizes(&noms));
             lock(&self.shared.auto_gc)?.insert(name.clone(), AutoGc { sizes, last: Some((start, end)) });
@@ -467,6 +490,8 @@ impl Engine {
                 as_of: Vec::new(),
                 deferred: crate::deferred::Deferred::default(),
                 checked_out: HashMap::new(),
+                temp: HashMap::new(),
+                temp_used: false,
             },
             txns: Vec::new(),
             pending: None,
@@ -569,6 +594,19 @@ pub struct SessionState {
     /// The branch the session last had checked out in each database it left, which a USE of the database without a
     /// branch returns to.
     pub checked_out: HashMap<String, String>,
+    /// The session's temporary tables in each database where it made its temporary schema.
+    pub temp: HashMap<String, TempTables>,
+    /// Whether the transaction used an object of the session's temporary schema.
+    pub temp_used: bool,
+}
+
+/// TempTables is a session's temporary schema in one database, which every working set leaves out.
+#[derive(Default)]
+pub struct TempTables {
+    /// The schema's tables and root objects as the session's last committed transaction left them.
+    pub objects: crate::txn::TempObjects,
+    /// The tables that commits empty or drop, with whether they drop them.
+    pub on_commit: Vec<(String, bool)>,
 }
 
 /// NEXT_SESSION numbers the sessions of the process.
@@ -588,6 +626,7 @@ impl SessionState {
     /// end_transaction ends the transaction's settings, undoing every change when it rolled back, and releases the
     /// advisory locks it took.
     pub fn end_transaction(&mut self, committed: bool) {
+        self.temp_used = false;
         self.settings.end_transaction(committed);
         self.deferred = crate::deferred::Deferred::default();
         self.advisory.release_all(self.id, true, false);
@@ -635,8 +674,51 @@ impl SessionState {
         self.settings.get(name).is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "on" | "true" | "1" | "yes"))
     }
 
-    /// search_path returns the schemas that unqualified names resolve in.
+    /// temp_schema returns the name of the session's temporary schema, which it has in a database once it creates a
+    /// temporary object there.
+    pub fn temp_schema(&self) -> String {
+        format!("pg_temp_{}", self.id)
+    }
+
+    /// named_schema returns the schema that a qualified name names, which for `pg_temp` is the session's temporary
+    /// schema.
+    pub fn named_schema(&self, schema: &str) -> String {
+        match schema {
+            "pg_temp" => self.temp_schema(),
+            _ => schema.to_string(),
+        }
+    }
+
+    /// search_path returns the schemas that unqualified names resolve in, with the session's temporary schema first
+    /// unless the path places `pg_temp` elsewhere.
     pub fn search_path(&self) -> Vec<String> {
+        let mut schemas = self.explicit_search_path();
+        let temp = self.temp_schema();
+        if self.temp.contains_key(&self.database) && self.view_schema.is_none() && !schemas.contains(&temp) {
+            schemas.insert(0, temp);
+        }
+        schemas
+    }
+
+    /// explicit_search_path returns the schemas that the search path names, without the session's temporary schema
+    /// unless the path names `pg_temp`.
+    pub fn explicit_search_path(&self) -> Vec<String> {
+        let mut schemas = self.named_search_path();
+        if !self.temp.contains_key(&self.database) {
+            schemas.retain(|s| *s != self.temp_schema());
+        }
+        schemas
+    }
+
+    /// temp_first reports whether the search path names `pg_temp` first, which makes the temporary schema the one
+    /// that new objects go in.
+    pub fn temp_first(&self) -> bool {
+        self.named_search_path().first() == Some(&self.temp_schema())
+    }
+
+    /// named_search_path returns the schemas that the search path names, including a temporary schema that the
+    /// session has yet to make.
+    fn named_search_path(&self) -> Vec<String> {
         let path = self.settings.get("search_path").unwrap_or_default();
         let path = match &self.view_schema {
             Some(schema) => format!("{},{path}", crate::engine::quote_identifier(schema)),
@@ -652,7 +734,11 @@ impl SessionState {
                 } else {
                     s.to_ascii_lowercase()
                 };
-                if s == "$user" { self.role.clone() } else { s }
+                match s.as_str() {
+                    "$user" => self.role.clone(),
+                    "pg_temp" => self.temp_schema(),
+                    _ => s,
+                }
             })
             .filter(|s| self.can_use_schema(s) && seen.insert(s.clone()))
             .collect()
@@ -660,7 +746,7 @@ impl SessionState {
 
     /// can_use_schema reports whether the current role may use a schema, which unqualified names skip otherwise.
     fn can_use_schema(&self, schema: &str) -> bool {
-        if matches!(schema, "pg_catalog" | "information_schema" | "public") {
+        if matches!(schema, "pg_catalog" | "information_schema" | "public") || schema == self.temp_schema() {
             return true;
         }
         let Ok(auth) = self.auth.lock() else { return true };
@@ -1006,13 +1092,21 @@ impl Session {
     /// commit commits and ends the open transaction, refusing a working set with conflicts or constraint violations
     /// as Dolt does unless the session allows them.
     fn commit(&mut self) -> Result<()> {
+        self.temp_on_commit()?;
         self.state.end_transaction(true);
         let allow_conflicts = self.state.setting_on("dolt_allow_commit_conflicts");
         let force = self.state.setting_on("dolt_force_transaction_commit");
         let autocommit = !self.state.explicit;
-        for txn in std::mem::take(&mut self.txns) {
+        for mut txn in std::mem::take(&mut self.txns) {
             let handle = txn.handle.clone();
             let mut db = lock(&handle)?;
+            if let Some(objects) = txn.take_temp(&mut db)?
+                && let Some(temp) = self.state.temp.get_mut(&txn.database)
+            {
+                let roots = objects.tables.iter().map(|t| t.1).chain(objects.objects.iter().map(|o| o.2)).collect();
+                self.state.engine.set_temp_roots(self.state.id, Some((&txn.database, roots)));
+                temp.objects = objects;
+            }
             if txn.changed() {
                 let schema_conflicts = txn.merge.as_ref().is_some_and(|m| !m.unmergable_tables.is_empty());
                 crate::dolt::conflicts::commit_check(
@@ -1025,6 +1119,65 @@ impl Session {
                 )?;
             }
             txn.commit(&mut db, &self.state.user, &self.state.host)?;
+        }
+        Ok(())
+    }
+
+    /// temp_on_commit drops or empties the temporary tables whose ON COMMIT clause asks for it, emptying them all at
+    /// once, as Postgres' PreCommit_on_commit_actions does.
+    fn temp_on_commit(&mut self) -> Result<()> {
+        let Some(temp) = self.state.temp.get(&self.state.database).filter(|t| !t.on_commit.is_empty()) else {
+            return Ok(());
+        };
+        let on_commit = temp.on_commit.clone();
+        let mut parameters = Vec::new();
+        let kept = self.with_ctx(&mut parameters, &[], |ctx| {
+            let schema = quote_identifier(&ctx.session.temp_schema());
+            let (mut dropped, mut emptied) = (Vec::new(), Vec::new());
+            for (name, drop) in on_commit {
+                if ctx.txn.root.table(ctx.db, &ctx.session.temp_schema(), &name)?.is_some() {
+                    match drop {
+                        true => dropped.push(format!("DROP TABLE {schema}.{}", quote_identifier(&name))),
+                        false => emptied.push(name),
+                    }
+                }
+            }
+            let names: Vec<String> = emptied.iter().map(|n| format!("{schema}.{}", quote_identifier(n))).collect();
+            if !names.is_empty() {
+                dropped.push(format!("TRUNCATE {}", names.join(", ")));
+            }
+            for statement in dropped {
+                if let Some(Statement::Postgres { node, .. }) = parse::parse(&statement)?.into_iter().next() {
+                    ctx.run(&node).map_err(|err| match err.code {
+                        code::FEATURE_NOT_SUPPORTED => PgError {
+                            detail: err.detail.map(|d| {
+                                format!("{}, but they do not have the same ON COMMIT setting.", d.trim_end_matches('.'))
+                            }),
+                            hint: None,
+                            ..PgError::new(
+                                code::FEATURE_NOT_SUPPORTED,
+                                "unsupported ON COMMIT and foreign key combination",
+                            )
+                        },
+                        _ => err,
+                    })?;
+                }
+            }
+            Ok(emptied.into_iter().map(|name| (name, false)).collect())
+        })?;
+        if let Some(temp) = self.state.temp.get_mut(&self.state.database) {
+            temp.on_commit = kept;
+        }
+        Ok(())
+    }
+
+    /// discard_temp drops the session's temporary schemas and everything in them.
+    fn discard_temp(&mut self) -> Result<()> {
+        self.state.temp.clear();
+        self.state.engine.set_temp_roots(self.state.id, None);
+        for txn in &mut self.txns {
+            let handle = txn.handle.clone();
+            txn.take_temp(&mut *lock(&handle)?)?;
         }
         Ok(())
     }
@@ -1045,6 +1198,10 @@ impl Session {
                 let mut txn = Txn::begin(handle, tracker, database, branch)?;
                 if let Some(first) = self.txns.first() {
                     txn.started = first.started;
+                }
+                if let Some(temp) = self.state.temp.get(database) {
+                    let handle = txn.handle.clone();
+                    txn.inject_temp(&mut *lock(&handle)?, &self.state.temp_schema(), &temp.objects)?;
                 }
                 self.txns.push(txn);
                 self.txns.len() - 1
@@ -1123,7 +1280,9 @@ impl Session {
             };
         }
         if let Some(kind) = kind {
-            let name = transaction_statement(statement).map(|t| t.savepoint_name.clone()).unwrap_or_default();
+            let name = transaction_statement(statement)
+                .map(|t| if t.gid.is_empty() { t.savepoint_name.clone() } else { t.gid.clone() })
+                .unwrap_or_default();
             let begun = !self.state.explicit;
             let outcome = self.transaction(kind, &name)?;
             if matches!(kind, TransactionStmtKind::TransStmtBegin | TransactionStmtKind::TransStmtStart) {
@@ -1265,6 +1424,45 @@ impl Session {
                 self.txns.clear();
                 self.state.end_transaction(false);
                 Ok(Outcome::command("ROLLBACK"))
+            }
+            TransactionStmtKind::TransStmtPrepare => {
+                if !self.state.explicit {
+                    self.state.notices.push(PgError {
+                        severity: "WARNING",
+                        ..PgError::new(code::NO_ACTIVE_SQL_TRANSACTION, "there is no transaction in progress")
+                    });
+                    return Ok(Outcome::command("ROLLBACK"));
+                }
+                let temporary = self.state.temp_used;
+                self.state.explicit = false;
+                self.txns.clear();
+                self.state.end_transaction(false);
+                Err(match temporary {
+                    true => PgError::new(
+                        code::FEATURE_NOT_SUPPORTED,
+                        "cannot PREPARE a transaction that has operated on temporary objects",
+                    ),
+                    false => PgError {
+                        hint: Some("Set max_prepared_transactions to a nonzero value.".into()),
+                        ..PgError::new(code::OBJECT_NOT_IN_PREREQUISITE_STATE, "prepared transactions are disabled")
+                    },
+                })
+            }
+            TransactionStmtKind::TransStmtCommitPrepared | TransactionStmtKind::TransStmtRollbackPrepared => {
+                if self.state.explicit {
+                    let statement = match kind {
+                        TransactionStmtKind::TransStmtCommitPrepared => "COMMIT PREPARED",
+                        _ => "ROLLBACK PREPARED",
+                    };
+                    return Err(PgError::new(
+                        code::ACTIVE_SQL_TRANSACTION,
+                        format!("{statement} cannot run inside a transaction block"),
+                    ));
+                }
+                Err(PgError::new(
+                    code::UNDEFINED_OBJECT,
+                    format!("prepared transaction with identifier \"{name}\" does not exist"),
+                ))
             }
             other => Err(PgError::unsupported(format!("the transaction statement {other:?}"))),
         }
@@ -1459,6 +1657,9 @@ impl Session {
                         self.state.sequence_values.clear();
                         self.state.last_sequence = None;
                     }
+                    if tag == "DISCARD TEMP" {
+                        self.discard_temp()?;
+                    }
                     return Ok(Outcome::command(tag));
                 }
                 if self.state.explicit {
@@ -1473,6 +1674,7 @@ impl Session {
                 self.state.settings.set_raw("role", None, false, false);
                 self.state.sequence_values.clear();
                 self.state.last_sequence = None;
+                self.discard_temp()?;
                 return Ok(Outcome::command("DISCARD ALL"));
             }
             _ => {}

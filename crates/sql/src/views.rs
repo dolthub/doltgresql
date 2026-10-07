@@ -178,10 +178,7 @@ impl Ctx<'_> {
     /// does.
     pub fn create_view(&mut self, stmt: &ViewStmt, text: &str) -> Result<Outcome> {
         let relation = stmt.view.as_ref().ok_or_else(|| PgError::internal("CREATE VIEW without a name"))?;
-        if relation.relpersistence == "t" {
-            return Err(PgError::unsupported("temporary views"));
-        }
-        let schema = self.target_schema(&relation.schemaname, relation.location)?;
+        let schema = self.relation_schema(relation)?;
         let name = relation.relname.clone();
         let Some(NodeEnum::SelectStmt(select)) = stmt.query.as_deref().and_then(|q| q.node.as_ref()) else {
             return Err(PgError::unsupported("this view query"));

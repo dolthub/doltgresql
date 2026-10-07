@@ -18,7 +18,7 @@ use doltdb::table::{Table, empty_rows};
 use doltdb::tags::{EXTENDED_KIND, STRING_KIND, auto_generate_tag};
 use pg_query::protobuf::{
     ConstrType, CreateSchemaStmt, CreateStmt, CreateTableAsStmt, DropBehavior, DropStmt, IndexStmt, ObjectType,
-    ResTarget, SelectStmt, SortByDir, SortByNulls, TruncateStmt,
+    OnCommitAction, RangeVar, ResTarget, SelectStmt, SortByDir, SortByNulls, TruncateStmt,
 };
 use pg_query::{Node, NodeEnum};
 use store::Hash;
@@ -551,7 +551,7 @@ impl Ctx<'_> {
     pub fn create_table(&mut self, create: &CreateStmt) -> Result<Outcome> {
         let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
         let schema = self
-            .target_schema(&relation.schemaname, relation.location)
+            .relation_schema(relation)
             .map_err(|err| PgError { position: err.position.or(position(relation.location)), ..err })?;
         self.require(&Object::Schema(schema.clone()), "U", -1)?;
         if self.nonlocal_table(relation)?.is_some() {
@@ -571,11 +571,14 @@ impl Ctx<'_> {
             }
         }
         let create = &CreateStmt { table_elts: liked, ..create.clone() };
-        if create.inh_relations.is_empty() {
-            return self.create_table_in(create, schema);
-        }
-        let table_elts = self.inherit(create)?;
-        self.create_table_in(&CreateStmt { table_elts, inh_relations: Vec::new(), ..create.clone() }, schema)
+        let outcome = if create.inh_relations.is_empty() {
+            self.create_table_in(create, schema)?
+        } else {
+            let table_elts = self.inherit(create)?;
+            self.create_table_in(&CreateStmt { table_elts, inh_relations: Vec::new(), ..create.clone() }, schema)?
+        };
+        self.on_commit(relation, create.oncommit)?;
+        Ok(outcome)
     }
 
     /// like returns the table elements that `LIKE table` copies, as Postgres' transformTableLikeClause does: the
@@ -829,8 +832,12 @@ impl Ctx<'_> {
     /// target_schema returns the schema a new object goes in: the named one, which must exist, or the first existing
     /// schema of the search path.
     pub(crate) fn target_schema(&mut self, named: &str, location: i32) -> Result<String> {
-        let schema = if named.is_empty() {
+        let schema = if named.is_empty() && self.session.temp_first() {
+            return self.temp_schema();
+        } else if named.is_empty() {
             self.creation_schema()?
+        } else if named == "pg_temp" || named == self.session.temp_schema() {
+            return self.temp_schema();
         } else if !self.txn.root.schemas.iter().any(|s| s == named.as_bytes()) {
             return Err(PgError {
                 position: position(location),
@@ -841,6 +848,54 @@ impl Ctx<'_> {
         };
         self.require(&Object::Schema(schema.clone()), "C", -1)?;
         Ok(schema)
+    }
+
+    /// relation_schema returns the schema that a new relation goes in, which is the session's temporary schema for a
+    /// temporary relation.
+    pub(crate) fn relation_schema(&mut self, relation: &RangeVar) -> Result<String> {
+        if relation.relpersistence != "t" {
+            return self.target_schema(&relation.schemaname, relation.location);
+        }
+        if !matches!(relation.schemaname.as_str(), "" | "pg_temp") && relation.schemaname != self.session.temp_schema()
+        {
+            return Err(PgError {
+                position: position(relation.location),
+                ..PgError::new(
+                    code::INVALID_TABLE_DEFINITION,
+                    "cannot create temporary relation in non-temporary schema",
+                )
+            });
+        }
+        self.temp_schema()
+    }
+
+    /// temp_schema returns the session's temporary schema, making it when the session has none in the database.
+    pub(crate) fn temp_schema(&mut self) -> Result<String> {
+        self.require(&Object::Database(self.session.database.clone()), "T", -1)?;
+        let schema = self.session.temp_schema();
+        self.session.temp.entry(self.session.database.clone()).or_default();
+        self.session.temp_used = true;
+        if self.txn.temp_schema.is_none() {
+            self.txn.inject_temp(self.db, &schema, &Default::default())?;
+        }
+        Ok(schema)
+    }
+
+    /// on_commit records what commits do to a new table, which only a temporary table may ask for.
+    fn on_commit(&mut self, relation: &RangeVar, action: i32) -> Result<()> {
+        let drop = match OnCommitAction::try_from(action) {
+            Ok(OnCommitAction::OncommitDeleteRows) => false,
+            Ok(OnCommitAction::OncommitDrop) => true,
+            _ => return Ok(()),
+        };
+        if relation.relpersistence != "t" {
+            return Err(PgError::new(code::INVALID_TABLE_DEFINITION, "ON COMMIT can only be used on temporary tables"));
+        }
+        if let Some(temp) = self.session.temp.get_mut(&self.session.database) {
+            temp.on_commit.retain(|(name, _)| *name != relation.relname);
+            temp.on_commit.push((relation.relname.clone(), drop));
+        }
+        Ok(())
     }
 
     /// write_new_table chooses the columns' tags and writes a new empty table to the working root.
@@ -879,7 +934,7 @@ impl Ctx<'_> {
     pub fn create_table_as(&mut self, create: &CreateTableAsStmt) -> Result<Outcome> {
         let into = create.into.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE AS without a target"))?;
         let relation = into.rel.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE AS without a name"))?;
-        let schema = self.target_schema(&relation.schemaname, relation.location)?;
+        let schema = self.relation_schema(relation)?;
         let name = relation.relname.clone();
         if self.txn.root.table(self.db, &schema, &name)?.is_some() {
             let message = format!("relation \"{name}\" already exists");
@@ -925,6 +980,7 @@ impl Ctx<'_> {
         let table =
             self.txn.table(self.db, &schema, &name)?.ok_or_else(|| PgError::internal("a new table vanished"))?;
         crate::dml::insert_rows(self, &table, rows)?;
+        self.on_commit(relation, into.on_commit)?;
         Ok(Outcome::command(format!("SELECT {count}")))
     }
 
@@ -1030,7 +1086,8 @@ impl Ctx<'_> {
                     format!("permission denied: \"{name}\" is a system catalog"),
                 ));
             }
-            let schemas = if schema.is_empty() { self.session.search_path() } else { vec![schema.clone()] };
+            let schemas =
+                if schema.is_empty() { self.session.search_path() } else { vec![self.session.named_schema(&schema)] };
             let mut found = None;
             for s in schemas {
                 if self.txn.root.table(self.db, &s, &name)?.is_some() {
@@ -1040,6 +1097,7 @@ impl Ctx<'_> {
             }
             match found {
                 Some(s) => {
+                    self.session.temp_used |= s == self.session.temp_schema();
                     self.require_owner(&Object::Table(s.clone(), name.clone()))?;
                     doomed.push((s, name))
                 }
@@ -1518,7 +1576,8 @@ impl Ctx<'_> {
         for object in &drop.objects {
             let Some(NodeEnum::List(list)) = object.node.as_ref() else { continue };
             let (schema, name) = object_names(&list.items);
-            let schemas = if schema.is_empty() { self.session.search_path() } else { vec![schema.clone()] };
+            let schemas =
+                if schema.is_empty() { self.session.search_path() } else { vec![self.session.named_schema(&schema)] };
             let mut found = None;
             'search: for s in schemas {
                 let prefix = doltdb::root::table_key(&s, "");

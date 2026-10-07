@@ -624,9 +624,8 @@ impl Ctx<'_> {
         let triggered = self.triggered_tables()?;
         for table in &snapshot.tables {
             let relation = table_oid(&table.schema, &table.name);
-            let namespace = namespace_oid(&table.schema);
             let indexes = table_indexes(table);
-            let mut row = class_row(relation, &table.name, namespace, "r", table.columns.len() as i16, 2);
+            let mut row = class_row(relation, &table.name, &table.schema, "r", table.columns.len() as i16, 2);
             row.extend([
                 ("reltype", oid(row_type_oid(&table.schema, &table.name))),
                 ("relfilenode", oid(relation)),
@@ -650,7 +649,7 @@ impl Ctx<'_> {
                     None => 403,
                 };
                 let mut row =
-                    class_row(index_relation, &index.name, namespace, "i", index.columns.len() as i16, method);
+                    class_row(index_relation, &index.name, &table.schema, "i", index.columns.len() as i16, method);
                 row.extend([
                     ("relfilenode", oid(index_relation)),
                     ("relpages", int4(1)),
@@ -661,29 +660,22 @@ impl Ctx<'_> {
         }
         for view in &snapshot.views {
             let columns = self.view_columns(&view.schema, &view.name).map_or(0, |c| c.len());
-            let mut row = class_row(
-                view_oid(&view.schema, &view.name),
-                &view.name,
-                namespace_oid(&view.schema),
-                "v",
-                columns as i16,
-                0,
-            );
+            let mut row =
+                class_row(view_oid(&view.schema, &view.name), &view.name, &view.schema, "v", columns as i16, 0);
             row.extend([("reltype", oid(row_type_oid(&view.schema, &view.name))), ("relhasrules", boolean(true))]);
             rows.push(row);
         }
         for user_type in self.user_types()?.values() {
             let crate::usertypes::Kind::Composite(fields) = &user_type.kind else { continue };
             let relation = table_oid(&user_type.schema, &user_type.name);
-            let namespace = namespace_oid(&user_type.schema);
-            let mut row = class_row(relation, &user_type.name, namespace, "c", fields.len() as i16, 0);
+            let mut row = class_row(relation, &user_type.name, &user_type.schema, "c", fields.len() as i16, 0);
             row.push(("reltype", oid(user_type.oid)));
             rows.push(row);
         }
         for sequence in &snapshot.sequences {
             let (schema, name) = crate::sequences::schema_and_name(sequence);
             let relation = sequence_oid(&schema, &name);
-            let mut row = class_row(relation, &name, namespace_oid(&schema), "S", 3, 0);
+            let mut row = class_row(relation, &name, &schema, "S", 3, 0);
             row.extend([("relfilenode", oid(relation)), ("relpages", int4(1)), ("reltuples", Value::Float4(1.0))]);
             rows.push(row);
         }
@@ -1331,7 +1323,7 @@ impl Ctx<'_> {
 fn class_row(
     relation: u32,
     name: &str,
-    namespace: u32,
+    schema: &str,
     kind: &str,
     columns: i16,
     access_method: u32,
@@ -1340,7 +1332,7 @@ fn class_row(
     vec![
         ("oid", oid(relation)),
         ("relname", text(name)),
-        ("relnamespace", oid(namespace)),
+        ("relnamespace", oid(namespace_oid(schema))),
         ("reltype", oid(0)),
         ("reloftype", oid(0)),
         ("relowner", oid(SUPERUSER)),
@@ -1353,7 +1345,7 @@ fn class_row(
         ("reltoastrelid", oid(0)),
         ("relhasindex", boolean(false)),
         ("relisshared", boolean(false)),
-        ("relpersistence", text("p")),
+        ("relpersistence", text(if schema.starts_with("pg_temp_") { "t" } else { "p" })),
         ("relkind", text(kind)),
         ("relnatts", int2(columns)),
         ("relchecks", int2(0)),

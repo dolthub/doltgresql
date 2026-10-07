@@ -356,7 +356,9 @@ impl Ctx<'_> {
     pub fn effective_search_path(&self) -> Vec<String> {
         let mut path = self.session.search_path();
         if !path.iter().any(|s| s == "pg_catalog") {
-            path.insert(0, "pg_catalog".into());
+            let temp = self.session.temp_schema();
+            let temp = path.first() == Some(&temp) && !self.session.explicit_search_path().contains(&temp);
+            path.insert(usize::from(temp), "pg_catalog".into());
         }
         path
     }

@@ -388,7 +388,16 @@ pub fn call(ctx: &mut Ctx<'_>, index: usize, args: &[Value]) -> Result<Value> {
     if f.strict && args.iter().any(Value::is_null) {
         return Ok(Value::Null);
     }
-    (f.implementation)(ctx, args)
+    implement(ctx, f, args)
+}
+
+/// implement runs a function's implementation, without the session's temporary tables for Dolt's procedures, since
+/// version control never sees them.
+fn implement(ctx: &mut Ctx<'_>, f: &Function, args: &[Value]) -> Result<Value> {
+    match f.name.starts_with("dolt_") {
+        true => ctx.without_temp(|ctx| (f.implementation)(ctx, args)),
+        false => (f.implementation)(ctx, args),
+    }
 }
 
 /// call_set runs a set-returning function, returning its rows' values.
@@ -397,7 +406,7 @@ pub fn call_set(ctx: &mut Ctx<'_>, index: usize, args: &[Value]) -> Result<Vec<V
     if f.strict && args.iter().any(Value::is_null) {
         return Ok(Vec::new());
     }
-    match (f.implementation)(ctx, args)? {
+    match implement(ctx, f, args)? {
         Value::Set(values) => Ok(values),
         value => Ok(vec![value]),
     }

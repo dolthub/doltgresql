@@ -294,7 +294,8 @@ pub fn dolt_gc(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         _ => doltdb::database::GcMode::Default,
     };
     crate::dolt::procedures::flush(ctx)?;
-    ctx.db.gc(mode)?;
+    let temp_roots = ctx.session.engine.temp_roots(&ctx.session.database);
+    ctx.db.gc(mode, temp_roots)?;
     ctx.session.engine.collected(&ctx.session.database, ctx.session.id);
     Ok(Value::Int8(0))
 }

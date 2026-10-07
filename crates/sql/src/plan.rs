@@ -2541,7 +2541,7 @@ impl Plan {
                 }
                 result
             }
-            Plan::System(system) => system.rows(ctx)?,
+            Plan::System(system) => ctx.without_temp(|ctx| system.rows(ctx))?,
             Plan::Catalog(table) => ctx.catalog_rows(table)?,
             Plan::Values(rows) => {
                 let mut out = Vec::with_capacity(rows.len());

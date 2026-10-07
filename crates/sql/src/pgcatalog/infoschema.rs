@@ -138,7 +138,14 @@ impl Ctx<'_> {
                 ("table_catalog", text(database.clone())),
                 ("table_schema", text(schema)),
                 ("table_name", text(name)),
-                ("table_type", text(if view { "VIEW" } else { "BASE TABLE" })),
+                (
+                    "table_type",
+                    text(match view {
+                        true => "VIEW",
+                        false if schema.starts_with("pg_temp_") => "LOCAL TEMPORARY",
+                        false => "BASE TABLE",
+                    }),
+                ),
                 ("is_insertable_into", yes_no(!view || schema != "pg_catalog")),
                 ("is_typed", yes_no(false)),
             ]);

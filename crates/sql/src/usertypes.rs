@@ -221,12 +221,14 @@ pub fn install(types: &Types, search_path: Vec<String>) {
     REGISTRY.with(|r| *r.borrow_mut() = Registry { types: types.clone(), search_path });
 }
 
-/// lookup finds a type by name, in the schema or else in the search path's schemas in order.
+/// lookup finds a type by name, in the schema or else in the search path's schemas in order, where `pg_temp` names
+/// the session's temporary schema.
 pub fn lookup(schema: Option<&str>, name: &str) -> Option<Arc<UserType>> {
     REGISTRY.with(|r| {
         let registry = r.borrow();
         let find = |schema: &str| registry.types.values().find(|t| t.schema == schema && t.name == name).cloned();
         match schema {
+            Some("pg_temp") => registry.search_path.iter().filter(|s| s.starts_with("pg_temp_")).find_map(|s| find(s)),
             Some(schema) => find(schema),
             None => registry.search_path.iter().find_map(|s| find(s)),
         }

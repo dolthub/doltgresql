@@ -697,6 +697,31 @@ impl<'b, 'a> Binder<'b, 'a> {
     }
 
     /// func_call binds a call of a built-in function.
+    /// function_style_cast returns the type that a call of one argument names when Postgres reads the call as a cast,
+    /// as func_get_detail does: a type outside the temporary schema unless the name is qualified, taking an untyped
+    /// literal or an argument that converts to it without a function.
+    fn function_style_cast(
+        &mut self,
+        call: &pg_query::protobuf::FuncCall,
+        from: ColumnType,
+    ) -> Result<Option<ColumnType>> {
+        let type_name = pg_query::protobuf::TypeName {
+            names: call.funcname.clone(),
+            typemod: -1,
+            location: call.location,
+            ..Default::default()
+        };
+        let Ok(target) = resolve_type_name(&type_name) else { return Ok(None) };
+        if call.funcname.len() == 1
+            && crate::usertypes::get(target.oid).is_some_and(|t| t.schema == self.ctx.session.temp_schema())
+        {
+            return Ok(None);
+        }
+        let literal = matches!(call.args[0].node, Some(NodeEnum::AConst(_)));
+        let castable = from.oid == oid::UNKNOWN && literal || crate::pgcatalog::binary_coercible(from.oid, target.oid);
+        Ok(castable.then_some(target))
+    }
+
     fn func_call(&mut self, call: &pg_query::protobuf::FuncCall) -> Result<Bound> {
         let names: Vec<&str> = call.funcname.iter().filter_map(node_name).collect();
         let (schema, name) = match names.as_slice() {
@@ -737,6 +762,20 @@ impl<'b, 'a> Binder<'b, 'a> {
                         (Expr::Const(Value::Array(Box::new(array))), typ(user_type.array))
                     }
                 });
+            }
+        }
+        if let [arg] = call.args.as_slice()
+            && call.over.is_none()
+            && !call.agg_star
+            && call.agg_filter.is_none()
+            && call.agg_order.is_empty()
+            && let Some(NodeEnum::AConst(_)) = arg.node.as_ref()
+        {
+            let argument = self.bind(arg)?;
+            if argument.1.oid == oid::UNKNOWN
+                && let Some(target) = self.function_style_cast(call, argument.1)?
+            {
+                return coerce(argument, target, true, call.location);
             }
         }
         if call.over.is_none() && !call.agg_star {
@@ -809,17 +848,29 @@ impl<'b, 'a> Binder<'b, 'a> {
             bound.push((expr, crate::usertypes::base_type(ty)));
         }
         let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
-        let resolved = functions::resolve(name, &types, call.location).map_err(|err| match schema {
-            Some(_) if err.code == code::UNDEFINED_FUNCTION => PgError {
-                message: err.message.replacen(
-                    &format!("function {name}("),
-                    &format!("function {}(", names.join(".")),
-                    1,
-                ),
-                ..err
-            },
-            _ => err,
-        })?;
+        let resolved = match functions::resolve(name, &types, call.location) {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                if err.code == code::UNDEFINED_FUNCTION
+                    && let [(_, from)] = bound.as_slice()
+                    && let Some(target) = self.function_style_cast(call, *from)?
+                {
+                    let argument = bound.pop().ok_or_else(|| PgError::internal("a cast without an argument"))?;
+                    return coerce(argument, target, true, call.location);
+                }
+                return Err(match schema {
+                    Some(_) if err.code == code::UNDEFINED_FUNCTION => PgError {
+                        message: err.message.replacen(
+                            &format!("function {name}("),
+                            &format!("function {}(", names.join(".")),
+                            1,
+                        ),
+                        ..err
+                    },
+                    _ => err,
+                });
+            }
+        };
         if matches!(name, "nextval" | "currval" | "setval")
             && let Some((Expr::Const(Value::Text(text)), _)) = bound.first()
         {

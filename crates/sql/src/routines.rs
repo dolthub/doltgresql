@@ -547,8 +547,15 @@ impl Ctx<'_> {
             return Ok(Vec::new());
         }
         let schemas = match schema {
-            Some(schema) => vec![schema.to_string()],
-            None => self.session.search_path(),
+            Some(schema) => {
+                let schema = self.session.named_schema(schema);
+                self.session.temp_used |= schema == self.session.temp_schema();
+                vec![schema]
+            }
+            None => {
+                let temp = self.session.temp_schema();
+                self.session.search_path().into_iter().filter(|s| *s != temp).collect()
+            }
         };
         let mut found = Vec::new();
         for schema in schemas {

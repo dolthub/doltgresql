@@ -2051,3 +2051,450 @@ fn test_create_table_like_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_temporary_tables() {
+    run_scripts(&[
+        ScriptTest {
+            name: "temporary tables",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE perm (a int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO perm VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TEMP TABLE perm (b text, id serial PRIMARY KEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO perm (b) VALUES ('x'), ('y');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM perm ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", TEXT), Column("id", INT4)],
+                        rows: &[
+                            &[T("x"), T("1")],
+                            &[T("y"), T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM public.perm;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM pg_temp.perm ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", TEXT), Column("id", INT4)],
+                        rows: &[
+                            &[T("x"), T("1")],
+                            &[T("y"), T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relpersistence FROM pg_class WHERE relname IN ('perm', 'perm_pkey', 'perm_id_seq') ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relpersistence", CHAR)],
+                        rows: &[
+                            &[T("perm"), T("p")],
+                            &[T("perm"), T("t")],
+                            &[T("perm_id_seq"), T("t")],
+                            &[T("perm_pkey"), T("t")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT table_name, table_type FROM information_schema.tables WHERE table_name = 'perm' ORDER BY 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("table_name", NAME), Column("table_type", VARCHAR)],
+                        rows: &[
+                            &[T("perm"), T("BASE TABLE")],
+                            &[T("perm"), T("LOCAL TEMPORARY")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_my_temp_schema() <> 0, pg_is_other_temp_schema(pg_my_temp_schema());",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("pg_is_other_temp_schema", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_schemas(false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_schemas", NAME_ARRAY)],
+                        rows: &[
+                            &[T("{public}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TEMP TABLE public.bad (a int);",
+                    expected: Expected::Error(Diagnostic { code: "42P16", message: "cannot create temporary relation in non-temporary schema", position: 19, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE bad (a int) ON COMMIT DROP;",
+                    expected: Expected::Error(Diagnostic { code: "42P16", message: "ON COMMIT can only be used on temporary tables", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE perm;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM perm;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE perm;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "temporary tables in transactions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TEMP TABLE t (a int);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "t" does not exist"#, position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TEMP TABLE d (a int) ON COMMIT DELETE ROWS;",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO d VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM d;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM d;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TEMP TABLE dr (a int) ON COMMIT DROP;",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO dr VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM dr;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM dr;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dr" does not exist"#, position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TEMP TABLE c AS SELECT 1 AS one;",
+                    expected: Expected::Tag("SELECT 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("one", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TEMP VIEW v AS SELECT one + 1 AS two FROM c;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("two", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("one", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "PREPARE TRANSACTION 'p';",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot PREPARE a transaction that has operated on temporary objects", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "PREPARE TRANSACTION 'p';",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: "prepared transactions are disabled", hint: "Set max_prepared_transactions to a nonzero value.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT PREPARED 'p';",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"prepared transaction with identifier "p" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DISCARD TEMP;",
+                    expected: Expected::Tag("DISCARD TEMP"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM c;",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "c" does not exist"#, position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "temporary functions and types",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION public.whoami() RETURNS text AS $$ SELECT 'public'::text $$ LANGUAGE sql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION pg_temp.whoami() RETURNS text AS $$ SELECT 'temp'::text $$ LANGUAGE sql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT whoami();",
+                    expected: Expected::Rows {
+                        columns: &[Column("whoami", TEXT)],
+                        rows: &[
+                            &[T("public")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_temp.whoami();",
+                    expected: Expected::Rows {
+                        columns: &[Column("whoami", TEXT)],
+                        rows: &[
+                            &[T("temp")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path = pg_temp, public;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT whoami();",
+                    expected: Expected::Rows {
+                        columns: &[Column("whoami", TEXT)],
+                        rows: &[
+                            &[T("public")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN pg_temp.nonempty AS text CHECK (VALUE <> '');",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nonempty('');",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function nonempty(unknown) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_temp.nonempty('a');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nonempty", TEXT)],
+                        rows: &[
+                            &[T("a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'b'::nonempty;",
+                    expected: Expected::Rows {
+                        columns: &[Column("nonempty", TEXT)],
+                        rows: &[
+                            &[T("b")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4('5'), float8('1.5'), date('2020-01-01');",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4", INT4), Column("float8", FLOAT8), Column("date", DATE)],
+                        rows: &[
+                            &[T("5"), T("1.5"), T("2020-01-01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET search_path;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP FUNCTION public.whoami();",
+                    expected: Expected::Tag("DROP FUNCTION"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

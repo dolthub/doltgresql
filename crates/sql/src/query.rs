@@ -88,10 +88,14 @@ impl Ctx<'_> {
         if let Some(table) = self.nonlocal_table(relation)? {
             return Ok(table);
         }
-        let schemas: Vec<String> =
-            if relation.schemaname.is_empty() { self.session.search_path() } else { vec![relation.schemaname.clone()] };
+        let schemas: Vec<String> = if relation.schemaname.is_empty() {
+            self.session.search_path()
+        } else {
+            vec![self.session.named_schema(&relation.schemaname)]
+        };
         for schema in &schemas {
             if let Some(table) = self.txn.table(self.db, schema, &relation.relname)? {
+                self.session.temp_used |= *schema == self.session.temp_schema();
                 return Ok(table);
             }
         }
@@ -117,8 +121,11 @@ impl Ctx<'_> {
 
     /// resolve_table_in loads the table that a range variable names from a root value.
     pub fn resolve_table_in(&mut self, relation: &RangeVar, root: &doltdb::root::Root) -> Result<TableDef> {
-        let schemas: Vec<String> =
-            if relation.schemaname.is_empty() { self.session.search_path() } else { vec![relation.schemaname.clone()] };
+        let schemas: Vec<String> = if relation.schemaname.is_empty() {
+            self.session.search_path()
+        } else {
+            vec![self.session.named_schema(&relation.schemaname)]
+        };
         for schema in &schemas {
             if let Some(address) = root.table(self.db, schema, &relation.relname)? {
                 return TableDef::load(self.db, schema, &relation.relname, address);
@@ -221,8 +228,19 @@ impl Ctx<'_> {
         self.session
             .search_path()
             .into_iter()
-            .find(|s| self.txn.root.schemas.iter().any(|existing| existing == s.as_bytes()))
+            .find(|s| *s != self.session.temp_schema() && self.txn.root.schemas.iter().any(|e| e == s.as_bytes()))
             .ok_or_else(|| PgError::new(code::INVALID_SCHEMA_NAME, "no schema has been selected to create in"))
+    }
+
+    /// without_temp runs a function with the session's temporary tables out of the root, putting them back after.
+    pub fn without_temp<T>(&mut self, f: impl FnOnce(&mut Ctx<'_>) -> Result<T>) -> Result<T> {
+        if self.txn.temp_schema.is_none() {
+            return f(self);
+        }
+        let objects = self.txn.take_temp(self.db)?.unwrap_or_default();
+        let result = f(self);
+        self.txn.inject_temp(self.db, &self.session.temp_schema(), &objects)?;
+        result
     }
 
     /// constant_text evaluates an expression without columns and returns its text.
