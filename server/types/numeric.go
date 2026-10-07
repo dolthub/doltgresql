@@ -116,7 +116,7 @@ func GetNumericValueWithTypmod(val *apd.Decimal, typmod int32) (*apd.Decimal, er
 	precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
 	_, err := sql.DecimalCtx.WithPrecision(uint32(precision)).Quantize(res, val, -scale)
 	if err != nil {
-		return nil, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
+		return nil, errors.Wrapf(ErrCastOutOfRange, "numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
 	}
 	return res, nil
 }
