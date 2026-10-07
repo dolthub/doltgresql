@@ -193,6 +193,18 @@ pub fn register_row_type(table: &crate::catalog::table::TableDef) -> u32 {
     register(definition)
 }
 
+/// replace_row_type makes a table's row type and its array type, as the table's columns now are, known to this
+/// thread's statement in place of any registered before.
+pub fn replace_row_type(table: &crate::catalog::table::TableDef) {
+    let definition = row_type(table);
+    let types = [array_type(&definition), definition].map(UserType::from_definition);
+    REGISTRY.with(|r| {
+        for user_type in types {
+            r.borrow_mut().types.insert(user_type.oid, Arc::new(user_type));
+        }
+    });
+}
+
 /// table_row_type returns the OID of the registered row type of the table with the OID.
 pub fn table_row_type(table_oid: u32) -> Option<u32> {
     REGISTRY.with(|r| {

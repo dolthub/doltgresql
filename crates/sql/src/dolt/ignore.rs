@@ -63,7 +63,7 @@ fn glob(pattern: &[char], text: &[char], strict: bool) -> bool {
 }
 
 /// matches reports whether a pattern matches a name, or a more specific pattern when `strict` is set.
-fn matches(pattern: &str, name: &str, strict: bool) -> bool {
+pub(crate) fn matches(pattern: &str, name: &str, strict: bool) -> bool {
     glob(&pattern.chars().collect::<Vec<_>>(), &name.chars().collect::<Vec<_>>(), strict)
 }
 

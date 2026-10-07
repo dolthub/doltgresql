@@ -16,7 +16,7 @@
 
 use doltdb::database::Database;
 use doltdb::root::{Root, table_key};
-use pg_query::protobuf::Constraint;
+use pg_query::protobuf::{Constraint, RangeVar};
 use serial::write::{ForeignKeyFields, write_foreign_keys};
 use serial::{Message, foreign_keys};
 use store::Hash;
@@ -85,6 +85,8 @@ pub struct ForeignKeyDef {
     pub parent_table: String,
     pub parent_index: String,
     pub parent_columns: Vec<String>,
+    /// The tags of the referenced columns as last stored, which stand when the referenced table is on another branch.
+    pub parent_tags: Vec<u64>,
     pub on_update: Rule,
     pub on_delete: Rule,
     pub match_full: bool,
@@ -145,6 +147,7 @@ pub fn load(db: &mut Database, root: &Root) -> Result<Vec<ForeignKeyDef>> {
             parent_table,
             parent_index: lossy(fk.parent_table_index),
             parent_columns,
+            parent_tags: fk.parent_table_columns.to_vec(),
             on_update: Rule::from_dolt(fk.on_update),
             on_delete: Rule::from_dolt(fk.on_delete),
             match_full: fk.match_type == 1,
@@ -174,7 +177,11 @@ pub fn store(db: &mut Database, root: &mut Root, fks: &[ForeignKeyDef]) -> Resul
                 .collect())
         };
         let child_tags = tags(db, &fk.child_schema, &fk.child_table, &fk.child_columns)?;
-        let parent_tags = tags(db, &fk.parent_schema, &fk.parent_table, &fk.parent_columns)?;
+        let parent_tags: Vec<u64> = tags(db, &fk.parent_schema, &fk.parent_table, &fk.parent_columns)?
+            .into_iter()
+            .zip(fk.parent_tags.iter().copied().chain(std::iter::repeat(0)))
+            .map(|(found, stored)| if found == 0 { stored } else { found })
+            .collect();
         prepared.push((
             fk,
             child_tags,
@@ -341,7 +348,10 @@ impl Ctx<'_> {
     /// checks the table's rows against it unless it is NOT VALID.
     pub fn add_foreign_key(&mut self, child: &TableDef, columns: &[usize], constraint: &Constraint) -> Result<()> {
         let relation = constraint.pktable.as_ref().ok_or_else(|| PgError::internal("a foreign key without a table"))?;
-        let parent = if relation.relname == child.name
+        let nonlocal = self.nonlocal_table(relation)?;
+        let parent = if let Some(parent) = &nonlocal {
+            parent.clone()
+        } else if relation.relname == child.name
             && (relation.schemaname.is_empty() || relation.schemaname == child.schema)
         {
             child.clone()
@@ -423,9 +433,10 @@ impl Ctx<'_> {
             child_index,
             child_columns: columns.iter().map(|&c| child.columns[c].name.clone()).collect(),
             parent_schema: parent.schema.clone(),
-            parent_table: parent.name.clone(),
+            parent_table: if nonlocal.is_some() { relation.relname.clone() } else { parent.name.clone() },
             parent_index,
             parent_columns: referenced.iter().map(|&p| parent.columns[p].name.clone()).collect(),
+            parent_tags: referenced.iter().map(|&p| parent.columns[p].tag).collect(),
             on_update: Rule::from_postgres(&constraint.fk_upd_action),
             on_delete: Rule::from_postgres(&constraint.fk_del_action),
             match_full: constraint.fk_matchtype == "f",
@@ -433,6 +444,11 @@ impl Ctx<'_> {
             deferrable: constraint.deferrable || constraint.initdeferred,
             initially_deferred: constraint.initdeferred,
         };
+        if nonlocal.is_some() && (fk.on_update != Rule::NoAction || fk.on_delete != Rule::NoAction) {
+            return Err(crate::dolt::args::error(
+                "foreign keys referencing nonlocal tables do not support referential actions",
+            ));
+        }
         if !fk.not_valid {
             let rows = match self.txn.table(self.db, &child.schema, &child.name)? {
                 Some(table) => scan(self.db, &table)?,
@@ -443,6 +459,17 @@ impl Ctx<'_> {
         }
         fks.push(fk);
         store(self.db, &mut self.txn.root, &fks)
+    }
+
+    /// parent_table loads a foreign key's referenced table, which a dolt_nonlocal_tables rule may put on another
+    /// branch, as Dolt's getDoltTableForFK does.
+    fn parent_table(&mut self, fk: &ForeignKeyDef) -> Result<Option<TableDef>> {
+        let relation =
+            RangeVar { schemaname: fk.parent_schema.clone(), relname: fk.parent_table.clone(), ..RangeVar::default() };
+        match self.nonlocal_table(&relation)? {
+            Some(parent) => Ok(Some(parent)),
+            None => self.txn.table(self.db, &fk.parent_schema, &fk.parent_table),
+        }
     }
 
     /// check_children fails when a new or changed row of a foreign key's table refers to a missing key.
@@ -463,7 +490,7 @@ impl Ctx<'_> {
                 });
             }
             if parent_rows.is_none() {
-                let parent = self.txn.table(self.db, &fk.parent_schema, &fk.parent_table)?;
+                let parent = self.parent_table(fk)?;
                 parent_rows = Some(match parent {
                     Some(parent) => {
                         let rows = scan(self.db, &parent)?;

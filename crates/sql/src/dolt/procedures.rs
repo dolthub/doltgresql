@@ -327,6 +327,7 @@ pub fn table_map(db: &mut Database, root: &Root) -> Result<BTreeMap<(String, Str
 pub fn find_table(ctx: &mut Ctx<'_>, roots: &[&Root], name: &str) -> Result<Option<(String, String)>> {
     let (schemas, table) = match name.split_once('.') {
         Some((schema, table)) => (vec![schema.to_string()], table),
+        None if name.starts_with("dolt_") => ([ctx.session.search_path(), vec!["dolt".into()]].concat(), name),
         None => (ctx.session.search_path(), name),
     };
     for root in roots {

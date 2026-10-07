@@ -67,6 +67,8 @@ pub enum SystemTable {
     BranchControl,
     /// Who may create branches with which names, dolt_branch_namespace_control.
     BranchNamespaceControl,
+    /// The dolt_nonlocal_tables table before anything creates it.
+    NonlocalTables,
     /// A system table over a user table.
     User(Box<UserTable>),
     /// The conflicts or constraint violations of a user table.
@@ -99,13 +101,14 @@ const TABLES: &[(&str, SystemTable)] = &[
     ("help", SystemTable::Help),
     ("branch_control", SystemTable::BranchControl),
     ("branch_namespace_control", SystemTable::BranchNamespaceControl),
+    ("dolt_nonlocal_tables", SystemTable::NonlocalTables),
 ];
 
-/// lookup returns the system table that a schema and name refer to: a name in the `dolt` schema, or the name with a
-/// `dolt_` prefix elsewhere.
+/// lookup returns the system table that a schema and name refer to: a name in the `dolt` schema, or elsewhere the
+/// name with a `dolt_` prefix or a name in the `dolt` schema that has that prefix itself.
 pub fn lookup(schema: &str, name: &str) -> Option<SystemTable> {
     let short = if schema == "dolt" { name } else { name.strip_prefix("dolt_")? };
-    TABLES.iter().find(|(n, _)| *n == short).map(|(_, t)| t.clone())
+    TABLES.iter().find(|(n, _)| *n == short || (schema != "dolt" && *n == name)).map(|(_, t)| t.clone())
 }
 
 /// create_backing creates the table that holds the rows of one of Dolt's writable system tables, from the column
@@ -232,6 +235,9 @@ impl SystemTable {
             ],
             SystemTable::Ignore => vec![("pattern", TEXT), ("ignored", BOOL)],
             SystemTable::Docs => vec![("doc_name", TEXT), ("doc_text", TEXT)],
+            SystemTable::NonlocalTables => {
+                vec![("table_name", TEXT), ("target_ref", TEXT), ("ref_table", TEXT), ("options", TEXT)]
+            }
             SystemTable::Procedures => vec![
                 ("name", TEXT),
                 ("create_stmt", TEXT),
@@ -276,7 +282,9 @@ impl SystemTable {
             SystemTable::SchemaConflicts => crate::dolt::conflicts::schema_conflict_rows(ctx),
             SystemTable::BranchControl => ctx.branch_control_rows(),
             SystemTable::BranchNamespaceControl => ctx.branch_namespace_rows(),
-            SystemTable::Ignore | SystemTable::Procedures | SystemTable::Help => Ok(Vec::new()),
+            SystemTable::Ignore | SystemTable::Procedures | SystemTable::Help | SystemTable::NonlocalTables => {
+                Ok(Vec::new())
+            }
             SystemTable::Diff => crate::dolt::diff::unscoped_rows(ctx),
             SystemTable::Docs => crate::dolt::docs::rows(ctx),
             SystemTable::ColumnDiff => crate::dolt::diff::column_rows(ctx),

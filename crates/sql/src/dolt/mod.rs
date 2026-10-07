@@ -24,6 +24,7 @@ pub mod docs;
 pub mod history;
 pub mod ignore;
 pub mod merge;
+pub mod nonlocal;
 pub mod objmerge;
 pub mod patch;
 pub mod procedures;

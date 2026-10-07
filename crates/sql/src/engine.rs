@@ -21,7 +21,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use doltdb::database::Database;
 use pg_query::protobuf::a_const::Val;
-use pg_query::protobuf::{TransactionStmtKind, VariableSetKind, VariableSetStmt};
+use pg_query::protobuf::{RangeVar, TransactionStmtKind, VariableSetKind, VariableSetStmt};
 use pg_query::{Node, NodeEnum};
 
 use crate::error::{PgError, Result, code};
@@ -920,14 +920,15 @@ impl Session {
                 self.txns.len() - 1
             }
         };
-        let txn = &mut self.txns[index];
+        let mut txn = self.txns.remove(index);
         crate::datetime::install_now(txn.started);
         self.state.install_format();
         let handle = txn.handle.clone();
         let mut db = lock(&handle)?;
         let mut ctx = Ctx {
             db: &mut db,
-            txn,
+            txn: &mut txn,
+            branches: &mut self.txns,
             session: &mut self.state,
             parameters,
             params,
@@ -937,10 +938,14 @@ impl Session {
             work_tables: std::collections::HashMap::new(),
             named_params: None,
         };
-        ctx.install_types()?;
-        ctx.install_casts()?;
-        ctx.install_aggregates()?;
-        f(&mut ctx)
+        let result = (|| {
+            ctx.install_types()?;
+            ctx.install_casts()?;
+            ctx.install_aggregates()?;
+            f(&mut ctx)
+        })();
+        self.txns.insert(index, txn);
+        result
     }
 
     /// run runs one statement with the parameter values.
@@ -1432,6 +1437,11 @@ impl Ctx<'_> {
         Ok(match node {
             NodeEnum::SelectStmt(select) => Some(Planner { ctx: self, outer: Vec::new() }.plan_query(select)?.columns),
             NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
+                if let Some(columns) = self.on_target_branch(node, |ctx, node| ctx.describe(node))? =>
+            {
+                columns
+            }
+            NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
                 if self.is_branch_control_dml(node)? =>
             {
                 None
@@ -1445,6 +1455,53 @@ impl Ctx<'_> {
             NodeEnum::ExplainStmt(stmt) => Some(self.explain_columns(stmt)?),
             _ => None,
         })
+    }
+
+    /// on_target_branch runs a function with an INSERT, UPDATE, or DELETE on the branch whose table it changes, with its
+    /// table named as that branch names it, when a `database/branch` qualifier or a dolt_nonlocal_tables rule puts
+    /// that table on another branch, or returns None otherwise.
+    fn on_target_branch<T>(
+        &mut self,
+        node: &NodeEnum,
+        f: impl FnOnce(&mut Ctx<'_>, &NodeEnum) -> Result<T>,
+    ) -> Result<Option<T>> {
+        let relation = match node {
+            NodeEnum::InsertStmt(insert) => insert.relation.as_ref(),
+            NodeEnum::UpdateStmt(update) => update.relation.as_ref(),
+            NodeEnum::DeleteStmt(delete) => delete.relation.as_ref(),
+            _ => None,
+        };
+        let Some(relation) = relation else { return Ok(None) };
+        let qualified = relation.catalogname.split_once('/').filter(|(d, _)| *d == self.session.database);
+        let (branch, relation) = match qualified {
+            Some((_, branch)) => (branch.to_string(), RangeVar { catalogname: String::new(), ..relation.clone() }),
+            None => match self.nonlocal_target(relation)? {
+                Some((branch, _)) if branch != self.txn.branch && self.branch_root(&branch)?.is_none() => {
+                    let command = match node {
+                        NodeEnum::InsertStmt(_) => "INSERT INTO",
+                        NodeEnum::UpdateStmt(_) => "UPDATE",
+                        _ => "DELETE FROM",
+                    };
+                    return Err(crate::dolt::args::error(format!("table doesn't support {command}")));
+                }
+                Some((branch, renamed)) => {
+                    let catalogname = format!("{}/{branch}", self.session.database);
+                    (branch, RangeVar { catalogname, ..renamed })
+                }
+                None => return Ok(None),
+            },
+        };
+        if branch == self.txn.branch || self.branch_root(&branch)?.is_none() {
+            return Ok(None);
+        }
+        let mut node = node.clone();
+        match &mut node {
+            NodeEnum::InsertStmt(insert) => insert.relation = Some(relation),
+            NodeEnum::UpdateStmt(update) => update.relation = Some(relation),
+            NodeEnum::DeleteStmt(delete) => delete.relation = Some(relation),
+            _ => {}
+        }
+        self.on_branch(&branch, |ctx| f(ctx, &node)).map(Some)
     }
 
     /// run plans and runs a statement, after checking that the session may write to its branch when the statement
@@ -1473,6 +1530,11 @@ impl Ctx<'_> {
                 let rows = query.plan.run(self)?;
                 let tag = format!("SELECT {}", rows.len());
                 Ok(Outcome::Rows { columns: query.columns, rows, tag })
+            }
+            NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
+                if let Some(outcome) = self.on_target_branch(node, |ctx, node| ctx.run(node))? =>
+            {
+                Ok(outcome)
             }
             NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
                 if let Some(outcome) = self.branch_control_dml(node)? =>

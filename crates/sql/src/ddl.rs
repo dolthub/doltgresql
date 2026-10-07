@@ -15,7 +15,7 @@
 //! Statements that define schema objects.
 
 use doltdb::table::{Table, empty_rows};
-use doltdb::tags::{EXTENDED_KIND, auto_generate_tag};
+use doltdb::tags::{EXTENDED_KIND, STRING_KIND, auto_generate_tag};
 use pg_query::protobuf::{
     ConstrType, CreateSchemaStmt, CreateStmt, CreateTableAsStmt, DropBehavior, DropStmt, IndexStmt, ObjectType,
     ResTarget, SelectStmt, SortByDir, SortByNulls, TruncateStmt,
@@ -34,6 +34,18 @@ use crate::expr::{
 };
 use crate::plan::Planner;
 use crate::query::Ctx;
+
+/// type_conflict fails when a column that a new table merges with an inherited one has another type, naming it as
+/// Postgres' MergeAttributes does.
+fn type_conflict(what: &str, name: &str, inherited: ColumnType, other: ColumnType) -> Result<()> {
+    if inherited == other {
+        return Ok(());
+    }
+    Err(PgError {
+        detail: Some(format!("{} versus {}", type_display(inherited.oid), type_display(other.oid))),
+        ..PgError::new(code::DATATYPE_MISMATCH, format!("{what} \"{name}\" has a type conflict"))
+    })
+}
 
 /// constraint_type returns a constraint node's type.
 pub(crate) fn constraint_type(constraint: &pg_query::protobuf::Constraint) -> ConstrType {
@@ -216,6 +228,7 @@ impl TableParts {
             primary_key: false,
             default: String::new(),
             generated: false,
+            mysql_type: String::new(),
         };
         check_constraint_attributes(&def.constraints)?;
         let deferrals = column_deferrals(&def.constraints);
@@ -468,7 +481,101 @@ impl Ctx<'_> {
     pub fn create_table(&mut self, create: &CreateStmt) -> Result<Outcome> {
         let relation = create.relation.as_ref().ok_or_else(|| PgError::internal("CREATE TABLE without a name"))?;
         let schema = self.target_schema(&relation.schemaname, relation.location)?;
-        self.create_table_in(create, schema)
+        if self.nonlocal_table(relation)?.is_some() {
+            let message = format!("relation \"{}\" already exists", relation.relname);
+            if create.if_not_exists {
+                self.session.notice(PgError::notice(code::DUPLICATE_TABLE, format!("{message}, skipping")));
+                return Ok(Outcome::command("CREATE TABLE"));
+            }
+            return Err(PgError::new(code::DUPLICATE_TABLE, message));
+        }
+        self.check_nonlocal_name(&relation.relname)?;
+        if create.inh_relations.is_empty() {
+            return self.create_table_in(create, schema);
+        }
+        let table_elts = self.inherit(create)?;
+        self.create_table_in(&CreateStmt { table_elts, inh_relations: Vec::new(), ..create.clone() }, schema)
+    }
+
+    /// inherit returns a CREATE TABLE's elements with the columns and check constraints of the tables it inherits from
+    /// first, merging columns of one name as Postgres' MergeAttributes does, since tables keep no link to their parents
+    /// and Go copies the columns as LIKE does.
+    fn inherit(&mut self, create: &CreateStmt) -> Result<Vec<Node>> {
+        let mut columns: Vec<ColumnDef> = Vec::new();
+        let mut checks: Vec<Check> = Vec::new();
+        for relation in create.inh_relations.iter().filter_map(|n| match n.node.as_ref() {
+            Some(NodeEnum::RangeVar(relation)) => Some(relation),
+            _ => None,
+        }) {
+            let parent = self.resolve_table(relation).map_err(|err| PgError { position: None, ..err })?;
+            for column in parent.columns {
+                match columns.iter_mut().find(|c| c.name == column.name) {
+                    Some(existing) => {
+                        self.session.notice(PgError::notice(
+                            "00000",
+                            format!("merging multiple inherited definitions of column \"{}\"", column.name),
+                        ));
+                        type_conflict("inherited column", &column.name, existing.ty, column.ty)?;
+                        existing.nullable &= column.nullable;
+                    }
+                    None => columns.push(ColumnDef { primary_key: false, ..column }),
+                }
+            }
+            checks.extend(
+                parent.checks.into_iter().filter(|c| !checks.iter().any(|k| k.name == c.name)).collect::<Vec<_>>(),
+            );
+        }
+        let definitions: Vec<String> =
+            columns
+                .iter()
+                .map(crate::dolt::patch::column_definition)
+                .chain(checks.iter().map(|c| {
+                    format!("CONSTRAINT {} CHECK ({})", crate::engine::quote_identifier(&c.name), c.expression)
+                }))
+                .collect();
+        let parsed = pg_query::parse(&format!("CREATE TABLE inherited ({})", definitions.join(", ")))
+            .map_err(PgError::internal)?;
+        let Some(NodeEnum::CreateStmt(inherited)) =
+            parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
+        else {
+            return Err(PgError::internal("the inherited columns"));
+        };
+        let mut elements = inherited.table_elts;
+        let mut local = Vec::new();
+        for element in &create.table_elts {
+            let Some(NodeEnum::ColumnDef(def)) = element.node.as_ref() else {
+                local.push(element.clone());
+                continue;
+            };
+            let Some(i) = columns.iter().position(|c| c.name == def.colname) else {
+                local.push(element.clone());
+                continue;
+            };
+            self.session.notice(PgError::notice(
+                "00000",
+                format!("merging column \"{}\" with inherited definition", def.colname),
+            ));
+            if let Some(type_name) = &def.type_name {
+                type_conflict("column", &def.colname, columns[i].ty, resolve_type_name(type_name)?)?;
+            }
+            let Some(NodeEnum::ColumnDef(inherited)) = elements[i].node.as_ref() else { continue };
+            let mut merged = def.clone();
+            for constraint in &inherited.constraints {
+                let Some(NodeEnum::Constraint(c)) = constraint.node.as_ref() else { continue };
+                if !def
+                    .constraints
+                    .iter()
+                    .any(|d| matches!(d.node.as_ref(), Some(NodeEnum::Constraint(d)) if d.contype == c.contype))
+                {
+                    merged.constraints.push(constraint.clone());
+                }
+            }
+            elements[i] = Node { node: Some(NodeEnum::ColumnDef(merged)) };
+        }
+        let checks = elements.split_off(columns.len());
+        elements.extend(local);
+        elements.extend(checks);
+        Ok(elements)
     }
 
     /// create_table_in runs CREATE TABLE in a schema, which may be the `dolt` schema that holds Dolt's own tables.
@@ -597,7 +704,7 @@ impl Ctx<'_> {
     }
 
     /// write_new_table chooses the columns' tags and writes a new empty table to the working root.
-    fn write_new_table(
+    pub(crate) fn write_new_table(
         &mut self,
         schema: &str,
         name: &str,
@@ -609,9 +716,10 @@ impl Ctx<'_> {
         let mut tags = self.txn.all_tags(self.db)?;
         let mut kinds = Vec::new();
         for column in &mut columns {
-            column.tag = auto_generate_tag(&tags, name, &kinds, &column.name, EXTENDED_KIND);
+            let kind = if column.mysql_type.is_empty() { EXTENDED_KIND } else { STRING_KIND };
+            column.tag = auto_generate_tag(&tags, name, &kinds, &column.name, kind);
             tags.insert(column.tag);
-            kinds.push(EXTENDED_KIND);
+            kinds.push(kind);
         }
         let value_columns: Vec<usize> = (0..columns.len()).filter(|i| !primary_key.contains(i)).collect();
         let message = schema_message(&columns, &[], &primary_key, &value_columns, &checks, &indexes, &primary)?;
@@ -666,6 +774,7 @@ impl Ctx<'_> {
                     primary_key: false,
                     default: String::new(),
                     generated: false,
+                    mysql_type: String::new(),
                 }
             })
             .collect();
@@ -1098,6 +1207,7 @@ impl Ctx<'_> {
                 primary_key: false,
                 default: format!("({text})"),
                 generated: true,
+                mysql_type: String::new(),
             });
         }
         let index = IndexDef { descending, nulls_last, op_classes, predicate, ..new_index(name, columns, stmt.unique) };

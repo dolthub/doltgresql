@@ -846,6 +846,7 @@ impl Ctx<'_> {
         let mut ctx = Ctx {
             db: &mut *self.db,
             txn: &mut *self.txn,
+            branches: &mut *self.branches,
             session: &mut *self.session,
             parameters,
             params,

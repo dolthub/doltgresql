@@ -1612,3 +1612,112 @@ fn test_constraint_attribute_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_inherited_column_rules() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Inherited column merging",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE p1 (a INT NOT NULL DEFAULT 7, b TEXT, CONSTRAINT p1_b CHECK (b <> 'x'));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE p2 (a TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c1 () INHERITS (p1, p2);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"inherited column "a" has a type conflict"#, detail: "integer versus text", ..E }),
+                    notices: &[Diagnostic { code: "00000", message: r#"merging multiple inherited definitions of column "a""#, ..N }],
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c2 (a TEXT) INHERITS (p1);",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"column "a" has a type conflict"#, detail: "integer versus text", ..E }),
+                    notices: &[Diagnostic { code: "00000", message: r#"merging column "a" with inherited definition"#, ..N }],
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c3 (c INT, b TEXT DEFAULT 'z') INHERITS (p1);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    notices: &[Diagnostic { code: "00000", message: r#"merging column "b" with inherited definition"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c3 (c) VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM c3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT), Column("c", INT4)],
+                        rows: &[
+                            &[T("7"), T("z"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c3 (a) VALUES (NULL);",
+                    expected: Expected::Error(Diagnostic { code: "23502", message: r#"null value in column "a" of relation "c3" violates not-null constraint"#, detail: "Failing row contains (null, z, null).", schema: "public", table: "c3", column: "a", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c3 (b) VALUES ('x');",
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"new row for relation "c3" violates check constraint "p1_b""#, detail: "Failing row contains (7, x, null).", schema: "public", table: "c3", constraint: "p1_b", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c4 () INHERITS (missing);",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "missing" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Parent scans include inherited rows",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE p3 (a INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE c5 (b INT) INHERITS (p3);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO c5 VALUES (1, 2);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM p3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("tables keep no link to the tables they inherit from, as in Go, so a parent's scan leaves out its children's rows"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

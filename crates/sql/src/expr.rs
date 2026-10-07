@@ -104,6 +104,17 @@ pub enum ArrayOp {
     Overlaps,
 }
 
+/// Location is where an expression starts in the statement's text.
+#[derive(Clone, Copy, Debug)]
+pub struct Location(pub i32);
+
+impl PartialEq for Location {
+    /// eq treats every location as equal, since where an expression was written does not change what it computes.
+    fn eq(&self, _: &Location) -> bool {
+        true
+    }
+}
+
 /// Expr is a bound expression.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -166,8 +177,9 @@ pub enum Expr {
     DateTime(DateOp, Box<Expr>, Box<Expr>),
     /// A window function call's result, by its position among the select list's window calls.
     WindowRef(usize),
-    /// A row constructor.
-    Row(Vec<Expr>),
+    /// A row constructor, with each field's type and location, where a literal keeps the unknown type until the row
+    /// converts to a composite type.
+    Row(Vec<Expr>, Vec<(ColumnType, Location)>),
     /// A set-returning function call's current row, by its position among the select list's set-returning calls.
     SetRef(usize),
     /// An ARRAY constructor of the element type, whose items are themselves arrays when it is multidimensional.
@@ -472,21 +484,25 @@ impl<'b, 'a> Binder<'b, 'a> {
             NodeEnum::SubLink(link) => self.sublink(link),
             NodeEnum::AArrayExpr(array) => self.array_expr(array, None),
             NodeEnum::RowExpr(row) => {
-                let mut fields = Vec::with_capacity(row.args.len());
+                let (mut fields, mut types) = (Vec::with_capacity(row.args.len()), Vec::with_capacity(row.args.len()));
                 for arg in &row.args {
                     if let Some(NodeEnum::ColumnRef(column)) = arg.node.as_ref()
                         && let [table, star] = column.fields.as_slice()
                         && matches!(star.node, Some(NodeEnum::AStar(_)))
                         && let Some(table) = node_name(table)
                     {
-                        fields.extend(self.whole_row_columns(table).into_iter().map(|(_, expr, _)| expr));
+                        for (_, expr, ty) in self.whole_row_columns(table) {
+                            fields.push(expr);
+                            types.push((ty, Location(arg_location(arg))));
+                        }
                         continue;
                     }
                     let (expr, ty) = self.bind(arg)?;
+                    types.push((ty, Location(arg_location(arg))));
                     let ty = if ty.oid == oid::UNKNOWN { typ(oid::TEXT) } else { ty };
                     fields.push(coerce((expr, ty), ty, false, arg_location(arg))?.0);
                 }
-                Ok((Expr::Row(fields), typ(oid::RECORD)))
+                Ok((Expr::Row(fields, types), typ(oid::RECORD)))
             }
             NodeEnum::AIndirection(indirection) => self.indirection(indirection),
             NodeEnum::NullTest(test) => {
@@ -582,7 +598,10 @@ impl<'b, 'a> Binder<'b, 'a> {
                     Some(type_oid) => type_oid,
                     None => crate::usertypes::transient(name, &types),
                 };
-                let row = Expr::Row(columns.into_iter().map(|(_, e, _)| e).collect());
+                let row = Expr::Row(
+                    columns.iter().map(|(_, e, _)| e.clone()).collect(),
+                    columns.iter().map(|(_, _, t)| (*t, Location(-1))).collect(),
+                );
                 return Ok((Expr::Cast(Box::new(row), typ(type_oid), false), typ(type_oid)));
             }
         }
@@ -1778,7 +1797,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                     return Err(PgError {
                         position: position(arg_location(arg)),
                         ..PgError::new(
-                            code::DATATYPE_MISMATCH,
+                            code::WRONG_OBJECT_TYPE,
                             format!(
                                 "column notation .{} applied to type {}, which is not a composite type",
                                 field.sval,
@@ -2148,17 +2167,41 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         let (expr, _) = coerce((expr, from), base, explicit, location)?;
         return Ok((Expr::Cast(Box::new(expr), to, explicit), to));
     }
-    if let (Expr::Row(fields), oid::RECORD, Some(user_type)) = (&expr, from.oid, crate::usertypes::get(to.oid))
+    if let (Expr::Row(fields, types), oid::RECORD, Some(user_type)) = (&expr, from.oid, crate::usertypes::get(to.oid))
         && let crate::usertypes::Kind::Composite(attributes) = &user_type.kind
-        && fields.len() != attributes.len()
     {
-        let detail =
-            if fields.len() < attributes.len() { "Input has too few columns." } else { "Input has too many columns." };
-        return Err(PgError {
-            position: position(location),
-            detail: Some(detail.into()),
+        let error = |detail: String, at: i32| PgError {
+            position: position(at),
+            detail: Some(detail),
             ..PgError::new(code::CANNOT_COERCE, format!("cannot cast type record to {}", user_type.name))
-        });
+        };
+        if fields.len() != attributes.len() {
+            let detail = if fields.len() < attributes.len() { "too few" } else { "too many" };
+            return Err(error(format!("Input has {detail} columns."), location));
+        }
+        let mut converted = Vec::with_capacity(fields.len());
+        for (i, ((field, &(ty, Location(at))), (_, attribute))) in fields.iter().zip(types).zip(attributes).enumerate()
+        {
+            let (field, ty) = match ty.oid {
+                oid::UNKNOWN => (field.clone(), ty),
+                _ if explicit => coerce((field.clone(), ty), *attribute, true, location)?,
+                _ => assign((field.clone(), ty), *attribute, "", at).map_err(|err| match err.code {
+                    code::DATATYPE_MISMATCH => error(
+                        format!(
+                            "Cannot cast type {} to {} in column {}.",
+                            type_display(ty.oid),
+                            type_display(attribute.oid),
+                            i + 1
+                        ),
+                        at,
+                    ),
+                    _ => err,
+                })?,
+            };
+            converted.push(coerce((field, ty), *attribute, explicit, at)?.0);
+        }
+        let types = attributes.iter().map(|(_, t)| (*t, Location(-1))).collect();
+        return Ok((Expr::Cast(Box::new(Expr::Row(converted, types)), to, explicit), to));
     }
     let from = crate::usertypes::base_type(from);
     if (from.oid == oid::CHAR) != (to.oid == oid::CHAR) && from.oid != oid::UNKNOWN {
@@ -2362,7 +2405,7 @@ pub fn array_of(element: u32) -> u32 {
 /// assign converts a bound expression to a column's type as an assignment does, which also allows numeric narrowing
 /// and conversions to text, and names the column in its error.
 pub fn assign(bound: Bound, to: ColumnType, column: &str, location: i32) -> Result<Bound> {
-    if let (Expr::Row(_), true) = (&bound.0, is_composite(to.oid)) {
+    if let (Expr::Row(..), true) = (&bound.0, is_composite(to.oid)) {
         return coerce(bound, to, false, location);
     }
     let from = bound.1.oid;
@@ -2734,7 +2777,7 @@ impl Expr {
                 date_op(*op, l, r)?
             }
             Expr::SubqueryValue => ctx.subquery_value.clone(),
-            Expr::Row(fields) => Value::Record(fields.iter().map(|f| f.eval(ctx, row)).collect::<Result<Vec<_>>>()?),
+            Expr::Row(fields, _) => Value::Record(fields.iter().map(|f| f.eval(ctx, row)).collect::<Result<Vec<_>>>()?),
             Expr::Array(element, items, nested) => {
                 let values = items.iter().map(|i| i.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
                 if *nested {
@@ -3020,7 +3063,7 @@ impl Expr {
                 Expr::DateTime(op, l, b(r))
             }
             Expr::Array(t, items, n) => Expr::Array(t, items.into_iter().map(&mut *f).collect(), n),
-            Expr::Row(fields) => Expr::Row(fields.into_iter().map(&mut *f).collect()),
+            Expr::Row(fields, types) => Expr::Row(fields.into_iter().map(&mut *f).collect(), types),
             Expr::Subscript(base, subscripts, slice) => {
                 let base = b(base);
                 let subscripts = subscripts.into_iter().map(|(l, u)| (l.map(&mut *f), u.map(&mut *f))).collect();
@@ -3079,7 +3122,7 @@ impl Expr {
             | Expr::MinMax(_, args)
             | Expr::Array(_, args, _)
             | Expr::Xml(_, args)
-            | Expr::Row(args) => args.iter().for_each(|a| a.visit(f)),
+            | Expr::Row(args, _) => args.iter().for_each(|a| a.visit(f)),
             Expr::Subscript(base, subscripts, _) => {
                 base.visit(f);
                 for (l, u) in subscripts {

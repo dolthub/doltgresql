@@ -27,6 +27,9 @@ pub const RESERVED_TAG_MIN: u64 = 1 << 50;
 /// EXTENDED_KIND is the Noms kind of every Doltgres column.
 pub const EXTENDED_KIND: u8 = 32;
 
+/// STRING_KIND is the Noms kind of a MySQL string column, as Dolt's own tables have.
+pub const STRING_KIND: u8 = 2;
+
 /// simple_string lowercases the text and drops every character other than an ASCII letter or digit.
 fn simple_string(text: &str) -> String {
     text.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_lowercase()).collect()

@@ -35,6 +35,9 @@ use crate::{Column, oid};
 pub struct Ctx<'a> {
     pub db: &'a mut Database,
     pub txn: &'a mut Txn,
+    /// The session's open transactions on the database's other branches, which statements that change another
+    /// branch's tables join.
+    pub branches: &'a mut Vec<Txn>,
     pub session: &'a mut SessionState,
     /// The types of the statement's parameters, where 0 is a type not yet known.
     pub parameters: &'a mut Vec<u32>,
@@ -73,6 +76,9 @@ pub fn column(name: String, ty: crate::catalog::ColumnType) -> Column {
 impl Ctx<'_> {
     /// resolve_table loads the table that a range variable names.
     pub fn resolve_table(&mut self, relation: &RangeVar) -> Result<TableDef> {
+        if let Some(table) = self.nonlocal_table(relation)? {
+            return Ok(table);
+        }
         let schemas: Vec<String> =
             if relation.schemaname.is_empty() { self.session.search_path() } else { vec![relation.schemaname.clone()] };
         for schema in &schemas {
@@ -80,11 +86,11 @@ impl Ctx<'_> {
                 return Ok(table);
             }
         }
-        if relation.schemaname.is_empty()
-            && relation.relname == "dolt_rebase"
-            && let Some(table) = self.txn.table(self.db, "dolt", "rebase")?
-        {
-            return Ok(table);
+        if relation.schemaname.is_empty() && relation.relname.starts_with("dolt_") {
+            let name = if relation.relname == "dolt_rebase" { "rebase" } else { &relation.relname };
+            if let Some(table) = self.txn.table(self.db, "dolt", name)? {
+                return Ok(table);
+            }
         }
         Err(undefined_table(relation))
     }
@@ -121,7 +127,7 @@ impl Ctx<'_> {
             None if relation.catalogname.is_empty() || !self.session.display.contains('/') => return Ok(None),
             None => (relation.catalogname.as_str(), self.session.checked_out_branch(&relation.catalogname)),
         };
-        if database != self.session.database || branch == self.session.branch {
+        if database != self.session.database || branch == self.txn.branch {
             return Ok(None);
         }
         match self.branch_root(&branch)? {
@@ -133,9 +139,12 @@ impl Ctx<'_> {
         }
     }
 
-    /// branch_root returns the working root of a branch of the session's database as its working set last stored
-    /// it, or None for a missing branch.
+    /// branch_root returns the working root of a branch of the session's database as the session's transaction on it
+    /// holds it, or as its working set last stored it, or None for a missing branch.
     pub fn branch_root(&mut self, branch: &str) -> Result<Option<doltdb::root::Root>> {
+        if let Some(txn) = self.branches.iter().find(|t| t.database == self.txn.database && t.branch == branch) {
+            return Ok(Some(txn.root.clone()));
+        }
         let address = match self.db.head(&doltdb::create::working_set_ref(branch))? {
             Some(address) => {
                 let data = crate::txn::read(self.db, &address)?;
@@ -149,8 +158,27 @@ impl Ctx<'_> {
         Ok(Some(doltdb::root::Root::decode(&crate::txn::read(self.db, &address)?)?))
     }
 
+    /// on_branch runs a function with the session's transaction on another branch of the database in place of its own,
+    /// beginning that transaction when the session has none, so that the function's changes go to that branch.
+    pub fn on_branch<T>(&mut self, branch: &str, f: impl FnOnce(&mut Ctx<'_>) -> Result<T>) -> Result<T> {
+        let index = match self.branches.iter().position(|t| t.database == self.txn.database && t.branch == branch) {
+            Some(index) => index,
+            None => {
+                let (handle, sequences) = (self.txn.handle.clone(), self.txn.sequences.clone());
+                let mut txn = Txn::begin_locked(self.db, handle, sequences, &self.txn.database, branch)?;
+                txn.started = self.txn.started;
+                self.branches.push(txn);
+                self.branches.len() - 1
+            }
+        };
+        std::mem::swap(self.txn, &mut self.branches[index]);
+        let result = f(self);
+        std::mem::swap(self.txn, &mut self.branches[index]);
+        result
+    }
+
     /// revision_root returns the root value at a revision, or None for a time before the branch's first commit.
-    fn revision_root(&mut self, revision: &str) -> Result<Option<doltdb::root::Root>> {
+    pub(crate) fn revision_root(&mut self, revision: &str) -> Result<Option<doltdb::root::Root>> {
         let address = match revision.to_ascii_uppercase().as_str() {
             "WORKING" => return Ok(Some(self.txn.root.clone())),
             "STAGED" => return Ok(Some(self.txn.staged.clone())),

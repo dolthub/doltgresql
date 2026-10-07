@@ -44292,7 +44292,7 @@ fn test_nonlocal_table() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres lacks this statement, so this expectation follows the CREATE TABLE that DOLT_PATCH writes.
                 ScriptTestAssertion {
                     query: "show create table nonlocal_table;",
                     expected: Expected::Rows {
@@ -44303,7 +44303,7 @@ fn test_nonlocal_table() {
   PRIMARY KEY ("pk")
 )"#)],
                         ],
-                        tag: "SHOW CREATE",
+                        tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -45186,17 +45186,17 @@ fn test_nonlocal_table() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres lacks this statement, so this expectation follows psql's describe commands.
                 ScriptTestAssertion {
                     query: "show tables",
                     expected: Expected::Rows {
-                        columns: &[Column("Tables_in_mydb", TEXT)],
+                        columns: &[Column("Schema", NAME), Column("Name", NAME), Column("Type", TEXT), Column("Owner", NAME)],
                         rows: &[
-                            &[T("table_alias_1")],
-                            &[T("table_alias_2")],
-                            &[T("table_alias_wild_3")],
+                            &[T("public"), T("table_alias_1"), T("table"), T("postgres")],
+                            &[T("public"), T("table_alias_2"), T("table"), T("postgres")],
+                            &[T("public"), T("table_alias_wild_3"), T("table"), T("postgres")],
                         ],
-                        tag: "SHOW TABLES",
+                        tag: "SELECT 3",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -45501,15 +45501,15 @@ fn test_nonlocal_table() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres lacks this statement, so this expectation follows psql's describe commands.
                 ScriptTestAssertion {
                     query: "show tables;",
                     expected: Expected::Rows {
-                        columns: &[Column("Tables_in_mydb", TEXT)],
+                        columns: &[Column("Schema", NAME), Column("Name", NAME), Column("Type", TEXT), Column("Owner", NAME)],
                         rows: &[
-                            &[T("foo")],
+                            &[T("public"), T("foo"), T("table"), T("postgres")],
                         ],
-                        tag: "SHOW TABLES",
+                        tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -45527,15 +45527,15 @@ fn test_nonlocal_table() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres lacks this statement, so this expectation follows psql's describe commands.
                 ScriptTestAssertion {
                     query: "show tables;",
                     expected: Expected::Rows {
-                        columns: &[Column("Tables_in_mydb", TEXT)],
+                        columns: &[Column("Schema", NAME), Column("Name", NAME), Column("Type", TEXT), Column("Owner", NAME)],
                         rows: &[
-                            &[T("foo")],
+                            &[T("public"), T("foo"), T("table"), T("postgres")],
                         ],
-                        tag: "SHOW TABLES",
+                        tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -45756,15 +45756,15 @@ fn test_nonlocal_table() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres lacks this statement, so this expectation follows psql's describe commands.
                 ScriptTestAssertion {
                     query: "SHOW TABLES;",
                     expected: Expected::Rows {
-                        columns: &[Column("Tables_in_mydb", TEXT)],
+                        columns: &[Column("Schema", NAME), Column("Name", NAME), Column("Type", TEXT), Column("Owner", NAME)],
                         rows: &[
-                            &[T("global_test")],
+                            &[T("public"), T("global_test"), T("table"), T("postgres")],
                         ],
-                        tag: "SHOW TABLES",
+                        tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -45795,15 +45795,15 @@ fn test_nonlocal_table() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: Postgres lacks this statement, so this expectation follows psql's describe commands.
                 ScriptTestAssertion {
                     query: "SHOW TABLES;",
                     expected: Expected::Rows {
-                        columns: &[Column("Tables_in_mydb", TEXT)],
+                        columns: &[Column("Schema", NAME), Column("Name", NAME), Column("Type", TEXT), Column("Owner", NAME)],
                         rows: &[
-                            &[T("global_test")],
+                            &[T("public"), T("global_test"), T("table"), T("postgres")],
                         ],
-                        tag: "SHOW TABLES",
+                        tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
                     ..A
@@ -46227,6 +46227,186 @@ fn test_versioned_queries() {
                         tag: "SELECT 3",
                     },
                     flow: Flow::Simple,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_nonlocal_table_writes() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Writes through nonlocal tables",
+            assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t1 (pk INT PRIMARY KEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "INSERT INTO t1 VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT dolt_commit('-Am', 'create t1');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_commit", TEXT)],
+                        rows: &[
+                            &[Any],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT dolt_tag('v1');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_tag", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT dolt_branch('other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_branch", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "INSERT INTO dolt_nonlocal_tables VALUES ('tagged', 'v1', 't1', 'immediate'), ('shared', 'other', 't1', 'immediate');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT * FROM tagged;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "INSERT INTO tagged VALUES (2);",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "table doesn't support INSERT INTO", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "UPDATE tagged SET pk = 3;",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "table doesn't support UPDATE", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "DELETE FROM tagged;",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "table doesn't support DELETE FROM", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "INSERT INTO shared VALUES (4);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "UPDATE shared SET pk = 5 WHERE pk = 4;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT * FROM shared ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t1 ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM "postgres/other".public.t1 ORDER BY pk;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: r#"DELETE FROM "postgres/other".public.t1 WHERE pk = 5;"#,
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT * FROM shared ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "CREATE TABLE shared (pk INT PRIMARY KEY);",
+                    expected: Expected::Error(Diagnostic { code: "42P07", message: r#"relation "shared" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tagged_too (pk INT PRIMARY KEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
                     ..A
                 },
             ],

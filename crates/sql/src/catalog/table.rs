@@ -45,6 +45,9 @@ pub struct ColumnDef {
     pub default: String,
     /// Whether the column is generated from its expression, as a stored generated column is.
     pub generated: bool,
+    /// The MySQL type that Dolt gives a column of one of its own tables, as its schema names it, which is empty for a
+    /// Doltgres type.
+    pub mysql_type: String,
 }
 
 /// Check is a check constraint: its name and its expression's SQL text.
@@ -179,6 +182,10 @@ impl TableDef {
                 primary_key: c.primary_key,
                 default: String::from_utf8_lossy(c.default_value).into_owned(),
                 generated: c.generated,
+                mysql_type: match c.sql_type.starts_with(b"extended_") {
+                    true => String::new(),
+                    false => String::from_utf8_lossy(c.sql_type).into_owned(),
+                },
             };
             if c.hidden_system && c.is_virtual {
                 positions.push(Some(HIDDEN_BASE + hidden.len()));
@@ -480,8 +487,13 @@ pub fn schema_message(
 ) -> Result<Vec<u8>> {
     let all: Vec<(&ColumnDef, bool)> =
         columns.iter().map(|c| (c, false)).chain(hidden.iter().map(|c| (c, true))).collect();
-    let types: Vec<Vec<u8>> =
-        all.iter().map(|(c, _)| c.ty.serialized().map(String::into_bytes)).collect::<Result<_>>()?;
+    let types: Vec<Vec<u8>> = all
+        .iter()
+        .map(|(c, _)| match c.mysql_type.is_empty() {
+            true => c.ty.serialized().map(String::into_bytes),
+            false => Ok(c.mysql_type.clone().into_bytes()),
+        })
+        .collect::<Result<_>>()?;
     let fields = all
         .iter()
         .zip(&types)

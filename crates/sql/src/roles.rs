@@ -820,7 +820,8 @@ impl Ctx<'_> {
 
     /// resolve_target resolves the table that INSERT, UPDATE, or DELETE changes, checking the privilege on a view of
     /// that name first, as Postgres does before it rewrites a change of a view, and creating the docs table on the
-    /// first change of it and a schema's dolt_ignore table on the first INSERT into it, as Dolt does.
+    /// first change of it and a schema's dolt_ignore table and the dolt_nonlocal_tables table on the first INSERT into
+    /// them, as Dolt does.
     pub fn resolve_target(&mut self, relation: &pg_query::protobuf::RangeVar, privilege: &str) -> Result<TableDef> {
         match self.resolve_table(relation) {
             Ok(table) => Ok(table),
@@ -831,6 +832,12 @@ impl Ctx<'_> {
                 }
                 None if crate::dolt::docs::is_docs(&relation.schemaname, &relation.relname) => {
                     crate::dolt::docs::table(self)
+                }
+                None if relation.relname == crate::dolt::nonlocal::TABLE
+                    && matches!(relation.schemaname.as_str(), "" | crate::dolt::nonlocal::SCHEMA)
+                    && privilege == "a" =>
+                {
+                    crate::dolt::nonlocal::table(self)
                 }
                 None if relation.relname == crate::dolt::ignore::TABLE && privilege == "a" => {
                     let schema = match relation.schemaname.as_str() {

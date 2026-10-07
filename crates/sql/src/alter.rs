@@ -124,6 +124,7 @@ impl Ctx<'_> {
             Err(err) => return Err(PgError { position: None, ..err }),
         };
         self.require_owner(&crate::auth::Object::Table(table.schema.clone(), table.name.clone()))?;
+        let before: Vec<u64> = table.columns.iter().map(|c| c.tag).collect();
         let mut alteration = Alteration::new(table);
         for cmd in &stmt.cmds {
             let Some(NodeEnum::AlterTableCmd(cmd)) = cmd.node.as_ref() else { continue };
@@ -132,6 +133,7 @@ impl Ctx<'_> {
         let foreign = std::mem::take(&mut alteration.foreign);
         let (schema, name) = (alteration.table.schema.clone(), alteration.table.name.clone());
         self.finish_alteration(alteration)?;
+        self.update_row_type_users(&schema, &name, &before)?;
         for constraint in foreign {
             let table = self
                 .txn
@@ -346,6 +348,9 @@ impl Ctx<'_> {
                 self.create_owned_sequence(&schema, &name, &column.name, data_type, options, &mut taken)?;
             column.nullable = false;
         }
+        if !column.default.is_empty() {
+            self.check_row_type_unused(&alteration.table)?;
+        }
         let primary = parts.primary_key.contains(&index);
         if !column.default.is_empty() || !column.nullable || primary {
             self.rows(alteration)?;
@@ -459,9 +464,10 @@ impl Ctx<'_> {
         Ok(())
     }
 
-    /// alter_column_type runs ALTER COLUMN TYPE, converting each row's value with the USING expression or a cast.
-    fn alter_column_type(&mut self, alteration: &mut Alteration, cmd: &AlterTableCmd) -> Result<()> {
-        let row_type = crate::pgcatalog::row_type_oid(&alteration.table.schema, &alteration.table.name);
+    /// check_row_type_unused fails when a column of another table holds a table's row type, which a change that
+    /// rewrites the table's rows cannot keep up to date.
+    fn check_row_type_unused(&mut self, table: &TableDef) -> Result<()> {
+        let row_type = crate::pgcatalog::row_type_oid(&table.schema, &table.name);
         for ((schema, name), address) in crate::dolt::procedures::table_map(self.db, &self.txn.root.clone())? {
             let other = TableDef::load(self.db, &schema, &name, address)?;
             if let Some(column) = other.columns.iter().find(|c| c.ty.oid == row_type) {
@@ -469,11 +475,54 @@ impl Ctx<'_> {
                     code::FEATURE_NOT_SUPPORTED,
                     format!(
                         "cannot alter table \"{}\" because column \"{name}.{}\" uses its row type",
-                        alteration.table.name, column.name
+                        table.name, column.name
                     ),
                 ));
             }
         }
+        Ok(())
+    }
+
+    /// update_row_type_users rewrites the columns of other tables that hold a table's row type after the table's
+    /// columns changed, keeping the fields of the columns that the table still has and leaving new ones NULL, as Go's
+    /// AfterTableAddColumn and AfterTableDropColumn do.
+    fn update_row_type_users(&mut self, schema: &str, name: &str, before: &[u64]) -> Result<()> {
+        let table =
+            self.txn.table(self.db, schema, name)?.ok_or_else(|| PgError::internal("an altered table vanished"))?;
+        let after: Vec<u64> = table.columns.iter().map(|c| c.tag).collect();
+        if after == before {
+            return Ok(());
+        }
+        let row_type = crate::pgcatalog::row_type_oid(schema, name);
+        for ((other_schema, other_name), address) in
+            crate::dolt::procedures::table_map(self.db, &self.txn.root.clone())?
+        {
+            let other = TableDef::load(self.db, &other_schema, &other_name, address)?;
+            let users: Vec<usize> = (0..other.columns.len()).filter(|&i| other.columns[i].ty.oid == row_type).collect();
+            if users.is_empty() {
+                continue;
+            }
+            let mut rows = scan(self.db, &other)?;
+            for row in &mut rows {
+                for &i in &users {
+                    if let Value::Composite(value) = &mut row[i] {
+                        value.fields = after
+                            .iter()
+                            .map(|tag| before.iter().position(|b| b == tag).and_then(|k| value.fields.get(k).cloned()))
+                            .map(|field| field.unwrap_or(Value::Null))
+                            .collect();
+                    }
+                }
+            }
+            crate::usertypes::replace_row_type(&table);
+            self.finish_alteration(Alteration { rows: Some(rows), rebuild: true, ..Alteration::new(other) })?;
+        }
+        Ok(())
+    }
+
+    /// alter_column_type runs ALTER COLUMN TYPE, converting each row's value with the USING expression or a cast.
+    fn alter_column_type(&mut self, alteration: &mut Alteration, cmd: &AlterTableCmd) -> Result<()> {
+        self.check_row_type_unused(&alteration.table)?;
         let Some(NodeEnum::ColumnDef(def)) = cmd.def.as_deref().and_then(|d| d.node.as_ref()) else {
             return Err(PgError::internal("ALTER COLUMN TYPE without a type"));
         };

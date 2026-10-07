@@ -28,7 +28,8 @@ const CLEAN: Parser =
     Parser { command: "clean", options: &[("dry-run", "", Kind::Flag), ("x", "x", Kind::Flag)], max_args: None };
 
 /// dolt_clean deletes the working root's tables and root objects that the staged root lacks, or only the named ones,
-/// leaving out tables that dolt_ignore ignores unless asked not to, as Dolt's CleanUntracked does.
+/// leaving out tables that dolt_nonlocal_tables matches and tables that dolt_ignore ignores unless asked not to, as
+/// Dolt's CleanUntracked does.
 pub fn dolt_clean(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     ctx.check_branch_access(crate::dolt::branch_control::WRITE)?;
     let parsed = CLEAN.parse(&strings(args))?;
@@ -42,7 +43,11 @@ pub fn dolt_clean(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         }
     }
     if parsed.args.is_empty() {
+        let nonlocal = crate::dolt::nonlocal::rules(ctx, &working)?;
         for key in table_map(ctx.db, &working)?.into_keys() {
+            if nonlocal.iter().any(|rule| crate::dolt::ignore::matches(&rule.pattern, &key.1, false)) {
+                continue;
+            }
             if !parsed.has("x") {
                 let patterns = crate::dolt::ignore::patterns(ctx, &working, &key.0)?;
                 if crate::dolt::ignore::is_ignored(&patterns, &key.0, &key.1)? {

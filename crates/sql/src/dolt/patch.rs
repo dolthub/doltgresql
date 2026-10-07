@@ -67,7 +67,7 @@ fn type_text(ty: ColumnType) -> String {
 
 /// column_definition returns a column's definition as Doltgres' schema formatter writes it, quoting a stored default
 /// that is a bare constant as Dolt does, and parenthesizing one that is an expression.
-fn column_definition(column: &ColumnDef) -> String {
+pub(crate) fn column_definition(column: &ColumnDef) -> String {
     let mut out = format!("{} {}", quote_identifier(&column.name), type_text(column.ty));
     if !column.nullable {
         out.push_str(" NOT NULL");

@@ -33,7 +33,8 @@ pub struct ViewDef {
 pub struct Snapshot {
     /// The schemas, in name order.
     pub schemas: Vec<String>,
-    /// The tables, without Dolt's own tables, in schema and name order.
+    /// The tables, without Dolt's own tables and with the tables that dolt_nonlocal_tables names, in schema and name
+    /// order.
     pub tables: Vec<TableDef>,
     pub views: Vec<ViewDef>,
     pub sequences: Vec<Sequence>,
@@ -97,6 +98,13 @@ impl Ctx<'_> {
                 continue;
             }
             tables.push(TableDef::load(self.db, schema, name, address)?);
+        }
+        for schema in &schemas {
+            for table in self.nonlocal_tables(schema)? {
+                if !tables.iter().any(|t| t.schema == table.schema && t.name == table.name) {
+                    tables.push(table);
+                }
+            }
         }
         tables.sort_by(|a, b| (&a.schema, &a.name).cmp(&(&b.schema, &b.name)));
         let mut views = Vec::new();
