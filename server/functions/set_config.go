@@ -20,7 +20,10 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
+	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/settings"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -31,16 +34,17 @@ func initSetConfig() {
 // set_config_text_text_boolean implements the set_config() function
 // https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADMIN-SET
 var set_config_text_text_boolean = framework.Function3{
-	Name:       "set_config",
-	Return:     pgtypes.Text,
-	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Bool},
+	Name:               "set_config",
+	IsNonDeterministic: true,
+	Return:             pgtypes.Text,
+	Parameters:         [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Bool},
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, settingName any, newValue any, isLocal any) (any, error) {
 		if settingName == nil {
 			return nil, errors.Errorf("NULL value not allowed for configuration setting name")
 		}
 
-		// NULL is not supported for configuration values, and gets turned into the empty string
-		if newValue == nil {
+		reset := newValue == nil
+		if reset {
 			newValue = ""
 		}
 
@@ -52,26 +56,32 @@ var set_config_text_text_boolean = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-
-		// set_config can set system configuration or user configuration. System configuration settings are in top
-		// level settings, while user configuration settings are namespaced.
-		isUserConfig := strings.Contains(settingNameStr, ".")
-		if isLocal == true {
-			// A transaction-local value overrides the session value until the transaction ends, when the
-			// connection handler clears it
-			if err := ctx.Session.SetTransactionLocalVariable(ctx, settingName.(string), newValue.(string)); err != nil {
+		if strings.EqualFold(settingNameStr, "role") {
+			if err := auth.ApplySetRole(ctx, newValueStr, strings.EqualFold(newValueStr, "none"), reset || strings.EqualFold(newValueStr, "default"), isLocal == true); err != nil {
 				return nil, err
 			}
-		} else if isUserConfig {
-			if err := ctx.SetUserVariable(ctx, settingNameStr, newValueStr, pgtypes.Text); err != nil {
+			return auth.SelectedRoleSetting(ctx)
+		}
+		if strings.EqualFold(settingNameStr, "session_authorization") {
+			if err := auth.ApplySessionAuthorization(ctx, newValueStr, reset || strings.EqualFold(newValueStr, "default"), isLocal == true); err != nil {
+				return nil, err
+			}
+			return auth.SessionAuthorizationSetting(ctx)
+		}
+
+		if config.IsValidDoltConfigParameter(settingNameStr) && !config.IsValidPostgresConfigParameter(settingNameStr) {
+			if isLocal == true {
+				if err := ctx.Session.SetTransactionLocalVariable(ctx, settingNameStr, newValueStr); err != nil {
+					return nil, err
+				}
+			} else if err := ctx.SetSessionVariable(ctx, settingNameStr, newValueStr); err != nil {
 				return nil, err
 			}
 		} else {
-			if err := ctx.SetSessionVariable(ctx, settingNameStr, newValueStr); err != nil {
+			if err := settings.Set(ctx, settingNameStr, newValueStr, reset, isLocal == true); err != nil {
 				return nil, err
 			}
 		}
-
-		return newValueStr, nil
+		return getCurSetting(ctx, settingNameStr, false)
 	},
 }

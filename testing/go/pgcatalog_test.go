@@ -305,6 +305,25 @@ func TestPgAttributeViewColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_attribute includes view columns outside the search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA other;`,
+				`SET search_path = other;`,
+				`CREATE TABLE remote (id INT PRIMARY KEY, label TEXT);`,
+				`CREATE VIEW v AS SELECT id, label AS name FROM remote;`,
+				`SET search_path = public;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, a.atttypid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname = 'v' ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", uint32(23)},
+						{"name", uint32(25)},
+					},
+				},
+			},
+		},
 	})
 }
 
@@ -6839,6 +6858,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1241754361, "dolt_tags_dolt_tags_name_idx_key", 2200, "i"},
 						{2969045375, "commits_from", 1634633383, "i"},
 						{1819666711, "commits_to", 1634633383, "i"},
+						{3962040469, "dolt_blame_t1", 1634633383, "v"},
 						{1763579892, "dolt_branches", 1634633383, "r"},
 						{3929519011, "dolt_branches_dolt_branches_name_idx_key", 1634633383, "i"},
 						{1212681264, "dolt_column_diff", 1634633383, "r"},
@@ -7233,6 +7253,12 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{3947121936, "source_commit", 25, 3, "f", "f", "f"},
 						{3947121936, "target", 25, 4, "f", "f", "f"},
 						{3947121936, "unmerged_tables", 25, 5, "f", "f", "f"},
+						{3962040469, "pk", 23, 1, "f", "f", "f"},
+						{3962040469, "commit", 25, 2, "f", "f", "f"},
+						{3962040469, "commit_date", 1114, 3, "f", "f", "f"},
+						{3962040469, "committer", 25, 4, "f", "f", "f"},
+						{3962040469, "email", 25, 5, "f", "f", "f"},
+						{3962040469, "message", 25, 6, "f", "f", "f"},
 						{3999387287, "branch", 25, 1, "t", "f", "f"},
 						{3999387287, "last_read", 1114, 2, "f", "f", "f"},
 						{3999387287, "last_write", 1114, 3, "f", "f", "f"},

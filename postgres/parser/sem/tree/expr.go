@@ -1426,6 +1426,12 @@ func (node *FuncExpr) Format(ctx *FmtCtx) {
 		}
 	}
 
+	// SESSION_USER is a SQL value expression, not a callable function in
+	// PostgreSQL's grammar. Keep its printed form parseable when the parser
+	// represents it with a zero-argument FuncExpr for function resolution.
+	if node.Func.String() == "session_user" && len(node.Exprs) == 0 {
+		return
+	}
 	if !ctx.HasFlags(FmtOmitFunctionArgs) {
 		ctx.WriteString("(")
 		for i, e := range node.Exprs {

@@ -55,6 +55,7 @@ func initTypeFunctions() {
 	initRegclass()
 	initRegnamespace()
 	initRegproc()
+	initRegprocedure()
 	initRegtype()
 	initShell()
 	initText()
@@ -72,9 +73,16 @@ func initTypeFunctions() {
 	initXml()
 }
 
+// initInformationSchemaFunctions initializes all information_schema functions in this package.
+func initInformationSchemaFunctions() {
+	initPgCharMaxLength()
+	initPgTrueTypID()
+}
+
 // Init initializes all functions in this package.
 func Init() {
 	initTypeFunctions()
+	initInformationSchemaFunctions()
 	initAbs()
 	initAcos()
 	initAcosd()
@@ -123,6 +131,7 @@ func Init() {
 	initCurrentSchema()
 	initCurrentSetting()
 	initCurrentSchemas()
+	initIdentity()
 	initDegrees()
 	initDiv()
 	initDoltProcedures()
@@ -132,6 +141,7 @@ func Init() {
 	initFactorial()
 	initFloor()
 	initForeachSlice()
+	initFormat()
 	initFormatType()
 	initGcd()
 	initGenRandomUuid()
@@ -247,6 +257,7 @@ func Init() {
 	initToRegclass()
 	initToRegnamespace()
 	initToRegproc()
+	initToRegprocedure()
 	initToRegtype()
 	initToDate()
 	initToTimestamp()

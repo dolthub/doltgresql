@@ -33,11 +33,14 @@
 
 package tree
 
+import "github.com/dolthub/doltgresql/postgres/parser/lex"
+
 var _ Statement = &SetVar{}
 
 // SetVar represents a SET or RESET <configuration_param> statement.
 type SetVar struct {
 	IsLocal   bool
+	Reset     bool
 	Name      string
 	Namespace string
 	Values    Exprs
@@ -51,12 +54,25 @@ func (node *SetVar) SetLocalSetStmt() {
 
 // Format implements the NodeFormatter interface.
 func (node *SetVar) Format(ctx *FmtCtx) {
+	if node.Reset {
+		ctx.WriteString("RESET ")
+		if node.Namespace != "" {
+			ctx.FormatNameP(&node.Namespace)
+			ctx.WriteByte('.')
+		}
+		ctx.FormatNameP(&node.Name)
+		return
+	}
 	ctx.WriteString("SET ")
 	if node.Name == "" {
 		ctx.WriteString("ROW (")
 		ctx.FormatNode(&node.Values)
 		ctx.WriteString(")")
 	} else {
+		if node.Namespace != "" {
+			ctx.FormatNameP(&node.Namespace)
+			ctx.WriteByte('.')
+		}
 		ctx.WithFlags(ctx.flags & ^FmtAnonymize, func() {
 			// Session var names never contain PII and should be distinguished
 			// for feature tracking purposes.
@@ -78,16 +94,25 @@ var _ Statement = &SetSessionAuthorization{}
 type SetSessionAuthorization struct {
 	Username string
 	IsLocal  bool
+	Reset    bool
+	Default  bool
 }
 
 // Format implements the NodeFormatter interface.
 func (node *SetSessionAuthorization) Format(ctx *FmtCtx) {
-	if node.Username == "" {
-		// equivalent to RESET SESSION AUTHORIZATION
-		ctx.WriteString("SET SESSION AUTHORIZATION DEFAULT")
+	if node.Reset {
+		ctx.WriteString("RESET SESSION AUTHORIZATION")
 	} else {
-		ctx.WriteString("SET SESSION AUTHORIZATION ")
-		ctx.WriteString(node.Username)
+		ctx.WriteString("SET ")
+		if node.IsLocal {
+			ctx.WriteString("LOCAL ")
+		}
+		ctx.WriteString("SESSION AUTHORIZATION ")
+		if node.Default {
+			ctx.WriteString("DEFAULT")
+		} else {
+			lex.EncodeEscapedSQLIdent(&ctx.Buffer, node.Username)
+		}
 	}
 }
 
@@ -103,6 +128,7 @@ type SetRole struct {
 	Name    string
 	None    bool
 	Reset   bool
+	Default bool // SET ROLE DEFAULT, whose command tag is SET
 }
 
 // Format implements the NodeFormatter interface.
@@ -119,8 +145,11 @@ func (node *SetRole) Format(ctx *FmtCtx) {
 		ctx.WriteString(" ROLE")
 		if node.None {
 			ctx.WriteString(" NONE")
+		} else if node.Default {
+			ctx.WriteString(" DEFAULT")
 		} else {
-			ctx.WriteString(node.Name)
+			ctx.WriteByte(' ')
+			ctx.FormatNameP(&node.Name)
 		}
 	}
 }

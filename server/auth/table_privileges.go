@@ -62,16 +62,20 @@ func AddTablePrivilege(key TablePrivilegeKey, privilege GrantedPrivilege, withGr
 
 // HasTablePrivilege checks whether the user has the given privilege on the associated table.
 func HasTablePrivilege(key TablePrivilegeKey, privilege Privilege) bool {
-	if IsSuperUser(key.Role) {
+	return hasTablePrivilege(key, privilege, true)
+}
+
+func hasTablePrivilege(key TablePrivilegeKey, privilege Privilege, allowSuperuser bool) bool {
+	if allowSuperuser && IsSuperUser(key.Role) {
 		return true
 	}
 	// If a table name was provided, then we also want to search for privileges provided to all tables in the schema
 	// space. Since those are saved with an empty table name, we can easily do another search by removing the table.
 	if len(key.Table.Name) > 0 {
-		if ok := HasTablePrivilege(TablePrivilegeKey{
+		if ok := hasTablePrivilege(TablePrivilegeKey{
 			Role:  key.Role,
 			Table: doltdb.TableName{Name: "", Schema: key.Table.Schema},
-		}, privilege); ok {
+		}, privilege, allowSuperuser); ok {
 			return true
 		}
 	}
@@ -81,10 +85,10 @@ func HasTablePrivilege(key TablePrivilegeKey, privilege Privilege) bool {
 		}
 	}
 	for _, group := range GetAllGroupsWithMember(key.Role, true) {
-		if HasTablePrivilege(TablePrivilegeKey{
+		if hasTablePrivilege(TablePrivilegeKey{
 			Role:  group,
 			Table: key.Table,
-		}, privilege) {
+		}, privilege, false) {
 			return true
 		}
 	}
@@ -94,16 +98,20 @@ func HasTablePrivilege(key TablePrivilegeKey, privilege Privilege) bool {
 // HasTablePrivilegeGrantOption checks whether the user has WITH GRANT OPTION for the given privilege on the associated
 // table. Returns the role that has WITH GRANT OPTION, or an invalid role if WITH GRANT OPTION is not available.
 func HasTablePrivilegeGrantOption(key TablePrivilegeKey, privilege Privilege) RoleID {
-	if IsSuperUser(key.Role) {
+	return hasTablePrivilegeGrantOption(key, privilege, true)
+}
+
+func hasTablePrivilegeGrantOption(key TablePrivilegeKey, privilege Privilege, allowSuperuser bool) RoleID {
+	if allowSuperuser && IsSuperUser(key.Role) {
 		return key.Role
 	}
 	// If a table name was provided, then we also want to search for privileges provided to all tables in the schema
 	// space. Since those are saved with an empty table name, we can easily do another search by removing the table.
 	if len(key.Table.Name) > 0 {
-		if returnedID := HasTablePrivilegeGrantOption(TablePrivilegeKey{
+		if returnedID := hasTablePrivilegeGrantOption(TablePrivilegeKey{
 			Role:  key.Role,
 			Table: doltdb.TableName{Name: "", Schema: key.Table.Schema},
-		}, privilege); returnedID.IsValid() {
+		}, privilege, allowSuperuser); returnedID.IsValid() {
 			return returnedID
 		}
 	}
@@ -117,10 +125,10 @@ func HasTablePrivilegeGrantOption(key TablePrivilegeKey, privilege Privilege) Ro
 		}
 	}
 	for _, group := range GetAllGroupsWithMember(key.Role, true) {
-		if returnedID := HasTablePrivilegeGrantOption(TablePrivilegeKey{
+		if returnedID := hasTablePrivilegeGrantOption(TablePrivilegeKey{
 			Role:  group,
 			Table: key.Table,
-		}, privilege); returnedID.IsValid() {
+		}, privilege, false); returnedID.IsValid() {
 			return returnedID
 		}
 	}

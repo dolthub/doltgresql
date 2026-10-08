@@ -56,4 +56,11 @@ func regprocImplicit(builtInCasts map[id.Cast]casts.Cast) {
 			return val, nil
 		},
 	})
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.Regproc,
+		ToType:   pgtypes.Regprocedure,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			return val, nil
+		},
+	})
 }

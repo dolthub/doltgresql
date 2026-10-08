@@ -89,7 +89,7 @@ func TestServerConfigVariableStatement(t *testing.T) {
 				},
 				{
 					Query:       "SET port TO '5432'",
-					ExpectedErr: "is a read only variable",
+					ExpectedErr: `parameter "port" cannot be changed now`,
 				},
 				{
 					Query:    "SELECT current_setting('port')",

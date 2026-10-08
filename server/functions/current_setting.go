@@ -15,11 +15,14 @@
 package functions
 
 import (
-	"fmt"
+	"strings"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -33,10 +36,11 @@ func initCurrentSetting() {
 
 // current_setting_text represents the PostgreSQL function of the same name, taking the same parameters.
 var current_setting_text = framework.Function1{
-	Name:       "current_setting",
-	Return:     pgtypes.Text, // TODO: it would be nice to support non-text values as well, but this is all postgres supports
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
-	Strict:     true,
+	Name:               "current_setting",
+	IsNonDeterministic: true,
+	Return:             pgtypes.Text, // TODO: it would be nice to support non-text values as well, but this is all postgres supports
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Text},
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		val1Str, err := framework.UnwrapString(ctx, val1)
 		if err != nil {
@@ -48,10 +52,11 @@ var current_setting_text = framework.Function1{
 
 // current_setting_text_bool represents the PostgreSQL function of the same name, taking the same parameters.
 var current_setting_text_bool = framework.Function2{
-	Name:       "current_setting",
-	Return:     pgtypes.Text, // TODO: it would be nice to support non-text values as well, but this is all postgres supports
-	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Bool},
-	Strict:     true,
+	Name:               "current_setting",
+	IsNonDeterministic: true,
+	Return:             pgtypes.Text, // TODO: it would be nice to support non-text values as well, but this is all postgres supports
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Bool},
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		val1Str, err := framework.UnwrapString(ctx, val1)
 		if err != nil {
@@ -64,16 +69,16 @@ var current_setting_text_bool = framework.Function2{
 // getCurSetting returns value set for given user variable. It returns nil instead of an error
 // if it doesn't exist and missingOk is set to true.
 func getCurSetting(ctx *sql.Context, s string, missingOk bool) (any, error) {
-	_, variable, err := ctx.GetUserVariable(ctx, s)
-	if err != nil {
-		if missingOk {
-			return nil, nil
-		}
-		return nil, err
+	if strings.EqualFold(s, "role") {
+		return auth.SelectedRoleSetting(ctx)
 	}
-
-	if variable != nil {
-		return fmt.Sprintf("%v", variable), nil
+	if strings.EqualFold(s, "session_authorization") {
+		return auth.SessionAuthorizationSetting(ctx)
+	}
+	if value, ok, err := core.Setting(ctx, s); err != nil {
+		return nil, err
+	} else if ok {
+		return config.FormatPostgresParameterValue(s, value), nil
 	}
 
 	// System variables with no session scope (e.g. dolt_cluster_role during cluster replication) can change at
@@ -81,24 +86,30 @@ func getCurSetting(ctx *sql.Context, s string, missingOk bool) (any, error) {
 	// live global value is the effective setting for such variables, so return it directly.
 	if config.IsGlobalOnlySystemVariable(s) {
 		if _, globalVal, ok := sql.SystemVariables.GetGlobal(s); ok {
-			return fmt.Sprintf("%v", globalVal), nil
+			return config.FormatPostgresParameterValue(s, globalVal), nil
 		}
 	}
+	if !config.IsValidPostgresConfigParameter(s) && !config.IsValidDoltConfigParameter(s) {
+		if missingOk {
+			return nil, nil
+		}
+		return nil, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, s)
+	}
 
-	variable, err = ctx.GetSessionVariable(ctx, s)
+	variable, err := ctx.GetSessionVariable(ctx, s)
 	if err != nil {
 		if missingOk {
 			return nil, nil
 		}
-		return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
+		return nil, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, s)
 	}
 
 	if variable != nil {
-		return fmt.Sprintf("%v", variable), nil
+		return config.FormatPostgresParameterValue(s, variable), nil
 	}
 
 	if missingOk {
 		return nil, nil
 	}
-	return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
+	return nil, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, s)
 }

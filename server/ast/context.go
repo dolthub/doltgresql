@@ -17,12 +17,14 @@ package ast
 import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/auth"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Context contains any relevant context for the AST conversion. For example, the auth system uses the context to
 // determine which larger statement an expression exists in, which may influence how the expression should handle
 // authorization.
 type Context struct {
+	catalogRows                        map[string]*pgtypes.DoltgresType
 	authContext                        *auth.AuthContext
 	originalQuery                      string
 	preserveParens                     bool

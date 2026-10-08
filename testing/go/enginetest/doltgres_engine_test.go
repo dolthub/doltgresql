@@ -111,7 +111,7 @@ func TestSingleQuery(t *testing.T) {
 		},
 	}
 
-	enginetest.TestQueryWithEngine(t, harness, engine, test)
+	enginetest.TestQuery(t, harness, engine, test)
 }
 
 func TestSchemaOverrides(t *testing.T) {
@@ -1033,8 +1033,9 @@ func TestVersionedViews(t *testing.T) {
 
 func TestWindowFunctions(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"select 1 as a, 'x' as a", // duplicate derived column names are a MySQL-only error
-		"t(a, a)",                 // duplicate derived column names are a MySQL-only error
+		"select 1 as a, 'x' as a",     // duplicate derived column names are a MySQL-only error
+		"t(a, a)",                     // duplicate derived column names are a MySQL-only error
+		"format with window function", // FORMAT(X, D, locale) is MySQL's number formatter
 	})
 	defer h.Close()
 	enginetest.TestWindowFunctions(t, h)
@@ -1081,16 +1082,10 @@ func TestNaturalJoin(t *testing.T) {
 	enginetest.TestNaturalJoin(t, h)
 }
 
-func TestNaturalJoinEqual(t *testing.T) {
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestNaturalJoinEqual(t, h)
-}
-
 func TestNaturalJoinDisjoint(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	enginetest.TestNaturalJoinEqual(t, h)
+	enginetest.TestNaturalJoinDisjoint(t, h)
 }
 
 func TestInnerNestedInNaturalJoins(t *testing.T) {

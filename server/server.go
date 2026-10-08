@@ -239,6 +239,9 @@ func initializeDefaultDatabase(ctx context.Context, se *engine.SqlEngine) error 
 	// The session must run as the doltgres superuser: unlike Dolt, doltgres has
 	// no "root" user, so NewLocalContext's default client would be rejected.
 	sqlCtx.Session.SetClient(sql.Client{User: user, Address: "localhost", Capabilities: 0})
+	if err := auth.InitializeSessionIdentity(sqlCtx.Session, user); err != nil {
+		return err
+	}
 	defer sql.SessionEnd(sqlCtx.Session)
 	sql.SessionCommandBegin(sqlCtx.Session)
 	defer sql.SessionCommandEnd(sqlCtx.Session)

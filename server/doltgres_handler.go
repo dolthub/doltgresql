@@ -146,7 +146,7 @@ var _ Handler = &DoltgresHandler{}
 
 // ComBind implements the Handler interface.
 func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables, formatCodes []int16) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
-	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.NewContext(ctx, c, query)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -205,10 +205,13 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 	sqlCtx, ok := ctx.(*sql.Context)
 	if !ok {
 		var err error
-		sqlCtx, err = h.sm.NewContextWithQuery(ctx, c, query)
+		sqlCtx, err = h.NewContext(ctx, c, query)
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+	if err := installPrivilegeSet(sqlCtx); err != nil {
+		return nil, nil, err
 	}
 
 	node, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
@@ -277,6 +280,12 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 // ComResetConnection implements the Handler interface.
 func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	logrus.WithField("connectionId", c.ConnectionID).Debug("COM_RESET_CONNECTION command received")
+	oldIdentity, err := core.IdentityFromSession(h.sm.GetSession(c))
+	if err != nil {
+		return err
+	}
+	principal := oldIdentity.AuthenticatedRole()
+	principalSuperuser := oldIdentity.AuthenticatedSuperuser()
 
 	// Grab the currently selected database name
 	db := h.sm.GetCurrentDB(c)
@@ -288,10 +297,14 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	ctx := context.Background()
 
 	// Create a new session and set the current database
-	err := h.sm.NewSession(ctx, c)
+	err = h.sm.NewSession(ctx, c)
 	if err != nil {
 		return err
 	}
+	if err = core.InitializeIdentityOnSession(h.sm.GetSession(c), principal, principalSuperuser); err != nil {
+		return err
+	}
+	auth.InstallDoltPrincipalProvider(h.sm.GetSession(c))
 	return h.sm.SetDB(ctx, c, db)
 }
 
@@ -326,7 +339,23 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 
 // NewContext implements the Handler interface.
 func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
-	return h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	if err != nil {
+		return nil, err
+	}
+	if err = installPrivilegeSet(sqlCtx); err != nil {
+		return nil, err
+	}
+	return sqlCtx, nil
+}
+
+func installPrivilegeSet(ctx *sql.Context) error {
+	privilegeSet, err := auth.NewPrivilegeSetLayer(ctx)
+	if err != nil {
+		return err
+	}
+	ctx.SetPrivilegeSet(privilegeSet, 1)
+	return nil
 }
 
 // InitSessionParameterDefault sets a default value to specified parameter for a session.
@@ -382,11 +411,10 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
 func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, formatCodes []int16) error {
-	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.NewContext(ctx, c, query)
 	if err != nil {
 		return err
 	}
-	sqlCtx.SetPrivilegeSet(auth.NewPrivilegeSetLayer(sqlCtx), 1)
 
 	start := time.Now()
 	var queryStrToLog string

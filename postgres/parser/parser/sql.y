@@ -6238,13 +6238,17 @@ reset_stmt:
     if name == "role" {
       $$.val = &tree.SetRole{Reset: true}
     } else {
-      $$.val = &tree.SetVar{Name: $2, Values:tree.Exprs{tree.DefaultVal{}}}
+      $$.val = &tree.SetVar{Name: $2, Reset: true, Values:tree.Exprs{tree.DefaultVal{}}}
     }
+  }
+| RESET name '.' name
+  {
+    $$.val = &tree.SetVar{Namespace: $2, Name: $4, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
   }
 // TIME ZONE is special: it is two tokens, but is really the identifier "TIME ZONE".
 | RESET TIME ZONE
   {
-    $$.val = &tree.SetVar{Name: "timezone", Values:tree.Exprs{tree.DefaultVal{}}}
+    $$.val = &tree.SetVar{Name: "timezone", Reset: true, Values:tree.Exprs{tree.DefaultVal{}}}
   }
 | RESET ALL
   {
@@ -6252,7 +6256,7 @@ reset_stmt:
   }
 | RESET SESSION AUTHORIZATION
   {
-    $$.val = &tree.SetSessionAuthorization{}
+    $$.val = &tree.SetSessionAuthorization{Reset: true}
   }
 | RESET error // SHOW HELP: RESET
 
@@ -6537,7 +6541,7 @@ set_special_syntax:
 set_session_authorization:
   SESSION AUTHORIZATION DEFAULT
   {
-    $$.val = &tree.SetSessionAuthorization{}
+    $$.val = &tree.SetSessionAuthorization{Default: true}
   }
 | SESSION AUTHORIZATION non_reserved_word_or_sconst
   {
@@ -6553,6 +6557,10 @@ set_role:
     } else {
       $$.val = &tree.SetRole{Name: $2}
     }
+  }
+| ROLE DEFAULT
+  {
+    $$.val = &tree.SetRole{Default: true}
   }
 
 // SET NAMES is the SQL standard syntax for SET client_encoding.
@@ -6980,6 +6988,10 @@ session_var:
 // separate rules.
 | ALL
 | DATABASE
+| ROLE
+  {
+    $$ = "role"
+  }
 // SET NAMES is standard SQL for SET client_encoding.
 // See https://www.postgresql.org/docs/9.6/static/multibyte.html#AEN39236
 | NAMES { $$ = "client_encoding" }
@@ -14223,7 +14235,7 @@ func_expr_common_subexpr:
   }
 | SESSION_USER
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("current_user")}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("session_user")}
   }
 | USER
   {

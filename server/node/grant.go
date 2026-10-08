@@ -176,9 +176,9 @@ func (g *Grant) common(ctx *sql.Context) (roles []auth.Role, userRole auth.Role,
 		}
 	}
 	// Then we'll check that the role that is granting the privileges exists
-	userRole = auth.GetRole(ctx.Client().User)
-	if !userRole.IsValid() {
-		return nil, auth.Role{}, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	userRole, err = auth.CurrentRoleLocked(ctx)
+	if err != nil {
+		return nil, auth.Role{}, err
 	}
 	if len(g.GrantedBy) != 0 {
 		grantedByRole := auth.GetRole(g.GrantedBy)
@@ -381,12 +381,11 @@ func (g *Grant) grantRole(ctx *sql.Context) error {
 	}
 	for _, member := range members {
 		for _, group := range groups {
-			memberGroupID, _, withAdminOption := auth.IsRoleAMember(userRole.ID(), group.ID())
-			if !memberGroupID.IsValid() || !withAdminOption {
+			if !auth.CanAdministerRole(userRole.ID(), group.ID()) {
 				// TODO: grab the actual error message
 				return errors.Errorf(`role "%s" does not have permission to grant role "%s"`, userRole.Name, group.Name)
 			}
-			auth.AddMemberToGroup(member.ID(), group.ID(), g.WithGrantOption, memberGroupID)
+			auth.AddMemberToGroup(member.ID(), group.ID(), g.WithGrantOption, userRole.ID())
 		}
 	}
 	return nil
