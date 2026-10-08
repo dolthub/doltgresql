@@ -77,6 +77,9 @@ fn writes_during_a_collection_survive_it() {
         for (name, address) in [("before", before), ("garbage", garbage)] {
             assert!(db.read_value(&address).unwrap().is_none(), "{mode:?}: kept the unreachable {name} chunk");
         }
+        let specs = store::Manifest::read(&noms).unwrap().unwrap().specs;
+        let files = specs.iter().filter(|s| s.name.to_string() != store::JOURNAL_FILE).count();
+        assert_eq!(files, 1, "{mode:?}: the chunks written during the copy went to another file");
         assert!(
             db.gc_begin(GcConfig { mode, archive, incremental_file_size: 0 }).is_ok(),
             "{mode:?}: stayed collecting"

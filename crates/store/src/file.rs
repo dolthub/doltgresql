@@ -85,3 +85,56 @@ pub fn be_u32(bytes: &[u8], offset: usize) -> u32 {
 pub fn be_u64(bytes: &[u8], offset: usize) -> u64 {
     u64::from_be_bytes(bytes[offset..offset + 8].try_into().unwrap())
 }
+
+/// SPILL_LEN is how many bytes a spilling writer holds before moving them to its file.
+pub(crate) const SPILL_LEN: usize = 8 << 20;
+
+/// NEXT_SPILL numbers the spill files of the process, so that writers running at once never share one.
+static NEXT_SPILL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Spill is a temporary file in a directory that a writer moves its bytes to as they pile up, hashing them on the way,
+/// until it renames the file to its final name. A spill dropped before then deletes its file.
+pub(crate) struct Spill {
+    file: std::io::BufWriter<File>,
+    path: Option<std::path::PathBuf>,
+    hasher: sha2::Sha512,
+}
+
+impl Spill {
+    /// create starts a spill file in a directory.
+    pub(crate) fn create(dir: &std::path::Path) -> Result<Spill> {
+        std::fs::create_dir_all(dir)?;
+        let number = NEXT_SPILL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = dir.join(format!(".spill-{}-{number}.tmp", std::process::id()));
+        let file = std::io::BufWriter::new(File::create(&path)?);
+        Ok(Spill { file, path: Some(path), hasher: sha2::Digest::new() })
+    }
+
+    /// write moves bytes to the file, emptying the buffer they were in.
+    pub(crate) fn write(&mut self, bytes: &mut Vec<u8>) -> Result<()> {
+        std::io::Write::write_all(&mut self.file, bytes)?;
+        sha2::Digest::update(&mut self.hasher, &bytes[..]);
+        bytes.clear();
+        Ok(())
+    }
+
+    /// finish syncs the file and renames it to the path that the hash of everything written to it gives.
+    pub(crate) fn finish(mut self, to: impl FnOnce(crate::hash::Hash) -> std::path::PathBuf) -> Result<()> {
+        std::io::Write::flush(&mut self.file)?;
+        self.file.get_ref().sync_all()?;
+        let digest = sha2::Digest::finalize(std::mem::take(&mut self.hasher));
+        let mut bytes = [0; crate::hash::Hash::LEN];
+        bytes.copy_from_slice(&digest[..crate::hash::Hash::LEN]);
+        let from = self.path.take().expect("an unfinished spill has its path");
+        std::fs::rename(&from, to(crate::hash::Hash(bytes)))?;
+        Ok(())
+    }
+}
+
+impl Drop for Spill {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}

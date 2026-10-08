@@ -233,6 +233,16 @@ impl TableWriter {
         self.records.len()
     }
 
+    /// buffered returns how many bytes the writer holds in memory.
+    pub(crate) fn buffered(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// spill moves the records written so far to a spill file.
+    pub(crate) fn spill(&mut self, spill: &mut crate::file::Spill) -> Result<()> {
+        spill.write(&mut self.buf)
+    }
+
     /// finish writes the index and footer, returning the table's name, the SHA-512 of its suffixes, and its bytes.
     pub fn finish(mut self) -> (Hash, Vec<u8>) {
         // Chunks with equal prefixes keep the order they were added in, where Go's unstable sort may swap them.

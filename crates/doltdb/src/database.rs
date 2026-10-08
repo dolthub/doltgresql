@@ -517,7 +517,7 @@ impl Database {
             dir,
             seen: std::collections::HashSet::new(),
             old_specs: None,
-            new_specs: Vec::new(),
+            new_gen_writer: None,
         })
     }
 
@@ -535,18 +535,25 @@ impl Database {
             })?;
         }
         let full = run.config.mode == GcMode::Full;
-        let late: Vec<(Chunk, bool)> = reachable(&*self, starts, &mut run.seen)?
-            .into_iter()
-            .filter(|(chunk, _)| full || !run.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.hash)))
-            .collect();
-        run.new_specs.extend(store::write_files(&run.dir, late, run.config.archive, 0, &mut |_| Ok(()))?);
+        let mut late = match run.new_gen_writer.take() {
+            Some(writer) => writer,
+            None => store::GcWriter::new(&run.dir, run.config.archive, 0)?,
+        };
+        let old_gen = run.old_gen.as_ref();
+        walk(&*self, starts, &mut run.seen, &mut |chunk, leaf| match full
+            || !old_gen.is_some_and(|g| g.has(&chunk.hash))
+        {
+            true => late.add(chunk, leaf, &mut |_| Ok(())).map_err(Error::from),
+            false => Ok(()),
+        })?;
+        let new_specs = late.finish(&mut |_| Ok(()))?;
         if let Some(specs) = run.old_specs {
             let old_dir = run.dir.join("oldgen");
             self.set_old_gen(None);
             store::replace_files(&old_dir, self.root(), "__DOLT__", specs)?;
             self.set_old_gen(Some(BlockStore::open(&old_dir)?));
         }
-        self.with_journal(|journal| Ok(journal.rewrite(run.new_specs)?))?;
+        self.with_journal(|journal| Ok(journal.rewrite(new_specs)?))?;
         self.shared.nodes.clear();
         self.shared.chunks.clear();
         Ok(())
@@ -885,8 +892,8 @@ pub struct GcRun {
     seen: std::collections::HashSet<Hash>,
     /// The old generation's files after the collection, or None when they stay as they are.
     old_specs: Option<Vec<store::TableSpec>>,
-    /// The new generation's files after the collection.
-    new_specs: Vec<store::TableSpec>,
+    /// The writer of the new generation's file, which the chunks written during the copy join before it finishes.
+    new_gen_writer: Option<store::GcWriter>,
 }
 
 impl GcRun {
@@ -896,34 +903,23 @@ impl GcRun {
         let mode = self.config.mode;
         let old_dir = self.dir.join("oldgen");
         let reader = GcReader { new_gen: &self.new_gen, old_gen: self.old_gen.as_ref() };
-        let in_old_gen = |hash: &Hash| self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(hash));
-        let (mut old_chunks, mut moved) = (Vec::new(), Vec::new());
-        for chunk in reachable(&reader, self.committed.clone(), &mut self.seen)? {
-            match in_old_gen(&chunk.0.hash) {
-                true => old_chunks.push(chunk),
-                false => moved.push(chunk),
-            }
-        }
-        let mut working = Vec::new();
-        for chunk in reachable(&reader, vec![self.root], &mut self.seen)? {
-            match in_old_gen(&chunk.0.hash) {
-                true => old_chunks.push(chunk),
-                false => working.push(chunk),
-            }
-        }
+        let old_gen = self.old_gen.as_ref();
+        let in_old_gen = |hash: &Hash| old_gen.is_some_and(|old_gen| old_gen.has(hash));
+        let (archive, size, root) = (self.config.archive, self.config.incremental_file_size, self.root);
         if mode == GcMode::Shallow {
-            moved.append(&mut working);
-            let moved: Vec<store::Chunk> = moved.into_iter().map(|(chunk, _)| chunk).collect();
-            self.new_specs = store::write_table(&self.dir, &moved)?.into_iter().collect();
+            let mut writer = store::GcWriter::new(&self.dir, false, 0)?;
+            let starts = [self.committed.clone(), vec![root]].concat();
+            walk(&reader, starts, &mut self.seen, &mut |chunk, leaf| match in_old_gen(&chunk.hash) {
+                true => Ok(()),
+                false => writer.add(chunk, leaf, &mut |_| Ok(())).map_err(Error::from),
+            })?;
+            self.new_gen_writer = Some(writer);
             return Ok(());
         }
         let mut specs = match (mode, store::Manifest::read(&old_dir)?) {
             (GcMode::Default, Some(manifest)) => manifest.specs,
             _ => Vec::new(),
         };
-        if mode == GcMode::Full {
-            moved.append(&mut old_chunks);
-        }
         let database = self.dir.parent().and_then(Path::parent).and_then(Path::file_name);
         let database = database.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         if specs.len() > MAX_TABLES {
@@ -934,14 +930,30 @@ impl GcRun {
                  pkg=store.noms"
             ));
         }
-        let (archive, size, root) = (self.config.archive, self.config.incremental_file_size, self.root);
         let mut add = |spec: &store::TableSpec| match mode {
             GcMode::Default => store::add_to_manifest(&old_dir, root, "__DOLT__", spec),
             _ => Ok(()),
         };
-        specs.extend(store::write_files(&old_dir, moved, archive, size, &mut add)?);
+        let full = mode == GcMode::Full;
+        let mut moved = store::GcWriter::new(&old_dir, archive, size)?;
+        walk(
+            &reader,
+            self.committed.clone(),
+            &mut self.seen,
+            &mut |chunk, leaf| match full || !in_old_gen(&chunk.hash) {
+                true => moved.add(chunk, leaf, &mut add).map_err(Error::from),
+                false => Ok(()),
+            },
+        )?;
+        let mut working = store::GcWriter::new(&self.dir, archive, size)?;
+        walk(&reader, vec![root], &mut self.seen, &mut |chunk, leaf| match in_old_gen(&chunk.hash) {
+            true if full => moved.add(chunk, leaf, &mut add).map_err(Error::from),
+            true => Ok(()),
+            false => working.add(chunk, leaf, &mut |_| Ok(())).map_err(Error::from),
+        })?;
+        specs.extend(moved.finish(&mut add)?);
         self.old_specs = Some(specs);
-        self.new_specs = store::write_files(&self.dir, working, archive, size, &mut |_| Ok(()))?;
+        self.new_gen_writer = Some(working);
         Ok(())
     }
 }
@@ -973,14 +985,14 @@ impl ChunkReader for GcReader<'_> {
     }
 }
 
-/// reachable returns the chunks that the addresses reach and the seen set has not yet seen, adding them to it, each
-/// with whether it is a leaf, which refers to no other chunk.
-fn reachable(
+/// walk visits the chunks that the addresses reach and the seen set has not yet seen, adding them to it, each with
+/// whether it is a leaf, which refers to no other chunk.
+fn walk(
     reader: &dyn ChunkReader,
     starts: Vec<Hash>,
     seen: &mut std::collections::HashSet<Hash>,
-) -> Result<Vec<(Chunk, bool)>> {
-    let mut chunks = Vec::new();
+    visit: &mut dyn FnMut(Chunk, bool) -> Result<()>,
+) -> Result<()> {
     let mut stack = starts;
     while let Some(hash) = stack.pop() {
         if hash.is_empty() || !seen.insert(hash) {
@@ -993,9 +1005,9 @@ fn reachable(
             stack.push(child);
             Ok(())
         })?;
-        chunks.push((chunk, leaf));
+        visit(chunk, leaf)?;
     }
-    Ok(chunks)
+    Ok(())
 }
 
 /// conjoin writes the chunks of the files that Dolt's conjoiner chooses among an old generation's files to one file,

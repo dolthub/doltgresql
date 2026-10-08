@@ -50,65 +50,95 @@ pub fn write_table(dir: &Path, chunks: &[Chunk]) -> Result<Option<TableSpec>> {
 /// a collection resumes.
 const ABORT_ENV: &str = "DOLT_TEST_ABORT_GC_AFTER_INCREMENTAL_FILE_WRITE";
 
-/// FileWriter builds a table file or an archive.
-enum FileWriter {
+/// FileWriter builds a table file or an archive in a directory, moving its bytes to a spill file there as they
+/// pile up, so that a collection never holds a whole file in memory.
+struct FileWriter {
+    writer: Writer,
+    spill: crate::file::Spill,
+}
+
+/// Writer is the builder a file writer uses.
+enum Writer {
     Table(TableWriter),
     Archive(ArchiveWriter),
 }
 
 impl FileWriter {
-    /// new returns a writer of archives, or of table files at archive level 0.
-    fn new(archive: bool) -> FileWriter {
-        match archive {
-            true => FileWriter::Archive(ArchiveWriter::new()),
-            false => FileWriter::Table(TableWriter::new()),
-        }
+    /// new returns a writer of an archive in a directory, or of a table file at archive level 0.
+    fn new(dir: &Path, archive: bool) -> Result<FileWriter> {
+        let writer = match archive {
+            true => Writer::Archive(ArchiveWriter::new()),
+            false => Writer::Table(TableWriter::new()),
+        };
+        Ok(FileWriter { writer, spill: crate::file::Spill::create(dir)? })
     }
 
     /// add adds a chunk.
     fn add(&mut self, chunk: Chunk) -> Result<()> {
-        match self {
-            FileWriter::Table(writer) => writer.add_chunk(&chunk),
-            FileWriter::Archive(writer) => writer.add_chunk(chunk)?,
+        let buffered = match &mut self.writer {
+            Writer::Table(writer) => {
+                writer.add_chunk(&chunk);
+                writer.buffered()
+            }
+            Writer::Archive(writer) => {
+                writer.add_chunk(chunk)?;
+                writer.buffered()
+            }
+        };
+        if buffered >= crate::file::SPILL_LEN {
+            self.spill_buffer()?;
         }
         Ok(())
     }
 
-    /// count returns the number of chunks added.
-    fn count(&self) -> usize {
-        match self {
-            FileWriter::Table(writer) => writer.count(),
-            FileWriter::Archive(writer) => writer.count(),
+    /// spill_buffer moves what the writer holds in memory to the spill file.
+    fn spill_buffer(&mut self) -> Result<()> {
+        match &mut self.writer {
+            Writer::Table(writer) => writer.spill(&mut self.spill),
+            Writer::Archive(writer) => writer.spill(&mut self.spill),
         }
     }
 
-    /// write writes the file to a directory and returns its spec, or None without chunks.
-    fn write(self, dir: &Path) -> Result<Option<TableSpec>> {
+    /// count returns the number of chunks added.
+    fn count(&self) -> usize {
+        match &self.writer {
+            Writer::Table(writer) => writer.count(),
+            Writer::Archive(writer) => writer.count(),
+        }
+    }
+
+    /// write finishes the file in its directory and returns its spec, or None without chunks.
+    fn write(mut self, dir: &Path) -> Result<Option<TableSpec>> {
         let chunk_count = self.count() as u32;
         if chunk_count == 0 {
             return Ok(None);
         }
-        std::fs::create_dir_all(dir)?;
-        let (name, path, bytes) = match self {
-            FileWriter::Table(writer) => {
-                let (name, bytes) = writer.finish();
-                (name, dir.join(name.to_string()), bytes)
+        self.spill_buffer()?;
+        let FileWriter { writer, mut spill } = self;
+        let name = match writer {
+            Writer::Table(writer) => {
+                let (name, mut tail) = writer.finish();
+                spill.write(&mut tail)?;
+                spill.finish(|_| dir.join(name.to_string()))?;
+                name
             }
-            FileWriter::Archive(writer) => {
-                let (name, bytes) = writer.finish();
-                (name, dir.join(format!("{name}.darc")), bytes)
+            Writer::Archive(writer) => {
+                let (_, mut tail) = writer.finish();
+                spill.write(&mut tail)?;
+                let mut named = Hash::default();
+                spill.finish(|hash| {
+                    named = hash;
+                    dir.join(format!("{hash}.darc"))
+                })?;
+                named
             }
         };
-        std::fs::write(&path, bytes)?;
-        File::open(&path)?.sync_all()?;
         Ok(Some(TableSpec { name, chunk_count }))
     }
 }
 
-/// write_files writes the chunks a collection keeps to new files in a directory, as Dolt's GC copiers do: archives,
-/// or table files at archive level 0, and with an incremental file size, the leaf chunks in files of about that many
-/// compressed bytes, each passed to `written` once it is on disk, and the other chunks in one more file. Each chunk
-/// comes with whether it is a leaf.
+/// write_files writes the chunks a collection keeps to new files in a directory, as `GcWriter` does. Each chunk comes
+/// with whether it is a leaf.
 pub fn write_files(
     dir: &Path,
     chunks: Vec<(Chunk, bool)>,
@@ -116,27 +146,63 @@ pub fn write_files(
     incremental_file_size: u64,
     written: &mut dyn FnMut(&TableSpec) -> Result<()>,
 ) -> Result<Vec<TableSpec>> {
-    let mut specs = Vec::new();
-    let (mut leaves, mut others) = (FileWriter::new(archive), FileWriter::new(archive));
-    let mut leaf_bytes = 0;
+    let mut writer = GcWriter::new(dir, archive, incremental_file_size)?;
     for (chunk, leaf) in chunks {
-        if !leaf || incremental_file_size == 0 {
-            others.add(chunk)?;
-            continue;
-        }
-        leaf_bytes += chunk.to_record().len() as u64;
-        leaves.add(chunk)?;
-        if leaf_bytes >= incremental_file_size {
-            let full = std::mem::replace(&mut leaves, FileWriter::new(archive));
-            specs.extend(finish_incremental(dir, full, written)?);
-            leaf_bytes = 0;
-        }
+        writer.add(chunk, leaf, written)?;
     }
-    if incremental_file_size != 0 {
-        specs.extend(finish_incremental(dir, leaves, written)?);
+    writer.finish(written)
+}
+
+/// GcWriter writes the chunks a collection keeps to new files in a directory as they come, as Dolt's GC copiers do:
+/// archives, or table files at archive level 0, and with an incremental file size, the leaf chunks in files of about
+/// that many compressed bytes, each passed to `written` once it is on disk, and the other chunks in one more file.
+pub struct GcWriter {
+    dir: std::path::PathBuf,
+    archive: bool,
+    incremental_file_size: u64,
+    leaves: FileWriter,
+    others: FileWriter,
+    leaf_bytes: u64,
+    specs: Vec<TableSpec>,
+}
+
+impl GcWriter {
+    /// new returns a writer of a collection's files in a directory.
+    pub fn new(dir: &Path, archive: bool, incremental_file_size: u64) -> Result<GcWriter> {
+        Ok(GcWriter {
+            dir: dir.to_path_buf(),
+            archive,
+            incremental_file_size,
+            leaves: FileWriter::new(dir, archive)?,
+            others: FileWriter::new(dir, archive)?,
+            leaf_bytes: 0,
+            specs: Vec::new(),
+        })
     }
-    specs.extend(others.write(dir)?);
-    Ok(specs)
+
+    /// add adds a chunk, with whether it is a leaf, which refers to no other chunk.
+    pub fn add(&mut self, chunk: Chunk, leaf: bool, written: &mut dyn FnMut(&TableSpec) -> Result<()>) -> Result<()> {
+        if !leaf || self.incremental_file_size == 0 {
+            return self.others.add(chunk);
+        }
+        self.leaf_bytes += chunk.to_record().len() as u64;
+        self.leaves.add(chunk)?;
+        if self.leaf_bytes >= self.incremental_file_size {
+            let full = std::mem::replace(&mut self.leaves, FileWriter::new(&self.dir, self.archive)?);
+            self.specs.extend(finish_incremental(&self.dir, full, written)?);
+            self.leaf_bytes = 0;
+        }
+        Ok(())
+    }
+
+    /// finish writes the files still open and returns the specs of every file written.
+    pub fn finish(mut self, written: &mut dyn FnMut(&TableSpec) -> Result<()>) -> Result<Vec<TableSpec>> {
+        if self.incremental_file_size != 0 {
+            self.specs.extend(finish_incremental(&self.dir, self.leaves, written)?);
+        }
+        self.specs.extend(self.others.write(&self.dir)?);
+        Ok(self.specs)
+    }
 }
 
 /// finish_incremental writes a file of leaf chunks and passes it on, failing afterwards when a test asks for that.

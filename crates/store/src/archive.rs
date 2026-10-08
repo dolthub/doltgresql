@@ -245,6 +245,8 @@ pub struct ArchiveWriter {
     queue: Vec<Chunk>,
     /// The span id of the trained dictionary and the dictionary itself.
     dictionary: Option<(u32, Vec<u8>)>,
+    /// How many bytes the writer moved to a spill file, which come before `buf`.
+    spilled: u64,
 }
 
 impl ArchiveWriter {
@@ -257,10 +259,21 @@ impl ArchiveWriter {
         self.chunks.len() + self.queue.len()
     }
 
+    /// buffered returns how many bytes the writer holds in memory.
+    pub(crate) fn buffered(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// spill moves the spans written so far to a spill file.
+    pub(crate) fn spill(&mut self, spill: &mut crate::file::Spill) -> Result<()> {
+        self.spilled += self.buf.len() as u64;
+        spill.write(&mut self.buf)
+    }
+
     /// span appends a byte span and returns its id.
     fn span(&mut self, bytes: &[u8]) -> u32 {
         self.buf.extend_from_slice(bytes);
-        self.span_ends.push(self.buf.len() as u64);
+        self.span_ends.push(self.spilled + self.buf.len() as u64);
         self.span_ends.len() as u32
     }
 
