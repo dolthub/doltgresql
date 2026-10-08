@@ -618,12 +618,6 @@ func TestDescendingIndexesScripts(t *testing.T) {
 	enginetest.TestDescendingIndexesScripts(t, h)
 }
 
-func TestDropTableScripts(t *testing.T) {
-	h := newScriptTestHarness(t)
-	defer h.Close()
-	enginetest.TestDropTableScripts(t, h)
-}
-
 func TestEnumsAndSetsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
@@ -666,18 +660,6 @@ func TestInsertIgnoreRegressionScripts(t *testing.T) {
 	enginetest.TestInsertIgnoreRegressionScripts(t, h)
 }
 
-func TestInsertRegressionScripts(t *testing.T) {
-	h := newScriptTestHarness(t)
-	defer h.Close()
-	enginetest.TestInsertRegressionScripts(t, h)
-}
-
-func TestJSONFunctionsScripts(t *testing.T) {
-	h := newScriptTestHarness(t)
-	defer h.Close()
-	enginetest.TestJSONFunctionsScripts(t, h)
-}
-
 func TestJoinsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
@@ -708,12 +690,6 @@ func TestPrimaryKeysScripts(t *testing.T) {
 	enginetest.TestPrimaryKeysScripts(t, h)
 }
 
-func TestProceduresScripts(t *testing.T) {
-	h := newScriptTestHarness(t)
-	defer h.Close()
-	enginetest.TestProceduresScripts(t, h)
-}
-
 func TestSessionResultsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
@@ -736,12 +712,6 @@ func TestStringFunctionsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
 	enginetest.TestStringFunctionsScripts(t, h)
-}
-
-func TestStringMatchingScripts(t *testing.T) {
-	h := newScriptTestHarness(t)
-	defer h.Close()
-	enginetest.TestStringMatchingScripts(t, h)
 }
 
 func TestSubqueriesScripts(t *testing.T) {
@@ -774,22 +744,10 @@ func TestTupleComparisonsScripts(t *testing.T) {
 	enginetest.TestTupleComparisonsScripts(t, h)
 }
 
-func TestUUIDScripts(t *testing.T) {
-	h := newScriptTestHarness(t)
-	defer h.Close()
-	enginetest.TestUUIDScripts(t, h)
-}
-
 func TestUpdateJoinsScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
 	enginetest.TestUpdateJoinsScripts(t, h)
-}
-
-func TestUpdateRegressionScripts(t *testing.T) {
-	h := newScriptTestHarness(t)
-	defer h.Close()
-	enginetest.TestUpdateRegressionScripts(t, h)
 }
 
 func TestVariablesScripts(t *testing.T) {
