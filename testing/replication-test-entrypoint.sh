@@ -24,7 +24,7 @@ done
 
 # Run the replication tests against the Rust server
 DOLTGRES_REPLICATION_PRIMARY="postgres://postgres:password@localhost:5432/postgres?sslmode=disable" \
-  DOLTGRES_TEST_TARGET="doltgres:$(pwd)/target/release/doltgres" \
+  DOLTGRES_TEST_TARGET="doltgres:$(pwd)/target/quick/doltgres" \
   cargo test --profile quick -p server --test replication
 
 # Run the bats test

@@ -32,5 +32,5 @@ jobs:
       shell: bash
       run: |
         bin="$(pwd)/target/release/doltgres"
-        if [ -f "$bin.exe" ]; then bin="$bin.exe"; fi
+        if [ -f "$bin.exe" ]; then bin="$(cygpath -w "$bin.exe")"; fi
         DOLTGRES_TEST_TARGET="doltgres:$bin" cargo test --profile quick -p doltgres-tests --test dumps

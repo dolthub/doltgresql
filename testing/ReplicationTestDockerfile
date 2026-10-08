@@ -21,8 +21,8 @@ COPY ./ ./doltgresql
 
 # Build the doltgres binary, which we will need for bats, and put it on PATH
 WORKDIR /root/building/doltgresql
-RUN rustup toolchain install && cargo build --release -p server && cargo test --profile quick -p server --test replication --no-run
-RUN cp target/release/doltgres /root/bin
+RUN rustup toolchain install && cargo build --profile quick -p server && cargo test --profile quick -p server --test replication --no-run
+RUN cp target/quick/doltgres /root/bin
 
 WORKDIR /root/building/doltgresql/
 

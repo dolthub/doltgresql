@@ -42,11 +42,11 @@ jobs:
       shell: bash
       run: |
         bin="$(pwd)/target/release/doltgres"
-        if [ -f "$bin.exe" ]; then bin="$bin.exe"; fi
+        if [ -f "$bin.exe" ]; then bin="$(cygpath -w "$bin.exe")"; fi
         DOLTGRES_BIN_PATH="$bin" cargo test --profile quick --workspace --exclude doltgres-tests --exclude driver --no-fail-fast
     - name: Test scripts
       shell: bash
       run: |
         bin="$(pwd)/target/release/doltgres"
-        if [ -f "$bin.exe" ]; then bin="$bin.exe"; fi
+        if [ -f "$bin.exe" ]; then bin="$(cygpath -w "$bin.exe")"; fi
         DOLTGRES_TEST_TARGET="doltgres:$bin" cargo test --profile quick -p doltgres-tests --no-fail-fast
