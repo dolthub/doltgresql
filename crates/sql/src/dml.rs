@@ -1535,6 +1535,12 @@ fn matches(
     from: &Option<Box<Plan>>,
     filter: &Option<Expr>,
 ) -> Result<Vec<(Vec<Value>, Vec<Value>)>> {
+    if ctx.once.is_none() {
+        ctx.once = Some(std::collections::HashMap::new());
+        let result = matches(ctx, table, from, filter);
+        ctx.once = None;
+        return result;
+    }
     if let Some(from) = from
         && !table.keyless()
     {

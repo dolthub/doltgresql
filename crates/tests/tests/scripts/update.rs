@@ -1525,3 +1525,141 @@ fn test_update_from_joins() {
         },
     ]);
 }
+
+#[test]
+fn test_dml_subqueries_over_the_target() {
+    run_scripts(&[
+        ScriptTest {
+            name: "DML filters with subqueries over the target table",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ds (id INT PRIMARY KEY, v INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE dk (v INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ds SELECT i, i % 7, 't' || (i % 4) FROM generate_series(1, 60) i;",
+                    expected: Expected::Tag("INSERT 0 60"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO dk SELECT i % 5, 'k' || i FROM generate_series(1, 12) i;",
+                    expected: Expected::Tag("INSERT 0 12"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM ds WHERE id IN (SELECT id FROM ds WHERE v = 3);",
+                    expected: Expected::Tag("DELETE 9"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), sum(id) FROM ds;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("51"), T("1551")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE ds SET v = v + 100 WHERE id IN (SELECT max(id) FROM ds GROUP BY t);",
+                    expected: Expected::Tag("UPDATE 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v FROM ds WHERE v >= 100 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4)],
+                        rows: &[
+                            &[T("55"), T("106")],
+                            &[T("57"), T("101")],
+                            &[T("58"), T("102")],
+                            &[T("60"), T("104")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE ds SET v = (SELECT max(v) FROM ds) WHERE id < 5;",
+                    expected: Expected::Tag("UPDATE 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v FROM ds WHERE id < 8 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4)],
+                        rows: &[
+                            &[T("1"), T("106")],
+                            &[T("2"), T("106")],
+                            &[T("4"), T("106")],
+                            &[T("5"), T("5")],
+                            &[T("6"), T("6")],
+                            &[T("7"), T("0")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM ds WHERE v NOT IN (SELECT v FROM dk) AND v < 100;",
+                    expected: Expected::Tag("DELETE 15"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), sum(v) FROM ds;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("36"), T("780")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM dk WHERE v IN (SELECT v FROM dk WHERE t > 'k5') OR EXISTS (SELECT 1 FROM ds WHERE ds.id = dk.v);",
+                    expected: Expected::Tag("DELETE 10"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v, t FROM dk ORDER BY t;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4), Column("t", TEXT)],
+                        rows: &[
+                            &[T("0"), T("k10")],
+                            &[T("0"), T("k5")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE dk SET t = t || '!' WHERE v = ANY (SELECT v FROM dk);",
+                    expected: Expected::Tag("UPDATE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v, t FROM dk ORDER BY t;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4), Column("t", TEXT)],
+                        rows: &[
+                            &[T("0"), T("k10!")],
+                            &[T("0"), T("k5!")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
