@@ -53,6 +53,8 @@ struct Bounds {
     start: Vec<u8>,
     /// The number of fields of the start key: the single values, then the lower bound of the next column if it has one.
     start_width: usize,
+    /// Whether the range leaves out the keys equal to its start key, as a lower bound above a value does.
+    exclusive: bool,
     /// The number of leading columns that the range holds at a single value, which every key of the range shares.
     points: usize,
     /// The key that the range's keys end at, with whether it is inclusive, when the column after the single values has
@@ -876,6 +878,7 @@ impl IndexScan {
         let mut fields: Vec<Option<Vec<u8>>> = Vec::new();
         let mut end = None;
         let mut lower = false;
+        let mut exclusive = false;
         let mut exact = true;
         let mut used = 0;
         for (i, column_range) in range.iter().enumerate() {
@@ -913,18 +916,20 @@ impl IndexScan {
                         _ => None,
                     };
                     // NULLs sort before every value unless the index puts them last, which keeps them out of the run of
-                    // keys between the bounds.
-                    let nulls_inside = matches!(low, Cut::BelowNull);
+                    // keys between the bounds, and a column that is NOT NULL has none.
+                    let nulls_inside = matches!(low, Cut::BelowNull) && column.nullable;
+                    let nulls_last = nulls_last && column.nullable;
                     let high = match high {
                         _ if nulls_inside && nulls_last => None,
                         Cut::Below(v) => encode(v).map(|high| (high, false)),
                         Cut::Above(v) => encode(v).map(|high| (high, true)),
                         _ => None,
                     };
+                    exclusive = matches!(low, Cut::Above(_));
                     exact = match low {
-                        Cut::Below(_) => true,
+                        Cut::Below(_) | Cut::Above(_) => true,
                         Cut::BelowNull => !nulls_last,
-                        Cut::AboveNull => nulls_last,
+                        Cut::AboveNull => nulls_last || !column.nullable,
                         _ => false,
                     } && (high.is_some() || (matches!(column_range.upper, Cut::AboveAll) && !nulls_last));
                     end = high.map(|(high, inclusive)| {
@@ -946,7 +951,7 @@ impl IndexScan {
             |r: &crate::ranges::ColumnRange| matches!((&r.lower, &r.upper), (Cut::BelowNull, Cut::AboveAll));
         exact &= range.iter().skip(points + used).all(unconstrained);
         let key: Vec<Option<&[u8]>> = fields.iter().map(Option::as_deref).collect();
-        Bounds { start: prolly::val::build_tuple(&key), start_width: fields.len(), points, end, exact }
+        Bounds { start: prolly::val::build_tuple(&key), start_width: fields.len(), exclusive, points, end, exact }
     }
 
     /// separated reports whether every key of one range sorts before every key of the next, as ranges of ascending
@@ -1064,6 +1069,32 @@ impl IndexScan {
             edge: None,
             repeat: None,
         }))
+    }
+
+    /// count returns how many rows the scan reads, from the positions of its ranges' ends in the index, or None when
+    /// that needs the rows themselves: a vector search, a keyless table, ranges that overlap, or a range whose keys
+    /// need checking.
+    pub fn count(&self, ctx: &mut Ctx<'_>) -> Result<Option<u64>> {
+        if self.nearest.is_some()
+            || self.table.keyless()
+            || !self.ranges.windows(2).all(|pair| self.separated(&pair[0], &pair[1]))
+        {
+            return Ok(None);
+        }
+        let bounds: Vec<Bounds> = self.ranges.iter().map(|r| self.bounds(r)).collect();
+        if !bounds.iter().all(|b| b.exact) {
+            return Ok(None);
+        }
+        let root = match self.index {
+            Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
+            None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
+        };
+        let mut total = 0;
+        for bounds in &bounds {
+            let start = bounds.walk(self, ctx.db, &root, false)?.ordinal()?;
+            total += bounds.past(self, ctx.db, &root)?.saturating_sub(start);
+        }
+        Ok(Some(total))
     }
 
     /// reader returns what decodes the scan's index entries into rows.
@@ -1272,7 +1303,10 @@ impl Bounds {
         reverse: bool,
     ) -> Result<prolly::Items> {
         if !reverse {
-            let compare = |a: &[u8], b: &[u8]| scan.compare_prefix(self.start_width, a, b);
+            let compare = |a: &[u8], b: &[u8]| match scan.compare_prefix(self.start_width, a, b) {
+                std::cmp::Ordering::Equal if self.exclusive => std::cmp::Ordering::Greater,
+                order => order,
+            };
             return Ok(prolly::Items::at_key(db, root.clone(), &self.start, &compare)?);
         }
         // Seek the first key past the range, then step back to its last key.
@@ -1294,6 +1328,21 @@ impl Bounds {
         Ok(items)
     }
 
+    /// past returns the ordinal of the first key after the range: past its end, past the keys that share its single
+    /// values, or the end of the index.
+    fn past(&self, scan: &IndexScan, db: &mut Database, root: &Arc<prolly::Node>) -> Result<u64> {
+        let (target, width, past_equal) = match &self.end {
+            Some((end, inclusive)) => (end, self.points + 1, *inclusive),
+            None if self.points > 0 => (&self.start, self.points, true),
+            None => return Ok(root.tree_count()),
+        };
+        let compare = |a: &[u8], b: &[u8]| match scan.compare_prefix(width, a, b) {
+            std::cmp::Ordering::Equal if past_equal => std::cmp::Ordering::Greater,
+            order => order,
+        };
+        Ok(prolly::Items::at_key(db, root.clone(), target, &compare)?.ordinal()?)
+    }
+
     /// holds reports whether a key that a walk reached still lies within the range's bounds, given the direction.
     fn holds(&self, scan: &IndexScan, key: &[u8], reverse: bool) -> bool {
         use std::cmp::Ordering::{Equal, Greater, Less};
@@ -1301,7 +1350,11 @@ impl Bounds {
             return false;
         }
         if reverse {
-            return self.start_width == self.points || scan.compare_prefix(self.start_width, key, &self.start) != Less;
+            let lower = || match scan.compare_prefix(self.start_width, key, &self.start) {
+                Equal => !self.exclusive,
+                order => order == Greater,
+            };
+            return self.start_width == self.points || lower();
         }
         match &self.end {
             Some((end, inclusive)) => match scan.compare_prefix(self.points + 1, key, end) {

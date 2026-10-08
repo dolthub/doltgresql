@@ -114,3 +114,18 @@ fn seeks_move_walks_to_keys_in_either_direction() {
         assert_eq!(number(&items), (expected < 40_000).then_some(expected), "seeking {target}");
     }
 }
+
+#[test]
+fn ordinals_count_the_items_before_walks() {
+    let mut nodes = MemoryNodes::default();
+    let root = build(&mut nodes, 20_000);
+    let compare = |a: &[u8], b: &[u8]| a.cmp(b);
+    for target in [0, 1, 2, 999, 1000, 25_001, 39_998, 39_999, 50_000] {
+        let items = Items::at_key(&mut nodes, root.clone(), &key(target), &compare).unwrap();
+        assert_eq!(items.ordinal().unwrap(), target.next_multiple_of(2).min(40_000) / 2, "at {target}");
+    }
+    let mut items = Items::last(&mut nodes, root.clone()).unwrap();
+    assert_eq!(items.ordinal().unwrap(), 19_999);
+    items.advance(&mut nodes).unwrap();
+    assert_eq!(items.ordinal().unwrap(), 20_000);
+}

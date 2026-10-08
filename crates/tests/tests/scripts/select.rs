@@ -1158,3 +1158,267 @@ fn test_strict_null_constants() {
         },
     ]);
 }
+
+#[test]
+fn test_joins_looking_up_primary_keys() {
+    run_scripts(&[
+        ScriptTest {
+            name: "joins that look rows up by primary key",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jl (id INT PRIMARY KEY, v TEXT, w INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jr (id INT PRIMARY KEY, lid BIGINT, u TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE js (k SMALLINT PRIMARY KEY, name TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jl SELECT i, 'v' || i, i % 10 FROM generate_series(1, 64) i;",
+                    expected: Expected::Tag("INSERT 0 64"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jr SELECT i, CASE WHEN i % 9 = 0 THEN NULL ELSE i % 80 END, 'u' || i FROM generate_series(1, 300) i;",
+                    expected: Expected::Tag("INSERT 0 300"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO js SELECT i, 'n' || i FROM generate_series(1, 20) i;",
+                    expected: Expected::Tag("INSERT 0 20"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), sum(l.w) FROM jr r JOIN jl l ON l.id = r.lid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("223"), T("965")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT r.id, l.v FROM jr r JOIN jl l ON l.id = r.lid WHERE r.id < 20 ORDER BY r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("1"), T("v1")],
+                            &[T("2"), T("v2")],
+                            &[T("3"), T("v3")],
+                            &[T("4"), T("v4")],
+                            &[T("5"), T("v5")],
+                            &[T("6"), T("v6")],
+                            &[T("7"), T("v7")],
+                            &[T("8"), T("v8")],
+                            &[T("10"), T("v10")],
+                            &[T("11"), T("v11")],
+                            &[T("12"), T("v12")],
+                            &[T("13"), T("v13")],
+                            &[T("14"), T("v14")],
+                            &[T("15"), T("v15")],
+                            &[T("16"), T("v16")],
+                            &[T("17"), T("v17")],
+                            &[T("19"), T("v19")],
+                        ],
+                        tag: "SELECT 17",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT r.id, l.v FROM jr r LEFT JOIN jl l ON l.id = r.lid WHERE r.id BETWEEN 60 AND 75 ORDER BY r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("60"), T("v60")],
+                            &[T("61"), T("v61")],
+                            &[T("62"), T("v62")],
+                            &[T("63"), Null],
+                            &[T("64"), T("v64")],
+                            &[T("65"), Null],
+                            &[T("66"), Null],
+                            &[T("67"), Null],
+                            &[T("68"), Null],
+                            &[T("69"), Null],
+                            &[T("70"), Null],
+                            &[T("71"), Null],
+                            &[T("72"), Null],
+                            &[T("73"), Null],
+                            &[T("74"), Null],
+                            &[T("75"), Null],
+                        ],
+                        tag: "SELECT 16",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT r.id, l.v FROM jr r JOIN jl l ON l.id = r.lid AND l.w > 5 WHERE r.id < 40 ORDER BY r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("6"), T("v6")],
+                            &[T("7"), T("v7")],
+                            &[T("8"), T("v8")],
+                            &[T("16"), T("v16")],
+                            &[T("17"), T("v17")],
+                            &[T("19"), T("v19")],
+                            &[T("26"), T("v26")],
+                            &[T("28"), T("v28")],
+                            &[T("29"), T("v29")],
+                            &[T("37"), T("v37")],
+                            &[T("38"), T("v38")],
+                            &[T("39"), T("v39")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM jr r JOIN (SELECT * FROM jl WHERE w = 3) l ON l.id = r.lid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("25")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM jl l JOIN jr r ON r.lid = l.id WHERE l.id < 5 ORDER BY l.id, r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("1"), T("161")],
+                            &[T("1"), T("241")],
+                            &[T("2"), T("2")],
+                            &[T("2"), T("82")],
+                            &[T("2"), T("242")],
+                            &[T("3"), T("3")],
+                            &[T("3"), T("83")],
+                            &[T("3"), T("163")],
+                            &[T("4"), T("4")],
+                            &[T("4"), T("84")],
+                            &[T("4"), T("164")],
+                            &[T("4"), T("244")],
+                        ],
+                        tag: "SELECT 13",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM jl l JOIN jr r ON r.lid = l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("223")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT s.name, l.v FROM js s JOIN jl l ON l.id = s.k ORDER BY s.k;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("v", TEXT)],
+                        rows: &[
+                            &[T("n1"), T("v1")],
+                            &[T("n2"), T("v2")],
+                            &[T("n3"), T("v3")],
+                            &[T("n4"), T("v4")],
+                            &[T("n5"), T("v5")],
+                            &[T("n6"), T("v6")],
+                            &[T("n7"), T("v7")],
+                            &[T("n8"), T("v8")],
+                            &[T("n9"), T("v9")],
+                            &[T("n10"), T("v10")],
+                            &[T("n11"), T("v11")],
+                            &[T("n12"), T("v12")],
+                            &[T("n13"), T("v13")],
+                            &[T("n14"), T("v14")],
+                            &[T("n15"), T("v15")],
+                            &[T("n16"), T("v16")],
+                            &[T("n17"), T("v17")],
+                            &[T("n18"), T("v18")],
+                            &[T("n19"), T("v19")],
+                            &[T("n20"), T("v20")],
+                        ],
+                        tag: "SELECT 20",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT r.id, s.name FROM jr r JOIN js s ON s.k = r.lid WHERE r.id < 30 ORDER BY r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("name", TEXT)],
+                        rows: &[
+                            &[T("1"), T("n1")],
+                            &[T("2"), T("n2")],
+                            &[T("3"), T("n3")],
+                            &[T("4"), T("n4")],
+                            &[T("5"), T("n5")],
+                            &[T("6"), T("n6")],
+                            &[T("7"), T("n7")],
+                            &[T("8"), T("n8")],
+                            &[T("10"), T("n10")],
+                            &[T("11"), T("n11")],
+                            &[T("12"), T("n12")],
+                            &[T("13"), T("n13")],
+                            &[T("14"), T("n14")],
+                            &[T("15"), T("n15")],
+                            &[T("16"), T("n16")],
+                            &[T("17"), T("n17")],
+                            &[T("19"), T("n19")],
+                            &[T("20"), T("n20")],
+                        ],
+                        tag: "SELECT 18",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM jr a JOIN jr b ON a.id = b.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("300")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM (SELECT a.id, a.u FROM jr a, jr b WHERE a.id = b.id LIMIT 7) s;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("7")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM jl a JOIN jl b ON b.id = a.w;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("58")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

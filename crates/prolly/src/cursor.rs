@@ -171,6 +171,29 @@ impl Items {
         Some((cursor.node(0), cursor.levels[0].idx as usize))
     }
 
+    /// ordinal returns how many items of the tree come before the walk's position, adding up the subtree counts of
+    /// the items before it at each level, which is the tree's count once the walk has passed its end.
+    pub fn ordinal(&self) -> Result<u64> {
+        let Some(cursor) = &self.cursor else { return Ok(0) };
+        let leaf = &cursor.levels[0];
+        if leaf.node.as_ref().is_none_or(|node| leaf.idx >= node.count() as isize) {
+            return Ok(cursor.levels.last().and_then(|root| root.node.as_ref()).map_or(0, |root| root.tree_count()));
+        }
+        let mut total = 0;
+        for (level, position) in cursor.levels.iter().enumerate() {
+            let Some(node) = &position.node else { continue };
+            let idx = position.idx.clamp(0, node.count() as isize) as usize;
+            if level == 0 {
+                total += idx as u64;
+            } else {
+                for i in 0..idx {
+                    total += node.subtree_count(i)?;
+                }
+            }
+        }
+        Ok(total)
+    }
+
     /// advance moves the walk to the next item.
     pub fn advance(&mut self, store: &mut dyn NodeStore) -> Result<()> {
         match self.cursor.as_mut() {

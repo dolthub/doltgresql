@@ -6234,3 +6234,183 @@ fn test_streamed_index_scans() {
         },
     ]);
 }
+
+#[test]
+fn test_counts_over_index_ranges() {
+    run_scripts(&[
+        ScriptTest {
+            name: "counts over index ranges",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ct (id INT PRIMARY KEY, a INT NOT NULL, b INT, c BIGINT NOT NULL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ct_a ON ct (a);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ct_b ON ct (b);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ct_ca ON ct (c, a);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ct SELECT i, i % 97, CASE WHEN i % 5 = 0 THEN NULL ELSE i % 13 END, i % 7 FROM generate_series(1, 3000) i;",
+                    expected: Expected::Tag("INSERT 0 3000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE a > 50;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("1420")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE a >= 50;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("1451")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(id) FROM ct WHERE a < 10;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("309")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE a BETWEEN 10 AND 20 OR a > 90;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("521")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE b > 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("1292")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(b), count(*) FROM ct WHERE b <= 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("739"), T("739")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE b IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("600")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE c = 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("429")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE c = 3 AND a > 40;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("247")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), count(c) FROM ct WHERE c > 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("856"), T("856")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE id > 2990;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE id < 0;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ct WHERE a > 1000;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

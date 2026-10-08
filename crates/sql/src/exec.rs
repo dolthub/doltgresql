@@ -551,10 +551,16 @@ impl Rows for RecursiveRows<'_> {
     }
 }
 
-/// JoinRows pairs each row of its left input with the matching rows of its right input, which it reads first, finding
-/// candidates through a hash table of the right rows' keys when the condition has equalities between the sides.
+/// JoinRows pairs each row of its left input with the matching rows of its right input, finding candidates through a
+/// hash table of the right rows' keys when the condition has equalities between the sides. When those equalities give
+/// the right table's whole primary key, it looks each left row's match up instead, until the lookups would cost more
+/// than reading the right input once.
 struct JoinRows<'p> {
     left: Box<dyn Rows + 'p>,
+    right_plan: &'p Plan,
+    lookup: Option<Lookup<'p>>,
+    /// The right row that the left row being joined found by its primary key.
+    found: Option<Row>,
     right: Vec<Row>,
     kind: JoinKind,
     condition: Option<&'p Expr>,
@@ -569,12 +575,170 @@ struct JoinRows<'p> {
     unmatched: usize,
 }
 
-/// Candidates are the right rows that a left row may match: all of them, or one bucket of the hash table.
+/// Candidates are the right rows that a left row may match: all of them, one bucket of the hash table, or the row its
+/// primary key lookup found.
 #[derive(Clone, Copy)]
 enum Candidates {
     All,
     Bucket(usize),
+    Found,
     None,
+}
+
+/// Lookup finds the right rows of a join by the right table's primary key, whose every column an equality of the join
+/// condition sets to a value of the left row.
+struct Lookup<'p> {
+    table: &'p TableDef,
+    /// Which right columns to decode, or None for every column.
+    needed: Option<Vec<bool>>,
+    /// The right input's own filter.
+    filter: Option<&'p Expr>,
+    /// The left expressions that give the primary key's columns, in key order.
+    keys: Vec<Expr>,
+    root: Arc<prolly::Node>,
+    walk: Option<prolly::Items>,
+    /// How many more lookups to make before reading the right input instead.
+    budget: usize,
+}
+
+impl<'p> Lookup<'p> {
+    /// new returns the lookup that a join's right input allows: a scan of a keyed table, maybe filtered, whose primary
+    /// key the condition's equalities give in full with columns of types the lookup can encode.
+    fn new(right: &'p Plan, condition: Option<&Expr>, left_width: usize) -> Result<Option<Lookup<'p>>> {
+        Lookup::of_side(right, condition, left_width, true)
+    }
+
+    /// of_side is `new` for the right input, or for the left input when `right` is false, which a join then finds by
+    /// the values of each right row.
+    fn of_side(
+        input: &'p Plan,
+        condition: Option<&Expr>,
+        left_width: usize,
+        right: bool,
+    ) -> Result<Option<Lookup<'p>>> {
+        let (scan, filter) = match input {
+            Plan::Filter { input, predicate } => (&**input, Some(predicate)),
+            other => (other, None),
+        };
+        let (Plan::Scan(table, needed), Some(condition)) = (scan, condition) else { return Ok(None) };
+        if table.keyless() {
+            return Ok(None);
+        }
+        let (left_keys, right_keys) = crate::plan::join_keys(condition, left_width);
+        let (left_keys, right_keys) = if right { (left_keys, right_keys) } else { (right_keys, left_keys) };
+        let mut keys = Vec::with_capacity(table.key_columns.len());
+        for &c in &table.key_columns {
+            let column = &table.columns[c];
+            if !lookup_type(column.ty.oid) || crate::storage::is_adaptive(column.encoding) {
+                return Ok(None);
+            }
+            match right_keys.iter().position(|k| *k == Expr::Column(c)) {
+                Some(i) => keys.push(left_keys[i].clone()),
+                None => return Ok(None),
+            }
+        }
+        let root = Arc::new(prolly::Node::decode(table.table.primary_index.clone())?);
+        let budget = (root.tree_count() / 8).max(32) as usize;
+        let needed = needed.as_ref().map(|columns| {
+            let mut mask = vec![false; table.columns.len()];
+            for &c in columns {
+                if let Some(m) = mask.get_mut(c) {
+                    *m = true;
+                }
+            }
+            mask
+        });
+        Ok(Some(Lookup { table, needed, filter, keys, root, walk: None, budget }))
+    }
+
+    /// find returns the right row that a left row's key values find, or None when there is none or its filter
+    /// rejects it, or Err(None) when a value is not one the lookup can encode.
+    fn find(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        left: &[Value],
+    ) -> std::result::Result<Option<Row>, Option<crate::error::PgError>> {
+        let mut fields: smallvec::SmallVec<[Option<Vec<u8>>; 4]> = smallvec::SmallVec::new();
+        for (expr, &c) in self.keys.iter().zip(&self.table.key_columns) {
+            let column = &self.table.columns[c];
+            let value = match expr.eval(ctx, left).map_err(Some)? {
+                Value::Null => return Ok(None),
+                value => match lookup_value(value, column.ty.oid) {
+                    Some(Some(value)) => value,
+                    Some(None) => return Ok(None),
+                    None => return Err(None),
+                },
+            };
+            fields.push(crate::storage::encode_field(&value, column.encoding, column.ty).map_err(|_| None)?);
+        }
+        let key =
+            prolly::val::build_tuple(&fields.iter().map(Option::as_deref).collect::<smallvec::SmallVec<[_; 4]>>());
+        let table = self.table;
+        let compare = |a: &[u8], b: &[u8]| table.compare_keys(a, b);
+        let walk = match &mut self.walk {
+            Some(walk) => {
+                walk.seek(ctx.db, &key, &compare).map_err(|e| Some(e.into()))?;
+                walk
+            }
+            None => self
+                .walk
+                .insert(prolly::Items::at_key(ctx.db, self.root.clone(), &key, &compare).map_err(|e| Some(e.into()))?),
+        };
+        let mut row = Vec::new();
+        match walk.current().map_err(|e| Some(e.into()))? {
+            Some((k, value)) if compare(k, &key) == std::cmp::Ordering::Equal => {
+                table.decode_columns_into(ctx.db, k, value, self.needed.as_deref(), &mut row).map_err(Some)?;
+            }
+            _ => return Ok(None),
+        }
+        match self.filter {
+            Some(filter) if !filter.is_true(ctx, &row).map_err(Some)? => Ok(None),
+            _ => Ok(Some(row)),
+        }
+    }
+}
+
+/// lookup_type reports whether a join can look rows up by a primary key column of the type, whose values encode the
+/// same whenever they are equal.
+fn lookup_type(type_oid: u32) -> bool {
+    use crate::oid;
+    matches!(
+        type_oid,
+        oid::INT2
+            | oid::INT4
+            | oid::INT8
+            | oid::BOOL
+            | oid::DATE
+            | oid::TIMESTAMP
+            | oid::TIMESTAMPTZ
+            | oid::UUID
+            | oid::TEXT
+            | oid::VARCHAR
+    )
+}
+
+/// lookup_value converts a left value to the type of a primary key column, returning Some(None) for an integer out of
+/// the column's range, which no row has, and None for a value the lookup cannot use.
+fn lookup_value(value: Value, type_oid: u32) -> Option<Option<Value>> {
+    use crate::oid;
+    let integer = match value {
+        Value::Int2(i) => Some(i as i64),
+        Value::Int4(i) => Some(i as i64),
+        Value::Int8(i) => Some(i),
+        _ => None,
+    };
+    Some(match (type_oid, integer, value) {
+        (oid::INT2, Some(i), _) => i16::try_from(i).ok().map(Value::Int2),
+        (oid::INT4, Some(i), _) => i32::try_from(i).ok().map(Value::Int4),
+        (oid::INT8, Some(i), _) => Some(Value::Int8(i)),
+        (oid::BOOL, _, v @ Value::Bool(_)) => Some(v),
+        (oid::DATE, _, v @ Value::Date(_)) => Some(v),
+        (oid::TIMESTAMP, _, v @ Value::Timestamp(_)) => Some(v),
+        (oid::TIMESTAMPTZ, _, v @ Value::TimestampTz(_)) => Some(v),
+        (oid::UUID, _, v @ Value::Uuid(_)) => Some(v),
+        (oid::TEXT | oid::VARCHAR, _, v @ Value::Text(_)) => Some(v),
+        _ => return None,
+    })
 }
 
 /// JoinHash finds right rows by the values of the left row's side of the join's equalities.
@@ -597,10 +761,17 @@ impl<'p> JoinRows<'p> {
     ) -> Result<JoinRows<'p>> {
         let (left_width, right_width) = (left.width(), right.width());
         let left_rows = left.open(ctx)?;
-        let right_rows = right.run(ctx)?;
+        let lookup = match kind {
+            JoinKind::Inner | JoinKind::Left => Lookup::new(right, condition, left_width)?,
+            _ => None,
+        };
+        let right_rows = if lookup.is_some() { Vec::new() } else { right.run(ctx)? };
         let hash = condition.and_then(|c| JoinHash::build(ctx, c, left_width, &right_rows));
         Ok(JoinRows {
             left: left_rows,
+            right_plan: right,
+            lookup,
+            found: None,
             right_matched: vec![false; right_rows.len()],
             right: right_rows,
             kind,
@@ -612,6 +783,16 @@ impl<'p> JoinRows<'p> {
             left_done: false,
             unmatched: 0,
         })
+    }
+
+    /// read_right stops looking rows up and reads the right input whole, hashing it, returning the candidates of the
+    /// left row being joined.
+    fn read_right(&mut self, ctx: &mut Ctx<'_>, left: &[Value]) -> Result<Candidates> {
+        self.lookup = None;
+        self.right = self.right_plan.run(ctx)?;
+        self.right_matched = vec![false; self.right.len()];
+        self.hash = self.condition.and_then(|c| JoinHash::build(ctx, c, self.left_width, &self.right));
+        Ok(self.candidates(ctx, left))
     }
 
     /// candidates returns the right rows that a left row may match.
@@ -640,6 +821,12 @@ impl JoinHash {
     /// when the condition has none or a right key is not one it can hash.
     fn build(ctx: &mut Ctx<'_>, condition: &Expr, width: usize, right_rows: &[Row]) -> Option<JoinHash> {
         let (left_keys, right_keys) = crate::plan::join_keys(condition, width);
+        JoinHash::of_keys(ctx, left_keys, right_keys, right_rows)
+    }
+
+    /// of_keys hashes rows by the build side's expressions of the join's equalities, which the probe side's
+    /// expressions over the other input's rows look up.
+    fn of_keys(ctx: &mut Ctx<'_>, left_keys: Vec<Expr>, right_keys: Vec<Expr>, right_rows: &[Row]) -> Option<JoinHash> {
         if left_keys.is_empty() {
             return None;
         }
@@ -676,6 +863,18 @@ impl Rows for JoinRows<'_> {
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
         loop {
             if let Some((left, candidates, position, matched)) = self.current.as_mut() {
+                if let Candidates::Found = *candidates {
+                    *candidates = Candidates::None;
+                    if let Some(found) = self.found.take() {
+                        let mut row = Vec::with_capacity(left.len() + found.len());
+                        row.extend_from_slice(left);
+                        row.extend(found);
+                        if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                            *matched = true;
+                            return Ok(Some(row));
+                        }
+                    }
+                }
                 let bucket: &[usize] = match (*candidates, &self.hash) {
                     (Candidates::Bucket(b), Some(hash)) => &hash.buckets[b],
                     _ => &[],
@@ -719,11 +918,156 @@ impl Rows for JoinRows<'_> {
             }
             match self.left.next(ctx)? {
                 Some(left) => {
-                    let candidates = self.candidates(ctx, &left);
+                    let candidates = match self.lookup.as_mut() {
+                        Some(lookup) if lookup.budget > 0 => {
+                            lookup.budget -= 1;
+                            match lookup.find(ctx, &left) {
+                                Ok(found) => {
+                                    self.found = found;
+                                    Candidates::Found
+                                }
+                                Err(Some(err)) => return Err(err),
+                                Err(None) => self.read_right(ctx, &left)?,
+                            }
+                        }
+                        Some(_) => self.read_right(ctx, &left)?,
+                        None => self.candidates(ctx, &left),
+                    };
                     self.current = Some((left, candidates, 0, false));
                 }
                 None => self.left_done = true,
             }
+        }
+    }
+}
+
+/// ProbeRows runs an inner join the other way around: it reads its right input in order and finds each right row's
+/// matches among the left input's rows by the left table's primary key, until the lookups would cost more than
+/// reading the left input once, and then through a hash table of the left rows.
+struct ProbeRows<'p> {
+    right: Box<dyn Rows + 'p>,
+    left_plan: &'p Plan,
+    lookup: Option<Lookup<'p>>,
+    condition: Option<&'p Expr>,
+    left_width: usize,
+    left: Vec<Row>,
+    hash: Option<JoinHash>,
+    /// The right row being joined, the left rows it may match, and the position among them.
+    current: Option<(Row, Candidates, usize)>,
+    found: Option<Row>,
+}
+
+impl<'p> ProbeRows<'p> {
+    /// open returns the probing join of the inputs when the condition gives the whole primary key of the left
+    /// input's table, and the right input's table offers no such lookup.
+    fn open(
+        ctx: &mut Ctx<'_>,
+        left: &'p Plan,
+        right: &'p Plan,
+        condition: Option<&'p Expr>,
+    ) -> Result<Option<ProbeRows<'p>>> {
+        let left_width = left.width();
+        if Lookup::new(right, condition, left_width)?.is_some() {
+            return Ok(None);
+        }
+        let Some(lookup) = Lookup::of_side(left, condition, left_width, false)? else { return Ok(None) };
+        Ok(Some(ProbeRows {
+            right: right.open(ctx)?,
+            left_plan: left,
+            lookup: Some(lookup),
+            condition,
+            left_width,
+            left: Vec::new(),
+            hash: None,
+            current: None,
+            found: None,
+        }))
+    }
+
+    /// read_left stops looking rows up and reads the left input whole, hashing it, returning the candidates of the
+    /// right row being joined.
+    fn read_left(&mut self, ctx: &mut Ctx<'_>, right: &[Value]) -> Result<Candidates> {
+        self.lookup = None;
+        self.left = self.left_plan.run(ctx)?;
+        if let Some(condition) = self.condition {
+            let (left_keys, right_keys) = crate::plan::join_keys(condition, self.left_width);
+            self.hash = JoinHash::of_keys(ctx, right_keys, left_keys, &self.left);
+        }
+        Ok(self.candidates(ctx, right))
+    }
+
+    /// candidates returns the left rows that a right row may match.
+    fn candidates(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Candidates {
+        let Some(hash) = &self.hash else { return Candidates::All };
+        let mut key = crate::plan::JoinKey::with_capacity(hash.left_keys.len());
+        for (expr, kind) in hash.left_keys.iter().zip(&hash.kinds) {
+            match expr.eval(ctx, row) {
+                Ok(Value::Null) => return Candidates::None,
+                Ok(value) => match HashKey::of(value) {
+                    Some(k) if kind.is_none_or(|kind| kind == std::mem::discriminant(&k)) => key.push(k),
+                    _ => return Candidates::All,
+                },
+                Err(_) => return Candidates::All,
+            }
+        }
+        match hash.table.get(&key) {
+            Some(&bucket) => Candidates::Bucket(bucket),
+            None => Candidates::None,
+        }
+    }
+}
+
+impl Rows for ProbeRows<'_> {
+    fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
+        loop {
+            if let Some((right, candidates, position)) = self.current.as_mut() {
+                if let Candidates::Found = *candidates {
+                    *candidates = Candidates::None;
+                    if let Some(found) = self.found.take() {
+                        let mut row = found;
+                        row.extend_from_slice(right);
+                        if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                            return Ok(Some(row));
+                        }
+                    }
+                }
+                let bucket: &[usize] = match (*candidates, &self.hash) {
+                    (Candidates::Bucket(b), Some(hash)) => &hash.buckets[b],
+                    _ => &[],
+                };
+                loop {
+                    let i = match *candidates {
+                        Candidates::All if *position < self.left.len() => *position,
+                        Candidates::Bucket(_) if *position < bucket.len() => bucket[*position],
+                        _ => break,
+                    };
+                    *position += 1;
+                    let mut row = Vec::with_capacity(self.left[i].len() + right.len());
+                    row.extend_from_slice(&self.left[i]);
+                    row.extend_from_slice(right);
+                    if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                        return Ok(Some(row));
+                    }
+                }
+                self.current = None;
+            }
+            let Some(right) = self.right.next(ctx)? else { return Ok(None) };
+            let candidates = match self.lookup.as_mut() {
+                Some(lookup) if lookup.budget > 0 => {
+                    lookup.budget -= 1;
+                    match lookup.find(ctx, &right) {
+                        Ok(found) => {
+                            self.found = found;
+                            Candidates::Found
+                        }
+                        Err(Some(err)) => return Err(err),
+                        Err(None) => self.read_left(ctx, &right)?,
+                    }
+                }
+                Some(_) => self.read_left(ctx, &right)?,
+                None => self.candidates(ctx, &right),
+            };
+            self.current = Some((right, candidates, 0));
         }
     }
 }
@@ -1048,15 +1392,34 @@ impl Plan {
                 pending: Vec::new().into_iter(),
             }),
             Plan::Join { left, right, kind, condition, .. } => {
-                Box::new(JoinRows::open(ctx, left, right, *kind, condition.as_ref())?)
+                let probe = match kind {
+                    JoinKind::Inner => ProbeRows::open(ctx, left, right, condition.as_ref())?,
+                    _ => None,
+                };
+                match probe {
+                    Some(probe) => Box::new(probe),
+                    None => Box::new(JoinRows::open(ctx, left, right, *kind, condition.as_ref())?),
+                }
             }
             Plan::Aggregate { input, groups, aggregates, sets } => match (&**input, sets) {
                 // A table's row count is in its primary index's root, as go-mysql-server reads it for COUNT(*).
                 (Plan::Scan(table, _), None)
-                    if groups.is_empty() && !table.keyless() && aggregates.iter().all(AggCall::counts_rows) =>
+                    if groups.is_empty()
+                        && !table.keyless()
+                        && aggregates.iter().all(|a| a.counts_rows() || a.counts_set_column(table)) =>
                 {
                     let count = prolly::Node::decode(table.table.primary_index.clone())?.tree_count() as i64;
                     collected(vec![vec![Value::Int8(count); aggregates.len()]])
+                }
+                // An exact index scan's row count is the distance between its ranges' ends in the index.
+                (Plan::IndexScan(scan), None)
+                    if groups.is_empty()
+                        && aggregates.iter().all(|a| a.counts_rows() || a.counts_set_column(&scan.table)) =>
+                {
+                    match scan.count(ctx)? {
+                        Some(count) => collected(vec![vec![Value::Int8(count as i64); aggregates.len()]]),
+                        None => collected(aggregate(ctx, input, groups, aggregates, None)?),
+                    }
                 }
                 _ => collected(aggregate(ctx, input, groups, aggregates, sets.as_deref())?),
             },

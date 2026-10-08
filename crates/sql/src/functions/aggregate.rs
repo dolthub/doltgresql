@@ -153,6 +153,17 @@ pub struct AggCall {
 }
 
 impl AggCall {
+    /// counts_set_column reports whether the call is a plain COUNT of a column of the table that is NOT NULL, which
+    /// counts every row as COUNT(*) does.
+    pub fn counts_set_column(&self, table: &crate::catalog::table::TableDef) -> bool {
+        AGGREGATES[self.index].kind == Kind::Count
+            && matches!(self.args.as_slice(), [Expr::Column(c)] if table.columns.get(*c).is_some_and(|c| !c.nullable))
+            && self.filter.is_none()
+            && !self.distinct
+            && self.order.is_empty()
+            && self.user.is_none()
+    }
+
     /// counts_rows reports whether the call is a plain COUNT(*), which counts every row of its group.
     pub fn counts_rows(&self) -> bool {
         AGGREGATES[self.index].kind == Kind::CountStar
@@ -290,6 +301,14 @@ impl Accumulator {
             }
             State::Count(n) if kind == Kind::CountStar => {
                 *n += 1;
+                return Ok(());
+            }
+            State::Count(n) if matches!(call.args.as_slice(), [Expr::Column(_)]) => {
+                if let [Expr::Column(i)] = call.args.as_slice()
+                    && !row[*i].is_null()
+                {
+                    *n += 1;
+                }
                 return Ok(());
             }
             _ => match call.args.first() {

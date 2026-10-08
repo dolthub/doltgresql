@@ -498,6 +498,25 @@ impl TableDef {
 
     /// compare_keys orders two keys of the primary index.
     pub fn compare_keys(&self, left: &[u8], right: &[u8]) -> Ordering {
+        // A key of one integer column is the integer's bytes and then the field count, which compare directly.
+        if let [c] = self.key_columns.as_slice() {
+            let int = |b: &[u8]| -> i64 {
+                match b.len() {
+                    4 => i16::from_le_bytes([b[0], b[1]]) as i64,
+                    6 => i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as i64,
+                    _ => i64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]),
+                }
+            };
+            let width = match self.columns[*c].encoding {
+                encoding::INT16 => 4,
+                encoding::INT32 => 6,
+                encoding::INT64 => 10,
+                _ => 0,
+            };
+            if width > 0 && left.len() == width && right.len() == width {
+                return int(left).cmp(&int(right));
+            }
+        }
         let (left, right) = (Tuple(left), Tuple(right));
         if self.keyless() {
             let ty = ColumnType { oid: 0, modifier: -1 };
