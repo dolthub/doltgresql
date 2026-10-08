@@ -6807,3 +6807,141 @@ fn test_anti_joins() {
         },
     ]);
 }
+
+#[test]
+fn test_lookups_by_fixed_keys() {
+    run_scripts(&[
+        ScriptTest {
+            name: "join lookups by keys that filters fix",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lw (w INT, i INT, q INT, PRIMARY KEY (w, i));",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ll (id INT PRIMARY KEY, w INT, i INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lw SELECT w, i, (w * 7 + i) % 20 FROM generate_series(1, 3) w, generate_series(1, 50) i;",
+                    expected: Expected::Tag("INSERT 0 150"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ll SELECT n, n % 3 + 1, n % 60 FROM generate_series(1, 90) n;",
+                    expected: Expected::Tag("INSERT 0 90"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), count(DISTINCT l.i) FROM ll l, lw s WHERE s.w = 2 AND s.i = l.i AND s.q < 10;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("40"), T("25")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, s.q FROM ll l JOIN lw s ON s.i = l.i WHERE s.w = 3 AND l.id < 12 ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("q", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("2"), T("3")],
+                            &[T("3"), T("4")],
+                            &[T("4"), T("5")],
+                            &[T("5"), T("6")],
+                            &[T("6"), T("7")],
+                            &[T("7"), T("8")],
+                            &[T("8"), T("9")],
+                            &[T("9"), T("10")],
+                            &[T("10"), T("11")],
+                            &[T("11"), T("12")],
+                        ],
+                        tag: "SELECT 11",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, s.w FROM ll l JOIN lw s ON s.i = l.i AND s.w = 1 WHERE l.id BETWEEN 40 AND 52 ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("w", INT4)],
+                        rows: &[
+                            &[T("40"), T("1")],
+                            &[T("41"), T("1")],
+                            &[T("42"), T("1")],
+                            &[T("43"), T("1")],
+                            &[T("44"), T("1")],
+                            &[T("45"), T("1")],
+                            &[T("46"), T("1")],
+                            &[T("47"), T("1")],
+                            &[T("48"), T("1")],
+                            &[T("49"), T("1")],
+                            &[T("50"), T("1")],
+                        ],
+                        tag: "SELECT 11",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, s.q FROM ll l LEFT JOIN lw s ON s.i = l.i AND s.w = 2 WHERE l.id > 80 ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("q", INT4)],
+                        rows: &[
+                            &[T("81"), T("15")],
+                            &[T("82"), T("16")],
+                            &[T("83"), T("17")],
+                            &[T("84"), T("18")],
+                            &[T("85"), T("19")],
+                            &[T("86"), T("0")],
+                            &[T("87"), T("1")],
+                            &[T("88"), T("2")],
+                            &[T("89"), T("3")],
+                            &[T("90"), T("4")],
+                        ],
+                        tag: "SELECT 10",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ll l WHERE EXISTS (SELECT 1 FROM lw s WHERE s.w = 1 AND s.i = l.i AND s.q > 15);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("16")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ll l, lw s WHERE s.w = 4 AND s.i = l.i;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ll l, lw s WHERE s.w = l.w AND s.i = l.i AND s.q BETWEEN 3 AND 9;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("26")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

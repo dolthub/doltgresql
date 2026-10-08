@@ -24,7 +24,7 @@ use doltdb::database::Database;
 
 use crate::catalog::table::TableDef;
 use crate::error::{Result, code};
-use crate::expr::{Expr, compare_values};
+use crate::expr::{CmpOp, Expr, compare_values};
 use crate::functions::aggregate::{Accumulator, AggCall};
 use crate::plan::{HashKey, JoinKind, Plan, SetOp, SortKey, SubqueryRows};
 use crate::query::Ctx;
@@ -579,6 +579,15 @@ struct JoinRows<'p> {
     unmatched: usize,
 }
 
+/// fixed_value returns the constant that a filter's equality sets a column to, if it has one.
+fn fixed_value(filter: &Expr, column: usize) -> Option<&Expr> {
+    crate::indexscan::conjuncts(filter).into_iter().find_map(|c| match c {
+        Expr::Compare(CmpOp::Eq, a, b) if **a == Expr::Column(column) && crate::indexscan::is_constant(b) => Some(&**b),
+        Expr::Compare(CmpOp::Eq, a, b) if **b == Expr::Column(column) && crate::indexscan::is_constant(a) => Some(&**a),
+        _ => None,
+    })
+}
+
 /// Candidates are the right rows that a left row may match: all of them, one bucket of the hash table, or the row its
 /// primary key lookup found.
 #[derive(Clone, Copy)]
@@ -590,7 +599,7 @@ enum Candidates {
 }
 
 /// Lookup finds the right rows of a join by the right table's primary key, whose every column an equality of the join
-/// condition sets to a value of the left row.
+/// condition sets to a value of the left row, or the right input's filter sets to a constant.
 struct Lookup<'p> {
     table: &'p TableDef,
     /// Which right columns to decode, or None for every column.
@@ -606,8 +615,9 @@ struct Lookup<'p> {
 }
 
 impl<'p> Lookup<'p> {
-    /// new returns the lookup that a join's right input allows: a scan of a keyed table, maybe filtered, whose primary
-    /// key the condition's equalities give in full with columns of types the lookup can encode.
+    /// new returns the lookup that a join's right input allows: a scan of a keyed table, maybe filtered, or a filtered
+    /// index scan of one, whose primary key the condition's equalities and the filter's constants give in full with
+    /// columns of types the lookup can encode.
     fn new(right: &'p Plan, condition: Option<&Expr>, left_width: usize) -> Result<Option<Lookup<'p>>> {
         Lookup::of_side(right, condition, left_width, true)
     }
@@ -624,7 +634,12 @@ impl<'p> Lookup<'p> {
             Plan::Filter { input, predicate } => (&**input, Some(predicate)),
             other => (other, None),
         };
-        let (Plan::Scan(table, needed), Some(condition)) = (scan, condition) else { return Ok(None) };
+        let (table, needed) = match (scan, filter) {
+            (Plan::Scan(table, needed), _) => (table, needed),
+            (Plan::IndexScan(index), Some(_)) => (&index.table, &index.needed),
+            _ => return Ok(None),
+        };
+        let Some(condition) = condition else { return Ok(None) };
         if table.keyless() {
             return Ok(None);
         }
@@ -638,7 +653,10 @@ impl<'p> Lookup<'p> {
             }
             match right_keys.iter().position(|k| *k == Expr::Column(c)) {
                 Some(i) => keys.push(left_keys[i].clone()),
-                None => return Ok(None),
+                None => match filter.and_then(|f| fixed_value(f, c)) {
+                    Some(value) => keys.push(value.clone()),
+                    None => return Ok(None),
+                },
             }
         }
         let root = Arc::new(prolly::Node::decode(table.table.primary_index.clone())?);
