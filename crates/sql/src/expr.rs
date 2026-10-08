@@ -3717,7 +3717,7 @@ impl Expr {
 }
 
 /// date_op applies a date and time operator to two non-NULL values.
-fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
+pub(crate) fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
     use crate::datetime::{self as dt, USECS_PER_DAY};
     use crate::functions::datetime::{interval_multiply, justify_hours_of, negate_interval, timestamp_plus_interval};
     let date_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "date out of range");

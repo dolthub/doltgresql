@@ -14,9 +14,9 @@
 
 //! String functions.
 
-use super::{ANY, Function, text};
+use super::{ANY, ANYELEMENT, Function, text};
 use crate::error::{PgError, Result, code};
-use crate::oid::{BOOL, BPCHAR, CHAR, INT4, INT8, TEXT, TEXT_ARRAY};
+use crate::oid::{BOOL, BPCHAR, BYTEA, CHAR, INT4, INT8, TEXT, TEXT_ARRAY};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -69,6 +69,27 @@ pub const FUNCTIONS: &[Function] = &[
     f("quote_ident", &[TEXT], TEXT, quote_ident),
     f("quote_literal", &[TEXT], TEXT, quote_literal),
     f("parse_ident", &[TEXT], TEXT_ARRAY, parse_ident),
+    f("overlay", &[TEXT, TEXT, INT4, INT4], TEXT, overlay),
+    f("overlay", &[TEXT, TEXT, INT4], TEXT, overlay),
+    f("overlay", &[BYTEA, BYTEA, INT4, INT4], BYTEA, overlay),
+    f("overlay", &[BYTEA, BYTEA, INT4], BYTEA, overlay),
+    f("unistr", &[TEXT], TEXT, unistr),
+    Function {
+        name: "quote_nullable",
+        args: &[TEXT],
+        ret: TEXT,
+        strict: false,
+        variadic: false,
+        implementation: quote_nullable,
+    },
+    Function {
+        name: "quote_nullable",
+        args: &[ANYELEMENT],
+        ret: TEXT,
+        strict: false,
+        variadic: false,
+        implementation: quote_nullable,
+    },
     f("parse_ident", &[TEXT, BOOL], TEXT_ARRAY, parse_ident),
     Function { name: "concat", args: &[ANY], ret: TEXT, strict: false, variadic: true, implementation: concat },
     Function {
@@ -447,4 +468,131 @@ fn parse_ident(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         }
     }
     Ok(Value::Array(Box::new(crate::array::Array::one_dimensional(TEXT, names))))
+}
+
+/// quote_nullable quotes a value as a string literal, or returns NULL unquoted for NULL.
+fn quote_nullable(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    match args[0].output() {
+        Some(text) => quote_literal(ctx, &[Value::Text(text)]),
+        None => Ok(Value::Text("NULL".into())),
+    }
+}
+
+/// overlay replaces the characters, or bytes, of a string from a position on, as many as the replacement has or the
+/// count given, with the replacement, as Postgres' textoverlay and byteaoverlay do.
+fn overlay(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let start = match &args[2] {
+        Value::Int4(start) => *start,
+        _ => return Ok(Value::Null),
+    };
+    if start <= 0 {
+        return Err(PgError::new(code::SUBSTRING_ERROR, "negative substring length not allowed"));
+    }
+    match (&args[0], &args[1]) {
+        (Value::Bytea(bytes), Value::Bytea(placing)) => {
+            let count = match args.get(3) {
+                Some(Value::Int4(count)) => *count,
+                _ => placing.len() as i32,
+            };
+            Ok(Value::Bytea(splice(bytes, placing, start, count)?))
+        }
+        (string, placing) => {
+            let (chars, placing): (Vec<char>, Vec<char>) =
+                (text(string).chars().collect(), text(placing).chars().collect());
+            let count = match args.get(3) {
+                Some(Value::Int4(count)) => *count,
+                _ => placing.len() as i32,
+            };
+            Ok(Value::Text(splice(&chars, &placing, start, count)?.into_iter().collect()))
+        }
+    }
+}
+
+/// splice replaces the run of a sequence that starts at a one-based position and is `count` long with another
+/// sequence.
+fn splice<T: Clone>(items: &[T], placing: &[T], start: i32, count: i32) -> Result<Vec<T>> {
+    let end = start
+        .checked_add(count)
+        .ok_or_else(|| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "integer out of range"))?;
+    let head = items.iter().take(start as usize - 1);
+    let tail = items.iter().skip(end.max(1) as usize - 1);
+    Ok(head.chain(placing).chain(tail).cloned().collect())
+}
+
+/// unistr decodes the Unicode escapes of a string, `\XXXX`, `\+XXXXXX`, `\uXXXX`, and `\UXXXXXXXX`, with `\\` for a
+/// backslash, as Postgres' unistr does.
+fn unistr(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let input = text(&args[0]);
+    let bytes = input.as_bytes();
+    let invalid_pair = || PgError::new(code::SYNTAX_ERROR, "invalid Unicode surrogate pair");
+    let hex = |at: usize, digits: usize| -> Option<u32> {
+        let slice = bytes.get(at..at + digits)?;
+        slice
+            .iter()
+            .all(u8::is_ascii_hexdigit)
+            .then(|| u32::from_str_radix(std::str::from_utf8(slice).ok()?, 16).ok())?
+    };
+    let (mut out, mut at, mut pair_first) = (String::new(), 0, 0u32);
+    while at < bytes.len() {
+        if bytes[at] != b'\\' {
+            if pair_first != 0 {
+                return Err(invalid_pair());
+            }
+            let c = input[at..].chars().next().unwrap_or_default();
+            out.push(c);
+            at += c.len_utf8();
+            continue;
+        }
+        if bytes.get(at + 1) == Some(&b'\\') {
+            out.push('\\');
+            at += 2;
+            continue;
+        }
+        let (code_point, length) = if let Some(c) = hex(at + 1, 4) {
+            (c, 5)
+        } else if bytes.get(at + 1) == Some(&b'u')
+            && let Some(c) = hex(at + 2, 4)
+        {
+            (c, 6)
+        } else if bytes.get(at + 1) == Some(&b'+')
+            && let Some(c) = hex(at + 2, 6)
+        {
+            (c, 8)
+        } else if bytes.get(at + 1) == Some(&b'U')
+            && let Some(c) = hex(at + 2, 8)
+        {
+            (c, 10)
+        } else {
+            return Err(PgError {
+                hint: Some("Unicode escapes must be \\XXXX, \\+XXXXXX, \\uXXXX, or \\UXXXXXXXX.".into()),
+                ..PgError::new(code::SYNTAX_ERROR, "invalid Unicode escape")
+            });
+        };
+        at += length;
+        if code_point == 0 || code_point > 0x10FFFF {
+            return Err(PgError::new(
+                code::INVALID_PARAMETER_VALUE,
+                format!("invalid Unicode code point: {code_point:04X}"),
+            ));
+        }
+        let code_point = match code_point {
+            0xD800..=0xDBFF if pair_first == 0 => {
+                pair_first = code_point;
+                continue;
+            }
+            0xDC00..=0xDFFF if pair_first != 0 => {
+                let combined = 0x10000 + ((pair_first - 0xD800) << 10) + (code_point - 0xDC00);
+                pair_first = 0;
+                combined
+            }
+            0xD800..=0xDFFF => return Err(invalid_pair()),
+            _ if pair_first != 0 => return Err(invalid_pair()),
+            other => other,
+        };
+        out.push(char::from_u32(code_point).ok_or_else(invalid_pair)?);
+    }
+    if pair_first != 0 {
+        return Err(invalid_pair());
+    }
+    Ok(Value::Text(out))
 }

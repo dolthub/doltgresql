@@ -30,8 +30,26 @@ const fn f(name: &'static str, args: &'static [u32], ret: u32, implementation: s
     Function { name, args, ret, strict: true, variadic: false, implementation }
 }
 
+/// o declares an overlaps function, which takes NULL endpoints.
+const fn o(args: &'static [u32]) -> Function {
+    Function { name: "overlaps", args, ret: crate::oid::BOOL, strict: false, variadic: false, implementation: overlaps }
+}
+
 /// FUNCTIONS are the date and time functions.
 pub const FUNCTIONS: &[Function] = &[
+    o(&[TIMESTAMP, TIMESTAMP, TIMESTAMP, TIMESTAMP]),
+    o(&[TIMESTAMP, INTERVAL, TIMESTAMP, INTERVAL]),
+    o(&[TIMESTAMP, INTERVAL, TIMESTAMP, TIMESTAMP]),
+    o(&[TIMESTAMP, TIMESTAMP, TIMESTAMP, INTERVAL]),
+    o(&[TIMESTAMPTZ, TIMESTAMPTZ, TIMESTAMPTZ, TIMESTAMPTZ]),
+    o(&[TIMESTAMPTZ, INTERVAL, TIMESTAMPTZ, INTERVAL]),
+    o(&[TIMESTAMPTZ, INTERVAL, TIMESTAMPTZ, TIMESTAMPTZ]),
+    o(&[TIMESTAMPTZ, TIMESTAMPTZ, TIMESTAMPTZ, INTERVAL]),
+    o(&[TIME, TIME, TIME, TIME]),
+    o(&[TIME, INTERVAL, TIME, INTERVAL]),
+    o(&[TIME, INTERVAL, TIME, TIME]),
+    o(&[TIME, TIME, TIME, INTERVAL]),
+    o(&[TIMETZ, TIMETZ, TIMETZ, TIMETZ]),
     f("now", &[], TIMESTAMPTZ, now),
     f("transaction_timestamp", &[], TIMESTAMPTZ, now),
     f("current_timestamp", &[], TIMESTAMPTZ, now),
@@ -1013,4 +1031,49 @@ fn to_char(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         _ => None,
     };
     Ok(written.map_or(Value::Null, Value::Text))
+}
+
+/// overlaps reports whether two periods, each given by its endpoints or by its start and length, overlap, as
+/// Postgres' overlaps_timestamp does, including its answers for NULL endpoints.
+fn overlaps(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let end = |start: &Value, end: &Value| -> Result<Value> {
+        Ok(match (start, end) {
+            (Value::Null, _) | (_, Value::Null) => end.clone(),
+            (Value::Time(_), Value::Interval(_)) => {
+                crate::expr::date_op(crate::expr::DateOp::TimePlusInterval, start.clone(), end.clone())?
+            }
+            (_, Value::Interval(_)) => crate::expr::date_op(
+                crate::expr::DateOp::TimestampPlusInterval(matches!(start, Value::TimestampTz(_))),
+                start.clone(),
+                end.clone(),
+            )?,
+            _ => end.clone(),
+        })
+    };
+    let ordered = |start: Value, end: Value| match (start.is_null(), end.is_null()) {
+        (true, true) => None,
+        (true, false) => Some((end, Value::Null)),
+        (false, true) => Some((start, Value::Null)),
+        (false, false) if crate::expr::compare_values(&start, &end).is_gt() => Some((end, start)),
+        (false, false) => Some((start, end)),
+    };
+    let (Some((s1, e1)), Some((s2, e2))) =
+        (ordered(args[0].clone(), end(&args[0], &args[1])?), ordered(args[2].clone(), end(&args[2], &args[3])?))
+    else {
+        return Ok(Value::Null);
+    };
+    let less = |a: &Value, b: &Value| crate::expr::compare_values(a, b).is_lt();
+    let (first_end, second, second_end) = match crate::expr::compare_values(&s1, &s2) {
+        std::cmp::Ordering::Equal => {
+            return Ok(if e1.is_null() || e2.is_null() { Value::Null } else { Value::Bool(true) });
+        }
+        std::cmp::Ordering::Greater => (e2, s1, e1),
+        std::cmp::Ordering::Less => (e1, s2, e2),
+    };
+    Ok(match (first_end.is_null(), less(&second, &first_end), second_end.is_null()) {
+        (true, ..) => Value::Null,
+        (false, true, _) => Value::Bool(true),
+        (false, false, true) => Value::Null,
+        (false, false, false) => Value::Bool(false),
+    })
 }

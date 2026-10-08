@@ -17,7 +17,7 @@
 use super::{Function, text};
 use crate::auth::Object;
 use crate::error::{PgError, Result, code};
-use crate::oid::{BOOL, FLOAT8, INT4, INT8, INTERVAL, NAME, OID, TEXT, TIMESTAMPTZ};
+use crate::oid::{BOOL, FLOAT8, INT4, INT8, INTERVAL, NAME, NUMERIC, OID, TEXT, TIMESTAMPTZ};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -172,6 +172,11 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_postmaster_start_time", &[], TIMESTAMPTZ, pg_postmaster_start_time),
     f("pg_is_in_recovery", &[], BOOL, pg_is_in_recovery),
     f("pg_is_wal_replay_paused", &[], BOOL, pg_is_wal_replay_paused),
+    f("pg_size_pretty", &[INT8], TEXT, pg_size_pretty),
+    f("pg_size_pretty", &[NUMERIC], TEXT, pg_size_pretty),
+    f("pg_trigger_depth", &[], INT4, pg_trigger_depth),
+    f("pg_database_size", &[NAME], INT8, pg_database_size),
+    f("pg_database_size", &[OID], INT8, pg_database_size),
     f("has_schema_privilege", &[NAME, TEXT, TEXT], BOOL, has_schema_privilege),
     f("has_schema_privilege", &[NAME, OID, TEXT], BOOL, has_schema_privilege),
     f("has_schema_privilege", &[OID, TEXT, TEXT], BOOL, has_schema_privilege),
@@ -595,4 +600,82 @@ fn pg_get_ruledef(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     };
     let definition = ctx.view_definition(&view.statement, pretty, 0)?;
     Ok(Value::Text(format!("CREATE RULE \"_RETURN\" AS\n    ON SELECT TO {relation} DO INSTEAD {definition}")))
+}
+
+/// SIZE_UNITS are the units that pg_size_pretty prints sizes in: each unit's name, the size below which it is used,
+/// whether it rounds halves away from zero, and its power of two.
+const SIZE_UNITS: [(&str, i128, bool, u32); 6] = [
+    ("bytes", 10 * 1024, false, 0),
+    ("kB", 20 * 1024 - 1, true, 10),
+    ("MB", 20 * 1024 - 1, true, 20),
+    ("GB", 20 * 1024 - 1, true, 30),
+    ("TB", 20 * 1024 - 1, true, 40),
+    ("PB", 20 * 1024 - 1, true, 50),
+];
+
+/// pg_size_pretty prints a number of bytes in the largest unit that keeps it readable, as Postgres does.
+fn pg_size_pretty(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let mut size: i128 = match &args[0] {
+        Value::Int8(n) => *n as i128,
+        Value::Numeric(n) => {
+            let shown = n.to_string();
+            match shown.split('.').next().and_then(|whole| whole.parse::<i128>().ok()) {
+                Some(whole) if shown.contains('.') && whole.abs() < SIZE_UNITS[0].1 => {
+                    return Ok(Value::Text(format!("{shown} bytes")));
+                }
+                Some(whole) => whole,
+                None => return Ok(Value::Text(format!("{shown} bytes"))),
+            }
+        }
+        _ => return Ok(Value::Null),
+    };
+    for (i, &(name, limit, round, bits)) in SIZE_UNITS.iter().enumerate() {
+        let Some(&(_, _, next_round, next_bits)) = SIZE_UNITS.get(i + 1).filter(|_| size.abs() >= limit) else {
+            if round {
+                size = (size + if size < 0 { -1 } else { 1 }) / 2;
+            }
+            return Ok(Value::Text(format!("{size} {name}")));
+        };
+        let shift = next_bits - bits - u32::from(next_round) + u32::from(round);
+        size /= 1i128 << shift;
+    }
+    Ok(Value::Null)
+}
+
+/// pg_trigger_depth returns how many trigger functions are running inside one another.
+fn pg_trigger_depth(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
+    Ok(Value::Int4(ctx.session.trigger_depth))
+}
+
+/// pg_database_size returns the bytes that a database's files take, failing for a name that no database has and
+/// returning NULL for such an OID.
+fn pg_database_size(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let names = ctx.session.database_names();
+    let name = match &args[0] {
+        Value::Text(name) if names.contains(name) => name.clone(),
+        Value::Text(name) => {
+            return Err(PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{name}\" does not exist")));
+        }
+        other => {
+            let oid = oid_arg(other);
+            match names.into_iter().find(|n| crate::pgcatalog::snapshot::database_oid(n) == oid) {
+                Some(name) => name,
+                None => return Ok(Value::Null),
+            }
+        }
+    };
+    Ok(Value::Int8(directory_size(&ctx.session.data_dir.join(name)) as i64))
+}
+
+/// directory_size adds up the sizes of the files under a directory.
+fn directory_size(path: &std::path::Path) -> u64 {
+    std::fs::read_dir(path).map_or(0, |entries| {
+        entries
+            .flatten()
+            .map(|e| match e.file_type() {
+                Ok(t) if t.is_dir() => directory_size(&e.path()),
+                _ => e.metadata().map_or(0, |m| m.len()),
+            })
+            .sum()
+    })
 }

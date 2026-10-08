@@ -624,8 +624,10 @@ impl Triggers {
         };
         crate::routines::check_depth(ctx)?;
         ctx.session.call_depth += 1;
+        ctx.session.trigger_depth += 1;
         let result =
             crate::plpgsql::call_trigger(ctx, &fired.function, ops, self.row_type, &self.columns, new, old, special);
+        ctx.session.trigger_depth -= 1;
         ctx.session.call_depth -= 1;
         result.map_err(|err| PgError { position: None, ..err })
     }

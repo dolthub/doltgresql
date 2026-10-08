@@ -716,6 +716,7 @@ impl Engine {
                 aggregates: None,
                 user_types: None,
                 call_depth: 0,
+                trigger_depth: 0,
                 id: NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 advisory: self.shared.advisory.clone(),
                 pending_copy: None,
@@ -827,6 +828,8 @@ pub struct SessionState {
     pub aggregates: Option<crate::aggregates::AggregateCache>,
     /// How many function calls are running inside one another.
     pub call_depth: usize,
+    /// How many trigger functions are running inside one another, which pg_trigger_depth returns.
+    pub trigger_depth: i32,
     /// The session's number among the engine's sessions, which advisory locks record their holders by.
     pub id: u64,
     /// The engine's advisory locks.

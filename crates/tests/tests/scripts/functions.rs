@@ -15685,3 +15685,252 @@ fn test_parse_ident() {
         },
     ]);
 }
+
+#[test]
+fn test_quick_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "overlay, quote_nullable, unistr, and pg_size_pretty",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT overlay('abcdef' placing 'xy' from 2 for 3), overlay('abcdef' placing 'XYZ' from 3), overlay('abc' placing 'x' from 2 for -1), overlay('abc' placing 'zz' from 5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("overlay", TEXT), Column("overlay", TEXT), Column("overlay", TEXT), Column("overlay", TEXT)],
+                        rows: &[
+                            &[T("axyef"), T("abXYZf"), T("axabc"), T("abczz")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT overlay('\x0102030405'::bytea placing '\xff'::bytea from 2), overlay('\x0102'::bytea placing '\xaabb'::bytea from 1 for 0);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("overlay", BYTEA), Column("overlay", BYTEA)],
+                        rows: &[
+                            &[T(r#"\x01ff030405"#), T(r#"\xaabb0102"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT overlay('abc' placing 'x' from 0);",
+                    expected: Expected::Error(Diagnostic { code: "22011", message: "negative substring length not allowed", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT quote_nullable(NULL), quote_nullable('it''s'), quote_nullable(42), quote_nullable('back\slash');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("quote_nullable", TEXT), Column("quote_nullable", TEXT), Column("quote_nullable", TEXT), Column("quote_nullable", TEXT)],
+                        rows: &[
+                            &[T("NULL"), T("'it''s'"), T("'42'"), T(r#"E'back\\slash'"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT unistr('d\0061t\+000061'), unistr('é\U0001F600\\'), unistr('\D83D\DE00');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("unistr", TEXT), Column("unistr", TEXT), Column("unistr", TEXT)],
+                        rows: &[
+                            &[T("data"), T(r#"é😀\"#), T("😀")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT unistr('\xyz');"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "invalid Unicode escape", hint: r#"Unicode escapes must be \XXXX, \+XXXXXX, \uXXXX, or \UXXXXXXXX."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT unistr('\0000');"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "invalid Unicode code point: 0000", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT unistr('\D83D');"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "invalid Unicode surrogate pair", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_size_pretty(0::bigint), pg_size_pretty(10239::bigint), pg_size_pretty(10240::bigint), pg_size_pretty(20971519::bigint), pg_size_pretty(-123456789::bigint), pg_size_pretty(9223372036854775807);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_size_pretty", TEXT), Column("pg_size_pretty", TEXT), Column("pg_size_pretty", TEXT), Column("pg_size_pretty", TEXT), Column("pg_size_pretty", TEXT), Column("pg_size_pretty", TEXT)],
+                        rows: &[
+                            &[T("0 bytes"), T("10239 bytes"), T("10 kB"), T("20 MB"), T("-118 MB"), T("8192 PB")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_size_pretty(1234.5::numeric), pg_size_pretty(123456789012345678901234567890::numeric), pg_size_pretty(-5000000::numeric);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_size_pretty", TEXT), Column("pg_size_pretty", TEXT), Column("pg_size_pretty", TEXT)],
+                        rows: &[
+                            &[T("1234.5 bytes"), T("109651655766237 PB"), T("-4883 kB")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_database_size(current_database()) > 0, pg_database_size(0::oid);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("pg_database_size", INT8)],
+                        rows: &[
+                            &[T("t"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_database_size('no_such_database');",
+                    expected: Expected::Error(Diagnostic { code: "3D000", message: r#"database "no_such_database" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "OVERLAPS and pg_trigger_depth",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT (DATE '2020-01-01', DATE '2020-02-01') OVERLAPS (DATE '2020-01-15', DATE '2020-03-01');",
+                    expected: Expected::Rows {
+                        columns: &[Column("overlaps", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (TIMESTAMP '2020-01-01', INTERVAL '1 day') OVERLAPS (TIMESTAMP '2020-01-02', INTERVAL '1 day');",
+                    expected: Expected::Rows {
+                        columns: &[Column("overlaps", BOOL)],
+                        rows: &[
+                            &[T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (TIME '01:00', TIME '03:00') OVERLAPS (TIME '02:00', TIME '04:00'), (TIME '01:00', INTERVAL '1 hour') OVERLAPS (TIME '01:30', TIME '00:30');",
+                    expected: Expected::Rows {
+                        columns: &[Column("overlaps", BOOL), Column("overlaps", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (TIMESTAMPTZ '2020-01-01 00:00+00', NULL::timestamptz) OVERLAPS (TIMESTAMPTZ '2020-01-01 00:00+00', TIMESTAMPTZ '2020-01-02 00:00+00');",
+                    expected: Expected::Rows {
+                        columns: &[Column("overlaps", BOOL)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (NULL::timestamp, NULL::timestamp) OVERLAPS (TIMESTAMP '2020-01-01', TIMESTAMP '2020-01-02');",
+                    expected: Expected::Rows {
+                        columns: &[Column("overlaps", BOOL)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (TIMESTAMP '2020-01-05', NULL::timestamp) OVERLAPS (TIMESTAMP '2020-01-01', TIMESTAMP '2020-01-02');",
+                    expected: Expected::Rows {
+                        columns: &[Column("overlaps", BOOL)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (TIMESTAMP '2020-01-03', TIMESTAMP '2020-01-01') OVERLAPS (TIMESTAMP '2020-01-02', NULL::timestamp);",
+                    expected: Expected::Rows {
+                        columns: &[Column("overlaps", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_trigger_depth();",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_trigger_depth", INT4)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE depth_log (d INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE depth_t (x INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION depth_f() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO depth_log VALUES (pg_trigger_depth()); RETURN NEW; END; $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TRIGGER depth_tr BEFORE INSERT ON depth_t FOR EACH ROW EXECUTE FUNCTION depth_f();",
+                    expected: Expected::Tag("CREATE TRIGGER"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO depth_t VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT d FROM depth_log;",
+                    expected: Expected::Rows {
+                        columns: &[Column("d", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
