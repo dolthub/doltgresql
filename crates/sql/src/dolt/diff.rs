@@ -65,6 +65,9 @@ pub struct UserTable {
     pub from: Vec<ColumnDef>,
     /// The `to_commit` and `from_commit` that a query's conditions give a commit diff table.
     pub commits: Option<(Expr, Expr)>,
+    /// The column of a diff table, `to_commit` or `from_commit`, that a query's conditions set to a commit, with that
+    /// commit, which limits the commits the table diffs as Dolt's diff table index lookups do.
+    pub lookup: Option<(&'static str, Expr)>,
     /// Whether rows end with their row number, as WITH ORDINALITY asks of the DOLT_DIFF function.
     pub ordinality: bool,
     /// The commit a history table starts from instead of the session's head, which AS OF names.
@@ -136,6 +139,7 @@ pub fn lookup(ctx: &mut Ctx<'_>, schema: &str, name: &str) -> Result<Option<User
             to: to.columns,
             from,
             commits: None,
+            lookup: None,
             ordinality: false,
             head: None,
         }));
@@ -155,6 +159,7 @@ pub fn lookup(ctx: &mut Ctx<'_>, schema: &str, name: &str) -> Result<Option<User
             to: Vec::new(),
             from: Vec::new(),
             commits: None,
+            lookup: None,
             ordinality: false,
             head: None,
         }),
@@ -355,9 +360,10 @@ impl UserTable {
     }
 
     /// take_commits takes the `to_commit` and `from_commit` that a commit diff table compares from the conditions
-    /// of a query over it, which must compare each column to a value computed once.
+    /// of a query over it, which must compare each column to a value computed once, or the one of them that limits
+    /// the commits a diff table diffs, preferring `from_commit` as go-mysql-server's choice of index does.
     pub fn take_commits(&mut self, conditions: &[Expr]) {
-        if self.kind != Kind::CommitDiff {
+        if !matches!(self.kind, Kind::CommitDiff | Kind::Diff) {
             return;
         }
         let to_commit = self.to.len();
@@ -392,10 +398,24 @@ impl UserTable {
                 found.1 = Some(value.clone());
             }
         }
+        if self.kind == Kind::Diff {
+            self.lookup = match found {
+                (_, Some(from)) => Some(("from_commit", from)),
+                (Some(to), None) => Some(("to_commit", to)),
+                (None, None) => None,
+            };
+            return;
+        }
         self.commits = match found {
             (Some(to), Some(from)) => Some((to, from)),
             _ => None,
         };
+    }
+
+    /// table_name returns the system table's name, such as dolt_diff_t.
+    pub fn table_name(&self) -> String {
+        let prefix = PREFIXES.iter().find(|(_, kind)| *kind == self.kind).map_or("dolt_diff", |(p, _)| p);
+        format!("{prefix}{}", self.name)
     }
 
     /// rows returns the table's rows.
@@ -458,6 +478,10 @@ impl UserTable {
     /// diff_rows returns the changes to the table in each commit reachable from the head, and in the working root,
     /// newest first, until a commit changes the table's primary key, as Dolt's diff tables return them.
     fn diff_rows(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+        let lookup = match &self.lookup {
+            Some((column, commit)) => Some((*column, commit.eval(ctx, &[])?.output().unwrap_or_default())),
+            None => None,
+        };
         let working = Side {
             name: "WORKING".into(),
             date: Value::Null,
@@ -477,7 +501,12 @@ impl UserTable {
                 newer.insert(*parent, side.clone());
             }
             let address = |s: &Side| s.table.as_ref().map(|(a, _)| *a);
-            if address(&side) == address(&to) {
+            let looked_up = match &lookup {
+                Some(("from_commit", commit)) => side.name == *commit,
+                Some((_, commit)) => to.name == *commit,
+                None => true,
+            };
+            if address(&side) == address(&to) || !looked_up {
                 continue;
             }
             let table = |s: &Side| s.table.as_ref().map(|(_, t)| t.clone());
@@ -1066,6 +1095,7 @@ pub fn diff_function(ctx: &mut Ctx<'_>, args: &[String]) -> Result<UserTable> {
         from: from_columns.unwrap_or_else(|| to.clone()),
         to,
         commits: Some((Expr::Const(Value::Text(to_ref)), Expr::Const(Value::Text(from_ref)))),
+        lookup: None,
         ordinality: false,
         head: None,
     })

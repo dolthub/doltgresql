@@ -276,6 +276,20 @@ impl Printer {
                 ],
                 vec![],
             ),
+            Plan::System(crate::dolt::tables::SystemTable::User(table)) => match &table.lookup {
+                Some((column, commit)) => {
+                    let commit = match commit {
+                        Expr::Const(Value::Text(text)) => text.clone(),
+                        other => expr_text(other, &[]),
+                    };
+                    (
+                        format!("Index Scan using {column} on {}", table.table_name()),
+                        vec![format!("Index Columns: {column}"), format!("Index Ranges: [{{[{commit}, {commit}]}}]")],
+                        vec![],
+                    )
+                }
+                None => (format!("Seq Scan on {}", table.table_name()), vec![], vec![]),
+            },
             Plan::System(_) => ("Seq Scan on a Dolt system table".into(), vec![], vec![]),
             Plan::OneRow => ("Result".into(), vec![], vec![]),
             Plan::Recursive { anchor, step, .. } => {
