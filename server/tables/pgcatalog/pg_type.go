@@ -290,40 +290,7 @@ func (p PgTypeHandler) LookupPartitions(_ *sql.Context, lookup sql.IndexLookup) 
 }
 
 // pgTypeSchema is the schema for pg_type.
-var pgTypeSchema = sql.Schema{
-	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typlen", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typbyval", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typtype", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typcategory", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typispreferred", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typisdefined", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typdelim", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typsubscript", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typelem", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typarray", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typinput", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typoutput", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typreceive", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typsend", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typmodin", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typmodout", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typanalyze", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typalign", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typstorage", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typnotnull", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typbasetype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typtypmod", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typndims", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typcollation", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typdefaultbin", Type: pgtypes.Text, Default: nil, Nullable: true, Source: pgTypeName}, // TODO: type pg_node_tree, collation C
-	{Name: "typdefault", Type: pgtypes.Text, Default: nil, Nullable: true, Source: pgTypeName},    // TODO: collation C
-	{Name: "typacl", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: pgTypeName},   // TODO: type aclitem[]
-}
+var pgTypeSchema = pgtypes.PgTypeSchema
 
 // pgType represents a row in the pg_type table.
 // We store oids in their native format as well so that we can do range scans on them.

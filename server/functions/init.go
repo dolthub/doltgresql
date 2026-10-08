@@ -76,6 +76,7 @@ func initTypeFunctions() {
 // initInformationSchemaFunctions initializes all information_schema functions in this package.
 func initInformationSchemaFunctions() {
 	initPgCharMaxLength()
+	initPgTrueTypID()
 }
 
 // Init initializes all functions in this package.
