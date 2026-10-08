@@ -190,7 +190,23 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
     use crate::datetime::{self as dt, USECS_PER_DAY};
     use crate::oid;
     let corrupt = || PgError::internal(format!("a stored value of type {} has {} bytes", ty.oid, field.len()));
-    if crate::array::is_array_type(ty.oid) {
+    let scalar = matches!(
+        ty.oid,
+        oid::BOOL
+            | oid::INT2
+            | oid::INT4
+            | oid::INT8
+            | oid::FLOAT4
+            | oid::FLOAT8
+            | oid::NUMERIC
+            | oid::TEXT
+            | oid::VARCHAR
+            | oid::DATE
+            | oid::TIMESTAMP
+            | oid::TIMESTAMPTZ
+            | oid::UUID
+    );
+    if !scalar && crate::array::is_array_type(ty.oid) {
         let element = crate::expr::element_type(ty.oid);
         let element_type = ColumnType { oid: element, modifier: ty.modifier };
         let array = crate::array::deserialize(field, element, &|bytes| deserialize_value(bytes, element_type))?;
@@ -199,12 +215,13 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
         }
         return Ok(Value::Array(Box::new(array)));
     }
-    if crate::catalog::builtin_type(ty.oid).is_none()
+    if !scalar
+        && crate::catalog::builtin_type(ty.oid).is_none()
         && let Some(user_type) = crate::usertypes::get(ty.oid)
     {
         return deserialize_user_value(field, &user_type);
     }
-    if crate::basetypes::get(ty.oid).is_some() {
+    if !scalar && crate::basetypes::get(ty.oid).is_some() {
         return Ok(Value::Base(Box::new(crate::types::BaseValue { type_oid: ty.oid, data: field.to_vec() })));
     }
     Ok(match ty.oid {

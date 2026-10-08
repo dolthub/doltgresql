@@ -44,7 +44,8 @@ pub struct BuiltinType {
 /// Builtins indexes the built-in types.
 struct Builtins {
     types: Vec<BuiltinType>,
-    by_oid: HashMap<u32, usize>,
+    /// The position of each type by OID, or `usize::MAX` for an OID that no built-in type has.
+    by_oid: Vec<usize>,
     by_name: HashMap<&'static str, usize>,
     by_id: HashMap<Vec<u8>, usize>,
 }
@@ -69,7 +70,10 @@ fn builtins() -> &'static Builtins {
             t.elem = by_id.get(&t.definition.elem).copied().unwrap_or(0);
             t.array = by_id.get(&t.definition.array).copied().unwrap_or(0);
         }
-        let by_oid = types.iter().enumerate().map(|(i, t)| (t.oid, i)).collect();
+        let mut by_oid = vec![usize::MAX; types.iter().map(|t| t.oid as usize + 1).max().unwrap_or(0)];
+        for (i, t) in types.iter().enumerate() {
+            by_oid[t.oid as usize] = i;
+        }
         let by_name = types.iter().enumerate().map(|(i, t)| (t.name, i)).collect();
         let by_id = types.iter().enumerate().map(|(i, t)| (t.definition.id.clone(), i)).collect();
         Builtins { types, by_oid, by_name, by_id }
@@ -84,7 +88,7 @@ pub fn builtin_types() -> &'static [BuiltinType] {
 /// builtin_type returns a built-in type by OID.
 pub fn builtin_type(oid: u32) -> Option<&'static BuiltinType> {
     let b = builtins();
-    b.by_oid.get(&oid).map(|&i| &b.types[i])
+    b.by_oid.get(oid as usize).and_then(|&i| b.types.get(i))
 }
 
 /// builtin_type_named returns a built-in type by its name in pg_catalog.

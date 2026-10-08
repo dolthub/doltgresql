@@ -222,6 +222,10 @@ impl Value {
                     false => out.write_all(self.output().unwrap_or_default().as_bytes()),
                 }
             }
+            Value::Numeric(n) => {
+                n.write_text(out);
+                Ok(())
+            }
             Value::Text(s) | Value::Json(s) | Value::Bit(s) => out.write_all(s.as_bytes()),
             Value::Reg(reg) => out.write_all(reg.name.as_bytes()),
             Value::Enum(e) => out.write_all(e.label.as_bytes()),
@@ -574,6 +578,13 @@ mod tests {
             Value::Timestamp(-63_000_000_000_000_000),
             Value::Timestamp(86_399_999_999),
             Value::Timestamp(crate::datetime::TIMESTAMP_NOBEGIN),
+            Value::Numeric(crate::numeric::Numeric::parse("0.000123").unwrap()),
+            Value::Numeric(crate::numeric::Numeric::parse("-12.50").unwrap()),
+            Value::Numeric(crate::numeric::Numeric::parse("0").unwrap()),
+            Value::Numeric(crate::numeric::Numeric::parse("0.00").unwrap()),
+            Value::Numeric(crate::numeric::Numeric::parse("123456789012345678901234567890123456789.5").unwrap()),
+            Value::Numeric(crate::numeric::Numeric::parse("NaN").unwrap()),
+            Value::Numeric(crate::numeric::Numeric::parse("-Infinity").unwrap()),
         ];
         let mut seed: u64 = 7;
         for _ in 0..5000 {

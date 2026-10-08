@@ -74,9 +74,10 @@ fn run() -> Result<(), String> {
             "--save" => save = Some(value()?),
             "--load" => {
                 for (label, timings) in load(&value()?)? {
-                    labels.retain(|l: &(String, Option<Target>)| l.0 != label);
-                    labels.push((label.clone(), None));
-                    results.insert(label, timings);
+                    if !labels.iter().any(|l: &(String, Option<Target>)| l.0 == label) {
+                        labels.push((label.clone(), None));
+                    }
+                    results.entry(label).or_default().extend(timings);
                 }
             }
             _ => {

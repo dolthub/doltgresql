@@ -332,8 +332,70 @@ fn covering_index(table: &TableDef, columns: &[usize]) -> Option<String> {
     table.indexes.iter().find(|i| i.vector.is_none() && leads(&i.columns)).map(|i| i.name.clone())
 }
 
-/// ParentRows are the referenced table of a foreign key, the positions of its referenced columns, and its rows.
-type ParentRows = (Option<TableDef>, Vec<usize>, Vec<Vec<Value>>);
+/// KeyRows finds the rows of a table that have given values in some of its columns, through the primary key or an
+/// index whose leading columns are those columns, or by reading every row when it has no such index.
+struct KeyRows {
+    table: TableDef,
+    columns: Vec<usize>,
+    /// The scan whose ranges each lookup sets, and the position among the columns of each of its leading columns.
+    scan: Option<(crate::indexscan::IndexScan, Vec<usize>)>,
+    /// The table's rows, read once when it has no usable index.
+    rows: Option<Vec<Vec<Value>>>,
+}
+
+impl KeyRows {
+    /// new prepares lookups of a table's rows by values of the columns.
+    fn new(table: TableDef, columns: Vec<usize>) -> KeyRows {
+        let lead = |index_columns: &[usize]| -> Option<Vec<usize>> {
+            let prefix = index_columns.get(..columns.len())?;
+            prefix.iter().map(|c| columns.iter().position(|x| x == c)).collect()
+        };
+        let mut found = (!table.keyless()).then(|| lead(&table.key_columns).map(|order| (None, order))).flatten();
+        if found.is_none() {
+            found = table.indexes.iter().enumerate().find_map(|(i, index)| {
+                let usable = index.vector.is_none() && index.predicate.is_empty();
+                usable.then(|| lead(&index.columns).map(|order| (Some(i), order))).flatten()
+            });
+        }
+        let scan = found.map(|(index, order)| {
+            let scan = crate::indexscan::IndexScan {
+                table: Box::new(table.clone()),
+                index,
+                ranges: Vec::new(),
+                reverse: false,
+                nearest: None,
+                needed: None,
+            };
+            (scan, order)
+        });
+        KeyRows { table, columns, scan, rows: None }
+    }
+
+    /// find returns the rows whose columns hold the key's values, which are of the columns' types.
+    fn find(&mut self, ctx: &mut Ctx<'_>, key: &[Value]) -> Result<Vec<Vec<Value>>> {
+        if key.iter().any(Value::is_null) {
+            return Ok(Vec::new());
+        }
+        if let Some((scan, order)) = self.scan.as_mut() {
+            let range = order
+                .iter()
+                .map(|&k| crate::ranges::ColumnRange {
+                    lower: crate::ranges::Cut::Below(key[k].clone()),
+                    upper: crate::ranges::Cut::Above(key[k].clone()),
+                })
+                .collect();
+            scan.ranges = vec![range];
+            let mut rows = scan.run(ctx)?;
+            rows.retain(|row| same_key(&values(row, &self.columns), key));
+            return Ok(rows);
+        }
+        if self.rows.is_none() {
+            self.rows = Some(scan(ctx.db, &self.table)?);
+        }
+        let rows = self.rows.as_ref().expect("rows were read");
+        Ok(rows.iter().filter(|row| same_key(&values(row, &self.columns), key)).cloned().collect())
+    }
+}
 
 /// Change is a row change of a statement: the old row, the new row, or both for an update.
 pub type Change = (Option<Vec<Value>>, Option<Vec<Value>>);
@@ -475,7 +537,7 @@ impl Ctx<'_> {
     /// check_children fails when a new or changed row of a foreign key's table refers to a missing key.
     fn check_children(&mut self, fk: &ForeignKeyDef, child: &TableDef, changes: &[Change]) -> Result<()> {
         let columns = positions(child, &fk.child_columns);
-        let mut parent_rows: Option<ParentRows> = None;
+        let mut parent_rows: Option<Option<KeyRows>> = None;
         for (_, new) in changes {
             let Some(row) = new else { continue };
             let key = values(row, &columns);
@@ -490,22 +552,17 @@ impl Ctx<'_> {
                 });
             }
             if parent_rows.is_none() {
-                let parent = self.parent_table(fk)?;
-                parent_rows = Some(match parent {
-                    Some(parent) => {
-                        let rows = scan(self.db, &parent)?;
-                        let columns = positions(&parent, &fk.parent_columns);
-                        (Some(parent), columns, rows)
-                    }
-                    None => (None, Vec::new(), Vec::new()),
-                });
+                parent_rows = Some(self.parent_table(fk)?.map(|parent| {
+                    let columns = positions(&parent, &fk.parent_columns);
+                    KeyRows::new(parent, columns)
+                }));
             }
-            let (parent, parent_columns, rows) = parent_rows.as_ref().expect("parent rows were read");
-            let wanted = match parent {
-                Some(parent) => converted(key.clone(), parent, parent_columns).ok(),
-                None => Some(key.clone()),
+            let Some(Some(parent)) = parent_rows.as_mut() else { return Err(child_violation(fk, &key)) };
+            let found = match converted(key.clone(), &parent.table, &parent.columns) {
+                Ok(wanted) => !parent.find(self, &wanted)?.is_empty(),
+                Err(_) => false,
             };
-            if !wanted.is_some_and(|wanted| rows.iter().any(|r| same_key(&values(r, parent_columns), &wanted))) {
+            if !found {
                 return Err(child_violation(fk, &key));
             }
         }
@@ -553,15 +610,17 @@ impl Ctx<'_> {
     ) -> Result<()> {
         let parent_columns = positions(parent, &fk.parent_columns);
         let current = self.txn.table(self.db, &parent.schema, &parent.name)?;
-        let remaining = match &current {
-            Some(t) => scan(self.db, t)?,
-            None => Vec::new(),
-        };
+        let mut remaining = current.map(|t| KeyRows::new(t, parent_columns.clone()));
         let mut removed: Vec<(Vec<Value>, Option<Vec<Value>>)> = Vec::new();
         for (old, new) in changes {
             let Some(old) = old else { continue };
             let key = values(old, &parent_columns);
-            if key.iter().any(Value::is_null) || remaining.iter().any(|r| same_key(&values(r, &parent_columns), &key)) {
+            if key.iter().any(Value::is_null) {
+                continue;
+            }
+            if let Some(remaining) = remaining.as_mut()
+                && !remaining.find(self, &key)?.is_empty()
+            {
                 continue;
             }
             removed.push((key, new.as_ref().map(|n| values(n, &parent_columns))));
@@ -575,16 +634,21 @@ impl Ctx<'_> {
         }
         let Some(child) = self.txn.table(self.db, &fk.child_schema, &fk.child_table)? else { return Ok(()) };
         let child_columns = positions(&child, &fk.child_columns);
-        let child_rows = scan(self.db, &child)?;
+        let mut children = KeyRows::new(child.clone(), child_columns.clone());
         let mut child_changes: Vec<Change> = Vec::new();
         for (key, new_key) in &removed {
             let action = if new_key.is_some() { fk.on_update } else { fk.on_delete };
-            let mut referencing = Vec::new();
-            for row in &child_rows {
-                if converted(values(row, &child_columns), parent, &parent_columns).is_ok_and(|v| same_key(&v, key)) {
-                    referencing.push(row);
-                }
-            }
+            let referencing = match converted(key.clone(), &child, &child_columns) {
+                Ok(wanted) => children.find(self, &wanted)?,
+                Err(_) => Vec::new(),
+            };
+            let referencing: Vec<Vec<Value>> = referencing
+                .into_iter()
+                .filter(|row| {
+                    converted(values(row, &child_columns), parent, &parent_columns).is_ok_and(|v| same_key(&v, key))
+                })
+                .collect();
+            let referencing: Vec<&Vec<Value>> = referencing.iter().collect();
             if action == Rule::NoAction
                 && !referencing.is_empty()
                 && self.is_deferred(&fk.child_schema, &fk.name, fk.deferrable, fk.initially_deferred)
@@ -639,7 +703,7 @@ impl Ctx<'_> {
     pub(crate) fn recheck_child(&mut self, fk: &ForeignKeyDef, key: &[Value]) -> Result<()> {
         let Some(child) = self.txn.table(self.db, &fk.child_schema, &fk.child_table)? else { return Ok(()) };
         let columns = positions(&child, &fk.child_columns);
-        let row = scan(self.db, &child)?.into_iter().find(|row| same_key(&values(row, &columns), key));
+        let row = KeyRows::new(child.clone(), columns).find(self, key)?.into_iter().next();
         match row {
             Some(row) => self.check_children(fk, &child, &[(None, Some(row))]),
             None => Ok(()),
@@ -651,14 +715,17 @@ impl Ctx<'_> {
     pub(crate) fn recheck_parent(&mut self, fk: &ForeignKeyDef, key: &[Value]) -> Result<()> {
         let Some(parent) = self.txn.table(self.db, &fk.parent_schema, &fk.parent_table)? else { return Ok(()) };
         let parent_columns = positions(&parent, &fk.parent_columns);
-        if scan(self.db, &parent)?.iter().any(|r| same_key(&values(r, &parent_columns), key)) {
+        if !KeyRows::new(parent.clone(), parent_columns.clone()).find(self, key)?.is_empty() {
             return Ok(());
         }
         let Some(child) = self.txn.table(self.db, &fk.child_schema, &fk.child_table)? else { return Ok(()) };
         let child_columns = positions(&child, &fk.child_columns);
-        let referenced = scan(self.db, &child)?.iter().any(|row| {
-            converted(values(row, &child_columns), &parent, &parent_columns).is_ok_and(|v| same_key(&v, key))
-        });
+        let referenced = match converted(key.to_vec(), &child, &child_columns) {
+            Ok(wanted) => KeyRows::new(child.clone(), child_columns.clone()).find(self, &wanted)?.iter().any(|row| {
+                converted(values(row, &child_columns), &parent, &parent_columns).is_ok_and(|v| same_key(&v, key))
+            }),
+            Err(_) => false,
+        };
         if referenced { Err(parent_violation(fk, key)) } else { Ok(()) }
     }
 

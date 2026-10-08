@@ -26,6 +26,10 @@ INSERT INTO wide SELECT i, i % 97, 'text value ' || i, i % 1000, (i % 5000) * 0.
 CREATE TABLE big (id INT PRIMARY KEY, a INT, b INT, t TEXT);
 CREATE INDEX big_a ON big (a);
 INSERT INTO big SELECT i, (i * 37) % 100000, i % 1000, 'word' || (i % 5000) FROM generate_series(1, 300000) i;
+CREATE TABLE fk_parent (id INT PRIMARY KEY, name TEXT);
+INSERT INTO fk_parent SELECT i, 'p' || i FROM generate_series(1, 50000) i;
+CREATE TABLE fk_child (id INT PRIMARY KEY, parent_id INT NOT NULL REFERENCES fk_parent (id), v INT);
+INSERT INTO fk_child SELECT i, i * 3 % 50000 + 1, i FROM generate_series(1, 20000) i;
 CREATE TABLE upserts (id INT PRIMARY KEY, v INT);
 INSERT INTO upserts SELECT i, i FROM generate_series(1, 1000) i;
 
@@ -291,3 +295,15 @@ INSERT INTO scratch VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd'), (5, 'e'), (6,
 -- name: delete_range_reinsert
 -- write
 DELETE FROM big WHERE id BETWEEN 1000 AND 1100; INSERT INTO big SELECT i, (i * 37) % 100000, i % 1000, 'word' || (i % 5000) FROM generate_series(1000, 1100) i;
+
+-- name: fk_insert_children
+-- write
+INSERT INTO fk_child SELECT i, i % 50000 + 1, i FROM generate_series(100001, 100200) i; DELETE FROM fk_child WHERE id > 100000;
+
+-- name: fk_delete_unreferenced_parent
+-- write
+INSERT INTO fk_parent VALUES (60000, 'x'); DELETE FROM fk_parent WHERE id = 60000;
+
+-- name: fk_update_child
+-- write
+UPDATE fk_child SET parent_id = parent_id % 49999 + 1 WHERE id BETWEEN 1 AND 50;

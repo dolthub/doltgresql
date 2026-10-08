@@ -597,6 +597,40 @@ impl Numeric {
     }
 }
 
+impl Numeric {
+    /// write_text appends the value's text, as `to_string` gives it, without allocating for coefficients that fit
+    /// 128 bits.
+    pub fn write_text(&self, out: &mut Vec<u8>) {
+        let Numeric::Finite { negative, coefficient, scale } = self else {
+            return out.extend_from_slice(self.to_string().as_bytes());
+        };
+        let Some(coefficient) = coefficient.to_u128() else {
+            return out.extend_from_slice(self.to_string().as_bytes());
+        };
+        let mut buffer = itoa::Buffer::new();
+        let digits = buffer.format(coefficient).as_bytes();
+        let scale = *scale as usize;
+        if *negative {
+            out.push(b'-');
+        }
+        if digits.len() <= scale {
+            out.push(b'0');
+            if scale > 0 {
+                out.push(b'.');
+                out.extend(std::iter::repeat_n(b'0', scale - digits.len()));
+                out.extend_from_slice(digits);
+            }
+            return;
+        }
+        let (whole, fraction) = digits.split_at(digits.len() - scale);
+        out.extend_from_slice(whole);
+        if scale > 0 {
+            out.push(b'.');
+            out.extend_from_slice(fraction);
+        }
+    }
+}
+
 impl std::fmt::Display for Numeric {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
