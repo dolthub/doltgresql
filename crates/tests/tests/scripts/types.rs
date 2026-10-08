@@ -9154,3 +9154,123 @@ fn test_values_written_into_rows() {
         },
     ]);
 }
+
+#[test]
+fn test_text_search_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "text search types read and write as Postgres does",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'word'::tsquery, 'phrase & (another | term)'::tsquery;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tsquery", TSQUERY), Column("tsquery", TSQUERY)],
+                        rows: &[
+                            &[T("'word'"), T("'phrase' & ( 'another' | 'term' )")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'simple'::tsvector, 'complex & (query | terms)'::tsvector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tsvector", TSVECTOR), Column("tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T("'simple'"), T("'&' '(query' 'complex' 'terms)' '|'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 'a:1,3B b:2A a:3C ''it''''s'' x\\y'::tsvector;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T(r#"'a':1,3B 'b':2A 'it''s' 'x\\y'"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '!a & !(b | c) <-> d <2> e'::tsquery, 'a:*AB | b:C'::tsquery, '(a | b) & c'::tsquery, 'a <-> (b <-> c)'::tsquery, '!!a'::tsquery, '!(a & b)'::tsquery;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tsquery", TSQUERY), Column("tsquery", TSQUERY), Column("tsquery", TSQUERY), Column("tsquery", TSQUERY), Column("tsquery", TSQUERY), Column("tsquery", TSQUERY)],
+                        rows: &[
+                            &[T("!'a' & !( 'b' | 'c' ) <-> 'd' <2> 'e'"), T("'a':*AB | 'b':C"), T("( 'a' | 'b' ) & 'c'"), T("'a' <-> ( 'b' <-> 'c' )"), T("!!'a'"), T("!( 'a' & 'b' )")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ''::tsvector, '  '::tsvector, 'a:20000'::tsvector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tsvector", TSVECTOR), Column("tsvector", TSVECTOR), Column("tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T(""), T(""), T("'a':16383")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a &'::tsquery;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"no operand in tsquery: "a &""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a:0'::tsvector;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"wrong position info in tsvector: "a:0""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '''unterminated'::tsvector;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error in tsvector: "'unterminated""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE t_ts (id INT PRIMARY KEY, v TSVECTOR, q TSQUERY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t_ts VALUES (1, 'b a c', 'a & b'), (2, 'x', 'x | y'), (3, NULL, NULL);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t_ts ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TSVECTOR), Column("q", TSQUERY)],
+                        rows: &[
+                            &[T("1"), T("'a' 'b' 'c'"), T("'a' & 'b'")],
+                            &[T("2"), T("'x'"), T("'x' | 'y'")],
+                            &[T("3"), Null, Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v::text, q::text FROM t_ts WHERE v IS NOT NULL ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT), Column("q", TEXT)],
+                        rows: &[
+                            &[T("1"), T("'a' 'b' 'c'"), T("'a' & 'b'")],
+                            &[T("2"), T("'x'"), T("'x' | 'y'")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

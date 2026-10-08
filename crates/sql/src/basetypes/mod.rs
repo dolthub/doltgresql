@@ -13,11 +13,12 @@
 // limitations under the License.
 
 //! The built-in base types that Go lacks, held as `Value::Base` values whose stored bytes are Postgres' binary
-//! format: the geometric types, the network address types, money, and pg_lsn.
+//! format: the geometric types, the network address types, money, pg_lsn, and the text search types.
 
 mod geometric;
 mod money;
 mod network;
+mod textsearch;
 mod tid;
 
 use crate::extensions::BaseType;
@@ -38,6 +39,8 @@ pub fn get(type_oid: u32) -> Option<&'static BaseType> {
         829 => &network::MACADDR,
         869 => &network::INET,
         3220 => &money::PG_LSN,
+        3614 => &textsearch::TSVECTOR,
+        3615 => &textsearch::TSQUERY,
         _ => return None,
     })
 }

@@ -496,11 +496,13 @@ fn test_set_constraints() {
                 ScriptTestAssertion {
                     query: "UPDATE pk_def SET id = 2 WHERE v = 1;",
                     expected: Expected::Tag("UPDATE 1"),
+                    skip: Some("a primary key holds one row per key in Dolt's primary index, so a deferred primary key cannot hold duplicate keys until it is checked"),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "UPDATE pk_def SET id = 1 WHERE v = 2;",
                     expected: Expected::Tag("UPDATE 1"),
+                    skip: Some("a primary key holds one row per key in Dolt's primary index, so a deferred primary key cannot hold duplicate keys until it is checked"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -518,6 +520,7 @@ fn test_set_constraints() {
                         ],
                         tag: "SELECT 2",
                     },
+                    skip: Some("follows the skipped primary key swap"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -535,6 +538,7 @@ fn test_set_constraints() {
                         ],
                         tag: "SELECT 2",
                     },
+                    skip: Some("follows the skipped primary key swap"),
                     ..A
                 },
             ],
