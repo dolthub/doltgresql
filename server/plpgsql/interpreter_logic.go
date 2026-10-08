@@ -853,5 +853,5 @@ var triggerSpecialVariables = map[string]*pgtypes.DoltgresType{
 	"tg_table_name":   pgtypes.Name,
 	"tg_table_schema": pgtypes.Name,
 	"tg_nargs":        pgtypes.Int32,
-	"tg_argv[]":       pgtypes.TextArray,
+	"tg_argv":         pgtypes.TextArray,
 }

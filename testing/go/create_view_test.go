@@ -371,4 +371,83 @@ var createViewStmts = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Views that reference each other",
+		SetUpScript: []string{
+			"CREATE TABLE cyc_t1 (a BIGINT);",
+			"CREATE TABLE cyc_t2 (b BIGINT);",
+			"CREATE VIEW cyc_v2 AS SELECT * FROM cyc_t1, cyc_t2;",
+			"CREATE VIEW cyc_v3 AS SELECT * FROM cyc_v2;",
+			"CREATE OR REPLACE VIEW cyc_v2 AS SELECT * FROM cyc_v3;",
+			"CREATE VIEW cyc_self AS SELECT 1 AS x;",
+			"CREATE OR REPLACE VIEW cyc_self AS SELECT * FROM cyc_self;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:           "SELECT * FROM cyc_v2;",
+				ExpectedErr:     "`cyc_v2` contains view recursion",
+				ExpectedErrCode: "42P17",
+			},
+			{
+				Query:           "SELECT * FROM cyc_v3;",
+				ExpectedErr:     "`cyc_v3` contains view recursion",
+				ExpectedErrCode: "42P17",
+			},
+			{
+				Query:           "SELECT * FROM (SELECT * FROM cyc_v3) sq;",
+				ExpectedErr:     "`cyc_v3` contains view recursion",
+				ExpectedErrCode: "42P17",
+			},
+			{
+				Query:           "SELECT * FROM cyc_self;",
+				ExpectedErr:     "`cyc_self` contains view recursion",
+				ExpectedErrCode: "42P17",
+			},
+			{
+				Skip:            true, // TODO: view recursion returns GMS' error message instead of Postgres'
+				Query:           "SELECT * FROM cyc_v2;",
+				ExpectedErr:     `infinite recursion detected in rules for relation "cyc_v2"`,
+				ExpectedErrCode: "42P17",
+			},
+			{
+				Query: "SELECT c.relname, a.attname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname IN ('cyc_t1', 'cyc_t2') AND a.attnum > 0 ORDER BY c.relname, a.attnum;",
+				Expected: []sql.Row{
+					{"cyc_t1", "a"},
+					{"cyc_t2", "b"},
+				},
+			},
+			{
+				Skip:  true, // TODO: view columns are found by resolving the view, which fails for views that reference each other
+				Query: "SELECT c.relname, a.attname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname IN ('cyc_v2', 'cyc_v3') ORDER BY c.relname, a.attnum;",
+				Expected: []sql.Row{
+					{"cyc_v2", "a"},
+					{"cyc_v2", "b"},
+					{"cyc_v3", "a"},
+					{"cyc_v3", "b"},
+				},
+			},
+			{
+				Skip:     true, // TODO: view bodies are resolved by name rather than bound when the view is created
+				Query:    "CREATE VIEW cyc_v4 AS SELECT * FROM cyc_v2;",
+				Expected: []sql.Row{},
+			},
+		},
+	},
+	{
+		Name: "Views with the same name in different schemas",
+		SetUpScript: []string{
+			"CREATE SCHEMA cyc_s1;",
+			"CREATE SCHEMA cyc_s2;",
+			"CREATE TABLE cyc_s2.t (a INT);",
+			"INSERT INTO cyc_s2.t VALUES (1);",
+			"CREATE VIEW cyc_s2.v AS SELECT a FROM cyc_s2.t;",
+			"CREATE VIEW cyc_s1.v AS SELECT a FROM cyc_s2.v;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM cyc_s1.v;",
+				Expected: []sql.Row{{1}},
+			},
+		},
+	},
 }

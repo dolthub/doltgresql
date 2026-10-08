@@ -837,8 +837,9 @@ func TestVersionedViews(t *testing.T) {
 
 func TestWindowFunctions(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"select 1 as a, 'x' as a", // duplicate derived column names are a MySQL-only error
-		"t(a, a)",                 // duplicate derived column names are a MySQL-only error
+		"select 1 as a, 'x' as a",     // duplicate derived column names are a MySQL-only error
+		"t(a, a)",                     // duplicate derived column names are a MySQL-only error
+		"format with window function", // FORMAT(X, D, locale) is MySQL's number formatter
 	})
 	defer h.Close()
 	enginetest.TestWindowFunctions(t, h)
