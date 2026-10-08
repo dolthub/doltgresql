@@ -43,7 +43,9 @@ func (p PgStatWalReceiverHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatWalReceiverHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_wal_receiver row iter
+	// pg_stat_wal_receiver is currently empty, since Doltgres does not have a WAL receiver
+	// process. This matches vanilla Postgres, where the view is empty unless streaming
+	// replication is active on a standby server.
 	return emptyRowIter()
 }
 

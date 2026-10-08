@@ -1,0 +1,80 @@
+parallel: true
+tests:
+- name: require_secure_transport no key or cert
+  repos:
+  - name: repo1
+    with_files:
+    - name: server.yaml
+      contents: |
+        listener:
+          require_secure_transport: true
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server
+      error_matches:
+      - "require_secure_transport can only be `true` when a tls_key and tls_cert are provided."
+- name: tls_key non-existent
+  repos:
+  - name: repo1
+    with_files:
+    - name: chain_key.pem
+      source_path: $TESTGENDIR/rsa_key.pem
+    - name: chain_cert.pem
+      source_path: $TESTGENDIR/rsa_chain.pem
+    - name: server.yaml
+      contents: |
+        listener:
+          tls_key: doesnotexist_key.pem
+          tls_cert: chain_cert.pem
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server
+      error_matches:
+      - "no such file or directory"
+- name: tls_cert non-existent
+  repos:
+  - name: repo1
+    with_files:
+    - name: chain_key.pem
+      source_path: $TESTGENDIR/rsa_key.pem
+    - name: chain_cert.pem
+      source_path: $TESTGENDIR/rsa_chain.pem
+    - name: server.yaml
+      contents: |
+        listener:
+          tls_key: chain_key.pem
+          tls_cert: doesnotexist_key.pem
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server
+      error_matches:
+      - "no such file or directory"
+
+# XXX: It would be nice to assert on the TLS use here using a status query or similar.
+# It would be nice to assert on failing to connect using sslmode=disable.
+- name: tls only server
+  repos:
+  - name: repo1
+    with_files:
+    - name: chain_key.pem
+      source_path: $TESTGENDIR/rsa_key.pem
+    - name: chain_cert.pem
+      source_path: $TESTGENDIR/rsa_chain.pem
+    - name: server.yaml
+      contents: |
+        listener:
+          tls_key: chain_key.pem
+          tls_cert: chain_cert.pem
+          require_secure_transport: true
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server
+  connections:
+  - on: repo1
+    driver_params:
+      sslmode: require
+    queries:
+    - query: "select 1 as one"
+      result:
+        columns: ["one"]
+        rows: [["1"]]

@@ -65,7 +65,7 @@ var to_timestamp_float8 = framework.Function1{
 
 		// Check for valid timestamp range (PostgreSQL limits)
 		if timestamp < -210866803200 || timestamp > 9223372036.854775 {
-			return nil, errors.Errorf("timestamp out of range")
+			return nil, pgtypes.ErrOutOfRange.New("timestamp")
 		}
 
 		return time.Unix(sec, nsec).UTC(), nil
@@ -79,8 +79,14 @@ var to_timestamp_text_text = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		input := val1.(string)
-		format := val2.(string)
+		input, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		format, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 
 		// Parse the timestamp using PostgreSQL format patterns
 		return getDateTimeFromFormat(ctx, input, format)

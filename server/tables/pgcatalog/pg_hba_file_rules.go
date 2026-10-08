@@ -43,7 +43,8 @@ func (p PgHbaFileRulesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgHbaFileRulesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_hba_file_rules row iter
+	// pg_hba_file_rules is currently empty, since Doltgres does not use a pg_hba.conf file.
+	// TODO: fill this in if host-based authentication configuration is ever exposed
 	return emptyRowIter()
 }
 

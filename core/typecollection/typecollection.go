@@ -24,11 +24,12 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	parsertypes "github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -42,10 +43,9 @@ const anonymousCompositeSuffix = ")"
 
 // TypeCollection is a collection of all types (both built-in and user defined).
 type TypeCollection struct {
-	accessedMap   map[id.Type]*pgtypes.DoltgresType
-	initCache     map[id.Type]*pgtypes.DoltgresType // This is only used by the function `WithCachedType`
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
+	objinterface.RootObjectMap
+	accessedMap map[id.Type]*pgtypes.DoltgresType
+	initCache   map[id.Type]*pgtypes.DoltgresType // This is only used by the function `WithCachedType`
 }
 
 // TypeWrapper is a wrapper around a type that allows it to be used as a root object.
@@ -68,7 +68,7 @@ func (pgs *TypeCollection) CreateType(ctx context.Context, typ *pgtypes.Doltgres
 	if _, ok := pgs.accessedMap[typ.ID]; ok {
 		return pgtypes.ErrTypeAlreadyExists.New(typ.Name())
 	}
-	if ok, err := pgs.underlyingMap.Has(ctx, string(typ.ID)); err != nil {
+	if ok, err := pgs.Contents().Has(ctx, string(typ.ID)); err != nil {
 		return err
 	} else if ok {
 		return pgtypes.ErrTypeAlreadyExists.New(typ.Name())
@@ -93,21 +93,25 @@ func (pgs *TypeCollection) DropType(ctx context.Context, names ...id.Type) (err 
 		return err
 	}
 	for _, name := range names {
-		if ok, err := pgs.underlyingMap.Has(ctx, string(name)); err != nil {
+		if ok, err := pgs.Contents().Has(ctx, string(name)); err != nil {
 			return err
 		} else if !ok {
 			return pgtypes.ErrTypeDoesNotExist.New(name.TypeName())
 		}
 	}
 	// Now we'll remove the types from the underlying map
-	mapEditor := pgs.underlyingMap.Editor()
+	mapEditor := pgs.Contents().Editor()
 	for _, name := range names {
 		if err = mapEditor.Delete(ctx, string(name)); err != nil {
 			return err
 		}
 	}
-	pgs.underlyingMap, err = mapEditor.Flush(ctx)
-	return err
+	flushed, err := mapEditor.Flush(ctx)
+	if err != nil {
+		return err
+	}
+	pgs.SetContents(flushed)
+	return nil
 }
 
 // GetAllTypes returns a map containing all types in the collection, grouped by the schema they're contained in.
@@ -157,31 +161,41 @@ func (pgs *TypeCollection) GetDomainType(ctx context.Context, name id.Type) (*pg
 // GetType returns the type with the given schema and name.
 // Returns nil if the type cannot be found.
 func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.DoltgresType, error) {
+	return pgs.GetTypeWithTypmod(ctx, name, nil)
+}
+
+// GetTypeWithTypmod returns the type with the given schema and name, with the given type modifiers applied.
+// Returns nil if the type cannot be found.
+func (pgs *TypeCollection) GetTypeWithTypmod(ctx context.Context, name id.Type, typmods []any) (*pgtypes.DoltgresType, error) {
 	// Check the built-in types first
 	if t, ok := pgtypes.IDToBuiltInDoltgresType[name]; ok {
-		return t, nil
+		return typeWithTypmod(ctx, t, typmods)
 	}
 
 	// Subsequent loads are cached
 	if t, ok := pgs.accessedMap[name]; ok {
-		return t, nil
+		return typeWithTypmod(ctx, t, typmods)
 	}
 	if t, ok := pgs.initCache[name]; ok {
-		return t, nil
+		return typeWithTypmod(ctx, t, typmods)
 	}
 	sqlCtx, ok := ctx.(*sql.Context)
 	if !ok {
 		return nil, errors.New("type collection requires a SQL context")
 	}
 	// The initial load is from the internal map
-	h, err := pgs.underlyingMap.Get(ctx, string(name))
+	h, err := pgs.Contents().Get(ctx, string(name))
 	if err != nil {
 		return nil, err
 	}
 	if h.IsEmpty() {
 		// If this is an anonymous composite type, create it dynamically
 		if isAnonymousCompositeType(name) {
-			return pgs.createAnonymousCompositeType(sqlCtx, name)
+			t, err := pgs.createAnonymousCompositeType(sqlCtx, name)
+			if err != nil {
+				return nil, err
+			}
+			return typeWithTypmod(ctx, t, typmods)
 		}
 
 		// Table composite types are computed on the fly from the live table schema rather than
@@ -196,27 +210,31 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 			if err != nil || elemType == nil {
 				return nil, err
 			}
-			return pgtypes.CreateArrayTypeFromBaseType(elemType), nil
+			return typeWithTypmod(ctx, pgtypes.CreateArrayTypeFromBaseType(elemType), typmods)
 		}
 
 		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), typeName)
 		if err != nil || tbl == nil {
 			return nil, err
 		}
-		return pgs.tableToType(sqlCtx, tbl, schema)
+		t, err := pgs.tableToType(sqlCtx, tbl, schema)
+		if err != nil {
+			return nil, err
+		}
+		return typeWithTypmod(ctx, t, typmods)
 	}
-	data, err := pgs.ns.ReadBytes(ctx, h)
+	data, err := pgs.NodeStore().ReadBytes(ctx, h)
 	if err != nil {
 		return nil, err
 	}
-	t, err := pgtypes.DeserializeType(sqlCtx, data)
+	t, err := pgtypes.DeserializeTypeFromCollection(sqlCtx, pgs, data)
 	if err != nil {
 		return nil, err
 	}
 	pgt := t.(*pgtypes.DoltgresType)
 	pgs.accessedMap[pgt.ID] = pgt
 
-	return pgt, nil
+	return typeWithTypmod(ctx, pgt, typmods)
 }
 
 // ResolveType returns the type given if there's an exact match, or the closest matching type if the exact ID cannot be
@@ -224,7 +242,12 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 // significantly slower than GetType. Returns an error if the type cannot be resolved, unlike GetType which returns a
 // nil if the type is not found.
 func (pgs *TypeCollection) ResolveType(ctx context.Context, name id.Type) (*pgtypes.DoltgresType, error) {
-	if t, err := pgs.GetType(ctx, name); err != nil {
+	return pgs.ResolveTypeWithTypmod(ctx, name, nil)
+}
+
+// ResolveTypeWithTypmod resolves the type in the same manner as ResolveType, with the given type modifiers applied.
+func (pgs *TypeCollection) ResolveTypeWithTypmod(ctx context.Context, name id.Type, typmods []any) (*pgtypes.DoltgresType, error) {
+	if t, err := pgs.GetTypeWithTypmod(ctx, name, typmods); err != nil {
 		return nil, err
 	} else if t != nil && t.IsResolvedType() {
 		return t, nil
@@ -233,14 +256,33 @@ func (pgs *TypeCollection) ResolveType(ctx context.Context, name id.Type) (*pgty
 	if err != nil {
 		return nil, err
 	}
-	t, err := pgs.GetType(ctx, resolvedId)
+	t, err := pgs.GetTypeWithTypmod(ctx, resolvedId, typmods)
 	if err != nil {
 		return nil, err
 	}
 	if !t.IsResolvedType() {
-		return nil, errors.Errorf("unable to resolve type `%s`", name.TypeName())
+		return nil, pgerror.WithCandidateCode(errors.Errorf("unable to resolve type `%s`", name.TypeName()), pgcode.UndefinedObject)
 	}
 	return t, nil
+}
+
+// typeWithTypmod returns the given type with the given type modifiers applied, or the type unchanged if there are none.
+func typeWithTypmod(ctx context.Context, t *pgtypes.DoltgresType, typmods []any) (*pgtypes.DoltgresType, error) {
+	if len(typmods) == 0 {
+		return t, nil
+	}
+	sqlCtx, ok := ctx.(*sql.Context)
+	if !ok {
+		return nil, errors.New("type collection requires a SQL context")
+	}
+	if t.ModInFunc == 0 {
+		return nil, errors.Errorf(`type modifier is not allowed for type "%s"`, t.Name())
+	}
+	typmod, err := t.TypModIn(sqlCtx, typmods)
+	if err != nil {
+		return nil, err
+	}
+	return t.WithAttTypMod(typmod), nil
 }
 
 // WithCachedType executes the given function while caching the given type, which allows for recursive type
@@ -315,7 +357,7 @@ func (pgs *TypeCollection) HasType(ctx context.Context, name id.Type) bool {
 	if _, ok := pgs.accessedMap[name]; ok {
 		return true
 	}
-	ok, err := pgs.underlyingMap.Has(ctx, string(name))
+	ok, err := pgs.Contents().Has(ctx, string(name))
 	if err == nil && ok {
 		return true
 	}
@@ -339,7 +381,10 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 
 	// Iterate over all the built-in names for a relative match
 	var resolvedID id.Type
-	for _, typ := range pgtypes.GetAllBuitInTypes() {
+	for internalID, typ := range pgtypes.IDToBuiltInDoltgresType { // TODO: make a map by typeName?
+		if typ.ID == pgtypes.Unknown.ID && internalID.TypeName() != "unknown" {
+			continue
+		}
 		if strings.EqualFold(typeName, typ.ID.TypeName()) {
 			if len(schemaName) > 0 && !strings.EqualFold(schemaName, typ.ID.SchemaName()) {
 				continue
@@ -351,6 +396,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 			resolvedID = typ.ID
 		}
 	}
+
 	// Iterate over the initialization cache in case this is during a type initialization loop
 	for _, typ := range pgs.initCache {
 		if strings.EqualFold(typeName, typ.ID.TypeName()) {
@@ -371,7 +417,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 	}
 
 	// Check for an exact match in the underlying map
-	ok, err := pgs.underlyingMap.Has(ctx, string(inputID))
+	ok, err := pgs.Contents().Has(ctx, string(inputID))
 	if err != nil {
 		return id.NullType, err
 	} else if ok {
@@ -380,7 +426,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 	}
 
 	// Iterate over all the names in the map
-	err = pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+	err = pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 		typeID := id.Type(k)
 		if strings.EqualFold(typeName, typeID.TypeName()) {
 			if len(schemaName) > 0 && !strings.EqualFold(schemaName, typeID.SchemaName()) {
@@ -419,12 +465,12 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 	if err := pgs.writeCache(ctx); err != nil {
 		return err
 	}
-	err := pgs.underlyingMap.IterAll(ctx, func(_ string, v hash.Hash) error {
-		data, err := pgs.ns.ReadBytes(ctx, v)
+	err := pgs.Contents().IterAll(ctx, func(_ string, v hash.Hash) error {
+		data, err := pgs.NodeStore().ReadBytes(ctx, v)
 		if err != nil {
 			return err
 		}
-		t, err := pgtypes.DeserializeType(sqlCtx, data)
+		t, err := pgtypes.DeserializeTypeFromCollection(sqlCtx, pgs, data)
 		if err != nil {
 			return err
 		}
@@ -440,26 +486,12 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 	return err
 }
 
-// Clone returns a new *TypeCollection with the same contents as the original.
-func (pgs *TypeCollection) Clone(ctx context.Context) *TypeCollection {
-	newCollection := &TypeCollection{
-		accessedMap:   make(map[id.Type]*pgtypes.DoltgresType),
-		initCache:     make(map[id.Type]*pgtypes.DoltgresType),
-		underlyingMap: pgs.underlyingMap,
-		ns:            pgs.ns,
-	}
-	for typeID, t := range pgs.accessedMap {
-		newCollection.accessedMap[typeID] = t
-	}
-	return newCollection
-}
-
-// Map writes any cached types to the underlying map, and then returns the underlying map.
+// Map writes any cached types to the collection's contents, and then returns those contents.
 func (pgs *TypeCollection) Map(ctx context.Context) (prolly.AddressMap, error) {
 	if err := pgs.writeCache(ctx); err != nil {
 		return prolly.AddressMap{}, err
 	}
-	return pgs.underlyingMap, nil
+	return pgs.Contents(), nil
 }
 
 // GetID implements the interface objinterface.RootObject.
@@ -507,10 +539,10 @@ func (pgs *TypeCollection) writeCache(ctx context.Context) (err error) {
 	if len(pgs.accessedMap) == 0 {
 		return nil
 	}
-	mapEditor := pgs.underlyingMap.Editor()
+	mapEditor := pgs.Contents().Editor()
 	for _, t := range pgs.accessedMap {
 		data := t.Serialize()
-		h, err := pgs.ns.WriteBytes(ctx, data)
+		h, err := pgs.NodeStore().WriteBytes(ctx, data)
 		if err != nil {
 			return err
 		}
@@ -518,13 +550,13 @@ func (pgs *TypeCollection) writeCache(ctx context.Context) (err error) {
 			return err
 		}
 	}
-	// Assign underlyingMap only after the error check. Flush returns a
+	// Set the contents only after the error check. Flush returns a
 	// zero AddressMap on failure, which would corrupt the TypeCollection.
 	flushed, err := mapEditor.Flush(ctx)
 	if err != nil {
 		return err
 	}
-	pgs.underlyingMap = flushed
+	pgs.SetContents(flushed)
 	clear(pgs.accessedMap)
 	return nil
 }
@@ -532,8 +564,11 @@ func (pgs *TypeCollection) writeCache(ctx context.Context) (err error) {
 // getTable returns the SQL table that matches the given schema and table name. Returns a nil table if one is not found.
 // This is intended for use with tableToType.
 func (*TypeCollection) getTable(ctx *sql.Context, schema string, tblName string) (tbl sql.Table, actualSchema string, err error) {
-	actualSchema, err = GetSchemaName(ctx, nil, schema)
-	if err != nil {
+	// With no schema to search there is no matching table, which is a miss rather than a failure: callers can still
+	// resolve an unqualified name by other means.
+	// TODO: an unqualified name should be resolved against every schema on the search path, not just the first.
+	actualSchema, ok, err := LookupSchemaName(ctx, nil, schema)
+	if err != nil || !ok {
 		return nil, "", err
 	}
 	tbl, err = GetSqlTableFromContext(ctx, "", doltdb.TableName{
@@ -575,5 +610,5 @@ func (pgs *TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema s
 // GetSqlTableFromContext is a forward declaration to get around import cycles
 var GetSqlTableFromContext func(ctx *sql.Context, databaseName string, tableName doltdb.TableName) (sql.Table, error)
 
-// GetSchemaName is a forward declaration to get around import cycles
-var GetSchemaName func(ctx *sql.Context, db sql.Database, schemaName string) (string, error)
+// LookupSchemaName is a forward declaration to get around import cycles
+var LookupSchemaName func(ctx *sql.Context, db sql.Database, schemaName string) (string, bool, error)

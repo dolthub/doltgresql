@@ -15,12 +15,13 @@
 package analyzer
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
-	"github.com/dolthub/go-mysql-server/sql/memo"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 
+	"github.com/dolthub/doltgresql/core"
 	pgexpression "github.com/dolthub/doltgresql/server/expression"
 )
 
@@ -37,7 +38,6 @@ const (
 	ruleId_AssignUpdateCasts                                             // assignUpdateCasts
 	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
 	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
-	ruleId_ReplaceIndexedTables                                          // replaceIndexedTables
 	ruleId_ReplaceNode                                                   // replaceNode
 	ruleId_ReplaceSerial                                                 // replaceSerial
 	ruleId_InsertContextRootFinalizer                                    // insertContextRootFinalizer
@@ -51,6 +51,13 @@ const (
 	ruleId_ValidateCreateFunction                                        // validateCreateFunction
 	ruleId_ResolveValuesTypes                                            // resolveValuesTypes
 	ruleId_ResolveProcedureDefaults                                      // resolveProcedureDefaults
+	ruleId_SetRunner                                                     // setRunner
+	ruleId_TypeSanitizeExistsSubquery                                    // typeSanitizeExistsSubquery
+	ruleId_ResolveTableForDDL                                            // resolveTableForDDL
+	ruleId_AddLikePrefixRanges                                           // addLikePrefixRanges
+	ruleId_ParenthesizeColumnDefaults                                    // parenthesizeColumnDefaults
+	ruleId_HoistInsertTriggers                                           // hoistInsertTriggers
+	ruleId_SplitRowComparisons                                           // splitRowComparisons
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -58,14 +65,18 @@ func Init() {
 	// OnceBeforeDefault runs before AlwaysBeforeDefault in GMS
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
 		{Id: ruleId_ResolveType, Apply: ResolveType}, // ResolveType rule must run before simplifyFilters rule in GMS
+		{Id: ruleId_AddLikePrefixRanges, Apply: AddLikePrefixRanges},
+		{Id: ruleId_SplitRowComparisons, Apply: SplitRowComparisons},
 		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
-		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint}},
+		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint},
+		{Id: ruleId_ResolveTableForDDL, Apply: resolveTableForDDL}},
 		analyzer.OnceBeforeDefault...)
 
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
 		// ResolveType rule must run in this batch in addition to OnceBeforeDefault batch
 		// because of custom batch set optimization in GMS skipping OnceBeforeDefault batch for some nodes.
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
+		analyzer.Rule{Id: ruleId_SetRunner, Apply: SetRunner},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_ResolveValuesTypes, Apply: ResolveValuesTypes},
 		analyzer.Rule{Id: ruleId_GenerateForeignKeyName, Apply: generateForeignKeyName},
@@ -98,16 +109,26 @@ func Init() {
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
 		analyzer.Rule{Id: ruleId_ReplaceArithmeticExpressions, Apply: ReplaceArithmeticExpressions},
+		// Must run after GMS's unnestExistsSubqueries rule, so decorrelation gets a chance to see
+		// a bare *plan.ExistsSubquery before it's cast-wrapped.
+		analyzer.Rule{Id: ruleId_TypeSanitizeExistsSubquery, Apply: TypeSanitizeExistsSubquery},
 	)
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that.
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.QuoteDefaultColumnValueNamesId, false,
+		analyzer.Rule{Id: ruleId_ParenthesizeColumnDefaults, Apply: ParenthesizeColumnDefaults},
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
 		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer},
+		// HoistInsertTriggers must run after GMS's 'resolveInsertRows' rule, which is what adds the
+		// projection it moves the triggers above. It also has to run after InsertContextRootFinalizer:
+		// 'resolveInsertRows' analyzes a non-literal insert source on its own, and that nested analysis
+		// leaves a finalizer of its own between the projection and the triggers. InsertContextRootFinalizer
+		// is what strips those back out, so only afterwards does the projection sit directly on the triggers.
+		analyzer.Rule{Id: ruleId_HoistInsertTriggers, Apply: HoistInsertTriggers},
 	)
 
 	initEngine()
@@ -121,28 +142,64 @@ func initEngine() {
 	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
 
 	planbuilder.IsAggregateFunc = IsAggregateFunc
+	planbuilder.IsWindowFunc = IsWindowFunc
 
 	expression.DefaultExpressionFactory = pgexpression.PostgresExpressionFactory{}
 
-	// There are a couple places during analysis where SplitConjunction in GMS cannot correctly split up
-	// Doltgres expressions, so we need to override the default function used.
-	analyzer.SplitConjunction = SplitConjunction
-	memo.SplitConjunction = SplitConjunction
+	expression.SplitConjunction = splitConjunction
+}
+
+// postgresOnlyAggregateFuncNames holds Postgres aggregate functions with no MySQL equivalent. Every name
+// here must be recognized by both IsAggregateFunc and IsWindowFunc: buildScalar in GMS's planbuilder only
+// routes a call with an OVER(...) clause into the window-building path if IsWindowFunc recognizes its name,
+// and Postgres allows any aggregate to be used as a window function.
+var postgresOnlyAggregateFuncNames = map[string]bool{
+	"array_agg": true,
+	"bool_and":  true,
+	"bool_or":   true,
+	"json_agg":  true,
+	"xmlagg":    true,
+}
+
+// postgresOnlyWindowFuncNames holds Postgres functions that may only be used as window functions (i.e.
+// within an OVER(...) clause) with no MySQL equivalent and no GROUP BY aggregate form.
+var postgresOnlyWindowFuncNames = map[string]bool{
+	"cume_dist": true,
+	"nth_value": true,
 }
 
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
-// MySQL plus some postgres specific ones.
-func IsAggregateFunc(name string) bool {
-	if planbuilder.IsMySQLAggregateFuncName(name) {
-		return true
+// MySQL plus some postgres specific ones, along with every user-defined aggregate.
+func IsAggregateFunc(ctx *sql.Context, name string) (bool, error) {
+	isAggregate, err := planbuilder.IsMySQLAggregateFuncName(ctx, name)
+	if err != nil {
+		return false, err
 	}
-
-	switch name {
-	case "array_agg", "bool_and", "bool_or":
-		return true
+	if isAggregate || postgresOnlyAggregateFuncNames[name] {
+		return true, nil
 	}
+	collection, err := core.GetAggregatesCollectionFromContext(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	return collection.HasAggregateName(ctx, name)
+}
 
-	return false
+// IsWindowFunc checks if the given function name is a window function. This is the entire set supported by
+// MySQL plus some postgres specific ones, along with every user-defined aggregate.
+func IsWindowFunc(ctx *sql.Context, name string) (bool, error) {
+	isWindow, err := planbuilder.IsMySQLWindowFuncName(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	if isWindow || postgresOnlyAggregateFuncNames[name] || postgresOnlyWindowFuncNames[name] {
+		return true, nil
+	}
+	collection, err := core.GetAggregatesCollectionFromContext(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	return collection.HasAggregateName(ctx, name)
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.

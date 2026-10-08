@@ -86,6 +86,68 @@ def compliance_test(cur):
     print("Compliance queries executed OK.", flush=True)
 
 
+# error_code_test asserts that errors arrive with the correct SQLSTATE and are interpreted
+# correctly by the client. psycopg2 constructs its exception classes from the SQLSTATE the
+# server reports (psycopg2.errors), so catching the specific class checks both at once.
+def error_code_test(user, port):
+    print("\n=== Part 3: Error codes ===", flush=True)
+    from psycopg2 import errors
+
+    conn = connect(user, port)
+    cur = conn.cursor()
+    run(cur, "DROP TABLE IF EXISTS err_test")
+    run(cur, "CREATE TABLE err_test (id INT PRIMARY KEY, val INT NOT NULL)")
+    run(cur, "INSERT INTO err_test VALUES (1, 1)")
+
+    cases = [
+        ("INSERT INTO err_test VALUES (1, 1)", errors.UniqueViolation, "23505"),
+        ("INSERT INTO err_test VALUES (2, NULL)", errors.NotNullViolation, "23502"),
+        ("SELECT * FROM no_such_table", errors.UndefinedTable, "42P01"),
+        ("SELECT no_such_col FROM err_test", errors.UndefinedColumn, "42703"),
+        ("SELECT 1/0", errors.DivisionByZero, "22012"),
+        ("SELEC 1", errors.SyntaxError, "42601"),
+        ("SELECT 'abc'::int4", errors.InvalidTextRepresentation, "22P02"),
+    ]
+    for sql, exc_class, code in cases:
+        print(f"SQL> {sql}  (expect {exc_class.__name__} / {code})", flush=True)
+        try:
+            cur.execute(sql)
+        except exc_class as e:
+            if e.pgcode != code:
+                raise AssertionError(f"{sql}: expected pgcode {code}, got {e.pgcode}")
+        else:
+            raise AssertionError(f"{sql}: expected {exc_class.__name__}, but query succeeded")
+
+    # the connection must have survived every error above
+    cur.execute("SELECT COUNT(*) FROM err_test")
+    if cur.fetchone()[0] != 1:
+        raise AssertionError("unexpected row count after failed statements")
+
+    # Conflicting concurrent transactions: the losing commit must raise
+    # SerializationFailure (SQLSTATE 40001), which retry logic dispatches on.
+    conn_a = connect(user, port)
+    conn_a.autocommit = False
+    conn_b = conn  # autocommit, plays the concurrent writer
+    cur_a = conn_a.cursor()
+    cur_a.execute("UPDATE err_test SET val = 10 WHERE id = 1")
+    cur.execute("UPDATE err_test SET val = 20 WHERE id = 1")
+    try:
+        conn_a.commit()
+        raise AssertionError("expected SerializationFailure on conflicting commit")
+    except errors.SerializationFailure as e:
+        if e.pgcode != "40001":
+            raise AssertionError(f"expected pgcode 40001, got {e.pgcode}")
+
+    # ... and the session must be usable again immediately
+    conn_a.rollback()
+    cur_a.execute("SELECT COUNT(*) FROM err_test")
+    if cur_a.fetchone()[0] != 1:
+        raise AssertionError("connection unusable after serialization failure")
+    conn_a.close()
+
+    print("Error code tests OK.", flush=True)
+
+
 def main():
     if len(sys.argv) != 3:
         print("Usage: python3 psycopg2_test.py <user> <port>")
@@ -100,6 +162,8 @@ def main():
             with conn.cursor() as cur:
                 load_test(cur, load_rows)
                 compliance_test(cur)
+
+        error_code_test(user, port)
 
         print("\n✅ All tests passed.", flush=True)
         return 0

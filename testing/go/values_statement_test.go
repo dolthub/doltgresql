@@ -242,7 +242,7 @@ var ValuesStatementTests = []ScriptTest{
 			{
 				// AVG on mixed types
 				Query:    `SELECT AVG(n) FROM (VALUES(1),(2),(3),(4)) v(n);`,
-				Expected: []sql.Row{{2.5}},
+				Expected: []sql.Row{{Numeric("2.5")}},
 			},
 			{
 				// MIN/MAX on mixed types
@@ -838,6 +838,147 @@ var ValuesStatementTests = []ScriptTest{
 					{Numeric("1"), Numeric("10")},
 					{Numeric("2.5"), Numeric("25.0")},
 				},
+			},
+		},
+	},
+	{
+		Name: "VALUES column names",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `VALUES (1, 2), (3, 4);`,
+				Expected: []sql.Row{
+					{1, 2},
+					{3, 4},
+				},
+				ExpectedColNames: []string{"column1", "column2"},
+			},
+			{
+				Query: `SELECT * FROM (VALUES (1, 2)) v;`,
+				Expected: []sql.Row{
+					{1, 2},
+				},
+				ExpectedColNames: []string{"column1", "column2"},
+			},
+			{
+				Query: `SELECT * FROM (VALUES (1, 2)) v(a);`,
+				Expected: []sql.Row{
+					{1, 2},
+				},
+				ExpectedColNames: []string{"a", "column2"},
+			},
+			{
+				Query: `VALUES (1) UNION VALUES (2);`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+				},
+				ExpectedColNames: []string{"column1"},
+			},
+			{
+				Query: `VALUES (1, 'a') UNION ALL VALUES (2, 'b');`,
+				Expected: []sql.Row{
+					{1, "a"},
+					{2, "b"},
+				},
+				ExpectedColNames: []string{"column1", "column2"},
+			},
+			{
+				Query: `VALUES (1, 2) ORDER BY column2;`,
+				Expected: []sql.Row{
+					{1, 2},
+				},
+				ExpectedColNames: []string{"column1", "column2"},
+			},
+			{
+				Query: `SELECT v.column2 FROM (VALUES (1, 2)) v WHERE column1 = 1;`,
+				Expected: []sql.Row{
+					{2},
+				},
+				ExpectedColNames: []string{"column2"},
+			},
+			{
+				Query: `SELECT * FROM (VALUES (1), (2.5)) v WHERE column1 > 1;`,
+				Expected: []sql.Row{
+					{Numeric("2.5")},
+				},
+				ExpectedColNames: []string{"column1"},
+			},
+			{
+				Query: `WITH w AS (VALUES (1)) SELECT * FROM w;`,
+				Expected: []sql.Row{
+					{1},
+				},
+				ExpectedColNames: []string{"column1"},
+			},
+			{
+				Query: `SELECT * FROM (VALUES (1, 2)) AS v JOIN (VALUES (1, 3)) AS w ON v.column1 = w.column1;`,
+				Expected: []sql.Row{
+					{1, 2, 1, 3},
+				},
+				ExpectedColNames: []string{"column1", "column2", "column1", "column2"},
+			},
+			{
+				Query:           `SELECT * FROM (VALUES (1, 2)) v(a, b, c);`,
+				ExpectedErr:     `table "v" has 2 columns available but 3 columns specified`,
+				ExpectedErrCode: "42P10",
+				Skip:            true,
+			},
+			{
+				Query: `SELECT (VALUES (1));`,
+				Expected: []sql.Row{
+					{1},
+				},
+				ExpectedColNames: []string{"column1"},
+				Skip:             true,
+			},
+		},
+	},
+	{
+		Name: "VALUES column names in a view",
+		SetUpScript: []string{
+			`CREATE VIEW vv AS VALUES (1, 'a');`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM vv;`,
+				Expected: []sql.Row{
+					{1, "a"},
+				},
+				ExpectedColNames: []string{"column1", "column2"},
+			},
+		},
+	},
+	{
+		Name: "VALUES column names in CREATE TABLE AS",
+		Skip: true,
+		SetUpScript: []string{
+			`CREATE TABLE vt AS VALUES (1, 'a');`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM vt;`,
+				Expected: []sql.Row{
+					{1, "a"},
+				},
+				ExpectedColNames: []string{"column1", "column2"},
+			},
+		},
+	},
+	{
+		Name: "VALUES column names in a cursor",
+		Skip: true,
+		SetUpScript: []string{
+			`BEGIN;`,
+			`DECLARE c CURSOR FOR VALUES (1), (2);`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `FETCH ALL c;`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+				},
+				ExpectedColNames: []string{"column1"},
 			},
 		},
 	},

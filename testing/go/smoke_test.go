@@ -20,6 +20,43 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestCreateTableAs verifies CTAS execution and transaction rollback through Doltgres create-table wrappers.
+func TestCreateTableAs(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "create table as select",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, k INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 99)",
+				"CREATE TABLE u (k INT PRIMARY KEY)",
+				"INSERT INTO u VALUES (10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE c AS SELECT id, k FROM t WHERE NOT EXISTS(SELECT COUNT(*) FROM u WHERE u.k = t.k)",
+				},
+				{
+					Query:    "SELECT id, k FROM c ORDER BY id",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "BEGIN",
+				},
+				{
+					Query: "CREATE TABLE rolled_back AS SELECT 1 AS v",
+				},
+				{
+					Query: "ROLLBACK",
+				},
+				{
+					Query:    "SELECT to_regclass('rolled_back')",
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+	})
+}
+
 func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -276,7 +313,7 @@ func TestSmokeTests(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT DOLT_CHECKOUT('main');",
-					Expected: []sql.Row{{"{0,\"Switched to branch 'main'\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query: "SELECT * FROM test;",
@@ -287,7 +324,7 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CHECKOUT('other');",
-					Expected: []sql.Row{{"{0,\"Switched to branch 'other'\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: "SELECT * FROM test;",
@@ -648,7 +685,7 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
 					Expected: []sql.Row{
-						{12.0},
+						{int64(12)},
 					},
 				},
 				{
@@ -658,7 +695,24 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
 					Expected: []sql.Row{
-						{12.0},
+						{int64(12)},
+					},
+				},
+			},
+		},
+		{
+			Name: "ANY ROW",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT ROW(NULL::int4) = ROW(NULL::int4);",
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: "SELECT ROW(NULL::int4) = ANY(ARRAY[ROW(NULL::int4)]);",
+					Expected: []sql.Row{
+						{"t"},
 					},
 				},
 			},

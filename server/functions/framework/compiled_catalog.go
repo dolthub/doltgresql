@@ -17,6 +17,8 @@ package framework
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -58,7 +60,10 @@ func (d dummyExpression) WithChildren(ctx *sql.Context, children ...sql.Expressi
 
 // getQuickFunctionForTypes is used by the types package to load quick functions. This is declared here to work around
 // import cycles. Returns nil if a QuickFunction could not be constructed.
-func getQuickFunctionForTypes(ctx *sql.Context, functionName string, params []*pgtypes.DoltgresType) any {
+func getQuickFunctionForTypes(ctx *sql.Context, schemaName string, functionName string, params []*pgtypes.DoltgresType) any {
+	if schemaName != "pg_catalog" {
+		return getQuickFunctionFromProvider(ctx, schemaName, functionName, params)
+	}
 	exprs := make([]sql.Expression, len(params))
 	for i := range params {
 		exprs[i] = dummyExpression{t: params[i]}
@@ -67,5 +72,39 @@ func getQuickFunctionForTypes(ctx *sql.Context, functionName string, params []*p
 	if err != nil || !ok {
 		return nil
 	}
-	return cf.GetQuickFunction()
+	return cf.GetQuickFunction(ctx)
+}
+
+// getQuickFunctionFromProvider resolves a user-defined function. Returns nil if it could not be resolved.
+func getQuickFunctionFromProvider(ctx *sql.Context, schemaName string, functionName string, params []*pgtypes.DoltgresType) any {
+	call := NewUserFunctionCall(ctx, schemaName, functionName, params)
+	if call == nil {
+		return nil
+	}
+	return &quickWrappedFunction{
+		callable: func(ctx *sql.Context, resolvedTypes []*pgtypes.DoltgresType, args []any) (any, error) {
+			compiled := *call.compiled
+			compiled.callResolved = resolvedTypes
+			return compiled.callFunction(ctx, args)
+		},
+		strict:        call.strict,
+		resolvedTypes: call.compiled.callResolved,
+	}
+}
+
+// getQuickExtensionFunction resolves an extension-provided function by name only. Returns nil if no registered
+// extension declares a matching routine. Extension routines never read their resolved types, so the wrapper carries
+// placeholders sized to the routine's signature.
+func getQuickExtensionFunction(functionID id.Function) any {
+	routine, ok := extensions.GetRoutine(functionID.FunctionName(), functionID.ParameterCount())
+	if !ok {
+		return nil
+	}
+	return &quickWrappedFunction{
+		callable: func(ctx *sql.Context, _ []*pgtypes.DoltgresType, args []any) (any, error) {
+			return routine.Impl(ctx, args...)
+		},
+		strict:        routine.Strict,
+		resolvedTypes: make([]*pgtypes.DoltgresType, len(routine.Parameters)+1),
+	}
 }

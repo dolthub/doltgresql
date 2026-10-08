@@ -95,6 +95,66 @@ func TestPsqlCommands(t *testing.T) {
 			},
 		},
 		{
+			Name: `\df`,
+			SetUpScript: []string{
+				"CREATE FUNCTION add_two(a int, b int) RETURNS int LANGUAGE sql AS 'SELECT a + b';",
+				"CREATE PROCEDURE noop_proc() LANGUAGE sql AS $$ SELECT 1 $$;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The query issued by psql's \df command
+					Query: `SELECT n.nspname as "Schema",
+  p.proname as "Name",
+  pg_catalog.pg_get_function_result(p.oid) as "Result data type",
+  pg_catalog.pg_get_function_arguments(p.oid) as "Argument data types",
+ CASE p.prokind
+  WHEN 'a' THEN 'agg'
+  WHEN 'w' THEN 'window'
+  WHEN 'p' THEN 'proc'
+  ELSE 'func'
+ END as "Type"
+FROM pg_catalog.pg_proc p
+     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+WHERE pg_catalog.pg_function_is_visible(p.oid)
+      AND n.nspname <> 'pg_catalog'
+      AND n.nspname <> 'information_schema'
+ORDER BY 1, 2, 4;`,
+					Expected: []sql.Row{
+						{"public", "add_two", "", "a integer, b integer", "func"},
+						{"public", "noop_proc", "", "", "proc"},
+					},
+				},
+			},
+		},
+		{
+			Name: `\d tablename triggers`,
+			SetUpScript: []string{
+				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",
+				"CREATE FUNCTION trig_fn() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER test_trig BEFORE INSERT ON test_table FOR EACH ROW EXECUTE FUNCTION trig_fn();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The trigger listing query issued by psql's \d command
+					Query: `SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled, t.tgisinternal,
+  CASE WHEN t.tgparentid != 0 THEN
+    (SELECT u.tgrelid::pg_catalog.regclass
+     FROM pg_catalog.pg_trigger AS u,
+          pg_catalog.pg_partition_ancestors(t.tgrelid) WITH ORDINALITY AS a(relid, depth)
+     WHERE u.tgname = t.tgname AND u.tgrelid = a.relid
+           AND u.tgparentid = 0
+     ORDER BY a.depth LIMIT 1)
+  END AS parent
+FROM pg_catalog.pg_trigger t
+WHERE t.tgrelid = 'test_table'::regclass AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"test_trig", "CREATE TRIGGER test_trig BEFORE INSERT ON test_table FOR EACH ROW EXECUTE FUNCTION trig_fn()", "O", "f", nil},
+					},
+				},
+			},
+		},
+		{
 			Name: `\d tablename`,
 			SetUpScript: []string{
 				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",

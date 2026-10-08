@@ -43,7 +43,8 @@ func (p PgBackendMemoryContextsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgBackendMemoryContextsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_backend_memory_contexts row iter
+	// pg_backend_memory_contexts is currently empty, since Doltgres does not expose backend memory introspection.
+	// TODO: fill this in if memory context statistics are ever tracked
 	return emptyRowIter()
 }
 

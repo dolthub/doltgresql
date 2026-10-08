@@ -16,12 +16,13 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -43,6 +44,19 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, erro
 		cmd, ok := node.Cmds[0].(*tree.AlterTableComputed)
 		if ok {
 			return nodeAlterTableComputed(ctx, treeTableName, cmd)
+		}
+		if vcmd, ok := node.Cmds[0].(*tree.AlterTableValidateConstraint); ok {
+			return vitess.InjectedStatement{
+				Statement: pgnodes.NewValidateConstraint(
+					tableName.SchemaQualifier.String(),
+					tableName.Name.String(),
+					bareIdentifier(vcmd.Constraint),
+				),
+				Children: nil,
+			}, nil
+		}
+		if tcmd, ok := node.Cmds[0].(*tree.AlterTableAlterColumnType); ok && tcmd.Using != nil {
+			return nodeAlterTableAlterColumnTypeUsing(ctx, tcmd, tableName, node.IfExists)
 		}
 	}
 	statements, noOps, err := nodeAlterTableCmds(ctx, node.Cmds, tableName, node.IfExists)
@@ -112,6 +126,18 @@ func nodeAlterTableCmds(
 			// If inline constraints have been specified, set the ConstraintAction so that they get processed
 			if len(statement.TableSpec.Constraints) > 0 {
 				statement.ConstraintAction = vitess.AddStr
+			}
+			if cmd.ColumnDef.Unique && !cmd.ColumnDef.PrimaryKey.IsPrimaryKey {
+				indexFields, err := nodeIndexElemList(ctx, tree.IndexElemList{{Column: cmd.ColumnDef.Name}})
+				if err != nil {
+					return nil, nil, err
+				}
+				statement.IndexSpec = &vitess.IndexSpec{
+					Action: "create",
+					ToName: vitess.NewColIdent(string(cmd.ColumnDef.UniqueConstraintName)),
+					Type:   "unique",
+					Fields: indexFields,
+				}
 			}
 
 		case *tree.AlterTableDropColumn:
@@ -184,18 +210,20 @@ func nodeAlterTableAddConstraint(
 	tableName vitess.TableName,
 	ifExists bool) (*vitess.DDL, error) {
 
-	if node.ValidationBehavior == tree.ValidationSkip {
-		// currently only allowed for foreign key and CHECK constraints
-		return nil, errors.Errorf("NOT VALID is not supported yet")
+	notValid := node.ValidationBehavior == tree.ValidationSkip
+	if notValid {
+		if _, ok := node.ConstraintDef.(*tree.UniqueConstraintTableDef); ok {
+			return nil, errors.Errorf("NOT VALID is not applicable to UNIQUE or PRIMARY KEY constraints")
+		}
 	}
 
 	switch constraintDef := node.ConstraintDef.(type) {
 	case *tree.CheckConstraintTableDef:
-		return nodeCheckConstraintTableDef(ctx, constraintDef, tableName, ifExists)
+		return nodeCheckConstraintTableDef(ctx, constraintDef, tableName, ifExists, notValid)
 	case *tree.UniqueConstraintTableDef:
 		return nodeUniqueConstraintTableDef(ctx, constraintDef, tableName, ifExists)
 	case *tree.ForeignKeyConstraintTableDef:
-		foreignKeyDefinition, err := nodeForeignKeyConstraintTableDef(ctx, constraintDef)
+		foreignKeyDefinition, err := nodeForeignKeyConstraintTableDef(ctx, constraintDef, notValid)
 		if err != nil {
 			return nil, err
 		}
@@ -230,10 +258,6 @@ func bareIdentifier(id tree.Name) string {
 
 // nodeAlterTableAddColumn converts a tree.AlterTableAddColumn instance into an equivalent vitess.DDL instance.
 func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
-	if node.IfNotExists {
-		return nil, errors.Errorf("IF NOT EXISTS on a column in an ADD COLUMN statement is not supported yet")
-	}
-
 	vitessColumnDef, err := nodeColumnTableDef(ctx, node.ColumnDef)
 	if err != nil {
 		return nil, err
@@ -258,6 +282,7 @@ func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, table
 		ColumnAction: "add",
 		Table:        tableName,
 		IfExists:     ifExists,
+		IfNotExists:  node.IfNotExists,
 		Column:       vitessColumnDef.Name,
 		TableSpec:    tableSpec,
 	}, nil
@@ -274,7 +299,6 @@ func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tab
 	case tree.DropRestrict:
 		return nil, errors.Errorf("ALTER TABLE DROP COLUMN does not support RESTRICT option")
 	case tree.DropCascade:
-		logrus.Warnf("CASCADE option on DROP COLUMN is not yet supported, ignoring")
 	default:
 		return nil, errors.Errorf("ALTER TABLE with unsupported drop behavior %v", node.DropBehavior)
 	}
@@ -285,6 +309,7 @@ func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tab
 		Table:        tableName,
 		IfExists:     ifExists,
 		Column:       vitess.NewColIdent(node.Column.String()),
+		Cascade:      node.DropBehavior == tree.DropCascade,
 	}, nil
 }
 
@@ -331,7 +356,9 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 	}
 
 	if node.Using != nil {
-		return nil, errors.Errorf("ALTER TABLE with USING is not supported yet")
+		// The USING form is handled by a dedicated node (see nodeAlterTableAlterColumnTypeUsing), which only supports
+		// a single command per ALTER TABLE statement.
+		return nil, errors.Errorf("ALTER TABLE ... ALTER COLUMN ... TYPE ... USING is not supported in a multi-action ALTER TABLE statement")
 	}
 
 	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType, false)
@@ -357,6 +384,70 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 				Charset:      convertType.Charset,
 			},
 		},
+	}, nil
+}
+
+// nodeAlterTableAlterColumnTypeUsing converts a tree.AlterTableAlterColumnType instance that includes a USING clause
+// into a vitess.InjectedStatement wrapping a pgnodes.AlterTableColumnTypeUsing node. The USING form computes each
+// row's new value by evaluating the given expression, rather than converting the existing values directly.
+func nodeAlterTableAlterColumnTypeUsing(ctx *Context, node *tree.AlterTableAlterColumnType, tableName vitess.TableName, ifExists bool) (vitess.Statement, error) {
+	if node.Collation != "" {
+		return nil, errors.Errorf("ALTER TABLE with COLLATE is not supported yet")
+	}
+
+	_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType, false)
+	if err != nil {
+		return nil, err
+	}
+	if resolvedType.ID == pgtypes.Record.ID {
+		return nil, errors.Errorf(`column "%s" has pseudo-type record`, node.Column.String())
+	}
+
+	schemaName := tableName.SchemaQualifier.String()
+	tblName := tableName.Name.String()
+
+	// Column references in the USING expression may only refer to the table being altered, so we replace them with
+	// UsingColumn placeholders that resolve against that table rather than the (empty) scope of the statement.
+	replacedUsing, err := tree.SimpleVisit(node.Using, func(visitingExpr tree.Expr) (recurse bool, newExpr tree.Expr, err error) {
+		switch v := visitingExpr.(type) {
+		case *tree.Subquery:
+			return false, nil, errors.Errorf("cannot use subquery in transform expression")
+		case *tree.UnresolvedName:
+			if v.Star {
+				return false, nil, errors.Errorf("* syntax is not supported in a USING expression")
+			}
+			// Parts are ordered column name, table name, schema name, database name
+			if v.NumParts >= 2 && !strings.EqualFold(v.Parts[1], tblName) {
+				return false, nil, errors.Errorf(`missing FROM-clause entry for table "%s"`, v.Parts[1])
+			}
+			if v.NumParts >= 3 && schemaName != "" && !strings.EqualFold(v.Parts[2], schemaName) {
+				return false, nil, errors.Errorf(`missing FROM-clause entry for table "%s.%s"`, v.Parts[2], v.Parts[1])
+			}
+			return false, tree.UsingColumn{
+				SchemaName: schemaName,
+				TableName:  tblName,
+				Name:       v.Parts[0],
+			}, nil
+		}
+		return true, visitingExpr, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	usingExpr, err := nodeExpr(ctx, replacedUsing)
+	if err != nil {
+		return nil, err
+	}
+
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewAlterTableColumnTypeUsing(
+			schemaName,
+			tblName,
+			bareIdentifier(node.Column),
+			resolvedType,
+			ifExists,
+		),
+		Children: vitess.Exprs{usingExpr},
 	}, nil
 }
 

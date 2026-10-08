@@ -20,8 +20,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/plan"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/triggers"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -49,6 +49,7 @@ type TriggerExecution struct {
 	Sch      sql.Schema
 	Source   sql.Node
 	Runner   pgexprs.StatementRunner
+	TgOp     string // The operation that fired the triggers, as seen by TG_OP
 }
 
 var _ sql.ExecBuilderNode = (*TriggerExecution)(nil)
@@ -85,11 +86,13 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 	}
 	trigFuncs := make([]framework.InterpretedFunction, len(te.Triggers))
 	whens := make([]framework.InterpretedFunction, len(te.Triggers))
+	trigVars := make([]map[string]any, len(te.Triggers))
 	for i, trig := range te.Triggers {
 		trigFuncs[i], err = te.loadTriggerFunction(ctx, trig)
 		if err != nil {
 			return nil, err
 		}
+		trigVars[i] = triggerVariables(trig, te.TgOp)
 		// If we have a WHEN expression, then we need to build a "function" to execute the expression
 		if len(trig.When) > 0 {
 			whens[i] = framework.InterpretedFunction{
@@ -100,18 +103,6 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 		}
 	}
 
-	tgOp := ""
-	switch te.Source.(type) {
-	case *plan.InsertInto:
-		tgOp = "INSERT"
-	case *plan.Update:
-		tgOp = "UPDATE"
-	case *plan.DeleteFrom:
-		tgOp = "DELETE"
-	case *plan.Truncate:
-		tgOp = "TRUNCATE"
-	}
-
 	return &triggerExecutionIter{
 		functions: trigFuncs,
 		whens:     whens,
@@ -120,7 +111,7 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 		runner:    te.Runner.Runner,
 		sch:       te.Sch,
 		source:    sourceIter,
-		tgOp:      tgOp,
+		trigVars:  trigVars,
 		timing:    te.Timing,
 	}, nil
 }
@@ -170,13 +161,47 @@ func (te *TriggerExecution) loadTriggerFunction(ctx *sql.Context, trigger trigge
 	return framework.InterpretedFunction{
 		ID:                 function.ID,
 		ReturnType:         pgtypes.Trigger,
-		ParameterNames:     nil,
-		ParameterTypes:     nil,
 		Variadic:           function.Variadic,
 		IsNonDeterministic: function.IsNonDeterministic,
 		Strict:             function.Strict,
+		SRF:                false,
 		Statements:         function.Operations,
 	}, nil
+}
+
+// triggerVariables returns the values of the special variables that the given trigger's function sees.
+func triggerVariables(trigger triggers.Trigger, tgOp string) map[string]any {
+	tgWhen := "BEFORE"
+	switch trigger.Timing {
+	case triggers.TriggerTiming_After:
+		tgWhen = "AFTER"
+	case triggers.TriggerTiming_InsteadOf:
+		tgWhen = "INSTEAD OF"
+	}
+	tgLevel := "STATEMENT"
+	if trigger.ForEachRow {
+		tgLevel = "ROW"
+	}
+	var tgArgv any
+	if len(trigger.Arguments) > 0 {
+		args := make([]any, len(trigger.Arguments))
+		for i, arg := range trigger.Arguments {
+			args[i] = arg
+		}
+		tgArgv = args
+	}
+	return map[string]any{
+		"TG_NAME":         trigger.ID.TriggerName(),
+		"TG_WHEN":         tgWhen,
+		"TG_LEVEL":        tgLevel,
+		"TG_OP":           tgOp,
+		"TG_RELID":        id.NewTable(trigger.ID.SchemaName(), trigger.ID.TableName()).AsId(),
+		"TG_RELNAME":      trigger.ID.TableName(),
+		"TG_TABLE_NAME":   trigger.ID.TableName(),
+		"TG_TABLE_SCHEMA": trigger.ID.SchemaName(),
+		"TG_NARGS":        int32(len(trigger.Arguments)),
+		"TG_ARGV":         tgArgv,
+	}
 }
 
 // triggerExecutionIter is the iterator for TriggerExecution.
@@ -188,7 +213,7 @@ type triggerExecutionIter struct {
 	runner    sql.StatementRunner
 	sch       sql.Schema
 	source    sql.RowIter
-	tgOp      string
+	trigVars  []map[string]any
 	timing    triggers.TriggerTiming
 }
 
@@ -215,15 +240,9 @@ func (t *triggerExecutionIter) Next(ctx *sql.Context) (sql.Row, error) {
 		newRow = nextRow
 	}
 
-	// TODO: handle other special variables
-	triggerVars := make(map[string]any)
-	if t.tgOp != "" {
-		triggerVars["TG_OP"] = t.tgOp
-	}
-
 	for funcIdx, function := range t.functions {
 		if t.whens[funcIdx].ID.IsValid() {
-			whenValue, err := plpgsql.TriggerCall(ctx, t.whens[funcIdx], t.runner, t.sch, oldRow, newRow, triggerVars)
+			whenValue, err := plpgsql.TriggerCall(ctx, t.whens[funcIdx], t.runner, t.sch, oldRow, newRow, t.trigVars[funcIdx])
 			if err != nil {
 				if strings.Contains(err.Error(), "no valid cast for return value") {
 					// TODO: this error should technically be caught during parsing, but interpreted functions don't
@@ -241,7 +260,7 @@ func (t *triggerExecutionIter) Next(ctx *sql.Context) (sql.Row, error) {
 			}
 		}
 
-		returnedValue, err := plpgsql.TriggerCall(ctx, function, t.runner, t.sch, oldRow, newRow, triggerVars)
+		returnedValue, err := plpgsql.TriggerCall(ctx, function, t.runner, t.sch, oldRow, newRow, t.trigVars[funcIdx])
 		if err != nil {
 			return nil, err
 		}

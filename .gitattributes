@@ -1,0 +1,5 @@
+postgres/parser/parser/sql.go            linguist-generated=true
+postgres/parser/parser/help_messages.go  linguist-generated=true
+postgres/parser/lex/tokens.go            linguist-generated=true
+postgres/parser/lex/reserved_keywords.go linguist-generated=true
+postgres/parser/lex/keywords.go          linguist-generated=true

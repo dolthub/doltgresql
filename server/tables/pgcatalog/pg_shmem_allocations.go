@@ -43,7 +43,8 @@ func (p PgShmemAllocationsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgShmemAllocationsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_shmem_allocations row iter
+	// pg_shmem_allocations is currently empty, since Doltgres does not use Postgres-style shared memory segments.
+	// TODO: fill this in if analogous memory statistics are ever exposed
 	return emptyRowIter()
 }
 

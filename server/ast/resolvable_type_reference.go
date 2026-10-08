@@ -40,11 +40,19 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 	var err error
 	switch columnType := typ.(type) {
 	case *tree.ArrayTypeReference:
-		if uon, ok := columnType.ElementType.(*tree.UnresolvedObjectName); ok {
-			tn := uon.ToTableName()
+		switch elem := columnType.ElementType.(type) {
+		case *tree.UnresolvedObjectName:
+			tn := elem.ToTableName()
 			columnTypeName = tn.Object() + "[]"
 			doltgresType = pgtypes.NewUnresolvedArrayDoltgresType(tn.Schema(), tn.Object())
-		} else {
+		case *tree.ModifiedTypeReference:
+			tn := elem.Name.ToTableName()
+			columnTypeName = tn.Object() + "[]"
+			doltgresType = pgtypes.NewUnresolvedArrayDoltgresType(tn.Schema(), tn.Object())
+			if doltgresType.UnresolvedTypmods, err = typeModifierStrings(elem.Modifiers); err != nil {
+				return nil, nil, err
+			}
+		default:
 			return nil, nil, errors.Errorf("the given array type is not yet supported")
 		}
 	case *tree.OIDTypeReference:
@@ -53,6 +61,13 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 		tn := columnType.ToTableName()
 		columnTypeName = tn.Object()
 		doltgresType = pgtypes.NewUnresolvedDoltgresType(tn.Schema(), columnTypeName)
+	case *tree.ModifiedTypeReference:
+		tn := columnType.Name.ToTableName()
+		columnTypeName = tn.Object()
+		doltgresType = pgtypes.NewUnresolvedDoltgresType(tn.Schema(), columnTypeName)
+		if doltgresType.UnresolvedTypmods, err = typeModifierStrings(columnType.Modifiers); err != nil {
+			return nil, nil, err
+		}
 	case *types.GeoMetadata:
 		return nil, nil, errors.Errorf("geometry types are not yet supported")
 	case *types.T:
@@ -110,6 +125,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 					width = 1
 				}
 				doltgresType = pgtypes.InternalChar
+			case oid.T_cid:
+				doltgresType = pgtypes.Cid
 			case oid.T_date:
 				doltgresType = pgtypes.Date
 			case oid.T_float4:
@@ -147,12 +164,18 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 				doltgresType = pgtypes.Oidvector
 			case oid.T_regclass:
 				doltgresType = pgtypes.Regclass
+			case oid.T_regnamespace:
+				doltgresType = pgtypes.Regnamespace
 			case oid.T_regproc:
 				doltgresType = pgtypes.Regproc
+			case oid.T_regprocedure:
+				doltgresType = pgtypes.Regprocedure
 			case oid.T_regtype:
 				doltgresType = pgtypes.Regtype
 			case oid.T_text:
 				doltgresType = pgtypes.Text
+			case oid.T_tid:
+				doltgresType = pgtypes.Tid
 			case oid.T_time:
 				doltgresType = pgtypes.Time
 			case oid.T_timestamp:
@@ -218,4 +241,20 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 		Scale:   columnTypeScale,
 		Charset: "", // TODO
 	}, doltgresType, nil
+}
+
+// typeModifierStrings converts parsed type modifier expressions to the strings that a typmodin function receives.
+func typeModifierStrings(exprs tree.Exprs) ([]any, error) {
+	strs := make([]any, len(exprs))
+	for i, expr := range exprs {
+		switch e := expr.(type) {
+		case *tree.NumVal:
+			strs[i] = e.FormattedString()
+		case *tree.StrVal:
+			strs[i] = e.RawString()
+		default:
+			return nil, errors.Errorf("type modifiers must be simple constants or identifiers")
+		}
+	}
+	return strs, nil
 }

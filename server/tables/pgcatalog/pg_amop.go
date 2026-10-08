@@ -43,7 +43,8 @@ func (p PgAmopHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAmopHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_amop row iter
+	// pg_amop is currently empty, since it requires a catalog of built-in operators.
+	// TODO: fill this in together with pg_operator
 	return emptyRowIter()
 }
 

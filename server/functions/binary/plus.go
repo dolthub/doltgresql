@@ -23,9 +23,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
-	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -128,7 +128,7 @@ var float84pl = framework.Function2{
 func int2pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	result := int64(val1.(int16)) + int64(val2.(int16))
 	if result > math.MaxInt16 || result < math.MinInt16 {
-		return nil, errors.Errorf("smallint out of range")
+		return nil, pgtypes.ErrOutOfRange.New("smallint")
 	}
 	return int16(result), nil
 }
@@ -146,7 +146,7 @@ var int2pl = framework.Function2{
 func int24pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	result := int64(val1.(int16)) + int64(val2.(int32))
 	if result > math.MaxInt16 || result < math.MinInt16 {
-		return nil, errors.Errorf("integer out of range")
+		return nil, pgtypes.ErrOutOfRange.New("integer")
 	}
 	return int32(result), nil
 }
@@ -178,7 +178,7 @@ var int28pl = framework.Function2{
 func int4pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	result := int64(val1.(int32)) + int64(val2.(int32))
 	if result > math.MaxInt32 || result < math.MinInt32 {
-		return nil, errors.Errorf("integer out of range")
+		return nil, pgtypes.ErrOutOfRange.New("integer")
 	}
 	return int32(result), nil
 }
@@ -196,7 +196,7 @@ var int4pl = framework.Function2{
 func int42pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	result := int64(val1.(int32)) + int64(val2.(int16))
 	if result > math.MaxInt32 || result < math.MinInt32 {
-		return nil, errors.Errorf("integer out of range")
+		return nil, pgtypes.ErrOutOfRange.New("integer")
 	}
 	return int32(result), nil
 }
@@ -413,11 +413,11 @@ var numeric_add = framework.Function2{
 func plusOverflow(val1 int64, val2 int64) (any, error) {
 	if val2 > 0 {
 		if val1 > math.MaxInt64-val2 {
-			return nil, errors.Errorf("bigint out of range")
+			return nil, pgtypes.ErrOutOfRange.New("bigint")
 		}
 	} else {
 		if val1 < math.MinInt64-val2 {
-			return nil, errors.Errorf("bigint out of range")
+			return nil, pgtypes.ErrOutOfRange.New("bigint")
 		}
 	}
 	return val1 + val2, nil
@@ -603,15 +603,12 @@ var timetz_pl_interval = framework.Function2{
 }
 
 // intervalPlusNonInterval adds given interval duration to the given time.Time value.
-// During converting interval duration to time.Duration type, it can overflow.
+// It uses duration.Add so that the interval's months/days fields are applied as
+// calendar-aware.
 func intervalPlusNonInterval(d duration.Duration, t time.Time) (time.Time, error) {
-	seconds, ok := d.AsInt64()
-	if !ok {
-		return time.Time{}, errors.Errorf("interval overflow")
+	result := duration.Add(t, d)
+	if result.After(tree.MaxSupportedTime) || result.Before(tree.MinSupportedTime) {
+		return time.Time{}, errors.Newf("timestamp out of range: %q", result.Format(time.RFC3339))
 	}
-	nanos := float64(seconds) * functions.NanosPerSec
-	if nanos > float64(math.MaxInt64) || nanos < float64(math.MinInt64) {
-		return time.Time{}, errors.Errorf("interval overflow")
-	}
-	return t.Add(time.Duration(nanos)), nil
+	return result, nil
 }

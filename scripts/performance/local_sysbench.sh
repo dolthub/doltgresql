@@ -29,7 +29,7 @@ cp ./sysbench-lua-scripts/*.lua ./
 go build -o doltgres.exe ../../../cmd/doltgres/
 
 cat <<YAML > dolt-config.yaml
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false

@@ -23,7 +23,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,11 +35,11 @@ import (
 func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	switch n := node.(type) {
 	case *pgnodes.Call:
-		procCollection, err := core.GetProceduresCollectionFromContext(ctx)
+		procCollection, err := core.GetProceduresCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, transform.SameTree, err
 		}
-		typesCollection, err := core.GetTypesCollectionFromContext(ctx)
+		typesCollection, err := core.GetTypesCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, transform.SameTree, err
 		}
@@ -60,12 +59,11 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 			return nil, transform.SameTree, sql.ErrStoredProcedureDoesNotExist.New(n.ProcedureName)
 		}
 
-		same := transform.SameTree
 		overloadTree := framework.NewOverloads()
 		for _, overload := range overloads {
-			paramTypes := make([]*pgtypes.DoltgresType, len(overload.ParameterTypes))
-			for i, paramType := range overload.ParameterTypes {
-				paramTypes[i], err = typesCollection.GetType(ctx, paramType)
+			paramTypes := make([]*pgtypes.DoltgresType, len(overload.AllParams))
+			for i, param := range overload.AllParams {
+				paramTypes[i], err = typesCollection.GetType(ctx, param.Type)
 				if err != nil || paramTypes[i] == nil {
 					return nil, transform.SameTree, err
 				}
@@ -73,14 +71,14 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 			// TODO: we should probably have procedure equivalents instead of converting these to functions
 			//  probably fine for now since we don't implement/support the differing functionality between the two just yet
 			if len(overload.ExtensionName) > 0 {
-				if err = overloadTree.Add(framework.CFunction{
+				if err = overloadTree.Add(framework.ExtensionFunction{
 					ID:                 id.Function(overload.ID),
 					ReturnType:         pgtypes.Void,
 					ParameterTypes:     paramTypes,
 					Variadic:           false,
 					IsNonDeterministic: true,
 					Strict:             false,
-					ExtensionName:      extensions.LibraryIdentifier(overload.ExtensionName),
+					ExtensionName:      overload.ExtensionName,
 					ExtensionSymbol:    overload.ExtensionSymbol,
 				}); err != nil {
 					return nil, transform.SameTree, err
@@ -89,9 +87,8 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 				if err = overloadTree.Add(framework.SQLFunction{
 					ID:                 id.Function(overload.ID),
 					ReturnType:         pgtypes.Void,
-					ParameterNames:     overload.ParameterNames,
-					ParameterTypes:     paramTypes,
-					ParameterDefaults:  overload.ParameterDefaults,
+					AllParams:          overload.AllParams,
+					AllTypes:           paramTypes,
 					Variadic:           false,
 					IsNonDeterministic: true,
 					Strict:             false,
@@ -104,11 +101,12 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 				if err = overloadTree.Add(framework.InterpretedFunction{
 					ID:                 id.Function(overload.ID),
 					ReturnType:         pgtypes.Void,
-					ParameterNames:     overload.ParameterNames,
-					ParameterTypes:     paramTypes,
+					AllParams:          overload.AllParams,
+					AllTypes:           paramTypes,
 					Variadic:           false,
 					IsNonDeterministic: true,
 					Strict:             false,
+					SRF:                false,
 					Statements:         overload.Operations,
 				}); err != nil {
 					return nil, transform.SameTree, err
@@ -123,7 +121,8 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 			return nil, transform.SameTree, err
 		}
 		n.CompiledFunc = compiledFunction
-		return node, same, nil
+		n.CachedSchema = compiledFunction.OutParametersSchema()
+		return node, transform.NewTree, nil
 	default:
 		return node, transform.SameTree, nil
 	}

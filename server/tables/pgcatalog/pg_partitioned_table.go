@@ -43,7 +43,8 @@ func (p PgPartitionedTableHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPartitionedTableHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_partitioned_table row iter
+	// pg_partitioned_table is currently empty, since declarative partitioning is not supported.
+	// TODO: fill this in when partitioning is supported
 	return emptyRowIter()
 }
 
@@ -61,10 +62,10 @@ var pgPartitionedTableSchema = sql.Schema{
 	{Name: "partstrat", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgPartitionedTableName},
 	{Name: "partnatts", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgPartitionedTableName},
 	{Name: "partdefid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgPartitionedTableName},
-	{Name: "partattrs", Type: pgtypes.Int16Array, Default: nil, Nullable: false, Source: PgPartitionedTableName},   // TODO: int2vector type
-	{Name: "partclass", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgPartitionedTableName},     // TODO: oidvector type
-	{Name: "partcollation", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgPartitionedTableName}, // TODO: oidvector type
-	{Name: "partexprs", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPartitionedTableName},          // TODO: pg_node_tree type, collation C
+	{Name: "partattrs", Type: pgtypes.Int16vector, Default: nil, Nullable: false, Source: PgPartitionedTableName},
+	{Name: "partclass", Type: pgtypes.Oidvector, Default: nil, Nullable: false, Source: PgPartitionedTableName},
+	{Name: "partcollation", Type: pgtypes.Oidvector, Default: nil, Nullable: false, Source: PgPartitionedTableName},
+	{Name: "partexprs", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPartitionedTableName}, // TODO: pg_node_tree type, collation C
 }
 
 // pgPartitionedTableRowIter is the sql.RowIter for the pg_partitioned_table table.

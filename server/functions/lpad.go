@@ -49,9 +49,17 @@ var lpad_text_int32_text = framework.Function3{
 		if length.(int32) <= 0 {
 			return "", nil
 		}
-		runes := []rune(str.(string))
+		strStr, err := framework.UnwrapString(ctx, str)
+		if err != nil {
+			return nil, err
+		}
+		fillStr, err := framework.UnwrapString(ctx, fill)
+		if err != nil {
+			return nil, err
+		}
+		runes := []rune(strStr)
 		fillTarget := length.(int32) - int32(len(runes))
-		fillRunes := []rune(fill.(string))
+		fillRunes := []rune(fillStr)
 		var result []rune
 		if fillTarget > 0 {
 			if len(fillRunes) > 0 {

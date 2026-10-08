@@ -39,14 +39,22 @@ func internalCharAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
 		},
 	})
 	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }
@@ -57,7 +65,10 @@ func internalCharExplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			s := val.(string)
+			s, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
 			if len(s) == 0 {
 				return int32(0), nil
 			}

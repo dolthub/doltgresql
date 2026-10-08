@@ -35,8 +35,8 @@ var unnest = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
 	SRF:        true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		valArr := val1.([]interface{})
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		valArr := pgtypes.FlattenArray(val1.([]any), t[0].ArrayBaseType())
 
 		var i = 0
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {

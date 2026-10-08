@@ -43,7 +43,9 @@ func (p PgLargeobjectHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgLargeobjectHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_largeobject row iter
+	// pg_largeobject is currently empty, since large objects are not supported.
+	// This table is also empty in vanilla Postgres by default.
+	// TODO: fill this in when large objects are supported
 	return emptyRowIter()
 }
 

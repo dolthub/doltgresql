@@ -15,8 +15,9 @@
 package ast
 
 import (
-	"github.com/dolthub/go-mysql-server/sql/expression"
+	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -28,6 +29,9 @@ func nodeSelectClause(ctx *Context, node *tree.SelectClause) (*vitess.Select, er
 	if node == nil {
 		return nil, nil
 	}
+	parentRows := ctx.catalogRows
+	ctx.catalogRows = catalogRowsForTables(parentRows, node.From.Tables)
+	defer func() { ctx.catalogRows = parentRows }()
 	selectExprs, err := nodeSelectExprs(ctx, node.Exprs)
 	if err != nil {
 		return nil, err
@@ -109,6 +113,11 @@ func nodeSelectClause(ctx *Context, node *tree.SelectClause) (*vitess.Select, er
 		node.Where = nil
 	}
 PostJoinRewrite:
+	// In Postgres, a function called in the FROM list may reference columns of tables that precede it in the same
+	// FROM clause: it is an implicit LATERAL join (the LATERAL keyword is a noise word for function-call FROM items).
+	// We mirror that here by marking any function-call FROM item that follows another FROM item as lateral before
+	// converting the FROM clause.
+	markImplicitLateralFunctions(node.From.Tables)
 	from, err := nodeFrom(ctx, node.From)
 	if err != nil {
 		return nil, err
@@ -117,47 +126,7 @@ PostJoinRewrite:
 	// that we have to situationally support, as inner nodes do not have the proper context to output a TableFuncExpr,
 	// since TableFuncExprs pertain only to SELECT statements.
 	for i, fromExpr := range from {
-		// Nodes are very liberal in wrapping themselves within other nodes, which gives them a technically correct
-		// tree, however GMS makes assumptions about the makeup of the trees that it receives. We'll eventually
-		// generalize this on the GMS side, but for now we need to transform our tree in case we need to use a TableFuncExpr.
-		if aliasedTableExpr, ok := fromExpr.(*vitess.AliasedTableExpr); ok {
-			subquery, ok := aliasedTableExpr.Expr.(*vitess.Subquery)
-			// If all of these are true, then the AliasedTableExpr is probably a wrapper around a subquery, but we have
-			// to confirm that the subquery contains a *Select with a single child in its From expressions.
-			if !aliasedTableExpr.Lateral &&
-				aliasedTableExpr.Hints == nil &&
-				len(aliasedTableExpr.Partitions) == 0 &&
-				ok && len(subquery.Columns) == 0 {
-				// If this is true, then we can confirm that it's just a wrapper (and not an explicit AliasedTableExpr).
-				// This may seem like a lot of fragile checks, but AliasedTableExpr explicitly sets its state to this in
-				// this circumstance. We do not want to create a TableFuncExpr except under very specific circumstances.
-				if subquerySelect, ok := subquery.Select.(*vitess.Select); ok && len(subquerySelect.From) == 1 {
-					if valuesStatement, ok := subquerySelect.From[0].(*vitess.ValuesStatement); ok {
-						if len(valuesStatement.Columns) == 0 && len(valuesStatement.Rows) == 1 && len(valuesStatement.Rows[0]) == 1 {
-							if funcExpr, ok := valuesStatement.Rows[0][0].(*vitess.FuncExpr); ok {
-								// It appears that GMS hardcodes the expectation of vitess literals here, so we have to
-								// convert from Doltgres literals to GMS literals. Eventually we need to remove this
-								// hardcoded behavior.
-								for _, fExpr := range funcExpr.Exprs {
-									if aliasedExpr, ok := fExpr.(*vitess.AliasedExpr); ok {
-										if injectedExpr, ok := aliasedExpr.Expr.(vitess.InjectedExpr); ok {
-											if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
-												aliasedExpr.Expr = pgexprs.ToVitessLiteral(literal)
-											}
-										}
-									}
-								}
-								from[i] = &vitess.TableFuncExpr{
-									Name:  funcExpr.Name.String(),
-									Exprs: funcExpr.Exprs,
-									Alias: aliasedTableExpr.As,
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+		from[i] = rewriteTableFuncExprs(fromExpr)
 	}
 	distinct := node.Distinct
 	var distinctOn vitess.Exprs
@@ -200,4 +169,116 @@ PostJoinRewrite:
 		Window:      window,
 		Comments:    vitess.Comments{[]byte(node.BlockComment)},
 	}, nil
+}
+
+// markImplicitLateralFunctions marks function-call FROM items that follow another FROM item as lateral. In
+// Postgres, a function called in the FROM list may reference columns provided by preceding FROM items: it is an
+// implicit LATERAL join, and the LATERAL keyword is a noise word for function-call FROM items (unlike subqueries,
+// which require the explicit keyword to reference preceding FROM items).
+func markImplicitLateralFunctions(tables tree.TableExprs) {
+	var mark func(table tree.TableExpr, followsFromItem bool)
+	mark = func(table tree.TableExpr, followsFromItem bool) {
+		switch table := table.(type) {
+		case *tree.AliasedTableExpr:
+			if followsFromItem {
+				switch table.Expr.(type) {
+				case *tree.RowsFromExpr, *tree.XmlTableExpr, *tree.JsonTableExpr:
+					table.Lateral = true
+				}
+			}
+		case *tree.JoinTableExpr:
+			mark(table.Left, followsFromItem)
+			// The right side of a join always has FROM items to its left
+			mark(table.Right, true)
+		case *tree.ParenTableExpr:
+			mark(table.Expr, followsFromItem)
+		}
+	}
+	for i := range tables {
+		mark(tables[i], i > 0)
+	}
+}
+
+// rewriteTableFuncExprs rewrites a table expression that represents a function call into a
+// vitess.TableFuncExpr. Table expressions that don't represent a function call are returned unchanged.
+func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
+	// Nodes are very liberal in wrapping themselves within other nodes, which gives them a technically correct
+	// tree, however GMS makes assumptions about the makeup of the trees that it receives. We'll eventually
+	// generalize this on the GMS side, but for now we need to transform our tree in case we need to use a TableFuncExpr.
+	switch expr := fromExpr.(type) {
+	case *vitess.JoinTableExpr:
+		expr.LeftExpr = rewriteTableFuncExprs(expr.LeftExpr)
+		expr.RightExpr = rewriteTableFuncExprs(expr.RightExpr)
+	case *vitess.ParenTableExpr:
+		for i := range expr.Exprs {
+			expr.Exprs[i] = rewriteTableFuncExprs(expr.Exprs[i])
+		}
+	case *vitess.AliasedTableExpr:
+		subquery, ok := expr.Expr.(*vitess.Subquery)
+		// If all of these are true, then the AliasedTableExpr is probably a wrapper around a subquery, but we have
+		// to confirm that the subquery contains a *Select with a single child in its From expressions.
+		if expr.Hints == nil &&
+			len(expr.Partitions) == 0 &&
+			ok {
+			// If this is true, then we can confirm that it's just a wrapper (and not an explicit AliasedTableExpr).
+			// This may seem like a lot of fragile checks, but AliasedTableExpr explicitly sets its state to this in
+			// this circumstance. We do not want to create a TableFuncExpr except under very specific circumstances.
+			if subquerySelect, ok := subquery.Select.(*vitess.Select); ok && len(subquerySelect.From) == 1 {
+				if valuesStatement, ok := subquerySelect.From[0].(*vitess.ValuesStatement); ok {
+					if len(valuesStatement.Columns) == 0 && len(valuesStatement.Rows) == 1 && len(valuesStatement.Rows[0]) == 1 {
+						if funcExpr, ok := valuesStatement.Rows[0][0].(*vitess.FuncExpr); ok {
+							// It appears that GMS hardcodes the expectation of vitess literals here, so we have to
+							// convert from Doltgres literals to GMS literals. Eventually we need to remove this
+							// hardcoded behavior.
+							for _, fExpr := range funcExpr.Exprs {
+								if aliasedExpr, ok := fExpr.(*vitess.AliasedExpr); ok {
+									if injectedExpr, ok := aliasedExpr.Expr.(vitess.InjectedExpr); ok {
+										if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
+											aliasedExpr.Expr = pgexprs.ToVitessLiteral(literal)
+										}
+									}
+								}
+							}
+							// The TableFuncExpr keeps the user's alias (possibly empty): a fabricated alias would
+							// rename a single-column function result to the function's name, clobbering the column
+							// name that a named OUT parameter provides (e.g. pg_partition_ancestors's relid).
+							tableFuncExpr := &vitess.TableFuncExpr{
+								Name:    funcExpr.Name.String(),
+								Exprs:   funcExpr.Exprs,
+								Alias:   expr.As,
+								Columns: subquery.Columns,
+							}
+							if expr.Lateral {
+								// GMS only supports lateral scoping for subqueries, so we wrap the table function
+								// in a subquery marked as lateral. This makes columns of the preceding FROM items
+								// visible to the function's arguments.
+								return wrapLateralTableFunc(tableFuncExpr)
+							}
+							return tableFuncExpr
+						}
+					}
+				}
+			}
+		}
+	}
+	return fromExpr
+}
+
+// wrapLateralTableFunc wraps `tableFuncExpr` in a lateral subquery, since GMS only supports lateral scoping for
+// subqueries. A function called in FROM implicitly uses the function's name as the subquery's alias.
+func wrapLateralTableFunc(tableFuncExpr *vitess.TableFuncExpr) vitess.TableExpr {
+	alias := tableFuncExpr.Alias
+	if alias.IsEmpty() {
+		alias = vitess.NewTableIdent(strings.ToLower(tableFuncExpr.Name))
+	}
+	return &vitess.AliasedTableExpr{
+		Expr: &vitess.Subquery{
+			Select: &vitess.Select{
+				SelectExprs: vitess.SelectExprs{&vitess.StarExpr{}},
+				From:        vitess.TableExprs{tableFuncExpr},
+			},
+		},
+		As:      alias,
+		Lateral: true,
+	}
 }

@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/id"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 func TestInfoSchemaRevisionDb(t *testing.T) {
@@ -119,6 +122,296 @@ var InfoSchemaRevisionDbScripts = []ScriptTest{
 	},
 }
 
+func TestInfoSchemaPgCharMaxLength(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema._pg_char_max_length",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Issue #3495: varchar(10) has OID 1043 and typmod 14.
+					Query:            `SELECT information_schema._pg_char_max_length(1043::oid, 14);`,
+					Expected:         []sql.Row{{10}},
+					ExpectedColNames: []string{"_pg_char_max_length"},
+					ExpectedColTypes: []id.Type{pgtypes.Int32.ID},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(1042::oid, 14);`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(1560::oid, 10);`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(1562::oid, 10);`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query: `SELECT information_schema._pg_char_max_length(1042::oid, -1),
+						information_schema._pg_char_max_length(1043::oid, -1),
+						information_schema._pg_char_max_length(1560::oid, -1),
+						information_schema._pg_char_max_length(1562::oid, -1);`,
+					Expected: []sql.Row{{nil, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(NULL::oid, 14);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(1043::oid, NULL::integer);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(NULL::oid, NULL::integer);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: `SELECT information_schema._pg_char_max_length(25::oid, 14),
+						information_schema._pg_char_max_length(23::oid, 14),
+						information_schema._pg_char_max_length(18::oid, 14),
+						information_schema._pg_char_max_length(19::oid, 14),
+						information_schema._pg_char_max_length(1015::oid, 14),
+						information_schema._pg_char_max_length(0::oid, 14),
+						information_schema._pg_char_max_length(999999::oid, 14);`,
+					Expected: []sql.Row{{nil, nil, nil, nil, nil, nil, nil}},
+				},
+				{
+					// Only -1 is a sentinel; other modifiers are used without validation.
+					Query: `SELECT information_schema._pg_char_max_length(1042::oid, 0),
+						information_schema._pg_char_max_length(1043::oid, 4),
+						information_schema._pg_char_max_length(1043::oid, -2),
+						information_schema._pg_char_max_length(1560::oid, 0),
+						information_schema._pg_char_max_length(1562::oid, -2);`,
+					Expected: []sql.Row{{-4, 0, -6, 0, -2}},
+				},
+				{
+					Query: `SELECT information_schema._pg_char_max_length(1043::oid, 2147483647),
+						information_schema._pg_char_max_length(1042::oid, '-2147483644'::integer),
+						information_schema._pg_char_max_length(1560::oid, '-2147483648'::integer),
+						information_schema._pg_char_max_length(1562::oid, 2147483647);`,
+					Expected: []sql.Row{{2147483643, -2147483648, -2147483648, 2147483647}},
+				},
+				{
+					Query:           `SELECT information_schema._pg_char_max_length(1042::oid, '-2147483648'::integer);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT information_schema._pg_char_max_length(1043::oid, '-2147483645'::integer);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					// An unrelated OID must not evaluate the overflowing subtraction.
+					Query:    `SELECT information_schema._pg_char_max_length(25::oid, '-2147483648'::integer);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length('varchar'::regtype::oid, 14);`,
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_char_max_length($1::oid, $2::integer);`,
+					BindVars: []any{uint32(1043), int32(14)},
+					Expected: []sql.Row{{10}},
+				},
+			},
+		},
+		{
+			Name: "information_schema._pg_char_max_length with catalog inputs",
+			SetUpScript: []string{
+				`CREATE DOMAIN char_max_length_domain AS varchar(10);`,
+				`CREATE TABLE char_max_length_columns (
+					id integer PRIMARY KEY, c char(10), v varchar(10), txt text,
+					default_c character, unlimited_v varchar, b bit(10), vb bit varying(10),
+					unlimited_vb bit varying, internal_c "char", va varchar(10)[], d char_max_length_domain
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, information_schema._pg_char_max_length(a.atttypid, a.atttypmod)
+						FROM pg_attribute a
+						WHERE a.attrelid = 'char_max_length_columns'::regclass AND a.attnum > 0
+						ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", nil}, {"c", 10}, {"v", 10}, {"txt", nil},
+						{"default_c", 1}, {"unlimited_v", nil}, {"b", 10}, {"vb", 10},
+						{"unlimited_vb", nil}, {"internal_c", nil}, {"va", nil}, {"d", nil},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestInfoSchemaPgTrueTypID(t *testing.T) {
+	// PostgreSQL defines this helper in src/backend/catalog/information_schema.sql:
+	// https://github.com/postgres/postgres/blob/REL_15_STABLE/src/backend/catalog/information_schema.sql
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema._pg_truetypid catalog reproduction",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Issue #3496: pg_class.relname has the name type, whose OID is 19.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'pg_catalog.pg_class'::regclass AND a.attname = 'relname';`,
+					Expected:         []sql.Row{{19}},
+					ExpectedColTypes: []id.Type{pgtypes.Oid.ID},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(pg_attribute.*, pg_type.*)
+						FROM pg_catalog.pg_attribute
+						JOIN pg_catalog.pg_type ON pg_attribute.atttypid = pg_type.oid
+						WHERE pg_attribute.attrelid = 'pg_catalog.pg_class'::regclass AND pg_attribute.attname = 'relname';`,
+					Expected: []sql.Row{{19}},
+				},
+				{
+					Query:       `SELECT information_schema._pg_truetypid(23::oid, 23::oid);`,
+					ExpectedErr: `function _pg_truetypid(oid, oid) does not exist`,
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(t.*, a.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t;`,
+					ExpectedErr: `function _pg_truetypid(pg_type, pg_attribute) does not exist`,
+				},
+				{
+					Query:    `SELECT information_schema._pg_truetypid(NULL::pg_catalog.pg_attribute, NULL::pg_catalog.pg_type);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// A column takes precedence over a table alias with the same name.
+					Query:    `SELECT length(typname) FROM pg_catalog.pg_type typname WHERE oid = 23::oid;`,
+					Expected: []sql.Row{{4}},
+				},
+			},
+		},
+		{
+			Name: "information_schema._pg_truetypid types and domains",
+			SetUpScript: []string{
+				`CREATE TYPE truetypid_mood AS ENUM ('sad', 'happy');`,
+				`CREATE DOMAIN truetypid_integer_domain AS integer;`,
+				`CREATE DOMAIN truetypid_varchar_domain AS varchar(10);`,
+				`CREATE DOMAIN truetypid_array_domain AS integer[];`,
+				`CREATE DOMAIN truetypid_nested_domain AS truetypid_varchar_domain;`,
+				`CREATE TABLE truetypid_columns (
+					id integer PRIMARY KEY, c char(10), v varchar(10), txt text,
+					b bit(10), vb bit varying(10), va varchar(10)[], internal_c "char",
+					mood truetypid_mood, di truetypid_integer_domain, dv truetypid_varchar_domain,
+					da truetypid_array_domain, dn truetypid_nested_domain, ad truetypid_integer_domain[]
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attnum BETWEEN 1 AND 8
+						ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", 23}, {"c", 1042}, {"v", 1043}, {"txt", 25},
+						{"b", 1560}, {"vb", 1562}, {"va", 1015}, {"internal_c", 18},
+					},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*) = t.oid
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'mood';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query: `SELECT a.attname, information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname IN ('di', 'dv', 'da')
+						ORDER BY a.attnum;`,
+					Expected: []sql.Row{{"di", 23}, {"dv", 1043}, {"da", 1007}},
+				},
+				{
+					// The helper unwraps one domain level, not every domain in the chain.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*) = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain')
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'dn';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// An array of domains is an array type, not a domain to unwrap.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*) = a.atttypid
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'ad';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// PostgreSQL also accepts whole-row references without the star.
+					Query: `SELECT information_schema._pg_truetypid(a, t)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'dv';`,
+					Expected: []sql.Row{{1043}},
+				},
+				{
+					// For a non-domain type row, return the attribute's type, not t.oid or t.typbasetype.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id'
+						AND t.oid = 1043::oid;`,
+					Expected: []sql.Row{{23}},
+				},
+				{
+					// The supplied type row determines the domain branch, even if the attribute differs.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id'
+						AND t.oid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain');`,
+					Expected: []sql.Row{{1043}},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(NULL, t.*)
+						FROM pg_catalog.pg_type t WHERE t.oid = 23::oid;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// STRICT applies even when the domain branch would not otherwise read the attribute.
+					Query: `SELECT information_schema._pg_truetypid(NULL, t.*)
+						FROM pg_catalog.pg_type t WHERE t.oid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(a.*, NULL)
+						FROM pg_catalog.pg_attribute a
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id';`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_truetypid(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// An absent attribute row is NULL even if the domain branch only reads t.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_type t LEFT JOIN pg_catalog.pg_attribute a ON false
+						WHERE t.typname = 'truetypid_varchar_domain';`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_type t ON false
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id';`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+	})
+}
+
 func TestInfoSchemaColumns(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -157,7 +450,7 @@ func TestInfoSchemaColumns(t *testing.T) {
 						) WHERE ("table_schema" = 'public' AND "table_name" = 'test_table');`,
 					Expected: []sql.Row{
 						{"id", nil, "integer", "integer"},
-						{"col1", nil, "character varying", "character varying"},
+						{"col1", nil, "character varying", "character varying(255)"},
 					},
 				},
 				{
@@ -264,6 +557,118 @@ func TestInfoSchemaColumns(t *testing.T) {
 				{
 					Query:    `select col_description(2957635223, ordinal_position) as comment from information_schema.columns limit 1;`,
 					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			Name: "generation_expression",
+			SetUpScript: []string{
+				"CREATE TABLE t3328_issue (a INT, b INT GENERATED ALWAYS AS (a + 1) STORED);",
+				"INSERT INTO t3328_issue (a) VALUES (1);",
+				"CREATE TABLE t3328 (a INT PRIMARY KEY, s TEXT, b INT GENERATED ALWAYS AS (a + 1) STORED, c TEXT GENERATED ALWAYS AS (upper(s)) STORED, e INT GENERATED ALWAYS AS (a) STORED, f TEXT GENERATED ALWAYS AS (s || ')') STORED);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT a, b FROM t3328_issue;",
+					Expected: []sql.Row{{1, 2}},
+				},
+				{
+					Query:    "SELECT is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328_issue' AND column_name = 'b';",
+					Expected: []sql.Row{{"ALWAYS", `("a" + 1)`, nil}},
+				},
+				{
+					Query: "SELECT column_name, is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"a", "NEVER", nil, nil},
+						{"s", "NEVER", nil, nil},
+						{"b", "ALWAYS", `("a" + 1)`, nil},
+						{"c", "ALWAYS", `(upper("s"))`, nil},
+						{"e", "ALWAYS", `("a")`, nil},
+						{"f", "ALWAYS", `("s" || ')')`, nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "xml columns",
+			SetUpScript: []string{
+				"CREATE TABLE t3337 (id INT PRIMARY KEY, doc pg_catalog.xml, docs xml[]);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT column_name, data_type, udt_schema, udt_name, character_maximum_length FROM information_schema.columns WHERE table_name = 't3337' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"id", "integer", "pg_catalog", "int4", nil},
+						{"doc", "xml", "pg_catalog", "xml", nil},
+						{"docs", "ARRAY", "pg_catalog", "_xml", nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "literal column defaults",
+			SetUpScript: []string{
+				"CREATE TABLE t3432 (i0 INTEGER NOT NULL DEFAULT 0, b0 BIGINT NOT NULL DEFAULT 0, s42 SMALLINT NOT NULL DEFAULT 42, d15 DOUBLE PRECISION NOT NULL DEFAULT 1.5, r0 REAL NOT NULL DEFAULT 0.0, bp BIGINT NOT NULL DEFAULT (0), n NUMERIC DEFAULT 1.5, bo BOOLEAN DEFAULT true, f8i DOUBLE PRECISION DEFAULT 3, t TEXT DEFAULT 'abc', v VARCHAR(10) DEFAULT 'x', i5 INTEGER DEFAULT '5', b5 BIGINT DEFAULT '5', d DATE DEFAULT '2020-01-01', bs BOOLEAN DEFAULT 'true', q TEXT DEFAULT 'it''s', bn BIGINT DEFAULT -5, big BIGINT DEFAULT 5000000000, nn NUMERIC DEFAULT -1.5, ni NUMERIC DEFAULT 7, tn TEXT DEFAULT NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 't3432' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"i0", "0"},
+						{"b0", "0"},
+						{"s42", "42"},
+						{"d15", "1.5"},
+						{"r0", "0.0"},
+						{"bp", "0"},
+						{"n", "1.5"},
+						{"bo", "true"},
+						{"f8i", "3"},
+						{"t", "'abc'::text"},
+						{"v", "'x'::character varying"},
+						{"i5", "5"},
+						{"b5", "'5'::bigint"},
+						{"d", "'2020-01-01'::date"},
+						{"bs", "true"},
+						{"q", "'it''s'::text"},
+						{"bn", "'-5'::integer"},
+						{"big", "'5000000000'::bigint"},
+						{"nn", "'-1.5'::numeric"},
+						{"ni", "7"},
+						{"tn", nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "cast column defaults",
+			SetUpScript: []string{
+				"CREATE TABLE t3432_casts (bc0 BIGINT DEFAULT CAST(0 AS BIGINT), bc1 BIGINT DEFAULT 0::bigint, bc2 INTEGER DEFAULT 0::integer, bc3 INTEGER DEFAULT CAST(7 AS BIGINT), tc TEXT DEFAULT 'a'::text, tv VARCHAR(10) DEFAULT CAST('x' AS VARCHAR(10)), nc NUMERIC DEFAULT 1.5::numeric, fc REAL DEFAULT 1.5::real, ec INTEGER DEFAULT (1 + 2)::integer, ng BIGINT DEFAULT (-5)::bigint, nt TEXT DEFAULT (-5)::text, nm NUMERIC(3,1) DEFAULT CAST(1.5 AS NUMERIC(3,1)));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 't3432_casts' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"bc0", "(0)::bigint"},
+						{"bc1", "(0)::bigint"},
+						{"bc2", "0"},
+						{"bc3", "(7)::bigint"},
+						{"tc", "'a'::text"},
+						{"tv", "'x'::character varying(10)"},
+						{"nc", "1.5"},
+						{"fc", "(1.5)::real"},
+						{"ec", "(1 + 2)"},
+						{"ng", "('-5'::integer)::bigint"},
+						{"nt", "('-5'::integer)::text"},
+						{"nm", "1.5::numeric(3,1)"},
+					},
+				},
+				{
+					Query:    "INSERT INTO t3432_casts (bc0) VALUES (DEFAULT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT ng, nt FROM t3432_casts;",
+					Expected: []sql.Row{{-5, "-5"}},
 				},
 			},
 		},
@@ -512,6 +917,43 @@ func TestInfoSchemaSequences(t *testing.T) {
 					Query: "select sequence_name, increment from information_schema.sequences where sequence_name = 'negative';",
 					Expected: []sql.Row{
 						{"negative", "-1"},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestInfoSchemaTriggers(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema.triggers",
+			SetUpScript: []string{
+				"CREATE TABLE t3330_issue (a INT);",
+				"CREATE FUNCTION report_row() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'trigger fired for a = %', NEW.a; RETURN NEW; END; $$;",
+				"CREATE TRIGGER t_report BEFORE INSERT ON t3330_issue FOR EACH ROW EXECUTE FUNCTION report_row();",
+				"INSERT INTO t3330_issue VALUES (1);",
+				"CREATE TABLE t3330 (a INT PRIMARY KEY, b INT);",
+				"CREATE FUNCTION f3330() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER tr_b BEFORE INSERT OR UPDATE ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330();",
+				"CREATE TRIGGER tr_a AFTER INSERT ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330('x', 'y''z');",
+				"CREATE TRIGGER tr_c BEFORE INSERT ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330();",
+				"CREATE TRIGGER tr_d BEFORE DELETE OR UPDATE ON t3330 FOR EACH ROW WHEN (old.b > 1) EXECUTE FUNCTION f3330();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT trigger_name, event_manipulation, event_object_table FROM information_schema.triggers WHERE event_object_table = 't3330_issue';",
+					Expected: []sql.Row{{"t_report", "INSERT", "t3330_issue"}},
+				},
+				{
+					Query: "SELECT trigger_catalog, trigger_schema, trigger_name, event_manipulation, event_object_catalog, event_object_schema, event_object_table, action_order, action_condition, action_statement, action_orientation, action_timing, action_reference_old_table, action_reference_new_table, action_reference_old_row, action_reference_new_row, created FROM information_schema.triggers WHERE event_object_table = 't3330' ORDER BY trigger_name, event_manipulation;",
+					Expected: []sql.Row{
+						{"postgres", "public", "tr_a", "INSERT", "postgres", "public", "t3330", 1, nil, "EXECUTE FUNCTION f3330('x', 'y''z')", "ROW", "AFTER", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_b", "INSERT", "postgres", "public", "t3330", 1, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_b", "UPDATE", "postgres", "public", "t3330", 1, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_c", "INSERT", "postgres", "public", "t3330", 2, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_d", "DELETE", "postgres", "public", "t3330", 1, "(old.b > 1)", "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
+						{"postgres", "public", "tr_d", "UPDATE", "postgres", "public", "t3330", 2, "(old.b > 1)", "EXECUTE FUNCTION f3330()", "ROW", "BEFORE", nil, nil, nil, nil, nil},
 					},
 				},
 			},

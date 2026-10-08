@@ -43,7 +43,9 @@ func (p PgStatProgressBasebackupHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatProgressBasebackupHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_progress_basebackup row iter
+	// pg_stat_progress_basebackup is currently empty, since command progress reporting is not tracked.
+	// This view is also empty in vanilla Postgres when no base backup is running.
+	// TODO: fill this in when command progress reporting is supported
 	return emptyRowIter()
 }
 

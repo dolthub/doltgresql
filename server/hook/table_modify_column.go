@@ -60,15 +60,23 @@ func BeforeTableModifyColumn(ctx *sql.Context, runner sql.StatementRunner, nodeI
 		// If this table isn't a Dolt table then we don't have anything to do
 		return n, nil
 	}
+	if err := ValidateColumnTypeChangeForTable(ctx, doltTable.TableName()); err != nil {
+		return nil, err
+	}
+	return n, nil
+}
+
+// ValidateColumnTypeChangeForTable returns an error if the given table's implicit row type is used as the type of a
+// column in any other table, which prevents altering the table's column types.
+func ValidateColumnTypeChangeForTable(ctx *sql.Context, tableName doltdb.TableName) error {
 	_, root, err := core.GetRootFromContext(ctx)
 	if err != nil {
-		return n, nil
+		return nil
 	}
-	tableName := doltTable.TableName()
 	tableAsType := id.NewType(tableName.Schema, tableName.Name)
 	allTableNames, err := root.GetAllTableNames(ctx, false)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, otherTableName := range allTableNames {
@@ -78,14 +86,14 @@ func BeforeTableModifyColumn(ctx *sql.Context, runner sql.StatementRunner, nodeI
 		}
 		otherTable, ok, err := root.GetTable(ctx, otherTableName)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if !ok {
-			return nil, errors.Errorf("root returned table name `%s` but it could not be found?", otherTableName.String())
+			return errors.Errorf("root returned table name `%s` but it could not be found?", otherTableName.String())
 		}
 		otherTableSch, err := otherTable.GetSchema(ctx)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		for _, otherCol := range otherTableSch.GetAllCols().GetColumns() {
 			colType := otherCol.TypeInfo.ToSqlType()
@@ -98,9 +106,9 @@ func BeforeTableModifyColumn(ctx *sql.Context, runner sql.StatementRunner, nodeI
 				// This column isn't our table type, so we can ignore it
 				continue
 			}
-			return nil, errors.Errorf(`cannot alter table "%s" because column "%s.%s" uses its row type`,
+			return errors.Errorf(`cannot alter table "%s" because column "%s.%s" uses its row type`,
 				tableName.Name, otherTableName.Name, otherCol.Name)
 		}
 	}
-	return n, nil
+	return nil
 }

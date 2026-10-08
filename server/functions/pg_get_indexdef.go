@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -44,7 +46,7 @@ var pg_get_indexdef_oid = framework.Function1{
 		result := ""
 		err := RunCallback(ctx, oidVal, Callbacks{
 			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
-				result = buildIndexDef(index.Item, schema.Item.SchemaName())
+				result = buildIndexDef(ctx, index.Item, table.Item, schema.Item.SchemaName())
 				return false, nil
 			},
 		})
@@ -56,22 +58,28 @@ var pg_get_indexdef_oid = framework.Function1{
 }
 
 // buildIndexDef generates a CREATE INDEX DDL statement for the given index.
-func buildIndexDef(index sql.Index, schemaName string) string {
+func buildIndexDef(ctx *sql.Context, index sql.Index, table sql.Table, schemaName string) string {
 	name := index.ID()
+	if name == "PRIMARY" {
+		// Primary key indexes are displayed with their postgres-convention name, matching pg_class
+		name = fmt.Sprintf("%s_pkey", index.Table())
+	}
 	using := strings.ToLower(index.IndexType())
 	unique := ""
 	if index.IsUnique() {
 		unique = " UNIQUE"
 	}
 
-	cols := make([]string, len(index.Expressions()))
-	for i, expr := range index.Expressions() {
-		split := strings.Split(expr, ".")
-		if len(split) > 1 {
-			cols[i] = split[1]
-		} else {
-			cols[i] = expr
+	cols := indexColumnExprs(ctx, index, table)
+	if len(cols) == 1 {
+		col := plan.GetColumnFromIndexExpr(ctx, index.Expressions()[0], table)
+		if method, opclass, ok := VectorIndexRendering(index, col); ok {
+			using = method
+			cols[0] += " " + opclass
 		}
+	}
+	for i := range cols {
+		cols[i] += IndexColumnSuffix(ctx, index, i)
 	}
 	colsStr := strings.Join(cols, ", ")
 
@@ -80,6 +88,100 @@ func buildIndexDef(index sql.Index, schemaName string) string {
 		def += " WHERE (" + pi.Predicate() + ")"
 	}
 	return def
+}
+
+// indexColumnExprs returns the rendered text of each column of the given index, in index column
+// order. Plain columns render as the bare column name, functional expressions as their original
+// SQL text.
+func indexColumnExprs(ctx *sql.Context, index sql.Index, table sql.Table) []string {
+	cols := make([]string, len(index.Expressions()))
+	for i, expr := range index.Expressions() {
+		if exprText, ok := RenderHiddenIndexColumnExpr(plan.GetColumnFromIndexExpr(ctx, expr, table)); ok {
+			cols[i] = exprText
+			continue
+		}
+
+		split := strings.Split(expr, ".")
+		if len(split) > 1 {
+			cols[i] = split[1]
+		} else {
+			cols[i] = expr
+		}
+	}
+	return cols
+}
+
+// IndexOpClasses returns the operator class stored for each column in the index, or nil when no column has one.
+func IndexOpClasses(index sql.Index) []string {
+	if idx, ok := index.(sql.OpClassIndex); ok {
+		return idx.OpClasses()
+	}
+	return nil
+}
+
+// IndexColumnOrder returns the sort order of column `i` of the index. A column without a stored order is ascending with
+// NULLs first, except in a primary key, which never stores one and has no NULLs to place.
+func IndexColumnOrder(ctx *sql.Context, index sql.Index, i int) sql.IndexColumnOrder {
+	if orders := sql.IndexColumnOrders(ctx, index); i < len(orders) {
+		return orders[i]
+	}
+	return sql.IndexColumnOrder{NullsLast: index.ID() == "PRIMARY"}
+}
+
+// IndexColumnSuffix returns the operator class and sort order rendered after column `i` of the index, omitting the
+// Postgres defaults.
+func IndexColumnSuffix(ctx *sql.Context, index sql.Index, i int) string {
+	var suffix string
+	if opClasses := IndexOpClasses(index); i < len(opClasses) && opClasses[i] != "" {
+		suffix += " " + opClasses[i]
+	}
+	order := IndexColumnOrder(ctx, index, i)
+	switch {
+	case order.Descending && order.NullsLast:
+		suffix += " DESC NULLS LAST"
+	case order.Descending:
+		suffix += " DESC"
+	case !order.NullsLast:
+		suffix += " NULLS FIRST"
+	}
+	return suffix
+}
+
+// VectorIndexRendering returns the access method and operator class rendered for the given vector index over the given
+// column.
+func VectorIndexRendering(index sql.Index, col *sql.Column) (method string, opclass string, ok bool) {
+	if col == nil || !index.IsVector() {
+		return "", "", false
+	}
+	vectorIndex, ok := index.(interface {
+		VectorProperties() schema.VectorProperties
+	})
+	if !ok {
+		return "", "", false
+	}
+	colType, ok := col.Type.(*pgtypes.DoltgresType)
+	if !ok {
+		return "", "", false
+	}
+	declared, ok := extensions.GetOperatorClassForIndex(colType.Name(), vectorIndex.VectorProperties().DistanceType)
+	if !ok {
+		return "", "", false
+	}
+	return "hnsw", declared.Name, true
+}
+
+// RenderHiddenIndexColumnExpr returns the original SQL text of the functional expression backing
+// |col|, a hidden system column created for an indexed functional expression (e.g. `upper(name)`
+// rather than that column's internal identifier, `!hidden!idx1!0!0`). ok is false if col is nil or
+// isn't such a column (e.g. it's a plain, user-visible column), in which case expr is "".
+func RenderHiddenIndexColumnExpr(col *sql.Column) (expr string, ok bool) {
+	if col == nil || !col.HiddenSystem || col.Generated == nil {
+		return "", false
+	}
+	if unresolved, isUnresolved := col.Generated.Expr.(*sql.UnresolvedColumnDefault); isUnresolved {
+		return unresolved.String(), true
+	}
+	return col.Generated.String(), true
 }
 
 // pg_get_indexdef_oid_integer_bool represents the PostgreSQL system catalog information function.
@@ -92,23 +194,27 @@ var pg_get_indexdef_oid_integer_bool = framework.Function3{
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		oidVal := val1.(id.Id)
 		colNo := val2.(int32)
-		pretty := val3.(bool)
-		if pretty {
-			return "", errors.Errorf("pretty printing is not yet supported")
-		}
+		// The pretty flag only affects the formatting of expressions, which we don't reproduce, so
+		// we return the same text either way.
+		result := ""
 		err := RunCallback(ctx, oidVal, Callbacks{
 			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
-				exprs := index.Item.Expressions()
-				if int(colNo) >= len(exprs) {
-					return false, errors.Errorf("column not found")
+				if colNo == 0 {
+					result = buildIndexDef(ctx, index.Item, table.Item, schema.Item.SchemaName())
+					return false, nil
 				}
-				// TODO: make `create index` statement
+				// A non-zero column number selects just that column's definition, or an empty
+				// string if the index has no such column.
+				cols := indexColumnExprs(ctx, index.Item, table.Item)
+				if colNo >= 1 && int(colNo) <= len(cols) {
+					result = cols[colNo-1]
+				}
 				return false, nil
 			},
 		})
 		if err != nil {
 			return "", err
 		}
-		return "", nil
+		return result, nil
 	},
 }

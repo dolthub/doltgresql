@@ -38,16 +38,16 @@ func TestSet(t *testing.T) {
 		Parses("SET LOCAL configuration_parameter = DEFAULT"),
 		Converts("SET TIME ZONE 1"),
 		Converts("SET SESSION TIME ZONE 1"),
-		Parses("SET LOCAL TIME ZONE 1"),
+		Converts("SET LOCAL TIME ZONE 1"),
 		Converts("SET TIME ZONE ' 1 '"),
 		Converts("SET SESSION TIME ZONE ' 1 '"),
-		Parses("SET LOCAL TIME ZONE ' 1 '"),
+		Converts("SET LOCAL TIME ZONE ' 1 '"),
 		Converts("SET TIME ZONE LOCAL"),
 		Converts("SET SESSION TIME ZONE LOCAL"),
-		Parses("SET LOCAL TIME ZONE LOCAL"),
+		Converts("SET LOCAL TIME ZONE LOCAL"),
 		Converts("SET TIME ZONE DEFAULT"),
 		Converts("SET SESSION TIME ZONE DEFAULT"),
-		Parses("SET LOCAL TIME ZONE DEFAULT"),
+		Converts("SET LOCAL TIME ZONE DEFAULT"),
 	}
 	RunTests(t, tests)
 }

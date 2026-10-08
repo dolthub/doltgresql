@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/node"
 )
 
 // UnknownColSentinelPrefix is prepended to the index position of unaliased string literals in a
@@ -29,9 +30,19 @@ import (
 // strips this prefix and returns Postgres's "?column?" placeholder on the wire.
 const UnknownColSentinelPrefix = "__?column?__"
 
+// ConvertOptions controls optional behavior during PostgreSQL-to-Vitess AST conversion.
+type ConvertOptions struct {
+	PermitUnsupportedLockingStatements bool
+}
+
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
-	ctx := NewContext(postgresStmt)
+	return ConvertWithOptions(postgresStmt, ConvertOptions{})
+}
+
+// ConvertWithOptions converts a Postgres AST into a Vitess AST using the given options.
+func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (vitess.Statement, error) {
+	ctx := NewContextWithOptions(postgresStmt, options)
 	switch stmt := postgresStmt.AST.(type) {
 	case *tree.AlterAggregate:
 		return nodeAlterAggregate(ctx, stmt)
@@ -91,8 +102,12 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeControlSchedules(ctx, stmt)
 	case *tree.CopyFrom:
 		return nodeCopyFrom(ctx, stmt)
+	case *tree.CopyTo:
+		return nodeCopyTo(ctx, stmt)
 	case *tree.CreateAggregate:
 		return nodeCreateAggregate(ctx, stmt)
+	case *tree.CreateCast:
+		return nodeCreateCast(ctx, stmt)
 	case *tree.CreateChangefeed:
 		return nodeCreateChangefeed(ctx, stmt)
 	case *tree.CreateDatabase:
@@ -107,6 +122,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeCreateIndex(ctx, stmt)
 	case *tree.CreateMaterializedView:
 		return nodeCreateMaterializedView(ctx, stmt)
+	case *tree.CreateOperator:
+		return nodeCreateOperator(ctx, stmt)
 	case *tree.CreateProcedure:
 		return nodeCreateProcedure(ctx, stmt)
 	case *tree.CreateRole:
@@ -131,8 +148,12 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDelete(ctx, stmt)
 	case *tree.Discard:
 		return nodeDiscard(ctx, stmt)
+	case *tree.Do:
+		return nodeDo(ctx, stmt)
 	case *tree.DropAggregate:
 		return nodeDropAggregate(ctx, stmt)
+	case *tree.DropCast:
+		return nodeDropCast(ctx, stmt)
 	case *tree.DropDatabase:
 		return nodeDropDatabase(ctx, stmt)
 	case *tree.DropDomain:
@@ -143,6 +164,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDropFunction(ctx, stmt)
 	case *tree.DropIndex:
 		return nodeDropIndex(ctx, stmt)
+	case *tree.DropOperator:
+		return nodeDropOperator(ctx, stmt)
 	case *tree.DropProcedure:
 		return nodeDropProcedure(ctx, stmt)
 	case *tree.DropRole:
@@ -207,6 +230,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeRollbackToSavepoint(ctx, stmt)
 	case *tree.RollbackTransaction:
 		return nodeRollbackTransaction(ctx, stmt)
+	case *tree.ResetAll:
+		return vitess.InjectedStatement{Statement: &node.ResetSettings{}}, nil
 	case *tree.Savepoint:
 		return nodeSavepoint(ctx, stmt)
 	case *tree.Scatter:
@@ -219,8 +244,12 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeSelect(ctx, stmt)
 	case *tree.SelectClause:
 		return nodeSelectClause(ctx, stmt)
+	case *tree.SetConstraints:
+		return nodeSetConstraints(ctx, stmt)
 	case *tree.SetSessionAuthorization:
 		return nodeSetSessionAuthorization(ctx, stmt)
+	case *tree.SetRole:
+		return nodeSetRole(ctx, stmt)
 	case *tree.SetSessionCharacteristics:
 		return nodeSetSessionCharacteristics(ctx, stmt)
 	case *tree.SetTransaction:

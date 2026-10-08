@@ -17,16 +17,13 @@ package triggers
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -35,12 +32,10 @@ import (
 
 // Collection contains a collection of triggers.
 type Collection struct {
-	accessCache   map[id.Trigger]Trigger    // This cache is used for general access when you know the exact ID
-	tableCache    map[id.Table][]id.Trigger // This cache is used to find triggers by table
-	idCache       []id.Trigger              // This cache simply contains the name of every trigger
-	mapHash       hash.Hash                 // This is cached so that we don't have to calculate the hash every time
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
+	objinterface.RootObjectMap
+	accessCache map[id.Trigger]Trigger    // This cache is used for general access when you know the exact ID
+	tableCache  map[id.Table][]id.Trigger // This cache is used to find triggers by table
+	idCache     []id.Trigger              // This cache simply contains the name of every trigger
 }
 
 // TriggerTiming specifies the timing of the trigger's execution.
@@ -97,15 +92,16 @@ type Trigger struct {
 var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = Trigger{}
 
+// CreateTriggerWhenCapture is a regex that should only capture the contents of the WHEN expression. Although a bit
+// complex, this is done to ensure that the capture group contains only the WHEN expression and nothing else.
+var CreateTriggerWhenCapture = regexp.MustCompile(`(?is)create\s+(?:or\s+replace\s+)?(?:constraint\s+)?trigger\s+.*\s+for\s+(?:each\s+)?(?:row|statement)\s+when\s+\((.*)\)\s+execute\s+(?:function|procedure).*`)
+
 // NewCollection returns a new Collection.
-func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree.NodeStore) (*Collection, error) {
+func NewCollection(ctx context.Context, rom objinterface.RootObjectMap) (*Collection, error) {
 	collection := &Collection{
+		RootObjectMap: rom,
 		accessCache:   make(map[id.Trigger]Trigger),
 		tableCache:    make(map[id.Table][]id.Trigger),
-		idCache:       nil,
-		mapHash:       hash.Hash{},
-		underlyingMap: underlyingMap,
-		ns:            ns,
 	}
 	return collection, collection.reloadCaches(ctx)
 }
@@ -168,11 +164,11 @@ func (pgt *Collection) AddTrigger(ctx context.Context, t Trigger) error {
 	if err != nil {
 		return err
 	}
-	h, err := pgt.ns.WriteBytes(ctx, data)
+	h, err := pgt.NodeStore().WriteBytes(ctx, data)
 	if err != nil {
 		return err
 	}
-	mapEditor := pgt.underlyingMap.Editor()
+	mapEditor := pgt.Contents().Editor()
 	if err = mapEditor.Add(ctx, string(t.ID), h); err != nil {
 		return err
 	}
@@ -180,8 +176,7 @@ func (pgt *Collection) AddTrigger(ctx context.Context, t Trigger) error {
 	if err != nil {
 		return err
 	}
-	pgt.underlyingMap = newMap
-	pgt.mapHash = pgt.underlyingMap.HashOf()
+	pgt.SetContents(newMap)
 	return pgt.reloadCaches(ctx)
 }
 
@@ -198,7 +193,7 @@ func (pgt *Collection) DropTrigger(ctx context.Context, trigIDs ...id.Trigger) e
 	}
 
 	// Now we'll remove the triggers from the map
-	mapEditor := pgt.underlyingMap.Editor()
+	mapEditor := pgt.Contents().Editor()
 	for _, trigID := range trigIDs {
 		err := mapEditor.Delete(ctx, string(trigID))
 		if err != nil {
@@ -209,8 +204,7 @@ func (pgt *Collection) DropTrigger(ctx context.Context, trigIDs ...id.Trigger) e
 	if err != nil {
 		return err
 	}
-	pgt.underlyingMap = newMap
-	pgt.mapHash = pgt.underlyingMap.HashOf()
+	pgt.SetContents(newMap)
 	return pgt.reloadCaches(ctx)
 }
 
@@ -275,58 +269,22 @@ func (pgt *Collection) IterateTriggers(ctx context.Context, callback func(t Trig
 	return nil
 }
 
-// Clone returns a new *Collection with the same contents as the original.
-func (pgt *Collection) Clone(ctx context.Context) *Collection {
-	return &Collection{
-		accessCache:   maps.Clone(pgt.accessCache),
-		tableCache:    maps.Clone(pgt.tableCache),
-		idCache:       slices.Clone(pgt.idCache),
-		underlyingMap: pgt.underlyingMap,
-		mapHash:       pgt.mapHash,
-		ns:            pgt.ns,
-	}
-}
-
-// Map writes any cached sequences to the underlying map, and then returns the underlying map.
-func (pgt *Collection) Map(ctx context.Context) (prolly.AddressMap, error) {
-	return pgt.underlyingMap, nil
-}
-
-// DiffersFrom returns true when the hash that is associated with the underlying map for this collection is different
-// from the hash in the given root.
-func (pgt *Collection) DiffersFrom(ctx context.Context, root objinterface.RootValue) bool {
-	hashOnGivenRoot, err := pgt.LoadCollectionHash(ctx, root)
-	if err != nil {
-		return true
-	}
-	if pgt.mapHash.Equal(hashOnGivenRoot) {
-		return false
-	}
-	// An empty map should match an uninitialized collection on the root
-	count, err := pgt.underlyingMap.Count()
-	if err == nil && count == 0 && hashOnGivenRoot.IsEmpty() {
-		return false
-	}
-	return true
-}
-
 // reloadCaches writes the underlying map's contents to the caches.
 func (pgt *Collection) reloadCaches(ctx context.Context) error {
-	count, err := pgt.underlyingMap.Count()
+	count, err := pgt.Contents().Count()
 	if err != nil {
 		return err
 	}
 
 	clear(pgt.accessCache)
 	clear(pgt.tableCache)
-	pgt.mapHash = pgt.underlyingMap.HashOf()
 	pgt.idCache = make([]id.Trigger, 0, count)
 
-	return pgt.underlyingMap.IterAll(ctx, func(_ string, h hash.Hash) error {
+	return pgt.Contents().IterAll(ctx, func(_ string, h hash.Hash) error {
 		if h.IsEmpty() {
 			return nil
 		}
-		data, err := pgt.ns.ReadBytes(ctx, h)
+		data, err := pgt.NodeStore().ReadBytes(ctx, h)
 		if err != nil {
 			return err
 		}

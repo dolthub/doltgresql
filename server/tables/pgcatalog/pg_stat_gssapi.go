@@ -43,7 +43,8 @@ func (p PgStatGssapiHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatGssapiHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_gssapi row iter
+	// pg_stat_gssapi is currently empty, since GSSAPI authentication is not supported.
+	// TODO: fill this in (one row per backend) when connection statistics are exposed
 	return emptyRowIter()
 }
 

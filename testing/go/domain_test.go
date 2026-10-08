@@ -294,6 +294,28 @@ func TestDomain(t *testing.T) {
 			},
 		},
 		{
+			Name: "composite type with a domain attribute",
+			SetUpScript: []string{
+				`CREATE DOMAIN ct_posint AS int4 CHECK (VALUE > 0);`,
+				`CREATE TYPE ct_comp AS (f1 ct_posint, f2 text);`,
+				`CREATE TABLE ct_test (id int PRIMARY KEY, v ct_comp);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO ct_test VALUES (1, '(5,abc)');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id, v FROM ct_test ORDER BY id;`,
+					Expected: []sql.Row{{1, "(5,abc)"}},
+				},
+				{
+					Query:    `SELECT (v).f1, (v).f2 FROM ct_test ORDER BY id;`,
+					Expected: []sql.Row{{5, "abc"}},
+				},
+			},
+		},
+		{
 			Name: "explicit cast to domain type",
 			SetUpScript: []string{
 				`CREATE DOMAIN year_not_null AS integer NOT NULL CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,
@@ -340,6 +362,36 @@ func TestDomain(t *testing.T) {
 				{
 					Query:       `SELECT id::year_not_null from my_table;`,
 					ExpectedErr: `value for domain year_not_null violates check constraint "year_check"`,
+				},
+			},
+		},
+		{
+			Name: "domains over array types",
+			SetUpScript: []string{
+				`CREATE DOMAIN domint4arr AS INT4[];`,
+				`CREATE DOMAIN domvarchar4arr AS VARCHAR(4)[2][3];`,
+				`CREATE TABLE domarr (pk INT PRIMARY KEY, i domint4arr, v domvarchar4arr);`,
+				`INSERT INTO domarr VALUES (1, '{3,4}', '{{a,b},{c,d}}'), (2, NULL, NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '{1,2}'::domint4arr, '{{a},{b}}'::domvarchar4arr;`,
+					Expected: []sql.Row{{"{1,2}", "{{a},{b}}"}},
+				},
+				{
+					Query:    `SELECT * FROM domarr ORDER BY pk;`,
+					Expected: []sql.Row{{1, "{3,4}", "{{a,b},{c,d}}"}, {2, nil, nil}},
+				},
+				{
+					Query:    `SELECT i[2], v[2][1], pg_typeof(i[2]) FROM domarr ORDER BY pk;`,
+					Expected: []sql.Row{{4, "c", "integer"}, {nil, nil, "integer"}},
+				},
+				{
+					Query: `UPDATE domarr SET i = '{{1,2},{3,4}}' WHERE pk = 2;`,
+				},
+				{
+					Query:    `SELECT i, array_ndims(i) FROM domarr ORDER BY pk;`,
+					Expected: []sql.Row{{"{3,4}", 1}, {"{{1,2},{3,4}}", 2}},
 				},
 			},
 		},

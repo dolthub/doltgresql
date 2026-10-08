@@ -16,9 +16,13 @@ package pgcatalog
 
 import (
 	"io"
+	"sort"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -41,10 +45,44 @@ func (p PgAvailableExtensionsHandler) Name() string {
 	return PgAvailableExtensionsName
 }
 
+// pgAvailableExtension represents a row in the pg_available_extensions table.
+type pgAvailableExtension struct {
+	name             string
+	defaultVersion   string
+	installedVersion any
+	comment          any
+}
+
 // RowIter implements the interface tables.Handler.
 func (p PgAvailableExtensionsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_available_extensions row iter
-	return emptyRowIter()
+	allExtensions := extensions.GetAll()
+	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return nil, err
+	}
+	availableExtensions := make([]pgAvailableExtension, 0, len(allExtensions))
+	for name, ext := range allExtensions {
+		availableExtension := pgAvailableExtension{
+			name:           name,
+			defaultVersion: ext.Control.DefaultVersion,
+		}
+		if len(ext.Control.Comment) > 0 {
+			availableExtension.comment = ext.Control.Comment
+		}
+		if installed, err := extCollection.GetLoadedExtension(ctx, id.NewExtension(name)); err != nil {
+			return nil, err
+		} else if installed.ExtName.IsValid() {
+			availableExtension.installedVersion = installed.Version
+		}
+		availableExtensions = append(availableExtensions, availableExtension)
+	}
+	sort.Slice(availableExtensions, func(i, j int) bool {
+		return availableExtensions[i].name < availableExtensions[j].name
+	})
+	return &pgAvailableExtensionsRowIter{
+		extensions: availableExtensions,
+		idx:        0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -65,13 +103,25 @@ var pgAvailableExtensionsSchema = sql.Schema{
 
 // pgAvailableExtensionsRowIter is the sql.RowIter for the pg_available_extensions table.
 type pgAvailableExtensionsRowIter struct {
+	extensions []pgAvailableExtension
+	idx        int
 }
 
 var _ sql.RowIter = (*pgAvailableExtensionsRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgAvailableExtensionsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.extensions) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	ext := iter.extensions[iter.idx-1]
+	return sql.Row{
+		ext.name,             // name
+		ext.defaultVersion,   // default_version
+		ext.installedVersion, // installed_version
+		ext.comment,          // comment
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

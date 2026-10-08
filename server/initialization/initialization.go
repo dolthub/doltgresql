@@ -19,19 +19,23 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/server/analyzer"
+	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/aggregate"
 	"github.com/dolthub/doltgresql/server/functions/binary"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/functions/unary"
+	"github.com/dolthub/doltgresql/server/functions/window"
 	"github.com/dolthub/doltgresql/server/tables"
 	"github.com/dolthub/doltgresql/server/tables/dtables"
 	"github.com/dolthub/doltgresql/server/tables/information_schema"
@@ -48,6 +52,7 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 	once.Do(func() {
 		core.Init()
 		rootobject.Init()
+		extensions.Init()
 		auth.Init(dEnv, cfg)
 		pgtypes.Init()
 		analyzer.Init()
@@ -56,9 +61,15 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 		unary.Init()
 		functions.Init()
 		aggregate.Init()
-		builtInCasts := casts.Init()
+		window.Init()
+		builtInCasts := casts.Init(core.GetRunnerFromContext, func(f sql.Expression) bool {
+			if cf, ok := f.(*framework.CompiledFunction); ok {
+				return cf.IsStrict()
+			}
+			return false
+		}, &framework.FunctionProvider{})
 		cast.Init(builtInCasts)
-		framework.Initialize()
+		framework.Initialize(ast.Convert)
 		servercfg.DefaultUnixSocketFilePath = cfgdetails.DefaultPostgresUnixSocketFilePath
 		tables.Init()
 		pgcatalog.Init()

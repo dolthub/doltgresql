@@ -63,6 +63,7 @@ func TestSectionValue(t *testing.T) {
 		{Section_UniqueKey, 36, "UniqueKey"},
 		{Section_User, 37, "User"},
 		{Section_View, 38, "View"},
+		{Section_Tablespace, 39, "Tablespace"},
 	}
 	allIds := make(map[uint8]string)
 	for _, id := range ids {

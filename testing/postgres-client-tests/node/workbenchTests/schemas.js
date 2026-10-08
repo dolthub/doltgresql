@@ -15,7 +15,7 @@ export const schemaTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_branch: ["0"] }],
+      rows: [{ dolt_branch: "0" }],
       fields: doltBranchFields,
     },
   },

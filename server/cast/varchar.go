@@ -27,7 +27,23 @@ import (
 // initVarChar handles all casts that are built-in. This comprises only the source types.
 func initVarChar(builtInCasts map[id.Cast]casts.Cast) {
 	varcharAssignment(builtInCasts)
+	varcharExplicit(builtInCasts)
 	varcharImplicit(builtInCasts)
+}
+
+// varcharExplicit registers all explicit casts. This comprises only the source types.
+func varcharExplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.VarChar,
+		ToType:   pgtypes.Xml,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
+		},
+	})
 }
 
 // varcharAssignment registers all assignment casts. This comprises only the source types.
@@ -36,7 +52,11 @@ func varcharAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.InternalChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }
@@ -47,14 +67,22 @@ func varcharImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Name,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
@@ -68,7 +96,11 @@ func varcharImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }

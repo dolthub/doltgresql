@@ -22,7 +22,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
-	pgparser "github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
@@ -97,8 +96,10 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		Table: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 			for i, col := range table.Item.Schema(ctx) {
 				typeOid := id.Null
+				typeMod := int32(-1)
 				if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
 					typeOid = doltgresType.ID.AsId()
+					typeMod = doltgresType.GetAttTypMod()
 				} else {
 					// TODO: Remove once all information_schema tables are converted to use DoltgresType
 					dt := pgtypes.FromGmsType(col.Type)
@@ -122,6 +123,7 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 					attrelidNative: id.Cache().ToOID(table.OID.AsId()),
 					attname:        col.Name,
 					atttypid:       typeOid,
+					atttypmod:      typeMod,
 					attnum:         int16(i + 1),
 					attndims:       dimensions,
 					attnotnull:     !col.Nullable,
@@ -134,38 +136,24 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			}
 			return true, nil
 		},
-		View: func(ctx *sql.Context, _ functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
+		View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
 			if engine == nil {
 				return true, nil
 			}
 
-			// Get the SELECT body from the view definition.
-			selectBody := view.Item.TextDefinition
-			if selectBody == "" {
-				stmts, parseErr := pgparser.Parse(view.Item.CreateViewStatement)
-				if parseErr != nil || len(stmts) == 0 {
-					return true, nil
-				}
-				cv, ok := stmts[0].AST.(*tree.CreateView)
-				if !ok {
-					return true, nil
-				}
-				selectBody = cv.AsSource.String()
-			}
-			if selectBody == "" {
-				return true, nil
-			}
-
 			// Analyze the SELECT statement to get the view's output schema.
-			analyzed, analyzeErr := engine.AnalyzeQuery(ctx, selectBody)
+			viewName := tree.MakeTableNameFromPrefix(tree.ObjectNamePrefix{SchemaName: tree.Name(schema.Item.SchemaName()), ExplicitSchema: true}, tree.Name(view.Item.Name))
+			analyzed, analyzeErr := engine.AnalyzeQuery(ctx, "SELECT * FROM "+viewName.String())
 			if analyzeErr != nil {
 				return true, nil
 			}
 
 			for i, col := range analyzed.Schema(ctx) {
 				typeOid := id.Null
+				typeMod := int32(-1)
 				if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
 					typeOid = doltgresType.ID.AsId()
+					typeMod = doltgresType.GetAttTypMod()
 				} else {
 					dt := pgtypes.FromGmsType(col.Type)
 					typeOid = dt.ID.AsId()
@@ -176,6 +164,7 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 					attrelidNative: id.Cache().ToOID(view.OID.AsId()),
 					attname:        col.Name,
 					atttypid:       typeOid,
+					atttypmod:      typeMod,
 					attnum:         int16(i + 1),
 				}
 				attrelidIdx.Add(attr)
@@ -375,34 +364,7 @@ func (p PgAttributeHandler) LookupPartitions(context *sql.Context, lookup sql.In
 }
 
 // pgAttributeSchema is the schema for pg_attribute.
-var pgAttributeSchema = sql.Schema{
-	{Name: "attrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "atttypid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attlen", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attnum", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attcacheoff", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "atttypmod", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attndims", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attbyval", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attalign", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attstorage", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attcompression", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attnotnull", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "atthasdef", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "atthasmissing", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attidentity", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attgenerated", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attisdropped", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attislocal", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attinhcount", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attstattarget", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attcollation", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAttributeName},
-	{Name: "attacl", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgAttributeName},        // TODO: type aclitem[]
-	{Name: "attoptions", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgAttributeName},    // TODO: collation C
-	{Name: "attfdwoptions", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgAttributeName}, // TODO: collation C
-	{Name: "attmissingval", Type: pgtypes.AnyArray, Default: nil, Nullable: true, Source: PgAttributeName},
-}
+var pgAttributeSchema = pgtypes.PgAttributeSchema
 
 // pgAttribute represents a row in the pg_attribute table.
 // We store oids in their native format as well so that we can do range scans on them.
@@ -411,6 +373,7 @@ type pgAttribute struct {
 	attrelidNative uint32
 	attname        string
 	atttypid       id.Id
+	atttypmod      int32
 	attnum         int16
 	attndims       int16
 	attnotnull     bool
@@ -467,7 +430,7 @@ func pgAttributeToRow(attr *pgAttribute) sql.Row {
 		int16(0),          // attlen
 		attr.attnum,       // attnum
 		int32(-1),         // attcacheoff
-		int32(-1),         // atttypmod
+		attr.atttypmod,    // atttypmod
 		attr.attndims,     // attndims
 		false,             // attbyval
 		"i",               // attalign

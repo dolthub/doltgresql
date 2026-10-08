@@ -15,6 +15,7 @@
 package ast
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 
@@ -93,6 +94,12 @@ func int64ValueForLimit(l any) (int64, error) {
 		limitValue = int64(l)
 	case float32:
 		limitValue = int64(l)
+	case *apd.Decimal:
+		var err error
+		limitValue, err = l.Int64()
+		if err != nil {
+			return 0, errors.Errorf("limit/offset value %s is outside of int64 range", l.String())
+		}
 	default:
 		return 0, errors.Errorf("unsupported limit/offset value type %T", l)
 	}

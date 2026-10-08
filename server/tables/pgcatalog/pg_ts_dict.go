@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +44,12 @@ func (p PgTsDictHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTsDictHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_ts_dict row iter
-	return emptyRowIter()
+	// TODO: this only includes the "simple" dictionary, since the language-specific stemming dictionaries
+	//  (english_stem, etc.) rely on snowball support that Doltgres does not yet have
+	return &pgTsDictRowIter{
+		dicts: defaultPostgresTsDicts,
+		idx:   0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -67,16 +72,49 @@ var pgTsDictSchema = sql.Schema{
 
 // pgTsDictRowIter is the sql.RowIter for the pg_ts_dict table.
 type pgTsDictRowIter struct {
+	dicts []tsDict
+	idx   int
 }
 
 var _ sql.RowIter = (*pgTsDictRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTsDictRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.dicts) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	dict := iter.dicts[iter.idx-1]
+
+	return sql.Row{
+		dict.oid,       // oid
+		dict.name,      // dictname
+		dict.namespace, // dictnamespace
+		id.Null,        // dictowner (TODO: owner)
+		dict.template,  // dicttemplate
+		nil,            // dictinitoption
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
 func (iter *pgTsDictRowIter) Close(ctx *sql.Context) error {
 	return nil
+}
+
+// tsDict represents a row in the pg_ts_dict table.
+type tsDict struct {
+	oid       id.Id
+	name      string
+	namespace id.Id
+	template  id.Id
+}
+
+// defaultPostgresTsDicts is the list of built-in text search dictionaries available in Postgres.
+var defaultPostgresTsDicts = []tsDict{
+	{
+		oid:       id.NewId(id.Section_TextSearchDictionary, "pg_catalog", "simple"),
+		name:      "simple",
+		namespace: id.NewNamespace("pg_catalog").AsId(),
+		template:  id.NewId(id.Section_TextSearchTemplate, "pg_catalog", "simple"),
+	},
 }

@@ -72,6 +72,7 @@ for tuple in $OS_ARCH_TUPLES; do
   cp -r ./licenses "$o/licenses"
   cp LICENSE "$o/licenses"
   bin="doltgres"
+  tags="icu_static"
   if [ "$os" = windows ]; then
       bin="$bin.exe"
   fi
@@ -85,7 +86,7 @@ for tuple in $OS_ARCH_TUPLES; do
       CGO_LDFLAGS="${platform_cgo_ldflags[${tuple}]}" \
       go build -buildvcs=false -trimpath \
       -ldflags="${platform_go_ldflags[${tuple}]}" \
-      -tags icu_static -o "$o/bin/$bin" \
+      -tags "$tags" -o "$o/bin/$bin" \
       ./cmd/doltgres
   if [ "$os" = windows ]; then
     (cd out && 7z a "doltgresql-$os-$arch.zip" "doltgresql-$os-$arch" && 7z a "doltgresql-$os-$arch.7z" "doltgresql-$os-$arch")

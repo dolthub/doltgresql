@@ -243,7 +243,7 @@ func columns(rows *sql.Rows) (string, []interface{}, error) {
 	var columns []interface{}
 	for _, columnType := range types {
 		switch columnType.DatabaseTypeName() {
-		case "BIT":
+		case "BIT", "BOOL":
 			colVal := sql.NullBool{}
 			columns = append(columns, &colVal)
 			sb.WriteString("I")
@@ -251,11 +251,11 @@ func columns(rows *sql.Rows) (string, []interface{}, error) {
 			colVal := sql.NullString{}
 			columns = append(columns, &colVal)
 			sb.WriteString("T")
-		case "DECIMAL", "DOUBLE", "FLOAT", "FLOAT8", "NUMERIC":
+		case "DECIMAL", "DOUBLE", "FLOAT", "FLOAT4", "FLOAT8", "NUMERIC":
 			colVal := sql.NullFloat64{}
 			columns = append(columns, &colVal)
 			sb.WriteString("R")
-		case "MEDIUMINT", "INT", "BIGINT", "TINYINT", "SMALLINT", "INT4", "INT8":
+		case "MEDIUMINT", "INT", "BIGINT", "TINYINT", "SMALLINT", "INT2", "INT4", "INT8":
 			colVal := sql.NullInt64{}
 			columns = append(columns, &colVal)
 			sb.WriteString("I")

@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,9 +14,20 @@
 
 package casts
 
-import "github.com/dolthub/doltgresql/core/id"
+import (
+	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/id"
+)
 
 // Init initializes this package.
-func Init() map[id.Cast]Cast {
+func Init(
+	getRunnerFromCtx func(ctx *sql.Context) (sql.StatementRunner, error),
+	getIsStrictFromFunc func(f sql.Expression) bool,
+	provider sql.FunctionProvider,
+) map[id.Cast]Cast {
+	functionProvider = provider
+	getRunnerFromContext = getRunnerFromCtx
+	getIsStrictFromFunction = getIsStrictFromFunc
 	return builtInCasts
 }

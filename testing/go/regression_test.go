@@ -258,5 +258,93 @@ func TestRegressions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "star expression with sql value or names column",
+			SetUpScript: []string{
+				`CREATE TABLE test(y INTEGER PRIMARY KEY, z INTEGER, j TEXT);`,
+				`INSERT INTO test VALUES (1, 2, 'first row'), (3, 4, 'second row');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT *, 1, j FROM test;`,
+					Expected: []sql.Row{{1, 2, "first row", 1, "first row"}, {3, 4, "second row", 1, "second row"}},
+				},
+				{
+					Query:    `SELECT j, 11, * FROM test;`,
+					Expected: []sql.Row{{"first row", 11, 1, 2, "first row"}, {"second row", 11, 3, 4, "second row"}},
+				},
+				{
+					Query:    `SELECT j, 111, *, j FROM test;`,
+					Expected: []sql.Row{{"first row", 111, 1, 2, "first row", "first row"}, {"second row", 111, 3, 4, "second row", "second row"}},
+				},
+			},
+		},
+		{
+			Name: "xmin hidden column support",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `select N.oid::bigint as id, N.xmin as state_number, nspname as name, D.description, pg_catalog.pg_get_userbyid(N.nspowner) as "owner" from pg_catalog.pg_namespace N left join pg_catalog.pg_description D on N.oid = D.objoid order by case when nspname = pg_catalog.current_schema() then -1::bigint else N.oid::bigint end;`,
+					Expected: []sql.Row{
+						{2200, 0, "public", nil, "postgres"},
+						{11, 0, "pg_catalog", nil, "postgres"},
+						{13183, 0, "information_schema", nil, "postgres"},
+						{1882653564, 0, "dolt", nil, "postgres"},
+					},
+				},
+			},
+		},
+		{
+			Name: "tableoid hidden column support in join condition",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `
+SELECT cls.oid,
+       cls.relname AS NAME,
+       CASE contype
+         WHEN 'p'
+         THEN desp.description
+         WHEN 'u'
+         THEN desp.description
+         WHEN 'x'
+         THEN desp.description
+         ELSE des.description
+       END         AS COMMENT
+FROM   pg_catalog.pg_index idx
+       JOIN pg_catalog.pg_class cls
+       ON cls.oid = indexrelid
+       LEFT JOIN pg_catalog.pg_depend dep
+       ON (dep.classid = cls.tableoid
+           AND dep.objid = cls.oid
+           AND dep.refobjsubid = '0'
+           AND dep.refclassid = (SELECT oid
+                                 FROM   pg_catalog.pg_class
+                                 WHERE  relname = 'pg_constraint')
+           AND dep.deptype = 'i')
+       LEFT OUTER JOIN pg_catalog.pg_constraint con
+       ON (con.tableoid = dep.refclassid
+           AND con.oid = dep.refobjid)
+       LEFT OUTER JOIN pg_catalog.pg_description des
+       ON (des.objoid = cls.oid
+           AND des.classoid = 'pg_class'::REGCLASS)
+       LEFT OUTER JOIN pg_catalog.pg_description desp
+       ON (desp.objoid = con.oid
+           AND desp.objsubid = 0
+           AND desp.classoid = 'pg_constraint'::REGCLASS)
+WHERE  indrelid = 1397286223::OID
+       AND contype = 'p'
+`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "tableoid hidden column support in order by clause",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select oid from pg_class where oid = 862653097 order by tableoid`,
+					Expected: []sql.Row{{862653097}},
+				},
+			},
+		},
 	})
 }

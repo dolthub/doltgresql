@@ -61,7 +61,7 @@ func TestDoltAdd(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_ADD('.');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status WHERE staged = 't';",
@@ -107,7 +107,7 @@ func TestDoltAdd(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_ADD('-A');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status WHERE staged = 't';",
@@ -154,7 +154,7 @@ func TestDoltAdd(t *testing.T) {
 				{
 					Query: "SELECT DOLT_ADD('t_simple','t_composite','t_array','t_serial','t_default_simple'," +
 						"'t_checked','t_fk_parent','t_fk_child','t_unique','t_generated','t_trigger','t_default_func');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status WHERE staged = 't';",
@@ -162,7 +162,7 @@ func TestDoltAdd(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_ADD('f_trigger()','f_default()');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status WHERE staged = 't';",
@@ -170,7 +170,7 @@ func TestDoltAdd(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_ADD('t_serial_pk_seq','t_trigger.trig_trigger');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status WHERE staged = 't';",
@@ -218,15 +218,15 @@ func TestDoltBranch(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT DOLT_ADD('-A');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('original');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "INSERT INTO t_simple VALUES (4);",
@@ -234,19 +234,19 @@ func TestDoltBranch(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_ADD('-A');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('-c', 'main', 'copy');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('-c', '-f', 'original', 'forcecopy');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -254,11 +254,11 @@ func TestDoltBranch(t *testing.T) {
 				},
 				{
 					Query:    `SELECT DOLT_CHECKOUT('main')`,
-					Expected: []sql.Row{{`{0,"Already on branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Already on branch 'main'"}}},
 				},
 				{
 					Query:    `SELECT DOLT_CHECKOUT('original')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'original'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'original'"}}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -266,7 +266,7 @@ func TestDoltBranch(t *testing.T) {
 				},
 				{
 					Query:    `SELECT DOLT_CHECKOUT('copy')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'copy'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'copy'"}}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -274,7 +274,7 @@ func TestDoltBranch(t *testing.T) {
 				},
 				{
 					Query:    `SELECT DOLT_CHECKOUT('forcecopy')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'forcecopy'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'forcecopy'"}}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -286,11 +286,11 @@ func TestDoltBranch(t *testing.T) {
 				},
 				{
 					Query:    `SELECT DOLT_BRANCH('-d', 'original')`,
-					Expected: []sql.Row{{`{0}`}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    `SELECT DOLT_BRANCH('-m','copy','renamedcopy')`,
-					Expected: []sql.Row{{`{0}`}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:       `SELECT DOLT_CHECKOUT('original')`,
@@ -302,7 +302,7 @@ func TestDoltBranch(t *testing.T) {
 				},
 				{
 					Query:    `SELECT DOLT_CHECKOUT('renamedcopy')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'renamedcopy'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'renamedcopy'"}}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -321,11 +321,11 @@ func TestDoltBranchStatus(t *testing.T) {
 				"CREATE TABLE t_simple (pk INT4 PRIMARY KEY);",
 				"INSERT INTO t_simple VALUES (1), (2), (3);",
 				"SELECT DOLT_ADD('-A');",
-				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"SELECT DOLT_ADD('-A');",
-				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -375,7 +375,7 @@ func TestDoltCheckout(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
 				"SELECT DOLT_ADD('-A');",
-				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -392,12 +392,12 @@ func TestDoltCheckout(t *testing.T) {
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
 				"SELECT DOLT_ADD('-A');",
-				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT DOLT_CHECKOUT('-b', 'checkoutbranch');",
-					Expected: []sql.Row{{`{0,"Switched to branch 'checkoutbranch'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'checkoutbranch'"}}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -405,11 +405,11 @@ func TestDoltCheckout(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CHECKOUT('checkoutbranch');",
-					Expected: []sql.Row{{`{0,"Already on branch 'checkoutbranch'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Already on branch 'checkoutbranch'"}}},
 				},
 				{
 					Query:    `SELECT DOLT_CHECKOUT('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -417,7 +417,7 @@ func TestDoltCheckout(t *testing.T) {
 				},
 				{
 					Query:    `SELECT DOLT_CHECKOUT('original')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'original'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'original'"}}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -462,7 +462,7 @@ func TestDoltCherryPick(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
 				"SELECT DOLT_ADD('-A');",
-				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -479,7 +479,7 @@ func TestDoltCherryPick(t *testing.T) {
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
 				"SELECT DOLT_ADD('-A');",
-				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 				`SELECT DOLT_CHECKOUT('original')`,
 			},
 			Assertions: []ScriptTestAssertion{
@@ -489,7 +489,7 @@ func TestDoltCherryPick(t *testing.T) {
 				},
 				{ // This returns a hash, so we need to take the consistent substring portion for testing
 					Query:    `SELECT substring(DOLT_CHERRY_PICK('main')::text, 34);`,
-					Expected: []sql.Row{{",0,0,0}"}},
+					Expected: []sql.Row{{",0,0,0)"}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -541,7 +541,7 @@ func TestDoltClean(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CLEAN();",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -580,7 +580,7 @@ func TestDoltClean(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
 				"SELECT DOLT_ADD('t_simple');",
-				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -589,7 +589,7 @@ func TestDoltClean(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CLEAN();",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -641,7 +641,7 @@ func TestDoltClean(t *testing.T) {
 					Query: "SELECT DOLT_CLEAN('t_simple','t_composite','t_array','t_serial','t_default_simple'," +
 						"'t_checked','t_fk_parent','t_fk_child','t_unique','t_generated','t_trigger','t_default_func'," +
 						"'f_trigger()','f_default()');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -687,7 +687,7 @@ func TestDoltClean(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CLEAN('--dry-run');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -739,10 +739,10 @@ func TestDoltCommit(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_ADD('-A');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -788,7 +788,7 @@ func TestDoltCommit(t *testing.T) {
 					Expected: []sql.Row{{16}},
 				},
 				{
-					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -835,10 +835,10 @@ func TestDoltCommit(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_ADD('t_simple','t_composite','t_array');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -862,7 +862,7 @@ func TestDoltCommit(t *testing.T) {
 					Expected: []sql.Row{{16}},
 				},
 				{
-					Query:    "SELECT length(DOLT_COMMIT('-a', '-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(DOLT_COMMIT('-a', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -879,7 +879,7 @@ func TestDoltCommit(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -891,7 +891,7 @@ func TestDoltCommit(t *testing.T) {
 					Expected: []sql.Row{{nil}},
 				},
 				{
-					Query:    "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 			},
@@ -926,7 +926,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
-					Expected: []sql.Row{{`{"",0,1,"conflicts found"}`}},
+					Expected: []sql.Row{{[]any{"", int64(0), int64(1), "conflicts found"}}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_conflicts;",
@@ -934,7 +934,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--ours', '.');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:            "SELECT DOLT_COMMIT('-Am', 'commit merge');",
@@ -956,7 +956,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
-					Expected: []sql.Row{{`{"",0,1,"conflicts found"}`}},
+					Expected: []sql.Row{{[]any{"", int64(0), int64(1), "conflicts found"}}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_conflicts;",
@@ -964,7 +964,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--theirs', '.');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:            "SELECT DOLT_COMMIT('-Am', 'commit merge');",
@@ -986,7 +986,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
-					Expected: []sql.Row{{`{"",0,1,"conflicts found"}`}},
+					Expected: []sql.Row{{[]any{"", int64(0), int64(1), "conflicts found"}}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_conflicts;",
@@ -994,7 +994,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--ours', 't_simple');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:            "SELECT DOLT_COMMIT('-Am', 'commit merge');",
@@ -1017,7 +1017,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
-					Expected: []sql.Row{{`{"",0,1,"conflicts found"}`}},
+					Expected: []sql.Row{{[]any{"", int64(0), int64(1), "conflicts found"}}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_conflicts;",
@@ -1025,7 +1025,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--theirs', 't_simple');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:            "SELECT DOLT_COMMIT('-Am', 'commit merge');",
@@ -1058,7 +1058,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_generated (pk, v1) VALUES (1, 1);",
 				"INSERT INTO t_trigger VALUES (1, 1);",
 				"INSERT INTO t_default_func (pk, v2) VALUES (1, 1);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('other');",
 				"INSERT INTO t_simple VALUES (2, 2);",
 				"INSERT INTO t_composite VALUES (2, 2, 2);",
@@ -1069,7 +1069,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('other');",
 				"INSERT INTO t_simple VALUES (2, 3);",
 				"INSERT INTO t_composite VALUES (2, 2, 3);",
@@ -1080,7 +1080,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 3);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 35; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1111,7 +1111,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_generated (pk, v1) VALUES (1, 1);",
 				"INSERT INTO t_trigger VALUES (1, 1);",
 				"INSERT INTO t_default_func (pk, v2) VALUES (1, 1);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('other');",
 				"INSERT INTO t_simple VALUES (2, 2);",
 				"INSERT INTO t_composite VALUES (2, 2, 2);",
@@ -1122,7 +1122,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('other');",
 				"INSERT INTO t_simple VALUES (2, 3);",
 				"INSERT INTO t_composite VALUES (2, 2, 3);",
@@ -1133,7 +1133,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 3);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 35; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1164,7 +1164,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_generated (pk, v1) VALUES (1, 1);",
 				"INSERT INTO t_trigger VALUES (1, 1);",
 				"INSERT INTO t_default_func (pk, v2) VALUES (1, 1);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('other');",
 				"INSERT INTO t_simple VALUES (2, 2);",
 				"INSERT INTO t_composite VALUES (2, 2, 2);",
@@ -1175,7 +1175,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('other');",
 				"INSERT INTO t_simple VALUES (2, 3);",
 				"INSERT INTO t_composite VALUES (2, 2, 3);",
@@ -1186,7 +1186,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 3);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 35; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1232,7 +1232,7 @@ func TestDoltDiff(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -1248,7 +1248,7 @@ func TestDoltDiff(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1321,6 +1321,104 @@ func TestDoltDiff(t *testing.T) {
 				},
 			},
 		},
+		{
+			// TODO: WITH ORDINALITY is currently only supported for set-returning functions, which are expanded in a
+			//  select list. Dolt system table functions are GMS table functions that can only appear in a FROM
+			//  clause, so these all error with "is a table function and must be used in a FROM clause".
+			Name: "dolt table functions WITH ORDINALITY",
+			Skip: true,
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk INT4 PRIMARY KEY, v1 TEXT);",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
+				"INSERT INTO t1 VALUES (1, 'one'), (2, 'two');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT diff_type, from_pk, to_pk, ordinality FROM dolt_diff('HEAD', 'WORKING', 't1') WITH ORDINALITY;",
+					Expected: []sql.Row{
+						{"added", nil, 1, 1},
+						{"added", nil, 2, 2},
+					},
+				},
+				{
+					Query: "SELECT ord, to_pk1 FROM dolt_diff('HEAD', 'WORKING', 't1') WITH ORDINALITY AS a(to_pk1, to_v11, to_commit1, to_commit_date1, from_pk1, from_v11, from_commit1, from_commit_date1, diff_type1, ord);",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 2},
+					},
+				},
+				{
+					Query: "SELECT message, ordinality FROM dolt_log() WITH ORDINALITY LIMIT 1;",
+					Expected: []sql.Row{
+						{"initial", 1},
+					},
+				},
+				{
+					Query: "SELECT table_name, ordinality FROM dolt_diff_stat('HEAD', 'WORKING') WITH ORDINALITY;",
+					Expected: []sql.Row{
+						{"public.t1", 1},
+					},
+				},
+				{
+					Query: "SELECT to_table_name, diff_type, ordinality FROM dolt_diff_summary('HEAD', 'WORKING') WITH ORDINALITY;",
+					Expected: []sql.Row{
+						{"public.t1", "modified", 1},
+					},
+				},
+				{
+					Query: "SELECT table_name, diff_type, ordinality FROM dolt_patch('HEAD', 'WORKING') WITH ORDINALITY;",
+					Expected: []sql.Row{
+						{"public.t1", "data", 1},
+						{"public.t1", "data", 2},
+					},
+				},
+				{
+					// No schema changes in the working set, so ordinality over an empty result is empty
+					Query:    "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING') WITH ORDINALITY;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			// The commit columns of the dolt_diff() and dolt_log() table functions have GMS types
+			// rather than Doltgres types. IN expressions over them used to fail to resolve their
+			// comparison functions, erroring with "plan is not resolved because of node '*plan.Project'".
+			Name: "IN expressions over table function commit columns",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY, val INT)",
+				"INSERT INTO test VALUES (1, 1)",
+				"SELECT dolt_commit('-Am', 'commit 1')",
+				"INSERT INTO test VALUES (2, 2)",
+				"SELECT dolt_commit('-Am', 'commit 2')",
+				"UPDATE test SET val = 3 WHERE id = 1",
+				"SELECT dolt_commit('-Am', 'commit 3')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The two-point form of dolt_diff() reports the revision strings it was called
+					// with in from_commit/to_commit, so 'HEAD' matches and commit hashes do not
+					Query:    `SELECT to_commit, from_commit, to_id FROM dolt_diff('HEAD~2', 'HEAD', 'test') WHERE to_commit IN ('HEAD', 'WORKING') ORDER BY to_id`,
+					Expected: []sql.Row{{"HEAD", "HEAD~2", 1}, {"HEAD", "HEAD~2", 2}},
+				},
+				{
+					Query:    `SELECT to_id FROM dolt_diff('HEAD~2', 'HEAD', 'test') WHERE to_commit IN (HASHOF('HEAD'), HASHOF('HEAD~1'))`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT to_id FROM dolt_diff('HEAD~2', 'HEAD', 'test') WHERE to_commit NOT IN ('HEAD') ORDER BY to_id`,
+					Expected: []sql.Row{},
+				},
+				{
+					// dolt_log() reports real commit hashes in commit_hash
+					Query:    `SELECT count(*) FROM dolt_log('HEAD') WHERE commit_hash IN (HASHOF('HEAD'), HASHOF('HEAD~1'))`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_log('HEAD') WHERE commit_hash IN ('not_a_hash')`,
+					Expected: []sql.Row{{0}},
+				},
+			},
+		},
 	})
 }
 
@@ -1357,7 +1455,7 @@ func TestDoltDiffStat(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -1373,7 +1471,7 @@ func TestDoltDiffStat(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1478,7 +1576,7 @@ func TestDoltDiffSummary(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -1494,7 +1592,7 @@ func TestDoltDiffSummary(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1599,7 +1697,7 @@ func TestDoltGC(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -1615,12 +1713,12 @@ func TestDoltGC(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT DOLT_GC();",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 			},
 		},
@@ -1654,7 +1752,7 @@ func TestDoltGC(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -1670,12 +1768,12 @@ func TestDoltGC(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT DOLT_GC('--shallow');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 			},
 		},
@@ -1689,10 +1787,10 @@ func TestDoltLog(t *testing.T) {
 			SetUpScript: []string{
 				"CREATE TABLE t_simple (pk INT4 PRIMARY KEY);",
 				"INSERT INTO t_simple VALUES (1), (2), (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1731,7 +1829,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_generated (pk, v1) VALUES (1, 1);",
 				"INSERT INTO t_trigger VALUES (1, 1);",
 				"INSERT INTO t_default_func (pk, v2) VALUES (1, 1);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('other');",
 				"INSERT INTO t_simple VALUES (2, 2);",
 				"INSERT INTO t_composite VALUES (2, 2, 2);",
@@ -1742,7 +1840,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('other');",
 				"INSERT INTO t_simple VALUES (3, 3);",
 				"INSERT INTO t_composite VALUES (3, 2, 3);",
@@ -1752,7 +1850,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (3, 3);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT4 AS $$ BEGIN RETURN 33; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (3, 3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1782,7 +1880,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_generated (pk, v1) VALUES (1, 1);",
 				"INSERT INTO t_trigger VALUES (1, 1);",
 				"INSERT INTO t_default_func (pk, v2) VALUES (1, 1);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('other');",
 				"INSERT INTO t_simple VALUES (2, 2);",
 				"INSERT INTO t_composite VALUES (2, 2, 2);",
@@ -1793,7 +1891,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('other');",
 				"INSERT INTO t_simple VALUES (2, 3);",
 				"INSERT INTO t_composite VALUES (2, 2, 3);",
@@ -1804,7 +1902,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 3);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 35; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1843,7 +1941,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -1859,7 +1957,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('original');",
 			},
 			Assertions: []ScriptTestAssertion{
@@ -1899,7 +1997,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -1915,13 +2013,41 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('original');",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT strpos(DOLT_MERGE('main', '--no-ff', '-m', 'merge_commit')::text, 'merge successful') > 1;",
 					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+		{
+			Name: "Merge with nested parentheses in default, generated, and check expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t3324 (pk INT4 PRIMARY KEY, a INT4 DEFAULT (1 + 1) * 2, b INT4 GENERATED ALWAYS AS ((pk + 1) * 2) STORED, CONSTRAINT c3324 CHECK (NOT (pk = 0 OR pk + 1 = 0) AND ((pk + 1) * 2) > 3));",
+				"INSERT INTO t3324 (pk) VALUES (1);",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
+				"SELECT DOLT_BRANCH('other');",
+				"INSERT INTO t3324 (pk) VALUES (2);",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'main')::text) = 32;",
+				"SELECT DOLT_CHECKOUT('other');",
+				"INSERT INTO t3324 (pk) VALUES (3);",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'other')::text) = 32;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT strpos(DOLT_MERGE('main', '--no-ff', '-m', 'merge_commit')::text, 'merge successful') > 1;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT * FROM t3324 ORDER BY pk;",
+					Expected: []sql.Row{{1, 4, 4}, {2, 4, 6}, {3, 4, 8}},
+				},
+				{
+					Query:       "INSERT INTO t3324 (pk) VALUES (0);",
+					ExpectedErr: "c3324",
 				},
 			},
 		},
@@ -1951,29 +2077,29 @@ func TestDoltPreviewMergeConflicts(t *testing.T) {
 				"INSERT INTO t_generated (pk, v1) VALUES (1, 1);",
 				"INSERT INTO t_trigger VALUES (1, 1);",
 				"INSERT INTO t_default_func (pk, v2) VALUES (1, 1);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('other');",
 				"INSERT INTO t_simple VALUES (2, 2);",
 				"INSERT INTO t_composite VALUES (2, 2, 2);",
 				"INSERT INTO t_array VALUES (ARRAY['def'], 2);",
-				"INSERT INTO t_serial VALUES (DEFAULT, 2);",
+				"INSERT INTO t_serial VALUES (2, 2);",
 				"INSERT INTO t_generated (pk, v1) VALUES (2, 2);",
 				"CREATE OR REPLACE FUNCTION f_trigger() RETURNS TRIGGER AS $$ BEGIN NEW.v1 := NEW.v1 * 33; RETURN NEW; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_trigger VALUES (2, 2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('other');",
 				"INSERT INTO t_simple VALUES (2, 3);",
 				"INSERT INTO t_composite VALUES (2, 2, 3);",
 				"INSERT INTO t_array VALUES (ARRAY['def'], 3);",
-				"INSERT INTO t_serial VALUES (DEFAULT, 3);",
+				"INSERT INTO t_serial VALUES (2, 3);",
 				"INSERT INTO t_generated (pk, v1) VALUES (2, 3);",
 				"CREATE OR REPLACE FUNCTION f_trigger() RETURNS TRIGGER AS $$ BEGIN NEW.v1 := NEW.v1 * 34; RETURN NEW; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_trigger VALUES (2, 3);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 35; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -2048,7 +2174,7 @@ func TestDoltPreviewMergeConflictsSummary(t *testing.T) {
 				"INSERT INTO t_generated (pk, v1) VALUES (1, 1);",
 				"INSERT INTO t_trigger VALUES (1, 1);",
 				"INSERT INTO t_default_func (pk, v2) VALUES (1, 1);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('other');",
 				"INSERT INTO t_simple VALUES (2, 2);",
 				"INSERT INTO t_composite VALUES (2, 2, 2);",
@@ -2059,7 +2185,7 @@ func TestDoltPreviewMergeConflictsSummary(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('other');",
 				"INSERT INTO t_simple VALUES (2, 3);",
 				"INSERT INTO t_composite VALUES (2, 2, 3);",
@@ -2070,7 +2196,7 @@ func TestDoltPreviewMergeConflictsSummary(t *testing.T) {
 				"INSERT INTO t_trigger VALUES (2, 3);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 35; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (2, 3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -2089,13 +2215,13 @@ func TestDoltQueryDiff(t *testing.T) {
 			Skip: true, // TODO: AS OF seems to not be implemented yet
 			SetUpScript: []string{
 				"CREATE TABLE t_simple (pk INT4 PRIMARY KEY, v1 INT4);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('other');",
 				"INSERT INTO t_simple VALUES (1, 1), (2, 1);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'next')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'next')::text) = 32;",
 				"SELECT DOLT_CHECKOUT('other');",
 				"INSERT INTO t_simple VALUES (1, 2), (2, 2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'next')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'next')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -2148,7 +2274,7 @@ func TestDoltReset(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_RESET('--hard', 'HEAD~1');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_status;",
@@ -2196,7 +2322,7 @@ func TestDoltReset(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_RESET('--soft', 'HEAD');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query: "SELECT COUNT(*) FROM dolt_status WHERE staged = 'f';",
@@ -2245,7 +2371,7 @@ func TestDoltRevert(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
 				"INSERT INTO t_array VALUES (ARRAY['stu']);",
@@ -2260,7 +2386,7 @@ func TestDoltRevert(t *testing.T) {
 				"INSERT INTO t_trigger (v1) VALUES (2);",
 				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 34; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (v2) VALUES (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -2274,7 +2400,7 @@ func TestDoltRevert(t *testing.T) {
 				{
 					// This returns a hash, so we need to take the consistent substring portion for testing
 					Query:    `SELECT substring(DOLT_REVERT('HEAD')::text, 34);`,
-					Expected: []sql.Row{{",0,0,0}"}},
+					Expected: []sql.Row{{",0,0,0)"}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -2333,7 +2459,7 @@ func TestDoltRM(t *testing.T) {
 					Query: "SELECT DOLT_RM('--cached', 't_simple','t_composite','t_array','t_serial','t_default_simple'," +
 						"'t_checked','t_fk_parent','t_fk_child','t_unique','t_generated','t_trigger','t_default_func'," +
 						"'f_trigger()','f_default()','t_serial_pk_seq','t_trigger.trig_trigger');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status WHERE staged = 'f';",
@@ -2379,7 +2505,7 @@ func TestDoltSchemaDiff(t *testing.T) {
 				"INSERT INTO t_generated (v1) VALUES (1), (2), (10);",
 				"INSERT INTO t_trigger (v1) VALUES (5), (10), (0);",
 				"INSERT INTO t_default_func (v2) VALUES (1), (2);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"SELECT DOLT_BRANCH('original');",
 				"INSERT INTO t_simple VALUES (4);",
 				"INSERT INTO t_composite VALUES (3, 100);",
@@ -2401,7 +2527,7 @@ func TestDoltSchemaDiff(t *testing.T) {
 				"ALTER TABLE t_serial RENAME COLUMN pk TO rcol;",
 				"ALTER TABLE t_default_simple RENAME COLUMN v1 TO rcol;",
 				"ALTER TABLE t_generated RENAME COLUMN v1 TO rcol;",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -2455,7 +2581,7 @@ func TestDoltStash(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_STASH('push', 'dgstash', '--all');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -2463,7 +2589,7 @@ func TestDoltStash(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_STASH('pop', 'dgstash');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -2490,7 +2616,7 @@ func TestDoltStash(t *testing.T) {
 				"CREATE TRIGGER trig_trigger BEFORE INSERT OR UPDATE ON t_trigger FOR EACH ROW EXECUTE FUNCTION f_trigger();",
 				"CREATE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 33; END; $$ LANGUAGE plpgsql;",
 				"CREATE TABLE t_default_func (v1 INT8 DEFAULT f_default(), v2 INT8);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 				"INSERT INTO t_simple VALUES (1), (2), (3);",
 				"INSERT INTO t_composite VALUES (1, 100), (1, 101), (2, 100), (2, 101);",
 				"INSERT INTO t_array VALUES (ARRAY['abc']), (ARRAY['def','ghi']), (ARRAY['jkl','mno','pqr']);",
@@ -2513,7 +2639,7 @@ func TestDoltStash(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_STASH('push', 'dgstash');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -2521,7 +2647,7 @@ func TestDoltStash(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_STASH('pop', 'dgstash');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -2539,12 +2665,12 @@ func TestDoltTag(t *testing.T) {
 			SetUpScript: []string{
 				"CREATE TABLE t_simple (pk INT4 PRIMARY KEY);",
 				"INSERT INTO t_simple VALUES (1), (2), (3);",
-				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 34;",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT DOLT_TAG('tagged_commit', 'HEAD');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:       "SELECT DOLT_CHECKOUT('tagged_commit');",
@@ -2566,7 +2692,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query: "select dolt_add('.')",
 					Expected: []sql.Row{
-						{"{0}"},
+						{int64(0)},
 					},
 				},
 				{
@@ -2604,7 +2730,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT DOLT_CHECKOUT('main');",
 					Expected: []sql.Row{
-						{"{0,\"Switched to branch 'main'\"}"},
+						{[]any{int64(0), "Switched to branch 'main'"}},
 					},
 				},
 				{
@@ -2643,7 +2769,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT DOLT_CHECKOUT('main');",
 					Expected: []sql.Row{
-						{"{0,\"Switched to branch 'main'\"}"},
+						{[]any{int64(0), "Switched to branch 'main'"}},
 					},
 				},
 				{
@@ -2682,7 +2808,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT DOLT_CHECKOUT('main');",
 					Expected: []sql.Row{
-						{"{0,\"Switched to branch 'main'\"}"},
+						{[]any{int64(0), "Switched to branch 'main'"}},
 					},
 				},
 				{
@@ -2718,7 +2844,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_ADD('t1');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query: "SELECT * FROM dolt.status;",
@@ -2728,7 +2854,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_RESET('t1');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query: "SELECT * FROM dolt.status;",
@@ -2753,7 +2879,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CLEAN('t1');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT * FROM dolt.status;",
@@ -2765,7 +2891,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CLEAN();",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT * FROM dolt.status;",
@@ -2783,7 +2909,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CLEAN();",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT * FROM dolt.status;",
@@ -2806,7 +2932,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CHECKOUT('t1');",
-					Expected: []sql.Row{{`{0,""}`}},
+					Expected: []sql.Row{{[]any{int64(0), ""}}},
 				},
 				{
 					Query:    "SELECT * FROM dolt.status;",
@@ -3041,6 +3167,28 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 					Query: "SELECT * FROM dolt_query_diff('select * from t2 as of main', 'select * from t2')",
 					Expected: []sql.Row{
 						{"", "public.t1", "added", 1, 1},
+					},
+				},
+			},
+		},
+		{
+			Name: "dolt_patch works with JSONB columns",
+			SetUpScript: []string{
+				"CREATE TABLE repro (pk int primary key, data jsonb);",
+				"INSERT INTO repro VALUES (1, '{\"text\": \"hello\"}');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 'repro')",
+					Expected: []sql.Row{
+						{Numeric("1"), "public.repro", "schema", "CREATE TABLE \"repro\" (\n  \"pk\" integer NOT NULL,\n  \"data\" jsonb,\n  PRIMARY KEY (\"pk\")\n);"},
+						{Numeric("2"), "public.repro", "data", "INSERT INTO \"repro\" (\"pk\",\"data\") VALUES (1,'{\\\"text\\\": \\\"hello\\\"}');"},
+					},
+				},
+				{
+					Query: "SELECT diff_type, from_pk, to_pk FROM dolt_diff('HEAD', 'WORKING', 'repro')",
+					Expected: []sql.Row{
+						{"added", nil, 1},
 					},
 				},
 			},

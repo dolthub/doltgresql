@@ -16,6 +16,7 @@ package _go
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	goerrors "errors"
@@ -34,6 +35,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -42,7 +44,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgtree "github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	dserver "github.com/dolthub/doltgresql/server"
@@ -51,6 +53,7 @@ import (
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
@@ -64,6 +67,8 @@ var serverHost = "127.0.0.1"
 type ScriptTest struct {
 	// Name of the script.
 	Name string
+	// ServerConfig is an optional configuration to use when starting the Doltgres server.
+	ServerConfig *servercfg.DoltgresConfig
 	// The database to create and use. If not provided, then it defaults to "postgres".
 	Database string
 	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error.
@@ -94,8 +99,17 @@ type ScriptTestAssertion struct {
 	Expected        []sql.Row  // Expected or ExpectedRaw should be used, but not both at the same time
 	ExpectedRaw     [][][]byte // ExpectedRaw or Expected should be used, but not both at the same time
 	ExpectedErr     string
+	ExpectedErrCode string
 	ExpectedNotices []ExpectedNotice
 	Focus           bool
+
+	// ExpectedBlocking starts the query asynchronously and asserts that it has
+	// not completed after 200ms. Transaction tests keep the query running so a
+	// later assertion from another named client can unblock it.
+	ExpectedBlocking bool
+	// CloseClient closes the named client's connection without executing Query.
+	// This is only supported by transaction tests using named clients.
+	CloseClient bool
 
 	BindVars []any
 
@@ -131,6 +145,15 @@ type ScriptTestAssertion struct {
 
 	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
 	CopyFromStdInFile string
+
+	// CopyToStdOutFile is used to test the COPY TO STDOUT command. It names a file in the testdata directory whose
+	// contents are the expected output of the COPY TO STDOUT query.
+	CopyToStdOutFile string
+
+	// CopyRoundTripStdInQuery is used to test that COPY TO STDOUT output can be read back in by COPY FROM STDIN.
+	// The bytes the server sends for Query (a COPY ... TO STDOUT statement) are piped directly into this
+	// COPY ... FROM STDIN statement, without touching the filesystem.
+	CopyRoundTripStdInQuery string
 }
 
 // EmptyCommandTag is special command tag placeholder to check for the empty string
@@ -175,9 +198,9 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 		if script.UseLocalFileSystem {
 			port, err := sql.GetEmptyPort()
 			require.NoError(t, err)
-			ctx, conn, controller = CreateServerLocalWithPort(t, scriptDatabase, port)
+			ctx, conn, controller = CreateServerLocalWithPortAndConfig(t, scriptDatabase, port, script.ServerConfig)
 		} else {
-			ctx, conn, controller = CreateServer(t, scriptDatabase)
+			ctx, conn, controller = CreateServerWithConfig(t, scriptDatabase, script.ServerConfig)
 		}
 		defer func() {
 			conn.Close(ctx)
@@ -229,6 +252,12 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
 			}
+			if assertion.ExpectedBlocking {
+				t.Fatal("ExpectedBlocking assertions require RunTransactionTest")
+			}
+			if assertion.CloseClient {
+				t.Fatal("CloseClient assertions require RunTransactionTest")
+			}
 
 			// Clear out any previously received notices
 			receivedNotices = nil
@@ -246,9 +275,20 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.CopyFromStdInFile != "" {
-				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile)
-			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" {
+				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile, assertion.ExpectedErr)
+			} else if assertion.CopyRoundTripStdInQuery != "" {
+				copyRoundTrip(t, conn.Current, assertion.Query, assertion.CopyRoundTripStdInQuery)
+			} else if assertion.CopyToStdOutFile != "" {
+				copyToStdout(t, conn.Current, assertion.Query, assertion.CopyToStdOutFile)
+			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" || assertion.ExpectedErrCode != "" {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
+				if assertion.ExpectedErrCode != "" {
+					pgErrCode := ""
+					if pgErr, ok := err.(*pgconn.PgError); ok {
+						pgErrCode = pgErr.Code
+					}
+					assert.Equal(t, pgErrCode, assertion.ExpectedErrCode)
+				}
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
 					assert.Contains(t, err.Error(), assertion.ExpectedErr)
@@ -256,7 +296,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 					require.NoError(t, err)
 				}
 			} else if assertion.ExpectedTag != "" {
-				commandTag, err := conn.Exec(ctx, assertion.Query)
+				commandTag, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)
 				tag := assertion.ExpectedTag
 				if tag == EmptyCommandTag {
@@ -335,7 +375,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	}
 }
 
-func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) {
+// copyFromStdin runs the COPY FROM STDIN statement given, sending it the contents of the testdata file named. If
+// expectedErr is non-empty, the load is expected to be rejected with an error containing it.
+func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string, expectedErr string) {
 	filePath := filepath.Join("testdata", filename)
 
 	file, err := os.Open(filePath)
@@ -346,6 +388,35 @@ func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) 
 
 	reader := bufio.NewReader(file)
 	_, err = conn.PgConn().CopyFrom(context.Background(), reader, query)
+	if expectedErr != "" {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), expectedErr)
+	} else {
+		require.NoError(t, err)
+	}
+}
+
+// copyToStdout runs the COPY TO STDOUT statement given and asserts that the data sent to the client matches the
+// contents of the testdata file named.
+func copyToStdout(t *testing.T, conn *pgx.Conn, query string, filename string) {
+	filePath := filepath.Join("testdata", filename)
+
+	expected, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	_, err = conn.PgConn().CopyTo(context.Background(), &buf, query)
+	require.NoError(t, err)
+	assert.Equal(t, string(expected), buf.String())
+}
+
+// copyRoundTrip runs the COPY TO STDOUT statement given and pipes the data the server sends back into the given
+// COPY FROM STDIN statement, verifying that COPY output can be read back in without touching the filesystem.
+func copyRoundTrip(t *testing.T, conn *pgx.Conn, copyToQuery string, copyFromQuery string) {
+	var buf bytes.Buffer
+	_, err := conn.PgConn().CopyTo(context.Background(), &buf, copyToQuery)
+	require.NoError(t, err)
+	_, err = conn.PgConn().CopyFrom(context.Background(), &buf, copyFromQuery)
 	require.NoError(t, err)
 }
 
@@ -357,6 +428,144 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 // RunScriptsWithoutNormalization runs the given collection of scripts, without normalizing any rows.
 func RunScriptsWithoutNormalization(t *testing.T, scripts []ScriptTest) {
 	runScripts(t, scripts, false)
+}
+
+const expectedBlockingTimeout = 200 * time.Millisecond
+
+// RunTransactionTests runs scripts whose assertion queries identify persistent
+// client sessions with comments such as "/* client A */".
+func RunTransactionTests(t *testing.T, scripts []ScriptTest) {
+	for _, script := range scripts {
+		RunTransactionTest(t, script)
+	}
+}
+
+// RunTransactionTest runs a script using one persistent connection per named
+// client. A query marked ExpectedBlocking remains in flight until another
+// assertion unblocks it.
+func RunTransactionTest(t *testing.T, script ScriptTest) {
+	if script.Skip {
+		t.Run(script.Name, func(t *testing.T) {
+			t.Skip("Skip has been set in the script")
+		})
+		return
+	}
+	scriptDatabase := script.Database
+	if scriptDatabase == "" {
+		scriptDatabase = "postgres"
+	}
+
+	var ctx context.Context
+	var conn *Connection
+	var controller *svcs.Controller
+	if script.UseLocalFileSystem {
+		port, err := sql.GetEmptyPort()
+		require.NoError(t, err)
+		ctx, conn, controller = CreateServerLocalWithPortAndConfig(t, scriptDatabase, port, script.ServerConfig)
+	} else {
+		ctx, conn, controller = CreateServerWithConfig(t, scriptDatabase, script.ServerConfig)
+	}
+	defer func() {
+		conn.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+
+	t.Run(script.Name, func(t *testing.T) {
+		for _, query := range script.SetUpScript {
+			_, err := conn.Exec(ctx, query)
+			require.NoError(t, err, "error running setup query: %s", query)
+		}
+
+		clients := make(map[string]*pgx.Conn)
+		defer func() {
+			for _, client := range clients {
+				_ = client.Close(ctx)
+			}
+		}()
+		blocking := make(map[string]<-chan error)
+
+		waitForClient := func(t *testing.T, clientName string) {
+			done, ok := blocking[clientName]
+			if !ok {
+				return
+			}
+			select {
+			case err := <-done:
+				require.NoError(t, err, "blocked query for client %s failed", clientName)
+				delete(blocking, clientName)
+			case <-time.After(5 * time.Second):
+				t.Fatalf("blocked query for client %s did not complete", clientName)
+			}
+		}
+
+		for _, assertion := range script.Assertions {
+			assertion := assertion
+			clientName := transactionTestClient(assertion.Query)
+			client, ok := clients[clientName]
+			if !ok {
+				if assertion.CloseClient {
+					t.Fatalf("cannot close unknown client %s", clientName)
+				}
+				config := conn.Default.Config().Copy()
+				var err error
+				client, err = pgx.ConnectConfig(ctx, config)
+				require.NoError(t, err)
+				clients[clientName] = client
+			}
+
+			t.Run(assertion.Query, func(t *testing.T) {
+				if assertion.Skip {
+					t.Skip("Skip has been set in the assertion")
+				}
+				waitForClient(t, clientName)
+				if assertion.CloseClient {
+					require.NoError(t, client.Close(ctx))
+					delete(clients, clientName)
+					return
+				}
+				if assertion.ExpectedBlocking {
+					done := make(chan error, 1)
+					go func() {
+						_, err := client.Exec(ctx, assertion.Query, assertion.BindVars...)
+						done <- err
+					}()
+					select {
+					case err := <-done:
+						require.NoError(t, err)
+						t.Fatalf("query completed before blocking timeout")
+					case <-time.After(expectedBlockingTimeout):
+						blocking[clientName] = done
+					}
+					return
+				}
+
+				// Reuse the standard assertion implementation after selecting this
+				// named client's persistent connection.
+				conn.Current = client
+				conn.Username = ""
+				conn.Password = ""
+				runScript(t, ctx, ScriptTest{Assertions: []ScriptTestAssertion{assertion}}, conn, true)
+			})
+		}
+
+		for clientName := range blocking {
+			waitForClient(t, clientName)
+		}
+	})
+}
+
+func transactionTestClient(query string) string {
+	start := strings.Index(query, "/*")
+	end := strings.Index(query, "*/")
+	if start < 0 || end < start {
+		panic("no client comment found in query " + query)
+	}
+	comment := strings.TrimSpace(query[start+2 : end])
+	if !strings.HasPrefix(strings.ToLower(comment), "client ") {
+		panic("no client comment found in query " + query)
+	}
+	return strings.TrimSpace(comment[len("client "):])
 }
 
 // runScripts is the implementation of both RunScripts and RunScriptsWithoutNormalization.
@@ -405,20 +614,25 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 	return CreateServerWithPort(t, database, port)
 }
 
+// CreateServerWithConfig creates a server with the given database and configuration.
+func CreateServerWithConfig(t *testing.T, database string, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
+	return CreateServerWithPortAndConfig(t, database, port, config)
+}
+
 // CreateServerWithPort creates a server with the given database and port, returning a connection to the server. The server will close
 // when the connection is closed (or loses its connection to the server). The accompanying [svcs.Controller] may be used
 // to wait until the server has closed.
 func CreateServerWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
+	return CreateServerWithPortAndConfig(t, database, port, nil)
+}
+
+// CreateServerWithPortAndConfig creates a server with the given database, port, and configuration.
+func CreateServerWithPortAndConfig(t *testing.T, database string, port int, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
 	require.NotEmpty(t, database)
-	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
-		DoltgresConfig: cfgdetails.DoltgresConfig{
-			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
-				PortNumber: &port,
-				HostStr:    &serverHost,
-			},
-			LogLevelStr: &testServerLogLevel,
-		},
-	}, dserver.NewListener)
+	config = testServerConfig(config, port)
+	controller, err := dserver.RunInMemory(config, dserver.NewListener)
 	require.NoError(t, err)
 	auth.ClearDatabase()
 	fmt.Printf("port is %d\n", port)
@@ -432,11 +646,18 @@ func CreateServerWithPort(t *testing.T, database string, port int) (context.Cont
 // |database| at 127.0.0.1:|port|. The server will close when the connection is closed or lost. The returned
 // [svcs.Controller] may be used to wait for the server to stop.
 func CreateServerLocalWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
+	return CreateServerLocalWithPortAndConfig(t, database, port, nil)
+}
+
+// CreateServerLocalWithPortAndConfig creates a server using the local file system and the given configuration.
+func CreateServerLocalWithPortAndConfig(t *testing.T, database string, port int, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
 	// We avoid using [T.TempDir] because it results in a file lock conflict on Windows. [T.TempDir] registers a
 	// [T.Cleanup] function that runs without checking the [svcs.Controller] and it cannot be overwritten.
 	// TODO(elianddb): Setup an optional [T.Cleanup] function for the temporary directory. Our default setup for now is
 	//  preferable for debugging the database after a failure.
-	dbDir, err := os.MkdirTemp(os.TempDir(), t.Name())
+	// t.Name() contains "/" for subtests, which os.MkdirTemp rejects as a path separator in the pattern.
+	safeName := strings.ReplaceAll(t.Name(), "/", "_")
+	dbDir, err := os.MkdirTemp(os.TempDir(), safeName)
 	require.NoError(t, err)
 	fileSys, err := filesys.LocalFilesysWithWorkingDir(dbDir)
 	require.NoError(t, err)
@@ -444,21 +665,27 @@ func CreateServerLocalWithPort(t *testing.T, database string, port int) (context
 	ctx := context.Background()
 	doltEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fileSys, doltdb.LocalDirDoltDB, dserver.Version)
 
-	controller, err := dserver.RunOnDisk(ctx, &servercfg.DoltgresConfig{
-		DoltgresConfig: cfgdetails.DoltgresConfig{
-			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
-				PortNumber: &port,
-				HostStr:    &serverHost,
-			},
-			LogLevelStr: &testServerLogLevel,
-		},
-	}, doltEnv)
+	config = testServerConfig(config, port)
+	controller, err := dserver.RunOnDisk(ctx, config, doltEnv)
 	require.NoError(t, err)
 	auth.ClearDatabase()
 	fmt.Printf("port is %d\n", port)
 
 	connection := newTestDatabaseConnection(t, ctx, database, serverHost, port)
 	return ctx, connection, controller
+}
+
+func testServerConfig(config *servercfg.DoltgresConfig, port int) *servercfg.DoltgresConfig {
+	if config == nil {
+		config = &servercfg.DoltgresConfig{}
+	}
+	configCopy := *config
+	configCopy.ListenerConfig = &cfgdetails.DoltgresListenerConfig{
+		PortNumber: &port,
+		HostStr:    &serverHost,
+	}
+	configCopy.LogLevelStr = &testServerLogLevel
+	return &configCopy
 }
 
 // newTestDatabaseConnection returns a Connection to the test |database| at |host|:|port|. If the |database| provided
@@ -524,9 +751,31 @@ func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, readRawRow
 		if err != nil {
 			return nil, nil, err
 		}
+		for i := range row {
+			row[i] = reshapeFlattenedArray(rows.FieldDescriptions()[i], rawSlice[i], row[i])
+		}
 		slices = append(slices, row)
 	}
 	return NormalizeRows(rows.FieldDescriptions(), slices, normalizeRows), rawSlices, nil
+}
+
+// reshapeFlattenedArray restores the dimensions of a multidimensional array value, which pgx flattens when decoding
+// the binary format.
+func reshapeFlattenedArray(fd pgconn.FieldDescription, raw []byte, val any) any {
+	arr, ok := val.([]any)
+	dt, isBuiltIn := types.IDToBuiltInDoltgresType[id.Type(id.Cache().ToInternal(fd.DataTypeOID))]
+	if !ok || !isBuiltIn || !dt.IsArrayType() || fd.Format != pgtype.BinaryFormatCode {
+		return val
+	}
+	reader := utils.NewWireReader(raw)
+	dims := make([]int32, reader.ReadInt32())
+	reader.ReadInt32()
+	reader.ReadUint32()
+	for i := range dims {
+		dims[i] = reader.ReadInt32()
+		reader.ReadInt32()
+	}
+	return types.InflateArray(arr, dims)
 }
 
 // NormalizeRows normalizes each value's type within each row, as the tests only want to compare values. Returns a new
@@ -580,7 +829,6 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				if dt.ID == types.Json.ID && row[i] != nil {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dt.IsArrayType() && dt.ArrayBaseType().ID == types.Json.ID {
-					// TODO: need to have valid sql.Context
 					v, err := dt.IoInput(nil, row[i].(string))
 					if err != nil {
 						panic(err)
@@ -588,7 +836,22 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					arr := v.([]any)
 					newArr := make([]any, len(arr))
 					for j, el := range arr {
-						newArr[j] = UnmarshalAndMarshalJsonString(el.(string))
+						switch e := el.(type) {
+						case string:
+							newArr[j] = UnmarshalAndMarshalJsonString(e)
+						case sql.JSONWrapper:
+							iface, err := e.ToInterface(context.Background())
+							if err != nil {
+								panic(err)
+							}
+							b, err := json.Marshal(iface)
+							if err != nil {
+								panic(err)
+							}
+							newArr[j] = string(b)
+						default:
+							newArr[j] = el
+						}
 					}
 					ret, err := dt.FormatValue(newArr)
 					if err != nil {
@@ -598,14 +861,14 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				} else if dt.ID == types.Date.ID {
 					newRow[i] = row[i]
 					if row[i] != nil {
-						if t, _, err := tree.ParseDTimestampTZ(nil, row[i].(string), tree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
+						if t, _, err := pgtree.ParseDTimestampTZ(nil, row[i].(string), pgtree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
 							newRow[i] = functions.FormatDateTimeWithBC(t.Time.UTC(), "2006-01-02", dt.ID == types.TimestampTZ.ID)
 						}
 					}
 				} else if dt.ID == types.Timestamp.ID || dt.ID == types.TimestampTZ.ID {
 					newRow[i] = row[i]
 					if row[i] != nil {
-						if t, _, err := tree.ParseDTimestampTZ(nil, row[i].(string), tree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
+						if t, _, err := pgtree.ParseDTimestampTZ(nil, row[i].(string), pgtree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
 							newRow[i] = functions.FormatDateTimeWithBC(t.Time.UTC(), "2006-01-02 15:04:05.999999", dt.ID == types.TimestampTZ.ID)
 						}
 					}
@@ -649,25 +912,20 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 
 	switch dt.ID {
 	case types.Json.ID:
-		str, err := json.Marshal(v)
+		jsonBytes, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
 		}
-		ret, err := dt.FormatValue(string(str))
-		if err != nil {
-			panic(err)
-		}
-		return ret
+		return string(jsonBytes)
 	case types.JsonB.ID:
-		jv, err := types.ConvertToJsonDocument(v)
+		// JSONB normalizes JSON with spaces after ':' and ',' (PostgreSQL JSONB format)
+		s, err := gmstypes.JSONDocument{Val: v}.JSONString()
 		if err != nil {
 			panic(err)
 		}
-		str, err := dt.FormatValue(types.JsonDocument{Value: jv})
-		if err != nil {
-			panic(err)
-		}
-		return str
+		return s
+	case types.Xml.ID:
+		return string(v.([]byte))
 	case types.InternalChar.ID:
 		if v == nil {
 			return nil
@@ -724,15 +982,50 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 	return v
 }
 
+// NormalizeRecordValue is used within NormalizeArrayType to handle normalization of a record.
+func NormalizeRecordValue(val any) []types.RecordValue {
+	anyArray, ok := val.([]any)
+	if !ok {
+		panic("expected array of records to contain a nested slice")
+	}
+	newArray := make([]types.RecordValue, len(anyArray))
+	for anyArrayIdx, anyArrayElement := range anyArray {
+		anyArrayElement = NormalizeIntsAndFloats(anyArrayElement)
+		switch anyArrayElement.(type) {
+		case int64:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Int64,
+			}
+		case float64:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Float64,
+			}
+		case string:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Text,
+			}
+		default:
+			panic("nested record element needs to be handled in this switch")
+		}
+	}
+	return newArray
+}
+
 // NormalizeArrayType normalizes array types by normalizing its elements first,
 // then to a string using the type IoOutput method.
 func NormalizeArrayType(dt *types.DoltgresType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
-		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
+		if dt.ArrayBaseType().ID == types.Record.ID {
+			newVal[i] = NormalizeRecordValue(el)
+		} else {
+			newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
+		}
 	}
-	baseType := dt.ArrayBaseType()
-	if baseType.ID == types.Bool.ID {
+	if dt.ArrayBaseType().ID == types.Bool.ID {
 		sqlVal, err := dt.SQL(sql.NewEmptyContext(), nil, newVal)
 		if err != nil {
 			panic(err)
@@ -759,11 +1052,11 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 		}
 		return string(str)
 	case types.JsonB.ID:
-		jv, err := types.ConvertToJsonDocument(v)
-		if err != nil {
-			panic(err)
+		return gmstypes.JSONDocument{Val: v}
+	case types.Xml.ID:
+		if bytes, ok := v.([]byte); ok {
+			return string(bytes)
 		}
-		return types.JsonDocument{Value: jv}
 	case types.Oid.ID, types.Regclass.ID, types.Regproc.ID, types.Regtype.ID:
 		if uval, ok := v.(uint32); ok {
 			if internalID := id.Cache().ToInternal(uval); internalID.IsValid() {

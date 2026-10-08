@@ -69,6 +69,9 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	for i, expr := range exprs {
+		exprs[i] = catalogRowArgument(ctx, expr)
+	}
 
 	switch strings.ToLower(name.String()) {
 	// special case for string_agg, which maps to the mysql aggregate function group_concat
@@ -115,16 +118,31 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 
 		return &vitess.OrderedInjectedExpr{
 			InjectedExpr: vitess.InjectedExpr{
-				Expression:         &pgexprs.ArrayAgg{},
+				Expression:         &pgexprs.ArrayAgg{Distinct: distinct},
 				SelectExprChildren: exprs,
 				Auth:               vitess.AuthInformation{},
 			},
 			OrderBy: orderBy,
 		}, nil
+	case "greatest":
+		return vitess.InjectedExpr{
+			Expression:         &pgexprs.Greatest{},
+			SelectExprChildren: exprs,
+			Auth:               vitess.AuthInformation{},
+		}, nil
+	case "least":
+		return vitess.InjectedExpr{
+			Expression:         &pgexprs.Least{},
+			SelectExprChildren: exprs,
+			Auth:               vitess.AuthInformation{},
+		}, nil
 	}
 
 	if len(node.OrderBy) > 0 {
 		return nil, errors.Errorf("function ORDER BY is not yet supported")
+	}
+	if !strings.EqualFold(name.String(), "count") {
+		exprs = dropStarArgument(exprs)
 	}
 
 	return &vitess.FuncExpr{
@@ -139,4 +157,17 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 			TargetNames: []string{qualifier.String(), name.String()},
 		},
 	}, nil
+}
+
+// dropStarArgument removes a lone unqualified `*` argument, which PostgreSQL parses as a call with no arguments. Only
+// count has a form that accepts it, so every other function resolves as though it were given none. A qualified star
+// such as `t.*` names the whole row and is left alone.
+func dropStarArgument(exprs vitess.SelectExprs) vitess.SelectExprs {
+	if len(exprs) != 1 {
+		return exprs
+	}
+	if starExpr, ok := exprs[0].(*vitess.StarExpr); !ok || !starExpr.TableName.IsEmpty() {
+		return exprs
+	}
+	return nil
 }

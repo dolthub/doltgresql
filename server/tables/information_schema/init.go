@@ -29,7 +29,8 @@ func Init() {
 
 	// Postgres-specific tables/views to be added to information_schema database
 	information_schema.NewInformationSchemaTablesToAdd = map[string]sql.Table{
-		ConstraintColumnUsageViewName: newConstraintColumnUsageView(),
-		SequencesTableName:            newSequencesTable(),
+		ConstraintColumnUsageViewName:        newConstraintColumnUsageView(),
+		SequencesTableName:                   newSequencesTable(),
+		information_schema.TriggersTableName: newTriggersTable(),
 	}
 }

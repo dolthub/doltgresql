@@ -89,7 +89,7 @@ func (pgc *Collection) IterAll(ctx context.Context, callback func(rootObj objint
 
 // IterIDs implements the interface objinterface.Collection.
 func (pgc *Collection) IterIDs(ctx context.Context, callback func(identifier id.Id) (stop bool, err error)) error {
-	err := pgc.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+	err := pgc.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 		stop, err := callback(id.Id(k))
 		if err != nil {
 			return err

@@ -410,6 +410,24 @@ func TestBinaryLogic(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3096
+			Name: "IS DISTINCT FROM and IS NOT DISTINCT FROM inside a subquery",
+			SetUpScript: []string{
+				`CREATE TABLE t_indf (id INT PRIMARY KEY, v TEXT);`,
+				`INSERT INTO t_indf VALUES (1, 'a'), (2, NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*) FROM t_indf o WHERE EXISTS (SELECT 1 FROM t_indf i WHERE i.v IS NOT DISTINCT FROM o.v);`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT count(*) FROM t_indf o WHERE EXISTS (SELECT 1 FROM t_indf i WHERE i.v IS DISTINCT FROM o.v);`,
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
 	})
 }
 
@@ -450,8 +468,8 @@ func TestSubscript(t *testing.T) {
 					Expected: []sql.Row{{"b"}},
 				},
 				{
-					Query:       `SELECT ARRAY[1, 2, 3][1:3];`,
-					ExpectedErr: "not yet supported",
+					Query:    `SELECT ARRAY[1, 2, 3][1:3];`,
+					Expected: []sql.Row{{"{1,2,3}"}},
 				},
 				{
 					Query:       `SELECT ARRAY[1, 2, 3]['abc'];`,
@@ -482,6 +500,143 @@ func TestSubscript(t *testing.T) {
 				{
 					Query:    `SELECT (array(select id from test order by 1))[2]`,
 					Expected: []sql.Row{{2}},
+				},
+			},
+		},
+		{
+			Name: "null index on a non-array value",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT ('123'::jsonb)[NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT ('{"a": 1}'::jsonb)[NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+	})
+}
+
+func TestCoalesce(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			// https://github.com/dolthub/doltgresql/issues/2332
+			Name: "COALESCE(NULL, col) in UPDATE",
+			SetUpScript: []string{
+				`CREATE TABLE t (id UUID PRIMARY KEY, val INTEGER NOT NULL DEFAULT 0, d DATE)`,
+				`INSERT INTO t VALUES ('00000000-0000-0000-0000-000000000001', 42, '2026-01-01')`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Should be a no-op; val stays 42.
+					Query:            `UPDATE t SET val = COALESCE(NULL, val) WHERE id = '00000000-0000-0000-0000-000000000001'`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT val FROM t WHERE id = '00000000-0000-0000-0000-000000000001'`,
+					Expected: []sql.Row{{int32(42)}},
+				},
+				{
+					// Should be a no-op; d stays '2026-01-01'.
+					Query:            `UPDATE t SET d = COALESCE(NULL, d) WHERE id = '00000000-0000-0000-0000-000000000001'`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT d FROM t WHERE id = '00000000-0000-0000-0000-000000000001'`,
+					Expected: []sql.Row{{"2026-01-01"}},
+				},
+			},
+		},
+		{
+			Name: "COALESCE type resolution in SELECT",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT COALESCE(NULL, 42)`,
+					Expected: []sql.Row{{int32(42)}},
+				},
+				{
+					Query:    `SELECT COALESCE(NULL, NULL)`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT COALESCE(NULL, NULL, 'hello')`,
+					Expected: []sql.Row{{"hello"}},
+				},
+				{
+					Query:    `SELECT COALESCE(1, 2, 3)`,
+					Expected: []sql.Row{{int32(1)}},
+				},
+				{
+					Query:    `SELECT COALESCE(NULL, 2, 3)`,
+					Expected: []sql.Row{{int32(2)}},
+				},
+				{
+					// Explicit cast workaround still works.
+					Query:    `SELECT COALESCE(NULL::integer, 42)`,
+					Expected: []sql.Row{{int32(42)}},
+				},
+			},
+		},
+		{
+			Name: "COALESCE with mixed types",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT COALESCE('a'::TEXT, 1::INTEGER)`,
+					ExpectedErr: `types text and integer cannot be matched`,
+				},
+				{
+					// smallint and bigint are compatible via numeric promotion; result is bigint.
+					Query:    `SELECT COALESCE(NULL, 1::SMALLINT, 2::BIGINT) AS v;`,
+					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
+	})
+}
+
+func TestCase(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			// https://github.com/dolthub/doltgresql/issues/2980
+			Name: "CASE with mixed numeric column and integer literal branches",
+			SetUpScript: []string{
+				`CREATE TABLE t (status text, price numeric(10,2));`,
+				`INSERT INTO t VALUES ('confirmed', 100.00), ('confirmed', 20.50), ('pending', 7.00);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_typeof(CASE WHEN status='confirmed' THEN price ELSE 0 END)::text FROM t LIMIT 1;`,
+					Expected: []sql.Row{{"numeric"}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN price ELSE 0 END) FROM t;`,
+					Expected: []sql.Row{{Numeric("120.50")}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN price ELSE 0::numeric END) FROM t;`,
+					Expected: []sql.Row{{Numeric("120.50")}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN price ELSE CAST(0 AS NUMERIC(10,2)) END) FROM t;`,
+					Expected: []sql.Row{{Numeric("120.50")}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN price END) FROM t;`,
+					Expected: []sql.Row{{Numeric("120.50")}},
+				},
+				{
+					Query:    `SELECT MAX(CASE WHEN status='confirmed' THEN price ELSE 0 END) FROM t;`,
+					Expected: []sql.Row{{Numeric("100.00")}},
+				},
+				{
+					Query:    `SELECT MIN(CASE WHEN status='confirmed' THEN price ELSE 0 END) FROM t;`,
+					Expected: []sql.Row{{Numeric("0.00")}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END) FROM t;`,
+					Expected: []sql.Row{{int64(2)}},
 				},
 			},
 		},

@@ -43,7 +43,8 @@ func (p PgStatsExtHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatsExtHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stats_ext row iter
+	// pg_stats_ext is currently empty, since CREATE STATISTICS is not supported.
+	// TODO: fill this in when extended statistics are supported
 	return emptyRowIter()
 }
 

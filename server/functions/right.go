@@ -33,7 +33,10 @@ var right_text_int32 = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, strInt any, nInt any) (any, error) {
-		str := strInt.(string)
+		str, err := framework.UnwrapString(ctx, strInt)
+		if err != nil {
+			return nil, err
+		}
 		n := nInt.(int32)
 		if n >= 0 {
 			if len(str)-int(n) < 0 {

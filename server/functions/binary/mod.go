@@ -16,7 +16,6 @@ package binary
 
 import (
 	"github.com/cockroachdb/apd/v3"
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 
@@ -43,7 +42,7 @@ var int2mod = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int16) == 0 {
-			return nil, errors.Errorf("division by zero")
+			return nil, pgtypes.ErrDivisionByZero.New()
 		}
 		return val1.(int16) % val2.(int16), nil
 	},
@@ -57,7 +56,7 @@ var int4mod = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int32) == 0 {
-			return nil, errors.Errorf("division by zero")
+			return nil, pgtypes.ErrDivisionByZero.New()
 		}
 		return val1.(int32) % val2.(int32), nil
 	},
@@ -71,7 +70,7 @@ var int8mod = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int64) == 0 {
-			return nil, errors.Errorf("division by zero")
+			return nil, pgtypes.ErrDivisionByZero.New()
 		}
 		return val1.(int64) % val2.(int64), nil
 	},
@@ -91,7 +90,7 @@ var numeric_mod = framework.Function2{
 			return pgtypes.NumericNaN, nil
 		}
 		if num2.IsZero() {
-			return nil, errors.Errorf("division by zero")
+			return nil, pgtypes.ErrDivisionByZero.New()
 		}
 		if num1.Form == apd.Infinite {
 			return num1, nil

@@ -23,6 +23,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeCreateDatabase handles *tree.CreateDatabase nodes.
@@ -101,6 +102,11 @@ func nodeCreateDatabase(_ *Context, node *tree.CreateDatabase) (*vitess.DBDDL, e
 	}
 
 	return &vitess.DBDDL{
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_CREATEDATABASE,
+			TargetType:  auth.AuthTargetType_DatabaseIdentifiers,
+			TargetNames: []string{bareIdentifier(node.Name)},
+		},
 		Action:           vitess.CreateStr,
 		SchemaOrDatabase: "database",
 		DBName:           bareIdentifier(node.Name),

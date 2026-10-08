@@ -16,8 +16,10 @@ package node
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -111,6 +113,24 @@ func (c *CreateTrigger) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 	if function.ReturnType != pgtypes.Trigger.ID {
 		return nil, errors.Errorf(`function %s must return type trigger`, function.ID.FunctionName())
 	}
+	table, err := core.GetSqlTableFromContext(ctx, "", doltdb.TableName{Name: c.Name.TableName(), Schema: schema})
+	if err != nil {
+		return nil, err
+	}
+	sch := table.Schema(ctx)
+	for _, event := range c.Events {
+		seen := make(map[int]struct{}, len(event.ColumnNames))
+		for _, colName := range event.ColumnNames {
+			colIdx := sch.IndexOfColName(colName)
+			if colIdx < 0 {
+				return nil, errors.Errorf(`column "%s" of relation "%s" does not exist`, colName, c.Name.TableName())
+			}
+			if _, ok := seen[colIdx]; ok {
+				return nil, errors.Errorf(`column "%s" specified more than once`, colName)
+			}
+			seen[colIdx] = struct{}{}
+		}
+	}
 	trigCollection, err := core.GetTriggersCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 	if err != nil {
 		return nil, err
@@ -148,7 +168,7 @@ func (c *CreateTrigger) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateTrigger) String() string {
-	return "CREATE TRIGGER"
+	return fmt.Sprintf("CREATE TRIGGER %s", c.Name)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
@@ -169,7 +189,7 @@ func (c *CreateTrigger) WithResolvedChildren(ctx context.Context, children []any
 func loadFunction(ctx *sql.Context, funcCollection *functions.Collection, funcID id.Function) (functions.Function, error) {
 	var err error
 	if funcCollection == nil {
-		funcCollection, err = core.GetFunctionsCollectionFromContext(ctx)
+		funcCollection, err = core.GetFunctionsCollectionFromContext(ctx, "")
 		if err != nil {
 			return functions.Function{}, err
 		}

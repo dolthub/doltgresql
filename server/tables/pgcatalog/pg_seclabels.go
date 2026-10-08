@@ -43,7 +43,8 @@ func (p PgSeclabelsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgSeclabelsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_seclabels row iter
+	// pg_seclabels is empty, since Doltgres does not support SECURITY LABEL. This matches vanilla
+	// Postgres, where the view is also empty unless a label provider extension is loaded.
 	return emptyRowIter()
 }
 

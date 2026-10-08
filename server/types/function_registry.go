@@ -30,14 +30,17 @@ type QuickFunction interface {
 	WithResolvedTypes(newTypes []*DoltgresType) any
 }
 
-// LoadFunctionFromCatalog returns the function matching the given name and parameter types. This is intended solely for
-// functions that are used for types, as the returned functions are not valid using the Eval function.
-var LoadFunctionFromCatalog func(ctx *sql.Context, funcName string, parameterTypes []*DoltgresType) any
+// LoadFunctionFromCatalog returns the function matching the given schema, name and parameter types. This is intended
+// solely for functions that are used for types, as the returned functions are not valid using the Eval function.
+var LoadFunctionFromCatalog func(ctx *sql.Context, schemaName string, funcName string, parameterTypes []*DoltgresType) any
+
+// LoadExtensionFunction returns the extension-provided function matching the given ID. This is the fallback for
+// LoadFunctionFromCatalog in contexts that have no session, such as index comparators.
+var LoadExtensionFunction func(functionID id.Function) any
 
 // functionRegistry is a local registry that holds a mapping from ID to QuickFunction. This is done as types are now
-// passed by struct, meaning that we need to cache the loading of functions somewhere. In addition, we don't yet support
-// deleting built-in functions, so we can make a global cache. This makes a hard assumption that all functions being
-// referenced actually exist, which should be true until built-in function deletion is implemented.
+// passed by struct, meaning that we need to cache the loading of functions somewhere. Only the functions in pg_catalog
+// are cached, since a user-defined function may be replaced or dropped, and it may differ between databases.
 //
 // In a way, one can view this as associated an OID to a function. With a proper OID system, this would not need to
 // exist. It should be removed once OIDs are figured out.
@@ -46,7 +49,7 @@ type functionRegistry struct {
 	counter    uint32
 	mapping    map[id.Function]uint32
 	revMapping map[uint32]id.Function
-	functions  [256]QuickFunction // Arbitrary number, big enough for now to fit every function in it
+	functions  []QuickFunction
 }
 
 // globalFunctionRegistry is the global functionRegistry. Only one needs to exist since we do not yet allow deleting
@@ -56,6 +59,7 @@ var globalFunctionRegistry = functionRegistry{
 	counter:    1,
 	mapping:    map[id.Function]uint32{id.NullFunction: 0},
 	revMapping: map[uint32]id.Function{0: id.NullFunction},
+	functions:  make([]QuickFunction, 1, 256),
 }
 
 // InternalToRegistryID returns an ID for the given Internal ID.
@@ -65,30 +69,22 @@ func (r *functionRegistry) InternalToRegistryID(functionID id.Function) uint32 {
 	if registryID, ok := r.mapping[functionID]; ok {
 		return registryID
 	}
-	if r.counter >= uint32(len(r.functions)) {
-		panic("max function count reached in static array")
-	}
 	r.mapping[functionID] = r.counter
 	r.revMapping[r.counter] = functionID
+	r.functions = append(r.functions, nil)
 	r.counter++
 	return r.counter - 1
 }
 
 // GetFunction returns the associated function for the given ID. This will always return a valid function.
 func (r *functionRegistry) GetFunction(ctx *sql.Context, id uint32) QuickFunction {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	f := r.functions[id]
-	if f != nil {
-		return f
-	}
 	if id == 0 {
 		return nil
 	}
-	f = r.loadFunction(ctx, id)
+	f := r.loadFunction(ctx, id)
 	if f == nil {
 		// If we hit this panic, then we're missing a test that uses this function (and we should add that test)
-		panic(errors.Errorf("cannot find function: `%s`", r.revMapping[id]))
+		panic(errors.Errorf("cannot find function: `%s`", r.GetInternalID(id)))
 	}
 	return f
 }
@@ -109,27 +105,37 @@ func (r *functionRegistry) GetString(id uint32) string {
 
 // loadFunction loads the given function
 func (r *functionRegistry) loadFunction(ctx *sql.Context, id uint32) QuickFunction {
-	// We make this check a second time (first in GetFunction) since the function may have been added while another
-	// function acquired the lock.
+	// The mutex is only held while accessing the cache, since loading through the catalog may re-enter the registry
+	// (extension types resolve their I/O functions during deserialization).
+	r.mutex.Lock()
 	f := r.functions[id]
+	functionID := r.revMapping[id]
+	r.mutex.Unlock()
 	if f != nil {
 		return f
 	}
-	if LoadFunctionFromCatalog == nil {
-		return nil
-	}
-	functionID := r.revMapping[id]
 	if !functionID.IsValid() {
 		return nil
 	}
-	funcName, types := r.toFuncSignature(functionID)
-	potentialFunction := LoadFunctionFromCatalog(ctx, funcName, types)
-	if potentialFunction == nil {
-		return nil
+	if LoadFunctionFromCatalog != nil {
+		if funcName, types, ok := r.toFuncSignature(ctx, functionID); ok {
+			if potentialFunction := LoadFunctionFromCatalog(ctx, functionID.SchemaName(), funcName, types); potentialFunction != nil {
+				f = potentialFunction.(QuickFunction)
+				if functionID.SchemaName() == "pg_catalog" {
+					r.mutex.Lock()
+					r.functions[id] = f
+					r.mutex.Unlock()
+				}
+				return f
+			}
+		}
 	}
-	f = potentialFunction.(QuickFunction)
-	r.functions[id] = f
-	return f
+	if LoadExtensionFunction != nil {
+		if potentialFunction := LoadExtensionFunction(functionID); potentialFunction != nil {
+			return potentialFunction.(QuickFunction)
+		}
+	}
+	return nil
 }
 
 // nameWithoutParams returns the name only from the given function string.
@@ -140,15 +146,38 @@ func (*functionRegistry) nameWithoutParams(functionID id.Function) string {
 	return functionID.FunctionName()
 }
 
-// toFuncSignature returns a function signature for the given Internal ID.
-func (*functionRegistry) toFuncSignature(functionID id.Function) (string, []*DoltgresType) {
+// toFuncSignature returns a function signature for the given Internal ID. Returns false when a parameter names a type
+// that cannot be resolved, which may happen when a user-defined type has been dropped.
+func (*functionRegistry) toFuncSignature(ctx *sql.Context, functionID id.Function) (string, []*DoltgresType, bool) {
 	internalParams := functionID.Parameters()
 	params := make([]*DoltgresType, len(internalParams))
+	var collection TypeCollection
 	for i, internalParam := range internalParams {
-		params[i] = IDToBuiltInDoltgresType[internalParam]
+		if builtIn, ok := IDToBuiltInDoltgresType[internalParam]; ok {
+			params[i] = builtIn
+			continue
+		}
+		if collection == nil {
+			if GetTypesCollectionFromContext == nil {
+				return "", nil, false
+			}
+			var err error
+			if collection, err = GetTypesCollectionFromContext(ctx, ""); err != nil {
+				return "", nil, false
+			}
+		}
+		param, err := collection.GetType(ctx, internalParam)
+		if err != nil || param == nil {
+			return "", nil, false
+		}
+		params[i] = param
 	}
-	return functionID.FunctionName(), params
+	return functionID.FunctionName(), params, true
 }
+
+// placeholderIoFuncID stands in for the I/O functions of a type that has none, such as a pseudo-type. It
+// resolves to no function, so it must never be handed to the registry's lookup.
+var placeholderIoFuncID = toFuncID("_")
 
 // toFuncID creates a valid function string for the given name and parameters, then registers the name with the
 // global functionRegistry. The ID from the registry is returned.
@@ -156,6 +185,17 @@ func toFuncID(functionName string, params ...id.Type) uint32 {
 	if functionName == "-" || len(functionName) == 0 {
 		return 0
 	}
-	functionID := id.NewFunction("pg_catalog", functionName, params...)
+	return ToFuncID(id.NewFunction("pg_catalog", functionName, params...))
+}
+
+// ToFuncID registers the given function with the global function registry, and returns the ID it was given. Primarily
+// used by extensions.
+func ToFuncID(functionID id.Function) uint32 {
 	return globalFunctionRegistry.InternalToRegistryID(functionID)
+}
+
+// FromFuncID creates a valid function string for the given name and parameters, then registers the name with the
+// global functionRegistry. The ID from the registry is returned.
+func FromFuncID(u uint32) id.Function {
+	return globalFunctionRegistry.GetInternalID(u)
 }

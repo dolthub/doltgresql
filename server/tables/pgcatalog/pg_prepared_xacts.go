@@ -43,7 +43,10 @@ func (p PgPreparedXactsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPreparedXactsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_prepared_xacts row iter
+	// pg_prepared_xacts is currently empty, since Doltgres does not support prepared transactions
+	// (two-phase commit via PREPARE TRANSACTION). This matches vanilla Postgres, where the table is
+	// also empty unless prepared transactions are in use.
+	// TODO: fill this in if prepared transactions are ever supported
 	return emptyRowIter()
 }
 

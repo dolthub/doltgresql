@@ -67,16 +67,22 @@ const (
 	NullForeignKey ForeignKey = ""
 	// NullFunction is an empty, invalid ID. This is exactly equivalent to Null.
 	NullFunction Function = ""
+	// NullFunctionLanguage is an empty, invalid ID. This is exactly equivalent to Null.
+	NullFunctionLanguage FunctionLanguage = ""
 	// NullIndex is an empty, invalid ID. This is exactly equivalent to Null.
 	NullIndex Index = ""
 	// NullNamespace is an empty, invalid ID. This is exactly equivalent to Null.
 	NullNamespace Namespace = ""
+	// NullOperator is an empty, invalid ID. This is exactly equivalent to Null.
+	NullOperator Operator = ""
 	// NullProcedure is an empty, invalid ID. This is exactly equivalent to Null.
 	NullProcedure Procedure = ""
 	// NullSequence is an empty, invalid ID. This is exactly equivalent to Null.
 	NullSequence Sequence = ""
 	// NullTable is an empty, invalid ID. This is exactly equivalent to Null.
 	NullTable Table = ""
+	// NullTablespace is an empty, invalid ID. This is exactly equivalent to Null.
+	NullTablespace Tablespace = ""
 	// NullTrigger is an empty, invalid ID. This is exactly equivalent to Null.
 	NullTrigger Trigger = ""
 	// NullType is an empty, invalid ID. This is exactly equivalent to Null.

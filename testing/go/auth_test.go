@@ -15,14 +15,20 @@
 package _go
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions"
 )
 
@@ -639,6 +645,180 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
+			Name: `DROP ROLE removes all inherited privileges`,
+			SetUpScript: []string{
+				`CREATE TABLE drop_role_table (v integer);`,
+				`INSERT INTO drop_role_table VALUES (1);`,
+				`CREATE SEQUENCE drop_role_sequence;`,
+				`CREATE FUNCTION drop_role_routine() RETURNS integer AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE ROLE dropped_group;`,
+				`CREATE USER surviving_member PASSWORD 'password';`,
+				`GRANT CREATE ON DATABASE postgres TO dropped_group;`,
+				`GRANT CREATE ON SCHEMA public TO dropped_group;`,
+				`GRANT SELECT ON drop_role_table TO dropped_group;`,
+				`GRANT USAGE ON SEQUENCE drop_role_sequence TO dropped_group;`,
+				`GRANT EXECUTE ON FUNCTION drop_role_routine() TO dropped_group;`,
+				`GRANT dropped_group TO surviving_member;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE drop_role_schema_table (v integer);`,
+					Username: `surviving_member`,
+					Password: `password`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM drop_role_table;`,
+					Username: `surviving_member`,
+					Password: `password`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT nextval('drop_role_sequence');`,
+					Username: `surviving_member`,
+					Password: `password`,
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT drop_role_routine();`,
+					Username: `surviving_member`,
+					Password: `password`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `DROP ROLE dropped_group;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `CREATE TABLE drop_role_denied_schema_table (v integer);`,
+					Username:    `surviving_member`,
+					Password:    `password`,
+					ExpectedErr: `permission denied for schema`,
+				},
+				{
+					Query:       `SELECT * FROM drop_role_table;`,
+					Username:    `surviving_member`,
+					Password:    `password`,
+					ExpectedErr: `permission denied for table`,
+				},
+				{
+					Query:       `SELECT nextval('drop_role_sequence');`,
+					Username:    `surviving_member`,
+					Password:    `password`,
+					ExpectedErr: `permission denied`,
+				},
+				{
+					Query:       `SELECT drop_role_routine();`,
+					Username:    `surviving_member`,
+					Password:    `password`,
+					ExpectedErr: `permission denied`,
+				},
+			},
+		},
+		{
+			Name: `CREATE DATABASE authorization`,
+			SetUpScript: []string{
+				`CREATE ROLE demo LOGIN PASSWORD 'password';`,
+				`GRANT ALL PRIVILEGES ON DATABASE postgres TO demo;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = 'demo';`,
+					Expected: []sql.Row{{"f", "f", "f"}},
+				},
+				{
+					Query:           `CREATE DATABASE made_by_demo;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `permission denied to create database`,
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'made_by_demo';`,
+					Expected: []sql.Row{},
+				},
+				{Query: `ALTER ROLE demo CREATEDB;`},
+				{
+					Query:    `CREATE DATABASE made_by_demo;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{Query: `ALTER ROLE demo NOCREATEDB;`},
+				{
+					Query:           `CREATE DATABASE denied_after_revoke;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `permission denied to create database`,
+					ExpectedErrCode: "42501",
+				},
+				{Query: `DROP DATABASE made_by_demo;`},
+				{Query: `ALTER ROLE demo SUPERUSER;`},
+				{
+					Query:    `CREATE DATABASE made_by_super;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{Query: `DROP DATABASE made_by_super;`},
+			},
+		},
+		{
+			Name: `DROP DATABASE authorization`,
+			SetUpScript: []string{
+				`CREATE DATABASE victim;`,
+				`CREATE ROLE demo LOGIN PASSWORD 'password';`,
+				`GRANT ALL PRIVILEGES ON DATABASE victim TO demo;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `DROP DATABASE victim;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `must be owner of database victim`,
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           `DROP DATABASE IF EXISTS victim;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `must be owner of database victim`,
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    `DROP DATABASE IF EXISTS missing_database;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{
+					Query:       `DROP DATABASE missing_database;`,
+					Username:    `demo`,
+					Password:    `password`,
+					ExpectedErr: `database not found: missing_database`,
+				},
+				{Query: `ALTER ROLE demo CREATEDB;`},
+				{
+					Query:           `DROP DATABASE victim;`,
+					Username:        `demo`,
+					Password:        `password`,
+					ExpectedErr:     `must be owner of database victim`,
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'victim';`,
+					Expected: []sql.Row{{"victim"}},
+				},
+				{Query: `ALTER ROLE demo SUPERUSER;`},
+				{
+					Query:    `DROP DATABASE victim;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'victim';`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: `GRANT/REVOKE SELECT Privilege`,
 			SetUpScript: []string{
 				`CREATE USER user1 PASSWORD 'a';`,
@@ -1042,7 +1222,7 @@ func TestAuthTests(t *testing.T) {
 					Query:    "SELECT DOLT_CHECKOUT('main');",
 					Username: `user1`,
 					Password: `a`,
-					Expected: []sql.Row{{"{0,\"Already on branch 'main'\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Already on branch 'main'"}}},
 				},
 			},
 		},
@@ -1246,7 +1426,7 @@ func TestAuthTests(t *testing.T) {
 					Username: "testuser",
 					Password: "a",
 					Query:    "SELECT DOLT_BRANCH('otherbranch1');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{ // Prefix "other" is now locked by postgres
 					Username: "postgres",
@@ -1270,7 +1450,7 @@ func TestAuthTests(t *testing.T) {
 					Username: "testuser",
 					Password: "a",
 					Query:    "SELECT DOLT_BRANCH('otherbranch2');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{ // Create a longer match, which takes precedence over shorter matches
 					Username: "postgres",
@@ -1288,7 +1468,7 @@ func TestAuthTests(t *testing.T) {
 					Username: "testuser",
 					Password: "a",
 					Query:    "SELECT DOLT_BRANCH('other3');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Username: "postgres",
@@ -1300,7 +1480,7 @@ func TestAuthTests(t *testing.T) {
 					Username: "testuser",
 					Password: "a",
 					Query:    "SELECT DOLT_BRANCH('otherbranch3');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 			},
 		},
@@ -1416,7 +1596,503 @@ func TestAuthTests(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Built-in routines are executable without an explicit grant",
+			SetUpScript: []string{
+				"CREATE TABLE t3327 (x INT);",
+				"INSERT INTO t3327 VALUES (1), (2), (3);",
+				"CREATE ROLE reader LOGIN PASSWORD 'password';",
+				"GRANT SELECT ON t3327 TO reader;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT COUNT(*) FROM t3327;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*), SUM(x), MAX(x) FROM t3327;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{3, 6, 3}},
+				},
+				{
+					Query:    "SELECT x, ROW_NUMBER() OVER (ORDER BY x) FROM t3327 ORDER BY x;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{1, 1}, {2, 2}, {3, 3}},
+				},
+				{
+					Query:    "SELECT pg_catalog.lower('A'), lower('A');",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a", "a"}},
+				},
+			},
+		},
+		{
+			Name: "CTE names are not checked as tables",
+			SetUpScript: []string{
+				"CREATE TABLE edges (src TEXT, dst TEXT, project_id TEXT);",
+				"INSERT INTO edges VALUES ('a', 'b', 'p'), ('b', 'c', 'p');",
+				"CREATE TABLE secret (x INT);",
+				"INSERT INTO secret VALUES (1);",
+				"CREATE TABLE target (src TEXT, dst TEXT);",
+				"CREATE ROLE reader LOGIN PASSWORD 'password';",
+				"GRANT SELECT ON edges TO reader;",
+				"GRANT SELECT, INSERT, UPDATE, DELETE ON target TO reader;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "WITH traversal AS (SELECT src, dst FROM edges) SELECT * FROM traversal ORDER BY src;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a", "b"}, {"b", "c"}},
+				},
+				{
+					Query:    "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3) SELECT * FROM r;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+				{
+					Query:    "WITH RECURSIVE walk(node) AS (SELECT 'a'::TEXT UNION SELECT e.dst FROM edges e JOIN walk w ON e.src = w.node) SELECT * FROM walk ORDER BY node;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a"}, {"b"}, {"c"}},
+				},
+				{
+					Query:           "WITH s AS (SELECT * FROM secret) SELECT * FROM s;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "permission denied for table secret",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    "WITH secret AS (SELECT 5 AS x) SELECT * FROM secret;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{5}},
+				},
+				{
+					Query:    "WITH t AS (SELECT src FROM edges) SELECT * FROM edges WHERE src IN (SELECT src FROM t) ORDER BY src;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a", "b", "p"}, {"b", "c", "p"}},
+				},
+				{
+					Query:    "WITH t AS (SELECT src, dst FROM edges) SELECT a.src FROM t a JOIN t b ON a.dst = b.src;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "WITH a AS (SELECT src FROM edges), b AS (SELECT * FROM a) SELECT COUNT(*) FROM b;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "WITH t AS (SELECT src, dst FROM edges) INSERT INTO target SELECT * FROM t;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO target WITH t AS (SELECT src, dst FROM edges) SELECT * FROM t;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "WITH t AS (SELECT src FROM edges) UPDATE target SET dst = 'z' WHERE src IN (SELECT src FROM t);",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM target ORDER BY src;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a", "z"}, {"a", "z"}, {"b", "z"}, {"b", "z"}},
+				},
+				{
+					Query:    "WITH t AS (SELECT src FROM edges) DELETE FROM target WHERE src IN (SELECT src FROM t);",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM target;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{0}},
+				},
+			},
+		},
+		{
+			Name: "Reading as a role with only table privileges",
+			SetUpScript: []string{
+				"CREATE TABLE edges (src TEXT, dst TEXT);",
+				"INSERT INTO edges VALUES ('a', 'b');",
+				"CREATE TABLE secret (x INT);",
+				"INSERT INTO secret VALUES (1);",
+				"CREATE VIEW v_edges AS SELECT src, dst FROM edges;",
+				"CREATE VIEW v_secret AS SELECT x FROM secret;",
+				"CREATE ROLE reader LOGIN PASSWORD 'password';",
+				"GRANT SELECT ON edges TO reader;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT COUNT(*) > 0 FROM pg_catalog.pg_class;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT COUNT(*) > 0 FROM information_schema.tables;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT COUNT(*) > 0 FROM pg_tables;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:           "SELECT * FROM v_edges;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "permission denied for view v_edges",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           "SELECT * FROM missing_table;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "table not found: missing_table",
+					ExpectedErrCode: "42P01",
+				},
+				{
+					Query:           "SELECT rolname FROM pg_authid;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "permission denied for table pg_authid",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    "SELECT COUNT(*) > 0 FROM pg_roles;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:           "UPDATE secret SET x = 2;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "permission denied for table secret",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           "DELETE FROM secret;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "permission denied for table secret",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           "SELECT * FROM public.secret;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "permission denied for table secret",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:    "GRANT SELECT ON v_edges, v_secret TO reader;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM v_edges;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a", "b"}},
+				},
+				{
+					Query:    "SELECT * FROM v_secret;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{1}},
+					Skip:     true,
+				},
+				{
+					Query:           "INSERT INTO missing_table VALUES (1);",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "table not found: missing_table",
+					ExpectedErrCode: "42P01",
+				},
+				{
+					Query:           "INSERT INTO v_edges VALUES ('x', 'y');",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "permission denied for view v_edges",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           "TRUNCATE missing_table;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "table not found: missing_table",
+					ExpectedErrCode: "42P01",
+				},
+				{
+					Query:           "TRUNCATE secret;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "permission denied for table secret",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           "DROP TABLE missing_table;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "table \"missing_table\" does not exist",
+					ExpectedErrCode: "42P01",
+					Skip:            true,
+				},
+				{
+					Query:           "DROP TABLE secret;",
+					Username:        "reader",
+					Password:        "password",
+					ExpectedErr:     "must be owner of table secret",
+					ExpectedErrCode: "42501",
+					Skip:            true,
+				},
+			},
+		},
+		{
+			Name: "Views are read with the privileges of their owner",
+			SetUpScript: []string{
+				"CREATE SCHEMA reporting;",
+				"CREATE TABLE reporting.orders (id INT);",
+				"INSERT INTO reporting.orders VALUES (1);",
+				"CREATE VIEW reporting.order_view AS SELECT id FROM reporting.orders;",
+				"CREATE TABLE items (id INT);",
+				"INSERT INTO items VALUES (1);",
+				"CREATE VIEW items_view AS SELECT id FROM items;",
+				"CREATE ROLE analyst LOGIN PASSWORD 'password';",
+				"GRANT USAGE ON SCHEMA reporting TO analyst;",
+				"GRANT SELECT ON reporting.order_view TO analyst;",
+				"CREATE ROLE analyst2 LOGIN PASSWORD 'password';",
+				"GRANT USAGE ON SCHEMA reporting TO analyst2;",
+				"GRANT SELECT ON reporting.order_view, reporting.orders TO analyst2;",
+				"CREATE ROLE writer LOGIN PASSWORD 'password';",
+				"GRANT SELECT ON items_view TO writer;",
+				"CREATE ROLE writer2 LOGIN PASSWORD 'password';",
+				"GRANT SELECT ON items_view, items TO writer2;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM reporting.order_view;",
+					Username: "analyst",
+					Password: "password",
+					Expected: []sql.Row{{1}},
+					Skip:     true,
+				},
+				{
+					Query:    "SELECT * FROM reporting.order_view;",
+					Username: "analyst2",
+					Password: "password",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT * FROM items_view;",
+					Username: "writer",
+					Password: "password",
+					Expected: []sql.Row{{1}},
+					Skip:     true,
+				},
+				{
+					Query:           "INSERT INTO items_view VALUES (2);",
+					Username:        "writer",
+					Password:        "password",
+					ExpectedErr:     "permission denied for view items_view",
+					ExpectedErrCode: "42501",
+					Skip:            true,
+				},
+				{
+					Query:           "UPDATE items_view SET id = 3;",
+					Username:        "writer",
+					Password:        "password",
+					ExpectedErr:     "permission denied for view items_view",
+					ExpectedErrCode: "42501",
+					Skip:            true,
+				},
+				{
+					Query:           "DELETE FROM items_view WHERE id = 1;",
+					Username:        "writer",
+					Password:        "password",
+					ExpectedErr:     "permission denied for view items_view",
+					ExpectedErrCode: "42501",
+					Skip:            true,
+				},
+				{
+					Query:           "INSERT INTO items_view VALUES (2);",
+					Username:        "writer2",
+					Password:        "password",
+					ExpectedErr:     "permission denied for view items_view",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           "UPDATE items_view SET id = 3;",
+					Username:        "writer2",
+					Password:        "password",
+					ExpectedErr:     "permission denied for view items_view",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           "DELETE FROM items_view WHERE id = 1;",
+					Username:        "writer2",
+					Password:        "password",
+					ExpectedErr:     "permission denied for view items_view",
+					ExpectedErrCode: "42501",
+				},
+			},
+		},
+		{
+			Name: "Upserts check INSERT and UPDATE on the resolved table",
+			SetUpScript: []string{
+				"CREATE TABLE counts (id INT PRIMARY KEY, n INT);",
+				"INSERT INTO counts VALUES (1, 1);",
+				"CREATE ROLE inserter LOGIN PASSWORD 'password';",
+				"GRANT SELECT, INSERT ON counts TO inserter;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "INSERT INTO counts VALUES (1, 2) ON CONFLICT (id) DO UPDATE SET n = excluded.n;",
+					Username:        "inserter",
+					Password:        "password",
+					ExpectedErr:     "permission denied for table counts",
+					ExpectedErrCode: "42501",
+				},
+				{
+					Query:           "INSERT INTO missing_table VALUES (1) ON CONFLICT (id) DO UPDATE SET id = 1;",
+					Username:        "inserter",
+					Password:        "password",
+					ExpectedErr:     "table not found: missing_table",
+					ExpectedErrCode: "42P01",
+				},
+				{
+					Query:    "GRANT UPDATE ON counts TO inserter;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO counts VALUES (1, 2) ON CONFLICT (id) DO UPDATE SET n = excluded.n;",
+					Username: "inserter",
+					Password: "password",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM counts;",
+					Username: "inserter",
+					Password: "password",
+					Expected: []sql.Row{{1, 2}},
+				},
+			},
+		},
 	})
+}
+
+// TestDropRoleCleansPersistedAuthorizationReferences verifies that no reference to a dropped role survives reload.
+func TestDropRoleCleansPersistedAuthorizationReferences(t *testing.T) {
+	// Keep the directory alive after the test because auth retains its file system globally and later tests may persist
+	// changes through it.
+	tempDir, err := os.MkdirTemp(os.TempDir(), t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileSystem, err := filesys.LocalFilesysWithWorkingDir(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doltEnv := env.Load(context.Background(), env.GetCurrentUserHomeDir, fileSystem, doltdb.LocalDirDoltDB, server.Version)
+	auth.Init(doltEnv, nil)
+
+	survivor := auth.CreateDefaultRole("survivor")
+	auth.SetRole(survivor)
+	otherGroup := auth.CreateDefaultRole("other_group")
+	auth.SetRole(otherGroup)
+	dropped := auth.CreateDefaultRole("dropped")
+	auth.SetRole(dropped)
+
+	droppedGrant := auth.GrantedPrivilege{Privilege: auth.Privilege_SELECT, GrantedBy: dropped.ID()}
+	postgres := auth.GetRole("postgres")
+	postgresGrant := auth.GrantedPrivilege{Privilege: auth.Privilege_SELECT, GrantedBy: postgres.ID()}
+	databaseKey := auth.DatabasePrivilegeKey{Role: dropped.ID(), Name: "database"}
+	schemaKey := auth.SchemaPrivilegeKey{Role: dropped.ID(), Schema: "schema"}
+	tableKey := auth.TablePrivilegeKey{Role: dropped.ID(), Table: doltdb.TableName{Schema: "schema", Name: "table"}}
+	sequenceKey := auth.SequencePrivilegeKey{Role: dropped.ID(), Schema: "schema", Name: "sequence"}
+	routineKey := auth.RoutinePrivilegeKey{Role: dropped.ID(), Schema: "schema", Name: "routine"}
+	auth.AddDatabasePrivilege(databaseKey, postgresGrant, false)
+	auth.AddSchemaPrivilege(schemaKey, postgresGrant, false)
+	auth.AddTablePrivilege(tableKey, postgresGrant, false)
+	auth.AddSequencePrivilege(sequenceKey, postgresGrant, false)
+	auth.AddRoutinePrivilege(routineKey, postgresGrant, false)
+
+	survivorDatabaseKey := auth.DatabasePrivilegeKey{Role: survivor.ID(), Name: "granted_database"}
+	survivorSchemaKey := auth.SchemaPrivilegeKey{Role: survivor.ID(), Schema: "granted_schema"}
+	survivorTableKey := auth.TablePrivilegeKey{Role: survivor.ID(), Table: doltdb.TableName{Schema: "schema", Name: "granted_table"}}
+	survivorSequenceKey := auth.SequencePrivilegeKey{Role: survivor.ID(), Schema: "schema", Name: "granted_sequence"}
+	survivorRoutineKey := auth.RoutinePrivilegeKey{Role: survivor.ID(), Schema: "schema", Name: "granted_routine"}
+	mixedDatabaseKey := auth.DatabasePrivilegeKey{Role: survivor.ID(), Name: "mixed_database"}
+	auth.AddDatabasePrivilege(survivorDatabaseKey, droppedGrant, false)
+	auth.AddSchemaPrivilege(survivorSchemaKey, droppedGrant, false)
+	auth.AddTablePrivilege(survivorTableKey, droppedGrant, false)
+	auth.AddSequencePrivilege(survivorSequenceKey, droppedGrant, false)
+	auth.AddRoutinePrivilege(survivorRoutineKey, droppedGrant, false)
+	auth.AddDatabasePrivilege(mixedDatabaseKey, droppedGrant, false)
+	auth.AddDatabasePrivilege(mixedDatabaseKey, postgresGrant, false)
+
+	auth.AddMemberToGroup(dropped.ID(), otherGroup.ID(), false, survivor.ID())
+	auth.AddMemberToGroup(survivor.ID(), dropped.ID(), false, survivor.ID())
+	auth.AddMemberToGroup(survivor.ID(), otherGroup.ID(), false, dropped.ID())
+	auth.DropRole(dropped.Name)
+	if err = auth.PersistChanges(nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	auth.Init(doltEnv, nil)
+
+	assertNoPrivilege := func(name string, hasPrivilege bool) {
+		t.Helper()
+		if hasPrivilege {
+			t.Errorf("dropped role reference retained %s privilege", name)
+		}
+	}
+	assertNoPrivilege("database grantee", auth.HasDatabasePrivilege(databaseKey, auth.Privilege_SELECT))
+	assertNoPrivilege("schema grantee", auth.HasSchemaPrivilege(schemaKey, auth.Privilege_SELECT))
+	assertNoPrivilege("table grantee", auth.HasTablePrivilege(tableKey, auth.Privilege_SELECT))
+	assertNoPrivilege("sequence grantee", auth.HasSequencePrivilege(sequenceKey, auth.Privilege_SELECT))
+	assertNoPrivilege("routine grantee", auth.HasRoutinePrivilege(routineKey, auth.Privilege_SELECT))
+	assertNoPrivilege("database grantor", auth.HasDatabasePrivilege(survivorDatabaseKey, auth.Privilege_SELECT))
+	assertNoPrivilege("schema grantor", auth.HasSchemaPrivilege(survivorSchemaKey, auth.Privilege_SELECT))
+	assertNoPrivilege("table grantor", auth.HasTablePrivilege(survivorTableKey, auth.Privilege_SELECT))
+	assertNoPrivilege("sequence grantor", auth.HasSequencePrivilege(survivorSequenceKey, auth.Privilege_SELECT))
+	assertNoPrivilege("routine grantor", auth.HasRoutinePrivilege(survivorRoutineKey, auth.Privilege_SELECT))
+	if !auth.HasDatabasePrivilege(mixedDatabaseKey, auth.Privilege_SELECT) {
+		t.Error("dropping one grantor removed the surviving grant")
+	}
+	if auth.HasRoleMembership(dropped.ID(), otherGroup.ID()) {
+		t.Error("dropped role retained membership as member")
+	}
+	if auth.HasRoleMembership(survivor.ID(), dropped.ID()) {
+		t.Error("dropped role retained membership as group")
+	}
+	if auth.HasRoleMembership(survivor.ID(), otherGroup.ID()) {
+		t.Error("dropped role retained membership as grantor")
+	}
 }
 
 // TestAuthDoltProcedures tests that Dolt procedure functions apply permission checks for SUPERUSERs and basic users in
@@ -1427,6 +2103,14 @@ func TestAuthTests(t *testing.T) {
 // Each time a new Dolt procedure is introduced in a ScriptTest, it's grouped into a set of related procedures. Each set
 // is separated by a new line.
 func TestAuthDoltProcedures(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
+	authTestFireUrl := func(path string) string {
+		return "file://" + filepath.ToSlash(filepath.Join(tempDir, path))
+	}
 	RunScripts(t, []ScriptTest{
 		{
 			UseLocalFileSystem: true,
@@ -1582,7 +2266,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsBasic("call dolt_commit('-am', 'resolve conflicts');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				authTestAssertAsBasic("call dolt_update_column_tag('test_table', 'v', '123');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				authTestAssertAsBasic("drop database cloned_bak1;", []sql.Row{}, ""),
+				authTestAssertAsBasic("drop database cloned_bak1;", nil, "must be owner of database cloned_bak1"),
+				authTestAssertAsSuper("drop database cloned_bak1;", []sql.Row{}, ""),
 				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
 				authTestSkipAssertAsBasic("call dolt_purge_dropped_databases();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
@@ -1632,96 +2317,101 @@ func TestAuthDoltProcedures(t *testing.T) {
 				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('sync-url', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('sync-url', '%s');", authTestFireUrl("bak1")), []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", authTestFireUrl("bak1")), []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('-b', 'test');", []sql.Row{{[]any{int64(0), "Switched to branch 'test'"}}}, ""),
 
-				authTestAssertAsSuper("select dolt_branch('new_branch');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_branch('new_branch');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsSuper("insert into test_table values (2);", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_add('.');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper("select length(dolt_commit('-m', 'amend test table')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select dolt_add('.');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-m', 'amend test table')::text) = 32;", []sql.Row{{"t"}}, ""),
 
-				authTestAssertAsSuper("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('main');", []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}}, ""),
 				authTestAssertAsSuper("select length(dolt_cherry_pick('test')::text);", []sql.Row{{40}}, ""),
 
-				authTestAssertAsSuper("select dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_clean('--dry-run');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsSuper("set authtest.hash = '';", []sql.Row{}, ""),
 				// TODO(elianddb): variadic parameter support for Dolt stored procedures functions
-				authTestSkipAsSuper("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('-b', 'conflict');", []sql.Row{{[]any{int64(0), "Switched to branch 'conflict'"}}}, ""),
 				authTestAssertAsSuper("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
-				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 34;", []sql.Row{{"t"}}, ""),
-				authTestAssertAsSuper("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 32;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('main');", []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}}, ""),
 				authTestAssertAsSuper("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
-				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 32;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsSuper("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_merge('conflict');", []sql.Row{{`{"",0,1,"conflicts found"}`}}, ""),
+				authTestAssertAsSuper("select dolt_merge('conflict');", []sql.Row{{[]any{"", int64(0), int64(1), "conflicts found"}}}, ""),
 
-				authTestAssertAsSuper("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{int64(0)}}, ""),
 
 				// TODO(elianddb): unsupported type uint64
-				authTestSkipAsSuper("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_backup('remove', 'bak1');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_backup('remove', 'bak1');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak2', '%s');", authTestFireUrl("bak2")), []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("select dolt_backup('sync', 'bak2');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_db');", authTestFireUrl("bak2")), []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("drop database restored_db;", []sql.Row{}, ""),
+				authTestAssertAsSuper("select dolt_backup('remove', 'bak2');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_fetch('origin', 'main');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_fetch('origin', 'main');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_undrop('cloned_bak1');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_undrop('cloned_bak1');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select length(dolt_commit('-am', 'resolve conflicts')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-am', 'resolve conflicts')::text) = 32;", []sql.Row{{"t"}}, ""),
 				// TODO(elianddb): table test_table does not exist (also tried with public.test_table)
-				authTestSkipAsSuper("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_purge_dropped_databases();", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_purge_dropped_databases();", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_checkout('test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('test');", []sql.Row{{[]any{int64(0), "Switched to branch 'test'"}}}, ""),
 				authTestAssertAsSuper(
 					"select dolt_rebase('-i', 'main');",
-					[]sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
+					[]sql.Row{{[]any{int64(0), "interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')"}}},
 					""),
-				authTestAssertAsSuper("select dolt_rebase('--abort');", []sql.Row{{"{0,\"Interactive rebase aborted\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_rebase('--abort');", []sql.Row{{[]any{int64(0), "Interactive rebase aborted"}}}, ""),
 
 				authTestAssertAsSuper("create table to_rm (v int);", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper("select length(dolt_commit('-m', 'clean state to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
-				authTestAssertAsSuper("select dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_add('to_rm');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-m', 'clean state to_rm')::text) = 32;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select dolt_rm('to_rm');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_gc('--shallow');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_gc('--shallow');", []sql.Row{{int64(0)}}, ""),
 
 				// The paths for files, memory addresses, and number of goroutines can be different per OS.
 				authTestAssertAsSuper("select instr(dolt_thread_dump()::text, 'goroutine') > 0;", []sql.Row{{"t"}}, ""),
 
-				authTestAssertAsSuper("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-m', 'rm to_rm')::text) = 32;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsSuper(
 					"select dolt_push('origin', 'test');",
-					[]sql.Row{{fmt.Sprintf("{0,\"To %s\n * [new branch]          test -> test\"}", authTestFireUrl("bak1"))}},
+					[]sql.Row{{[]any{int64(0), fmt.Sprintf("To %s\n * [new branch]          test -> test", authTestFireUrl("bak1"))}}},
 					""),
-				authTestAssertAsSuper("select dolt_pull('origin', 'test');", []sql.Row{{"{0,0,\"Everything up-to-date\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_pull('origin', 'test');", []sql.Row{{[]any{int64(0), int64(0), "Everything up-to-date"}}}, ""),
 
-				authTestAssertAsSuper("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{int64(0)}}, ""),
 				// TODO(elianddb): unsupported type int
-				authTestSkipAsSuper("select dolt_stash('push', 'to_rm');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_stash('push', 'to_rm');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper("select dolt_verify_constraints('--all');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("select dolt_verify_constraints('--all');", []sql.Row{{int64(0)}}, ""),
 
 				// TODO(elianddb): provider does not implement ExtendedStatsProvider
-				authTestSkipAsSuper("select dolt_stats_info('--short');", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_wait();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_flush();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_gc();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_purge();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_restart();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_once();", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_stats_info('--short');", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_wait();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_flush();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_gc();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_purge();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_restart();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_once();", []sql.Row{{int64(0)}}, ""),
 			},
 		},
 		{
@@ -1743,89 +2433,92 @@ func TestAuthDoltProcedures(t *testing.T) {
 				// Grant user access to test_table before checkout to avoid merge conflict in later cherry-pick.
 				authTestGrantBasic("schema public", "all"),
 				authTestGrantBasic("test_table", "select", "insert", "delete", "update"),
-				authTestAssertAsBasic("select dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('-b', 'test');", []sql.Row{{[]any{int64(0), "Switched to branch 'test'"}}}, ""),
 
-				authTestAssertAsBasic("select dolt_branch('new_branch');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_branch('new_branch');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic("insert into test_table values (2);", []sql.Row{}, ""),
-				authTestAssertAsBasic("select dolt_add('.');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsBasic("select length(dolt_commit('-m', 'amend test table')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select dolt_add('.');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-m', 'amend test table')::text) = 32;", []sql.Row{{"t"}}, ""),
 
-				authTestAssertAsBasic("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('main');", []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}}, ""),
 				authTestAssertAsBasic("select length(dolt_cherry_pick('test')::text);", []sql.Row{{40}}, ""),
 
-				authTestAssertAsBasic("select dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_clean('--dry-run');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				authTestAssertAsBasic("create database cloned_bak1;", []sql.Row{}, ""),
 
 				authTestAssertAsBasic("set authtest.hash = '';", []sql.Row{}, ""),
 				// TODO(elianddb): variadic parameter support for Dolt stored procedures
-				authTestSkipAssertAsBasic("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsBasic("select dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('-b', 'conflict');", []sql.Row{{[]any{int64(0), "Switched to branch 'conflict'"}}}, ""),
 				authTestAssertAsBasic("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
-				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 34;", []sql.Row{{"t"}}, ""),
-				authTestAssertAsBasic("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 32;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('main');", []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}}, ""),
 				authTestAssertAsBasic("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
-				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 32;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsBasic("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				authTestAssertAsBasic("select dolt_merge('conflict');", []sql.Row{{`{"",0,1,"conflicts found"}`}}, ""),
+				authTestAssertAsBasic("select dolt_merge('conflict');", []sql.Row{{[]any{"", int64(0), int64(1), "conflicts found"}}}, ""),
 
-				authTestAssertAsBasic("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{int64(0)}}, ""),
 
 				// TODO(elianddb): unsupported type uint64
-				authTestSkipAssertAsBasic("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic("select dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				authTestAssertAsBasic("select dolt_backup('sync', 'bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_db');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				authTestAssertAsBasic(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				authTestAssertAsBasic("select dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("drop database cloned_bak1", []sql.Row{}, ""),
+				authTestAssertAsBasic("drop database cloned_bak1", nil, "must be owner of database cloned_bak1"),
+				authTestAssertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
 				authTestAssertAsBasic("select dolt_undrop('cloned_bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("select length(dolt_commit('-am', 'resolve conflicts')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-am', 'resolve conflicts')::text) = 32;", []sql.Row{{"t"}}, ""),
 				// TODO(elianddb): table test_table does not exist (also tried with public.test_table)
-				authTestSkipAssertAsBasic("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic("select dolt_purge_dropped_databases();", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("select dolt_checkout('test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('test');", []sql.Row{{[]any{int64(0), "Switched to branch 'test'"}}}, ""),
 				authTestAssertAsBasic(
 					"select dolt_rebase('-i', 'main');",
-					[]sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
+					[]sql.Row{{[]any{int64(0), "interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')"}}},
 					""),
-				authTestAssertAsBasic("select dolt_rebase('--abort');", []sql.Row{{"{0,\"Interactive rebase aborted\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_rebase('--abort');", []sql.Row{{[]any{int64(0), "Interactive rebase aborted"}}}, ""),
 
 				authTestAssertAsBasic("create table to_rm (v int);", []sql.Row{}, ""),
-				authTestAssertAsBasic("select dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsBasic("select length(dolt_commit('-m', 'clean state to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
-				authTestAssertAsBasic("select dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_add('to_rm');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-m', 'clean state to_rm')::text) = 32;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select dolt_rm('to_rm');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic("select dolt_gc('--shallow');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				authTestAssertAsBasic("select dolt_thread_dump();", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-m', 'rm to_rm')::text) = 32;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsBasic("select dolt_push('origin', 'test');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				authTestAssertAsBasic("select dolt_pull('origin', 'test');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{int64(0)}}, ""),
 				// TODO(elianddb): unsupported type int
-				authTestSkipAssertAsBasic("select dolt_stash('push', 'to_rm');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stash('push', 'to_rm');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsBasic("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsBasic("select dolt_verify_constraints('--all');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsBasic("select dolt_verify_constraints('--all');", []sql.Row{{int64(0)}}, ""),
 
 				// TODO(elianddb): provider does not implement ExtendedStatsProvider
-				authTestSkipAssertAsBasic("select dolt_stats_info('--short');", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_wait();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_flush();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_gc();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_purge();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_restart();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_once();", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_info('--short');", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_wait();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_flush();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_gc();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_purge();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_restart();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_once();", []sql.Row{{int64(0)}}, ""),
 			},
 		},
 	})
@@ -1878,10 +2571,4 @@ func authTestGrantBasic(object string, privileges ...string) ScriptTestAssertion
 		Query:    fmt.Sprintf("GRANT %s ON %s TO %s", strings.Join(privileges, ","), object, authTestBasicUser),
 		Expected: []sql.Row{},
 	}
-}
-
-// authTestFireUrl returns a file:// URL path for a temp file.
-func authTestFireUrl(path string) string {
-	path = filepath.Join(os.TempDir(), path)
-	return "file://" + filepath.ToSlash(filepath.Clean(path))
 }

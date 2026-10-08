@@ -16,6 +16,7 @@ package types
 
 import (
 	"math"
+	"math/big"
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
@@ -168,7 +169,18 @@ func deserializeTypeNumeric(ctx *sql.Context, t *DoltgresType, data []byte) (any
 	if err != nil {
 		return nil, err
 	}
-	return apd.New(retVal.CoefficientInt64(), retVal.Exponent()), nil
+	// Coefficient() returns a *big.Int; CoefficientInt64() would silently overflow for
+	// values whose coefficient exceeds int64 (e.g. large JSONB numbers in legacy format).
+	coeff := retVal.Coefficient()
+	d := new(apd.Decimal)
+	d.Exponent = retVal.Exponent()
+	if coeff.Sign() < 0 {
+		d.Negative = true
+		d.Coeff.SetMathBigInt(new(big.Int).Neg(coeff))
+	} else {
+		d.Coeff.SetMathBigInt(coeff)
+	}
+	return d, nil
 }
 
 // NumericCompare compares two *apd.Decimal values handling NaN separately.

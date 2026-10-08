@@ -46,7 +46,10 @@ var varbitin = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, _, val3 any) (any, error) {
-		input := val1.(string)
+		input, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		typmod := val3.(int32)
 
 		// validation and normalization
@@ -91,13 +94,16 @@ var varbitrecv = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		data := val1.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
 		typmod := val3.(int32)
 		var out pgtype.Varbit
-		err := out.DecodeBinary(nil, data)
+		err = out.DecodeBinary(nil, data)
 		if err != nil {
 			return nil, err
 		}
@@ -157,7 +163,7 @@ var varbittypmodin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		typmod, err := getTypModFromStringArr("bit varying", val.([]any))
+		typmod, err := getTypModFromStringArr(ctx, "bit varying", val.([]any))
 		if err != nil {
 			return nil, err
 		}

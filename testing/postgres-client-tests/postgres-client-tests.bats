@@ -15,12 +15,6 @@ setup() {
 teardown() {
     cd ..
     teardown_doltgres_repo
-
-    # Check if postgresql is still running. If so stop it
-    active=$(service postgresql status)
-    if echo "$active" | grep "online"; then
-        service postgresql stop
-    fi
 }
 
 @test "postgres-connector-java client" {
@@ -28,8 +22,16 @@ teardown() {
     java -cp $BATS_TEST_DIRNAME/java:$BATS_TEST_DIRNAME/java/postgresql-42.7.3.jar PostgresTest $USER $PORT
 }
 
+@test "r2dbc-postgresql client" {
+    java -jar /build/bin/r2dbc/r2dbc-test.jar $USER $PORT
+}
+
 @test "node postgres client" {
     node $BATS_TEST_DIRNAME/node/index.js $USER $PORT
+}
+
+@test "node postgres client, error codes" {
+    node $BATS_TEST_DIRNAME/node/errors.js $USER $PORT
 }
 
 @test "knex node postgres client" {
@@ -53,6 +55,18 @@ teardown() {
     ruby $BATS_TEST_DIRNAME/ruby/pg-test.rb $USER $PORT
 }
 
+@test "ruby Sequel client" {
+    ruby $BATS_TEST_DIRNAME/ruby/sequel-test.rb $USER $PORT
+}
+
+@test "ruby Sequel client, serialization failure retry" {
+    ruby $BATS_TEST_DIRNAME/ruby/sequel-retry-test.rb $USER $PORT
+}
+
+@test "ruby ActiveRecord client" {
+    ruby $BATS_TEST_DIRNAME/ruby/activerecord-test.rb $USER $PORT
+}
+
 @test "php pg_connect client" {
     cd $BATS_TEST_DIRNAME/php
     php pg_connect_test.php $USER $PORT
@@ -66,6 +80,18 @@ teardown() {
 @test "c postgres: libpq connector" {
     (cd $BATS_TEST_DIRNAME/c; make clean; make)
     $BATS_TEST_DIRNAME/c/postgres-c-connector-test $USER $PORT
+}
+
+@test "c++ libpqxx client" {
+    cd $BATS_TEST_DIRNAME/cpp
+    make
+    ./libpqxx-test $USER $PORT
+}
+
+@test "psqlODBC client" {
+    cd $BATS_TEST_DIRNAME/odbc
+    make
+    ./psqlodbc-test $USER $PORT
 }
 
 @test "python postgres: psycopg2 client" {
@@ -101,7 +127,52 @@ teardown() {
   npx tsx src/index.ts
 }
 
+@test "R RPostgres client" {
+    Rscript $BATS_TEST_DIRNAME/r/rpostgres-test.r $USER $PORT
+}
+
+@test "R RPostgreSQL client" {
+    Rscript $BATS_TEST_DIRNAME/r/rpostgresql-test.r $USER $PORT
+}
+
 @test "rust sqlx" {
-    cd $BATS_TEST_DIRNAME/rust
-    RUSTFLAGS=-Awarnings cargo run -- $USER $PORT
+    /build/bin/rust/sqlx_exists_demo $USER $PORT
+}
+
+@test "go pgx client" {
+    /build/bin/go/pgx-test $USER $PORT
+}
+
+@test "go lib/pq client" {
+    /build/bin/go/libpq-test $USER $PORT
+}
+
+@test "dotnet Npgsql client" {
+    /build/bin/dotnet/npgsql-test $USER $PORT
+}
+
+@test "elixir postgrex client" {
+    skip "fails from https://github.com/dolthub/doltgresql/issues/2859"
+    /build/bin/elixir/postgrex-test $USER $PORT
+}
+
+@test "swift postgresnio client" {
+    /build/bin/swift/postgresnio-test $USER $PORT
+}
+
+@test "libaprutil apr_dbd client" {
+    (cd $BATS_TEST_DIRNAME/c; make)
+    $BATS_TEST_DIRNAME/c/libaprutil-test $USER $PORT
+}
+
+@test "libdbi pgsql client" {
+    (cd $BATS_TEST_DIRNAME/c; make)
+    $BATS_TEST_DIRNAME/c/libdbi-test $USER $PORT
+}
+
+@test "duckdb postgres extension" {
+    # DuckDB imports remote tables using COPY (SELECT ...) TO STDOUT (FORMAT "binary")
+    query_server -c "CREATE TABLE duckdb_test (pk int primary key, name text, price double precision, active boolean, created timestamp)" -t
+    query_server -c "INSERT INTO duckdb_test VALUES (1, 'first', 1.5, true, '2025-01-01 12:00:00'), (2, NULL, -2.25, false, '2025-06-15 08:30:00'), (3, '', 0, NULL, NULL), (4, 'héllo, \"world\"', 1e10, true, '1999-12-31 23:59:59')" -t
+    bash $BATS_TEST_DIRNAME/duckdb/duckdb-test.sh $USER $PORT
 }

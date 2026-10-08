@@ -17,8 +17,6 @@ package tree
 import (
 	"strings"
 
-	"github.com/lib/pq"
-
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -303,10 +301,11 @@ func (node *Return) Format(ctx *FmtCtx) {
 // It is not used directly during parsing, but replaces the ColumnItem
 // or Placeholder input.
 type FunctionColumn struct {
-	Name   string
-	Idx    uint16
-	Typ    *pgtypes.DoltgresType
-	StrVal string // Do not set it for CREATE FUNCTION
+	Name       string
+	Idx        uint16
+	Typ        *pgtypes.DoltgresType
+	FromCreate bool
+	Val        any
 }
 
 // ResolvedType implements the TypedExpr interface.
@@ -316,14 +315,5 @@ func (f FunctionColumn) ResolvedType() *types.T {
 
 // Format implements the NodeFormatter interface.
 func (f FunctionColumn) Format(ctx *FmtCtx) {
-	if f.StrVal == "" {
-		ctx.WriteString(f.Name)
-	}
-	// only used when generating query with parameters replaced with actual value
-	switch f.Typ.TypCategory {
-	case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes, pgtypes.TypeCategory_UserDefinedTypes:
-		ctx.WriteString(pq.QuoteLiteral(f.StrVal))
-	default:
-		ctx.WriteString(f.StrVal)
-	}
+	ctx.WriteString(f.Name)
 }

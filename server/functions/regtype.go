@@ -45,7 +45,10 @@ var regtypein = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// If the string just represents a number, then we return it.
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if parsedOid, err := strconv.ParseUint(input, 10, 32); err == nil {
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
@@ -75,16 +78,25 @@ var regtypein = framework.Function1{
 		default:
 			return id.Null, errors.Errorf("regtype failed validation")
 		}
+		// All dimensionalities of an array share one PostgreSQL type.
+		isArray := false
+		for strings.HasSuffix(typeName, "[]") {
+			isArray = true
+			typeName = strings.TrimSpace(strings.TrimSuffix(typeName, "[]"))
+		}
 		// Remove everything after the first parenthesis
 		typeName = strings.Split(typeName, "(")[0]
 
-		if typeName == "char" && schema == "" {
+		if typeName == "char" && schema == "" && !isArray {
 			return id.NewType("pg_catalog", "bpchar").AsId(), nil
 		}
 		if typeName == "int" {
 			typeName = "int4"
 		}
 		if internalID, ok := pgtypes.NameToInternalID[typeName]; ok && (internalID.SchemaName() == schema || schema == "") {
+			if isArray {
+				return pgtypes.IDToBuiltInDoltgresType[internalID].ToArrayType().ID.AsId(), nil
+			}
 			return internalID.AsId(), nil
 		}
 		return id.Null, pgtypes.ErrTypeDoesNotExist.New(input)
@@ -102,9 +114,20 @@ var regtypeout = framework.Function1{
 		if internalID.Section() == id.Section_OID {
 			return internalID.Segment(0), nil
 		}
+		// GMS represents both PostgreSQL json and jsonb with its single JSON
+		// type, whose SQLStandardName is jsonb. Preserve the distinct
+		// PostgreSQL names when formatting regtype values.
+		if typ := pgtypes.GetTypeByID(id.Type(internalID)); typ != nil {
+			switch typ.ID.TypeName() {
+			case "json", "jsonb":
+				return typ.ID.TypeName(), nil
+			}
+		}
 		toid := id.Cache().ToOID(internalID)
 		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
 			return t.SQLStandardName(), nil
+		} else if typ := pgtypes.GetTypeByID(id.Type(internalID)); typ != nil && typ.IsArrayType() {
+			return typ.ArrayBaseType().Name() + "[]", nil
 		} else {
 			return internalID.Segment(1), nil
 		}
@@ -118,7 +141,10 @@ var regtyperecv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}

@@ -16,10 +16,13 @@ package analyzer
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
@@ -54,6 +57,7 @@ func AssignTriggers(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope
 					Sch:      sch,
 					Source:   getTriggerSource(node),
 					Runner:   pgexprs.StatementRunner{Runner: a.Runner},
+					TgOp:     getTriggerOperation(node),
 				})
 				if err != nil {
 					return nil, transform.NewTree, err
@@ -68,6 +72,7 @@ func AssignTriggers(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope
 					Sch:      sch,
 					Source:   newNode,
 					Runner:   pgexprs.StatementRunner{Runner: a.Runner},
+					TgOp:     getTriggerOperation(node),
 				}
 			}
 			return newNode, transform.NewTree, nil
@@ -145,7 +150,7 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 	for _, trig := range allTrigs {
 		matchesEventType := false
 		for _, event := range trig.Events {
-			switch node.(type) {
+			switch node := node.(type) {
 			case *plan.DeleteFrom:
 				if event.Type == triggers.TriggerEventType_Delete {
 					matchesEventType = true
@@ -159,7 +164,7 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 					matchesEventType = true
 				}
 			case *plan.Update:
-				if event.Type == triggers.TriggerEventType_Update {
+				if event.Type == triggers.TriggerEventType_Update && (len(event.ColumnNames) == 0 || updateTargetsAnyColumn(node, event.ColumnNames)) {
 					matchesEventType = true
 				}
 			}
@@ -189,6 +194,28 @@ func hasJoinNode(node sql.Node) bool {
 		return !updateJoinFound
 	})
 	return updateJoinFound
+}
+
+// updateTargetsAnyColumn returns whether the SET list of the given UPDATE assigns any of the given columns.
+func updateTargetsAnyColumn(update *plan.Update, colNames []string) bool {
+	targetsColumn := false
+	transform.Inspect(update.Child, func(n sql.Node) bool {
+		updateSource, ok := n.(*plan.UpdateSource)
+		if !ok {
+			return !targetsColumn
+		}
+		for _, expr := range updateSource.UpdateExprs.ExplicitUpdateExprs() {
+			if setField, ok := expr.(*expression.SetField); ok {
+				if field, ok := setField.LeftChild.(*expression.GetField); ok {
+					targetsColumn = targetsColumn || slices.ContainsFunc(colNames, func(colName string) bool {
+						return strings.EqualFold(field.Name(), colName)
+					})
+				}
+			}
+		}
+		return false
+	})
+	return targetsColumn
 }
 
 // getTriggerSource returns the trigger's source node.
@@ -221,6 +248,22 @@ func getTriggerRowHandling(node sql.Node) pgnodes.TriggerExecutionRowHandling {
 		return pgnodes.TriggerExecutionRowHandling_OldNew
 	default:
 		return pgnodes.TriggerExecutionRowHandling_None
+	}
+}
+
+// getTriggerOperation returns the operation that the node fires its triggers for, as seen by TG_OP.
+func getTriggerOperation(node sql.Node) string {
+	switch node.(type) {
+	case *plan.DeleteFrom:
+		return "DELETE"
+	case *plan.InsertInto:
+		return "INSERT"
+	case *plan.Truncate:
+		return "TRUNCATE"
+	case *plan.Update:
+		return "UPDATE"
+	default:
+		return ""
 	}
 }
 

@@ -196,6 +196,11 @@ func (p pgCatalogInMemIndex) PrefixLengths() []uint16 {
 	return make([]uint16, len(p.columnExprs))
 }
 
+// CoversColumns implements the interface sql.Index.
+func (p pgCatalogInMemIndex) CoversColumns([]string) bool {
+	return false
+}
+
 var _ sql.Index = (*pgCatalogInMemIndex)(nil)
 
 // inMemIndexPartition is a sql.Partition that represents the single partition for an in memory index lookup.

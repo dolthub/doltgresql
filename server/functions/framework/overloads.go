@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/procedures"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -42,13 +43,13 @@ func NewOverloads() *Overloads {
 // Add adds the given function to the overload collection. Returns an error if the there's a problem with the
 // function's declaration.
 func (o *Overloads) Add(function FunctionInterface) error {
-	key := keyForParamTypes(function.GetParameters())
+	key := keyForParamTypes(function.GetInputParameterTypes())
 	if _, ok := o.ByParamType[key]; ok {
 		return errors.Errorf("duplicate function overload for `%s`", function.GetName())
 	}
 
 	if function.VariadicIndex() >= 0 {
-		varArgsType := function.GetParameters()[function.VariadicIndex()]
+		varArgsType := function.GetInputParameterTypes()[function.VariadicIndex()]
 		if !varArgsType.IsArrayType() {
 			return errors.Errorf("variadic parameter must be an array type for function `%s`", function.GetName())
 		}
@@ -75,7 +76,7 @@ func keyForParamTypes(types []*pgtypes.DoltgresType) string {
 func (o *Overloads) overloadsForParams(numParams int) []Overload {
 	results := make([]Overload, 0, len(o.AllOverloads))
 	for _, overload := range o.AllOverloads {
-		params := overload.GetParameters()
+		params := overload.GetInputParameterTypes()
 		variadicIndex := overload.VariadicIndex()
 		if overload.IsCVariadic() {
 			if len(params) <= numParams {
@@ -104,7 +105,7 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 			// parameter count from the target parameter count to obtain the additional parameter count.
 			firstValueAfterVariadic := variadicIndex + 1 + (numParams - len(params))
 			copy(extendedParams[firstValueAfterVariadic:], params[variadicIndex+1:])
-			paramType := overload.GetParameters()[variadicIndex]
+			paramType := overload.GetInputParameterTypes()[variadicIndex]
 
 			var variadicBaseType *pgtypes.DoltgresType
 
@@ -138,9 +139,11 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 		} else if sqlFunc, ok := overload.(SQLFunction); ok && len(params) > numParams {
 			// if it's SQL function and has fewer arguments than parameters, check for default values.
 			restIsDefaultValues := true
-			for _, d := range sqlFunc.ParameterDefaults[numParams:] {
-				if d == "" {
-					restIsDefaultValues = false
+			for i, param := range sqlFunc.AllParams {
+				if i >= numParams && param.Mode != procedures.ParameterMode_OUT {
+					if param.Default == "" {
+						restIsDefaultValues = false
+					}
 				}
 			}
 			if restIsDefaultValues {

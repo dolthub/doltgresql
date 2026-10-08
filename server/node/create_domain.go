@@ -68,7 +68,7 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if err != nil {
 		return nil, err
 	}
-	collection, err := core.GetTypesCollectionFromContext(ctx)
+	collection, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (c *CreateDomain) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) String() string {
-	return "CREATE DOMAIN"
+	return fmt.Sprintf("CREATE DOMAIN %s", c.Name)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
@@ -182,7 +182,7 @@ func (c *CreateDomain) WithResolvedChildren(ctx context.Context, children []any)
 		if !ok {
 			return nil, errors.Errorf("%T requires a SQL context for type resolution", c)
 		}
-		typeColl, err := core.GetTypesCollectionFromContext(sqlCtx)
+		typeColl, err := core.GetTypesCollectionFromContext(sqlCtx, "")
 		if err != nil {
 			return nil, err
 		}

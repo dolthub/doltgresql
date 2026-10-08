@@ -43,7 +43,10 @@ var to_char_timestamp_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		timestamp := val1.(time.Time)
-		format := val2.(string)
+		format, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 
 		loc, err := GetServerLocation(ctx)
 		if err != nil {
@@ -63,7 +66,10 @@ var to_char_timestamptz_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		timestamp := val1.(time.Time)
-		format := val2.(string)
+		format, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 
 		loc, err := GetServerLocation(ctx)
 		if err != nil {
@@ -108,7 +114,10 @@ var to_char_interval_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		interval := val1.(duration.Duration)
-		format := val2.(string)
+		format, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 
 		ttc := &tmToChar{}
 		ttc.year = int(interval.Months) / monthsPerYear

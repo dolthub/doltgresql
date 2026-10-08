@@ -20,9 +20,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -31,6 +32,9 @@ var Catalog = map[string][]FunctionInterface{}
 
 // AggregateCatalog contains all of the PostgreSQL aggregate functions.
 var AggregateCatalog = map[string][]AggregateFunctionInterface{}
+
+// WindowCatalog contains all of the PostgreSQL functions that may only be used as window functions.
+var WindowCatalog = map[string][]WindowFunctionInterface{}
 
 // initializedFunctions simply states whether Initialize has been called yet.
 var initializedFunctions = false
@@ -95,9 +99,24 @@ func RegisterAggregateFunction(f AggregateFunctionInterface) {
 	}
 }
 
+// RegisterWindowFunction registers the given window-only function, so that it will be usable from a running
+// server. This should be called from within an init().
+func RegisterWindowFunction(f WindowFunctionInterface) {
+	if initializedFunctions {
+		panic("attempted to register a function after the init() phase")
+	}
+	switch f.(type) {
+	case Func0Window, Func1Window, Func2Window:
+		name := strings.ToLower(f.GetName())
+		WindowCatalog[name] = append(WindowCatalog[name], f)
+	default:
+		panic(fmt.Sprintf("unhandled function type %T", f))
+	}
+}
+
 // Initialize handles the initialization of the catalog by overwriting the built-in GMS functions, since they do not
 // apply to PostgreSQL (and functions of the same name often have different behavior).
-func Initialize() {
+func Initialize(astConvert func(parser.Statement) (sqlparser.Statement, error)) {
 	// This should only be called once. We don't use sync.Once since we also want to panic if someone attempts to
 	// register a function after initialization.
 	if initializedFunctions {
@@ -105,18 +124,26 @@ func Initialize() {
 	}
 	initializedFunctions = true
 
+	convertToVitess = astConvert
 	pgtypes.LoadFunctionFromCatalog = getQuickFunctionForTypes
-	analyzer.ExternalFunctionProvider = &FunctionProvider{}
+	pgtypes.LoadExtensionFunction = getQuickExtensionFunction
 	replaceGmsBuiltIns()
 	validateFunctions()
 	compileFunctions()
 	compileAggs()
+	compileWindowFuncs()
 }
 
 // replaceGmsBuiltIns replaces all GMS built-ins that have conflicting names with PostgreSQL functions.
 func replaceGmsBuiltIns() {
 	functionNames := make(map[string]struct{})
 	for name := range Catalog {
+		functionNames[strings.ToLower(name)] = struct{}{}
+	}
+	for name := range AggregateCatalog {
+		functionNames[strings.ToLower(name)] = struct{}{}
+	}
+	for name := range WindowCatalog {
 		functionNames[strings.ToLower(name)] = struct{}{}
 	}
 	var newBuiltIns []sql.Function
@@ -142,9 +169,9 @@ func validateFunction(funcName string, overloads []FunctionInterface) error {
 	// Verify that each function uses the correct Function overload
 	for _, functionOverload := range overloads {
 		if functionOverload.GetExpectedParameterCount() >= 0 &&
-			len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
+			len(functionOverload.GetInputParameterTypes()) != functionOverload.GetExpectedParameterCount() {
 			return errors.Errorf("function `%s` should have %d arguments but has %d arguments",
-				funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetParameters()))
+				funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetInputParameterTypes()))
 		}
 	}
 	// Verify that all overloads are unique
@@ -152,8 +179,8 @@ func validateFunction(funcName string, overloads []FunctionInterface) error {
 		for _, f2 := range overloads[functionIndex+1:] {
 			sameCount := 0
 			if f1.GetExpectedParameterCount() == f2.GetExpectedParameterCount() {
-				f2Parameters := f2.GetParameters()
-				for parameterIndex, f1Parameter := range f1.GetParameters() {
+				f2Parameters := f2.GetInputParameterTypes()
+				for parameterIndex, f1Parameter := range f1.GetInputParameterTypes() {
 					if f1Parameter.Equals(f2Parameters[parameterIndex]) {
 						sameCount++
 					}
@@ -188,12 +215,10 @@ func compileNonOperatorFunction(funcName string, overloads []FunctionInterface) 
 	compiledCatalog[funcName] = createFunc
 }
 
-// compileNonOperatorFunction creates a CompiledFunction for each overload of the given function.
+// compileAggFunction creates a CompiledAggregateFunction for each overload of the given aggregate function.
 func compileAggFunction(funcName string, overloads []AggregateFunctionInterface) {
-	var newBuffer NewBufferFn
 	overloadTree := NewOverloads()
 	for _, functionOverload := range overloads {
-		newBuffer = functionOverload.NewBuffer
 		if err := overloadTree.Add(functionOverload); err != nil {
 			panic(err)
 		}
@@ -202,7 +227,27 @@ func compileAggFunction(funcName string, overloads []AggregateFunctionInterface)
 	// Store the compiled function into the engine's built-in functions
 	// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
 	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
-		return NewCompiledAggregateFunction(ctx, funcName, params, overloadTree, newBuffer), nil
+		return NewCompiledAggregateFunction(ctx, funcName, params, overloadTree), nil
+	}
+	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
+		Name: funcName,
+		Fn:   createFunc,
+	})
+	compiledCatalog[funcName] = createFunc
+}
+
+// compileWindowFunction creates a CompiledWindowFunction for each overload of the given window-only function.
+func compileWindowFunction(funcName string, overloads []WindowFunctionInterface) {
+	overloadTree := NewOverloads()
+	for _, functionOverload := range overloads {
+		if err := overloadTree.Add(functionOverload); err != nil {
+			panic(err)
+		}
+	}
+
+	// Store the compiled function into the engine's built-in functions
+	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
+		return NewCompiledWindowFunction(ctx, funcName, params, overloadTree), nil
 	}
 	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 		Name: funcName,
@@ -255,5 +300,11 @@ func compileFunctions() {
 func compileAggs() {
 	for funcName, overloads := range AggregateCatalog {
 		compileAggFunction(funcName, overloads)
+	}
+}
+
+func compileWindowFuncs() {
+	for funcName, overloads := range WindowCatalog {
+		compileWindowFunction(funcName, overloads)
 	}
 }

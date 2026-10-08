@@ -1,0 +1,2470 @@
+# Ported from Dolt's integration-tests/go-sql-server-driver/tests/sql-server-cluster.yaml.
+#
+# Doltgres does NOT yet implement cluster replication or the remotes API, so
+# every test in this file is marked `skip:`. The SQL, config, and assertions are
+# translated to Postgres/Doltgres faithfully so that this file is a ready spec
+# for when the feature lands.
+#
+# Translation notes:
+#   * The doltgres binary has a minimal CLI (--config, --data-dir). The listener
+#     port/host/socket are auto-injected by the test framework, so config files
+#     omit listener.port (and listener.host); they keep only log_level, behavior,
+#     and cluster blocks. {{get_port ...}} templating is preserved where it
+#     refers to OTHER servers' ports (cluster.remotesapi.port and
+#     remote_url_template URLs).
+#   * Dolt's CALL DOLT_X(...) / SELECT DOLT_X() become SELECT dolt_x(...). The
+#     result column defaults to the function name and the value renders like a
+#     Postgres function with OUT parameters: a bare value for single-column
+#     results (e.g. 0) and a record for multi-column results (e.g.
+#     (0,"Switched to branch 'b1'")).
+#   * Backtick identifiers become double-quoted identifiers.
+#   * `select ... from dual` becomes `select ...`.
+#   * MySQL system-variable access becomes Postgres: `SELECT @@GLOBAL.x` ->
+#     `SELECT current_setting('x') AS x`, and `SET @@GLOBAL.x = v` /
+#     `SET @@PERSIST.x = v` -> `SET x = v`.
+parallel: true
+tests:
+- name: persisted role and epoch take precedence over bootstrap values
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: standby_server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    - name: primary_server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 15
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "standby_server.yaml"]
+      dynamic_port: server1
+  connections:
+  - on: server1
+    queries:
+    - exec: "use dolt_cluster"
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
+        rows: [["standby","10"]]
+    - query: |
+        select "database", standby_remote, role, epoch from dolt_cluster_status order by "database" asc
+      result:
+        columns: ["database","standby_remote","role","epoch"]
+        rows:
+        - ["postgres","standby","standby","10"]
+        - ["repo1","standby","standby","10"]
+        - ["repo2","standby","standby","10"]
+    restart_server:
+      args: ["--config", "primary_server.yaml"]
+  - on: server1
+    queries:
+    - exec: "use dolt_cluster"
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
+        rows: [["standby","10"]]
+- name: dolt_assume_cluster_role
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  connections:
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - query: "select dolt_assume_cluster_role('standby', '9')"
+      error_match: "error assuming role"
+    - query: "select dolt_assume_cluster_role('primary', '10')"
+      error_match: "error assuming role"
+    - query: "select dolt_assume_cluster_role('backup', '11')"
+      error_match: "error assuming role"
+    - query: "select dolt_assume_cluster_role('standby', '10')"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
+        rows: [["standby","10"]]
+    - query: "select dolt_assume_cluster_role('standby', '12')"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
+        rows: [["standby","12"]]
+    - query: "select dolt_assume_cluster_role('primary', '13')"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+    # Connection should be broken now.
+    - query: "select 2"
+      error_match: "this connection can no longer be used"
+  - on: server1
+    queries:
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
+        rows: [["primary","13"]]
+    restart_server: {}
+  # Assert that it comes back up with newly assumed role.
+  - on: server1
+    queries:
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
+        rows: [["primary","13"]]
+- name: create database makes a new remote
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  connections:
+  - on: server1
+    queries:
+    - exec: "create database a_new_database"
+    - exec: "use a_new_database"
+    - query: "select name, url from dolt_remotes"
+      result:
+        columns: ["name","url"]
+        rows: [["standby","http://127.0.0.1:{{get_port \"server2_cluster\"}}/a_new_database"]]
+- name: primary comes up and replicates to standby
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+      log_not_matches:
+      - "cluster/commithook received commit callback for a commit on .*, but we are not role primary"
+  connections:
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (1),(2),(3),(4),(5)"
+    restart_server:
+      args: ["--config", "server.yaml"]
+  - on: server1
+    queries:
+    - exec: "use dolt_cluster"
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","10","0","NULL"]
+        - ["repo1","standby","primary","10","0","NULL"]
+        - ["repo2","standby","primary","10","0","NULL"]
+      retry_attempts: 100
+  - on: server2
+    queries:
+    - exec: "use repo1"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: booted standby server is read only
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: standby_server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "standby_server.yaml"]
+      dynamic_port: server1
+  connections:
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+      error_match: "repo1 is read-only"
+- name: booted primary server is read write
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  connections:
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+- name: standby server takes primary epoch
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (1),(2),(3),(4),(5)"
+    restart_server:
+      args: ["--config", "server.yaml"]
+  - on: server1
+    queries:
+    - exec: "use dolt_cluster"
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","10","0","NULL"]
+        - ["repo1","standby","primary","10","0","NULL"]
+        - ["repo2","standby","primary","10","0","NULL"]
+      retry_attempts: 100
+  - on: server2
+    queries:
+    - exec: "use repo1"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+    - query: "select current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role_epoch"]
+        rows: [["10"]]
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "select dolt_assume_cluster_role('primary', 11)"
+    - exec: "insert into vals values (6),(7),(8),(9),(10)"
+    - exec: "use dolt_cluster"
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","11","0","NULL"]
+        - ["repo1","standby","primary","11","0","NULL"]
+        - ["repo2","standby","primary","11","0","NULL"]
+      retry_attempts: 100
+  - on: server2
+    queries:
+    - exec: "use repo1"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+    - query: "select current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role_epoch"]
+        rows: [["11"]]
+- name: standby transitioned to primary becomes read write
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: standby_server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "standby_server.yaml"]
+      dynamic_port: server1
+  connections:
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+      error_match: "repo1 is read-only"
+    - query: "select dolt_assume_cluster_role('primary', 11)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["0"]]
+- name: primary transitioned to standby becomes read only
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (1),(2),(3),(4),(5)"
+    - query: "select dolt_assume_cluster_role('standby', 11)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "insert into vals values (6),(7),(8),(9),(10)"
+      error_match: "repo1 is read-only"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: misconfigured cluster with primaries at same epoch, both transition to detected_broken_config
+  skip: "cluster replication not yet implemented in Doltgres"
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    retry_attempts: 100
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role,current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role", "dolt_cluster_role_epoch"]
+        rows: [["detected_broken_config", "10"]]
+    - exec: "use repo1"
+    - exec: "create table more_vals (i int primary key)"
+      error_match: "repo1 is read-only"
+  - on: server2
+    retry_attempts: 100
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role,current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role", "dolt_cluster_role_epoch"]
+        rows: [["detected_broken_config", "10"]]
+    - exec: "use repo1"
+    - exec: "create table more_vals (i int primary key)"
+      error_match: "repo1 is read-only"
+- name: an older primary comes up, becomes a standby and does not overwrite newer primary
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: preserver.yaml
+      contents: |
+        log_level: trace
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 15
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "preserver.yaml"]
+      dynamic_port: server1
+  - name: server2
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo2
+    with_files:
+    - name: preserver.yaml
+      contents: |
+        log_level: trace
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "preserver.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'use repo1'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'insert into vals values (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)'
+  - on: server2
+    queries:
+    - exec: 'use repo1'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'insert into vals values (1),(2),(3),(4),(5)'
+  - on: server1
+    restart_server:
+      args: ["--config", "server.yaml"]
+  - on: server1
+  - on: server2
+    restart_server:
+      args: ["--config", "server.yaml"]
+  - on: server1
+    queries:
+    - exec: "use dolt_cluster"
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","15","0","NULL"]
+        - ["repo1","standby","primary","15","0","NULL"]
+        - ["repo2","standby","primary","15","0","NULL"]
+      retry_attempts: 100
+    - exec: "use repo1"
+    - query: "SELECT count(*) FROM vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+  - on: server2
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role,current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role", "dolt_cluster_role_epoch"]
+        rows: [["standby", "15"]]
+    - exec: "use repo1"
+    - query: "SELECT count(*) FROM vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+- name: a newer primary comes up, old primary becomes a standby has its state overwritten
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: preserver.yaml
+      contents: |
+        log_level: trace
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "preserver.yaml"]
+      dynamic_port: server1
+  - name: server2
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server1_cluster"}}/repo2
+    with_files:
+    - name: preserver.yaml
+      contents: |
+        log_level: trace
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 15
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "preserver.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'use repo1'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'insert into vals values (1),(2),(3),(4),(5),(6),(7),(8),(9),(10)'
+  - on: server2
+    queries:
+    - exec: 'use repo1'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'insert into vals values (1),(2),(3),(4),(5)'
+  - on: server1
+    restart_server:
+      args: ["--config", "server.yaml"]
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - query: "SELECT count(*) FROM vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+  - on: server2
+    restart_server:
+      args: ["--config", "server.yaml"]
+  - on: server2
+    queries:
+    - exec: "use dolt_cluster"
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","15","0","NULL"]
+        - ["repo1","standby","primary","15","0","NULL"]
+        - ["repo2","standby","primary","15","0","NULL"]
+      retry_attempts: 100
+    - exec: "use repo1"
+    - query: "SELECT count(*) FROM vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+  - on: server1
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role,current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role", "dolt_cluster_role_epoch"]
+        rows: [["standby", "15"]]
+    - exec: "use repo1"
+    - query: "SELECT count(*) FROM vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: graceful primary to standby transition without the standby up fails
+  multi_repos:
+  - name: server1
+    repos:
+    - name: repo1
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo1
+    - name: repo2
+      with_remotes:
+      - name: standby
+        url: http://127.0.0.1:{{get_port "server2_cluster"}}/repo2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 10
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  connections:
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - query: "select dolt_assume_cluster_role('standby', '11')"
+      error_match: failed to transition from primary to standby gracefully
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (0)"
+- name: dolt_cluster_transition_to_standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - exec: "use repo1"
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    - query: 'select * from dolt_cluster_transition_to_standby(2, 1) order by "database"'
+      result:
+        columns: ["caught_up", "database", "remote", "remote_url"]
+        rows:
+        - ["1", "dolt_branch_control", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "mysql", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "postgres", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/postgres"]
+        - ["1", "repo1", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/repo1"]
+  - on: server1
+    queries:
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
+      result:
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
+        rows: [["standby","2"]]
+- name: dolt_cluster_transition_to_standby too many standbys provided
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - exec: "use repo1"
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    # Unlike Dolt, the database count includes the auto-created default database "postgres"
+    # (postgres, repo1, mysql users/grants, dolt_branch_control).
+    - query: "select dolt_cluster_transition_to_standby('2', '2')"
+      error_match: failed to transition from primary to standby gracefully; could not ensure 2 replicas were caught up on all 4 databases. Only caught up 1 standbys fully.
+- name: create new database, primary replicates to standby, fails over, new primary replicates to standby, fails over, new primary has all writes
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server2
+    queries:
+    - exec: 'use repo1'
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+    - query: "select dolt_assume_cluster_role('primary', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server2
+    queries:
+    - exec: 'use repo1'
+    - exec: 'insert into vals values (5),(6),(7),(8),(9)'
+    - query: "select dolt_assume_cluster_role('standby', 3)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server1
+    queries:
+    - exec: 'use repo1'
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+    - query: "select dolt_assume_cluster_role('primary', 3)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server1
+    queries:
+    - exec: 'use repo1'
+    - exec: 'insert into vals values (10),(11),(12),(13),(14)'
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["15"]]
+- name: last_updated heartbeats
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server1
+    queries:
+    - query: "select dolt_assume_cluster_role('primary', 3)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server2
+    database: dolt_cluster
+    queries:
+    - query: "SELECT EXTRACT(EPOCH FROM (NOW() - last_update)) < 5 AS within_threshold FROM dolt_cluster_status;"
+      result:
+        columns: ["within_threshold"]
+        rows: [["true"],["true"]]
+    - query: "SELECT pg_sleep(5)"
+      result:
+        columns: ["pg_sleep"]
+        rows: [["NULL"]]
+    - query: "SELECT EXTRACT(EPOCH FROM (NOW() - last_update)) < 5 AS within_threshold FROM dolt_cluster_status;"
+      result:
+        columns: ["within_threshold"]
+        rows: [["true"],["true"]]
+- name: create new database, clone a database, primary replicates to standby, standby has both databases
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    - exec: 'select dolt_commit(''-Am'', ''create a commit'')'
+    - exec: 'select dolt_remote(''add'', ''origin'', ''file://my_remote/'')'
+    - exec: 'select dolt_push(''origin'', ''main:main'')'
+    - exec: 'select dolt_clone(''file://repo1/my_remote'', ''repo_cloned'')'
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server2
+    queries:
+    - exec: 'use repo1'
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+    - exec: 'use repo_cloned'
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: dolt_cluster_ack_writes_timeout_secs behavior
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  # This test writes new commits on the primary and quickly checks for them on
+  # the secondary. If dolt_cluster_ack_writes_timeout_secs is working as
+  # intended, the new writes will always be present.
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+      result:
+        columns: ["tablename"]
+        rows: [["vals"]]
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2),(3),(4)'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'INSERT INTO vals VALUES (5),(6),(7),(8),(9)'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+  # Restart both servers to test the behavior of the persisted variable.
+  - on: server1
+    restart_server: {}
+  - on: server2
+    restart_server: {}
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'INSERT INTO vals VALUES (10),(11),(12),(13),(14)'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["15"]]
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'INSERT INTO vals VALUES (15),(16),(17),(18),(19)'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["20"]]
+   # Assert that branch creation and deletion also blocks on replication.
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'SELECT dolt_branch(''new_branch'')'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) FROM dolt_branches'
+      result:
+        columns: ["count"]
+        rows: [["2"]]
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'SELECT dolt_branch(''-d'', ''new_branch'')'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) FROM dolt_branches'
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'SELECT dolt_branch(''new_branch'')'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) FROM dolt_branches'
+      result:
+        columns: ["count"]
+        rows: [["2"]]
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'SELECT dolt_branch(''-d'', ''new_branch'')'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) FROM dolt_branches'
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+- name: call dolt checkout
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  connections:
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'select dolt_branch(''-c'', ''main'', ''new_branch_name'')'
+  - on: server1
+    queries:
+    - exec: 'use repo1'
+    - exec: 'select dolt_checkout(''new_branch_name'')'
+# At one point the dolt_cluster database interacted poorly with creating savepoints.
+- name: savepoints work on cluster replicated databases
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (id int primary key, val int)'
+    - exec: 'begin'
+    - exec: 'savepoint before_values_inserted'
+    - exec: 'insert into vals values (1,1)'
+    - exec: 'insert into vals values (2,2)'
+    - exec: 'insert into vals values (3,3)'
+    - exec: 'insert into vals values (4,4)'
+    - exec: 'rollback to savepoint before_values_inserted'
+    - exec: 'commit'
+  - on: server1
+    queries:
+    - exec: "use dolt_cluster"
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","1","0","NULL"]
+        - ["repo1","standby","primary","1","0","NULL"]
+      retry_attempts: 100
+  - on: server2
+    queries:
+    - exec: 'use repo1'
+    - query: "select * from vals order by id asc"
+      result:
+        columns: ["id","val"]
+        rows: []
+- name: call dolt gc
+  skip: "relies on dolt_gc and auto_gc_behavior server config, which are out of scope for cluster replication support"
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        behavior:
+          auto_gc_behavior:
+            enable: false
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        behavior:
+          auto_gc_behavior:
+            enable: false
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (id int primary key, val int)'
+    - exec: 'insert into vals values (1,1)'
+    - exec: 'insert into vals values (2,2)'
+    - exec: 'insert into vals values (3,3)'
+    - exec: 'insert into vals values (4,4)'
+    - exec: 'select dolt_gc()'
+    - exec: 'select * from vals'
+      error_match: "this connection can no longer be used"
+  - on: server1
+    queries:
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster.dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["repo1","standby","primary","1","0","NULL"]
+      retry_attempts: 100
+  - on: server2
+    queries:
+    - exec: 'use repo1'
+    - query: "select * from vals order by id asc"
+      result:
+        columns: ["id","val"]
+        rows:
+        - ["1","1"]
+        - ["2","2"]
+        - ["3","3"]
+        - ["4","4"]
+    - exec: 'select dolt_gc()'
+      error_match: "must be the primary"
+    - exec: 'select dolt_gc(''--shallow'')'
+- name: dropped database is no longer present on replica
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'create database repo2'
+    - exec: 'use repo2'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'use dolt_cluster'
+    # The retry here (and on status assertions generally) matters for the postgres database: unlike the
+    # user databases above, whose replication is synchronized by dolt_cluster_ack_writes_timeout_secs,
+    # the auto-created postgres database is first pushed by the background replication thread some time
+    # after startup, so its replication_lag_millis stays NULL until that first push completes.
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis is not null as \"replication_lag_millis\", current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres", "standby", "primary", "1", "true", "NULL"]
+        - ["repo1", "standby", "primary", "1", "true", "NULL"]
+        - ["repo2", "standby", "primary", "1", "true", "NULL"]
+      retry_attempts: 100
+    - exec: 'use repo1'
+    - exec: 'drop database repo2'
+    - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    - query: 'SELECT datname FROM pg_database ORDER BY datname'
+      result:
+        columns: ["datname"]
+        rows:
+        - ["dolt_cluster"]
+        - ["postgres"]
+        - ["repo1"]
+    - exec: 'use dolt_cluster'
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis is not null as \"replication_lag_millis\", current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres", "standby", "primary", "1", "true", "NULL"]
+        - ["repo1", "standby", "primary", "1", "true", "NULL"]
+      retry_attempts: 100
+  - on: server2
+    queries:
+    - query: 'SELECT datname FROM pg_database ORDER BY datname'
+      result:
+        columns: ["datname"]
+        rows:
+        - ["dolt_cluster"]
+        - ["postgres"]
+        - ["repo1"]
+      retry_attempts: 100
+    - exec: 'use dolt_cluster'
+    - query: "select \"database\", standby_remote, role, epoch from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch"]
+        rows:
+        - ["postgres", "standby", "standby", "1"]
+        - ["repo1", "standby", "standby", "1"]
+- name: undropped database on primary is replicated to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'create database repo1'
+    - exec: 'create database droppedrepo'
+    - exec: 'use droppedrepo'
+    - exec: 'create table vals (i int primary key)'
+    - exec: 'use repo1'
+    - exec: 'drop database droppedrepo'
+    - exec: 'create table vals (i int primary key)'
+  - on: server2
+    queries:
+    - exec: 'use repo1'
+    - exec: 'select dolt_undrop(''droppedrepo'')'
+      error_match: "database server is set to read only mode"
+  - on: server1
+    queries:
+    - exec: 'use repo1'
+    - exec: 'select dolt_undrop(''droppedrepo'')'
+    - exec: 'use droppedrepo'
+    - exec: 'insert into vals values (0),(1),(2)'
+  - on: server2
+    queries:
+    - exec: 'use droppedrepo'
+    - query: 'select count(*) as cnt from vals'
+      result:
+        columns: ["cnt"]
+        rows: [["3"]]
+- name: dropped database recreated quiesces to expected state
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (a int)'
+    - exec: 'use postgres'
+    - exec: 'drop database repo1'
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (b int)'
+    - exec: 'use postgres'
+    - exec: 'drop database repo1'
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (c int)'
+    - exec: 'use postgres'
+    - exec: 'drop database repo1'
+    - exec: 'use dolt_cluster'
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis is not null as \"replication_lag_millis\", current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres", "standby", "primary", "1", "true", "NULL"]
+      retry_attempts: 100
+  - on: server2
+    queries:
+    - query: 'SELECT datname FROM pg_database ORDER BY datname'
+      result:
+        columns: ["datname"]
+        rows:
+        - ["dolt_cluster"]
+        - ["postgres"]
+      retry_attempts: 100
+    - exec: 'use dolt_cluster'
+    - query: "select \"database\", standby_remote, role, epoch from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch"]
+        rows:
+        - ["postgres", "standby", "standby", "1"]
+  - on: server1
+    queries:
+    - exec: 'create database repo1'
+    - exec: 'use repo1'
+    - exec: 'create table vals (d int)'
+  - on: server2
+    queries:
+    - query: 'SELECT datname FROM pg_database ORDER BY datname'
+      result:
+        columns: ["datname"]
+        rows:
+        - ["dolt_cluster"]
+        - ["postgres"]
+        - ["repo1"]
+      retry_attempts: 100
+    - exec: 'use repo1'
+    - query: "select d from vals"
+      result:
+        columns: ["d"]
+        rows: []
+# Assert that we can gracefully transition to standby even when there are no
+# dolt databases which we are replicating.
+- name: dolt_cluster_transition_to_standby no dolt databases exist
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - query: 'SELECT datname FROM pg_database ORDER BY datname'
+      result:
+        columns: ["datname"]
+        rows:
+        - ["dolt_cluster"]
+        - ["postgres"]
+    - query: 'select * from dolt_cluster_transition_to_standby(2, 1) order by "database"'
+      result:
+        columns: ["caught_up", "database", "remote", "remote_url"]
+        rows:
+        - ["1", "dolt_branch_control", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "mysql", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "postgres", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/postgres"]
+  - on: server2
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', '2')"
+  - on: server2
+    queries:
+    - exec: "select dolt_cluster_transition_to_standby('3', '1')"
+  - on: server1
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', '3')"
+# Assert that we can add a new standby to an existing server and bring the server up.
+- name: adding new remotes to the config creates those remotes on startup
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: onestandby.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby_one
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    - name: twostandbys.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby_one
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          - name: standby_two
+            remote_url_template: http://127.0.0.1:{{get_port "server3_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "onestandby.yaml"]
+      dynamic_port: server1
+  - name: standby_one
+    with_files:
+    - name: config.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "config.yaml"]
+      dynamic_port: server2
+  - name: standby_two
+    with_files:
+    - name: config.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server3_cluster"}}
+    server:
+      args: ["--config", "config.yaml"]
+      dynamic_port: server3
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: "create database testdb"
+    - exec: "use testdb"
+    - exec: "create table vals (id int primary key)"
+  - on: server1
+    restart_server:
+      args: ["--config", "twostandbys.yaml"]
+  - on: server1
+    queries:
+    - exec: "use testdb"
+    - query: "select count(*) from dolt_remotes"
+      result:
+        columns: ["count"]
+        rows:
+        - ["2"]
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: "insert into vals values (0),(1),(2)"
+  - on: standby_two
+    queries:
+    - exec: "use testdb"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows:
+        - ["3"]
+- name: auto_increment maintained across failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE TABLE t (id SERIAL PRIMARY KEY, v INT)'
+    - exec: 'INSERT INTO t(v) VALUES (0),(0),(0),(0),(0)'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT * FROM t ORDER BY id'
+      result:
+        columns: ['id', 'v']
+        rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0']]
+      retry_attempts: 100
+  - on: server1
+    queries:
+    - exec: "select dolt_assume_cluster_role('standby', 2)"
+  - on: server2
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', 2)"
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'INSERT INTO t(v) VALUES (1)'
+    - query: 'SELECT * FROM t ORDER BY id'
+      result:
+        columns: ['id', 'v']
+        rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0'], ['6','1']]
+# https://github.com/dolthub/dolt/issues/10015
+- name: read_only system variable reflects cluster role
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['primary']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['0']]
+  - on: server2
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['standby']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['1']]
+  # Wait for the standby to be fully caught up before the graceful transition below. The auto-created
+  # postgres database is first pushed by the background replication thread some time after startup
+  # (replication_lag_millis is NULL until that first push completes), and the graceful transition has a
+  # fixed timeout it would otherwise spend waiting on the same convergence.
+  - on: server1
+    queries:
+    - exec: 'USE dolt_cluster'
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","1","0","NULL"]
+        - ["repo1","standby","primary","1","0","NULL"]
+      retry_attempts: 100
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - exec: "select dolt_assume_cluster_role('standby', 2)"
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['standby']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['1']]
+  - on: server2
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', 2)"
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['primary']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['0']]
+  # As above: promotion resets each database's replication progress, so wait for the new primary to
+  # catch its standby up before gracefully transitioning it back to standby.
+  - on: server2
+    queries:
+    - exec: 'USE dolt_cluster'
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","2","0","NULL"]
+        - ["repo1","standby","primary","2","0","NULL"]
+      retry_attempts: 100
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - exec: "select dolt_assume_cluster_role('standby', 3)"
+  - on: server1
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', 3)"
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['primary']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['0']]
+# https://github.com/dolthub/dolt/issues/10015
+- name: read_only system variable with behavior config respects cluster role
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        behavior:
+          read_only: true
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        behavior:
+          read_only: true
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    database: dolt_cluster
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['primary']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['1']]
+  - on: server2
+    database: dolt_cluster
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['standby']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['1']]
+  - on: server1
+    database: dolt_cluster
+    queries:
+    - exec: "select dolt_assume_cluster_role('standby', 2)"
+  - on: server1
+    database: dolt_cluster
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['standby']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['1']]
+  - on: server2
+    database: dolt_cluster
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', 2)"
+  - on: server2
+    database: dolt_cluster
+    queries:
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
+      result:
+        columns: ['dolt_cluster_role']
+        rows: [['primary']]
+    - query: "SELECT current_setting('read_only') AS read_only"
+      result:
+        columns: ['read_only']
+        rows: [['1']]
+- name: postgres default database replicates to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2),(3),(4)'
+  - on: server2
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: postgres default database on booted standby is read only
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2)'
+  - on: server2
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["3"]]
+    - exec: 'INSERT INTO vals VALUES (3)'
+      error_match: "postgres is read-only"
+- name: postgres default database survives failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (1),(2),(3)'
+  # Fail over gracefully: demote the primary first, then promote the standby.
+  - on: server1
+    queries:
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server2
+    queries:
+    - query: "select dolt_assume_cluster_role('primary', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server2
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["3"]]
+    - exec: 'INSERT INTO vals VALUES (4),(5)'
+  - on: server1
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: postgres default database replication status
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2)'
+  - on: server1
+    database: dolt_cluster
+    queries:
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","1","0","NULL"]
+- name: postgres default database sequence val maintained across failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE t (id SERIAL PRIMARY KEY, v INT)'
+    - exec: 'INSERT INTO t(v) VALUES (0),(0),(0),(0),(0)'
+  - on: server2
+    queries:
+    - query: 'SELECT * FROM t ORDER BY id'
+      result:
+        columns: ['id', 'v']
+        rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0']]
+  - on: server1
+    queries:
+    - exec: "select dolt_assume_cluster_role('standby', 2)"
+  - on: server2
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', 2)"
+  - on: server2
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'INSERT INTO t(v) VALUES (1)'
+    - query: 'SELECT * FROM t ORDER BY id'
+      result:
+        columns: ['id', 'v']
+        rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0'], ['6','1']]

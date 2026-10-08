@@ -92,14 +92,27 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		insertInto = insertInto.WithSource(plan.NewValues(newValues))
 	} else {
 		sourceSchema := insertInto.Source.Schema(ctx)
+		var sourceExprs []sql.Expression
+		if projector, ok := insertInto.Source.(sql.Projector); ok {
+			sourceExprs = projector.ProjectedExprs()
+		}
 		projections := make([]sql.Expression, len(sourceSchema))
 		for i, col := range sourceSchema {
-			fromColType, ok := col.Type.(*pgtypes.DoltgresType)
+			colType := col.Type
+			if colType == nil || colType == types.Null {
+				colType = pgtypes.Unknown
+			}
+			fromColType, ok := colType.(*pgtypes.DoltgresType)
 			if !ok {
-				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", fromColType.String())
+				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", colType.String())
 			}
 			toColType := destinationTypes[i]
-			getField := expression.NewGetField(i, fromColType, col.Name, true)
+			var getField sql.Expression = expression.NewGetField(i, fromColType, col.Name, true)
+			if i < len(sourceExprs) {
+				if idExpr, ok := sourceExprs[i].(sql.IdExpression); ok {
+					getField = getField.(sql.IdExpression).WithId(idExpr.Id())
+				}
+			}
 			// We only assign the GetField if the types perfectly match (same parameters), otherwise we'll cast
 			if fromColType.Equals(toColType) {
 				projections[i] = getField
@@ -110,19 +123,34 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		insertInto = insertInto.WithSource(plan.NewProject(ctx, projections, insertInto.Source))
 	}
 
-	// handle on conflict clause if present
-	if insertInto.OnDupExprs.HasUpdates() {
-		newDupExprs, err := assignUpdateFieldCasts(ctx, insertInto.OnDupExprs.AllExpressions())
-		if err != nil {
-			return nil, false, err
-		}
-		// TODO: this relies on a particular implementation detail InsertInto.WithExpressions
-		newInsertInto, err := insertInto.WithExpressions(ctx, append(newDupExprs, insertInto.Checks().ToExpressions()...)...)
+	// Duplicate assignments are cast by their owning source node.
+	if insertInto.OnDup != nil {
+		newOnDup, same, err := transform.NodeWithCtx(ctx, insertInto.OnDup, func(ctx *sql.Context, c transform.Context) bool {
+			_, trigger := c.Parent.(*plan.TriggerExecutor)
+			return !trigger || c.ChildNum != 1
+		}, func(ctx *sql.Context, c transform.Context) (sql.Node, transform.TreeIdentity, error) {
+			source, ok := c.Node.(*plan.OnDuplicateKeyUpdateSource)
+			if !ok {
+				return c.Node, transform.SameTree, nil
+			}
+
+			expressions, err := assignUpdateFieldCasts(ctx, source.Expressions())
+			if err != nil {
+				return nil, transform.SameTree, err
+			}
+
+			node, err := source.WithExpressions(ctx, expressions...)
+			return node, transform.NewTree, err
+		})
 		if err != nil {
 			return nil, false, err
 		}
 
-		insertInto = newInsertInto.(*plan.InsertInto)
+		if same != transform.SameTree {
+			rewritten := *insertInto
+			rewritten.OnDup = newOnDup
+			insertInto = &rewritten
+		}
 	}
 
 	return insertInto, transform.NewTree, nil

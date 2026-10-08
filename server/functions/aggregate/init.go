@@ -16,4 +16,9 @@ package aggregate
 
 func Init() {
 	initBoolAggs()
+	initJsonAggs()
+	initNumericAggs()
+	initAvgAggs()
+	initVarianceAggs()
+	initXmlAggs()
 }

@@ -187,6 +187,9 @@ func ToVitessLiteral(l *expression.Literal) *vitess.SQLVal {
 		} else {
 			panic("unhandled value of 'unknown' type in temporary literal conversion: " + l.Type(nil).String())
 		}
+	case pgtypes.Oid.ID:
+		v := l.Value().(id.Id)
+		return vitess.NewStrVal([]byte(v.String()))
 	default:
 		panic("unhandled type in temporary literal conversion: " + l.Type(nil).String())
 	}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +44,12 @@ func (p PgTsConfigHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTsConfigHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_ts_config row iter
-	return emptyRowIter()
+	// TODO: this only includes the "simple" configuration, since the language-specific configurations
+	//  (english, etc.) rely on stemming dictionaries that Doltgres does not yet have
+	return &pgTsConfigRowIter{
+		configs: defaultPostgresTsConfigs,
+		idx:     0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -66,16 +71,48 @@ var pgTsConfigSchema = sql.Schema{
 
 // pgTsConfigRowIter is the sql.RowIter for the pg_ts_config table.
 type pgTsConfigRowIter struct {
+	configs []tsConfig
+	idx     int
 }
 
 var _ sql.RowIter = (*pgTsConfigRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTsConfigRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.configs) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	config := iter.configs[iter.idx-1]
+
+	return sql.Row{
+		config.oid,       // oid
+		config.name,      // cfgname
+		config.namespace, // cfgnamespace
+		id.Null,          // cfgowner (TODO: owner)
+		config.parser,    // cfgparser
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
 func (iter *pgTsConfigRowIter) Close(ctx *sql.Context) error {
 	return nil
+}
+
+// tsConfig represents a row in the pg_ts_config table.
+type tsConfig struct {
+	oid       id.Id
+	name      string
+	namespace id.Id
+	parser    id.Id
+}
+
+// defaultPostgresTsConfigs is the list of built-in text search configurations available in Postgres.
+var defaultPostgresTsConfigs = []tsConfig{
+	{
+		oid:       id.NewId(id.Section_TextSearchConfig, "pg_catalog", "simple"),
+		name:      "simple",
+		namespace: id.NewNamespace("pg_catalog").AsId(),
+		parser:    id.NewId(id.Section_TextSearchParser, "pg_catalog", "default"),
+	},
 }

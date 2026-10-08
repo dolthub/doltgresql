@@ -269,9 +269,9 @@ SQL
 SELECT dolt_branch('head_feature');
 SELECT dolt_checkout('head_feature');
 INSERT INTO shared VALUES (10, 'head-feature-10', 'head'), (11, 'head-feature-11', 'head');
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'head: feature branch inserts');
 SQL
-  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: feature branch inserts');"
-  sql -c "SELECT dolt_checkout('main');"
   stop_doltgres
 
   # Round 2: old creates its own branch, merges HEAD's feature branch
@@ -280,10 +280,11 @@ SQL
 SELECT dolt_branch('old_branch');
 SELECT dolt_checkout('old_branch');
 INSERT INTO shared VALUES (20, 'old-branch-20', 'old');
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'old: old_branch insert');
 SQL
-  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: old_branch insert');"
+  
   sql <<SQL
-SELECT dolt_checkout('main');
 INSERT INTO shared VALUES (3, 'base-3', 'old');
 SQL
   sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: main insert');"

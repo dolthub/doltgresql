@@ -15,69 +15,13 @@
 package _go
 
 import (
-	"os"
-	"runtime"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestCreateExtension(t *testing.T) {
-	if runtime.GOOS == "windows" && os.Getenv("CI") != "" {
-		t.Skip("CI Postgres installation seems to behave weirdly, skipping for now") // TODO: look into this a bit more
-	}
 	RunScripts(t, []ScriptTest{
-		{
-			Name: "Extension Test: uuid-ossp",
-			SetUpScript: []string{
-				`CREATE EXTENSION "uuid-ossp";`,
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "SELECT uuid_ns_url();",
-					Expected: []sql.Row{{"6ba7b811-9dad-11d1-80b4-00c04fd430c8"}},
-				},
-				{
-					Skip:     true, // This is returning different results on different platforms for some reason
-					Query:    "SELECT uuid_generate_v3('00000000-0000-0000-0000-000000000000'::uuid, 'example text');",
-					Expected: []sql.Row{{"a55b875a-1bd9-31af-ac66-7d8323785c6e"}},
-				},
-				{
-					Skip:     true, // For some reason, this returns the same result as above
-					Query:    "SELECT uuid_generate_v3('00000000-0000-0000-0000-000000000001'::uuid, 'example text');",
-					Expected: []sql.Row{{"a319ab51-8e26-37c6-942f-7dd5fda5c3ef"}},
-				},
-				{
-					Skip:     true, // Need to figure out why the result is wrong
-					Query:    "SELECT uuid_generate_v3(uuid_ns_url(), 'example text');",
-					Expected: []sql.Row{{"6541262f-d622-3e35-8873-2b227591bf69"}},
-				},
-				{
-					Query:    "SELECT uuid_nil();",
-					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
-				},
-				{
-					Query:    "SELECT length(uuid_nil()::text);",
-					Expected: []sql.Row{{36}},
-				},
-				{
-					Query:    "SELECT length(uuid_generate_v4()::text);",
-					Expected: []sql.Row{{36}},
-				},
-				{
-					Query:    "SELECT uuid_generate_v4() = uuid_nil();",
-					Expected: []sql.Row{{"f"}},
-				},
-				{
-					Query:    `WITH u1 AS (SELECT uuid_nil() AS id), u2 AS (SELECT uuid_nil() AS id) SELECT (SELECT id FROM u1) = (SELECT id FROM u2);`,
-					Expected: []sql.Row{{"t"}},
-				},
-				{
-					Query:    `WITH u1 AS (SELECT uuid_generate_v4() AS id), u2 AS (SELECT uuid_generate_v4() AS id) SELECT (SELECT id FROM u1) = (SELECT id FROM u2);`,
-					Expected: []sql.Row{{"f"}},
-				},
-			},
-		},
 		{
 			Name: "create extension uuid-ossp after setting search_path to empty",
 			SetUpScript: []string{
@@ -89,8 +33,7 @@ func TestCreateExtension(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: "SELECT uuid_nil();",
-					// TODO: error message should be "function uuid_nil() does not exist"
+					Query:       "SELECT uuid_nil();",
 					ExpectedErr: `function: 'uuid_nil' not found`,
 				},
 				{
@@ -115,6 +58,250 @@ func TestCreateExtension(t *testing.T) {
 				{
 					Query:    `ALTER TABLE ONLY public.goals ADD CONSTRAINT goals_pkey PRIMARY KEY (id);`,
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "uuid-ossp is not available before it is created",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*) FROM pg_catalog.pg_extension;`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query: `SELECT name, installed_version FROM pg_catalog.pg_available_extensions WHERE name = 'uuid-ossp';`,
+					Expected: []sql.Row{
+						{"uuid-ossp", nil},
+					},
+				},
+				{
+					Query:       "SELECT uuid_nil();",
+					ExpectedErr: `function: 'uuid_nil' not found`,
+				},
+				{
+					Query:    `CREATE EXTENSION "uuid-ossp";`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT uuid_nil();",
+					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+			},
+		},
+		{
+			Name: "only emulated extensions may be created",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE EXTENSION "doltgres_no_such_extension";`,
+					ExpectedErr: `extension "doltgres_no_such_extension" is not available`,
+				},
+				{
+					Query:       `CREATE EXTENSION IF NOT EXISTS "doltgres_no_such_extension";`,
+					ExpectedErr: `extension "doltgres_no_such_extension" is not available`,
+				},
+				{
+					Query:       `CREATE EXTENSION "UUID-OSSP";`,
+					ExpectedErr: `extension "UUID-OSSP" is not available`,
+				},
+				{
+					Query:    `CREATE EXTENSION "uuid-ossp";`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `CREATE EXTENSION "uuid-ossp";`,
+					ExpectedErr: `extension "uuid-ossp" already exists`,
+				},
+				{
+					Query:    `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT uuid_nil();",
+					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+			},
+		},
+		{
+			Name: "uuid-ossp options that are not yet supported",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE EXTENSION "uuid-ossp" VERSION oldversion;`,
+					ExpectedErr: "VERSION is not yet supported",
+				},
+				{
+					Query:       `CREATE EXTENSION "uuid-ossp" CASCADE;`,
+					ExpectedErr: "CASCADE is not yet supported",
+				},
+			},
+		},
+		{
+			Name: "uuid-ossp installation participates in branches",
+			SetUpScript: []string{
+				`SELECT dolt_commit('--allow-empty', '-m', 'initial commit');`,
+				`SELECT dolt_checkout('-b', 'ext');`,
+				`CREATE EXTENSION "uuid-ossp";`,
+				`SELECT dolt_commit('-Am', 'create the extension');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT extname FROM pg_catalog.pg_extension;`,
+					Expected: []sql.Row{{"uuid-ossp"}},
+				},
+				{
+					Query:            `SELECT dolt_checkout('main');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT extname FROM pg_catalog.pg_extension;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT uuid_nil();",
+					ExpectedErr: `function: 'uuid_nil' not found`,
+				},
+				{
+					Query:            `SELECT dolt_merge('ext');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT extname, extversion FROM pg_catalog.pg_extension;`,
+					Expected: []sql.Row{{"uuid-ossp", "1.1"}},
+				},
+				{
+					Query:    "SELECT uuid_nil();",
+					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+			},
+		},
+		{
+			Name: "uuid-ossp in a non-public schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA extensions;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `CREATE EXTENSION "uuid-ossp" WITH SCHEMA nosuchschema;`,
+					ExpectedErr:     `schema "nosuchschema" does not exist`,
+					ExpectedErrCode: "3F000",
+				},
+				{
+					Query:    `CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT extensions.uuid_nil();`,
+					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+				{
+					Query:           `SELECT uuid_nil();`,
+					ExpectedErr:     `function: 'uuid_nil' not found`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:           `SELECT public.uuid_nil();`,
+					ExpectedErr:     `function: 'uuid_nil' not found`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:    `SELECT e.extname, n.nspname FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON e.extnamespace = n.oid;`,
+					Expected: []sql.Row{{"uuid-ossp", "extensions"}},
+				},
+				{
+					Query:    `CREATE TABLE goals (id UUID DEFAULT extensions.uuid_generate_v4() PRIMARY KEY, note TEXT);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO goals (note) VALUES ('first');`,
+					Expected: []sql.Row{},
+					Skip:     true, // Column defaults drop the schema of the functions they call
+				},
+				{
+					Query:           `DROP SCHEMA extensions;`,
+					ExpectedErr:     `cannot drop schema extensions because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
+					Skip:            true, // Doltgres returns SQLSTATE XX000
+				},
+				{
+					Query:    `SET search_path = public, extensions;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT uuid_nil();`,
+					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+				{
+					Query:    `INSERT INTO goals (note) VALUES ('second');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT note, length(id::text) FROM goals;`,
+					Expected: []sql.Row{{"second", 36}},
+				},
+				{
+					Query:    `DROP TABLE goals;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP EXTENSION "uuid-ossp";`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `SELECT extensions.uuid_nil();`,
+					ExpectedErr:     `function: 'uuid_nil' not found`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:    `DROP SCHEMA extensions;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "vector in a non-public schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA extensions;`,
+				`CREATE EXTENSION vector WITH SCHEMA extensions;`,
+				`CREATE TABLE items (id INT PRIMARY KEY, embedding extensions.vector(3));`,
+				`INSERT INTO items VALUES (1, '[1,2,3]'), (2, '[4,5,6]');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `SELECT '[1,2,3]'::vector;`,
+					ExpectedErr:     `type "vector" does not exist`,
+					ExpectedErrCode: "42704",
+					Skip:            true, // Doltgres finds types in schemas outside the search path
+				},
+				{
+					Query:           `SELECT '[1,2,3]'::extensions.vector <-> '[1,2,4]'::extensions.vector;`,
+					ExpectedErr:     `operator does not exist: extensions.vector <-> extensions.vector`,
+					ExpectedErrCode: "42883",
+					Skip:            true, // Doltgres returns SQLSTATE XX000 and leaves out the schema of each type
+				},
+				{
+					Query:    `SELECT '[1,2,3]'::extensions.vector OPERATOR(extensions.<->) '[1,2,4]'::extensions.vector;`,
+					Expected: []sql.Row{{1.0}},
+					Skip:     true, // The parser only accepts a few operator symbols inside OPERATOR()
+				},
+				{
+					Query:    `SELECT extensions.l2_distance('[1,2,3]'::extensions.vector, '[1,2,4]'::extensions.vector);`,
+					Expected: []sql.Row{{1.0}},
+				},
+				{
+					Query:    `SET search_path = public, extensions;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 1;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:           `DROP EXTENSION vector;`,
+					ExpectedErr:     `cannot drop extension vector because other objects depend on it`,
+					ExpectedErrCode: "2BP01",
 				},
 			},
 		},

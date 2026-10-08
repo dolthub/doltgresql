@@ -43,7 +43,9 @@ func (p PgTransformHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTransformHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_transform row iter
+	// pg_transform is currently empty, since transforms are not supported.
+	// This table is also empty in vanilla Postgres by default.
+	// TODO: fill this in when transforms are supported
 	return emptyRowIter()
 }
 
@@ -60,8 +62,8 @@ var pgTransformSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTransformName},
 	{Name: "trftype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTransformName},
 	{Name: "trflang", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTransformName},
-	{Name: "trffromsql", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTransformName}, // TODO: regproc type
-	{Name: "trftosql", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTransformName},   // TODO: regproc type
+	{Name: "trffromsql", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTransformName},
+	{Name: "trftosql", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTransformName},
 }
 
 // pgTransformRowIter is the sql.RowIter for the pg_transform table.

@@ -38,7 +38,9 @@ func Init(builtInCasts map[id.Cast]casts.Cast) {
 	initNumeric(builtInCasts)
 	initOid(builtInCasts)
 	initRegclass(builtInCasts)
+	initRegnamespace(builtInCasts)
 	initRegproc(builtInCasts)
+	initRegprocedure(builtInCasts)
 	initRegtype(builtInCasts)
 	initText(builtInCasts)
 	initTime(builtInCasts)
@@ -47,4 +49,5 @@ func Init(builtInCasts map[id.Cast]casts.Cast) {
 	initTimeTZ(builtInCasts)
 	initVarBit(builtInCasts)
 	initVarChar(builtInCasts)
+	initXml(builtInCasts)
 }

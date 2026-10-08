@@ -65,6 +65,9 @@ type csvReader struct {
 	delim           []byte
 	numLine         int
 	fieldsPerRecord int
+	// singleColumn indicates that the target table has exactly one column, in which case an empty line is a
+	// record containing a single NULL rather than a line to be skipped.
+	singleColumn bool
 }
 
 // NewCsvReader creates a csvReader from a given ReadCloser.
@@ -76,20 +79,21 @@ type csvReader struct {
 // bytes go uninterpreted until we get to the SQL layer. It is currently the
 // case that newlines must be encoded as a '0xa' byte.
 func NewCsvReader(r io.ReadCloser) (*csvReader, error) {
-	return newCsvReaderWithDelimiter(r, ",")
+	return newCsvReaderWithDelimiter(r, ",", false)
 }
 
 // newCsvReaderWithDelimiter creates a csvReader from a given ReadCloser, |r|, using
 // the |delimiter| as the field delimiter in the parsed data.
-func newCsvReaderWithDelimiter(r io.ReadCloser, delimiter string) (*csvReader, error) {
+func newCsvReaderWithDelimiter(r io.ReadCloser, delimiter string, singleColumn bool) (*csvReader, error) {
 	textReader := transform.NewReader(r, textunicode.BOMOverride(transform.Nop))
 	br := bufio.NewReaderSize(textReader, csvReadBufSize)
 
 	return &csvReader{
-		closer: r,
-		bRd:    br,
-		isDone: false,
-		delim:  []byte(delimiter),
+		closer:       r,
+		bRd:          br,
+		isDone:       false,
+		delim:        []byte(delimiter),
+		singleColumn: singleColumn,
 	}, nil
 }
 
@@ -209,6 +213,11 @@ func (csvr *csvReader) csvReadRecords(dst []*string) ([]*string, error) {
 		rs.rawData = append(rs.rawData, rs.line...)
 
 		if err == nil && len(rs.line) == lengthNL(rs.line) {
+			if csvr.singleColumn {
+				// For a single-column table, an empty line is a record containing one NULL (an unquoted
+				// empty value)
+				break
+			}
 			continue // Skip empty lines
 		}
 		break

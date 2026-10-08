@@ -69,9 +69,8 @@ func (t typeInfo) Encoding() val.Encoding {
 		return val.DecimalEnc
 	case "bytea":
 		return val.BytesAdaptiveEnc
-	// TODO: use dolt JSON document encoding here
-	// case "json", "jsonb":
-	// 	return val.JSONAddrEnc
+	case "json", "jsonb":
+		return val.JsonAdaptiveEnc
 	case "xid":
 		return val.Uint32Enc
 		// TODO: uuid is represented as a uuid.Uuid in doltgres, but dolt wants []byte for BytesAdaptiveEnc
@@ -84,7 +83,7 @@ func (t typeInfo) Encoding() val.Encoding {
 		return val.StringEnc
 	case "name", "char":
 		return val.StringEnc
-	case "bpchar", "text":
+	case "bpchar", "text", "xml":
 		return val.StringAdaptiveEnc
 	default:
 		switch t.Type.MaxSerializedWidth() {

@@ -224,9 +224,11 @@ SQL
 @test "compatibility: dml is committable" {
   sql -c "INSERT INTO abc (pk, a, b, x, y) VALUES (200, 'commit-test', 1.0, 1, 1);"
   sql -c "SELECT dolt_add('.');"
-  run sql -c "SELECT length(dolt_commit('-m', 'compat dml commit')::text);"
+  # Matches the bare commit hash returned by current versions as well as the
+  # {hash} text-array form returned by versions before dolt_commit returned text.
+  run sql -c "SELECT dolt_commit('-m', 'compat dml commit');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "34" ]] || false
+  [[ "$output" =~ [0-9a-v]{32} ]] || false
 }
 
 # ---------------------------------------------------------------------------

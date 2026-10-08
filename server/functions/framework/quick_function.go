@@ -109,15 +109,7 @@ func (q *QuickFunction1) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-
-	switch eval := eval.(type) {
-	case sql.RowIter:
-		return eval, nil
-	case nil:
-		return nil, nil
-	default:
-		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
-	}
+	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.
@@ -251,15 +243,7 @@ func (q *QuickFunction2) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-
-	switch eval := eval.(type) {
-	case sql.RowIter:
-		return eval, nil
-	case nil:
-		return nil, nil
-	default:
-		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
-	}
+	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.
@@ -394,15 +378,7 @@ func (q *QuickFunction3) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-
-	switch eval := eval.(type) {
-	case sql.RowIter:
-		return eval, nil
-	case nil:
-		return nil, nil
-	default:
-		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
-	}
+	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.
@@ -463,3 +439,34 @@ func (q *QuickFunction3) WithChildren(ctx *sql.Context, children ...sql.Expressi
 
 // specificFuncImpl implements the interface sql.Expression.
 func (*QuickFunction3) specificFuncImpl() {}
+
+// quickWrappedFunction adapts a user-defined function or an extension routine to the QuickFunction interface.
+type quickWrappedFunction struct {
+	callable      func(ctx *sql.Context, resolvedTypes []*pgtypes.DoltgresType, args []any) (any, error)
+	strict        bool
+	resolvedTypes []*pgtypes.DoltgresType
+}
+
+var _ pgtypes.QuickFunction = (*quickWrappedFunction)(nil)
+
+// CallVariadic implements the interface pgtypes.QuickFunction.
+func (q *quickWrappedFunction) CallVariadic(ctx *sql.Context, args ...any) (interface{}, error) {
+	if q.strict {
+		for _, arg := range args {
+			if arg == nil {
+				return nil, nil
+			}
+		}
+	}
+	return q.callable(ctx, q.resolvedTypes, args)
+}
+
+// ResolvedTypes implements the interface pgtypes.QuickFunction.
+func (q *quickWrappedFunction) ResolvedTypes() []*pgtypes.DoltgresType {
+	return q.resolvedTypes
+}
+
+// WithResolvedTypes implements the interface pgtypes.QuickFunction.
+func (q *quickWrappedFunction) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any {
+	return &quickWrappedFunction{callable: q.callable, strict: q.strict, resolvedTypes: newTypes}
+}

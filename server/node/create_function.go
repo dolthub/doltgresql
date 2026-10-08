@@ -24,16 +24,16 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/auth"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// RoutineParam represents a routine parameter with parameter name, type and default value if exists.
+// RoutineParam represents a routine parameter with parameter mode, name, type and default value if exists.
 type RoutineParam struct {
 	Mode       procedures.ParameterMode
 	Name       string
@@ -111,18 +111,28 @@ func (c *CreateFunction) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx)
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	paramNames := make([]string, len(c.Parameters))
-	paramTypes := make([]id.Type, len(c.Parameters))
-	paramDefaults := make([]string, len(c.Parameters))
+	allParams := make([]procedures.Parameter, len(c.Parameters))
+	var inputParamTypes []id.Type
 	for i, param := range c.Parameters {
-		paramNames[i] = param.Name
-		paramTypes[i] = param.Type.ID
+		p := procedures.Parameter{
+			Mode: param.Mode,
+			Name: param.Name,
+			Type: param.Type.ID,
+		}
 		if param.Default != nil {
-			paramDefaults[i] = param.Default.String()
+			p.Default = param.Default.String()
+		}
+		allParams[i] = p
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_VARIADIC:
+			inputParamTypes = append(inputParamTypes, param.Type.ID)
+		case procedures.ParameterMode_INOUT:
+			inputParamTypes = append(inputParamTypes, param.Type.ID)
+		case procedures.ParameterMode_OUT:
 		}
 	}
 
@@ -130,36 +140,26 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err != nil {
 		return nil, err
 	}
-	funcID := id.NewFunction(schemaName, c.FunctionName, paramTypes...)
+	funcID := id.NewFunction(schemaName, c.FunctionName, inputParamTypes...)
 	if c.Replace && funcCollection.HasFunction(ctx, funcID) {
 		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
 			return nil, err
 		}
 	}
-	var extName string
 	if len(c.ExtensionName) > 0 {
-		ext, err := extensions.GetExtension(c.ExtensionName)
-		if err != nil {
+		if _, err = extensions.GetFunction(c.ExtensionName, c.ExtensionSymbol); err != nil {
 			return nil, err
 		}
-		ident := extensions.CreateLibraryIdentifier(c.ExtensionName, ext.Control.DefaultVersion)
-		_, err = extensions.GetExtensionFunction(extensions.CreateLibraryIdentifier(c.ExtensionName, ext.Control.DefaultVersion), c.ExtensionSymbol)
-		if err != nil {
-			return nil, err
-		}
-		extName = string(ident)
 	}
 	err = funcCollection.AddFunction(ctx, functions.Function{
 		ID:                 funcID,
 		ReturnType:         c.ReturnType.ID,
-		ParameterNames:     paramNames,
-		ParameterTypes:     paramTypes,
-		ParameterDefaults:  paramDefaults,
+		AllParams:          allParams,
 		Variadic:           false, // TODO: implement this
 		IsNonDeterministic: true,
 		Strict:             c.Strict,
 		Definition:         c.Definition,
-		ExtensionName:      extName,
+		ExtensionName:      c.ExtensionName,
 		ExtensionSymbol:    c.ExtensionSymbol,
 		Operations:         c.Statements,
 		SQLDefinition:      c.SqlDef,
@@ -190,7 +190,7 @@ func (c *CreateFunction) Schema(ctx *sql.Context) sql.Schema {
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateFunction) String() string {
 	// TODO: fully implement this
-	return "CREATE FUNCTION"
+	return fmt.Sprintf("CREATE FUNCTION %s", c.FunctionName)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.

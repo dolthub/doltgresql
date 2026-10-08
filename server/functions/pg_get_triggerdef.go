@@ -15,10 +15,12 @@
 package functions
 
 import (
-	"github.com/cockroachdb/errors"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -37,8 +39,7 @@ var pg_get_triggerdef_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: triggers are not supported yet
-		return "", nil
+		return getTriggerDef(ctx, val.(id.Id))
 	},
 }
 
@@ -50,11 +51,29 @@ var pg_get_triggerdef_oid_bool = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		pretty := val2.(bool)
-		if pretty {
-			return "", errors.Errorf("pretty printing is not yet supported")
-		}
-		// TODO: triggers are not supported yet
-		return "", nil
+		// The pretty flag only affects the formatting of expressions, which we don't reproduce, so
+		// we return the same text either way.
+		return getTriggerDef(ctx, val1.(id.Id))
 	},
+}
+
+// getTriggerDef returns the definition of the trigger for the given OID, or an empty string if the OID doesn't refer
+// to an existing trigger. Postgres reconstructs the statement from the catalog, whereas we return the statement that
+// created the trigger.
+func getTriggerDef(ctx *sql.Context, oidVal id.Id) (string, error) {
+	if oidVal.Section() != id.Section_Trigger {
+		return "", nil
+	}
+	collection, err := core.GetTriggersCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return "", err
+	}
+	trigger, err := collection.GetTrigger(ctx, id.Trigger(oidVal))
+	if err != nil {
+		return "", err
+	}
+	if !trigger.ID.IsValid() {
+		return "", nil
+	}
+	return strings.TrimSuffix(strings.TrimSpace(trigger.Definition), ";"), nil
 }

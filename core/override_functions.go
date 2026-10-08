@@ -108,6 +108,21 @@ func rootValueWalkAddrs(sm types.SerialMessage, cb func(addr hash.Hash) error) e
 			return err
 		}
 	}
+	// Walk all Doltgres root object fields (sequences, types, functions, procedures, triggers, extensions, casts).
+	// Each field stores a 20-byte hash pointing to a prolly address map in the chunk store. Without walking these,
+	// backup/restore (SyncRoots/PullChunks) will not copy the root object chunks and they will be absent after restore.
+	for _, ros := range storage.RootObjectSerializations {
+		addrBytes := ros.Bytes(&msg)
+		if len(addrBytes) == 0 {
+			continue
+		}
+		objAddr := hash.New(addrBytes)
+		if !objAddr.IsEmpty() {
+			if err = cb(objAddr); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

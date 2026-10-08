@@ -34,7 +34,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		expr, err := nodeExpr(ctx, node.Expr)
+		expr, err := nodeCheckExpr(ctx, node.Expr)
 		if err != nil {
 			return err
 		}
@@ -55,6 +55,16 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 			return err
 		}
 		target.TableSpec.AddColumn(columnDef)
+		if node.Unique && !node.PrimaryKey.IsPrimaryKey {
+			indexFields, err := nodeIndexElemList(ctx, tree.IndexElemList{{Column: node.Name}})
+			if err != nil {
+				return err
+			}
+			target.TableSpec.Indexes = append(target.TableSpec.Indexes, &vitess.IndexDefinition{
+				Info:   &vitess.IndexInfo{Name: vitess.NewColIdent(string(node.UniqueConstraintName)), Unique: true},
+				Fields: indexFields,
+			})
+		}
 		if node.References.Table != nil {
 			fkDef, err := nodeForeignKeyDefinitionFromColumnTableDef(ctx, node.Name, node)
 			if err != nil {
@@ -70,7 +80,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		fkDef, err := nodeForeignKeyConstraintTableDef(ctx, node)
+		fkDef, err := nodeForeignKeyConstraintTableDef(ctx, node, false)
 		if err != nil {
 			return err
 		}
@@ -102,6 +112,9 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		}
 		return nil
 	case *tree.UniqueConstraintTableDef:
+		if tree.IsDeferrable(node.Deferrable, node.Initially) {
+			return errors.Errorf("DEFERRABLE constraints are not yet supported")
+		}
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
@@ -141,15 +154,17 @@ func nodeForeignKeyDefinitionFromColumnTableDef(ctx *Context, fromColumn tree.Na
 
 	references := node.References
 	fkConstraintTableDef := &tree.ForeignKeyConstraintTableDef{
-		Name:     references.ConstraintName,
-		FromCols: []tree.Name{fromColumn},
-		Table:    *references.Table,
-		ToCols:   []tree.Name{references.Col},
-		Actions:  references.Actions,
-		Match:    references.Match,
+		Name:       references.ConstraintName,
+		FromCols:   []tree.Name{fromColumn},
+		Table:      *references.Table,
+		ToCols:     []tree.Name{references.Col},
+		Actions:    references.Actions,
+		Match:      references.Match,
+		Deferrable: references.Deferrable,
+		Initially:  references.Initially,
 	}
 
-	return nodeForeignKeyConstraintTableDef(ctx, fkConstraintTableDef)
+	return nodeForeignKeyConstraintTableDef(ctx, fkConstraintTableDef, false)
 }
 
 // assignTableDefs handles tree.TableDefs nodes for *vitess.DDL targets. This also sorts table defs by whether they're

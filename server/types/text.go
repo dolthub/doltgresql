@@ -15,7 +15,6 @@
 package types
 
 import (
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -63,12 +62,9 @@ var Text = &DoltgresType{
 // serializeTypeText handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeText(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	str, ok, err := sql.Unwrap[string](ctx, val)
+	str, err := unwrapSerializationString(ctx, "text", val)
 	if err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, errors.Errorf(`"text" serialization requires a string argument, got %T`, val)
 	}
 	writer := utils.NewWriter(uint64(len(str) + 4))
 	writer.String(str)

@@ -30,6 +30,18 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+// ErrDivisionByZero is returned when dividing by zero. It is defined as an error kind (rather than each
+// division site creating its own error) so that the server can report it with SQLSTATE 22012.
+var ErrDivisionByZero = errors.NewKind(`division by zero`)
+
+// ErrOutOfRange is returned when a value overflows the given type (e.g. "integer out of range").
+// It is defined as an error kind so that the server can report it with SQLSTATE 22003.
+var ErrOutOfRange = errors.NewKind(`%s out of range`)
+
+// ErrInputOutOfRange is returned by math functions whose input is outside the function's valid domain.
+// It is defined as an error kind so that the server can report it with SQLSTATE 22003.
+var ErrInputOutOfRange = errors.NewKind(`input is out of range`)
+
 // ErrTypeAlreadyExists is returned when creating given type when it already exists.
 var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
 
@@ -77,10 +89,10 @@ type CastsCollection interface {
 }
 
 // GetTypesCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
-var GetTypesCollectionFromContext func(*sql.Context) (TypeCollection, error)
+var GetTypesCollectionFromContext func(*sql.Context, string) (TypeCollection, error)
 
 // GetCastsCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
-var GetCastsCollectionFromContext func(*sql.Context) (CastsCollection, error)
+var GetCastsCollectionFromContext func(*sql.Context, string) (CastsCollection, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.
@@ -168,7 +180,13 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 		if i > 0 {
 			sb.WriteString(",")
 		}
-		if v != nil {
+		if subArray, ok := v.([]any); ok && !baseType.IsVectorType() {
+			str, err := ArrToString(ctx, subArray, baseType, trimBool)
+			if err != nil {
+				return "", err
+			}
+			sb.WriteString(str)
+		} else if v != nil {
 			str, err := baseType.IoOutput(ctx, v)
 			if err != nil {
 				return "", err
@@ -340,7 +358,7 @@ func quoteString(s string) string {
 	shouldQuote := false
 	for _, r := range s {
 		switch r {
-		case ' ', ',', '{', '}', '\\', '"':
+		case ' ', '\t', '\n', '\r', '\v', '\f', ',', '{', '}', '\\', '"':
 			shouldQuote = true
 		}
 	}

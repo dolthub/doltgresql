@@ -18,11 +18,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
 // CreateArrayTypeFromBaseType create array type from given type. This also sets the `Array` on the given base type if
@@ -74,6 +77,7 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		CompareFunc:         toFuncID("btarraycmp", toInternal("anyarray"), toInternal("anyarray")),
 		SerializationFunc:   serializeTypeArray,
 		DeserializationFunc: deserializeTypeArray,
+		serializedVersion:   arrayTypeVersion,
 	}
 	if baseType.Array == nil || baseType.Array == internalNullType || baseType.Array.ID == id.NullType {
 		baseType.Array = arrayType
@@ -84,7 +88,12 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 // serializeTypeArray handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeArray(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	return serializeArray(ctx, val.([]any), t.ArrayBaseType())
+	vals := val.([]any)
+	dims := ArrayDims(vals, t.ArrayBaseType())
+	if t.serializedVersion == 0 && len(dims) > 1 {
+		return nil, pgerror.WithCandidateCode(errors.New("multidimensional arrays are not supported by the column's type version, alter the column's type to upgrade it"), pgcode.FeatureNotSupported)
+	}
+	return serializeArray(ctx, vals, t.ArrayBaseType())
 }
 
 // deserializeTypeArray handles deserialization from the Dolt serialized format to our standard representation used by
@@ -93,8 +102,11 @@ func deserializeTypeArray(ctx *sql.Context, t *DoltgresType, data []byte) (any, 
 	return deserializeArray(ctx, data, t.ArrayBaseType())
 }
 
-// deserializeArray serializes an array of given base type.
+// serializeArray serializes an array of given base type. Multidimensional arrays are flattened, and the length of each
+// dimension trails the elements.
 func serializeArray(ctx *sql.Context, vals []any, baseType *DoltgresType) ([]byte, error) {
+	dims := ArrayDims(vals, baseType)
+	vals = FlattenArray(vals, baseType)
 	bb := bytes.Buffer{}
 	// Write the element count to a buffer. We're using an array since it's stack-allocated, so no need for pooling.
 	var elementCount [4]byte
@@ -113,7 +125,6 @@ func serializeArray(ctx *sql.Context, vals []any, baseType *DoltgresType) ([]byt
 		// Write the current offset
 		binary.LittleEndian.PutUint32(offsets[i*4:], currentOffset)
 		// Handle serialization of the value
-		// TODO: ARRAYs may be multidimensional, such as ARRAY[[4,2],[6,3]], which isn't accounted for here
 		serializedVal, err := baseType.SerializeValue(ctx, vals[i])
 		if err != nil {
 			return nil, err
@@ -128,8 +139,15 @@ func serializeArray(ctx *sql.Context, vals []any, baseType *DoltgresType) ([]byt
 			currentOffset += 1 + uint32(len(serializedVal))
 		}
 	}
-	// Write the final offset, which will equal the length of the serialized slice
+	// Write the final offset, which marks the end of the element data
 	binary.LittleEndian.PutUint32(offsets[len(offsets)-4:], currentOffset)
+	if len(dims) > 1 {
+		for _, dim := range dims {
+			var dimBytes [4]byte
+			binary.LittleEndian.PutUint32(dimBytes[:], uint32(dim))
+			bb.Write(dimBytes[:])
+		}
+	}
 	// Get the final output, and write the updated offsets to it
 	outputBytes := bb.Bytes()
 	copy(outputBytes[4:], offsets)
@@ -164,6 +182,128 @@ func deserializeArray(ctx *sql.Context, data []byte, baseType *DoltgresType) ([]
 		}
 		output[i] = o
 	}
-	// Returns all read elements
-	return output, nil
+	// Any data after the final offset is the length of each dimension
+	dimsOffset := binary.LittleEndian.Uint32(data[(elementCount+1)*4:])
+	dims := make([]int32, (uint32(len(data))-dimsOffset)/4)
+	for i := range dims {
+		dims[i] = int32(binary.LittleEndian.Uint32(data[dimsOffset+uint32(i)*4:]))
+	}
+	return InflateArray(output, dims), nil
+}
+
+// ArrayDims returns the length of each dimension of the given array value, which is empty for an empty array.
+// Elements of an array-like base type, such as a vector, are never treated as sub-arrays.
+func ArrayDims(vals []any, baseType *DoltgresType) []int32 {
+	if !baseType.IsArrayCategory() {
+		return arrayDims(vals)
+	}
+	if len(vals) == 0 {
+		return nil
+	}
+	return []int32{int32(len(vals))}
+}
+
+// arrayDims returns the length of each dimension of the given array value, treating every nested slice as a
+// sub-array.
+func arrayDims(vals []any) []int32 {
+	var dims []int32
+	for len(vals) > 0 {
+		dims = append(dims, int32(len(vals)))
+		subArray, ok := vals[0].([]any)
+		if !ok {
+			break
+		}
+		vals = subArray
+	}
+	return dims
+}
+
+// FlattenArray returns the elements of the given array value in row-major order. Elements of an array-like base type,
+// such as a vector, are never treated as sub-arrays.
+func FlattenArray(vals []any, baseType *DoltgresType) []any {
+	if baseType.IsArrayCategory() {
+		return vals
+	}
+	return flattenArray(vals)
+}
+
+// flattenArray returns the elements of the given array value in row-major order, treating every nested slice as a
+// sub-array.
+func flattenArray(vals []any) []any {
+	if len(vals) == 0 {
+		return vals
+	}
+	if _, ok := vals[0].([]any); !ok {
+		return vals
+	}
+	elementCount := 1
+	for _, dim := range arrayDims(vals) {
+		elementCount *= int(dim)
+	}
+	return appendFlattened(make([]any, 0, elementCount), vals)
+}
+
+// appendFlattened appends the elements of the given array value to `flattened` in row-major order, treating every
+// nested slice as a sub-array.
+func appendFlattened(flattened []any, vals []any) []any {
+	if len(vals) > 0 {
+		if _, ok := vals[0].([]any); ok {
+			for _, subArray := range vals {
+				flattened = appendFlattened(flattened, subArray.([]any))
+			}
+			return flattened
+		}
+	}
+	return append(flattened, vals...)
+}
+
+// InflateArray nests the given row-major elements into an array value with the given dimensions.
+func InflateArray(flattened []any, dims []int32) []any {
+	if len(dims) <= 1 || len(flattened) == 0 {
+		return flattened
+	}
+	subArrayLength := len(flattened) / int(dims[0])
+	vals := make([]any, dims[0])
+	for i := range vals {
+		vals[i] = InflateArray(flattened[i*subArrayLength:(i+1)*subArrayLength], dims[1:])
+	}
+	return vals
+}
+
+// ValidateAccumulatedArrays returns an error when the given array values cannot be accumulated as the sub-arrays of a
+// new array.
+func ValidateAccumulatedArrays(vals []any) error {
+	var firstDims []int32
+	for i, val := range vals {
+		if val == nil {
+			return pgerror.WithCandidateCode(errors.New("cannot accumulate null arrays"), pgcode.NullValueNotAllowed)
+		}
+		dims := arrayDims(val.([]any))
+		if i == 0 {
+			if len(dims) == 0 {
+				return pgerror.WithCandidateCode(errors.New("cannot accumulate empty arrays"), pgcode.ArraySubscript)
+			}
+			firstDims = dims
+		} else if !slices.Equal(dims, firstDims) {
+			return pgerror.WithCandidateCode(errors.New("cannot accumulate arrays of different dimensionality"), pgcode.ArraySubscript)
+		}
+	}
+	return nil
+}
+
+// SameArrayDims returns whether the elements of the given array value are either all scalars, or all sub-arrays with
+// the same dimensions.
+func SameArrayDims(vals []any) bool {
+	if len(vals) == 0 {
+		return true
+	}
+	first, firstIsSubArray := vals[0].([]any)
+	firstDims := arrayDims(first)
+	for _, val := range vals[1:] {
+		subArray, isSubArray := val.([]any)
+		if isSubArray != firstIsSubArray || !slices.Equal(arrayDims(subArray), firstDims) {
+			return false
+		}
+	}
+	return true
 }

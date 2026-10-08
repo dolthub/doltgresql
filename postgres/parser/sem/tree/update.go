@@ -89,9 +89,10 @@ func (node *UpdateExprs) Format(ctx *FmtCtx) {
 
 // UpdateExpr represents an update expression.
 type UpdateExpr struct {
-	Tuple bool
-	Names NameList
-	Expr  Expr
+	Tuple       bool
+	Names       NameList
+	Expr        Expr
+	Indirection ArraySubscripts
 }
 
 // Format implements the NodeFormatter interface.
@@ -103,6 +104,7 @@ func (node *UpdateExpr) Format(ctx *FmtCtx) {
 	ctx.WriteString(open)
 	ctx.FormatNode(&node.Names)
 	ctx.WriteString(close)
+	ctx.FormatNode(&node.Indirection)
 	ctx.WriteString(" = ")
 	ctx.FormatNode(node.Expr)
 }

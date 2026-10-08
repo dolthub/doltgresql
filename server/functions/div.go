@@ -16,7 +16,6 @@ package functions
 
 import (
 	"github.com/cockroachdb/apd/v3"
-	errors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -42,7 +41,7 @@ var div_numeric = framework.Function2{
 			return pgtypes.NumericNaN, nil
 		}
 		if num2.IsZero() {
-			return nil, errors.Errorf("division by zero")
+			return nil, pgtypes.ErrDivisionByZero.New()
 		}
 		if num1.Form == apd.Infinite {
 			return num1, nil

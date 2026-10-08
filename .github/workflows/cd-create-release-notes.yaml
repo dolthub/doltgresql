@@ -40,7 +40,10 @@ jobs:
         run: |
           git clone https://github.com/dolthub/doltgresql.git
           ./gen_release_notes.pl \
-          --token "$TOKEN" dolthub/doltgresql v${{ steps.get_vars.outputs.version }} > changelog.txt
+          --token "$TOKEN" \
+          -d dolthub/dolt \
+          -d dolthub/go-mysql-server \
+          -d dolthub/vitess dolthub/doltgresql v${{ steps.get_vars.outputs.version }} > changelog.txt
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Post Changelog to Release

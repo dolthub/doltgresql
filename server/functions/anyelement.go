@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -47,6 +49,6 @@ var anyelement_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: need underlying type information
-		return "", nil
+		return fmt.Sprintf("%v", val), nil
 	},
 }

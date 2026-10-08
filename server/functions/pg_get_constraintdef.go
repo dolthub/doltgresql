@@ -89,6 +89,9 @@ func getConstraintDef(ctx *sql.Context, oidVal id.Id) (string, error) {
 				fk.Item.ParentTable,
 				getColumnNamesString(fk.Item.ParentColumns),
 			)
+			if fk.Item.IsNotValid {
+				result += " NOT VALID"
+			}
 			return false, nil
 		},
 		Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {

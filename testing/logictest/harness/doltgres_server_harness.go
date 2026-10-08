@@ -24,7 +24,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -36,47 +35,52 @@ import (
 )
 
 const (
-	dsn               = "postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable"
-	doltgresNoDbDsn   = "postgresql://postgres:password@127.0.0.1:5432/?sslmode=disable"
-	doltgresWithDbDsn = "postgresql://postgres:password@0.0.0.0:5432/sqllogictest?sslmode=disable"
-	doltgresDBDir     = "doltgresDatabases"
-	serverLogFile     = "server.log"
-	harnessLogFile    = "harness.log"
+	doltgresDBDir  = "doltgresDatabases"
+	serverLogFile  = "server.log"
+	harnessLogFile = "harness.log"
+	DefaultPort    = 5432
+	defaultDbName  = "sqllogictest"
 )
+
+func noDatabaseDSN(port int) string {
+	return fmt.Sprintf("postgresql://postgres:password@127.0.0.1:%d/?sslmode=disable", port)
+}
+
+func withDatabaseDSN(port int, dbName string) string {
+	return fmt.Sprintf("postgresql://postgres:password@127.0.0.1:%d/%s?sslmode=disable", port, dbName)
+}
 
 var _ logictest.Harness = &DoltgresHarness{}
 
-// DoltgresHarness is sqllogictest harness for doltgres databases.
+// DoltgresHarness is a sqllogictest harness for doltgres databases.
 type DoltgresHarness struct {
 	db               *sql.DB
 	doltgresExec     string
 	server           *DoltgresServer
 	serverDir        string
-	timeout          int64 // in seconds
+	timeout          int64
+	port             int
+	dbName           string
 	harnessLog       *os.File
 	stashedLogOutput io.Writer
 }
 
-// NewDoltgresHarness returns a new Doltgres test harness for the data source name given.
-// It starts doltgres server and handles every connection to it.
+// NewDoltgresHarness returns a harness that manages its own server lifecycle. The server is
+// started once at construction; Init resets the database without restarting the process.
 func NewDoltgresHarness(doltgresExec string, t int64) *DoltgresHarness {
 	cwd, err := os.Getwd()
 	if err != nil {
 		logErr(err, "getting cwd")
 	}
-
 	serverDir := filepath.Join(cwd, doltgresDBDir)
-	// remove this dir to make sure it doesn't exist from previous run
 	err = os.RemoveAll(serverDir)
 	if err != nil {
 		logErr(err, fmt.Sprintf("running `RemoveAll` for '%s'", serverDir))
 	}
-	// make this dir to prepare for the current run
 	err = os.MkdirAll(serverDir, os.ModePerm)
 	if err != nil {
 		logErr(err, fmt.Sprintf("running `MkdirAll` for '%s'", serverDir))
 	}
-	// open harness.log file
 	hl, err := os.OpenFile(harnessLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -85,77 +89,217 @@ func NewDoltgresHarness(doltgresExec string, t int64) *DoltgresHarness {
 	log.SetOutput(hl)
 	logMsg("creating a new DoltgresHarness")
 
-	return &DoltgresHarness{
+	h := &DoltgresHarness{
 		doltgresExec:     doltgresExec,
 		serverDir:        serverDir,
 		timeout:          t,
+		port:             DefaultPort,
+		dbName:           defaultDbName,
 		harnessLog:       hl,
 		stashedLogOutput: stashLogOutput,
 	}
+	h.server = startServerProcess(doltgresExec, serverDir)
+	return h
+}
+
+// NewDoltgresWorkerHarness returns a harness for use in a concurrent worker. It connects to an
+// already-running server on the given port using dbName as its isolated database. The caller is
+// responsible for starting and stopping the server (see StartSharedServer).
+func NewDoltgresWorkerHarness(port int, dbName string, t int64) *DoltgresHarness {
+	return &DoltgresHarness{
+		timeout: t,
+		port:    port,
+		dbName:  dbName,
+	}
+}
+
+// StartSharedServer starts a single doltgres server process for use by multiple concurrent
+// workers. The returned *DoltgresServer must be closed when testing is complete.
+func StartSharedServer(doltgresExec string) *DoltgresServer {
+	cwd, err := os.Getwd()
+	if err != nil {
+		logErr(err, "getting cwd")
+	}
+	serverDir := filepath.Join(cwd, doltgresDBDir)
+	err = os.RemoveAll(serverDir)
+	if err != nil {
+		logErr(err, fmt.Sprintf("running `RemoveAll` for '%s'", serverDir))
+	}
+	err = os.MkdirAll(serverDir, os.ModePerm)
+	if err != nil {
+		logErr(err, fmt.Sprintf("running `MkdirAll` for '%s'", serverDir))
+	}
+	return startServerProcess(doltgresExec, serverDir)
+}
+
+// startServerProcess starts a doltgres subprocess in serverDir and waits for it to be ready.
+func startServerProcess(doltgresExec string, serverDir string) *DoltgresServer {
+	withKeyCtx, cancel := context.WithCancel(context.Background())
+	gServer, serverCtx := errgroup.WithContext(withKeyCtx)
+
+	server := exec.CommandContext(serverCtx, doltgresExec, "--data-dir=.")
+	server.Dir = serverDir
+
+	l, err := os.OpenFile(serverLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		logErr(err, fmt.Sprintf("opening %s file", serverLogFile))
+	}
+	server.Stdout = l
+	server.Stderr = l
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		<-quit
+		defer wg.Done()
+		signal.Stop(quit)
+		cancel()
+	}()
+
+	ds := &DoltgresServer{
+		dir:       serverDir,
+		quit:      quit,
+		wg:        &wg,
+		gServer:   gServer,
+		server:    server,
+		serverLog: l,
+	}
+	ds.Start()
+	return ds
 }
 
 func (h *DoltgresHarness) EngineStr() string {
 	return "postgresql"
 }
 
+// Init resets the harness to a clean state for the next test file.
+// For worker harnesses (no server process), it keeps a persistent connection and resets the
+// public schema via DROP+CREATE — avoiding database-level connection races entirely.
+// For server-owning harnesses, it drops and recreates the database (safe because only one worker
+// uses each database in the non-concurrent path).
 func (h *DoltgresHarness) Init() error {
-	ctx := context.Background()
-	h.startNewDoltgresServer(ctx, logictest.GetCurrentFileName())
-	db, err := sql.Open("pgx", doltgresNoDbDsn)
-	if err != nil {
-		logErr(err, "opening connection to pgx")
-		return err
+	if h.server == nil {
+		return h.initWorker()
 	}
-	// todo: doltgres errors on ping currently
-	//err = db.Ping()
-	//if err != nil {
-	//	return err
-	//}
-
-	// drop if 'sqllogictest' database exists
-	_, err = db.ExecContext(ctx, "DROP DATABASE IF EXISTS sqllogictest")
-	if err != nil {
-		logErr(err, "dropping 'sqllogictest' database")
-		return err
-	}
-
-	// create 'sqllogictest' database
-	_, err = db.ExecContext(ctx, "CREATE DATABASE sqllogictest")
-	if err != nil {
-		logErr(err, "creating 'sqllogictest' database")
-		return err
-	}
-
-	err = db.Close()
-	if err != nil {
-		logErr(err, "closing database connection")
-		return err
-	}
-
-	db, err = sql.Open("pgx", doltgresWithDbDsn)
-	if err != nil {
-		logErr(err, "opening connection to pgx")
-		return err
-	}
-	err = db.Ping()
-	if err != nil {
-		return err
-	}
-
-	h.db = db
-
-	if err := h.dropAllTables(ctx); err != nil {
-		return err
-	}
-
-	return h.dropAllViews(ctx)
+	return h.initServer()
 }
 
-func (s *DoltgresHarness) Close() error {
-	s.ClearServer()
-	s.harnessLog.Close()
-	log.SetOutput(s.stashedLogOutput)
-	return os.RemoveAll(s.serverDir)
+// initWorker resets a worker harness between test files.
+//
+// When useDropSchema is true (PostgreSQL), it wipes and recreates the public schema on the
+// persistent connection — no reconnect needed, no races.
+func (h *DoltgresHarness) initWorker() error {
+	ctx := context.Background()
+
+	if h.db != nil {
+		h.db.Close()
+		h.db = nil
+	}
+	noDB, err := sql.Open("pgx", noDatabaseDSN(h.port))
+	if err != nil {
+		return err
+	}
+	_, err = noDB.ExecContext(ctx, "DROP DATABASE IF EXISTS "+h.dbName)
+	if err == nil {
+		_, err = noDB.ExecContext(ctx, "CREATE DATABASE "+h.dbName)
+	}
+	noDB.Close()
+	if err != nil {
+		return fmt.Errorf("resetting database %s: %w", h.dbName, err)
+	}
+	return h.openWorkerDB(ctx)
+}
+
+// openWorkerDB establishes a connection to the worker's database, creating it if necessary.
+func (h *DoltgresHarness) openWorkerDB(ctx context.Context) error {
+	db, err := sql.Open("pgx", withDatabaseDSN(h.port, h.dbName))
+	if err != nil {
+		return err
+	}
+	if pingErr := db.Ping(); pingErr == nil {
+		h.db = db
+		return nil
+	}
+	db.Close()
+
+	// Database does not exist yet; create it.
+	noDB, err := sql.Open("pgx", noDatabaseDSN(h.port))
+	if err != nil {
+		return err
+	}
+	_, createErr := noDB.ExecContext(ctx, "CREATE DATABASE "+h.dbName)
+	noDB.Close()
+	if createErr != nil {
+		logErr(createErr, "creating database "+h.dbName)
+		return createErr
+	}
+
+	db, err = sql.Open("pgx", withDatabaseDSN(h.port, h.dbName))
+	if err != nil {
+		return err
+	}
+	if err = db.Ping(); err != nil {
+		db.Close()
+		return err
+	}
+	h.db = db
+	return nil
+}
+
+// initServer resets the server-owning harness by dropping and recreating the database.
+// This is only used in the non-concurrent (single-worker) path.
+func (h *DoltgresHarness) initServer() error {
+	ctx := context.Background()
+
+	if h.db != nil {
+		h.db.Close()
+		h.db = nil
+	}
+
+	noDB, openErr := sql.Open("pgx", noDatabaseDSN(h.port))
+	if openErr != nil {
+		logErr(openErr, "opening no-db connection")
+		return openErr
+	}
+	_, err := noDB.ExecContext(ctx, "DROP DATABASE IF EXISTS "+h.dbName)
+	if err == nil {
+		_, err = noDB.ExecContext(ctx, "CREATE DATABASE "+h.dbName)
+	}
+	noDB.Close()
+	if err != nil {
+		logErr(err, "resetting database "+h.dbName)
+		return err
+	}
+
+	db, err := sql.Open("pgx", withDatabaseDSN(h.port, h.dbName))
+	if err != nil {
+		logErr(err, "opening connection to "+h.dbName)
+		return err
+	}
+	if err = db.Ping(); err != nil {
+		db.Close()
+		return err
+	}
+	h.db = db
+	return nil
+}
+
+func (h *DoltgresHarness) Close() error {
+	if h.db != nil {
+		h.db.Close()
+		h.db = nil
+	}
+	if h.server != nil {
+		h.server.Close()
+		h.server = nil
+	}
+	if h.harnessLog != nil {
+		h.harnessLog.Close()
+		log.SetOutput(h.stashedLogOutput)
+	}
+	return os.RemoveAll(h.serverDir)
 }
 
 func (h *DoltgresHarness) ExecuteStatement(statement string) error {
@@ -168,36 +312,10 @@ func (h *DoltgresHarness) ExecuteQuery(statement string) (schema string, results
 	if rows != nil {
 		defer rows.Close()
 	}
-
 	if err != nil {
 		return "", nil, err
 	}
-
 	return h.getSchemaAndResults(rows)
-}
-
-func (h *DoltgresHarness) getSchemaAndResults(rows *sql.Rows) (schema string, results []string, err error) {
-	schema, columns, err := columns(rows)
-	if err != nil {
-		return "", nil, err
-	}
-
-	for rows.Next() {
-		err := rows.Scan(columns...)
-		if err != nil {
-			return "", nil, err
-		}
-
-		for _, col := range columns {
-			results = append(results, stringVal(col))
-		}
-	}
-
-	if rows.Err() != nil {
-		return "", nil, rows.Err()
-	}
-
-	return schema, results, nil
 }
 
 func (h *DoltgresHarness) ExecuteStatementContext(ctx context.Context, statement string) error {
@@ -210,11 +328,9 @@ func (h *DoltgresHarness) ExecuteQueryContext(ctx context.Context, statement str
 	if rows != nil {
 		defer rows.Close()
 	}
-
 	if err != nil {
 		return "", nil, err
 	}
-
 	return h.getSchemaAndResults(rows)
 }
 
@@ -222,140 +338,23 @@ func (h *DoltgresHarness) GetTimeout() int64 {
 	return h.timeout
 }
 
-func (h *DoltgresHarness) dropAllTables(ctx context.Context) error {
-	var rows *sql.Rows
-	var err error
-	// TODO: once we support ENUM type and comparison, add `AND table_type = 'BASE TABLE'`
-	rows, err = h.db.QueryContext(ctx, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'sqllogictest';")
-	if rows != nil {
-		defer rows.Close()
-	}
+func (h *DoltgresHarness) getSchemaAndResults(rows *sql.Rows) (schema string, results []string, err error) {
+	schema, cols, err := columns(rows)
 	if err != nil {
-		return err
+		return "", nil, err
 	}
-
-	_, columns, err := columns(rows)
-	if err != nil {
-		return err
-	}
-
-	var tableNames []string
 	for rows.Next() {
-		err := rows.Scan(columns...)
-		if err != nil {
-			return err
+		if err = rows.Scan(cols...); err != nil {
+			return "", nil, err
 		}
-
-		tableName := columns[0].(*sql.NullString)
-		tableNames = append(tableNames, tableName.String)
-	}
-
-	if len(tableNames) > 0 {
-		dropTables := "drop table if exists " + strings.Join(tableNames, ",")
-		_, err = h.db.ExecContext(ctx, dropTables)
-		if err != nil {
-			return err
+		for _, col := range cols {
+			results = append(results, stringVal(col))
 		}
 	}
-
-	return nil
-}
-
-func (h *DoltgresHarness) dropAllViews(ctx context.Context) error {
-	rows, err := h.db.QueryContext(ctx, "select table_name from INFORMATION_SCHEMA.views")
-	if rows != nil {
-		defer rows.Close()
+	if rows.Err() != nil {
+		return "", nil, rows.Err()
 	}
-	if err != nil {
-		return err
-	}
-
-	_, columns, err := columns(rows)
-	if err != nil {
-		return err
-	}
-
-	var viewNames []string
-	for rows.Next() {
-		err := rows.Scan(columns...)
-		if err != nil {
-			return err
-		}
-
-		viewName := columns[0].(*sql.NullString)
-		viewNames = append(viewNames, viewName.String)
-	}
-
-	if len(viewNames) > 0 {
-		dropView := "drop view if exists " + strings.Join(viewNames, ",")
-		_, err = h.db.ExecContext(ctx, dropView)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// startNewDoltgresServer stops the existing server if exists.
-// It starts a new server and update the |server| of the harness.
-func (h *DoltgresHarness) startNewDoltgresServer(ctx context.Context, newTestFile string) {
-	h.ClearServer()
-
-	withKeyCtx, cancel := context.WithCancel(ctx)
-	gServer, serverCtx := errgroup.WithContext(withKeyCtx)
-
-	server := exec.CommandContext(serverCtx, h.doltgresExec, "--data-dir=.")
-	server.Dir = h.serverDir
-
-	// open log file for server output
-	l, err := os.OpenFile(serverLogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		logErr(err, fmt.Sprintf("opening %s file", serverLogFile))
-	}
-	server.Stdout = l
-	server.Stderr = l
-
-	// handle user interrupt
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		<-quit
-		defer wg.Done()
-		signal.Stop(quit)
-		cancel()
-	}()
-
-	doltgresServer := &DoltgresServer{
-		dir:       h.serverDir,
-		quit:      quit,
-		wg:        &wg,
-		gServer:   gServer,
-		server:    server,
-		testFile:  newTestFile,
-		serverLog: l,
-	}
-
-	h.server = doltgresServer
-	h.server.Start()
-}
-
-// ClearServer closes the connection to the server and the server if either exists.
-func (h *DoltgresHarness) ClearServer() {
-	if h.db != nil {
-		err := h.db.Close()
-		if err != nil {
-			logErr(err, "closing connection")
-		}
-		h.db = nil
-	}
-	// close
-	if h.server != nil {
-		h.server.Close()
-		h.server = nil
-	}
+	return schema, results, nil
 }
 
 type DoltgresServer struct {
@@ -364,20 +363,17 @@ type DoltgresServer struct {
 	wg        *sync.WaitGroup
 	gServer   *errgroup.Group
 	server    *exec.Cmd
-	testFile  string
 	serverLog *os.File
 }
 
 func (s *DoltgresServer) Start() {
-	logMsg(fmt.Sprintf("starting doltgres server for: %s", s.testFile))
+	logMsg("starting doltgres server")
 	var err error
-	// launch the dolt server
 	s.gServer.Go(func() error {
 		err = s.server.Run()
 		return err
 	})
-
-	// sleep to allow the server to start
+	// Allow the server time to start accepting connections.
 	time.Sleep(3 * time.Second)
 	if err != nil {
 		logErr(err, "from server.Start()")
@@ -387,35 +383,26 @@ func (s *DoltgresServer) Start() {
 func (s *DoltgresServer) Stop() {
 	select {
 	case <-s.quit:
-		// closed
 		return
 	default:
 	}
-
-	// send signal to dolt server
 	s.quit <- syscall.SIGTERM
-	//defer s.isRunning.Store(false)
 	err := s.gServer.Wait()
 	if err != nil {
-		// we expect a kill error
-		// we only exit in error
-		// if this is not the error
 		if err.Error() == "signal: killed" {
-			logMsg("doltgres server is stopped successfully from SIGTERM")
+			logMsg("doltgres server stopped successfully")
 		} else {
 			logErr(err, "from server.Stop()")
 		}
 	}
-
 	close(s.quit)
 	s.wg.Wait()
 }
 
 func (s *DoltgresServer) Close() {
 	s.Stop()
-	err := s.serverLog.Close()
-	if err != nil {
-		logErr(err, fmt.Sprintf("closing server.log file for server for %s", s.testFile))
+	if err := s.serverLog.Close(); err != nil {
+		logErr(err, "closing server.log")
 	}
 }
 

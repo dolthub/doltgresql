@@ -2506,6 +2506,24 @@ func init() {
 			typNameLiterals[name] = t
 		}
 	}
+	for name, t := range sqlStandardTypeAliases {
+		if _, ok := typNameLiterals[name]; !ok {
+			typNameLiterals[name] = t
+		}
+	}
+}
+
+// typeNameWhitespace matches any run of whitespace within a type name.
+var typeNameWhitespace = regexp.MustCompile(`\s+`)
+
+// normalizeTypeName collapses each run of whitespace within the given type name to a single space, so
+// that the multi-word SQL standard type names (`double  precision`, `timestamp\n\twith time zone`, etc.)
+// match their entries in typNameLiterals regardless of how they were spelled in the original statement.
+func normalizeTypeName(name string) string {
+	if !strings.ContainsAny(name, " \t\n\r\f\v") {
+		return name
+	}
+	return typeNameWhitespace.ReplaceAllString(strings.TrimSpace(name), " ")
 }
 
 // TypeForNonKeywordTypeName returns the column type for the string name of a
@@ -2515,6 +2533,7 @@ func init() {
 //	 -1 if the type is known in postgres.
 //	>0 for a github issue number.
 func TypeForNonKeywordTypeName(name string) (*T, bool, int) {
+	name = normalizeTypeName(name)
 	t, ok := typNameLiterals[name]
 	if ok {
 		return t, ok, 0
@@ -2579,6 +2598,46 @@ var unreservedTypeTokens = map[string]*T{
 
 	"string": String,
 	"uuid":   Uuid,
+}
+
+// sqlStandardTypeAliases contains the SQL standard type names that Postgres accepts as aliases for its own
+// type names (https://www.postgresql.org/docs/15/datatype.html#DATATYPE-TABLE). The grammar has tokens for
+// all of them, so this map serves only the callers that resolve a name arriving as a bare string rather than
+// as parser input: a schema-qualified name such as `pg_catalog.boolean`, or a name from a PL/pgSQL datum
+// list. Multi-word names are keyed with single spaces, which is what TypeForNonKeywordTypeName normalizes to.
+//
+// `char` is absent because `pg_catalog.char` names the internal one-byte "char" type that OidToType already
+// registers, rather than the bpchar that a bare CHAR keyword names.
+var sqlStandardTypeAliases = map[string]*T{
+	"bigint":   Int,
+	"boolean":  Bool,
+	"dec":      Decimal,
+	"decimal":  Decimal,
+	"int":      Int4,
+	"real":     Float4,
+	"smallint": Int2,
+
+	// FLOAT with no precision is FLOAT8; only FLOAT(1) through FLOAT(24) are FLOAT4, and the precision is applied
+	// by the caller rather than by this lookup.
+	"float":            Float,
+	"double precision": Float,
+
+	"character":                  typeBpChar,
+	"national char":              typeBpChar,
+	"national character":         typeBpChar,
+	"nchar":                      typeBpChar,
+	"char varying":               VarChar,
+	"character varying":          VarChar,
+	"national char varying":      VarChar,
+	"national character varying": VarChar,
+	"nchar varying":              VarChar,
+
+	"bit varying": VarBit,
+
+	"time without time zone":      Time,
+	"time with time zone":         TimeTZ,
+	"timestamp without time zone": Timestamp,
+	"timestamp with time zone":    TimestampTZ,
 }
 
 // The following map must include all types predefined in PostgreSQL

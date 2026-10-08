@@ -25,6 +25,6 @@ jobs:
       - name: Set up Docker
         uses: docker/setup-docker-action@v4
       - name: Build Docker image
-        run: docker build -t postgres-client-tests --file testing/PostgresDockerfile .
+        run: docker build -t postgres-client-tests --file testing/postgres-client-tests/Dockerfile .
       - name: Run tests
         run: docker run --detach=false postgres-client-tests

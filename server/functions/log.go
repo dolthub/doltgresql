@@ -112,7 +112,7 @@ var log_numeric_numeric = framework.Function2{
 			return nil, err
 		}
 		if lnBase.IsZero() {
-			return nil, errors.Errorf("division by zero")
+			return nil, pgtypes.ErrDivisionByZero.New()
 		}
 
 		lnNum := new(apd.Decimal)

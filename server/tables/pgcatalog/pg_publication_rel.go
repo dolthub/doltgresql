@@ -43,7 +43,8 @@ func (p PgPublicationRelHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPublicationRelHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_publication_rel row iter
+	// pg_publication_rel is currently empty, since CREATE PUBLICATION (logical replication publishing) is not supported.
+	// TODO: fill this in when publications are supported
 	return emptyRowIter()
 }
 
@@ -60,8 +61,8 @@ var pgPublicationRelSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgPublicationRelName},
 	{Name: "prpubid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgPublicationRelName},
 	{Name: "prrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgPublicationRelName},
-	{Name: "prqual", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPublicationRelName},        // TODO: pg_node_tree type, collation C
-	{Name: "prattrs", Type: pgtypes.Int16Array, Default: nil, Nullable: true, Source: PgPublicationRelName}, // TODO: int2vector type
+	{Name: "prqual", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPublicationRelName}, // TODO: pg_node_tree type, collation C
+	{Name: "prattrs", Type: pgtypes.Int16vector, Default: nil, Nullable: true, Source: PgPublicationRelName},
 }
 
 // pgPublicationRelRowIter is the sql.RowIter for the pg_publication_rel table.

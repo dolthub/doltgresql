@@ -101,7 +101,15 @@ export function mergeMatcher(data, exp) {
     return false;
   }
 
-  const row = data.rows[0].dolt_merge;
+  // dolt_merge returns a record, which node-postgres does not parse, so we get the raw
+  // record text like `(hash,1,0,"merge successful")`
+  const raw = data.rows[0].dolt_merge;
+  const recordMatch = /^\(([^,]*),(\d+),(\d+),"?([^"]*)"?\)$/.exec(raw);
+  if (!recordMatch) {
+    console.log("Unexpected dolt_merge result", raw);
+    return false;
+  }
+  const row = recordMatch.slice(1);
   const expRow = exp.rows[0].dolt_merge;
 
   // Check valid commit hash

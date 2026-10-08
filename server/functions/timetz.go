@@ -46,7 +46,11 @@ var timetz_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := strings.TrimSpace(val1.(string))
+		val1Str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		input := strings.TrimSpace(val1Str)
 		typmod := val3.(int32)
 		if typmod == -1 {
 			typmod = 6
@@ -88,7 +92,10 @@ var timetz_recv = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		// TODO: decode typmod to precision
-		data := val1.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
@@ -162,7 +169,11 @@ func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
 	if err != nil {
 		return nil, err
 	}
+	valStr, err := framework.UnwrapString(ctx, val)
+	if err != nil {
+		return nil, err
+	}
 
-	loc, _, _, err := convertTzToOffsetSecs(time.Now(), val.(string))
+	loc, _, _, err := convertTzToOffsetSecs(time.Now(), valStr)
 	return loc, err
 }

@@ -36,7 +36,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
-	"github.com/dolthub/vitess/go/sqltypes"
+	"github.com/dolthub/go-mysql-server/testutils"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jackc/pgx/v5"
@@ -91,6 +91,9 @@ func (d *DoltgresHarness) WithConfigureStats(configureStats bool) denginetest.Do
 }
 
 func (d *DoltgresHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHarness {
+	// Each harness owns a server on a single fixed port, so we must shut down the
+	// previous one before standing up its replacement to avoid a port conflict.
+	d.Close()
 	h := newDoltgresServerHarness(t).(*DoltgresHarness)
 	h.skippedQueries = d.skippedQueries
 	h.setupData = d.setupData
@@ -165,9 +168,17 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 			if !runQuery {
 				t.Log("Skipping setup query: ", s)
 				continue
-			} else {
-				t.Log("Running setup query: ", s)
 			}
+			// Honor per-test skip patterns during setup too. This lets a
+			// test that needs most of a setup script but not one particular
+			// query (e.g. a CREATE VIEW that uses MySQL-only syntax) skip
+			// just that query via WithSkippedQueries rather than rebuilding
+			// the entire setup.
+			if d.SkipQueryTest(sanitized) {
+				t.Log("Skipping setup query (per-test skip): ", s)
+				continue
+			}
+			t.Log("Running setup query: ", s)
 			_, rowIter, _, err := queryEngine.Query(ctx, sanitized)
 			if err != nil {
 				return nil, err
@@ -229,7 +240,6 @@ func commitScripts(dbs []string) []setup.SetupScript {
 var skippedSetupWords = []string{
 	"typestable",     // lots of work to do
 	"datetime_table", // invalid timestamp format
-	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)
 	"analyze table",  // unsupported syntax
 }
 
@@ -408,8 +418,8 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	}
 
 	switch true {
-	case convertExpectedResultsForDoltProcedures(t, q, widenedExpected, widenedRows):
 	case convertCountStarDoltLog(t, q, widenedExpected, widenedRows):
+	case convertShowCreateTableExpected(t, q, widenedExpected):
 	// widenedExpected modified in place
 	default:
 		// The expected results that need widening before checking against actual results.
@@ -447,13 +457,149 @@ func convertCountStarDoltLog(t *testing.T, q string, expected []sql.Row, rows []
 	return false
 }
 
+// showCreateTableQueryRegex matches `SHOW CREATE TABLE`, optionally prefixed
+// with whitespace and possibly continuation tokens. The match is anchored at
+// the start of the query and is case-insensitive.
+var showCreateTableQueryRegex = regexp.MustCompile(`(?i)^\s*show\s+create\s+table\b`)
+
+// convertShowCreateTableExpected rewrites the MySQL-style CREATE TABLE
+// text in the expected rows of a SHOW CREATE TABLE assertion into the
+// doltgres/postgres dialect, so the test framework can compare it directly
+// against what the server emits. The rewrite is intentionally textual: the
+// expected values in the test queries are hand-authored MySQL strings, and
+// re-parsing/re-emitting them through a tree formatter would lose the
+// formatting (newlines, indentation) the tests check.
+//
+// Translations performed:
+//   - Backtick-quoted identifiers become double-quoted ones.
+//   - MySQL type names become their postgres equivalents (int → integer,
+//     tinyint/smallint → smallint, mediumint → integer, blob → bytea,
+//     datetime → timestamp, char(N) → bpchar(N), double → double precision,
+//     decimal(N,M) → numeric, float → real).
+//   - The MySQL `KEY name (cols)` (non-unique secondary index) line is
+//     dropped — postgres represents these as separate CREATE INDEX
+//     statements outside the table body.
+//   - `UNIQUE KEY name (cols)` becomes `CONSTRAINT "name" UNIQUE ("cols")`.
+//   - The trailing `) ENGINE=InnoDB DEFAULT CHARSET=… COLLATE=…` clause
+//     becomes a bare `)`.
+//   - The MySQL `DEFAULT CURRENT_TIMESTAMP` form becomes `DEFAULT (now())`.
+//   - Doubled parentheses around a DEFAULT expression `((expr))` become
+//     `(expr)` (MySQL's `((7 + 11))` vs postgres' `(7 + 11)`).
+//   - A trailing comma left dangling after we drop a KEY clause is removed.
+func convertShowCreateTableExpected(t *testing.T, q string, expected []sql.Row) bool {
+	if !showCreateTableQueryRegex.MatchString(q) {
+		return false
+	}
+	for i := range expected {
+		// We expect rows of shape (table_name, create_statement).
+		if len(expected[i]) < 2 {
+			continue
+		}
+		s, ok := expected[i][1].(string)
+		if !ok {
+			continue
+		}
+		expected[i][1] = translateMysqlShowCreateTable(s)
+	}
+	return true
+}
+
+// reEngineSuffix matches the `) ENGINE=… COLLATE=…` tail.
+var reEngineSuffix = regexp.MustCompile(`\)\s+ENGINE=[^\n]*$`)
+
+// reUniqueKey matches `UNIQUE KEY \`name\` (cols)` lines emitted by MySQL.
+var reUniqueKey = regexp.MustCompile("(?m)^(\\s*)UNIQUE KEY `([^`]+)` \\(([^)]+)\\)")
+
+// reKeyLine matches a non-unique `KEY \`name\` (cols)` line.
+var reKeyLine = regexp.MustCompile("(?m)^\\s*KEY `[^`]+` \\([^)]+\\),?\n")
+
+// reDoubleParenDefault matches a DEFAULT clause wrapped in two layers of
+// parentheses, like `DEFAULT ((7 + 11))`.
+var reDoubleParenDefault = regexp.MustCompile(`DEFAULT \(\(([^()]+)\)\)`)
+
+// reBacktickIdent matches a backtick-quoted MySQL identifier — we replace
+// these with double-quoted postgres identifiers.
+var reBacktickIdent = regexp.MustCompile("`([^`]*)`")
+
+// mysqlToPostgresTypes lists the MySQL → postgres type-name substitutions
+// applied to the SHOW CREATE TABLE body. Order matters: we want the longer
+// names matched first so e.g. `mediumint` doesn't get mangled by the rule
+// for `int`.
+var mysqlToPostgresTypes = []struct {
+	re   *regexp.Regexp
+	repl string
+}{
+	// Composite/multi-word types first.
+	{regexp.MustCompile(`(?i)\bdouble\b`), "double precision"},
+	{regexp.MustCompile(`(?i)\bdecimal\(\d+,\d+\)`), "numeric"},
+	{regexp.MustCompile(`(?i)\bdecimal\(\d+\)`), "numeric"},
+	{regexp.MustCompile(`(?i)\bdecimal\b`), "numeric"},
+	// Integer family.
+	{regexp.MustCompile(`(?i)\btinyint\b`), "smallint"},
+	{regexp.MustCompile(`(?i)\bmediumint\b`), "integer"},
+	{regexp.MustCompile(`(?i)\bbigint\b`), "bigint"},
+	{regexp.MustCompile(`(?i)\bsmallint\b`), "smallint"},
+	{regexp.MustCompile(`(?i)\bint\b`), "integer"},
+	// Floating point.
+	{regexp.MustCompile(`(?i)\bfloat\b`), "real"},
+	// Strings / bytes.
+	{regexp.MustCompile(`(?i)\btinyblob\b`), "bytea"},
+	{regexp.MustCompile(`(?i)\bmediumblob\b`), "bytea"},
+	{regexp.MustCompile(`(?i)\blongblob\b`), "bytea"},
+	{regexp.MustCompile(`(?i)\bblob\b`), "bytea"},
+	{regexp.MustCompile(`(?i)\btinytext\b`), "text"},
+	{regexp.MustCompile(`(?i)\bmediumtext\b`), "text"},
+	{regexp.MustCompile(`(?i)\blongtext\b`), "text"},
+	{regexp.MustCompile(`(?i)\bchar\((\d+)\)`), "bpchar($1)"},
+	// Date/time.
+	{regexp.MustCompile(`(?i)\bdatetime\b`), "timestamp"},
+}
+
+func translateMysqlShowCreateTable(s string) string {
+	// 1. Drop the MySQL ENGINE / CHARSET / COLLATE suffix.
+	s = reEngineSuffix.ReplaceAllString(s, ")")
+
+	// 2. Strip non-unique KEY lines entirely; postgres represents these
+	//    as separate CREATE INDEX statements.
+	s = reKeyLine.ReplaceAllString(s, "")
+
+	// 3. Convert UNIQUE KEY clauses to CONSTRAINT ... UNIQUE form.
+	s = reUniqueKey.ReplaceAllString(s, "${1}CONSTRAINT `${2}` UNIQUE (${3})")
+
+	// 4. Apply type-name substitutions before we lose backticks (the regexes
+	//    use word boundaries that don't care about backticks).
+	for _, sub := range mysqlToPostgresTypes {
+		s = sub.re.ReplaceAllString(s, sub.repl)
+	}
+
+	// 5. DEFAULT CURRENT_TIMESTAMP → DEFAULT (now()) and unwrap doubled parens.
+	s = strings.ReplaceAll(s, "DEFAULT CURRENT_TIMESTAMP", "DEFAULT (now())")
+	s = reDoubleParenDefault.ReplaceAllString(s, "DEFAULT ($1)")
+
+	// 6. Backticks → double quotes.
+	s = reBacktickIdent.ReplaceAllString(s, `"$1"`)
+
+	// 7. If we dropped a KEY line in the middle of the table body, we may
+	//    have left a stranded trailing comma on the line above the closing
+	//    parenthesis. Trim it.
+	s = regexp.MustCompile(`,(\s*\n\s*\))`).ReplaceAllString(s, "$1")
+
+	return s
+}
+
 func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
 	ctx := context.Background()
+	upperQuery := strings.ToUpper(strings.TrimSpace(q))
+	// GMS engine tests expect MySQL row counts for UPDATE, REPLACE, and duplicate-key INSERT.
+	// Doltgres tests outside this suite assert PostgreSQL UPDATE and ON CONFLICT counts.
+	ignoreAffectedRows := strings.HasPrefix(upperQuery, "UPDATE ") ||
+		strings.HasPrefix(upperQuery, "REPLACE ") ||
+		strings.Contains(upperQuery, "ON DUPLICATE KEY UPDATE")
 	for i, row := range expected {
 		for j := range sch {
 			field := row[j]
 			// Special case for custom values
-			if cvv, isCustom := field.(enginetest.CustomValueValidator); isCustom {
+			if cvv, isCustom := field.(testutils.CustomValueValidator); isCustom {
 				if i >= len(actual) {
 					continue
 				}
@@ -482,6 +628,12 @@ func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schem
 		// OK results from GMS manifest as a nil schema in postgres, only accessible via command tags
 		if isNilOrEmptySchema && len(expected[i]) == 1 {
 			if okResult, isOkResult := expected[i][0].(gmstypes.OkResult); isOkResult {
+				// The shared tests expect MySQL counts; PostgreSQL command counts are tested separately.
+				if ignoreAffectedRows && i < len(actual) && len(actual[i]) == 1 {
+					if actualResult, ok := actual[i][0].(gmstypes.OkResult); ok {
+						okResult.RowsAffected = actualResult.RowsAffected
+					}
+				}
 				// we can't verify the custom text fields of things like update results, so we strip out that info
 				expected[i][0] = gmstypes.NewOkResult(int(okResult.RowsAffected))
 				// there are other Postgres queries that lack a row count
@@ -491,72 +643,6 @@ func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schem
 			}
 		}
 	}
-}
-
-func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpected []sql.Row, widenedActual []sql.Row) bool {
-	if doltProcedureCall.MatchString(q) {
-		// if this was a dolt procedure call, we need to convert the expected values to what doltgres currently outputs
-		// TODO: this can be removed when we support `select * from dolt_procedure_call(...)`
-		for i := range widenedExpected {
-			r := widenedExpected[i]
-			sb := strings.Builder{}
-			sb.WriteRune('{')
-			for j, val := range r {
-				if j > 0 {
-					sb.WriteRune(',')
-				}
-				switch v := val.(type) {
-				case string:
-					// Quoting here is wrong in several ways, but we need to match the current output
-					sb.WriteString("\"")
-					sb.WriteString(v)
-					sb.WriteString("\"")
-				case int64, uint64:
-					sb.WriteString(fmt.Sprintf("%d", v))
-				case float64:
-					sb.WriteString(fmt.Sprintf("%f", v))
-				case bool:
-					if v {
-						sb.WriteString("t")
-					} else {
-						sb.WriteString("f")
-					}
-				case time.Time:
-					sb.WriteString(v.Format("2006-01-02 15:04:05.999999999"))
-				case enginetest.CustomValueValidator:
-					// This is a hack, but in practice there's only a single implementation of this interface, used by dolt
-					v = &doltCommitValidator{}
-
-					actual := widenedActual[i][j]
-					ok, err := v.Validate(actual)
-					if err != nil {
-						t.Error(err.Error())
-					}
-					if !ok {
-						t.Errorf("Custom value validation, got %v", actual)
-					}
-					if dcv, ok := v.(*doltCommitValidator); ok {
-						ok, hash := dcv.CommitHash(actual)
-						if !ok {
-							t.Errorf("Custom value validation, got %v", actual)
-						}
-						sb.WriteString(hash)
-					} else {
-						sb.WriteString(fmt.Sprintf("%v", strings.Trim(actual.(string), "{}")))
-					}
-				default:
-					t.Fatalf("unexpected type %T", val)
-				}
-			}
-			sb.WriteRune('}')
-
-			widenedExpected[i] = []interface{}{sb.String()}
-		}
-
-		return true
-	}
-
-	return false
 }
 
 // EvaluateExpectedError is a harness extension that gives us more control over matching expected errors. Our error
@@ -612,18 +698,12 @@ type DoltgresQueryEngine struct {
 
 var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
 
-// Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
-// a const value without assigning to an intermediate variable.
-func Ptr[T any](v T) *T {
-	return &v
-}
-
 const port = 5433
 
 func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
 	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
-			LogLevelStr: Ptr("debug"),
+			LogLevelStr: Ptr("warn"),
 			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
 				PortNumber: Ptr(port),
 			},
@@ -907,7 +987,7 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 		case uint32(oid.T_bytea):
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.MustCreateBinary(sqltypes.Binary, 100), Nullable: true})
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongBlob, Nullable: true})
 		case uint32(oid.T_json):
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
@@ -915,7 +995,13 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 		case uint32(oid.T_unknown): // TODO: this should not be returned
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.MustCreateBinary(sqltypes.Binary, 100), Nullable: true})
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongBlob, Nullable: true})
+		case uint32(oid.T_record):
+			// Record values (e.g. a dolt_ function invoked in the SELECT list rather than the FROM clause) are
+			// compared using their text serialization, e.g. (0,"Switched to branch 'b1'")
+			colVal := gosql.NullString{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongText, Nullable: true})
 		default:
 			return nil, nil, errors.Errorf("Unhandled OID %d", field.DataTypeOID)
 		}

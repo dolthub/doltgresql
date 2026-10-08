@@ -44,6 +44,7 @@ $$ LANGUAGE plpgsql;`, `
 CREATE FUNCTION func2(input INT) RETURNS TEXT AS $$
 BEGIN RETURN 'func2(INT)'; END;
 $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION alt_func1(int = 2, int = 3) RETURNS int LANGUAGE sql AS 'SELECT $1 + $2';`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -65,6 +66,14 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:       "SELECT func2(99);",
 					ExpectedErr: "not found",
+				},
+				{
+					Query:       "DROP FUNCTION alt_func1();",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:    "DROP FUNCTION alt_func1;",
+					Expected: []sql.Row{},
 				},
 			},
 		},

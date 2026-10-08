@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -70,12 +71,13 @@ func (c *CreateRole) Resolved() bool {
 func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var userRole auth.Role
 	var roleExists bool
+	var roleErr error
 	auth.LockRead(func() {
 		roleExists = auth.RoleExists(c.Name)
-		userRole = auth.GetRole(ctx.Client().User)
+		userRole, roleErr = auth.CurrentRoleLocked(ctx)
 	})
-	if !userRole.IsValid() {
-		return nil, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	if roleErr != nil {
+		return nil, roleErr
 	}
 	if roleExists {
 		if c.IfNotExists {
@@ -126,13 +128,15 @@ func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 
 	var err error
+	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		auth.SetRole(role)
-		err = auth.PersistChanges()
+		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {
 		return nil, err
 	}
+	auth.WaitForReplication(ctx, rsc)
 	return sql.RowsToRowIter(), nil
 }
 

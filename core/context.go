@@ -17,44 +17,267 @@ package core
 import (
 	"maps"
 	"slices"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
+	"github.com/dolthub/dolt/go/store/types"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/aggregates"
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
+	"github.com/dolthub/doltgresql/core/operators"
 	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/sessionstate"
 	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
-// contextValues contains a set of cached data passed alongside the context. This data is considered temporary
-// and may be refreshed at any point, including during the middle of a query. Callers should not assume that
-// data stored in contextValues is persisted, and other types of data should not be added to contextValues.
+// contextValues is the single DoltgreSQL payload attached to a Dolt session.
+// identity and resource bookkeeping survive root/cache invalidation; the
+// collection, catalog, runner, and formatting fields are disposable caches.
 type contextValues struct {
-	seqs map[string]*sequences.Collection
-	// TODO: all these collection fields need to be mapped by database name as seqs above
-	types          *typecollection.TypeCollection
-	funcs          *functions.Collection
-	procs          *procedures.Collection
-	trigs          *triggers.Collection
-	exts           *extensions.Collection
-	casts          *casts.Collection
+	identity           sessionstate.Journal[sessionstate.Identity]
+	settings           map[string]*sessionSetting
+	settingsSavepoints []string
+	settingsRestoreErr error
+	session            sql.Session
+	colls              map[string]*databaseCollections
+
 	pgCatalogCache any
+	runner         sql.StatementRunner
+
+	// cache the dateOutputFormat, this is refreshed on SET
+	dateOutputFormat string
+
+	transactionEndCallbacks   []func()
+	sessionAdvisoryLockCounts map[string]int
 }
+
+// InitializeIdentityOnSession installs the authenticated principal once on a
+// new session. The caller must resolve the role under the auth lock first.
+func InitializeIdentityOnSession(sess sql.Session, id sessionstate.RoleID, superuser bool) error {
+	if id == 0 {
+		return errors.New("cannot initialize identity with an invalid role ID")
+	}
+	cv, err := getSessionValues(sess)
+	if err != nil {
+		return err
+	}
+	if cv.identity.Current().Initialized() {
+		return errors.New("session identity is already initialized")
+	}
+	cv.identity = sessionstate.NewJournal(sessionstate.NewIdentity(id, superuser))
+	return nil
+}
+
+// IdentityFromSession returns durable typed state. A missing initialization is
+// an error: access never adopts sql.Client.User implicitly.
+func IdentityFromSession(sess sql.Session) (sessionstate.IdentitySnapshot, error) {
+	cv, err := getSessionValues(sess)
+	if err != nil {
+		return sessionstate.IdentitySnapshot{}, err
+	}
+	if !cv.identity.Current().Initialized() {
+		return sessionstate.IdentitySnapshot{}, errors.New("session identity is not initialized")
+	}
+	return cv.identity.Current().Snapshot(), nil
+}
+
+// InitializeIdentity is a context convenience wrapper for SQL entry points.
+func InitializeIdentity(ctx *sql.Context, id sessionstate.RoleID, superuser bool) error {
+	if ctx == nil {
+		return errors.New("context is nil")
+	}
+	return InitializeIdentityOnSession(ctx.Session, id, superuser)
+}
+
+// Identity is a context convenience wrapper for SQL expressions.
+func Identity(ctx *sql.Context) (sessionstate.IdentitySnapshot, error) {
+	if ctx == nil {
+		return sessionstate.IdentitySnapshot{}, errors.New("context is nil")
+	}
+	return IdentityFromSession(ctx.Session)
+}
+
+// ApplyAuthorizedIdentityChange journals a transition after its caller has
+// resolved roles and checked authorization. SQL entry points must not pass
+// user input directly to this function without those checks.
+func ApplyAuthorizedIdentityChange(ctx *sql.Context, local bool, change func(*sessionstate.Identity) error) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	if !cv.identity.Current().Initialized() {
+		return errors.New("session identity is not initialized")
+	}
+	next := *cv.identity.Current()
+	if err := change(&next); err != nil {
+		return err
+	}
+	if next.SessionRole() == 0 || next.CurrentRole() == 0 {
+		return errors.New("identity transition produced an invalid role ID")
+	}
+	if local {
+		cv.identity.SetLocal(next)
+	} else {
+		cv.identity.SetSession(next)
+	}
+	return nil
+}
+
+var _ dsess.DoltgresSessionLifecycle = (*contextValues)(nil)
+var _ dsess.DoltgresTransactionLifecycle = (*contextValues)(nil)
+
+func (cv *contextValues) DoltgresTransactionStarted() {
+	if cv.identity.InTransaction() {
+		return
+	}
+	cv.identity.Begin()
+	for _, setting := range cv.settings {
+		setting.journal.Begin()
+	}
+	cv.settingsSavepoints = nil
+}
+func (cv *contextValues) DoltgresTransactionCommitted() {
+	cv.identity.Commit()
+	for _, setting := range cv.settings {
+		setting.journal.Commit()
+	}
+	cv.settingsSavepoints = nil
+	cv.restoreSettings()
+}
+func (cv *contextValues) DoltgresTransactionRolledBack() {
+	cv.identity.Rollback()
+	for _, setting := range cv.settings {
+		setting.journal.Rollback()
+	}
+	cv.settingsSavepoints = nil
+	cv.restoreSettings()
+}
+func (cv *contextValues) DoltgresSavepointCreated(name string) {
+	cv.identity.Savepoint(name)
+	for _, setting := range cv.settings {
+		setting.journal.Savepoint(name)
+	}
+	cv.settingsSavepoints = append(cv.settingsSavepoints, name)
+}
+func (cv *contextValues) DoltgresSavepointRolledBack(name string) {
+	cv.identity.RollbackTo(name)
+	for _, setting := range cv.settings {
+		setting.journal.RollbackTo(name)
+	}
+	cv.trimSettingsSavepoints(name, false)
+	cv.restoreSettings()
+}
+func (cv *contextValues) DoltgresSavepointReleased(name string) {
+	cv.identity.Release(name)
+	for _, setting := range cv.settings {
+		setting.journal.Release(name)
+	}
+	cv.trimSettingsSavepoints(name, true)
+}
+
+// DoltgresSessionCacheClear clears branch-dependent cached state while
+// preserving transaction-end callbacks and session advisory lock counts.
+func (cv *contextValues) DoltgresSessionCacheClear() {
+	cv.colls = nil
+	cv.pgCatalogCache = nil
+	cv.runner = nil
+	cv.dateOutputFormat = ""
+}
+
+// DoltgresTransactionEnd releases resources whose lifetime is the current
+// transaction. DoltSession calls it from the audited semantic transaction-end
+// paths, including explicit, implicit, and procedural commit and rollback.
+func (cv *contextValues) DoltgresTransactionEnd() {
+	callbacks := cv.transactionEndCallbacks
+	cv.transactionEndCallbacks = nil
+	for _, callback := range callbacks {
+		callback()
+	}
+}
+
+// AddTransactionEndCallback registers work to run when the current transaction
+// commits or rolls back.
+func AddTransactionEndCallback(ctx *sql.Context, callback func()) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.transactionEndCallbacks = append(cv.transactionEndCallbacks, callback)
+	return nil
+}
+
+// AddSessionAdvisoryLock records a successful session-scoped advisory lock
+// acquisition so that transaction-scoped acquisitions cannot be manually
+// released by pg_advisory_unlock.
+func AddSessionAdvisoryLock(ctx *sql.Context, lockName string) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	if cv.sessionAdvisoryLockCounts == nil {
+		cv.sessionAdvisoryLockCounts = make(map[string]int)
+	}
+	cv.sessionAdvisoryLockCounts[lockName]++
+	return nil
+}
+
+// HasSessionAdvisoryLock returns whether the session has a session-scoped
+// acquisition for the named advisory lock.
+func HasSessionAdvisoryLock(ctx *sql.Context, lockName string) (bool, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return false, err
+	}
+	return cv.sessionAdvisoryLockCounts[lockName] > 0, nil
+}
+
+// RemoveSessionAdvisoryLock records the release of one session-scoped advisory
+// lock acquisition.
+func RemoveSessionAdvisoryLock(ctx *sql.Context, lockName string) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	count := cv.sessionAdvisoryLockCounts[lockName]
+	if count <= 1 {
+		delete(cv.sessionAdvisoryLockCounts, lockName)
+	} else {
+		cv.sessionAdvisoryLockCounts[lockName] = count - 1
+	}
+	return nil
+}
+
+// databaseCollections holds the root object collections cached for a single database, indexed by RootObjectID. A cached
+// collection survives statement boundaries, and is only reloaded once another writer has moved the root beneath it.
+type databaseCollections [objinterface.RootObjectID_Count]objinterface.Collection
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
 // it creates one and adds it to the context.
 func getContextValues(ctx *sql.Context) (*contextValues, error) {
-	sess := dsess.DSessFromSess(ctx.Session)
+	if ctx == nil {
+		return nil, errors.New("context is nil")
+	}
+	return getSessionValues(ctx.Session)
+}
+
+func getSessionValues(session sql.Session) (*contextValues, error) {
+	sess, ok := session.(*dsess.DoltSession)
+	if !ok {
+		return nil, errors.Errorf("expected a Dolt session, got %T", session)
+	}
 	if sess.DoltgresSessObj == nil {
-		cv := &contextValues{}
+		cv := &contextValues{session: sess}
 		sess.DoltgresSessObj = cv
 		return cv, nil
 	}
@@ -62,17 +285,10 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 	if !ok {
 		return nil, errors.Errorf("context contains an unknown values struct of type: %T", sess.DoltgresSessObj)
 	}
-	return cv, nil
-}
-
-// ClearContextValues clears all context values. This is primarily for operations that are directly called from Dolt, as
-// Dolt does not have the Doltgres concept of context values. Care must be taken to ensure that intermediate state
-// written to the context values are not overwritten.
-func ClearContextValues(ctx *sql.Context) {
-	sess := dsess.DSessFromSess(ctx.Session)
-	if sess.DoltgresSessObj != nil {
-		sess.DoltgresSessObj = &contextValues{}
+	if cv.settingsRestoreErr != nil {
+		return nil, cv.settingsRestoreErr
 	}
+	return cv, nil
 }
 
 // GetRootFromContext returns the working session's root from the context, along with the session.
@@ -94,7 +310,43 @@ func getRootFromContextForDatabase(ctx *sql.Context, database string) (*dsess.Do
 	if !ok {
 		return nil, nil, sql.ErrDatabaseNotFound.New(database)
 	}
-	return session, state.WorkingRoot().(*RootValue), nil
+	// Some databases (e.g. Dolt's synthetic dolt_cluster system database) aren't backed by a Doltgres *RootValue
+	// and never accumulate Doltgres-specific root object state (sequences, types, etc.), so there's nothing to
+	// return here.
+	root, ok := state.WorkingRoot().(*RootValue)
+	if !ok {
+		return session, nil, nil
+	}
+	return session, root, nil
+}
+
+var (
+	syntheticRootOnce sync.Once
+	syntheticRoot     *RootValue
+	syntheticRootErr  error
+)
+
+// getRootForCollections returns the working root for the given database, for use in loading the Doltgres
+// collections (sequences, types, functions, etc.). Databases that aren't backed by a Doltgres *RootValue
+// (e.g. Dolt's synthetic dolt_cluster system database) can't store any of these objects, so they get a shared,
+// empty, in-memory root: collections loaded from it are empty, meaning only built-in objects resolve there.
+func getRootForCollections(ctx *sql.Context, database string) (*RootValue, error) {
+	_, root, err := getRootFromContextForDatabase(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if root != nil {
+		return root, nil
+	}
+	syntheticRootOnce.Do(func() {
+		rv, err := emptyRootValue(ctx, types.NewMemoryValueStore(), tree.NewTestNodeStore())
+		if err != nil {
+			syntheticRootErr = err
+			return
+		}
+		syntheticRoot = rv.(*RootValue)
+	})
+	return syntheticRoot, syntheticRootErr
 }
 
 // IsContextValid returns whether the context is valid for use with any of the functions in the package. If this is not
@@ -133,6 +385,28 @@ func SetPgCatalogCache(ctx *sql.Context, pgCatalogCache any) error {
 	}
 	cv.pgCatalogCache = pgCatalogCache
 	return nil
+}
+
+// SetRunnerOnContext sets the given runner within the context values.
+func SetRunnerOnContext(ctx *sql.Context, runner sql.StatementRunner) error {
+	if runner == nil {
+		return nil
+	}
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.runner = runner
+	return nil
+}
+
+// GetRunnerFromContext returns the sql.StatementRunner from within the context.
+func GetRunnerFromContext(ctx *sql.Context) (sql.StatementRunner, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cv.runner, nil
 }
 
 // GetDoltTableFromContext returns the Dolt table from the context. Returns nil if no table was found.
@@ -254,168 +528,128 @@ func SearchPath(ctx *sql.Context) ([]string, error) {
 	return path, nil
 }
 
-// GetExtensionsCollectionFromContext returns the extensions collection from the given context. Will always return a
-// collection if no error is returned.
-func GetExtensionsCollectionFromContext(ctx *sql.Context, database string) (*extensions.Collection, error) {
+// collectionFromContext returns the root object collection matching the given ID for the named database, defaulting to
+// the context's current database. The cached collection is reused unless another writer has moved the root beneath it.
+func collectionFromContext(ctx *sql.Context, database string, objID objinterface.RootObjectID) (objinterface.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
 	}
-	_, root, err := getRootFromContextForDatabase(ctx, database)
+	if len(database) == 0 {
+		database = ctx.GetCurrentDatabase()
+	}
+	root, err := getRootForCollections(ctx, database)
 	if err != nil {
 		return nil, err
 	}
-	if cv.exts == nil {
-		cv.exts, err = extensions.LoadExtensions(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	} else if cv.exts.DiffersFrom(ctx, root) {
-		cv.exts, err = extensions.LoadExtensions(ctx, root)
-		if err != nil {
-			return nil, err
-		}
+	if cv.colls == nil {
+		cv.colls = make(map[string]*databaseCollections)
 	}
-	return cv.exts, nil
+	dbColls, ok := cv.colls[database]
+	if !ok {
+		dbColls = &databaseCollections{}
+		cv.colls[database] = dbColls
+	}
+	if coll := dbColls[objID]; coll != nil && !coll.IsStale(ctx, root) {
+		return coll, nil
+	}
+	coll, err := rootobject.LoadCollection(ctx, root, objID)
+	if err != nil {
+		return nil, err
+	}
+	dbColls[objID] = coll
+	return coll, nil
+}
+
+// GetCastsCollectionFromContext returns the given casts collection from the context.
+// Will always return a collection if no error is returned.
+func GetCastsCollectionFromContext(ctx *sql.Context, database string) (*casts.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Casts)
+	if err != nil {
+		return nil, err
+	}
+	return coll.(*casts.Collection), nil
+}
+
+// GetAggregatesCollectionFromContext returns the given aggregates collection from the context.
+// Will always return a collection if no error is returned.
+func GetAggregatesCollectionFromContext(ctx *sql.Context, database string) (*aggregates.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Aggregates)
+	if err != nil {
+		return nil, err
+	}
+	return coll.(*aggregates.Collection), nil
+}
+
+// GetOperatorsCollectionFromContext returns the given operators collection from the context.
+// Will always return a collection if no error is returned.
+func GetOperatorsCollectionFromContext(ctx *sql.Context, database string) (*operators.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Operators)
+	if err != nil {
+		return nil, err
+	}
+	return coll.(*operators.Collection), nil
+}
+
+// GetExtensionsCollectionFromContext returns the extensions collection from the given context. Will always return a
+// collection if no error is returned.
+func GetExtensionsCollectionFromContext(ctx *sql.Context, database string) (*extensions.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Extensions)
+	if err != nil {
+		return nil, err
+	}
+	return coll.(*extensions.Collection), nil
 }
 
 // GetFunctionsCollectionFromContext returns the functions collection from the given context. Will always return a
 // collection if no error is returned.
-func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection, error) {
-	cv, err := getContextValues(ctx)
+func GetFunctionsCollectionFromContext(ctx *sql.Context, database string) (*functions.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Functions)
 	if err != nil {
 		return nil, err
 	}
-	_, root, err := GetRootFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if cv.funcs == nil {
-		cv.funcs, err = functions.LoadFunctions(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	} else if cv.funcs.DiffersFrom(ctx, root) {
-		cv.funcs, err = functions.LoadFunctions(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return cv.funcs, nil
+	return coll.(*functions.Collection), nil
 }
 
 // GetProceduresCollectionFromContext returns the procedures collection from the given context. Will always return a
 // collection if no error is returned.
-func GetProceduresCollectionFromContext(ctx *sql.Context) (*procedures.Collection, error) {
-	cv, err := getContextValues(ctx)
+func GetProceduresCollectionFromContext(ctx *sql.Context, database string) (*procedures.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Procedures)
 	if err != nil {
 		return nil, err
 	}
-	_, root, err := GetRootFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if cv.procs == nil {
-		cv.procs, err = procedures.LoadProcedures(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	} else if cv.procs.DiffersFrom(ctx, root) {
-		cv.procs, err = procedures.LoadProcedures(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return cv.procs, nil
+	return coll.(*procedures.Collection), nil
 }
 
 // GetSequencesCollectionFromContext returns the given sequence collection from the context for the database
 // named. If no database is provided, the context's current database is used.
 // Will always return a collection if no error is returned.
 func GetSequencesCollectionFromContext(ctx *sql.Context, database string) (*sequences.Collection, error) {
-	cv, err := getContextValues(ctx)
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Sequences)
 	if err != nil {
 		return nil, err
 	}
-	if cv.seqs == nil {
-		cv.seqs = make(map[string]*sequences.Collection)
-	}
-	if cv.seqs[database] == nil {
-		_, root, err := getRootFromContextForDatabase(ctx, database)
-		if err != nil {
-			return nil, err
-		}
-		cv.seqs[database], err = sequences.LoadSequences(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return cv.seqs[database], nil
+	return coll.(*sequences.Collection), nil
 }
 
 // GetTriggersCollectionFromContext returns the triggers collection from the given context. Will always return a
 // collection if no error is returned.
 func GetTriggersCollectionFromContext(ctx *sql.Context, database string) (*triggers.Collection, error) {
-	cv, err := getContextValues(ctx)
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Triggers)
 	if err != nil {
 		return nil, err
 	}
-	_, root, err := getRootFromContextForDatabase(ctx, database)
-	if err != nil {
-		return nil, err
-	}
-	if cv.trigs == nil {
-		cv.trigs, err = triggers.LoadTriggers(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	} else if cv.trigs.DiffersFrom(ctx, root) {
-		cv.trigs, err = triggers.LoadTriggers(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return cv.trigs, nil
+	return coll.(*triggers.Collection), nil
 }
 
 // GetTypesCollectionFromContext returns the given type collection from the context.
 // Will always return a collection if no error is returned.
-func GetTypesCollectionFromContext(ctx *sql.Context) (*typecollection.TypeCollection, error) {
-	cv, err := getContextValues(ctx)
+func GetTypesCollectionFromContext(ctx *sql.Context, database string) (*typecollection.TypeCollection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Types)
 	if err != nil {
 		return nil, err
 	}
-	if cv.types == nil {
-		_, root, err := GetRootFromContext(ctx)
-		if err != nil {
-			return nil, err
-		}
-		cv.types, err = typecollection.LoadTypes(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return cv.types, nil
-}
-
-// GetCastsCollectionFromContext returns the given casts collection from the context.
-// Will always return a collection if no error is returned.
-func GetCastsCollectionFromContext(ctx *sql.Context) (*casts.Collection, error) {
-	cv, err := getContextValues(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if cv.casts == nil {
-		_, root, err := GetRootFromContext(ctx)
-		if err != nil {
-			return nil, err
-		}
-		cv.casts, err = casts.LoadCasts(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return cv.casts, nil
+	return coll.(*typecollection.TypeCollection), nil
 }
 
 // CloseContextRootFinalizer finalizes any changes persisted within the context by writing them to the working root.
@@ -432,154 +666,108 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 
 	// We need to update the root for all databases used by this context. This logic parallels what happens during
 	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty
-	for _, db := range databasesInContext(ctx, cv) {
-		err := updateSessionRootForDatabase(ctx, db, cv)
-		if err != nil {
+	for _, db := range slices.Sorted(maps.Keys(cv.colls)) {
+		if err := updateSessionRootForDatabase(ctx, db, cv.colls[db]); err != nil {
+			if sql.ErrDatabaseNotFound.Is(err) {
+				delete(cv.colls, db)
+				continue
+			}
 			return err
 		}
 	}
 	return nil
 }
 
-func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues) error {
+// GetDateStyleOutputFormat returns the cached DateOutputFormat
+func GetDateStyleOutputFormat(ctx *sql.Context) (string, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return "", err
+	}
+	return cv.dateOutputFormat, nil
+}
+
+// SetDateStyleOutputFormat cached the provided dateOutputFormat
+func SetDateStyleOutputFormat(ctx *sql.Context, dateOutputFormat string) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.dateOutputFormat = dateOutputFormat
+	return nil
+}
+
+// updateSessionRootForDatabase writes every change made to the given database's cached root object collections to the
+// session's working root. Collections that another writer has changed on the root are evicted rather than written.
+func updateSessionRootForDatabase(ctx *sql.Context, db string, dbColls *databaseCollections) error {
 	session, root, err := getRootFromContextForDatabase(ctx, db)
 	if err != nil {
 		return err
 	}
 
+	// Databases that aren't backed by a Doltgres *RootValue (e.g. Dolt's synthetic dolt_cluster system database) can't
+	// persist root object collections. Any collections cached for them are empty, synthetic ones, so there's nothing to
+	// write and nothing that can go stale.
+	if root == nil {
+		return nil
+	}
+
 	newRoot := root
-	if cv.seqs != nil && cv.seqs[db] != nil {
-		retRoot, err := cv.seqs[db].UpdateRoot(ctx, newRoot)
+	for objID, coll := range dbColls {
+		if coll == nil {
+			continue
+		}
+		if coll.IsStale(ctx, newRoot) {
+			dbColls[objID] = nil
+			continue
+		}
+		differs, err := coll.DiffersFrom(ctx, newRoot)
+		if err != nil {
+			return err
+		}
+		if !differs {
+			continue
+		}
+		retRoot, err := coll.UpdateRoot(ctx, newRoot)
 		if err != nil {
 			return err
 		}
 		newRoot = retRoot.(*RootValue)
-		delete(cv.seqs, db)
 	}
-
-	if cv.funcs != nil && cv.funcs.DiffersFrom(ctx, root) {
-		retRoot, err := cv.funcs.UpdateRoot(ctx, newRoot)
-		if err != nil {
-			return err
-		}
-		newRoot = retRoot.(*RootValue)
-		cv.funcs = nil
-	}
-
-	if cv.procs != nil && cv.procs.DiffersFrom(ctx, root) {
-		retRoot, err := cv.procs.UpdateRoot(ctx, newRoot)
-		if err != nil {
-			return err
-		}
-		newRoot = retRoot.(*RootValue)
-		cv.procs = nil
-	}
-
-	if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
-		retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
-		if err != nil {
-			return err
-		}
-		newRoot = retRoot.(*RootValue)
-		cv.trigs = nil
-	}
-
-	if cv.exts != nil && cv.exts.DiffersFrom(ctx, root) {
-		retRoot, err := cv.exts.UpdateRoot(ctx, newRoot)
-		if err != nil {
-			return err
-		}
-		newRoot = retRoot.(*RootValue)
-		cv.exts = nil
-	}
-
-	if cv.types != nil {
-		retRoot, err := cv.types.UpdateRoot(ctx, newRoot)
-		if err != nil {
-			return err
-		}
-		newRoot = retRoot.(*RootValue)
-		cv.types = nil
-	}
-
-	// TODO: need to be able to persist cv.casts without an empty collection updating the root (no value != empty value)
 
 	// Setting the session working root doesn't do a check to see if anything actually changed or not before marking that
 	// branch state dirty, and dolt only allows a single dirty working set per commit. So it's important here to only
 	// update the session root if something actually changed for that db.
-	if err, rootChanged := rootValueChanged(newRoot, root); rootChanged {
-		if err = session.SetWorkingRoot(ctx, db, newRoot); err != nil {
-			// TODO: We need a way to see if the session has a writeable working root
-			// (new interface method on session probably), and avoid setting it if so
-			if errors.Is(err, doltdb.ErrOperationNotSupportedInDetachedHead) {
-				return nil
-			}
-			return err
-		}
-	} else if err != nil {
+	rootChanged, err := rootValueChanged(newRoot, root)
+	if err != nil || !rootChanged {
 		return err
 	}
-
+	if err = session.SetWorkingRoot(ctx, db, newRoot); err != nil {
+		// TODO: We need a way to see if the session has a writeable working root
+		// (new interface method on session probably), and avoid setting it if so
+		if errors.Is(err, doltdb.ErrOperationNotSupportedInDetachedHead) {
+			return nil
+		}
+		return err
+	}
 	return nil
 }
 
 // rootValueChanged returns whether the new root value is different from the old one
-func rootValueChanged(newRoot *RootValue, root *RootValue) (error, bool) {
+func rootValueChanged(newRoot *RootValue, root *RootValue) (bool, error) {
 	if newRoot == root {
-		return nil, false
+		return false, nil
 	}
 
 	newHash, err := newRoot.HashOf()
 	if err != nil {
-		return err, false
+		return false, err
 	}
 
 	oldHash, err := root.HashOf()
 	if err != nil {
-		return err, false
+		return false, err
 	}
 
-	if newHash == oldHash {
-		return nil, false
-	}
-
-	return nil, true
-}
-
-func databasesInContext(ctx *sql.Context, cv *contextValues) []string {
-	dbs := make(map[string]struct{})
-	if cv.seqs != nil {
-		for db := range cv.seqs {
-			dbs[db] = struct{}{}
-		}
-	}
-	dbs[ctx.GetCurrentDatabase()] = struct{}{}
-
-	return slices.Sorted(maps.Keys(dbs))
-}
-
-// clear removes the collection from the cache.
-func (cv *contextValues) clear(objID objinterface.RootObjectID) {
-	switch objID {
-	case objinterface.RootObjectID_None:
-		// Nothing to cache with this
-	case objinterface.RootObjectID_Sequences:
-		cv.seqs = nil
-	case objinterface.RootObjectID_Types:
-		cv.types = nil
-	case objinterface.RootObjectID_Functions:
-		cv.funcs = nil
-	case objinterface.RootObjectID_Triggers:
-		cv.trigs = nil
-	case objinterface.RootObjectID_Extensions:
-		// We don't cache these
-	case objinterface.RootObjectID_Conflicts:
-		// We don't cache these
-	case objinterface.RootObjectID_Procedures:
-		cv.procs = nil
-	case objinterface.RootObjectID_Casts:
-		cv.casts = nil
-	default:
-		panic("unhandled context clear object ID")
-	}
+	return newHash != oldHash, nil
 }

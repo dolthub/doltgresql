@@ -19,7 +19,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/server/functions"
 )
 
@@ -59,6 +61,9 @@ type pgCatalogCache struct {
 	// pg_index / pg_indexes
 	pgIndexes *pgIndexCache
 
+	// pg_proc
+	procs []*pgProc
+
 	// pg_sequence / pg_sequences
 	sequences []*pgSequence
 
@@ -72,6 +77,30 @@ type pgCatalogCache struct {
 
 	// pg_tables
 	tables []pgTableRow
+
+	// pg_stat_*_tables / pg_stat_xact_*_tables / pg_statio_*_tables
+	statTableEntries []statTableEntry
+
+	// pg_stat_*_indexes / pg_statio_*_indexes
+	statIndexEntries []statIndexEntry
+
+	// pg_statio_*_sequences
+	statioSequenceEntries []statioSequenceEntry
+
+	// pg_enum
+	enumLabels []pgEnumLabel
+
+	// pg_trigger
+	triggers []triggers.Trigger
+
+	// pg_rewrite
+	rewrites []pgRewrite
+
+	// pg_extension
+	extensions []extensions.Extension
+
+	// pg_depend
+	dependRows []sql.Row
 }
 
 // pgClassCache holds cached data for the pg_class table, including two btree indexes for fast lookups by OID and
@@ -120,10 +149,11 @@ var _ BTreeStorageAccess[*pgType] = &pgTypeCache{}
 
 // pgIndexCache holds cached data for the pg_index table, including two btree indexes for fast lookups by index OID
 type pgIndexCache struct {
-	indexes     []*pgIndex
-	tableNames  map[id.Id]string
-	indexOidIdx *inMemIndexStorage[*pgIndex]
-	indrelidIdx *inMemIndexStorage[*pgIndex]
+	indexes      []*pgIndex
+	tableNames   map[id.Id]string
+	tableSchemas map[id.Id]sql.Schema
+	indexOidIdx  *inMemIndexStorage[*pgIndex]
+	indrelidIdx  *inMemIndexStorage[*pgIndex]
 }
 
 var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}

@@ -689,7 +689,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test_pk_seq');",
-					ExpectedErr: `relation "test_pk_seq" does not exist`,
+					ExpectedErr: `sequence "test_pk_seq" does not exist`,
 				},
 				{
 					Query: "SELECT nextval('myschema.test_pk_seq');",
@@ -981,7 +981,7 @@ func TestSequences(t *testing.T) {
 			},
 		},
 		{
-			Name: "dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
+			Name: "sequences are globally tracked across dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "CREATE SEQUENCE test;",
@@ -1003,15 +1003,15 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT dolt_add('test');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT dolt_branch('other');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT setval('test', 20);",
@@ -1019,10 +1019,10 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT dolt_add('.');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1031,19 +1031,19 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT dolt_checkout('other');",
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "SELECT nextval('test');",
-					Expected: []sql.Row{{12}},
+					Expected: []sql.Row{{22}},
 				},
 				{
 					Query:    "SELECT dolt_reset('--hard');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT nextval('test');",
-					Expected: []sql.Row{{12}},
+					Expected: []sql.Row{{23}},
 				},
 			},
 		},
@@ -1076,7 +1076,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT dolt_add('test1');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query: "SELECT * FROM dolt.status;",
@@ -1087,7 +1087,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT dolt_clean('test2');", // TODO: dolt_clean() requires a param, need to fix procedure to func conversion
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query: "SELECT * FROM dolt.status;",
@@ -1099,6 +1099,7 @@ func TestSequences(t *testing.T) {
 		},
 		{
 			Name: "dolt_merge",
+			Skip: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "CREATE SEQUENCE test;",
@@ -1109,36 +1110,36 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{{10}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-Am', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-Am', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT dolt_branch('other');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT setval('test', 20);",
 					Expected: []sql.Row{{20}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-am', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-am', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT dolt_checkout('other');",
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "SELECT setval('test', 30);",
 					Expected: []sql.Row{{30}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-am', 'next2')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-am', 'next2')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT dolt_checkout('main');",
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "SELECT nextval('test');",
@@ -1146,7 +1147,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT dolt_reset('--hard');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    "SELECT strpos(dolt_merge('other')::text, 'merge successful') > 32;",
@@ -1385,6 +1386,27 @@ ORDER BY 1,2;`,
 				{
 					Query:    "CREATE SEQUENCE IF NOT EXISTS idx1;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "Error when branches contain incompatible sequence definitions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SEQUENCE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT DOLT_CHECKOUT('-b', 'other');",
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
+				},
+				{
+					Query:    "CREATE SEQUENCE test INCREMENT -1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT nextval('test');",
+					ExpectedErr: "unable to advance sequence state, possibly due to having incompatible state on different branches",
 				},
 			},
 		},

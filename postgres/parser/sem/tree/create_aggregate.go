@@ -57,7 +57,7 @@ func (node *CreateAggregate) Format(ctx *FmtCtx) {
 	ctx.WriteString("SFUNC = ")
 	ctx.FormatNode(node.SFunc)
 	ctx.WriteString(" , STYPE = ")
-	ctx.WriteString(node.BaseType.SQLString())
+	ctx.WriteString(node.SType.SQLString())
 	if node.AggOptions != nil {
 		ctx.FormatNode(&node.AggOptions)
 	}

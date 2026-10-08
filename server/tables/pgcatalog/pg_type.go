@@ -86,19 +86,8 @@ func cachePgTypes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	nameIdx := NewUniqueInMemIndexStorage[*pgType](lessTypeName)
 	oidIdx := NewUniqueInMemIndexStorage[*pgType](lessTypeOid)
 
-	schemasToOid := make(map[string]id.Namespace)
-	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
-		Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
-			schemasToOid[schema.Item.SchemaName()] = schema.OID
-			return true, nil
-		},
-	})
-	if err != nil {
-		return err
-	}
-
 	allTypes := pgtypes.GetAllBuitInTypes()
-	typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -112,6 +101,30 @@ func cachePgTypes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				allTypes = append(allTypes, userTypes[schema]...)
 			}
 		}
+	}
+
+	schemasToOid := make(map[string]id.Namespace)
+	err = functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
+			schemasToOid[schema.Item.SchemaName()] = schema.OID
+			return true, nil
+		},
+		Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
+			// Tables create an accompanying composite type, so we must represent those here as well since they're not stored
+			if table.OID.SchemaName() != "information_schema" && table.OID.SchemaName() != PgCatalogName {
+				typ, err := typeColl.GetType(ctx, id.NewType(table.OID.SchemaName(), table.OID.TableName()))
+				if err == nil && typ != nil {
+					allTypes = append(allTypes, typ)
+					if typ.Array.ID.IsValid() {
+						allTypes = append(allTypes, typ.Array)
+					}
+				}
+			}
+			return true, nil
+		},
+	})
+	if err != nil {
+		return err
 	}
 
 	for _, typ := range allTypes {
@@ -277,40 +290,7 @@ func (p PgTypeHandler) LookupPartitions(_ *sql.Context, lookup sql.IndexLookup) 
 }
 
 // pgTypeSchema is the schema for pg_type.
-var pgTypeSchema = sql.Schema{
-	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typlen", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typbyval", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typtype", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typcategory", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typispreferred", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typisdefined", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typdelim", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typsubscript", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
-	{Name: "typelem", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typarray", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typinput", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},   // TODO: type regproc
-	{Name: "typoutput", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},  // TODO: type regproc
-	{Name: "typreceive", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
-	{Name: "typsend", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},    // TODO: type regproc
-	{Name: "typmodin", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},   // TODO: type regproc
-	{Name: "typmodout", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},  // TODO: type regproc
-	{Name: "typanalyze", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
-	{Name: "typalign", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typstorage", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typnotnull", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typbasetype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typtypmod", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typndims", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typcollation", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typdefaultbin", Type: pgtypes.Text, Default: nil, Nullable: true, Source: pgTypeName}, // TODO: type pg_node_tree, collation C
-	{Name: "typdefault", Type: pgtypes.Text, Default: nil, Nullable: true, Source: pgTypeName},    // TODO: collation C
-	{Name: "typacl", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: pgTypeName},   // TODO: type aclitem[]
-}
+var pgTypeSchema = pgtypes.PgTypeSchema
 
 // pgType represents a row in the pg_type table.
 // We store oids in their native format as well so that we can do range scans on them.
@@ -368,33 +348,33 @@ func pgTypeToRow(nextType *pgType) sql.Row {
 		nextType.name,
 		nextType.schemaOid,
 		id.Null,
-		nextType.typ.TypLength,              // typlen
-		nextType.typ.PassedByVal,            // typbyval
-		string(nextType.typ.TypType),        // typtype
-		string(nextType.typ.TypCategory),    // typcategory
-		nextType.typ.IsPreferred,            // typispreferred
-		nextType.typ.IsDefined,              // typisdefined
-		nextType.typ.Delimiter,              // typdelim
-		nextType.typ.RelID,                  // typrelid
-		nextType.typ.SubscriptFuncName(),    // typsubscript
-		nextType.typ.Elem.ID.AsId(),         // typelem
-		nextType.typ.Array.ID.AsId(),        // typarray
-		nextType.typ.InputFuncName(),        // typinput
-		nextType.typ.OutputFuncName(),       // typoutput
-		nextType.typ.ReceiveFuncName(),      // typreceive
-		nextType.typ.SendFuncName(),         // typsend
-		nextType.typ.ModInFuncName(),        // typmodin
-		nextType.typ.ModOutFuncName(),       // typmodout
-		nextType.typ.AnalyzeFuncName(),      // typanalyze
-		string(nextType.typ.Align),          // typalign
-		string(nextType.typ.Storage),        // typstorage
-		nextType.typ.NotNull,                // typnotnull
-		nextType.typ.BaseTypeType.ID.AsId(), // typbasetype
-		nextType.typ.TypMod,                 // typtypmod
-		nextType.typ.NDims,                  // typndims
-		nextType.typ.TypCollation.AsId(),    // typcollation
-		nextType.typ.DefaulBin,              // typdefaultbin
-		nextType.typ.Default,                // typdefault
-		typAcl,                              // typacl
+		nextType.typ.TypLength,           // typlen
+		nextType.typ.PassedByVal,         // typbyval
+		string(nextType.typ.TypType),     // typtype
+		string(nextType.typ.TypCategory), // typcategory
+		nextType.typ.IsPreferred,         // typispreferred
+		nextType.typ.IsDefined,           // typisdefined
+		nextType.typ.Delimiter,           // typdelim
+		nextType.typ.RelID,               // typrelid
+		pgtypes.FromFuncID(nextType.typ.SubscriptFunc).AsId(), // typsubscript
+		nextType.typ.Elem.ID.AsId(),                           // typelem
+		nextType.typ.Array.ID.AsId(),                          // typarray
+		pgtypes.FromFuncID(nextType.typ.InputFunc).AsId(),     // typinput
+		pgtypes.FromFuncID(nextType.typ.OutputFunc).AsId(),    // typoutput
+		pgtypes.FromFuncID(nextType.typ.ReceiveFunc).AsId(),   // typreceive
+		pgtypes.FromFuncID(nextType.typ.SendFunc).AsId(),      // typsend
+		pgtypes.FromFuncID(nextType.typ.ModInFunc).AsId(),     // typmodin
+		pgtypes.FromFuncID(nextType.typ.ModOutFunc).AsId(),    // typmodout
+		pgtypes.FromFuncID(nextType.typ.AnalyzeFunc).AsId(),   // typanalyze
+		string(nextType.typ.Align),                            // typalign
+		string(nextType.typ.Storage),                          // typstorage
+		nextType.typ.NotNull,                                  // typnotnull
+		nextType.typ.BaseTypeType.ID.AsId(),                   // typbasetype
+		nextType.typ.TypMod,                                   // typtypmod
+		nextType.typ.NDims,                                    // typndims
+		nextType.typ.TypCollation.AsId(),                      // typcollation
+		nextType.typ.DefaulBin,                                // typdefaultbin
+		nextType.typ.Default,                                  // typdefault
+		typAcl,                                                // typacl
 	}
 }

@@ -22,14 +22,14 @@ func TestDropTable(t *testing.T) {
 		Converts("DROP TABLE IF EXISTS name"),
 		Converts("DROP TABLE name , name"),
 		Converts("DROP TABLE IF EXISTS name , name"),
-		Parses("DROP TABLE name CASCADE"),
-		Parses("DROP TABLE IF EXISTS name CASCADE"),
-		Parses("DROP TABLE name , name CASCADE"),
-		Parses("DROP TABLE IF EXISTS name , name CASCADE"),
-		Parses("DROP TABLE name RESTRICT"),
-		Parses("DROP TABLE IF EXISTS name RESTRICT"),
-		Parses("DROP TABLE name , name RESTRICT"),
-		Parses("DROP TABLE IF EXISTS name , name RESTRICT"),
+		Converts("DROP TABLE name CASCADE"),
+		Converts("DROP TABLE IF EXISTS name CASCADE"),
+		Converts("DROP TABLE name , name CASCADE"),
+		Converts("DROP TABLE IF EXISTS name , name CASCADE"),
+		Converts("DROP TABLE name RESTRICT"),
+		Converts("DROP TABLE IF EXISTS name RESTRICT"),
+		Converts("DROP TABLE name , name RESTRICT"),
+		Converts("DROP TABLE IF EXISTS name , name RESTRICT"),
 	}
 	RunTests(t, tests)
 }

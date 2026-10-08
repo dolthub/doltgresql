@@ -166,15 +166,15 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: `CREATE OR REPLACE PROCEDURE interpreted_branch(input INT4) AS $$
@@ -187,10 +187,10 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -207,7 +207,7 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    "SELECT dolt_checkout('main')",
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CALL interpreted_branch(57);",
@@ -249,15 +249,15 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: `CREATE PROCEDURE interpreted_merging(input INT4) AS $$
@@ -270,15 +270,15 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT dolt_checkout('main')",
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:       "CALL interpreted_merging(55);",
@@ -295,10 +295,10 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -328,15 +328,15 @@ $$ LANGUAGE plpgsql;`,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE PROCEDURE interpreted_example(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;",
@@ -344,15 +344,15 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE PROCEDURE interpreted_example(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('2' || input); END; $$ LANGUAGE plpgsql;",
@@ -366,16 +366,16 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{

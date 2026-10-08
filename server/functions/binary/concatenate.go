@@ -15,10 +15,15 @@
 package binary
 
 import (
-	"sort"
+	"fmt"
+	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -46,7 +51,11 @@ func anytextcat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresT
 	if err != nil {
 		return nil, err
 	}
-	return val1String + val2.(string), nil
+	val2String, err := framework.UnwrapString(ctx, val2)
+	if err != nil {
+		return nil, err
+	}
+	return val1String + val2String, nil
 }
 
 // anytextcat represents the PostgreSQL function of the same name, taking the same parameters.
@@ -69,6 +78,9 @@ var array_append = framework.Function2{
 			return []any{val2}, nil
 		}
 		array := val1.([]any)
+		if len(pgtypes.ArrayDims(array, paramsAndReturn[0].ArrayBaseType())) > 1 {
+			return nil, pgerror.WithCandidateCode(errors.New("argument must be empty or one-dimensional array"), pgcode.DataException)
+		}
 		returnArray := make([]any, len(array)+1)
 		copy(returnArray, array)
 		returnArray[len(returnArray)-1] = val2
@@ -93,6 +105,19 @@ var array_cat = framework.Function2{
 
 		array1 := val1.([]any)
 		array2 := val2.([]any)
+		dims1, dims2 := pgtypes.ArrayDims(array1, paramsAndReturn[0].ArrayBaseType()), pgtypes.ArrayDims(array2, paramsAndReturn[1].ArrayBaseType())
+		switch {
+		case len(dims1) == 0:
+			return array2, nil
+		case len(dims2) == 0:
+			return array1, nil
+		case len(dims1) == len(dims2)+1 && slices.Equal(dims1[1:], dims2):
+			array2 = []any{array2}
+		case len(dims1)+1 == len(dims2) && slices.Equal(dims1, dims2[1:]):
+			array1 = []any{array1}
+		case len(dims1) != len(dims2) || !slices.Equal(dims1[1:], dims2[1:]):
+			return nil, pgerror.WithCandidateCode(errors.New("cannot concatenate incompatible arrays"), pgcode.ArraySubscript)
+		}
 
 		// Concatenate the arrays
 		result := make([]any, len(array1)+len(array2))
@@ -113,14 +138,23 @@ var array_prepend = framework.Function2{
 		if val2 == nil {
 			return []any{val1}, nil
 		}
+		if len(pgtypes.ArrayDims(val2.([]any), paramsAndReturn[1].ArrayBaseType())) > 1 {
+			return nil, pgerror.WithCandidateCode(errors.New("argument must be empty or one-dimensional array"), pgcode.DataException)
+		}
 		return append([]any{val1}, val2.([]any)...), nil
 	},
 }
 
 // byteacat_callable is the callable logic for the byteacat function.
 func byteacat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	v1 := val1.([]byte)
-	v2 := val2.([]byte)
+	v1, err := framework.UnwrapBytes(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := framework.UnwrapBytes(ctx, val2)
+	if err != nil {
+		return nil, err
+	}
 	copied := make([]byte, len(v1)+len(v2))
 	copy(copied, v1)
 	copy(copied[len(v1):], v2)
@@ -138,50 +172,47 @@ var byteacat = framework.Function2{
 
 // jsonb_concat_callable is the callable logic for the jsonb_concat function.
 func jsonb_concat_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
-	val1 := val1Interface.(pgtypes.JsonDocument).Value
-	val2 := val2Interface.(pgtypes.JsonDocument).Value
-	// First we'll merge objects if they're both objects
-	val1Obj, isVal1Obj := val1.(pgtypes.JsonValueObject)
-	val2Obj, isVal2Obj := val2.(pgtypes.JsonValueObject)
-	if isVal1Obj && isVal2Obj {
-		newObj := pgtypes.JsonValueCopy(val1Obj).(pgtypes.JsonValueObject)
-		for _, item := range val2Obj.Items {
-			if existingIdx, ok := newObj.Index[item.Key]; ok {
-				newObj.Items[existingIdx].Value = pgtypes.JsonValueCopy(item.Value)
-			} else {
-				newObj.Items = append(newObj.Items, pgtypes.JsonValueObjectItem{
-					Key:   item.Key,
-					Value: pgtypes.JsonValueCopy(item.Value),
-				})
-			}
+	// TODO: for two IndexedJsonDocuments, we could get much faster results on large documents by merging the underlying
+	//  JSON trees instead of loading them into memory. This would require a new method on sql.MutableJSON
+	wrapper1, ok1 := val1Interface.(sql.JSONWrapper)
+	wrapper2, ok2 := val2Interface.(sql.JSONWrapper)
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("jsonb_concat: unexpected types %T, %T", val1Interface, val2Interface)
+	}
+	v1, err := wrapper1.ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := wrapper2.ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Merge objects if both are objects
+	obj1, isObj1 := v1.(map[string]interface{})
+	obj2, isObj2 := v2.(map[string]interface{})
+	if isObj1 && isObj2 {
+		newObj := make(map[string]interface{}, len(obj1)+len(obj2))
+		for k, v := range obj1 {
+			newObj[k] = v
 		}
-		sort.Slice(newObj.Items, func(i, j int) bool {
-			if len(newObj.Items[i].Key) < len(newObj.Items[j].Key) {
-				return true
-			} else if len(newObj.Items[i].Key) > len(newObj.Items[j].Key) {
-				return false
-			} else {
-				return newObj.Items[i].Key < newObj.Items[j].Key
-			}
-		})
-		for i, item := range newObj.Items {
-			newObj.Index[item.Key] = i
+		for k, v := range obj2 {
+			newObj[k] = v
 		}
-		return pgtypes.JsonDocument{Value: newObj}, nil
+		return gmstypes.JSONDocument{Val: newObj}, nil
 	}
-	// They're not both objects, so we'll make them both arrays if they're not already arrays
-	if _, ok := val1.(pgtypes.JsonValueArray); !ok {
-		val1 = pgtypes.JsonValueArray{val1}
+	// Not both objects: wrap non-arrays in single-element arrays and concatenate
+	arr1, isArr1 := v1.([]interface{})
+	arr2, isArr2 := v2.([]interface{})
+	if !isArr1 {
+		arr1 = []interface{}{v1}
 	}
-	if _, ok := val2.(pgtypes.JsonValueArray); !ok {
-		val2 = pgtypes.JsonValueArray{val2}
+	if !isArr2 {
+		arr2 = []interface{}{v2}
 	}
-	val1Array := pgtypes.JsonValueCopy(val1.(pgtypes.JsonValueArray)).(pgtypes.JsonValueArray)
-	val2Array := pgtypes.JsonValueCopy(val2.(pgtypes.JsonValueArray)).(pgtypes.JsonValueArray)
-	newArray := make(pgtypes.JsonValueArray, len(val1Array)+len(val2Array))
-	copy(newArray, val1Array)
-	copy(newArray[len(val1Array):], val2Array)
-	return pgtypes.JsonDocument{Value: newArray}, nil
+	newArray := make([]interface{}, len(arr1)+len(arr2))
+	copy(newArray, arr1)
+	copy(newArray[len(arr1):], arr2)
+	return gmstypes.JSONDocument{Val: newArray}, nil
 }
 
 // jsonb_concat represents the PostgreSQL function of the same name, taking the same parameters.
@@ -200,7 +231,11 @@ func textanycat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresT
 	if err != nil {
 		return nil, err
 	}
-	return val1.(string) + val2String, nil
+	val1String, err := framework.UnwrapString(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
+	return val1String + val2String, nil
 }
 
 // textanycat represents the PostgreSQL function of the same name, taking the same parameters.
@@ -214,7 +249,15 @@ var textanycat = framework.Function2{
 
 // textcat_callable is the callable logic for the textcat function.
 func textcat_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	return val1.(string) + val2.(string), nil
+	val1String, err := framework.UnwrapString(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
+	val2String, err := framework.UnwrapString(ctx, val2)
+	if err != nil {
+		return nil, err
+	}
+	return val1String + val2String, nil
 }
 
 // textcat represents the PostgreSQL function of the same name, taking the same parameters.

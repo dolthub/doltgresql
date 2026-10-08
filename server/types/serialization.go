@@ -32,6 +32,10 @@ func init() {
 	types.SetExtendedTypeSerializers(SerializeType, DeserializeType)
 }
 
+// arrayTypeVersion is the serialized version of newly created array types. Each type carries its own version, and
+// existing types keep the version that they were created with.
+const arrayTypeVersion = 1
+
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
 // by DoltgreSQL.
 func SerializeType(ctx *sql.Context, extendedType sql.ExtendedType) ([]byte, error) {
@@ -45,17 +49,25 @@ func SerializeType(ctx *sql.Context, extendedType sql.ExtendedType) ([]byte, err
 }
 
 // DeserializeType is able to deserialize the given serialized type into an appropriate extended type. All extended
-// types will be defined by DoltgreSQL.
+// types will be defined by DoltgreSQL. This will use the TypeCollection defined in the context.
 func DeserializeType(ctx *sql.Context, serializedType []byte) (sql.ExtendedType, error) {
+	return DeserializeTypeFromCollection(ctx, nil, serializedType)
+}
+
+// DeserializeTypeFromCollection is able to deserialize the given serialized type into an appropriate extended type. All
+// extended types will be defined by DoltgreSQL.
+func DeserializeTypeFromCollection(ctx *sql.Context, typeColl TypeCollection, serializedType []byte) (sql.ExtendedType, error) {
 	if len(serializedType) == 0 {
 		return nil, errors.Errorf("deserializing empty type data")
 	}
 
 	typ := &DoltgresType{}
-	var typeColl TypeCollection
 	reader := utils.NewReader(serializedType)
 	version := reader.VariableUint()
-	if version != 0 {
+	switch version {
+	case 0, 1:
+		typ.serializedVersion = uint8(version)
+	default:
 		return nil, errors.Errorf("version %d of types is not supported, please upgrade the server", version)
 	}
 
@@ -177,7 +189,7 @@ func DeserializeType(ctx *sql.Context, serializedType []byte) (sql.ExtendedType,
 // Serialize returns the DoltgresType as a byte slice.
 func (t *DoltgresType) Serialize() []byte {
 	writer := utils.NewWriter(256)
-	writer.VariableUint(0) // Version
+	writer.VariableUint(uint64(t.serializedVersion)) // Version
 	// Write the type to the writer
 	writer.Id(t.ID.AsId())
 	writer.Int16(t.TypLength)
@@ -261,10 +273,17 @@ func recursiveDeserializeType(ctx *sql.Context, typ *DoltgresType, typeColl Type
 	if !target.IsUnresolved {
 		return target, typeColl, nil
 	}
+
+	// If there is no Doltgres context/session yet, then we can't load types from the context.
+	// This can happen when Dolt's AutoIncrementTracker scans tables at db-load time.
+	if ctx == nil {
+		return target, typeColl, nil
+	}
+
 	var recursedType *DoltgresType
 	var err error
 	if typeColl == nil {
-		typeColl, err = GetTypesCollectionFromContext(ctx)
+		typeColl, err = GetTypesCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, nil, err
 		}

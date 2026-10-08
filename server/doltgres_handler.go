@@ -44,6 +44,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/typecollection"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
@@ -82,6 +83,39 @@ type Result struct {
 	Fields       []pgproto3.FieldDescription `json:"fields"`
 	Rows         []Row                       `json:"rows"`
 	RowsAffected uint64                      `json:"rows_affected"`
+	// availableRowValueCells is the unused tail of the current batch-owned metadata chunk.
+	availableRowValueCells [][]byte
+}
+
+// nextRowValues returns isolated, batch-owned column metadata for the next row.
+// It carves rows from geometrically grown chunks and caps speculative capacity
+// for wide rows. Returned row slices retain their chunks until the batch is done.
+func (r *Result) nextRowValues(columnCount int) [][]byte {
+	if columnCount <= 0 || len(r.Rows) >= rowsBatch {
+		return nil
+	}
+	if len(r.availableRowValueCells) < columnCount {
+		remainingRows := rowsBatch - len(r.Rows)
+		// Match the next chunk to the rows already covered, doubling total capacity.
+		chunkRows := len(r.Rows) + 1
+		// Consume the remainder when another geometric chunk would leave a small tail.
+		if chunkRows*2 > remainingRows {
+			chunkRows = remainingRows
+		}
+		// Always fit one row, even when its metadata exceeds the chunk budget.
+		maxChunkRows := maxRowValueChunkCells / columnCount
+		if maxChunkRows < 1 {
+			maxChunkRows = 1
+		}
+		if chunkRows > maxChunkRows {
+			chunkRows = maxChunkRows
+		}
+		r.availableRowValueCells = make([][]byte, chunkRows*columnCount)
+	}
+	// Clamp capacity so appending cannot overwrite the following row's metadata.
+	rowValues := r.availableRowValueCells[:columnCount:columnCount]
+	r.availableRowValueCells = r.availableRowValueCells[columnCount:]
+	return rowValues
 }
 
 // Row represents a single row value in bytes format.
@@ -91,7 +125,11 @@ type Row struct {
 	val [][]byte
 }
 
-const rowsBatch = 128
+const (
+	rowsBatch = 128
+	// maxRowValueChunkCells caps one arena allocation at about 96 KiB on 64-bit platforms.
+	maxRowValueChunkCells = 4096
+)
 
 // DoltgresHandler is a handler uses SQLe engine directly
 // running Doltgres specific queries.
@@ -108,7 +146,7 @@ var _ Handler = &DoltgresHandler{}
 
 // ComBind implements the Handler interface.
 func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables, formatCodes []int16) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
-	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.NewContext(ctx, c, query)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -152,7 +190,7 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 
 	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback, formatCodes)
 	if err != nil {
-		err = sql.CastSQLError(err)
+		err = castSQLError(err)
 	}
 
 	if h.sel != nil {
@@ -167,10 +205,13 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 	sqlCtx, ok := ctx.(*sql.Context)
 	if !ok {
 		var err error
-		sqlCtx, err = h.sm.NewContextWithQuery(ctx, c, query)
+		sqlCtx, err = h.NewContext(ctx, c, query)
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+	if err := installPrivilegeSet(sqlCtx); err != nil {
+		return nil, nil, err
 	}
 
 	node, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
@@ -179,7 +220,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			fmt.Printf("unable to prepare query: %+v\n", err)
 		}
 		logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
-		return nil, nil, sql.CastSQLError(err)
+		return nil, nil, castSQLError(err)
 	}
 	// Always attempt analysis to get correct column names for Describe(statement) responses.
 	// When bind variables are present the analyzer may fail or produce an inaccurate schema;
@@ -226,7 +267,7 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 
 	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback, nil)
 	if err != nil {
-		err = sql.CastSQLError(err)
+		err = castSQLError(err)
 	}
 
 	if h.sel != nil {
@@ -239,6 +280,12 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 // ComResetConnection implements the Handler interface.
 func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	logrus.WithField("connectionId", c.ConnectionID).Debug("COM_RESET_CONNECTION command received")
+	oldIdentity, err := core.IdentityFromSession(h.sm.GetSession(c))
+	if err != nil {
+		return err
+	}
+	principal := oldIdentity.AuthenticatedRole()
+	principalSuperuser := oldIdentity.AuthenticatedSuperuser()
 
 	// Grab the currently selected database name
 	db := h.sm.GetCurrentDB(c)
@@ -250,10 +297,14 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	ctx := context.Background()
 
 	// Create a new session and set the current database
-	err := h.sm.NewSession(ctx, c)
+	err = h.sm.NewSession(ctx, c)
 	if err != nil {
 		return err
 	}
+	if err = core.InitializeIdentityOnSession(h.sm.GetSession(c), principal, principalSuperuser); err != nil {
+		return err
+	}
+	auth.InstallDoltPrincipalProvider(h.sm.GetSession(c))
 	return h.sm.SetDB(ctx, c, db)
 }
 
@@ -288,7 +339,23 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 
 // NewContext implements the Handler interface.
 func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
-	return h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	if err != nil {
+		return nil, err
+	}
+	if err = installPrivilegeSet(sqlCtx); err != nil {
+		return nil, err
+	}
+	return sqlCtx, nil
+}
+
+func installPrivilegeSet(ctx *sql.Context) error {
+	privilegeSet, err := auth.NewPrivilegeSetLayer(ctx)
+	if err != nil {
+		return err
+	}
+	ctx.SetPrivilegeSet(privilegeSet, 1)
+	return nil
 }
 
 // InitSessionParameterDefault sets a default value to specified parameter for a session.
@@ -304,9 +371,15 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 	if err != nil {
 		return nil, err
 	}
-	typeColl, err := core.GetTypesCollectionFromContext(ctx)
-	if err != nil {
-		return nil, err
+	// The types collection is loaded lazily: fetching it requires the current database to be backed by a Doltgres
+	// root, which isn't the case for Dolt's synthetic databases (e.g. dolt_cluster), and statements without bind
+	// parameters never need it.
+	var typeColl *typecollection.TypeCollection
+	if len(values) > 0 {
+		typeColl, err = core.GetTypesCollectionFromContext(ctx, "")
+		if err != nil {
+			return nil, err
+		}
 	}
 	for i := range values {
 		formatCode := formatCodes[i]
@@ -338,11 +411,10 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
 func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, formatCodes []int16) error {
-	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.NewContext(ctx, c, query)
 	if err != nil {
 		return err
 	}
-	sqlCtx.SetPrivilegeSet(auth.NewPrivilegeSetLayer(sqlCtx), 1)
 
 	start := time.Now()
 	var queryStrToLog string
@@ -393,21 +465,21 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 		if err != nil {
 			return err
 		}
-	} else if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
-		resultFields, err := schemaToFieldDescriptions(sqlCtx, schema, formatCodes)
-		if err != nil {
-			return err
-		}
-		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, formatCodes)
-		if err != nil {
-			return err
-		}
 	} else {
+		// Normalize wire format codes into one canonical per-column slice for result encoding.
+		formatCodes, err = extendFormatCodes(len(schema), formatCodes)
+		if err != nil {
+			return err
+		}
 		resultFields, err := schemaToFieldDescriptions(sqlCtx, schema, formatCodes)
 		if err != nil {
 			return err
 		}
-		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, formatCodes)
+		if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
+			r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, formatCodes)
+		} else {
+			r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, formatCodes)
+		}
 		if err != nil {
 			return err
 		}
@@ -719,7 +791,8 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 					continue
 				}
 
-				outputRow, rErr := rowToBytes(ctx, schema, row, formatCodes)
+				outputRow := res.nextRowValues(len(schema))
+				rErr := rowToBytesInto(ctx, schema, row, formatCodes, outputRow)
 				if rErr != nil {
 					return rErr
 				}
@@ -796,6 +869,27 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16
 		return nil, err
 	}
 	o := make([][]byte, len(row))
+	if err = rowToBytesInto(ctx, s, row, formatCodes, o); err != nil {
+		return nil, err
+	}
+	return o, nil
+}
+
+// rowToBytesInto encodes a row into caller-owned column metadata.
+func rowToBytesInto(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16, o [][]byte) error {
+	if len(row) == 0 {
+		return nil
+	}
+	if len(s) == 0 {
+		return errors.Errorf("received empty schema")
+	}
+	if len(o) != len(row) {
+		return errors.Errorf("received output row of length %d for input row of length %d", len(o), len(row))
+	}
+	if len(formatCodes) != len(row) {
+		return errors.Errorf("received %d format codes for row of length %d", len(formatCodes), len(row))
+	}
+	var err error
 	for i, v := range row {
 		if v == nil {
 			o[i] = nil
@@ -804,26 +898,26 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16
 			case *pgtypes.DoltgresType:
 				o[i], err = d.CallSend(ctx, v)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			default:
 				cast := pgexprs.NewGMSCast(expression.NewLiteral(v, d))
 				v, err = cast.Eval(ctx, nil)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				o[i], err = cast.DoltgresType(ctx).CallSend(ctx, v)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			}
 		} else {
 			val, err := s[i].Type.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty
 			if err != nil {
-				return nil, err
+				return err
 			}
 			o[i] = val.ToBytes()
 		}
 	}
-	return o, nil
+	return nil
 }

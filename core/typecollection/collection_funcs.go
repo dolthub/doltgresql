@@ -20,8 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
-	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -52,13 +50,14 @@ func (*TypeCollection) HandleMerge(ctx context.Context, mro merge.MergeRootObjec
 			theirType.ID.TypeName(), ourType.TypType, theirType.TypType)
 	}
 	// Check if an ancestor is present
-	var ancType pgtypes.DoltgresType
+	var ancType *pgtypes.DoltgresType
 	hasAncestor := false
 	if mro.AncestorRootObj != nil {
-		ancType = *(mro.AncestorRootObj.(TypeWrapper).Type)
+		ancType = mro.AncestorRootObj.(TypeWrapper).Type
 		hasAncestor = true
 	}
-	mergedType := *ourType
+
+	mergedType := ourType.Copy()
 	switch theirType.TypType {
 	case pgtypes.TypeType_Domain:
 		if ourType.BaseTypeType.ID != theirType.BaseTypeType.ID {
@@ -87,7 +86,7 @@ func (*TypeCollection) HandleMerge(ctx context.Context, mro merge.MergeRootObjec
 			// TODO: check for duplicate check constraints
 			ourType.Checks = append(ourType.Checks, theirType.Checks...)
 		}
-		return TypeWrapper{Type: &mergedType}, &merge.MergeStats{
+		return TypeWrapper{Type: mergedType}, &merge.MergeStats{
 			Operation:            merge.TableModified,
 			Adds:                 0,
 			Deletes:              0,
@@ -107,32 +106,16 @@ func (*TypeCollection) LoadCollection(ctx context.Context, root objinterface.Roo
 	return LoadTypes(ctx, root)
 }
 
-// LoadCollectionHash implements the interface objinterface.Collection.
-func (*TypeCollection) LoadCollectionHash(ctx context.Context, root objinterface.RootValue) (hash.Hash, error) {
-	m, ok, err := storage.GetProllyMap(ctx, root)
-	if err != nil || !ok {
-		return hash.Hash{}, err
-	}
-	return m.HashOf(), nil
-}
-
 // LoadTypes loads the types collection from the given root.
 func LoadTypes(ctx context.Context, root objinterface.RootValue) (*TypeCollection, error) {
-	m, ok, err := storage.GetProllyMap(ctx, root)
+	rom, err := objinterface.NewRootObjectMap(ctx, storage, root)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		m, err = prolly.NewEmptyAddressMap(root.NodeStore())
-		if err != nil {
-			return nil, err
-		}
-	}
 	return &TypeCollection{
+		RootObjectMap: rom,
 		accessedMap:   make(map[id.Type]*pgtypes.DoltgresType),
 		initCache:     make(map[id.Type]*pgtypes.DoltgresType),
-		underlyingMap: m,
-		ns:            root.NodeStore(),
 	}, nil
 }
 
@@ -149,16 +132,14 @@ func (*TypeCollection) ResolveNameFromObjects(ctx context.Context, name doltdb.T
 		return doltdb.TableName{}, id.Null, nil
 	}
 	// There are root objects to search through, so we'll create a temporary store
-	ns := tree.NewTestNodeStore()
-	addressMap, err := prolly.NewEmptyAddressMap(ns)
+	rom, err := objinterface.NewDetachedRootObjectMap(storage, tree.NewTestNodeStore())
 	if err != nil {
 		return doltdb.TableName{}, id.Null, err
 	}
 	tempCollection := TypeCollection{
+		RootObjectMap: rom,
 		accessedMap:   accessedMap,
 		initCache:     make(map[id.Type]*pgtypes.DoltgresType),
-		underlyingMap: addressMap,
-		ns:            ns,
 	}
 	return tempCollection.ResolveName(ctx, name)
 }
@@ -168,20 +149,19 @@ func (*TypeCollection) Serializer() objinterface.RootObjectSerializer {
 	return storage
 }
 
+// DiffersFrom implements the interface objinterface.Collection. The cache is flushed first, since types are written to
+// the underlying map lazily.
+func (pgs *TypeCollection) DiffersFrom(ctx context.Context, root objinterface.RootValue) (bool, error) {
+	if err := pgs.writeCache(ctx); err != nil {
+		return false, err
+	}
+	return pgs.RootObjectMap.DiffersFrom(ctx, root)
+}
+
 // UpdateRoot implements the interface objinterface.Collection.
 func (pgs *TypeCollection) UpdateRoot(ctx context.Context, root objinterface.RootValue) (objinterface.RootValue, error) {
-	initialCount, initialCountErr := pgs.underlyingMap.Count()
-	m, err := pgs.Map(ctx)
-	if err != nil {
+	if err := pgs.writeCache(ctx); err != nil {
 		return nil, err
 	}
-	if initialCountErr == nil && initialCount == 0 {
-		if currentCount, currentCountErr := m.Count(); currentCountErr == nil && currentCount == 0 {
-			// In this specific case, we can guarantee that we haven't updated anything, so we won't write to the root.
-			// This preserves that the collection is only written when there's a meaningful data change, otherwise
-			// writing an empty collection will change the hash of a root if it previously had no collection.
-			return root, nil
-		}
-	}
-	return storage.WriteProllyMap(ctx, root, m)
+	return pgs.RootObjectMap.UpdateRoot(ctx, root)
 }

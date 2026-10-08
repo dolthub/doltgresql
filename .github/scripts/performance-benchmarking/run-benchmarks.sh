@@ -70,18 +70,19 @@ fi
 issuenumber=${ISSUE_NUMBER:-"-1"}
 
 source \
-  "$TEMPLATE_SCRIPT" \
-  "$jobname"         \
-  "$FROM_SERVER"     \
-  "$FROM_VERSION"    \
-  "$TO_SERVER"       \
-  "$TO_VERSION"      \
-  "$timeprefix"      \
-  "$actorprefix"     \
-  "$format"          \
-  "$issuenumber"     \
-  "$INIT_BIG_REPO"   \
-  "$NOMS_BIN_FORMAT" \
+  "$TEMPLATE_SCRIPT"    \
+  "$jobname"            \
+  "$FROM_SERVER"        \
+  "$FROM_VERSION"       \
+  "$TO_SERVER"          \
+  "$TO_VERSION"         \
+  "$timeprefix"         \
+  "$actorprefix"        \
+  "$format"             \
+  "$issuenumber"        \
+  "$INIT_BIG_REPO"      \
+  "$NOMS_BIN_FORMAT"    \
+  "$SYSBENCH_TEST_TIME" \
   "$WITH_TPCC" > job.json
 
 out=$(KUBECONFIG="$KUBECONFIG" kubectl apply -f job.json || true)

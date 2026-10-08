@@ -15,11 +15,11 @@
 package cast
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/id"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -35,7 +35,20 @@ func jsonAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Json,
 		ToType:   pgtypes.JsonB,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
+			switch v := val.(type) {
+			case sql.StringWrapper:
+				result, err := v.Unwrap(ctx)
+				if err != nil {
+					return nil, err
+				}
+				return targetType.IoInput(ctx, result)
+			case string:
+				return targetType.IoInput(ctx, v)
+			case sql.JSONWrapper:
+				return v, nil
+			default:
+				return nil, errors.Errorf("unexpected JSON value type: %T", val)
+			}
 		},
 	})
 }

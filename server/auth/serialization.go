@@ -16,13 +16,20 @@ package auth
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/utils"
 )
 
 // PersistChanges will save the state of the global database to disk (assuming we are not using the pure in-memory
-// implementation).
-func PersistChanges() error {
+// implementation). When cluster replication is enabled, the new state is also offered to the standby replicas, and
+// the replication-ack waiters are appended to |rsc|. Callers must hold the write lock, and should pass |rsc| to
+// WaitForReplication once the lock is released.
+func PersistChanges(ctx *sql.Context, rsc *doltdb.ReplicationStatusController) error {
+	if clusterReplicator != nil {
+		return clusterReplicator.SendToReplicas(ctx, globalDatabase.serialize(), rsc)
+	}
 	if fileSystem != nil {
 		return fileSystem.WriteFile(authFileName, globalDatabase.serialize(), 0644)
 	}
@@ -63,16 +70,96 @@ func (db *Database) deserialize(data []byte) error {
 	}
 	reader := utils.NewReader(data)
 	version := reader.Uint32()
+	var err error
 	switch version {
 	case 0:
-		return db.deserializeV0(reader)
+		err = db.deserializeV0(reader)
 	case 1:
-		return db.deserializeV1(reader)
-	case 2:
-		return db.deserializeV2(reader)
+		err = db.deserializeV1(reader)
+  case 2:
+		err = db.deserializeV2(reader)
 	default:
 		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
 	}
+	if err != nil {
+		return err
+	}
+	db.removeInvalidRoleReferences()
+	// Advance the role ID counter past every persisted role. Without this, IDs minted after loading serialized
+	// state collide with existing roles, which SetRole then silently replaces.
+	var maxID uint64
+	for id := range db.rolesByID {
+		if uint64(id) > maxID {
+			maxID = uint64(id)
+		}
+	}
+	for {
+		current := userIDCounter.Load()
+		if current >= maxID || userIDCounter.CompareAndSwap(current, maxID) {
+			break
+		}
+	}
+	return nil
+}
+
+// removeInvalidRoleReferences removes authorization records that refer to roles absent from the database.
+func (db *Database) removeInvalidRoleReferences() {
+	for key, value := range db.databasePrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.databasePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.schemaPrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.schemaPrivileges.Data, key)
+		}
+	}
+	for key, value := range db.tablePrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.tablePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.sequencePrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.sequencePrivileges.Data, key)
+		}
+	}
+	for key, value := range db.routinePrivileges.Data {
+		if _, ok := db.rolesByID[key.Role]; !ok || removeInvalidPrivilegeGrants(db.rolesByID, value.Privileges) {
+			delete(db.routinePrivileges.Data, key)
+		}
+	}
+	for member, groups := range db.roleMembership.Data {
+		if _, ok := db.rolesByID[member]; !ok {
+			delete(db.roleMembership.Data, member)
+			continue
+		}
+		for group, membership := range groups {
+			_, groupExists := db.rolesByID[group]
+			_, grantorExists := db.rolesByID[membership.GrantedBy]
+			if !groupExists || !grantorExists {
+				delete(groups, group)
+			}
+		}
+		if len(groups) == 0 {
+			delete(db.roleMembership.Data, member)
+		}
+	}
+}
+
+// removeInvalidPrivilegeGrants removes grants made by nonexistent roles and reports whether the map is empty.
+func removeInvalidPrivilegeGrants(roles map[RoleID]Role, privileges map[Privilege]map[GrantedPrivilege]bool) bool {
+	for privilege, grants := range privileges {
+		for grant := range grants {
+			if _, ok := roles[grant.GrantedBy]; !ok {
+				delete(grants, grant)
+			}
+		}
+		if len(grants) == 0 {
+			delete(privileges, privilege)
+		}
+	}
+	return len(privileges) == 0
 }
 
 // deserializeV0 creates a Database from a byte slice. Expects a reader that has already read the version.

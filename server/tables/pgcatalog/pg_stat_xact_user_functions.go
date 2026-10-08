@@ -43,7 +43,9 @@ func (p PgStatXactUserFunctionsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatXactUserFunctionsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_xact_user_functions row iter
+	// pg_stat_xact_user_functions is currently empty, since function-call statistics are not tracked.
+	// This view is also empty in vanilla Postgres unless track_functions is enabled.
+	// TODO: fill this in when function-call statistics are tracked
 	return emptyRowIter()
 }
 

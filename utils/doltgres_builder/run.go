@@ -41,12 +41,12 @@ func Run(parentCtx context.Context, commitList []string) error {
 	}
 
 	// clone doltgres source
-	err = builder.GitCloneBare(parentCtx, tempDir, GithubDoltgres)
+	const repoName = "doltgresql.git"
+	repoDir := filepath.Join(tempDir, repoName)
+	err = builder.GitCloneBare(parentCtx, tempDir, GithubDoltgres, repoName)
 	if err != nil {
 		return err
 	}
-
-	repoDir := filepath.Join(tempDir, "doltgresql.git")
 
 	withKeyCtx, cancel := context.WithCancel(parentCtx)
 	g, ctx := errgroup.WithContext(withKeyCtx)

@@ -16,11 +16,21 @@ package node
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/jackc/pgx/v5/pgproto3"
+
+	"github.com/dolthub/doltgresql/core"
+	coreextensions "github.com/dolthub/doltgresql/core/extensions"
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+	"github.com/dolthub/doltgresql/server/extensions"
+	"github.com/dolthub/doltgresql/server/extensions/extdef"
 )
 
 // DropExtension implements DROP EXTENSION.
@@ -59,8 +69,46 @@ func (c *DropExtension) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *DropExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	// TODO: implement this
-	return nil, errors.Errorf("DROP EXTENSION is not yet implemented")
+	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var loaded []coreextensions.Extension
+	for _, name := range c.Names {
+		ext, err := extCollection.GetLoadedExtension(ctx, id.NewExtension(name))
+		if err != nil {
+			return nil, err
+		}
+		if ext.ExtName.IsValid() {
+			loaded = append(loaded, ext)
+		} else if c.IfExists {
+			dsess.DSessFromSess(ctx.Session).Notice(&pgproto3.NoticeResponse{
+				Severity: "NOTICE",
+				Message:  fmt.Sprintf(`extension "%s" does not exist, skipping`, name),
+			})
+		} else {
+			return nil, pgerror.Newf(pgcode.UndefinedObject, `extension "%s" does not exist`, name)
+		}
+	}
+	declarations := make([]*extdef.Extension, len(loaded))
+	for i, ext := range loaded {
+		if declarations[i], err = extensions.Get(ext.ExtName.Name()); err != nil {
+			return nil, err
+		}
+		//TODO: drop the objects that depend on the extension when CASCADE is given
+		if err = extensions.CheckDependents(ctx, declarations[i], ext.Namespace.SchemaName()); err != nil {
+			return nil, err
+		}
+	}
+	for i, ext := range loaded {
+		if err = extensions.DropObjects(ctx, declarations[i], ext.Namespace.SchemaName()); err != nil {
+			return nil, err
+		}
+		if err = extCollection.DropLoadedExtension(ctx, ext.ExtName); err != nil {
+			return nil, err
+		}
+	}
+	return sql.RowsToRowIter(), nil
 }
 
 // Schema implements the interface sql.ExecSourceRel.

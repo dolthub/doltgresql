@@ -16,6 +16,7 @@ package analyzer
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -110,9 +111,28 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			return nil, transform.NewTree, errors.Errorf(`function "nextval" could not be found for SERIAL default`)
 		}
 
+		var targetType *pgtypes.DoltgresType
+		var maxValue int64
+		switch doltgresType.Name() {
+		case "smallserial":
+			targetType = pgtypes.Int16
+			maxValue = math.MaxInt16
+		case "serial":
+			targetType = pgtypes.Int32
+			maxValue = math.MaxInt32
+		case "bigserial":
+			targetType = pgtypes.Int64
+			maxValue = math.MaxInt64
+		}
+		col.Type = targetType
+
+		var defaultExpr sql.Expression = nextVal
+		if !pgtypes.Int64.Equals(targetType) {
+			defaultExpr = pgexprs.NewAssignmentCast(nextVal, pgtypes.Int64, targetType)
+		}
 		nextValExpr := &sql.ColumnDefaultValue{
-			Expr:          nextVal,
-			OutType:       pgtypes.Int64,
+			Expr:          defaultExpr,
+			OutType:       targetType,
 			Literal:       false,
 			ReturnNil:     false,
 			Parenthesized: false,
@@ -124,31 +144,20 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			col.Default = nextValExpr
 		}
 
-		var maxValue int64
-		switch doltgresType.Name() {
-		case "smallserial":
-			col.Type = pgtypes.Int16
-			maxValue = 32767
-		case "serial":
-			col.Type = pgtypes.Int32
-			maxValue = 2147483647
-		case "bigserial":
-			col.Type = pgtypes.Int64
-			maxValue = 9223372036854775807
-		}
-
 		ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", false, &sequences.Sequence{
-			Id:          id.NewSequence("", sequenceName),
 			DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
 			Persistence: sequences.Persistence_Permanent,
-			Start:       1,
-			Current:     1,
-			Increment:   1,
-			Minimum:     1,
-			Maximum:     maxValue,
-			Cache:       1,
-			Cycle:       false,
-			IsAtEnd:     false,
+			SequenceState: sequences.SequenceState{
+				Id:        id.NewSequence("", sequenceName),
+				Start:     1,
+				Current:   1,
+				Increment: 1,
+				Minimum:   1,
+				Maximum:   maxValue,
+				Cache:     1,
+				Cycle:     false,
+				IsAtEnd:   false,
+			},
 			OwnerTable:  id.NewTable("", createTable.Name()),
 			OwnerColumn: col.Name,
 		}))
@@ -187,7 +196,7 @@ func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *
 // It parses schema and sequence names out of given expression.
 // There can be only one argument expression of string type.
 func authCheckSequenceFromExpr(ctx *sql.Context, ah sql.AuthorizationHandler, arg sql.Expression) error {
-	schemaName, seqName, err := functions.ParseRelationName(ctx, strings.Trim(arg.String(), "'"))
+	schemaName, seqName, err := functions.ParseRelationNameWithCurrentSchema(ctx, strings.Trim(arg.String(), "'"))
 	if err != nil {
 		return err
 	}

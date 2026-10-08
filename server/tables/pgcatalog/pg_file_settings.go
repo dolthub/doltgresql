@@ -43,7 +43,8 @@ func (p PgFileSettingsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgFileSettingsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_file_settings row iter
+	// pg_file_settings is currently empty, since Doltgres does not read settings from a postgresql.conf file.
+	// TODO: fill this in if config-file-backed settings are ever exposed
 	return emptyRowIter()
 }
 

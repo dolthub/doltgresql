@@ -20,8 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
-	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -72,28 +70,13 @@ func (*Collection) LoadCollection(ctx context.Context, root objinterface.RootVal
 	return LoadConflicts(ctx, root)
 }
 
-// LoadCollectionHash implements the interface objinterface.Collection.
-func (*Collection) LoadCollectionHash(ctx context.Context, root objinterface.RootValue) (hash.Hash, error) {
-	m, ok, err := storage.GetProllyMap(ctx, root)
-	if err != nil || !ok {
-		return hash.Hash{}, err
-	}
-	return m.HashOf(), nil
-}
-
 // LoadConflicts loads the conflicts collection from the given root.
 func LoadConflicts(ctx context.Context, root objinterface.RootValue) (*Collection, error) {
-	m, ok, err := storage.GetProllyMap(ctx, root)
+	rom, err := objinterface.NewRootObjectMap(ctx, storage, root)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		m, err = prolly.NewEmptyAddressMap(root.NodeStore())
-		if err != nil {
-			return nil, err
-		}
-	}
-	return NewCollection(ctx, m, root.NodeStore())
+	return NewCollection(ctx, rom)
 }
 
 // ResolveNameFromObjects implements the interface objinterface.Collection.
@@ -105,13 +88,4 @@ func (*Collection) ResolveNameFromObjects(ctx context.Context, name doltdb.Table
 // Serializer implements the interface objinterface.Collection.
 func (*Collection) Serializer() objinterface.RootObjectSerializer {
 	return storage
-}
-
-// UpdateRoot implements the interface objinterface.Collection.
-func (pgc *Collection) UpdateRoot(ctx context.Context, root objinterface.RootValue) (objinterface.RootValue, error) {
-	m, err := pgc.Map(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return storage.WriteProllyMap(ctx, root, m)
 }

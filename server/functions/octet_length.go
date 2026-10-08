@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"math"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -24,6 +26,7 @@ import (
 // initOctetLength registers the functions to the catalog.
 func initOctetLength() {
 	framework.RegisterFunction(octet_length_text)
+	framework.RegisterFunction(octet_length_bytea)
 }
 
 // octet_length_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -33,6 +36,33 @@ var octet_length_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return int32(len(val1.(string))), nil
+		length, err := framework.UnwrapByteLength(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return lengthToInt32(length)
 	},
+}
+
+// octet_length_bytea represents the PostgreSQL function of the same name, taking the same parameters.
+var octet_length_bytea = framework.Function1{
+	Name:       "octet_length",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bytea},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		length, err := framework.UnwrapByteLength(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return lengthToInt32(length)
+	},
+}
+
+// lengthToInt32 converts a length to the int4 returned by PostgreSQL's length functions, erroring if it does not fit.
+func lengthToInt32(length int64) (int32, error) {
+	if length > math.MaxInt32 {
+		return 0, pgtypes.ErrOutOfRange.New("integer")
+	}
+	return int32(length), nil
 }

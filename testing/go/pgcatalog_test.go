@@ -305,6 +305,25 @@ func TestPgAttributeViewColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_attribute includes view columns outside the search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA other;`,
+				`SET search_path = other;`,
+				`CREATE TABLE remote (id INT PRIMARY KEY, label TEXT);`,
+				`CREATE VIEW v AS SELECT id, label AS name FROM remote;`,
+				`SET search_path = public;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, a.atttypid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname = 'v' ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", uint32(23)},
+						{"name", uint32(25)},
+					},
+				},
+			},
+		},
 	})
 }
 
@@ -351,10 +370,28 @@ func TestPgAuthMembers(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_auth_members",
+			SetUpScript: []string{
+				`CREATE ROLE members_group NOLOGIN;`,
+				`CREATE USER members_user PASSWORD 'pwd123';`,
+				`CREATE USER members_admin PASSWORD 'pwd456';`,
+				`GRANT members_group TO members_user;`,
+				`GRANT members_group TO members_admin WITH ADMIN OPTION;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_auth_members";`,
-					Expected: []sql.Row{},
+					Query: `SELECT g.rolname AS group_name, m.rolname AS member_name, am.admin_option
+							FROM pg_catalog.pg_auth_members am
+							JOIN pg_catalog.pg_authid g ON am.roleid = g.oid
+							JOIN pg_catalog.pg_authid m ON am.member = m.oid
+							ORDER BY member_name;`,
+					Expected: []sql.Row{
+						{"members_group", "members_admin", "t"},
+						{"members_group", "members_user", "f"},
+					},
+				},
+				{ // The grantor recorded for each membership refers to an existing role
+					Query:    `SELECT count(*) FROM pg_catalog.pg_auth_members am JOIN pg_catalog.pg_authid gr ON am.grantor = gr.oid;`,
+					Expected: []sql.Row{{2}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_auth_members";`,
@@ -365,8 +402,8 @@ func TestPgAuthMembers(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT member FROM PG_catalog.pg_AUTH_MEMBERS ORDER BY member;",
-					Expected: []sql.Row{},
+					Query:    "SELECT admin_option FROM PG_catalog.pg_AUTH_MEMBERS ORDER BY admin_option;",
+					Expected: []sql.Row{{"f"}, {"t"}},
 				},
 			},
 		},
@@ -377,10 +414,27 @@ func TestPgAuthid(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_authid",
+			SetUpScript: []string{
+				`CREATE USER authid_user PASSWORD 'pwd123' CREATEDB;`,
+				`CREATE ROLE authid_role NOLOGIN CREATEROLE CONNECTION LIMIT 10;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_authid";`,
-					Expected: []sql.Row{},
+					Query: `SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconnlimit, rolvaliduntil FROM "pg_catalog"."pg_authid" ORDER BY rolname;`,
+					Expected: []sql.Row{
+						{"authid_role", "f", "t", "t", "f", "f", "f", "f", 10, nil},
+						{"authid_user", "f", "t", "f", "t", "t", "f", "f", -1, nil},
+						{"postgres", "t", "t", "t", "t", "t", "f", "f", -1, nil},
+						{"public", "f", "t", "f", "f", "f", "f", "f", -1, nil},
+					},
+				},
+				{ // Roles with a password store the SCRAM-SHA-256 verifier string
+					Query:    `SELECT rolname FROM pg_catalog.pg_authid WHERE rolpassword LIKE 'SCRAM-SHA-256$4096:%' ORDER BY rolname;`,
+					Expected: []sql.Row{{"authid_user"}, {"postgres"}},
+				},
+				{ // Roles without a password store NULL
+					Query:    `SELECT rolname FROM pg_catalog.pg_authid WHERE rolpassword IS NULL ORDER BY rolname;`,
+					Expected: []sql.Row{{"authid_role"}, {"public"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_authid";`,
@@ -392,7 +446,7 @@ func TestPgAuthid(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT rolname FROM PG_catalog.pg_AUTHID ORDER BY rolname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"authid_role"}, {"authid_user"}, {"postgres"}, {"public"}},
 				},
 			},
 		},
@@ -400,12 +454,26 @@ func TestPgAuthid(t *testing.T) {
 }
 
 func TestPgAvailableExtensionVersions(t *testing.T) {
+	registerTestExtension()
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_available_extension_versions",
 			Assertions: []ScriptTestAssertion{
+				{ // Only the extensions that Doltgres emulates are available
+					Query:            `SELECT * FROM "pg_catalog"."pg_available_extension_versions" WHERE name = 'doltgres_no_such_extension';`,
+					Expected:         []sql.Row{},
+					ExpectedColNames: []string{"name", "version", "installed", "superuser", "trusted", "relocatable", "schema", "requires", "comment"},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_available_extension_versions";`,
+					Query: `SELECT name, version, installed, superuser, trusted, relocatable, schema, requires, comment FROM "pg_catalog"."pg_available_extension_versions" ORDER BY name;`,
+					Expected: []sql.Row{
+						{"doltgres_test", "1.0", "f", "f", "f", "t", nil, nil, "test extension to ensure that emulated extensions behave properly"},
+						{"uuid-ossp", "1.1", "f", "t", "t", "t", nil, nil, "generate universally unique identifiers (UUIDs)"},
+						{"vector", "0.8.6", "f", "t", "f", "t", nil, nil, "vector data type and ivfflat and hnsw access methods"},
+					},
+				},
+				{ // No extensions are installed by default
+					Query:    `SELECT name, version FROM "pg_catalog"."pg_available_extension_versions" WHERE installed = true;`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -417,8 +485,20 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT name FROM PG_catalog.pg_AVAILABLE_EXTENSION_VERSIONS ORDER BY name;",
+					Query:    "SELECT name FROM PG_catalog.pg_AVAILABLE_EXTENSION_VERSIONS WHERE name = 'doltgres_no_such_extension' ORDER BY name;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "pg_available_extension_versions with an installed extension",
+			SetUpScript: []string{
+				`CREATE EXTENSION "uuid-ossp";`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT name, version FROM "pg_catalog"."pg_available_extension_versions" WHERE installed = true;`,
+					Expected: []sql.Row{{"uuid-ossp", "1.1"}},
 				},
 			},
 		},
@@ -426,12 +506,26 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 }
 
 func TestPgAvailableExtensions(t *testing.T) {
+	registerTestExtension()
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_available_extensions",
 			Assertions: []ScriptTestAssertion{
+				{ // Only the extensions that Doltgres emulates are available
+					Query:            `SELECT * FROM "pg_catalog"."pg_available_extensions" WHERE name = 'doltgres_no_such_extension';`,
+					Expected:         []sql.Row{},
+					ExpectedColNames: []string{"name", "default_version", "installed_version", "comment"},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_available_extensions";`,
+					Query: `SELECT name, default_version, installed_version, comment FROM "pg_catalog"."pg_available_extensions" ORDER BY name;`,
+					Expected: []sql.Row{
+						{"doltgres_test", "1.0", nil, "test extension to ensure that emulated extensions behave properly"},
+						{"uuid-ossp", "1.1", nil, "generate universally unique identifiers (UUIDs)"},
+						{"vector", "0.8.6", nil, "vector data type and ivfflat and hnsw access methods"},
+					},
+				},
+				{ // No extensions are installed by default
+					Query:    `SELECT name, installed_version FROM "pg_catalog"."pg_available_extensions" WHERE installed_version IS NOT NULL;`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -443,8 +537,20 @@ func TestPgAvailableExtensions(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT name FROM PG_catalog.pg_AVAILABLE_EXTENSIONS ORDER BY name;",
+					Query:    "SELECT name FROM PG_catalog.pg_AVAILABLE_EXTENSIONS WHERE name = 'doltgres_no_such_extension' ORDER BY name;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "pg_available_extensions with an installed extension",
+			SetUpScript: []string{
+				`CREATE EXTENSION "uuid-ossp";`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT name, installed_version FROM "pg_catalog"."pg_available_extensions" WHERE installed_version IS NOT NULL;`,
+					Expected: []sql.Row{{"uuid-ossp", "1.1"}},
 				},
 			},
 		},
@@ -483,8 +589,15 @@ func TestPgCast(t *testing.T) {
 			Name: "pg_cast",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_cast";`,
-					Expected: []sql.Row{},
+					Query: `SELECT castsource::regtype, casttarget::regtype, castcontext FROM "pg_catalog"."pg_cast" WHERE castsource = 'xml'::regtype OR casttarget = 'xml'::regtype ORDER BY castsource::regtype::text, casttarget::regtype::text;`,
+					Expected: []sql.Row{
+						{"character", "xml", "e"},
+						{"character varying", "xml", "e"},
+						{"text", "xml", "e"},
+						{"xml", "character", "a"},
+						{"xml", "character varying", "a"},
+						{"xml", "text", "a"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_cast";`,
@@ -495,8 +608,8 @@ func TestPgCast(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT oid FROM PG_catalog.pg_CAST ORDER BY oid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT castsource::regtype, casttarget::regtype, castcontext, castmethod FROM PG_catalog.pg_CAST WHERE castsource = 'int4'::regtype AND casttarget = 'int8'::regtype;",
+					Expected: []sql.Row{{"integer", "bigint", "i", "f"}},
 				},
 			},
 		},
@@ -585,6 +698,44 @@ func TestPgClass(t *testing.T) {
 			},
 		},
 		{
+			Name:        "pg_class branch virtual index names",
+			SetUpScript: []string{"set dolt_show_system_tables=1"},
+			Assertions: []ScriptTestAssertion{
+				// Branch and remote-branch virtual indexes have distinct catalog names.
+				{
+					Query: `SELECT c.relname, c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = 'public' AND c.relname IN ('dolt_branches_dolt_branches_name_idx_key', 'dolt_remote_branches_dolt_branches_name_idx_key') ORDER BY c.relname;`,
+					Expected: []sql.Row{
+						{"dolt_branches_dolt_branches_name_idx_key", "i"},
+						{"dolt_remote_branches_dolt_branches_name_idx_key", "i"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_class relhastriggers",
+			SetUpScript: []string{
+				`CREATE TABLE plain (pk INT primary key);`,
+				`CREATE TABLE fk_parent (pk INT primary key);`,
+				`CREATE TABLE fk_child (pk INT primary key, ppk INT REFERENCES fk_parent(pk));`,
+				`CREATE TABLE trig_table (pk INT primary key);`,
+				`CREATE FUNCTION trig_fn() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER trig BEFORE INSERT ON trig_table FOR EACH ROW EXECUTE FUNCTION trig_fn();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Postgres enforces foreign keys with system triggers on both tables of the
+					// constraint, so tables on either side report relhastriggers
+					Query: `SELECT relname, relhastriggers FROM pg_catalog.pg_class WHERE relname IN ('plain', 'fk_parent', 'fk_child', 'trig_table') ORDER BY relname;`,
+					Expected: []sql.Row{
+						{"fk_child", "t"},
+						{"fk_parent", "t"},
+						{"plain", "f"},
+						{"trig_table", "t"},
+					},
+				},
+			},
+		},
+		{
 			Name: "pg_class with regclass",
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
@@ -646,8 +797,20 @@ func TestPgCollation(t *testing.T) {
 			Name: "pg_collation",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_collation";`,
-					Expected: []sql.Row{},
+					Query: `SELECT oid, collname, collprovider, collisdeterministic, collencoding, collcollate, collctype FROM "pg_catalog"."pg_collation" WHERE collname IN ('default', 'C', 'POSIX') ORDER BY oid;`,
+					Expected: []sql.Row{
+						{100, "default", "d", "t", -1, "default", "default"},
+						{950, "C", "c", "t", -1, "C", "C"},
+						{951, "POSIX", "c", "t", -1, "POSIX", "POSIX"},
+					},
+				},
+				{ // All built-in collations are present (libc defaults plus the ICU set)
+					Query:    `SELECT count(*) > 700 FROM "pg_catalog"."pg_collation";`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{ // ICU collations use the ICU provider
+					Query:    `SELECT collname, collprovider FROM "pg_catalog"."pg_collation" WHERE collname = 'en-x-icu';`,
+					Expected: []sql.Row{{"en-x-icu", "i"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_collation";`,
@@ -658,8 +821,8 @@ func TestPgCollation(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT collname FROM PG_catalog.pg_COLLATION ORDER BY collname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT collname FROM PG_catalog.pg_COLLATION WHERE collname = 'default' ORDER BY collname;",
+					Expected: []sql.Row{{"default"}},
 				},
 			},
 		},
@@ -672,8 +835,12 @@ func TestPgConfig(t *testing.T) {
 			Name: "pg_config",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_config";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT * FROM "pg_catalog"."pg_config" WHERE name='VERSION';`,
+					Expected: []sql.Row{{"VERSION", "PostgreSQL 15.17 (Homebrew)"}},
+				},
+				{
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_config";`,
+					Expected: []sql.Row{{23}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_config";`,
@@ -684,8 +851,8 @@ func TestPgConfig(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT name FROM PG_catalog.pg_CONFIG ORDER BY name;",
-					Expected: []sql.Row{},
+					Query:    "SELECT name FROM PG_catalog.pg_CONFIG WHERE name='BINDIR' ORDER BY name;",
+					Expected: []sql.Row{{"BINDIR"}},
 				},
 			},
 		},
@@ -968,7 +1135,29 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{" ├─ columns: [pg_constraint.conname]"},
 						{" └─ Sort(pg_constraint.conname ASC)"},
 						{"     └─ Filter"},
-						{"         ├─ ((pg_constraint.conrelid >= Subquery((select  min(oid) from pg_class where relname like 'test_%')) AND pg_constraint.conrelid <= Subquery((select min max(oid) from pg_class where relname like 'test_%'))) AND pg_constraint.contypid = 0)"},
+						{"         ├─ ((pg_constraint.conrelid >= Subquery"},
+						{"         │   ├─ cacheable: true"},
+						{"         │   └─ Project"},
+						{"         │       ├─ columns: [min(pg_class.oid) as `min`]"},
+						{"         │       └─ GroupBy"},
+						{"         │           ├─ select: MIN(pg_class.oid)"},
+						{"         │           ├─ group: "},
+						{"         │           └─ Filter"},
+						{"         │               ├─ pg_class.relname LIKE 'test_%'"},
+						{"         │               └─ Table"},
+						{"         │                   └─ name: pg_class"},
+						{"         │   AND pg_constraint.conrelid <= Subquery"},
+						{"         │   ├─ cacheable: true"},
+						{"         │   └─ Project"},
+						{"         │       ├─ columns: [max(pg_class.oid) as `max`]"},
+						{"         │       └─ GroupBy"},
+						{"         │           ├─ select: MAX(pg_class.oid)"},
+						{"         │           ├─ group: "},
+						{"         │           └─ Filter"},
+						{"         │               ├─ pg_class.relname LIKE 'test_%'"},
+						{"         │               └─ Table"},
+						{"         │                   └─ name: pg_class"},
+						{"         │  ) AND pg_constraint.contypid = 0)"},
 						{"         └─ IndexedTableAccess(pg_constraint)"},
 						{"             ├─ index: [pg_constraint.contypid]"},
 						{"             └─ filters: [{[{OID:[\"0\"]}, {OID:[\"0\"]}]}]"},
@@ -1159,7 +1348,7 @@ func TestPgDatabase(t *testing.T) {
 				{
 					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
-						{258611842, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
+						{258611842, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "C", "C", nil, "", nil, nil},
 					},
 				},
 			},
@@ -1223,10 +1412,31 @@ func TestPgDepend(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_depend",
+			SetUpScript: []string{
+				`CREATE TABLE dep_test (id SERIAL PRIMARY KEY, val TEXT DEFAULT 'hello');`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_depend";`,
-					Expected: []sql.Row{},
+				{ // The SERIAL column's sequence has an automatic dependency on its owning column
+					Query: `SELECT s.relname AS seqname, c.relname AS tablename, d.refobjsubid, d.deptype
+							FROM pg_catalog.pg_depend d
+							JOIN pg_catalog.pg_class s ON d.objid = s.oid
+							JOIN pg_catalog.pg_class c ON d.refobjid = c.oid
+							WHERE d.classid = 1259 AND d.refclassid = 1259;`,
+					Expected: []sql.Row{
+						{"dep_test_id_seq", "dep_test", 1, "a"},
+					},
+				},
+				{ // Each column default (pg_attrdef entry) has an automatic dependency on its column
+					Query: `SELECT c.relname, d.objsubid, d.refobjsubid, d.deptype
+							FROM pg_catalog.pg_depend d
+							JOIN pg_catalog.pg_attrdef ad ON d.objid = ad.oid
+							JOIN pg_catalog.pg_class c ON d.refobjid = c.oid
+							WHERE d.classid = 2604
+							ORDER BY d.refobjsubid;`,
+					Expected: []sql.Row{
+						{"dep_test", 0, 1, "a"},
+						{"dep_test", 0, 2, "a"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_depend";`,
@@ -1237,8 +1447,12 @@ func TestPgDepend(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT classid FROM PG_catalog.pg_DEPEND ORDER BY classid;",
-					Expected: []sql.Row{},
+					Query: "SELECT classid FROM PG_catalog.pg_DEPEND ORDER BY classid;",
+					Expected: []sql.Row{
+						{1259},
+						{2604},
+						{2604},
+					},
 				},
 			},
 		},
@@ -1275,10 +1489,29 @@ func TestPgEnum(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_enum",
+			SetUpScript: []string{
+				`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_enum";`,
-					Expected: []sql.Row{},
+					Query: `SELECT enumlabel, enumsortorder FROM "pg_catalog"."pg_enum" ORDER BY enumsortorder;`,
+					Expected: []sql.Row{
+						{"sad", float32(1)},
+						{"ok", float32(2)},
+						{"happy", float32(3)},
+					},
+				},
+				{
+					Query: `SELECT t.typname, e.enumlabel FROM pg_catalog.pg_enum e JOIN pg_catalog.pg_type t ON e.enumtypid = t.oid ORDER BY e.enumsortorder;`,
+					Expected: []sql.Row{
+						{"mood", "sad"},
+						{"mood", "ok"},
+						{"mood", "happy"},
+					},
+				},
+				{
+					Query:    `SELECT count(*) FROM pg_catalog.pg_enum WHERE oid = enumtypid;`,
+					Expected: []sql.Row{{0}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_enum";`,
@@ -1289,8 +1522,12 @@ func TestPgEnum(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT enumlabel FROM PG_catalog.pg_ENUM ORDER BY enumlabel;",
-					Expected: []sql.Row{},
+					Query: "SELECT enumlabel FROM PG_catalog.pg_ENUM ORDER BY enumlabel;",
+					Expected: []sql.Row{
+						{"happy"},
+						{"ok"},
+						{"sad"},
+					},
 				},
 			},
 		},
@@ -1329,8 +1566,11 @@ func TestPgExtension(t *testing.T) {
 			Name: "pg_extension",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_extension";`,
-					Expected: []sql.Row{},
+					// TODO: Postgres installs plpgsql automatically, while it's built-in for us
+					//  We need to return it as a row as though it were installed
+					Query:            `SELECT * FROM "pg_catalog"."pg_extension";`,
+					Expected:         []sql.Row{},
+					ExpectedColNames: []string{"oid", "extname", "extowner", "extnamespace", "extrelocatable", "extversion", "extconfig", "extcondition"},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_extension";`,
@@ -1343,6 +1583,22 @@ func TestPgExtension(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT extname FROM PG_catalog.pg_EXTENSION ORDER BY extname;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "pg_extension with an installed extension",
+			SetUpScript: []string{
+				`CREATE EXTENSION "uuid-ossp";`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT extname, extrelocatable, extversion, extconfig, extcondition FROM "pg_catalog"."pg_extension";`,
+					Expected: []sql.Row{{"uuid-ossp", "t", "1.1", nil, nil}},
+				},
+				{
+					Query:    `SELECT e.extname, n.nspname FROM "pg_catalog"."pg_extension" e, "pg_catalog"."pg_namespace" n WHERE n.oid = e.extnamespace;`,
+					Expected: []sql.Row{{"uuid-ossp", "public"}},
 				},
 			},
 		},
@@ -1457,10 +1713,23 @@ func TestPgGroup(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_group",
+			SetUpScript: []string{
+				`CREATE ROLE group_role NOLOGIN;`,
+				`CREATE USER group_member PASSWORD 'pwd123';`,
+				`GRANT group_role TO group_member;`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_group";`,
-					Expected: []sql.Row{},
+				{ // Roles that cannot log in are considered groups
+					Query:    `SELECT groname FROM "pg_catalog"."pg_group" ORDER BY groname;`,
+					Expected: []sql.Row{{"group_role"}, {"public"}},
+				},
+				{ // grolist contains the OIDs of the group's members
+					Query:    `SELECT usename FROM pg_catalog.pg_user u JOIN pg_catalog.pg_group g ON g.groname = 'group_role' AND u.usesysid = ANY(g.grolist);`,
+					Expected: []sql.Row{{"group_member"}},
+				},
+				{ // grosysid matches the role's oid in pg_authid
+					Query:    `SELECT a.rolname FROM pg_catalog.pg_group g JOIN pg_catalog.pg_authid a ON g.grosysid = a.oid ORDER BY a.rolname;`,
+					Expected: []sql.Row{{"group_role"}, {"public"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_group";`,
@@ -1472,7 +1741,7 @@ func TestPgGroup(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT groname FROM PG_catalog.pg_GROUP ORDER BY groname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"group_role"}, {"public"}},
 				},
 			},
 		},
@@ -1549,9 +1818,9 @@ func TestPgIndex(t *testing.T) {
 						WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'
 						ORDER BY 1;`,
 					Expected: []sql.Row{
-						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "", "", "0", nil, nil},
-						{2070175302, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "", "", "0", nil, nil},
-						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "", "", "0", nil, nil},
+						{1067629180, 3120782595, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "15009", "0", nil, nil},
+						{2070175302, 3120782595, 1, 1, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "15009", "0", nil, nil},
+						{3185790121, 1784425749, 2, 2, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "0 0", "15009 15009", "0 0", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1584,7 +1853,34 @@ func TestPgIndex(t *testing.T) {
 				},
 				{
 					Query:    "SELECT unnest(indoption) FROM pg_index LIMIT 1;",
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
+		{
+			Name: "pg_index indoption has one entry per key column", // https://github.com/dolthub/doltgresql/issues/3110
+			SetUpScript: []string{
+				`CREATE TABLE bug13 (a integer, b integer);`,
+				`CREATE INDEX bug13_ab ON bug13 (a, b);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT indkey, indoption, array_length(indkey, 1), array_length(indoption, 1)
+						FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{
+						{"1 2", "0 0", 2, 2},
+					},
+				},
+				{
+					Query: `SELECT indnatts, indnkeyatts, array_length(indcollation, 1), array_length(indclass, 1)
+						FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{
+						{2, 2, 2, 2},
+					},
+				},
+				{
+					Query:    `SELECT unnest(indoption) FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{{0}, {0}},
 				},
 			},
 		},
@@ -1687,8 +1983,13 @@ func TestPgLanguage(t *testing.T) {
 			Name: "pg_language",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_language";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_language" ORDER BY oid;`,
+					Expected: []sql.Row{
+						{12, "internal", 0, "f", "f", 0, 0, 0, nil},
+						{13, "c", 0, "f", "f", 0, 0, 0, nil},
+						{14, "sql", 0, "f", "t", 0, 0, 0, nil},
+						{14024, "plpgsql", 0, "t", "t", 0, 0, 0, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_language";`,
@@ -1700,7 +2001,7 @@ func TestPgLanguage(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT lanname FROM PG_catalog.pg_LANGUAGE ORDER BY lanname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"c"}, {"internal"}, {"plpgsql"}, {"sql"}},
 				},
 			},
 		},
@@ -1879,6 +2180,48 @@ func TestPgNamespace(t *testing.T) {
 					Expected: []sql.Row{
 						{2200},
 					},
+				},
+			},
+		},
+		{
+			Name: "regnamespace",
+			SetUpScript: []string{
+				"CREATE SCHEMA s3334;",
+				"CREATE TABLE t3334 (id INT PRIMARY KEY, ns REGNAMESPACE);",
+				"INSERT INTO t3334 VALUES (1, 'public'), (2, 's3334');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT 'public'::regnamespace;",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT oid::regnamespace FROM pg_namespace WHERE nspname = 'public';",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT 'public'::REGNAMESPACE, 'public'::REGNAMESPACE::OID = (SELECT oid FROM pg_namespace WHERE nspname = 'public'), 's3334'::REGNAMESPACE::TEXT, to_regnamespace('s3334') IS NOT NULL, to_regnamespace('nope'), (SELECT nspname FROM pg_namespace WHERE oid = 's3334'::REGNAMESPACE);",
+					Expected: []sql.Row{{"public", "t", "s3334", "t", nil, "s3334"}},
+				},
+				{
+					Query:    "SELECT relnamespace::REGNAMESPACE FROM pg_class WHERE relname = 't3334';",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT typname FROM pg_type WHERE typname = 'regnamespace';",
+					Expected: []sql.Row{{"regnamespace"}},
+				},
+				{
+					Query:    "SELECT id, ns, ns::TEXT FROM t3334 ORDER BY id;",
+					Expected: []sql.Row{{1, "public", "public"}, {2, "s3334", "s3334"}},
+				},
+				{
+					Query:       "SELECT 'nope'::REGNAMESPACE;",
+					ExpectedErr: `schema "nope" does not exist`,
+				},
+				{
+					Query:       "SELECT 'a.b'::REGNAMESPACE;",
+					ExpectedErr: "invalid name syntax",
 				},
 			},
 		},
@@ -2242,8 +2585,51 @@ func TestPgOpclass(t *testing.T) {
 		{
 			Name: "pg_opclass",
 			Assertions: []ScriptTestAssertion{
+				{ // The default btree opclasses for the integer types, joined against pg_am, pg_opfamily, and pg_type
+					Query: `SELECT opc.opcname, am.amname, opf.opfname, t.typname, opc.opcdefault
+							FROM pg_catalog.pg_opclass opc
+							JOIN pg_catalog.pg_am am ON opc.opcmethod = am.oid
+							JOIN pg_catalog.pg_opfamily opf ON opc.opcfamily = opf.oid
+							JOIN pg_catalog.pg_type t ON opc.opcintype = t.oid
+							WHERE opc.opcname IN ('int2_ops', 'int4_ops', 'int8_ops') AND am.amname = 'btree'
+							ORDER BY opc.opcname;`,
+					Expected: []sql.Row{
+						{"int2_ops", "btree", "integer_ops", "int2", "t"},
+						{"int4_ops", "btree", "integer_ops", "int4", "t"},
+						{"int8_ops", "btree", "integer_ops", "int8", "t"},
+					},
+				},
+				{ // varchar_ops is a non-default opclass over text, matching Postgres
+					Query: `SELECT opc.opcname, t.typname, opc.opcdefault
+							FROM pg_catalog.pg_opclass opc
+							JOIN pg_catalog.pg_am am ON opc.opcmethod = am.oid
+							JOIN pg_catalog.pg_type t ON opc.opcintype = t.oid
+							WHERE opc.opcname = 'varchar_ops' AND am.amname = 'hash';`,
+					Expected: []sql.Row{
+						{"varchar_ops", "text", "f"},
+					},
+				},
+				{ // The hash pattern classes belong to the hash pattern families, which have their own fixed OIDs
+					Query: `SELECT opf.oid, opc.opcname, t.typname, opc.opcdefault
+							FROM pg_catalog.pg_opclass opc
+							JOIN pg_catalog.pg_am am ON opc.opcmethod = am.oid
+							JOIN pg_catalog.pg_opfamily opf ON opc.opcfamily = opf.oid
+							JOIN pg_catalog.pg_type t ON opc.opcintype = t.oid
+							WHERE opc.opcname LIKE '%pattern%' AND am.amname = 'hash'
+							ORDER BY opc.opcname;`,
+					Expected: []sql.Row{
+						{2231, "bpchar_pattern_ops", "bpchar", "f"},
+						{2229, "text_pattern_ops", "text", "f"},
+						{2229, "varchar_pattern_ops", "text", "f"},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_opclass";`,
+					Query:    `SELECT count(*) > 40 FROM "pg_catalog"."pg_opclass";`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{ // Every operator family has at least one operator class
+					Query: `SELECT oid, opfname FROM pg_opfamily f
+							WHERE NOT EXISTS (SELECT 1 FROM pg_opclass WHERE opcfamily = f.oid);`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -2255,8 +2641,8 @@ func TestPgOpclass(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT opcname FROM PG_catalog.pg_OPCLASS ORDER BY opcname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT opcname FROM PG_catalog.pg_OPCLASS WHERE opcname = 'uuid_ops' ORDER BY opcname;",
+					Expected: []sql.Row{{"uuid_ops"}, {"uuid_ops"}},
 				},
 			},
 		},
@@ -2294,9 +2680,29 @@ func TestPgOpfamily(t *testing.T) {
 		{
 			Name: "pg_opfamily",
 			Assertions: []ScriptTestAssertion{
+				{ // Operator family OIDs match the fixed OIDs assigned by Postgres
+					Query: `SELECT opf.oid, opf.opfname, am.amname
+							FROM pg_catalog.pg_opfamily opf
+							JOIN pg_catalog.pg_am am ON opf.opfmethod = am.oid
+							WHERE opf.opfname = 'integer_ops'
+							ORDER BY opf.oid;`,
+					Expected: []sql.Row{
+						{1976, "integer_ops", "btree"},
+						{1977, "integer_ops", "hash"},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_opfamily";`,
-					Expected: []sql.Row{},
+					Query: `SELECT oid, opfname FROM "pg_catalog"."pg_opfamily" WHERE opfname IN ('text_ops', 'datetime_ops') ORDER BY oid;`,
+					Expected: []sql.Row{
+						{434, "datetime_ops"},
+						{435, "datetime_ops"},
+						{1994, "text_ops"},
+						{1995, "text_ops"},
+					},
+				},
+				{
+					Query:    `SELECT count(*) > 30 FROM "pg_catalog"."pg_opfamily";`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_opfamily";`,
@@ -2307,8 +2713,8 @@ func TestPgOpfamily(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT opfname FROM PG_catalog.pg_OPFAMILY ORDER BY opfname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT opfname FROM PG_catalog.pg_OPFAMILY WHERE opfname = 'uuid_ops' ORDER BY opfname;",
+					Expected: []sql.Row{{"uuid_ops"}, {"uuid_ops"}},
 				},
 			},
 		},
@@ -2475,10 +2881,22 @@ func TestPgProc(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_proc",
+			SetUpScript: []string{
+				`CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';`,
+				`CREATE TABLE cp_test (a int, b text);`,
+				`CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+				LANGUAGE SQL
+				AS $$
+					INSERT INTO cp_test VALUES(a, b);
+					INSERT INTO cp_test VALUES(c, b);
+				$$;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_proc";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_proc";`,
+					Expected: []sql.Row{
+						{2891346960, "alt_func1", 2200, 0, 0, 1.0, 0.0, 0, nil, "f", "f", "f", "f", "f", "v", "u", 1, 0, 23, "23", nil, nil, nil, nil, nil, "SELECT $1 + 1", nil, nil, nil, nil},
+						{1886569565, "ptest5", 2200, 0, 0, 1.0, 0.0, 0, nil, "p", "f", "f", "f", "f", "v", "u", 3, 1, 2278, "23 25 23", nil, nil, "{a,b,c}", nil, nil, "INSERT INTO cp_test VALUES (a, b);INSERT INTO cp_test VALUES (c, b)", nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_proc";`,
@@ -2490,6 +2908,10 @@ func TestPgProc(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT proname FROM PG_catalog.pg_PROC ORDER BY proname;",
+					Expected: []sql.Row{{"alt_func1"}, {"ptest5"}},
+				},
+				{
+					Query:    `SELECT t1.oid, t1.typname, p1.oid, p1.proname FROM pg_type AS t1, pg_proc AS p1 WHERE t1.typinput = p1.oid;`,
 					Expected: []sql.Row{},
 				},
 			},
@@ -2709,10 +3131,22 @@ func TestPgRewrite(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_rewrite",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				"CREATE VIEW test_view AS SELECT pk FROM test;",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_rewrite";`,
-					Expected: []sql.Row{},
+					Query: `SELECT rulename, ev_type, ev_enabled, is_instead FROM "pg_catalog"."pg_rewrite";`,
+					Expected: []sql.Row{
+						{"_RETURN", "1", "O", "t"},
+					},
+				},
+				{ // Every view has an implicit "_RETURN" rewrite rule
+					Query: `SELECT c.relname, r.rulename FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON r.ev_class = c.oid;`,
+					Expected: []sql.Row{
+						{"test_view", "_RETURN"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_rewrite";`,
@@ -2723,8 +3157,10 @@ func TestPgRewrite(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT oid FROM PG_catalog.pg_REWRITE ORDER BY oid;",
-					Expected: []sql.Row{},
+					Query: "SELECT rulename FROM PG_catalog.pg_REWRITE ORDER BY rulename;",
+					Expected: []sql.Row{
+						{"_RETURN"},
+					},
 				},
 			},
 		},
@@ -2735,10 +3171,23 @@ func TestPgRoles(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_roles",
+			SetUpScript: []string{
+				`CREATE USER roles_user PASSWORD 'pwd123';`,
+				`CREATE ROLE roles_role NOLOGIN;`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_roles";`,
-					Expected: []sql.Row{},
+				{ // rolpassword is always masked, unlike pg_authid
+					Query: `SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolconnlimit, rolpassword, rolvaliduntil, rolbypassrls, rolconfig FROM "pg_catalog"."pg_roles" ORDER BY rolname;`,
+					Expected: []sql.Row{
+						{"postgres", "t", "t", "t", "t", "t", "f", -1, "********", nil, "f", nil},
+						{"public", "f", "t", "f", "f", "f", "f", -1, "********", nil, "f", nil},
+						{"roles_role", "f", "t", "f", "f", "f", "f", -1, "********", nil, "f", nil},
+						{"roles_user", "f", "t", "f", "f", "t", "f", -1, "********", nil, "f", nil},
+					},
+				},
+				{ // The oid in pg_roles matches the oid in pg_authid
+					Query:    `SELECT r.rolname FROM pg_catalog.pg_roles r JOIN pg_catalog.pg_authid a ON r.oid = a.oid WHERE a.rolname = 'roles_user';`,
+					Expected: []sql.Row{{"roles_user"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_roles";`,
@@ -2750,7 +3199,7 @@ func TestPgRoles(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT rolname FROM PG_catalog.pg_ROLES ORDER BY rolname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"postgres"}, {"public"}, {"roles_role"}, {"roles_user"}},
 				},
 			},
 		},
@@ -2761,8 +3210,12 @@ func TestPgRules(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_rules",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				"CREATE VIEW test_view AS SELECT pk FROM test;",
+			},
 			Assertions: []ScriptTestAssertion{
-				{
+				{ // pg_rules excludes the implicit "_RETURN" view rules, and CREATE RULE is unsupported, so it is always empty
 					Query:    `SELECT * FROM "pg_catalog"."pg_rules";`,
 					Expected: []sql.Row{},
 				},
@@ -2865,10 +3318,10 @@ func TestPgSequences(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT schemaname, sequencename, sequenceowner, data_type, start_value, min_value, " +
-						"max_value, increment_by, cycle, cache_size, last_value FROM pg_sequences",
+					Query: `SELECT schemaname, sequencename, sequenceowner, data_type, start_value, min_value, 
+							max_value, increment_by, cycle, cache_size, last_value FROM pg_sequences`,
 					Expected: []sql.Row{
-						{"public", "test", nil, "int8", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
+						{"public", "test", nil, "bigint", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
 					},
 				},
 			},
@@ -2884,13 +3337,13 @@ func TestPgSequences(t *testing.T) {
 				{
 					Query: "SELECT * FROM pg_sequences where sequencename = 'test'",
 					Expected: []sql.Row{
-						{"public", "test", nil, "int4", int64(10), int64(5), int64(11), int64(2), "t", int64(1), nil},
+						{"public", "test", nil, "integer", int64(10), int64(5), int64(11), int64(2), "t", int64(1), nil},
 					},
 				},
 				{
 					Query: "SELECT * FROM pg_sequences where sequencename = 'secondseq'",
 					Expected: []sql.Row{
-						{"test_schema", "secondseq", nil, "int8", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
+						{"test_schema", "secondseq", nil, "bigint", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
 					},
 				},
 			},
@@ -2922,7 +3375,7 @@ func TestPgSequences(t *testing.T) {
 				{
 					Query: "SELECT sequencename, data_type, start_value, max_value, last_value FROM pg_sequences",
 					Expected: []sql.Row{
-						{"test_id_seq", "int4", int64(1), int64(2147483647), nil},
+						{"test_id_seq", "integer", int64(1), int64(2147483647), nil},
 					},
 				},
 				{
@@ -2976,8 +3429,20 @@ func TestPgSettings(t *testing.T) {
 			Name: "pg_settings",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_settings";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT name, setting, vartype, context FROM "pg_catalog"."pg_settings" WHERE name='server_version_num';`,
+					Expected: []sql.Row{{"server_version_num", "150017", "integer", "internal"}},
+				},
+				{
+					Query:    `SELECT name, setting, vartype, context, boot_val FROM "pg_catalog"."pg_settings" WHERE name='autovacuum';`,
+					Expected: []sql.Row{{"autovacuum", "on", "bool", "sighup", "on"}},
+				},
+				{
+					Query:    `SELECT name, setting, vartype, context FROM "pg_catalog"."pg_settings" WHERE name='max_connections';`,
+					Expected: []sql.Row{{"max_connections", "100", "integer", "postmaster"}},
+				},
+				{
+					Query:    `SELECT count(*) > 300 FROM "pg_catalog"."pg_settings";`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_settings";`,
@@ -2988,8 +3453,8 @@ func TestPgSettings(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT name FROM PG_catalog.pg_SETTINGS ORDER BY name;",
-					Expected: []sql.Row{},
+					Query:    "SELECT name FROM PG_catalog.pg_SETTINGS WHERE name LIKE 'server_version%' ORDER BY name;",
+					Expected: []sql.Row{{"server_version"}, {"server_version_num"}},
 				},
 			},
 		},
@@ -3000,10 +3465,27 @@ func TestPgShadow(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_shadow",
+			SetUpScript: []string{
+				`CREATE USER shadow_user PASSWORD 'pwd123';`,
+				`CREATE USER shadow_nopass;`,
+				`CREATE ROLE shadow_nologin NOLOGIN;`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_shadow";`,
-					Expected: []sql.Row{},
+				{ // Only roles that can log in appear
+					Query: `SELECT usename, usecreatedb, usesuper, userepl, usebypassrls, valuntil, useconfig FROM "pg_catalog"."pg_shadow" ORDER BY usename;`,
+					Expected: []sql.Row{
+						{"postgres", "t", "t", "f", "f", nil, nil},
+						{"shadow_nopass", "f", "f", "f", "f", nil, nil},
+						{"shadow_user", "f", "f", "f", "f", nil, nil},
+					},
+				},
+				{ // Unlike pg_user, pg_shadow exposes the SCRAM-SHA-256 verifier string
+					Query:    `SELECT usename FROM pg_catalog.pg_shadow WHERE passwd LIKE 'SCRAM-SHA-256$4096:%' ORDER BY usename;`,
+					Expected: []sql.Row{{"postgres"}, {"shadow_user"}},
+				},
+				{ // Roles without a password store NULL
+					Query:    `SELECT usename FROM pg_catalog.pg_shadow WHERE passwd IS NULL;`,
+					Expected: []sql.Row{{"shadow_nopass"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_shadow";`,
@@ -3015,7 +3497,7 @@ func TestPgShadow(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT usename FROM PG_catalog.pg_SHADOW ORDER BY usename;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"postgres"}, {"shadow_nopass"}, {"shadow_user"}},
 				},
 			},
 		},
@@ -3131,9 +3613,15 @@ func TestPgStatActivity(t *testing.T) {
 		{
 			Name: "pg_stat_activity",
 			Assertions: []ScriptTestAssertion{
+				{ // The current session appears with its own query as an active client backend
+					Query: `SELECT DISTINCT state, backend_type, query FROM "pg_catalog"."pg_stat_activity" WHERE state = 'active' AND query LIKE '%pg_stat_activity%';`,
+					Expected: []sql.Row{
+						{"active", "client backend", `SELECT DISTINCT state, backend_type, query FROM "pg_catalog"."pg_stat_activity" WHERE state = 'active' AND query LIKE '%pg_stat_activity%';`},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_activity";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) > 0 FROM "pg_catalog"."pg_stat_activity";`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_activity";`,
@@ -3144,8 +3632,8 @@ func TestPgStatActivity(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT datname FROM PG_catalog.pg_STAT_ACTIVITY ORDER BY datname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT count(*) > 0 FROM PG_catalog.pg_STAT_ACTIVITY;",
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},
@@ -3156,10 +3644,31 @@ func TestPgStatAllIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_all_indexes",
+			SetUpScript: []string{
+				`CREATE TABLE stat_idx_test (pk INT primary key, v1 INT);`,
+				`CREATE INDEX v1_idx ON stat_idx_test (v1);`,
+			},
 			Assertions: []ScriptTestAssertion{
+				{ // User indexes appear with zero counters and NULL timestamps
+					Query: `SELECT schemaname, relname, indexrelname, idx_scan, last_idx_scan, idx_tup_read, idx_tup_fetch FROM "pg_catalog"."pg_stat_all_indexes" WHERE relname = 'stat_idx_test' ORDER BY indexrelname;`,
+					Expected: []sql.Row{
+						{"public", "stat_idx_test", "stat_idx_test_pkey", int64(0), nil, int64(0), int64(0)},
+						{"public", "stat_idx_test", "v1_idx", int64(0), nil, int64(0), int64(0)},
+					},
+				},
+				{ // relid matches the table's oid in pg_class, and indexrelid the index's oid
+					Query: `SELECT c.relname FROM "pg_catalog"."pg_stat_all_indexes" s JOIN "pg_catalog"."pg_class" c ON s.relid = c.oid WHERE s.relname = 'stat_idx_test' ORDER BY s.indexrelname;`,
+					Expected: []sql.Row{
+						{"stat_idx_test"},
+						{"stat_idx_test"},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_all_indexes";`,
-					Expected: []sql.Row{},
+					Query: `SELECT c.relname FROM "pg_catalog"."pg_stat_all_indexes" s JOIN "pg_catalog"."pg_class" c ON s.indexrelid = c.oid WHERE s.relname = 'stat_idx_test' ORDER BY c.relname;`,
+					Expected: []sql.Row{
+						{"stat_idx_test_pkey"},
+						{"v1_idx"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_all_indexes";`,
@@ -3170,8 +3679,8 @@ func TestPgStatAllIndexes(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relname FROM PG_catalog.pg_STAT_ALL_INDEXES ORDER BY relname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_ALL_INDEXES WHERE relname = 'stat_idx_test' ORDER BY indexrelname;",
+					Expected: []sql.Row{{"stat_idx_test"}, {"stat_idx_test"}},
 				},
 			},
 		},
@@ -3182,10 +3691,17 @@ func TestPgStatAllTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_all_tables",
+			SetUpScript: []string{
+				`CREATE TABLE stat_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_all_tables";`,
-					Expected: []sql.Row{},
+				{ // User tables appear with zero counters and NULL timestamps
+					Query:    `SELECT schemaname, relname, n_tup_ins, seq_scan, last_vacuum FROM "pg_catalog"."pg_stat_all_tables" WHERE relname = 'stat_test';`,
+					Expected: []sql.Row{{"public", "stat_test", int64(0), int64(0), nil}},
+				},
+				{ // System tables appear as well
+					Query:    `SELECT schemaname, relname, n_tup_ins FROM "pg_catalog"."pg_stat_all_tables" WHERE relname = 'pg_class';`,
+					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0)}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_all_tables";`,
@@ -3196,8 +3712,8 @@ func TestPgStatAllTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relname FROM PG_catalog.pg_STAT_ALL_TABLES ORDER BY relname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_ALL_TABLES WHERE relname = 'stat_test' ORDER BY relname;",
+					Expected: []sql.Row{{"stat_test"}},
 				},
 			},
 		},
@@ -3209,9 +3725,15 @@ func TestPgStatArchiver(t *testing.T) {
 		{
 			Name: "pg_stat_archiver",
 			Assertions: []ScriptTestAssertion{
+				{ // Exactly one row with zero counters and NULL values
+					Query: `SELECT * FROM "pg_catalog"."pg_stat_archiver";`,
+					Expected: []sql.Row{
+						{0, nil, nil, 0, nil, nil, nil},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_archiver";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_archiver";`,
+					Expected: []sql.Row{{1}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_archiver";`,
@@ -3222,8 +3744,10 @@ func TestPgStatArchiver(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT archived_count FROM PG_catalog.pg_STAT_ARCHIVER ORDER BY archived_count;",
-					Expected: []sql.Row{},
+					Query: "SELECT archived_count FROM PG_catalog.pg_STAT_ARCHIVER ORDER BY archived_count;",
+					Expected: []sql.Row{
+						{0},
+					},
 				},
 			},
 		},
@@ -3235,9 +3759,15 @@ func TestPgStatBgwriter(t *testing.T) {
 		{
 			Name: "pg_stat_bgwriter",
 			Assertions: []ScriptTestAssertion{
+				{ // Exactly one row with zero counters and a NULL stats_reset
+					Query: `SELECT * FROM "pg_catalog"."pg_stat_bgwriter";`,
+					Expected: []sql.Row{
+						{0, 0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, nil},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_bgwriter";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_bgwriter";`,
+					Expected: []sql.Row{{1}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_bgwriter";`,
@@ -3248,8 +3778,10 @@ func TestPgStatBgwriter(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT checkpoints_timed FROM PG_catalog.pg_STAT_BGWRITER ORDER BY checkpoints_timed;",
-					Expected: []sql.Row{},
+					Query: "SELECT checkpoints_timed FROM PG_catalog.pg_STAT_BGWRITER ORDER BY checkpoints_timed;",
+					Expected: []sql.Row{
+						{0},
+					},
 				},
 			},
 		},
@@ -3261,9 +3793,21 @@ func TestPgStatDatabase(t *testing.T) {
 		{
 			Name: "pg_stat_database",
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_database";`,
-					Expected: []sql.Row{},
+				{ // One row per database, plus one row for shared objects
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_database";`,
+					Expected: []sql.Row{{2}},
+				},
+				{ // The current database appears with zero counters and NULL stats_reset
+					Query: `SELECT datname, numbackends, xact_commit, xact_rollback, blks_read, deadlocks, stats_reset FROM "pg_catalog"."pg_stat_database" WHERE datname = current_database();`,
+					Expected: []sql.Row{
+						{"postgres", 0, 0, 0, 0, 0, nil},
+					},
+				},
+				{ // The shared objects row has a zero OID and a NULL database name
+					Query: `SELECT datid, datname, xact_commit FROM "pg_catalog"."pg_stat_database" WHERE datname IS NULL;`,
+					Expected: []sql.Row{
+						{0, nil, 0},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_database";`,
@@ -3274,8 +3818,10 @@ func TestPgStatDatabase(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT datname FROM PG_catalog.pg_STAT_DATABASE ORDER BY datname;",
-					Expected: []sql.Row{},
+					Query: "SELECT datname FROM PG_catalog.pg_STAT_DATABASE WHERE datname IS NOT NULL ORDER BY datname;",
+					Expected: []sql.Row{
+						{"postgres"},
+					},
 				},
 			},
 		},
@@ -3287,9 +3833,11 @@ func TestPgStatDatabaseConflicts(t *testing.T) {
 		{
 			Name: "pg_stat_database_conflicts",
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_database_conflicts";`,
-					Expected: []sql.Row{},
+				{ // One row per database, all conflict counters zero
+					Query: `SELECT datname, confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock, confl_active_logicalslot FROM "pg_catalog"."pg_stat_database_conflicts";`,
+					Expected: []sql.Row{
+						{"postgres", 0, 0, 0, 0, 0, 0},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_database_conflicts";`,
@@ -3300,8 +3848,10 @@ func TestPgStatDatabaseConflicts(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT datname FROM PG_catalog.pg_STAT_DATABASE_CONFLICTS ORDER BY datname;",
-					Expected: []sql.Row{},
+					Query: "SELECT datname FROM PG_catalog.pg_STAT_DATABASE_CONFLICTS ORDER BY datname;",
+					Expected: []sql.Row{
+						{"postgres"},
+					},
 				},
 			},
 		},
@@ -3495,9 +4045,15 @@ func TestPgStatRecoveryPrefetch(t *testing.T) {
 		{
 			Name: "pg_stat_recovery_prefetch",
 			Assertions: []ScriptTestAssertion{
+				{ // Exactly one row with zero counters and NULL values
+					Query: `SELECT * FROM "pg_catalog"."pg_stat_recovery_prefetch";`,
+					Expected: []sql.Row{
+						{nil, 0, 0, 0, 0, 0, 0, nil, nil, nil},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_recovery_prefetch";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_recovery_prefetch";`,
+					Expected: []sql.Row{{1}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_recovery_prefetch";`,
@@ -3508,8 +4064,10 @@ func TestPgStatRecoveryPrefetch(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT hit FROM PG_catalog.pg_STAT_RECOVERY_PREFETCH ORDER BY hit;",
-					Expected: []sql.Row{},
+					Query: "SELECT hit FROM PG_catalog.pg_STAT_RECOVERY_PREFETCH ORDER BY hit;",
+					Expected: []sql.Row{
+						{0},
+					},
 				},
 			},
 		},
@@ -3573,9 +4131,22 @@ func TestPgStatSlru(t *testing.T) {
 		{
 			Name: "pg_stat_slru",
 			Assertions: []ScriptTestAssertion{
+				{ // One row per SLRU cache, all counters zero and NULL stats_reset
+					Query: `SELECT * FROM "pg_catalog"."pg_stat_slru" ORDER BY name;`,
+					Expected: []sql.Row{
+						{"CommitTs", 0, 0, 0, 0, 0, 0, 0, nil},
+						{"MultiXactMember", 0, 0, 0, 0, 0, 0, 0, nil},
+						{"MultiXactOffset", 0, 0, 0, 0, 0, 0, 0, nil},
+						{"Notify", 0, 0, 0, 0, 0, 0, 0, nil},
+						{"Serial", 0, 0, 0, 0, 0, 0, 0, nil},
+						{"Subtrans", 0, 0, 0, 0, 0, 0, 0, nil},
+						{"Xact", 0, 0, 0, 0, 0, 0, 0, nil},
+						{"other", 0, 0, 0, 0, 0, 0, 0, nil},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_slru";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_slru";`,
+					Expected: []sql.Row{{8}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_slru";`,
@@ -3586,8 +4157,17 @@ func TestPgStatSlru(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT name FROM PG_catalog.pg_STAT_SLRU ORDER BY name;",
-					Expected: []sql.Row{},
+					Query: "SELECT name FROM PG_catalog.pg_STAT_SLRU ORDER BY name;",
+					Expected: []sql.Row{
+						{"CommitTs"},
+						{"MultiXactMember"},
+						{"MultiXactOffset"},
+						{"Notify"},
+						{"Serial"},
+						{"Subtrans"},
+						{"Xact"},
+						{"other"},
+					},
 				},
 			},
 		},
@@ -3676,9 +4256,17 @@ func TestPgStatSysIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_sys_indexes",
+			SetUpScript: []string{
+				`CREATE TABLE stat_idx_test (pk INT primary key, v1 INT);`,
+				`CREATE INDEX v1_idx ON stat_idx_test (v1);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_sys_indexes";`,
+				{ // User indexes do not appear
+					Query:    `SELECT relname FROM "pg_catalog"."pg_stat_sys_indexes" WHERE relname = 'stat_idx_test';`,
+					Expected: []sql.Row{},
+				},
+				{ // Only system schemas appear
+					Query:    `SELECT DISTINCT schemaname FROM "pg_catalog"."pg_stat_sys_indexes" WHERE schemaname NOT IN ('pg_catalog', 'information_schema');`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -3690,7 +4278,7 @@ func TestPgStatSysIndexes(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STAT_SYS_INDEXES ORDER BY relid;",
+					Query:    "SELECT relid FROM PG_catalog.pg_STAT_SYS_INDEXES WHERE relname = 'stat_idx_test' ORDER BY relid;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -3702,9 +4290,16 @@ func TestPgStatSysTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_sys_tables",
+			SetUpScript: []string{
+				`CREATE TABLE stat_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_sys_tables";`,
+				{ // System tables appear with zero counters
+					Query:    `SELECT schemaname, relname, n_tup_ins FROM "pg_catalog"."pg_stat_sys_tables" WHERE relname = 'pg_class';`,
+					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0)}},
+				},
+				{ // User tables do not appear
+					Query:    `SELECT relname FROM "pg_catalog"."pg_stat_sys_tables" WHERE relname = 'stat_test';`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -3716,8 +4311,8 @@ func TestPgStatSysTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STAT_SYS_TABLES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_SYS_TABLES WHERE relname = 'pg_class' ORDER BY relname;",
+					Expected: []sql.Row{{"pg_class"}},
 				},
 			},
 		},
@@ -3754,9 +4349,20 @@ func TestPgStatUserIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_user_indexes",
+			SetUpScript: []string{
+				`CREATE TABLE stat_idx_test (pk INT primary key, v1 INT);`,
+				`CREATE INDEX v1_idx ON stat_idx_test (v1);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_user_indexes";`,
+				{ // Both the primary key and secondary index appear with zero counters and NULL timestamps
+					Query: `SELECT schemaname, relname, indexrelname, idx_scan, last_idx_scan, idx_tup_read, idx_tup_fetch FROM "pg_catalog"."pg_stat_user_indexes" ORDER BY indexrelname;`,
+					Expected: []sql.Row{
+						{"public", "stat_idx_test", "stat_idx_test_pkey", int64(0), nil, int64(0), int64(0)},
+						{"public", "stat_idx_test", "v1_idx", int64(0), nil, int64(0), int64(0)},
+					},
+				},
+				{ // System indexes do not appear
+					Query:    `SELECT relname FROM "pg_catalog"."pg_stat_user_indexes" WHERE schemaname IN ('pg_catalog', 'information_schema');`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -3768,8 +4374,8 @@ func TestPgStatUserIndexes(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STAT_USER_INDEXES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT indexrelname FROM PG_catalog.pg_STAT_USER_INDEXES ORDER BY indexrelname;",
+					Expected: []sql.Row{{"stat_idx_test_pkey"}, {"v1_idx"}},
 				},
 			},
 		},
@@ -3780,9 +4386,16 @@ func TestPgStatUserTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_user_tables",
+			SetUpScript: []string{
+				`CREATE TABLE stat_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_user_tables";`,
+				{ // User tables appear with zero counters and NULL timestamps
+					Query:    `SELECT schemaname, relname, n_tup_ins, seq_scan, last_vacuum FROM "pg_catalog"."pg_stat_user_tables" WHERE relname = 'stat_test';`,
+					Expected: []sql.Row{{"public", "stat_test", int64(0), int64(0), nil}},
+				},
+				{ // System tables do not appear
+					Query:    `SELECT relname FROM "pg_catalog"."pg_stat_user_tables" WHERE relname = 'pg_class';`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -3794,8 +4407,8 @@ func TestPgStatUserTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STAT_USER_TABLES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_USER_TABLES WHERE relname = 'stat_test' ORDER BY relname;",
+					Expected: []sql.Row{{"stat_test"}},
 				},
 			},
 		},
@@ -3807,9 +4420,15 @@ func TestPgStatWal(t *testing.T) {
 		{
 			Name: "pg_stat_wal",
 			Assertions: []ScriptTestAssertion{
+				{ // Exactly one row with zero counters and a NULL stats_reset
+					Query: `SELECT * FROM "pg_catalog"."pg_stat_wal";`,
+					Expected: []sql.Row{
+						{0, 0, Numeric("0"), 0, 0, 0, 0.0, 0.0, nil},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_wal";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_wal";`,
+					Expected: []sql.Row{{1}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_wal";`,
@@ -3820,8 +4439,10 @@ func TestPgStatWal(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT wal_records FROM PG_catalog.pg_STAT_WAL ORDER BY wal_records;",
-					Expected: []sql.Row{},
+					Query: "SELECT wal_records FROM PG_catalog.pg_STAT_WAL ORDER BY wal_records;",
+					Expected: []sql.Row{
+						{0},
+					},
 				},
 			},
 		},
@@ -3833,9 +4454,13 @@ func TestPgStatWalReceiver(t *testing.T) {
 		{
 			Name: "pg_stat_wal_receiver",
 			Assertions: []ScriptTestAssertion{
-				{
+				{ // Empty since there is no WAL receiver process, matching vanilla Postgres
 					Query:    `SELECT * FROM "pg_catalog"."pg_stat_wal_receiver";`,
 					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_wal_receiver";`,
+					Expected: []sql.Row{{0}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_wal_receiver";`,
@@ -3858,10 +4483,17 @@ func TestPgStatXactAllTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_xact_all_tables",
+			SetUpScript: []string{
+				`CREATE TABLE stat_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_xact_all_tables";`,
-					Expected: []sql.Row{},
+				{ // User tables appear with zero counters
+					Query:    `SELECT schemaname, relname, n_tup_ins FROM "pg_catalog"."pg_stat_xact_all_tables" WHERE relname = 'stat_test';`,
+					Expected: []sql.Row{{"public", "stat_test", int64(0)}},
+				},
+				{ // System tables appear as well
+					Query:    `SELECT schemaname, relname, n_tup_ins FROM "pg_catalog"."pg_stat_xact_all_tables" WHERE relname = 'pg_class';`,
+					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0)}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_xact_all_tables";`,
@@ -3872,8 +4504,8 @@ func TestPgStatXactAllTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STAT_XACT_ALL_TABLES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_XACT_ALL_TABLES WHERE relname = 'stat_test' ORDER BY relname;",
+					Expected: []sql.Row{{"stat_test"}},
 				},
 			},
 		},
@@ -3884,9 +4516,16 @@ func TestPgStatXactSysTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_xact_sys_tables",
+			SetUpScript: []string{
+				`CREATE TABLE stat_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_xact_sys_tables";`,
+				{ // System tables appear with zero counters
+					Query:    `SELECT schemaname, relname, n_tup_ins FROM "pg_catalog"."pg_stat_xact_sys_tables" WHERE relname = 'pg_class';`,
+					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0)}},
+				},
+				{ // User tables do not appear
+					Query:    `SELECT relname FROM "pg_catalog"."pg_stat_xact_sys_tables" WHERE relname = 'stat_test';`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -3898,8 +4537,8 @@ func TestPgStatXactSysTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STAT_XACT_SYS_TABLES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_XACT_SYS_TABLES WHERE relname = 'pg_class' ORDER BY relname;",
+					Expected: []sql.Row{{"pg_class"}},
 				},
 			},
 		},
@@ -3936,9 +4575,16 @@ func TestPgStatXactUserTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_stat_xact_user_tables",
+			SetUpScript: []string{
+				`CREATE TABLE stat_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_xact_user_tables";`,
+				{ // User tables appear with zero counters
+					Query:    `SELECT schemaname, relname, n_tup_ins FROM "pg_catalog"."pg_stat_xact_user_tables" WHERE relname = 'stat_test';`,
+					Expected: []sql.Row{{"public", "stat_test", int64(0)}},
+				},
+				{ // System tables do not appear
+					Query:    `SELECT relname FROM "pg_catalog"."pg_stat_xact_user_tables" WHERE relname = 'pg_class';`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -3950,8 +4596,8 @@ func TestPgStatXactUserTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STAT_XACT_USER_TABLES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STAT_XACT_USER_TABLES WHERE relname = 'stat_test' ORDER BY relname;",
+					Expected: []sql.Row{{"stat_test"}},
 				},
 			},
 		},
@@ -3962,10 +4608,17 @@ func TestPgStatioAllIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_all_indexes",
+			SetUpScript: []string{
+				`CREATE TABLE stat_idx_test (pk INT primary key, v1 INT);`,
+				`CREATE INDEX v1_idx ON stat_idx_test (v1);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_statio_all_indexes";`,
-					Expected: []sql.Row{},
+				{ // User indexes appear with zero counters
+					Query: `SELECT schemaname, relname, indexrelname, idx_blks_read, idx_blks_hit FROM "pg_catalog"."pg_statio_all_indexes" WHERE relname = 'stat_idx_test' ORDER BY indexrelname;`,
+					Expected: []sql.Row{
+						{"public", "stat_idx_test", "stat_idx_test_pkey", int64(0), int64(0)},
+						{"public", "stat_idx_test", "v1_idx", int64(0), int64(0)},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_statio_all_indexes";`,
@@ -3976,8 +4629,8 @@ func TestPgStatioAllIndexes(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_ALL_INDEXES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STATIO_ALL_INDEXES WHERE relname = 'stat_idx_test' ORDER BY indexrelname;",
+					Expected: []sql.Row{{"stat_idx_test"}, {"stat_idx_test"}},
 				},
 			},
 		},
@@ -3988,10 +4641,13 @@ func TestPgStatioAllSequences(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_all_sequences",
+			SetUpScript: []string{
+				`CREATE SEQUENCE test_seq;`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_statio_all_sequences";`,
-					Expected: []sql.Row{},
+				{ // User sequences appear with zero counters
+					Query:    `SELECT schemaname, relname, blks_read, blks_hit FROM "pg_catalog"."pg_statio_all_sequences" WHERE relname = 'test_seq';`,
+					Expected: []sql.Row{{"public", "test_seq", int64(0), int64(0)}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_statio_all_sequences";`,
@@ -4002,8 +4658,8 @@ func TestPgStatioAllSequences(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_ALL_SEQUENCES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STATIO_ALL_SEQUENCES WHERE relname = 'test_seq' ORDER BY relname;",
+					Expected: []sql.Row{{"test_seq"}},
 				},
 			},
 		},
@@ -4014,10 +4670,17 @@ func TestPgStatioAllTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_all_tables",
+			SetUpScript: []string{
+				`CREATE TABLE statio_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_statio_all_tables";`,
-					Expected: []sql.Row{},
+				{ // User tables appear with zero counters and NULL toast columns
+					Query:    `SELECT schemaname, relname, heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit, toast_blks_read, tidx_blks_hit FROM "pg_catalog"."pg_statio_all_tables" WHERE relname = 'statio_test';`,
+					Expected: []sql.Row{{"public", "statio_test", int64(0), int64(0), int64(0), int64(0), nil, nil}},
+				},
+				{ // System tables appear as well
+					Query:    `SELECT schemaname, relname, heap_blks_read FROM "pg_catalog"."pg_statio_all_tables" WHERE relname = 'pg_class';`,
+					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0)}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_statio_all_tables";`,
@@ -4028,8 +4691,8 @@ func TestPgStatioAllTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_ALL_TABLES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STATIO_ALL_TABLES WHERE relname = 'statio_test' ORDER BY relname;",
+					Expected: []sql.Row{{"statio_test"}},
 				},
 			},
 		},
@@ -4040,9 +4703,17 @@ func TestPgStatioSysIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_sys_indexes",
+			SetUpScript: []string{
+				`CREATE TABLE stat_idx_test (pk INT primary key, v1 INT);`,
+				`CREATE INDEX v1_idx ON stat_idx_test (v1);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_statio_sys_indexes";`,
+				{ // User indexes do not appear
+					Query:    `SELECT relname FROM "pg_catalog"."pg_statio_sys_indexes" WHERE relname = 'stat_idx_test';`,
+					Expected: []sql.Row{},
+				},
+				{ // Only system schemas appear
+					Query:    `SELECT DISTINCT schemaname FROM "pg_catalog"."pg_statio_sys_indexes" WHERE schemaname NOT IN ('pg_catalog', 'information_schema');`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -4054,7 +4725,7 @@ func TestPgStatioSysIndexes(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_SYS_INDEXES ORDER BY relid;",
+					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_SYS_INDEXES WHERE relname = 'stat_idx_test' ORDER BY relid;",
 					Expected: []sql.Row{},
 				},
 			},
@@ -4066,8 +4737,11 @@ func TestPgStatioSysSequences(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_sys_sequences",
+			SetUpScript: []string{
+				`CREATE SEQUENCE test_seq;`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
+				{ // User sequences do not appear in the sys variant; no system sequences exist
 					Query:    `SELECT * FROM "pg_catalog"."pg_statio_sys_sequences";`,
 					Expected: []sql.Row{},
 				},
@@ -4092,9 +4766,16 @@ func TestPgStatioSysTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_sys_tables",
+			SetUpScript: []string{
+				`CREATE TABLE statio_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_statio_sys_tables";`,
+				{ // System tables appear with zero counters
+					Query:    `SELECT schemaname, relname, heap_blks_read, heap_blks_hit FROM "pg_catalog"."pg_statio_sys_tables" WHERE relname = 'pg_class';`,
+					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0), int64(0)}},
+				},
+				{ // User tables do not appear
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_sys_tables" WHERE relname = 'statio_test';`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -4106,8 +4787,8 @@ func TestPgStatioSysTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_SYS_TABLES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STATIO_SYS_TABLES WHERE relname = 'pg_class' ORDER BY relname;",
+					Expected: []sql.Row{{"pg_class"}},
 				},
 			},
 		},
@@ -4118,9 +4799,20 @@ func TestPgStatioUserIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_user_indexes",
+			SetUpScript: []string{
+				`CREATE TABLE stat_idx_test (pk INT primary key, v1 INT);`,
+				`CREATE INDEX v1_idx ON stat_idx_test (v1);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_statio_user_indexes";`,
+				{ // Both the primary key and secondary index appear with zero counters
+					Query: `SELECT schemaname, relname, indexrelname, idx_blks_read, idx_blks_hit FROM "pg_catalog"."pg_statio_user_indexes" ORDER BY indexrelname;`,
+					Expected: []sql.Row{
+						{"public", "stat_idx_test", "stat_idx_test_pkey", int64(0), int64(0)},
+						{"public", "stat_idx_test", "v1_idx", int64(0), int64(0)},
+					},
+				},
+				{ // System indexes do not appear
+					Query:    `SELECT relname FROM "pg_catalog"."pg_statio_user_indexes" WHERE schemaname IN ('pg_catalog', 'information_schema');`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -4132,8 +4824,8 @@ func TestPgStatioUserIndexes(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_USER_INDEXES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT indexrelname FROM PG_catalog.pg_STATIO_USER_INDEXES ORDER BY indexrelname;",
+					Expected: []sql.Row{{"stat_idx_test_pkey"}, {"v1_idx"}},
 				},
 			},
 		},
@@ -4144,10 +4836,13 @@ func TestPgStatioUserSequences(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_user_sequences",
+			SetUpScript: []string{
+				`CREATE SEQUENCE test_seq;`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_statio_user_sequences";`,
-					Expected: []sql.Row{},
+				{ // User sequences appear with zero counters
+					Query:    `SELECT schemaname, relname, blks_read, blks_hit FROM "pg_catalog"."pg_statio_user_sequences" WHERE relname = 'test_seq';`,
+					Expected: []sql.Row{{"public", "test_seq", int64(0), int64(0)}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_statio_user_sequences";`,
@@ -4158,8 +4853,8 @@ func TestPgStatioUserSequences(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_USER_SEQUENCES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STATIO_USER_SEQUENCES WHERE relname = 'test_seq' ORDER BY relname;",
+					Expected: []sql.Row{{"test_seq"}},
 				},
 			},
 		},
@@ -4170,9 +4865,16 @@ func TestPgStatioUserTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_statio_user_tables",
+			SetUpScript: []string{
+				`CREATE TABLE statio_test (pk INT primary key, v1 INT);`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_statio_user_tables";`,
+				{ // User tables appear with zero counters
+					Query:    `SELECT schemaname, relname, heap_blks_read, heap_blks_hit, idx_blks_read, idx_blks_hit FROM "pg_catalog"."pg_statio_user_tables" WHERE relname = 'statio_test';`,
+					Expected: []sql.Row{{"public", "statio_test", int64(0), int64(0), int64(0), int64(0)}},
+				},
+				{ // System tables do not appear
+					Query:    `SELECT * FROM "pg_catalog"."pg_statio_user_tables" WHERE relname = 'pg_class';`,
 					Expected: []sql.Row{},
 				},
 				{ // Different cases and quoted, so it fails
@@ -4184,8 +4886,8 @@ func TestPgStatioUserTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT relid FROM PG_catalog.pg_STATIO_USER_TABLES ORDER BY relid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT relname FROM PG_catalog.pg_STATIO_USER_TABLES WHERE relname = 'statio_test' ORDER BY relname;",
+					Expected: []sql.Row{{"statio_test"}},
 				},
 			},
 		},
@@ -4458,8 +5160,11 @@ func TestPgTablespace(t *testing.T) {
 			Name: "pg_tablespace",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_tablespace";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_tablespace" ORDER BY oid;`,
+					Expected: []sql.Row{
+						{1663, "pg_default", 0, nil, nil},
+						{1664, "pg_global", 0, nil, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_tablespace";`,
@@ -4471,7 +5176,7 @@ func TestPgTablespace(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT spcname FROM PG_catalog.pg_TABLESPACE ORDER BY spcname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"pg_default"}, {"pg_global"}},
 				},
 			},
 		},
@@ -4483,9 +5188,17 @@ func TestPgTimezoneAbbrevs(t *testing.T) {
 		{
 			Name: "pg_timezone_abbrevs",
 			Assertions: []ScriptTestAssertion{
+				{ // These abbreviations have fixed offsets, so their rows are stable year-round
+					Query: `SELECT abbrev, utc_offset, is_dst FROM "pg_catalog"."pg_timezone_abbrevs" WHERE abbrev IN ('UTC', 'EST', 'EDT') ORDER BY abbrev;`,
+					Expected: []sql.Row{
+						{"EDT", "-04:00:00", "t"},
+						{"EST", "-05:00:00", "f"},
+						{"UTC", "00:00:00", "f"},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_timezone_abbrevs";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) > 40 FROM "pg_catalog"."pg_timezone_abbrevs";`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_timezone_abbrevs";`,
@@ -4496,22 +5209,26 @@ func TestPgTimezoneAbbrevs(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT abbrev FROM PG_catalog.pg_TIMEZONE_ABBREVS ORDER BY abbrev;",
-					Expected: []sql.Row{},
+					Query:    "SELECT abbrev FROM PG_catalog.pg_TIMEZONE_ABBREVS WHERE abbrev = 'UTC';",
+					Expected: []sql.Row{{"UTC"}},
 				},
 			},
 		},
 	})
 }
 
-func TestPgPgTimezoneNames(t *testing.T) {
+func TestPgTimezoneNames(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_timezone_names",
 			Assertions: []ScriptTestAssertion{
+				{ // UTC is always present, even when the system has no timezone database
+					Query:    `SELECT name, utc_offset, is_dst FROM "pg_catalog"."pg_timezone_names" WHERE name = 'UTC';`,
+					Expected: []sql.Row{{"UTC", "00:00:00", "f"}},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_timezone_names";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) > 0 FROM "pg_catalog"."pg_timezone_names";`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_timezone_names";`,
@@ -4522,8 +5239,8 @@ func TestPgPgTimezoneNames(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT name FROM PG_catalog.pg_TIMEZONE_NAMES ORDER BY name;",
-					Expected: []sql.Row{},
+					Query:    "SELECT name FROM PG_catalog.pg_TIMEZONE_NAMES WHERE name = 'UTC';",
+					Expected: []sql.Row{{"UTC"}},
 				},
 			},
 		},
@@ -4560,10 +5277,38 @@ func TestPgTrigger(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_trigger",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+				`CREATE TRIGGER test_trigger2 AFTER UPDATE OR DELETE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_trigger";`,
-					Expected: []sql.Row{},
+					// test_trigger: ROW(1) | BEFORE(2) | INSERT(4) = 7
+					// test_trigger2: ROW(1) | UPDATE(16) | DELETE(8) = 25
+					Query: `SELECT tgname, tgtype, tgenabled, tgisinternal, tgdeferrable, tginitdeferred, tgnargs, tgqual, tgoldtable, tgnewtable FROM "pg_catalog"."pg_trigger" ORDER BY tgname;`,
+					Expected: []sql.Row{
+						{"test_trigger", 7, "O", "f", "f", "f", 0, nil, nil, nil},
+						{"test_trigger2", 25, "O", "f", "f", "f", 0, nil, nil, nil},
+					},
+				},
+				{
+					Query: `SELECT c.relname, t.tgname FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid ORDER BY t.tgname;`,
+					Expected: []sql.Row{
+						{"test", "test_trigger"},
+						{"test", "test_trigger2"},
+					},
+				},
+				{
+					Query: `SELECT p.proname FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON t.tgfoid = p.oid WHERE t.tgname = 'test_trigger';`,
+					Expected: []sql.Row{
+						{"trigger_func"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_trigger";`,
@@ -4574,8 +5319,11 @@ func TestPgTrigger(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT tgname FROM PG_catalog.pg_TRIGGER ORDER BY tgname;",
-					Expected: []sql.Row{},
+					Query: "SELECT tgname FROM PG_catalog.pg_TRIGGER ORDER BY tgname;",
+					Expected: []sql.Row{
+						{"test_trigger"},
+						{"test_trigger2"},
+					},
 				},
 			},
 		},
@@ -4588,8 +5336,10 @@ func TestPgTsConfig(t *testing.T) {
 			Name: "pg_ts_config",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_ts_config";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_ts_config";`,
+					Expected: []sql.Row{
+						{3748, "simple", 11, 0, 3722},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_config";`,
@@ -4601,7 +5351,7 @@ func TestPgTsConfig(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT cfgname FROM PG_catalog.pg_TS_CONFIG ORDER BY cfgname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"simple"}},
 				},
 			},
 		},
@@ -4640,8 +5390,10 @@ func TestPgTsDict(t *testing.T) {
 			Name: "pg_ts_dict",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_ts_dict";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_ts_dict";`,
+					Expected: []sql.Row{
+						{3765, "simple", 11, 0, 3727, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_dict";`,
@@ -4653,7 +5405,7 @@ func TestPgTsDict(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT dictname FROM PG_catalog.pg_TS_DICT ORDER BY dictname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"simple"}},
 				},
 			},
 		},
@@ -4666,8 +5418,10 @@ func TestPgTsParser(t *testing.T) {
 			Name: "pg_ts_parser",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_ts_parser";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_ts_parser";`,
+					Expected: []sql.Row{
+						{3722, "default", 11, "prsd_start", "prsd_nexttoken", "prsd_end", "prsd_headline", "prsd_lextype"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_parser";`,
@@ -4679,7 +5433,7 @@ func TestPgTsParser(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT prsname FROM PG_catalog.pg_TS_PARSER ORDER BY prsname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"default"}},
 				},
 			},
 		},
@@ -4692,8 +5446,10 @@ func TestPgTsTemplate(t *testing.T) {
 			Name: "pg_ts_template",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_ts_template";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_ts_template";`,
+					Expected: []sql.Row{
+						{3727, "simple", 11, "dsimple_init", "dsimple_lexize"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_template";`,
@@ -4705,7 +5461,7 @@ func TestPgTsTemplate(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT tmplname FROM PG_catalog.pg_TS_TEMPLATE ORDER BY tmplname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"simple"}},
 				},
 			},
 		},
@@ -4857,6 +5613,22 @@ func TestPgType(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_type xml",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM "pg_catalog"."pg_type" WHERE typname IN ('xml', '_xml') ORDER BY oid;`,
+					Expected: []sql.Row{
+						{142, "xml", 11, 0, -1, "f", "b", "U", "f", "t", ",", 0, "-", 0, 143, "xml_in", "xml_out", "xml_recv", "xml_send", "-", "-", "-", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"},
+						{143, "_xml", 11, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 142, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"},
+					},
+				},
+				{
+					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid = 'pg_catalog.xml'::regtype;`,
+					Expected: []sql.Row{{142, "xml"}},
+				},
+			},
+		},
 	})
 }
 
@@ -4864,10 +5636,21 @@ func TestPgUser(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_user",
+			SetUpScript: []string{
+				`CREATE USER user_login PASSWORD 'pwd123' CREATEDB;`,
+				`CREATE ROLE user_nologin NOLOGIN;`,
+			},
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_user";`,
-					Expected: []sql.Row{},
+				{ // Only roles that can log in appear, and passwd is always masked
+					Query: `SELECT usename, usecreatedb, usesuper, userepl, usebypassrls, passwd, valuntil, useconfig FROM "pg_catalog"."pg_user" ORDER BY usename;`,
+					Expected: []sql.Row{
+						{"postgres", "t", "t", "f", "f", "********", nil, nil},
+						{"user_login", "t", "f", "f", "f", "********", nil, nil},
+					},
+				},
+				{ // usesysid matches the role's oid in pg_authid
+					Query:    `SELECT a.rolname FROM pg_catalog.pg_user u JOIN pg_catalog.pg_authid a ON u.usesysid = a.oid WHERE u.usename = 'user_login';`,
+					Expected: []sql.Row{{"user_login"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_user";`,
@@ -4879,7 +5662,7 @@ func TestPgUser(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT usename FROM PG_catalog.pg_USER ORDER BY usename;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"postgres"}, {"user_login"}},
 				},
 			},
 		},
@@ -5082,7 +5865,7 @@ ORDER BY 1;`,
 				{
 					// This is to make sure a full range scan works (we don't support a full range scan on the index yet)
 					Query:    `SELECT relname from pg_catalog.pg_class order by oid limit 1;`,
-					Expected: []sql.Row{sql.Row{"pg_publication_namespace"}},
+					Expected: []sql.Row{{"pg_publication_namespace"}},
 				},
 				{
 					Query: `EXPLAIN SELECT c.oid
@@ -5191,11 +5974,15 @@ ORDER BY 1,2;`,
 					},
 				},
 				{
-					Query: `EXPLAIN SELECT c.relname, a.attname 
-FROM pg_catalog.pg_class c 
-    JOIN pg_catalog.pg_attribute a 
-        ON c.oid = a.attrelid 
-WHERE c.relkind = 'r' AND a.attnum > 0 
+					// TODO: The `c.relname = 't2'` filter expression is matched in the IndexedTableAccess and should be
+					//  removed from the filter node https://github.com/dolthub/dolt/issues/11231
+					// TODO: this table ordering and plan are suspect, and might be a result of table statistics being applied
+					//  even when they don't exist (which they don't for these two virtual tables)
+					Query: `EXPLAIN SELECT c.relname, a.attname
+FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_attribute a
+        ON c.oid = a.attrelid
+WHERE c.relkind = 'r' AND a.attnum > 0
   AND NOT a.attisdropped
   AND c.relname = 't2'
 ORDER BY 1,2;`,
@@ -5203,15 +5990,19 @@ ORDER BY 1,2;`,
 						{"Project"},
 						{" ├─ columns: [c.relname, a.attname]"},
 						{" └─ Sort(c.relname ASC, a.attname ASC)"},
-						{"     └─ LookupJoin"},
-						{"         ├─ (((c.relkind = 'r' AND a.attnum > 0) AND (NOT(a.attisdropped))) AND c.relname = 't2')"},
-						{"         ├─ TableAlias(a)"},
-						{"         │   └─ Table"},
-						{"         │       └─ name: pg_attribute"},
-						{"         └─ TableAlias(c)"},
-						{"             └─ IndexedTableAccess(pg_class)"},
-						{"                 ├─ index: [pg_class.oid]"},
-						{"                 └─ keys: a.attrelid"},
+						{"     └─ InnerJoin"},
+						{"         ├─ c.oid = a.attrelid"},
+						{"         ├─ Filter"},
+						{"         │   ├─ (a.attnum > 0 AND (NOT(a.attisdropped)))"},
+						{"         │   └─ TableAlias(a)"},
+						{"         │       └─ Table"},
+						{"         │           └─ name: pg_attribute"},
+						{"         └─ Filter"},
+						{"             ├─ (c.relkind = 'r' AND c.relname = 't2')"},
+						{"             └─ TableAlias(c)"},
+						{"                 └─ IndexedTableAccess(pg_class)"},
+						{"                     ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"                     └─ filters: [{[t2, t2], [NULL, ∞)}]"},
 					},
 				},
 			},
@@ -5344,8 +6135,8 @@ func TestPgIndexIndexes(t *testing.T) {
 					Query: `SELECT * FROM pg_catalog.pg_index i 
 WHERE i.indrelid = 1496157034 order by 1`,
 					Expected: []sql.Row{
-						{3992679530, 1496157034, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "", "", "0", nil, nil},
-						{4052612617, 1496157034, 1, 0, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "", "", "0", nil, nil},
+						{3992679530, 1496157034, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "15009", "0", nil, nil},
+						{4052612617, 1496157034, 1, 1, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "15009", "0", nil, nil},
 					},
 				},
 				{
@@ -5389,7 +6180,6 @@ WHERE i.indrelid IN (1496157033, 1496157034)`,
 					},
 				},
 				{
-					// TODO: this uses an index but the plan doesn't show it because of prepared statements
 					Query: `EXPLAIN SELECT i.indrelid FROM pg_catalog.pg_index i 
 WHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't1_pkey')
 ORDER BY 1;`,
@@ -5398,7 +6188,16 @@ ORDER BY 1;`,
 						{" ├─ columns: [i.indrelid]"},
 						{" └─ Sort(i.indrelid ASC)"},
 						{"     └─ Filter"},
-						{"         ├─ i.indexrelid = Subquery((select  c.oid from pg_class as c where ? = ?))"},
+						{"         ├─ i.indexrelid = Subquery"},
+						{"         │   ├─ cacheable: true"},
+						{"         │   └─ Project"},
+						{"         │       ├─ columns: [c.oid]"},
+						{"         │       └─ Filter"},
+						{"         │           ├─ c.relname = 't1_pkey'"},
+						{"         │           └─ TableAlias(c)"},
+						{"         │               └─ IndexedTableAccess(pg_class)"},
+						{"         │                   ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"         │                   └─ filters: [{[t1_pkey, t1_pkey], [NULL, ∞)}]"},
 						{"         └─ TableAlias(i)"},
 						{"             └─ Table"},
 						{"                 └─ name: pg_index"},
@@ -5409,8 +6208,8 @@ ORDER BY 1;`,
 WHERE i.indrelid = 1496157034 ORDER BY 1`,
 					Expected: []sql.Row{
 						{"Project"},
-						{" ├─ columns: [count(1) as count]"},
-						{" └─ Sort(count(1) as count ASC)"},
+						{" ├─ columns: [count(1) as `count`]"},
+						{" └─ Sort(count(1) as `count` ASC)"},
 						{"     └─ GroupBy"},
 						{"         ├─ select: COUNT(1)"},
 						{"         ├─ group: "},
@@ -5427,8 +6226,8 @@ WHERE i.indrelid = 1496157034 ORDER BY 1`,
 WHERE i.indrelid IN (1496157033, 1496157034) ORDER BY 1`,
 					Expected: []sql.Row{
 						{"Project"},
-						{" ├─ columns: [count(1) as count]"},
-						{" └─ Sort(count(1) as count ASC)"},
+						{" ├─ columns: [count(1) as `count`]"},
+						{" └─ Sort(count(1) as `count` ASC)"},
 						{"     └─ GroupBy"},
 						{"         ├─ select: COUNT(1)"},
 						{"         ├─ group: "},
@@ -5806,7 +6605,7 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
   AND NOT pg_catalog.pg_index.indisprimary
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 					Expected: []sql.Row{
-						{3491847678, "dolt_log_commit_hash_key", "t", "t", "0", interface{}(nil), "btree", interface{}(nil), 0, "f", "{commit_hash}", "{f}"},
+						{3491847678, "dolt_log_commit_hash_key", "t", "t", "2", interface{}(nil), "btree", interface{}(nil), 1, "f", "{commit_hash}", "{f}"},
 					},
 				},
 			},
@@ -5946,7 +6745,7 @@ FROM pg_catalog.pg_index
 WHERE pg_catalog.pg_index.indrelid IN (select oid from pg_class where relname='t2')
   AND NOT pg_catalog.pg_index.indisprimary ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 					Expected: []sql.Row{
-						{1496157034, "t2_b_idx", "f", "f", "0", nil, "btree", nil, 0, "f", "{b}", "{f}"},
+						{1496157034, "t2_b_idx", "f", "f", "0", nil, "btree", nil, 1, "f", "{b}", "{f}"},
 					},
 				},
 			},
@@ -5996,7 +6795,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{"public", "dolt_schema_conflicts", "postgres", nil, "f", "f", "f", "f"},
 						{"public", "dolt_status", "postgres", nil, "f", "f", "f", "f"},
 						{"public", "dolt_status_ignored", "postgres", nil, "f", "f", "f", "f"},
-						{"public", "dolt_tags", "postgres", nil, "f", "f", "f", "f"},
+						{"public", "dolt_tags", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_branches", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_column_diff", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_commit_ancestors", "postgres", nil, "t", "f", "f", "f"},
@@ -6016,7 +6815,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{"s1", "dolt_schema_conflicts", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_status", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_status_ignored", "postgres", nil, "f", "f", "f", "f"},
-						{"s1", "dolt_tags", "postgres", nil, "f", "f", "f", "f"},
+						{"s1", "dolt_tags", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_workspace_t1", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "t1", "postgres", nil, "t", "f", "f", "f"},
 					},
@@ -6045,9 +6844,9 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{245736992, "dolt_conflicts", 2200, "r"},
 						{1932298159, "dolt_constraint_violations", 2200, "r"},
 						{2357712556, "dolt_diff", 2200, "r"},
-						sql.Row{101228732, "dolt_diff_commit_hash_key", 2200, "i"},
+						{101228732, "dolt_diff_commit_hash_key", 2200, "i"},
 						{3491847678, "dolt_log", 2200, "r"},
-						sql.Row{2292720014, "dolt_log_commit_hash_key", 2200, "i"},
+						{2292720014, "dolt_log_commit_hash_key", 2200, "i"},
 						{604995978, "dolt_merge_status", 2200, "r"},
 						{887648921, "dolt_remote_branches", 2200, "r"},
 						{1471391189, "dolt_remote_branches_dolt_branches_name_idx_key", 2200, "i"},
@@ -6056,8 +6855,10 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1060579466, "dolt_status", 2200, "r"},
 						{1523309269, "dolt_status_ignored", 2200, "r"},
 						{1807684176, "dolt_tags", 2200, "r"},
+						{1241754361, "dolt_tags_dolt_tags_name_idx_key", 2200, "i"},
 						{2969045375, "commits_from", 1634633383, "i"},
 						{1819666711, "commits_to", 1634633383, "i"},
+						{3962040469, "dolt_blame_t1", 1634633383, "v"},
 						{1763579892, "dolt_branches", 1634633383, "r"},
 						{3929519011, "dolt_branches_dolt_branches_name_idx_key", 1634633383, "i"},
 						{1212681264, "dolt_column_diff", 1634633383, "r"},
@@ -6088,6 +6889,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{3554775706, "dolt_status", 1634633383, "r"},
 						{1227149778, "dolt_status_ignored", 1634633383, "r"},
 						{3246414078, "dolt_tags", 1634633383, "r"},
+						{1294273546, "dolt_tags_dolt_tags_name_idx_key", 1634633383, "i"},
 						{1640933374, "dolt_workspace_t1", 1634633383, "r"},
 						{170053857, "from_pks", 1634633383, "i"},
 						{2849341124, "t1", 1634633383, "r"},
@@ -6112,6 +6914,22 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1670572237, "remotes", 1882653564, "r"},
 						{3431637196, "status", 1882653564, "r"},
 						{3418072419, "status_ignored", 1882653564, "r"},
+					},
+				},
+			},
+		},
+		{
+			Name: "ref index catalog names",
+			SetUpScript: []string{
+				`SET dolt_show_system_tables = 1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT tablename, indexname FROM pg_catalog.pg_indexes WHERE schemaname = 'public' AND tablename IN ('dolt_branches', 'dolt_remote_branches', 'dolt_tags') ORDER BY tablename;`,
+					Expected: []sql.Row{
+						{"dolt_branches", "dolt_branches_dolt_branches_name_idx_key"},
+						{"dolt_remote_branches", "dolt_remote_branches_dolt_branches_name_idx_key"},
+						{"dolt_tags", "dolt_tags_dolt_tags_name_idx_key"},
 					},
 				},
 			},
@@ -6435,6 +7253,12 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{3947121936, "source_commit", 25, 3, "f", "f", "f"},
 						{3947121936, "target", 25, 4, "f", "f", "f"},
 						{3947121936, "unmerged_tables", 25, 5, "f", "f", "f"},
+						{3962040469, "pk", 23, 1, "f", "f", "f"},
+						{3962040469, "commit", 25, 2, "f", "f", "f"},
+						{3962040469, "commit_date", 1114, 3, "f", "f", "f"},
+						{3962040469, "committer", 25, 4, "f", "f", "f"},
+						{3962040469, "email", 25, 5, "f", "f", "f"},
+						{3962040469, "message", 25, 6, "f", "f", "f"},
 						{3999387287, "branch", 25, 1, "t", "f", "f"},
 						{3999387287, "last_read", 1114, 2, "f", "f", "f"},
 						{3999387287, "last_write", 1114, 3, "f", "f", "f"},

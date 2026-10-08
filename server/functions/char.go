@@ -41,7 +41,10 @@ var charin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		c := []byte(input)
 		if uint32(len(c)) > pgtypes.InternalCharLength {
 			return input[:pgtypes.InternalCharLength], nil
@@ -57,7 +60,10 @@ var charout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.InternalChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		str := val.(string)
+		str, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if uint32(len(str)) > pgtypes.InternalCharLength {
 			return str[:pgtypes.InternalCharLength], nil
 		}
@@ -72,7 +78,10 @@ var charrecv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
@@ -120,8 +129,16 @@ var btcharcmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := strings.TrimRight(val1.(string), " ")
-		bb := strings.TrimRight(val2.(string), " ")
+		val1Str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		val2Str, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
+		ab := strings.TrimRight(val1Str, " ")
+		bb := strings.TrimRight(val2Str, " ")
 		if ab == bb {
 			return int32(0), nil
 		} else if ab < bb {

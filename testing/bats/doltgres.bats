@@ -87,7 +87,7 @@ teardown() {
     PORT=5434
 
     cat > config.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -129,7 +129,7 @@ EOF
     PORT=5434
 
     cat > config.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -171,7 +171,7 @@ EOF
     PORT=5434
 
     cat > config-test.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -215,7 +215,7 @@ EOF
     PORT=5434
 
     cat > config.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -278,7 +278,7 @@ EOF
 @test 'doltgres: config file with all options' {
     PORT=$( definePORT )
     cat > config.yaml <<EOF
-log_level: info
+log_level: warn
 
 behavior:
   read_only: false
@@ -427,4 +427,16 @@ query_server_for_user_and_pass() {
     run query_server -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'test_schema_bats'"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "test_schema_bats" ]] || false
+}
+
+@test 'doltgres: SET CONSTRAINTS warns only outside a transaction block' {
+    start_sql_server
+
+    run query_server -c "SET CONSTRAINTS ALL IMMEDIATE"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "WARNING:  SET CONSTRAINTS can only be used in transaction blocks" ]] || false
+
+    run query_server -c "SET CONSTRAINTS ALL IMMEDIATE; SELECT 1"
+    [ "$status" -eq 0 ]
+    [[ ! "$output" =~ "WARNING" ]] || false
 }

@@ -43,7 +43,10 @@ func (p PgRangeHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgRangeHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_range row iter
+	// pg_range is currently empty, since Doltgres does not yet support range types (int4range, numrange,
+	// tsrange, tstzrange, daterange, int8range, and their multirange counterparts all resolve to the
+	// unknown type). Emitting rows here would reference nonexistent type OIDs.
+	// TODO: fill this in with the built-in range types once Doltgres supports range types
 	return emptyRowIter()
 }
 
@@ -62,8 +65,8 @@ var pgRangeSchema = sql.Schema{
 	{Name: "rngmultitypid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgRangeName},
 	{Name: "rngcollation", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgRangeName},
 	{Name: "rngsubopc", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgRangeName},
-	{Name: "rngcanonical", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgRangeName}, // TODO: regproc type
-	{Name: "rngsubdiff", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgRangeName},   // TODO: regproc type
+	{Name: "rngcanonical", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgRangeName},
+	{Name: "rngsubdiff", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgRangeName},
 }
 
 // pgRangeRowIter is the sql.RowIter for the pg_range table.

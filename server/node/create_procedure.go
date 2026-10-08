@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -23,10 +24,10 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/auth"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
@@ -90,20 +91,29 @@ func (c *CreateProcedure) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
-	procCollection, err := core.GetProceduresCollectionFromContext(ctx)
+	procCollection, err := core.GetProceduresCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 
-	paramTypes := make([]id.Type, len(c.Parameters))
-	paramNames := make([]string, len(c.Parameters))
-	paramModes := make([]procedures.ParameterMode, len(c.Parameters))
-	paramDefaults := make([]string, len(c.Parameters))
+	allParams := make([]procedures.Parameter, len(c.Parameters))
+	var inputParamTypes []id.Type
 	for i, param := range c.Parameters {
-		paramNames[i] = param.Name
-		paramTypes[i] = param.Type.ID
+		p := procedures.Parameter{
+			Mode: param.Mode,
+			Name: param.Name,
+			Type: param.Type.ID,
+		}
 		if param.Default != nil {
-			paramDefaults[i] = param.Default.String()
+			p.Default = param.Default.String()
+		}
+		allParams[i] = p
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_VARIADIC:
+			inputParamTypes = append(inputParamTypes, param.Type.ID)
+		case procedures.ParameterMode_INOUT:
+			inputParamTypes = append(inputParamTypes, param.Type.ID)
+		case procedures.ParameterMode_OUT:
 		}
 	}
 
@@ -111,36 +121,25 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 	if err != nil {
 		return nil, err
 	}
-	procID := id.NewProcedure(schemaName, c.ProcedureName, paramTypes...)
+	procID := id.NewProcedure(schemaName, c.ProcedureName, inputParamTypes...)
 	if c.Replace && procCollection.HasProcedure(ctx, procID) {
 		if err = procCollection.DropProcedure(ctx, procID); err != nil {
 			return nil, err
 		}
 	}
-	var extName string
 	if len(c.ExtensionName) > 0 {
-		ext, err := extensions.GetExtension(c.ExtensionName)
-		if err != nil {
+		if _, err = extensions.GetFunction(c.ExtensionName, c.ExtensionSymbol); err != nil {
 			return nil, err
 		}
-		ident := extensions.CreateLibraryIdentifier(c.ExtensionName, ext.Control.DefaultVersion)
-		_, err = extensions.GetExtensionFunction(extensions.CreateLibraryIdentifier(c.ExtensionName, ext.Control.DefaultVersion), c.ExtensionSymbol)
-		if err != nil {
-			return nil, err
-		}
-		extName = string(ident)
 	}
 	err = procCollection.AddProcedure(ctx, procedures.Procedure{
-		ID:                procID,
-		ParameterNames:    paramNames,
-		ParameterTypes:    paramTypes,
-		ParameterModes:    paramModes,
-		ParameterDefaults: paramDefaults,
-		Definition:        c.Definition,
-		ExtensionName:     extName,
-		ExtensionSymbol:   c.ExtensionSymbol,
-		Operations:        c.Statements,
-		SQLDefinition:     c.SqlDef,
+		ID:              procID,
+		AllParams:       allParams,
+		Definition:      c.Definition,
+		ExtensionName:   c.ExtensionName,
+		ExtensionSymbol: c.ExtensionSymbol,
+		Operations:      c.Statements,
+		SQLDefinition:   c.SqlDef,
 	})
 	if err != nil {
 		return nil, err
@@ -166,7 +165,7 @@ func (c *CreateProcedure) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateProcedure) String() string {
-	return "CREATE PROCEDURE"
+	return fmt.Sprintf("CREATE PROCEDURE %s", c.ProcedureName)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.

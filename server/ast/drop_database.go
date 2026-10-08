@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // nodeDropDatabase handles *tree.DropDatabase nodes.
@@ -31,6 +32,11 @@ func nodeDropDatabase(_ *Context, node *tree.DropDatabase) (*vitess.DBDDL, error
 		return nil, errors.Errorf("WITH ( FORCE ) is not yet supported")
 	}
 	return &vitess.DBDDL{
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_DROPDATABASE,
+			TargetType:  auth.AuthTargetType_DatabaseIdentifiers,
+			TargetNames: []string{bareIdentifier(node.Name)},
+		},
 		Action:           vitess.DropStr,
 		SchemaOrDatabase: "database",
 		DBName:           bareIdentifier(node.Name),

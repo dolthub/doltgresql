@@ -43,7 +43,8 @@ func (p PgStatSslHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatSslHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_ssl row iter
+	// pg_stat_ssl is currently empty, since per-connection SSL statistics are not exposed.
+	// TODO: fill this in (one row per backend) when connection statistics are exposed
 	return emptyRowIter()
 }
 

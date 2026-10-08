@@ -270,5 +270,59 @@ func TestExistSubquery(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "correlated EXISTS decorrelates into a semi join",
+			SetUpScript: []string{
+				`CREATE TABLE a (id INT PRIMARY KEY, x INT);`,
+				`CREATE TABLE b (id INT PRIMARY KEY, x INT);`,
+				`INSERT INTO a VALUES (1,1),(2,2),(3,3);`,
+				`INSERT INTO b VALUES (1,1),(2,2);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `EXPLAIN SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE a.x = b.x);`,
+					Expected: []sql.Row{
+						{"SemiJoin"},
+						{" ├─ a.x = b.x"},
+						{" ├─ Table"},
+						{" │   └─ name: a"},
+						{" └─ Table"},
+						{"     ├─ name: b"},
+						{"     └─ columns: [x]"},
+					},
+				},
+				{
+					Query: `SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE a.x = b.x) ORDER BY id;`,
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 2},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE a.x = b.x);`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [a.id, a.x]"},
+						{" └─ Filter"},
+						{"     ├─ 1 IS NULL"},
+						{"     └─ LeftOuterJoin"},
+						{"         ├─ a.x = b.x"},
+						{"         ├─ Table"},
+						{"         │   └─ name: a"},
+						{"         └─ Project"},
+						{"             ├─ columns: [b.x, 1]"},
+						{"             └─ Table"},
+						{"                 ├─ name: b"},
+						{"                 └─ columns: [x]"},
+					},
+				},
+				{
+					Query: `SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE a.x = b.x) ORDER BY id;`,
+					Expected: []sql.Row{
+						{3, 3},
+					},
+				},
+			},
+		},
 	})
 }

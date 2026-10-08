@@ -36,6 +36,10 @@ var initcap_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return cases.Title(language.English).String(val1.(string)), nil
+		str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return cases.Title(language.English).String(str), nil
 	},
 }

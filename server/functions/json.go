@@ -18,13 +18,51 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/goccy/go-json"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
+
+// jsonWrapperToFormattedString converts a sql.JSONWrapper to a formatted JSON string with spaces (JSONB format).
+func jsonWrapperToFormattedString(ctx *sql.Context, val sql.JSONWrapper) (string, error) {
+	v, err := val.ToInterface(ctx)
+	if err != nil {
+		return "", err
+	}
+	return types.JSONDocument{Val: v}.JSONString()
+}
+
+// jsonValueToInterface converts a `json` or `jsonb` function argument into its plain Go
+// representation (map[string]any, []any, string, a number, bool, or nil), which is the form the
+// inspection functions walk.
+func jsonValueToInterface(ctx *sql.Context, val any) (any, error) {
+	// Large values stored with the old ExtendedAdaptiveEnc encoding are returned as a
+	// *val.ExtendedValueWrapper (sql.AnyWrapper). Unwrap to get the underlying document.
+	if wrapper, ok := val.(sql.AnyWrapper); ok {
+		unwrapped, err := wrapper.UnwrapAny(ctx)
+		if err != nil {
+			return nil, err
+		}
+		val = unwrapped
+	}
+	switch v := val.(type) {
+	case sql.JSONWrapper:
+		return v.ToInterface(ctx)
+	case string:
+		doc, err := json_in_callable(ctx, [2]*pgtypes.DoltgresType{}, v)
+		if err != nil {
+			return nil, err
+		}
+		return doc.(types.JSONDocument).Val, nil
+	default:
+		return nil, errors.Errorf("unexpected type for json value: %T", val)
+	}
+}
 
 // initJson registers the functions to the catalog.
 func initJson() {
@@ -42,16 +80,23 @@ var json_in = framework.Function1{
 	Return:     pgtypes.Json,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
-		if json.Valid(unsafe.Slice(unsafe.StringData(input), len(input))) {
-			return input, nil
-		}
+	Callable:   json_in_callable,
+}
+
+func json_in_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	input, err := framework.UnwrapString(ctx, val)
+	if err != nil {
+		return nil, err
+	}
+	var jsonVal any
+	err = json.Unmarshal(unsafe.Slice(unsafe.StringData(input), len(input)), &jsonVal)
+	if err != nil {
 		if len(input) > 10 {
 			input = input[:10] + "..."
 		}
 		return nil, pgtypes.ErrInvalidSyntaxForType.New("json", input)
-	},
+	}
+	return types.JSONDocument{Val: jsonVal}, nil
 }
 
 // json_out represents the PostgreSQL function of json type IO output.
@@ -60,9 +105,71 @@ var json_out = framework.Function1{
 	Return:     pgtypes.Cstring,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Json},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(string), nil
-	},
+	Callable:   json_out_callable,
+}
+
+func json_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	// Large values stored with the old ExtendedAdaptiveEnc encoding are returned as a
+	// *val.ExtendedValueWrapper (sql.AnyWrapper). Unwrap to get the underlying JSONDocument.
+	if wrapper, ok := val.(sql.AnyWrapper); ok {
+		unwrapped, err := wrapper.UnwrapAny(ctx)
+		if err != nil {
+			return nil, err
+		}
+		val = unwrapped
+	}
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	case types.JSONBytes:
+		bytes, err := v.GetBytes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return string(bytes), err
+	case sql.JSONWrapper:
+		// JSON type is stored as binary JSON (same as JSONB), so output is normalized with spaces
+		return jsonWrapperToFormattedString(ctx, v)
+	default:
+		return nil, fmt.Errorf("unexpected type for json_out: %T", val)
+	}
+}
+
+// JsonOutCallable is exported so that tests outside this package can exercise the json output
+// function directly without going through the global function registry.
+var JsonOutCallable = json_out_callable
+
+// JsonbOutCallable is exported so that tests outside this package can exercise the jsonb output
+// function directly without going through the global function registry.
+var JsonbOutCallable = jsonb_out_callable
+
+// jsonb_out_callable formats a JSONB value for output. JSONB normalizes JSON with spaces after ':' and ','.
+func jsonb_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	// Large values stored with the old ExtendedAdaptiveEnc encoding are returned as a
+	// *val.ExtendedValueWrapper (sql.AnyWrapper). Unwrap to get the underlying JSONDocument.
+	if wrapper, ok := val.(sql.AnyWrapper); ok {
+		unwrapped, err := wrapper.UnwrapAny(ctx)
+		if err != nil {
+			return nil, err
+		}
+		val = unwrapped
+	}
+	switch v := val.(type) {
+	case string:
+		// Parse and reformat the string as proper JSONB (normalized with spaces)
+		doc, err := pgtypes.JsonB.IoInput(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		if doc == nil {
+			return nil, nil
+		}
+		return jsonWrapperToFormattedString(ctx, doc.(sql.JSONWrapper))
+	case sql.JSONWrapper:
+		return jsonWrapperToFormattedString(ctx, v)
+	default:
+		return nil, fmt.Errorf("unexpected type for jsonb_out: %T", val)
+	}
 }
 
 // json_recv represents the PostgreSQL function of json type IO receive.
@@ -72,11 +179,14 @@ var json_recv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
-		return string(data), nil
+		return json_in_callable(ctx, [2]*pgtypes.DoltgresType{}, string(data))
 	},
 }
 
@@ -98,7 +208,20 @@ var json_send = framework.Function1{
 			}
 		}
 		writer := utils.NewWireWriter()
-		writer.WriteString(val.(string))
+		var jsonStr string
+		switch v := val.(type) {
+		case string:
+			jsonStr = v
+		case sql.JSONWrapper:
+			var err error
+			jsonStr, err = jsonWrapperToFormattedString(ctx, v)
+			if err != nil {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("unexpected type for json_send: %T", val)
+		}
+		writer.WriteString(jsonStr)
 		return writer.BufferData(), nil
 	},
 }
@@ -109,11 +232,12 @@ var json_build_array = framework.Function1{
 	Return:     pgtypes.Json,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Variadic:   true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		inputArray := val1.([]any)
-		json, err := json.Marshal(inputArray)
-		return string(json), err
-	},
+	Callable:   json_build_array_callable,
+}
+
+func json_build_array_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	inputArray := val1.([]any)
+	return types.JSONDocument{Val: inputArray}, nil
 }
 
 // json_build_object represents the PostgreSQL function json_build_object.
@@ -122,27 +246,33 @@ var json_build_object = framework.Function1{
 	Return:     pgtypes.Json,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Variadic:   true,
-	Callable: func(ctx *sql.Context, argTypes [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		json, err := buildJsonObject("json_build_object", argTypes, val1)
-		if err != nil {
-			return nil, err
-		}
-		return string(json), nil
-	},
+	Callable:   json_build_object_callable,
+}
+
+func json_build_object_callable(ctx *sql.Context, argTypes [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	json, err := buildJsonObject(ctx, "json_build_object", argTypes, val1)
+	if err != nil {
+		return nil, err
+	}
+	return json, nil
 }
 
 // buildJsonObject constructs a json object from the input array provided, which are alternating keys and values.
-func buildJsonObject(fnName string, _ [2]*pgtypes.DoltgresType, val1 any) ([]byte, error) {
+func buildJsonObject(ctx *sql.Context, fnName string, _ [2]*pgtypes.DoltgresType, val1 any) (types.JSONDocument, error) {
 	inputArray := val1.([]any)
 	if len(inputArray)%2 != 0 {
-		return nil, sql.ErrInvalidArgumentNumber.New(fnName, "even number of arguments", len(inputArray))
+		return types.JSONDocument{}, sql.ErrInvalidArgumentNumber.New(fnName, "even number of arguments", len(inputArray))
 	}
 	jsonObject := make(map[string]any)
 	var key string
 	for i, e := range inputArray {
 		if i%2 == 0 {
 			var ok bool
-			key, ok = e.(string)
+			var err error
+			key, ok, err = sql.Unwrap[string](ctx, e)
+			if err != nil {
+				return types.JSONDocument{}, err
+			}
 			if !ok {
 				// TODO: This isn't correct for every type we might use as a value. To get better type info to transform
 				//  every value into its string format, we need to pass detailed arg type info for the vararg params (the
@@ -155,5 +285,5 @@ func buildJsonObject(fnName string, _ [2]*pgtypes.DoltgresType, val1 any) ([]byt
 		}
 	}
 
-	return json.Marshal(jsonObject)
+	return types.JSONDocument{Val: jsonObject}, nil
 }

@@ -179,6 +179,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	require.NoError(t, err)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
+			LogLevelStr: ptr("warn"),
 			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
 				PortNumber: &port,
 				HostStr:    ptr("127.0.0.1"),

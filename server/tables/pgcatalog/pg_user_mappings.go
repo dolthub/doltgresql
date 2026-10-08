@@ -43,7 +43,9 @@ func (p PgUserMappingsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgUserMappingsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_user_mappings row iter
+	// pg_user_mappings is currently empty, since foreign data wrappers are not supported.
+	// This view is also empty in vanilla Postgres by default.
+	// TODO: fill this in when foreign data wrappers are supported
 	return emptyRowIter()
 }
 

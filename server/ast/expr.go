@@ -26,6 +26,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
@@ -106,34 +108,8 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.AnnotateTypeExpr:
 		return nil, errors.Errorf("ANNOTATE_TYPE is not yet supported")
 	case *tree.Array:
-		unresolvedChildren := make([]vitess.Expr, len(node.Exprs))
-		var coercedType *pgtypes.DoltgresType
-		if node.HasResolvedType() {
-			_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ResolvedType(), false)
-			if err != nil {
-				return nil, err
-			}
-			if resolvedType.IsArrayType() {
-				coercedType = resolvedType
-			} else {
-				return nil, errors.Errorf("array has invalid resolved type")
-			}
-		}
-		for i, arrayExpr := range node.Exprs {
-			var err error
-			unresolvedChildren[i], err = nodeExpr(ctx, arrayExpr)
-			if err != nil {
-				return nil, err
-			}
-		}
-		arrayExpr, err := pgexprs.NewArray(coercedType)
-		if err != nil {
-			return nil, err
-		}
-		return vitess.InjectedExpr{
-			Expression: arrayExpr,
-			Children:   unresolvedChildren,
-		}, nil
+		return nodeArrayExpr(ctx, node, nil)
+
 	case *tree.ArrayFlatten:
 		subquery, err := nodeExpr(ctx, node.Subquery)
 		if err != nil {
@@ -195,6 +171,18 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			operator = framework.Operator_BinaryJSONExtractPathJson
 		case tree.JSONFetchTextPath:
 			operator = framework.Operator_BinaryJSONExtractPathText
+		case tree.L2Distance:
+			operator = framework.Operator_BinaryL2Distance
+		case tree.L1Distance:
+			operator = framework.Operator_BinaryL1Distance
+		case tree.CosineDistance:
+			operator = framework.Operator_BinaryCosineDistance
+		case tree.NegInnerProduct:
+			operator = framework.Operator_BinaryNegInnerProduct
+		case tree.JaccardDistance:
+			operator = framework.Operator_BinaryJaccardDistance
+		case tree.HammingDistance:
+			operator = framework.Operator_BinaryHammingDistance
 		default:
 			return nil, errors.Errorf("the binary operator used is not yet supported")
 		}
@@ -232,7 +220,21 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Else:  else_,
 		}, nil
 	case *tree.CastExpr:
-		expr, err := nodeExpr(ctx, node.Expr)
+		var expr vitess.Expr
+		var err error
+		if array, ok := node.Expr.(*tree.Array); ok {
+			_, target, e := nodeResolvableTypeReference(ctx, node.Type, false)
+			if e != nil {
+				return nil, e
+			}
+			if target.IsArrayType() {
+				expr, err = nodeArrayExpr(ctx, array, target)
+			} else {
+				expr, err = nodeExpr(ctx, node.Expr)
+			}
+		} else {
+			expr, err = nodeExpr(ctx, node.Expr)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -331,12 +333,36 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		if len(node.Schema) > 0 && node.Schema != "pg_catalog" {
 			return nil, errors.Errorf("schema %q not allowed in OPERATOR syntax", node.Schema)
 		}
+		if leftRow, ok := tree.StripParens(node.Left).(*tree.Tuple); ok {
+			switch right := tree.StripParens(node.Right).(type) {
+			case *tree.Tuple:
+				switch node.Operator {
+				case tree.EQ, tree.NE, tree.LT, tree.LE, tree.GT, tree.GE:
+					return nodeRowComparison(ctx, node.Operator, leftRow, right)
+				case tree.In, tree.NotIn:
+					return nodeRowIn(ctx, node.Operator, leftRow, right)
+				}
+			case *tree.Subquery:
+				switch node.Operator {
+				case tree.EQ, tree.NE, tree.LT, tree.LE, tree.GT, tree.GE, tree.In, tree.NotIn, tree.Any, tree.Some, tree.All:
+					if !right.Exists {
+						return nodeRowSubqueryComparison(ctx, node, leftRow, right)
+					}
+				}
+			}
+		}
 
 		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
 		}
-		right, err := nodeExpr(ctx, node.Right)
+		var right vitess.Expr
+		switch node.Operator {
+		case tree.Any, tree.Some, tree.All:
+			right, err = nodeDelimitedExpr(ctx, node.Right)
+		default:
+			right, err = nodeExpr(ctx, node.Right)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -467,7 +493,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.Overlaps:
-			return nil, errors.Errorf("&& is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryArrayOverlap), Children: vitess.Exprs{left, right}}, nil
 		case tree.Any:
 			return vitess.InjectedExpr{
 				Expression: pgexprs.NewAnyExpr(node.SubOperator.String()),
@@ -479,7 +505,10 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.All:
-			return nil, errors.Errorf("ALL is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewAllExpr(node.SubOperator.String()),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		default:
 			return nil, errors.Errorf("unknown comparison operator used")
 		}
@@ -598,10 +627,24 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		return vitess.InjectedExpr{
 			Expression: &pgnodes.DomainColumn{Typ: dataType},
 		}, nil
-	case tree.FunctionColumn:
+	case tree.UsingColumn:
 		return vitess.InjectedExpr{
-			Expression: &pgnodes.FunctionColumn{Name: node.Name, Typ: node.Typ, Idx: node.Idx},
+			Expression: &pgnodes.UsingColumn{
+				SchemaName: node.SchemaName,
+				TableName:  node.TableName,
+				ColumnName: node.Name,
+			},
 		}, nil
+	case tree.FunctionColumn:
+		if !node.FromCreate {
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewUnsafeLiteral(node.Val, node.Typ),
+			}, nil
+		} else {
+			return vitess.InjectedExpr{
+				Expression: &pgnodes.FunctionColumn{Name: node.Name, Typ: node.Typ, Idx: node.Idx},
+			}, nil
+		}
 	case *tree.FuncExpr:
 		return nodeFuncExpr(ctx, node)
 	case *tree.IfErrExpr:
@@ -644,21 +687,8 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			return nil, err
 		}
 
-		if len(node.Indirection) > 1 {
-			return nil, errors.Errorf("multi dimensional array subscripts are not yet supported")
-		} else if node.Indirection[0].Slice {
-			return nil, errors.Errorf("slice subscripts are not yet supported")
-		}
+		return subscriptExpr(ctx, childExpr, node.Indirection)
 
-		indexExpr, err := nodeExpr(ctx, node.Indirection[0].Begin)
-		if err != nil {
-			return nil, err
-		}
-
-		return vitess.InjectedExpr{
-			Expression: &pgexprs.Subscript{},
-			Children:   vitess.Exprs{childExpr, indexExpr},
-		}, nil
 	case *tree.IsNotNullExpr:
 		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
@@ -680,7 +710,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.IsOfTypeExpr:
 		return nil, errors.Errorf("IS OF is not yet supported")
 	case *tree.NotExpr:
-		expr, err := nodeExpr(ctx, node.Expr)
+		expr, err := nodeDelimitedExpr(ctx, node.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -733,13 +763,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Right: right,
 		}, nil
 	case *tree.ParenExpr:
-		expr, err := nodeExpr(ctx, node.Expr)
-		if err != nil {
-			return nil, err
-		}
-		return &vitess.ParenExpr{
-			Expr: expr,
-		}, nil
+		return nodeParenExpr(ctx, node)
 	case *tree.PartitionMaxVal:
 		return nil, errors.Errorf("MAXVALUE is not yet supported")
 	case *tree.PartitionMinVal:
@@ -857,7 +881,54 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		if node.Star {
 			return nil, errors.Errorf("* syntax is not yet supported in this context")
 		}
-		return unresolvedNameToColName(node)
+
+		colName, err := unresolvedNameToColName(node)
+		if err != nil {
+			return nil, err
+		}
+
+		// We currently handle Postgres' hidden columns by just returning their "zero" value since we don't support
+		// their underlying functionality
+		switch colName.Name.String() {
+		case "cmin", "cmax":
+			return vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(uint32(0), pgtypes.Cid)}, nil
+		case "ctid":
+			return vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(pgtypes.TidValue{}, pgtypes.Tid)}, nil
+		case "tableoid":
+			return vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(id.Null, pgtypes.Oid)}, nil
+		case "xmin", "xmax":
+			return vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(uint32(0), pgtypes.Xid)}, nil
+		}
+
+		return colName, nil
+	case *tree.XmlConcat:
+		children, err := nodeExprs(ctx, node.Exprs)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{Expression: &pgexprs.XmlConcat{}, Children: children}, nil
+	case *tree.XmlElement:
+		return nodeXmlElement(ctx, node)
+	case *tree.XmlParse:
+		child, err := nodeExpr(ctx, node.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{Expression: &pgexprs.XmlParse{Document: node.Document}, Children: vitess.Exprs{child}}, nil
+	case *tree.XmlForest:
+		return nodeXmlForest(ctx, node)
+	case *tree.XmlIsDocument:
+		child, err := nodeExpr(ctx, node.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{Expression: &pgexprs.XmlIsDocument{}, Children: vitess.Exprs{child}}, nil
+	case *tree.XmlPi:
+		return nodeXmlPi(ctx, node)
+	case *tree.XmlRoot:
+		return nodeXmlRoot(ctx, node)
+	case *tree.XmlSerialize:
+		return nodeXmlSerialize(ctx, node)
 	case nil:
 		return nil, nil
 	default:
@@ -928,4 +999,234 @@ func translateConvertType(convertType *vitess.ConvertType) (*vitess.ConvertType,
 	default:
 		return nil, errors.Errorf("unknown convert type: `%T`", convertType.Type)
 	}
+}
+
+// nodeCheckExpr converts a check constraint expression, keeping every set of parentheses that its string form would
+// not otherwise carry, so that the stored string re-parses to an expression with an identical string form.
+func nodeCheckExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
+	ctx.preserveParens = true
+	expr, err := nodeExpr(ctx, node)
+	ctx.preserveParens = false
+	return expr, err
+}
+
+// nodeParenExpr converts a parenthesized expression. Within a check constraint the parentheses are kept, except around
+// AND, OR, NOT, and BETWEEN, whose string forms already carry their own.
+func nodeParenExpr(ctx *Context, node *tree.ParenExpr) (vitess.Expr, error) {
+	expr, err := nodeExpr(ctx, node.Expr)
+	if err != nil {
+		return nil, err
+	}
+	if ctx.preserveParens {
+		switch node.Expr.(type) {
+		case *tree.AndExpr, *tree.OrExpr, *tree.NotExpr, *tree.RangeCond:
+		default:
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewParens(),
+				Children:   vitess.Exprs{expr},
+			}, nil
+		}
+	}
+	return &vitess.ParenExpr{
+		Expr: expr,
+	}, nil
+}
+
+// nodeDelimitedExpr converts an expression whose parent already delimits it with parentheses in its string form, so
+// that within a check constraint its outermost parentheses are not kept.
+func nodeDelimitedExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
+	if parens, ok := node.(*tree.ParenExpr); ok && ctx.preserveParens {
+		node = parens.Expr
+	}
+	return nodeExpr(ctx, node)
+}
+
+// nodeRowComparison converts a comparison between two row constructors, splitting equality and inequality into
+// comparisons between their fields.
+func nodeRowComparison(ctx *Context, operator tree.ComparisonOperator, left *tree.Tuple, right *tree.Tuple) (vitess.Expr, error) {
+	if len(left.Exprs) != len(right.Exprs) {
+		return nil, errors.Errorf("unequal number of entries in row expressions")
+	}
+	if len(left.Exprs) == 0 {
+		return nil, errors.Errorf("cannot compare rows of zero length")
+	}
+	fieldOperator, err := framework.GetOperatorFromString(operator.String())
+	if err != nil {
+		return nil, err
+	}
+	if operator != tree.EQ && operator != tree.NE {
+		leftRow, err := nodeExpr(ctx, left)
+		if err != nil {
+			return nil, err
+		}
+		rightRow, err := nodeExpr(ctx, right)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRowComparison(fieldOperator, ""),
+			Children:   vitess.Exprs{leftRow, rightRow},
+		}, nil
+	}
+	var expr vitess.Expr
+	for i := len(left.Exprs) - 1; i >= 0; i-- {
+		leftField, err := nodeExpr(ctx, left.Exprs[i])
+		if err != nil {
+			return nil, err
+		}
+		rightField, err := nodeExpr(ctx, right.Exprs[i])
+		if err != nil {
+			return nil, err
+		}
+		var comparison vitess.Expr = vitess.InjectedExpr{
+			Expression: pgexprs.NewBinaryOperator(fieldOperator),
+			Children:   vitess.Exprs{leftField, rightField},
+		}
+		switch {
+		case expr == nil:
+			expr = comparison
+		case operator == tree.EQ:
+			expr = &vitess.AndExpr{Left: comparison, Right: expr}
+		default:
+			expr = &vitess.OrExpr{Left: comparison, Right: expr}
+		}
+	}
+	return expr, nil
+}
+
+// nodeRowIn converts an IN or NOT IN with a row constructor on the left into an equality comparison against each value.
+func nodeRowIn(ctx *Context, operator tree.ComparisonOperator, left *tree.Tuple, right *tree.Tuple) (vitess.Expr, error) {
+	var expr vitess.Expr
+	for i := len(right.Exprs) - 1; i >= 0; i-- {
+		comparison, err := nodeExpr(ctx, &tree.ComparisonExpr{Operator: tree.EQ, Left: left, Right: right.Exprs[i]})
+		if err != nil {
+			return nil, err
+		}
+		if expr == nil {
+			expr = comparison
+		} else {
+			expr = &vitess.OrExpr{Left: comparison, Right: expr}
+		}
+	}
+	if operator == tree.NotIn {
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewNot(),
+			Children:   vitess.Exprs{expr},
+		}, nil
+	}
+	return expr, nil
+}
+
+// subscriptExpr returns an injected subscript expression, converting mixed indexes and slices to slice bounds.
+func subscriptExpr(ctx *Context, child vitess.Expr, indexes tree.ArraySubscripts) (vitess.Expr, error) {
+	slice := false
+	for _, index := range indexes {
+		slice = slice || index.Slice
+	}
+
+	expr := &pgexprs.Subscript{Slice: slice}
+	children := vitess.Exprs{child}
+	for _, index := range indexes {
+		bounds := []tree.Expr{index.Begin}
+		if slice {
+			bounds = []tree.Expr{index.Begin, index.End}
+			if !index.Slice {
+				bounds = []tree.Expr{tree.NewNumVal(constant.MakeInt64(1), "1", false), index.Begin}
+			}
+		}
+
+		for _, bound := range bounds {
+			expr.Omitted = append(expr.Omitted, bound == nil)
+			if bound == nil {
+				children = append(children, &vitess.NullVal{})
+				continue
+			}
+
+			converted, err := nodeExpr(ctx, bound)
+			if err != nil {
+				return nil, err
+			}
+
+			children = append(children, converted)
+		}
+	}
+
+	return vitess.InjectedExpr{Expression: expr, Children: children}, nil
+}
+
+// nodeArrayExpr returns an array constructor with explicit element types propagated into nested empty arrays.
+func nodeArrayExpr(ctx *Context, node *tree.Array, coercedType *pgtypes.DoltgresType) (vitess.Expr, error) {
+	if coercedType == nil && node.HasResolvedType() {
+		_, resolved, err := nodeResolvableTypeReference(ctx, node.ResolvedType(), false)
+		if err != nil {
+			return nil, err
+		}
+
+		if !resolved.IsArrayType() {
+			return nil, errors.Errorf("array has invalid resolved type")
+		}
+
+		coercedType = resolved
+	}
+
+	if len(node.Exprs) == 0 && coercedType == nil {
+		return nil, errors.WithHint(pgerror.New(pgcode.IndeterminateDatatype, "cannot determine type of empty array"), "Explicitly cast to the desired type, for example ARRAY[]::integer[].")
+	}
+
+	children := make(vitess.Exprs, len(node.Exprs))
+	for i, child := range node.Exprs {
+		var err error
+		if nested, ok := child.(*tree.Array); ok && coercedType != nil {
+			children[i], err = nodeArrayExpr(ctx, nested, coercedType)
+		} else {
+			children[i], err = nodeExpr(ctx, child)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	array, err := pgexprs.NewArray(coercedType)
+	if err != nil {
+		return nil, err
+	}
+
+	return vitess.InjectedExpr{Expression: array, Children: children}, nil
+}
+
+// nodeRowSubqueryComparison converts a comparison between a row constructor and the rows of a subquery.
+func nodeRowSubqueryComparison(ctx *Context, node *tree.ComparisonExpr, left *tree.Tuple, right *tree.Subquery) (vitess.Expr, error) {
+	operator, quantifier := node.Operator, ""
+	switch node.Operator {
+	case tree.In, tree.NotIn:
+		operator, quantifier = tree.EQ, "ANY"
+	case tree.Any, tree.Some:
+		operator, quantifier = node.SubOperator, "ANY"
+	case tree.All:
+		operator, quantifier = node.SubOperator, "ALL"
+	}
+	fieldOperator, err := framework.GetOperatorFromString(operator.String())
+	if err != nil {
+		return nil, err
+	}
+	leftRow, err := nodeExpr(ctx, left)
+	if err != nil {
+		return nil, err
+	}
+	subquery, err := nodeExpr(ctx, right)
+	if err != nil {
+		return nil, err
+	}
+	expr := vitess.InjectedExpr{
+		Expression: pgexprs.NewRowComparison(fieldOperator, quantifier),
+		Children:   vitess.Exprs{leftRow, subquery},
+	}
+	if node.Operator == tree.NotIn {
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewNot(),
+			Children:   vitess.Exprs{expr},
+		}, nil
+	}
+	return expr, nil
 }

@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +45,11 @@ func (p PgStatAllIndexesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatAllIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_all_indexes row iter
-	return emptyRowIter()
+	entries, err := getStatIndexEntries(ctx, statSchemaAll)
+	if err != nil {
+		return nil, err
+	}
+	return &pgStatIndexesRowIter{entries: entries}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -68,18 +73,88 @@ var pgStatAllIndexesSchema = sql.Schema{
 	{Name: "idx_tup_fetch", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatAllIndexesName},
 }
 
-// pgStatAllIndexesRowIter is the sql.RowIter for the pg_stat_all_indexes table.
-type pgStatAllIndexesRowIter struct {
+// statIndexEntry identifies an index row in the pg_stat_*_indexes and pg_statio_*_indexes tables.
+type statIndexEntry struct {
+	tableOid   id.Id
+	indexOid   id.Id
+	schemaName string
+	tableName  string
+	indexName  string
+	isSystem   bool
 }
 
-var _ sql.RowIter = (*pgStatAllIndexesRowIter)(nil)
+// getStatIndexEntries returns a statIndexEntry for each index on a table in the current database
+// whose schema matches the given filter. The unfiltered entry list is cached in the session's
+// pg_catalog cache, since iterating all schema elements is expensive.
+func getStatIndexEntries(ctx *sql.Context, filter statSchemaFilter) ([]statIndexEntry, error) {
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.statIndexEntries == nil {
+		var entries []statIndexEntry
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
+				entries = append(entries, statIndexEntry{
+					tableOid:   table.OID.AsId(),
+					indexOid:   index.OID.AsId(),
+					schemaName: schema.Item.SchemaName(),
+					tableName:  table.Item.Name(),
+					indexName:  formatIndexName(index.Item),
+					isSystem:   schema.IsSystemSchema(),
+				})
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.statIndexEntries = entries
+	}
+
+	var filtered []statIndexEntry
+	for _, entry := range pgCatalogCache.statIndexEntries {
+		if filter(entry.isSystem) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered, nil
+}
+
+// pgStatIndexesRowIter is the sql.RowIter for the pg_stat_all_indexes, pg_stat_sys_indexes, and
+// pg_stat_user_indexes tables. All statistics counters are zero and all timestamps are NULL, since
+// Doltgres does not track index access statistics. This matches what a freshly-started Postgres
+// server reports.
+// TODO: fill in the statistics columns when index access statistics are tracked
+type pgStatIndexesRowIter struct {
+	entries []statIndexEntry
+	idx     int
+}
+
+var _ sql.RowIter = (*pgStatIndexesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *pgStatAllIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+func (iter *pgStatIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	if iter.idx >= len(iter.entries) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	entry := iter.entries[iter.idx-1]
+	return sql.Row{
+		entry.tableOid,   // relid
+		entry.indexOid,   // indexrelid
+		entry.schemaName, // schemaname
+		entry.tableName,  // relname
+		entry.indexName,  // indexrelname
+		int64(0),         // idx_scan
+		nil,              // last_idx_scan
+		int64(0),         // idx_tup_read
+		int64(0),         // idx_tup_fetch
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *pgStatAllIndexesRowIter) Close(ctx *sql.Context) error {
+func (iter *pgStatIndexesRowIter) Close(ctx *sql.Context) error {
 	return nil
 }

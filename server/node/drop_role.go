@@ -18,6 +18,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -57,7 +58,10 @@ func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var roles []auth.Role
 	var err error
 	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
+		userRole, err = auth.CurrentRoleLocked(ctx)
+		if err != nil {
+			return
+		}
 		for _, roleName := range c.Names {
 			role := auth.GetRole(roleName)
 			if role.IsValid() {
@@ -77,15 +81,17 @@ func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, err
 	}
 	// Then we'll loop again, dropping all of the users
+	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		for _, role := range roles {
 			auth.DropRole(role.Name)
 		}
-		err = auth.PersistChanges()
+		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {
 		return nil, err
 	}
+	auth.WaitForReplication(ctx, rsc)
 	return sql.RowsToRowIter(), nil
 }
 

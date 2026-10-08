@@ -37,6 +37,18 @@ type CopyFrom struct {
 	Options CopyOptions
 }
 
+// CopyTo represents a COPY TO statement.
+type CopyTo struct {
+	Table   TableName
+	File    string
+	Columns NameList
+	Stdout  bool
+	Options CopyOptions
+	// Statement is set when this statement copies the results of a query, rather than the contents of a table.
+	// When set, Table and Columns are unused.
+	Statement *Select
+}
+
 // CopyOptions describes options for COPY execution.
 type CopyOptions struct {
 	CopyFormat CopyFormat
@@ -58,6 +70,36 @@ func (node *CopyFrom) Format(ctx *FmtCtx) {
 	ctx.WriteString(" FROM ")
 	if node.Stdin {
 		ctx.WriteString("STDIN")
+	}
+	if !node.Options.IsDefault() {
+		ctx.WriteString(" WITH ")
+		ctx.FormatNode(&node.Options)
+	}
+	if node.Options.Delimiter != "" {
+		ctx.WriteString(" DELIMITER '" + node.Options.Delimiter + "'")
+	}
+}
+
+// Format implements the NodeFormatter interface.
+func (node *CopyTo) Format(ctx *FmtCtx) {
+	ctx.WriteString("COPY ")
+	if node.Statement != nil {
+		ctx.WriteString("(")
+		ctx.FormatNode(node.Statement)
+		ctx.WriteString(")")
+	} else {
+		ctx.FormatNode(&node.Table)
+		if len(node.Columns) > 0 {
+			ctx.WriteString(" (")
+			ctx.FormatNode(&node.Columns)
+			ctx.WriteString(")")
+		}
+	}
+	ctx.WriteString(" TO ")
+	if node.Stdout {
+		ctx.WriteString("STDOUT")
+	} else {
+		ctx.WriteString("'" + node.File + "'")
 	}
 	if !node.Options.IsDefault() {
 		ctx.WriteString(" WITH ")

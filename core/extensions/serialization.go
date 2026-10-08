@@ -32,12 +32,12 @@ func (ext Extension) Serialize(ctx context.Context) ([]byte, error) {
 
 	// Initialize the writer
 	writer := utils.NewWriter(256)
-	writer.VariableUint(0) // Version
+	writer.VariableUint(1) // Version
 	// Write the extension data
 	writer.Id(ext.ExtName.AsId())
 	writer.Id(ext.Namespace.AsId())
 	writer.Bool(ext.Relocatable)
-	writer.String(string(ext.LibIdentifier))
+	writer.String(ext.Version)
 	// Returns the data
 	return writer.Data(), nil
 }
@@ -50,7 +50,12 @@ func DeserializeExtension(ctx context.Context, data []byte) (Extension, error) {
 	}
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
-	if version != 0 {
+	switch version {
+	case 0:
+		return Extension{}, errors.New("extensions have been completely revamped, please reimport your database using a newer version")
+	case 1:
+		// current version
+	default:
 		return Extension{}, errors.Errorf("version %d of extensions are not supported, please upgrade the server", version)
 	}
 
@@ -59,7 +64,7 @@ func DeserializeExtension(ctx context.Context, data []byte) (Extension, error) {
 	ext.ExtName = id.Extension(reader.Id())
 	ext.Namespace = id.Namespace(reader.Id())
 	ext.Relocatable = reader.Bool()
-	ext.LibIdentifier = LibraryIdentifier(reader.String())
+	ext.Version = reader.String()
 	if !reader.IsEmpty() {
 		return Extension{}, errors.Errorf("extra data found while deserializing an extension")
 	}

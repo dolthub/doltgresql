@@ -23,16 +23,20 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// AnyExpr represents the ANY/SOME expression.
+// AnyExpr represents the ANY/SOME/ALL expression. ANY and SOME are synonyms (true if at least one comparison is
+// true); ALL additionally requires every comparison to be true, which the eval methods handle via an isAll flag
+// derived from name rather than as a separate type, since the two share all other resolution/traversal logic.
 type AnyExpr struct {
 	leftExpr    sql.Expression
 	rightExpr   sql.Expression
 	subOperator string
-	name        string // ANY or SOME
+	name        string // ANY, SOME, or ALL
 
 	subqueryAnyExpr   *subqueryAnyExpr
 	expressionAnyExpr *expressionAnyExpr
@@ -49,6 +53,8 @@ type subqueryAnyExpr struct {
 // expressionAnyExpr represents the resolved comparison function for a sql.Expression.
 type expressionAnyExpr struct {
 	rightExpr     sql.Expression
+	arrCast       casts.Cast
+	arrType       *pgtypes.DoltgresType
 	staticLiteral *expression.Literal
 	arrayLiteral  *expression.Literal
 	compFunc      framework.Function
@@ -106,8 +112,10 @@ func (a *subqueryAnyExpr) resolved() bool {
 	return true
 }
 
-// eval evaluates the comparison functions for subqueryAnyExpr.
-func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row, left interface{}) (interface{}, error) {
+// eval evaluates the comparison functions for subqueryAnyExpr. isAll distinguishes ALL's all-must-match semantics
+// (vacuously true against zero rows; NULL if nothing failed but something was unknown) from ANY/SOME's
+// any-may-match semantics (short-circuits true on the first match).
+func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row, left interface{}, isAll bool) (interface{}, error) {
 	if len(a.compFuncs) == 0 {
 		return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)
 	}
@@ -120,7 +128,8 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	}
 
 	if len(rightValues) == 0 {
-		return nil, nil
+		// ALL vacuously holds over an empty set; ANY/SOME cannot match anything.
+		return isAll, nil
 	}
 
 	// TODO: This is a workaround some subqueries where the schema length does not
@@ -149,6 +158,28 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	for i, rightValue := range rightValues {
 		a.arrayLiterals[i].Val = rightValue
 	}
+
+	if isAll {
+		foundNull := false
+		for _, compFunc := range a.compFuncs {
+			result, err := compFunc.Eval(ctx, row)
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				foundNull = true
+				continue
+			}
+			if !result.(bool) {
+				return false, nil
+			}
+		}
+		if foundNull {
+			return nil, nil
+		}
+		return true, nil
+	}
+
 	// Now we can loop over all comparison functions, as they'll reference their respective values
 	for _, compFunc := range a.compFuncs {
 		result, err := compFunc.Eval(ctx, row)
@@ -171,8 +202,8 @@ func (a *expressionAnyExpr) resolved() bool {
 	return true
 }
 
-// eval evaluates the comparison function for expressionAnyExpr.
-func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}) (interface{}, error) {
+// eval evaluates the comparison function for expressionAnyExpr. See subqueryAnyExpr.eval for the meaning of isAll.
+func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}, isAll bool) (interface{}, error) {
 	if a.compFunc == nil {
 		return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)
 	}
@@ -186,17 +217,49 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 		return nil, nil
 	}
 
+	if rightType, ok := a.rightExpr.Type(ctx).(*pgtypes.DoltgresType); ok && rightType.ID == pgtypes.Unknown.ID && a.arrCast.ID.IsValid() {
+		rightInterface, err = a.arrCast.Eval(ctx, rightInterface, rightType, a.arrType)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	rightValues, ok := rightInterface.([]any)
 	if !ok {
 		return nil, errors.Errorf("%T: expected right child to return `%T` but returned `%T`", a, []any{}, rightInterface)
 	}
+	rightValues = pgtypes.FlattenArray(rightValues, a.arrType.ArrayBaseType())
 	if len(rightValues) == 0 {
-		return nil, nil
+		// ALL vacuously holds over an empty array; ANY/SOME cannot match anything.
+		return isAll, nil
 	}
 
 	// Next we'll assign our evaluated values to the expressions that the comparison function reference
 	// Note that the compiled function has a reference to the staticLiteral and arrayLiteral, so we must alter them in place
 	a.staticLiteral.Val = left
+
+	if isAll {
+		foundNull := false
+		for _, rightValue := range rightValues {
+			a.arrayLiteral.Val = rightValue
+			result, err := a.compFunc.Eval(ctx, row)
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				foundNull = true
+				continue
+			}
+			if !result.(bool) {
+				return false, nil
+			}
+		}
+		if foundNull {
+			return nil, nil
+		}
+		return true, nil
+	}
+
 	for _, rightValue := range rightValues {
 		a.arrayLiteral.Val = rightValue
 		result, err := a.compFunc.Eval(ctx, row)
@@ -221,12 +284,13 @@ func (a *AnyExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		return nil, err
 	}
 
+	isAll := a.name == "ALL"
 	if a.subqueryAnyExpr != nil {
-		return a.subqueryAnyExpr.eval(ctx, a.subOperator, row, left)
+		return a.subqueryAnyExpr.eval(ctx, a.subOperator, row, left, isAll)
 	}
 
 	if a.expressionAnyExpr != nil {
-		return a.expressionAnyExpr.eval(ctx, row, left)
+		return a.expressionAnyExpr.eval(ctx, row, left, isAll)
 	}
 
 	return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)
@@ -245,6 +309,20 @@ func (a *AnyExpr) WithChildren(ctx *sql.Context, children ...sql.Expression) (sq
 		if _, ok = bv.Typ.(*pgtypes.DoltgresType); !ok {
 			if leftType, ok := leftExpr.Type(ctx).(*pgtypes.DoltgresType); ok {
 				bv.Typ = leftType.ToArrayType()
+			}
+		}
+	} else if bv, ok := leftExpr.(*expression.BindVar); ok {
+		// Similarly, an untyped bind variable on the left (e.g. `$1 = ANY(arr_col)` or `$1 = ANY(SELECT ...)`) is
+		// resolved from the right side's element type: the array's base type, or the subquery's first column type.
+		if _, ok = bv.Typ.(*pgtypes.DoltgresType); !ok {
+			if sub, ok := rightExpr.(*plan.Subquery); ok {
+				if schema := sub.Query.Schema(ctx); len(schema) > 0 {
+					if colType, ok := schema[0].Type.(*pgtypes.DoltgresType); ok {
+						bv.Typ = colType
+					}
+				}
+			} else if rightType, ok := rightExpr.Type(ctx).(*pgtypes.DoltgresType); ok && rightType.IsArrayType() {
+				bv.Typ = rightType.BaseType()
 			}
 		}
 	}
@@ -278,17 +356,26 @@ func (a *AnyExpr) WithResolvedChildren(ctx context.Context, children []any) (any
 	return a.WithChildren(ctx.(*sql.Context), left, right)
 }
 
-// String implements the fmt.Stringer interface.
+// operatorString returns the comparison operator as it should appear in serialized output. The parser spells
+// not-equals as `!=`, so we round-trip through the operator framework to get Postgres' canonical spelling (`<>`),
+// falling back to the operator as written for anything the framework doesn't recognize.
+func (a *AnyExpr) operatorString() string {
+	if op, err := framework.GetOperatorFromString(a.subOperator); err == nil {
+		return op.String()
+	}
+	return a.subOperator
+}
+
 func (a *AnyExpr) String() string {
 	if a.leftExpr == nil || a.rightExpr == nil {
-		return fmt.Sprintf("? %s (?)", a.name)
+		return fmt.Sprintf("? %s %s (?)", a.operatorString(), a.name)
 	}
-	return fmt.Sprintf("%s = %s (%s)", a.leftExpr, a.name, a.rightExpr)
+	return fmt.Sprintf("%s %s %s (%s)", a.leftExpr, a.operatorString(), a.name, a.rightExpr)
 }
 
 // DebugString implements the Expression interface.
 func (a *AnyExpr) DebugString(ctx *sql.Context) string {
-	return fmt.Sprintf("%s %s (%s)", sql.DebugString(ctx, a.leftExpr), a.name, sql.DebugString(ctx, a.rightExpr))
+	return fmt.Sprintf("%s %s %s (%s)", sql.DebugString(ctx, a.leftExpr), a.operatorString(), a.name, sql.DebugString(ctx, a.rightExpr))
 }
 
 // anySubqueryWithChildren resolves the comparison functions for a plan.Subquery.
@@ -343,31 +430,57 @@ func anyExpressionWithChildren(ctx *sql.Context, anyExpr *AnyExpr) (sql.Expressi
 	if !ok {
 		return nil, errors.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
-	rightType := arrType.ArrayBaseType()
+	leftType, ok := anyExpr.leftExpr.Type(ctx).(*pgtypes.DoltgresType)
+	if !ok {
+		return anyExpr, nil
+	}
+
+	var arrCast casts.Cast
+	if arrType.ID == pgtypes.Unknown.ID {
+		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		// if array type is Unknown, use the left expr type for reference
+		var arrCastToType *pgtypes.DoltgresType
+		if leftType.ID == pgtypes.Unknown.ID {
+			// if left expr type is also unknown, it's likely text array - TODO double check
+			arrCastToType = pgtypes.TextArray
+		} else {
+			arrCastToType = leftType.ToArrayType()
+		}
+		arrCast, err = castsColl.GetImplicitCast(ctx, arrType, arrCastToType)
+		if err != nil {
+			return nil, err
+		}
+		arrType = arrCastToType
+	}
+
+	rightType := arrType.BaseType()
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
 	if err != nil {
 		return nil, err
 	}
 
-	if leftType, ok := anyExpr.leftExpr.Type(ctx).(*pgtypes.DoltgresType); ok {
-		// Resolve comparison function once and reuse the function in Eval.
-		staticLiteral := expression.NewLiteral(nil, leftType)
-		arrayLiteral := expression.NewLiteral(nil, rightType)
-		compFunc := framework.GetBinaryFunction(op).Compile(ctx, "internal_any_comparison", staticLiteral, arrayLiteral)
-		if compFunc == nil || compFunc.StashedError() != nil {
-			return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
-		}
-		compFuncType := compFunc.Type(ctx)
-		if compFuncType.(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
-			// This should never happen, but this is just to be safe
-			return nil, errors.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
-		}
-		anyExpr.expressionAnyExpr = &expressionAnyExpr{
-			rightExpr:     anyExpr.rightExpr,
-			staticLiteral: staticLiteral,
-			arrayLiteral:  arrayLiteral,
-			compFunc:      compFunc,
-		}
+	// Resolve comparison function once and reuse the function in Eval.
+	staticLiteral := expression.NewLiteral(nil, leftType)
+	arrayLiteral := expression.NewLiteral(nil, rightType)
+	compFunc := framework.GetBinaryFunction(op).Compile(ctx, "internal_any_comparison", staticLiteral, arrayLiteral)
+	if compFunc == nil || compFunc.StashedError() != nil {
+		return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
+	}
+	compFuncType := compFunc.Type(ctx)
+	if compFuncType.(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
+		// This should never happen, but this is just to be safe
+		return nil, errors.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
+	}
+	anyExpr.expressionAnyExpr = &expressionAnyExpr{
+		rightExpr:     anyExpr.rightExpr,
+		arrCast:       arrCast,
+		arrType:       arrType,
+		staticLiteral: staticLiteral,
+		arrayLiteral:  arrayLiteral,
+		compFunc:      compFunc,
 	}
 
 	return anyExpr, nil

@@ -52,6 +52,29 @@ func TestDropDatabase(t *testing.T) {
 			},
 		},
 		{
+			Name: "drop a database that was previously used in the session",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE DATABASE dropdb1",
+				},
+				{
+					Query: "CREATE DATABASE dropdb2",
+				},
+				{
+					Query: "USE dropdb2",
+				},
+				{
+					Query: "CREATE TABLE t1 (a INT PRIMARY KEY)",
+				},
+				{
+					Query: "USE dropdb1",
+				},
+				{
+					Query: "DROP DATABASE dropdb2",
+				},
+			},
+		},
+		{
 			Name: "if exists",
 			Assertions: []ScriptTestAssertion{
 				{

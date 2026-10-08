@@ -50,9 +50,16 @@ const (
 	Operator_BinaryJSONTopLevel                        // ?
 	Operator_BinaryJSONTopLevelAny                     // ?|
 	Operator_BinaryJSONTopLevelAll                     // ?&
+	Operator_BinaryL2Distance                          // <->
+	Operator_BinaryL1Distance                          // <+>
+	Operator_BinaryCosineDistance                      // <=>
+	Operator_BinaryNegInnerProduct                     // <#>
+	Operator_BinaryJaccardDistance                     // <%>
+	Operator_BinaryHammingDistance                     // <~>
 	Operator_UnaryPlus                                 // +
 	Operator_UnaryMinus                                // -
-	// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
+	Operator_BinaryArrayOverlap                        // &&
+// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
 )
 
 // unaryFunction represents the signature for a unary function.
@@ -189,6 +196,8 @@ func (o Operator) String() string {
 		return "#>"
 	case Operator_BinaryJSONExtractPathText:
 		return "#>>"
+	case Operator_BinaryArrayOverlap:
+		return "&&"
 	case Operator_BinaryJSONContainsRight:
 		return "@>"
 	case Operator_BinaryJSONContainsLeft:
@@ -199,6 +208,18 @@ func (o Operator) String() string {
 		return "?|"
 	case Operator_BinaryJSONTopLevelAll:
 		return "?&"
+	case Operator_BinaryL2Distance:
+		return "<->"
+	case Operator_BinaryL1Distance:
+		return "<+>"
+	case Operator_BinaryCosineDistance:
+		return "<=>"
+	case Operator_BinaryNegInnerProduct:
+		return "<#>"
+	case Operator_BinaryJaccardDistance:
+		return "<%>"
+	case Operator_BinaryHammingDistance:
+		return "<~>"
 	default:
 		return "unknown operator"
 	}
@@ -248,7 +269,7 @@ func GetOperatorFromString(op string) (Operator, error) {
 		return Operator_BinaryGreaterOrEqual, nil
 	case "=":
 		return Operator_BinaryEqual, nil
-	case "<>":
+	case "<>", "!=":
 		return Operator_BinaryNotEqual, nil
 	case "&":
 		return Operator_BinaryBitAnd, nil
@@ -266,6 +287,8 @@ func GetOperatorFromString(op string) (Operator, error) {
 		return Operator_BinaryJSONExtractPathJson, nil
 	case "#>>":
 		return Operator_BinaryJSONExtractPathText, nil
+	case "&&":
+		return Operator_BinaryArrayOverlap, nil
 	case "@>":
 		return Operator_BinaryJSONContainsRight, nil
 	case "<@":
@@ -276,6 +299,18 @@ func GetOperatorFromString(op string) (Operator, error) {
 		return Operator_BinaryJSONTopLevelAny, nil
 	case "?&":
 		return Operator_BinaryJSONTopLevelAll, nil
+	case "<->":
+		return Operator_BinaryL2Distance, nil
+	case "<+>":
+		return Operator_BinaryL1Distance, nil
+	case "<=>":
+		return Operator_BinaryCosineDistance, nil
+	case "<#>":
+		return Operator_BinaryNegInnerProduct, nil
+	case "<%>":
+		return Operator_BinaryJaccardDistance, nil
+	case "<~>":
+		return Operator_BinaryHammingDistance, nil
 	default:
 		return 0, errors.Errorf("unhandled Operator `%s`", op)
 	}

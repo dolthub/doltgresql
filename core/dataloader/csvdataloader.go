@@ -203,7 +203,7 @@ func (cdl *CsvDataLoader) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 	combinedReader := NewStringPrefixReader(cdl.partialRecord, cdl.nextDataChunk)
 	cdl.partialRecord = ""
 
-	csvReader, err := newCsvReaderWithDelimiter(combinedReader, cdl.delimiter)
+	csvReader, err := newCsvReaderWithDelimiter(combinedReader, cdl.delimiter, len(cdl.colTypes) == 1)
 	if err != nil {
 		return nil, err
 	}

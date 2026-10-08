@@ -30,7 +30,12 @@ func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
 		return nil, nil
 	}
 	if node.Options.CopyFormat == tree.CopyFormatBinary {
-		return nil, errors.Errorf("COPY FROM does not support format BINARY")
+		if node.Options.Header {
+			return nil, errors.Errorf("cannot specify HEADER in BINARY mode")
+		}
+		if node.Options.Delimiter != "" {
+			return nil, errors.Errorf("cannot specify DELIMITER in BINARY mode")
+		}
 	}
 
 	// We start by creating a stub insert statement for the COPY FROM statement, which we will use to build a basic

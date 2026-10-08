@@ -24,6 +24,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -32,6 +34,8 @@ import (
 type Array struct {
 	children    []sql.Expression
 	coercedType *pgtypes.DoltgresType
+	// explicitType retains the cast context while unresolved children change the inferred type.
+	explicitType *pgtypes.DoltgresType
 }
 
 var _ vitess.Injectable = (*Array)(nil)
@@ -51,25 +55,27 @@ func NewArray(coercedType sql.Type) (*Array, error) {
 	} else if coercedType != nil {
 		return nil, errors.Errorf("cannot cast array to %s", coercedType.String())
 	}
+
 	return &Array{
-		children:    nil,
-		coercedType: arrayCoercedType,
+		coercedType:  arrayCoercedType,
+		explicitType: arrayCoercedType,
 	}, nil
 }
 
-// Children implements the sql.Expression interface.
+// Children implements sql.Expression.
 func (array *Array) Children() []sql.Expression {
 	return array.children
 }
 
-// Eval implements the sql.Expression interface.
+// Eval implements sql.Expression.
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	resultTyp := array.coercedType.ArrayBaseType()
 	values := make([]any, len(array.children))
-	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
+	nested := false
 	for i, expr := range array.children {
 		val, err := expr.Eval(ctx, row)
 		if err != nil {
@@ -86,30 +92,93 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, errors.Errorf("expected DoltgresType, but got %s", expr.Type(ctx).String())
 		}
 
+		targetTyp := resultTyp
+		if doltgresType.IsArrayType() && !resultTyp.IsVectorType() {
+			targetTyp = array.coercedType
+			nested = true
+		}
+
 		// We always cast the element, as there may be parameter restrictions in place
-		cast, err := castsColl.GetImplicitCast(ctx, doltgresType, resultTyp)
+		cast, err := castsColl.GetImplicitCast(ctx, doltgresType, targetTyp)
 		if err != nil {
 			return nil, err
 		}
 		if !cast.ID.IsValid() {
-			return nil, errors.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
+			return nil, errors.Errorf("cannot find cast function from %s to %s", doltgresType.String(), targetTyp.String())
 		}
 
-		values[i], err = cast.Eval(ctx, val, doltgresType, resultTyp)
+		values[i], err = cast.Eval(ctx, val, doltgresType, targetTyp)
 		if err != nil {
 			return nil, err
 		}
 	}
+	if nested {
+		if !pgtypes.SameArrayDims(values) {
+			return nil, pgerror.WithCandidateCode(errors.New("multidimensional arrays must have array expressions with matching dimensions"), pgcode.ArraySubscript)
+		}
+		for subArray, ok := values[0].([]any); ok; subArray, ok = subArray[0].([]any) {
+			if len(subArray) == 0 {
+				return []any{}, nil
+			}
+		}
+	}
+	if dims := pgtypes.ArrayDims(values, resultTyp); len(dims) > 6 {
+		return nil, pgerror.Newf(pgcode.ProgramLimitExceeded, "number of array dimensions (%d) exceeds the maximum allowed (6)", len(dims))
+	}
 	return values, nil
 }
 
-// IsNullable implements the sql.Expression interface.
+// evalVectorCast evaluates a direct ARRAY[...] constructor as a PostgreSQL vector type. PostgreSQL coerces the
+// constructor's elements to the vector's element type, but does not expose a general array-to-vector cast.
+func (array *Array) evalVectorCast(ctx *sql.Context, row sql.Row, targetType *pgtypes.DoltgresType) (any, error) {
+	if len(array.children) == 0 {
+		return nil, errors.Errorf("array is not a valid %s", targetType.Name())
+	}
+
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]any, len(array.children))
+	elementType := targetType.ArrayBaseType()
+	for i, child := range array.children {
+		value, err := child.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		if value == nil {
+			return nil, errors.Errorf("array is not a valid %s", targetType.Name())
+		}
+		if _, nested := value.([]any); nested {
+			return nil, errors.Errorf("array is not a valid %s", targetType.Name())
+		}
+		sourceType, ok := child.Type(ctx).(*pgtypes.DoltgresType)
+		if !ok {
+			return nil, errors.Errorf("array is not a valid %s", targetType.Name())
+		}
+		cast, err := castsColl.GetExplicitCast(ctx, sourceType, elementType)
+		if err != nil {
+			return nil, err
+		}
+		if !cast.ID.IsValid() {
+			return nil, errors.Errorf("cannot cast type %s to %s", sourceType.Name(), elementType.Name())
+		}
+		result[i], err = cast.Eval(ctx, value, sourceType, elementType)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+// IsNullable implements sql.Expression.
 func (array *Array) IsNullable(ctx *sql.Context) bool {
 	// TODO: verify if this is actually nullable
 	return false
 }
 
-// Resolved implements the sql.Expression interface.
+// Resolved implements sql.Expression.
 func (array *Array) Resolved() bool {
 	for _, child := range array.children {
 		if child == nil || !child.Resolved() {
@@ -119,7 +188,7 @@ func (array *Array) Resolved() bool {
 	return true
 }
 
-// String implements the sql.Expression interface.
+// String implements sql.Expression.
 func (array *Array) String() string {
 	sb := strings.Builder{}
 	sb.WriteString("ARRAY[")
@@ -137,24 +206,26 @@ func (array *Array) String() string {
 	return sb.String()
 }
 
-// Type implements the sql.Expression interface.
+// Type implements sql.Expression.
 func (array *Array) Type(ctx *sql.Context) sql.Type {
 	return array.coercedType
 }
 
-// WithChildren implements the sql.Expression interface.
+// WithChildren implements sql.Expression.
 func (array *Array) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	resultType, err := array.getTargetType(ctx, children...)
 	if err != nil {
 		return nil, err
 	}
+
 	return &Array{
-		children:    children,
-		coercedType: resultType,
+		children:     children,
+		coercedType:  resultType,
+		explicitType: array.explicitType,
 	}, nil
 }
 
-// WithResolvedChildren implements the vitess.InjectableExpression interface.
+// WithResolvedChildren implements vitess.Injectable.
 func (array *Array) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	newExpressions := make([]sql.Expression, len(children))
 	for i, resolvedChild := range children {
@@ -167,9 +238,37 @@ func (array *Array) WithResolvedChildren(ctx context.Context, children []any) (a
 	return array.WithChildren(ctx.(*sql.Context), newExpressions...)
 }
 
-// getTargetType returns the evaluated type for this expression.
-// Returns the "anyarray" type if the type combination is invalid.
+// getTargetType returns the array type inferred from its children and explicit cast context, or an error for incompatible types.
 func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) (*pgtypes.DoltgresType, error) {
+	// An explicit cast supplies the type for empty and all-NULL constructors before
+	// a nested constructor can prematurely resolve them to text[].
+	useExplicitType := array.explicitType != nil
+	for _, child := range children {
+		if child == nil {
+			useExplicitType = false
+			break
+		}
+
+		typ, ok := child.Type(ctx).(*pgtypes.DoltgresType)
+		if !ok || typ.ID != pgtypes.Unknown.ID {
+			useExplicitType = false
+			break
+		}
+	}
+
+	if useExplicitType {
+		if array.explicitType.IsResolvedType() {
+			return array.explicitType, nil
+		}
+
+		typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+
+		return typeColl.ResolveTypeWithTypmod(ctx, array.explicitType.ID, array.explicitType.UnresolvedTypmods)
+	}
+
 	var childrenTypes []*pgtypes.DoltgresType
 	for _, child := range children {
 		if child != nil {
@@ -177,6 +276,9 @@ func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) 
 			if !ok {
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray, nil
+			}
+			if childType.ID == pgtypes.AnyArray.ID {
+				continue
 			}
 			childrenTypes = append(childrenTypes, childType)
 		}
@@ -192,7 +294,7 @@ func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) 
 		if schemaName == "" {
 			schemaName, _ = core.GetCurrentSchema(ctx)
 		}
-		if typeColl, tcErr := core.GetTypesCollectionFromContext(ctx); tcErr == nil && typeColl != nil {
+		if typeColl, tcErr := core.GetTypesCollectionFromContext(ctx, ""); tcErr == nil && typeColl != nil {
 			if resolved, rErr := typeColl.GetType(ctx, id.NewType(schemaName, targetType.ID.TypeName())); rErr == nil && resolved != nil {
 				targetType = resolved
 			}

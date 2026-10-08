@@ -15,8 +15,6 @@
 package pgcatalog
 
 import (
-	"io"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +41,17 @@ func (p PgStatArchiverHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatArchiverHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_archiver row iter
-	return emptyRowIter()
+	// Doltgres does not have a WAL archiver process, so this returns a single row with zero
+	// counters and NULL values, matching what a freshly-started Postgres server reports.
+	return sql.RowsToRowIter(sql.Row{
+		int64(0), // archived_count
+		nil,      // last_archived_wal
+		nil,      // last_archived_time
+		int64(0), // failed_count
+		nil,      // last_failed_wal
+		nil,      // last_failed_time
+		nil,      // stats_reset
+	}), nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -64,20 +71,4 @@ var pgStatArchiverSchema = sql.Schema{
 	{Name: "last_failed_wal", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatArchiverName},
 	{Name: "last_failed_time", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgStatArchiverName},
 	{Name: "stats_reset", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgStatArchiverName},
-}
-
-// pgStatArchiverRowIter is the sql.RowIter for the pg_stat_archiver table.
-type pgStatArchiverRowIter struct {
-}
-
-var _ sql.RowIter = (*pgStatArchiverRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgStatArchiverRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgStatArchiverRowIter) Close(ctx *sql.Context) error {
-	return nil
 }

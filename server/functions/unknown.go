@@ -39,7 +39,7 @@ var unknownin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(string), nil
+		return framework.UnwrapString(ctx, val)
 	},
 }
 
@@ -50,7 +50,14 @@ var unknownout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Unknown},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(string), nil
+		str, ok, err := sql.Unwrap[string](ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.Errorf("unknown type received %T result", val)
+		}
+		return str, nil
 	},
 }
 
@@ -61,7 +68,10 @@ var unknownrecv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		reader := utils.NewReader(data)
 		return reader.String(), nil
 	},

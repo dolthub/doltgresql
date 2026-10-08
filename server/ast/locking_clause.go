@@ -27,5 +27,8 @@ func nodeLockingClause(ctx *Context, node tree.LockingClause) (vitess.Statement,
 	if len(node) == 0 {
 		return nil, nil
 	}
+	if ctx.permitUnsupportedLockingStatements {
+		return nil, nil
+	}
 	return nil, errors.Errorf("locking clauses are not yet supported")
 }

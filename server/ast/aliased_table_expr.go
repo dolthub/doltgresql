@@ -15,8 +15,9 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -26,7 +27,9 @@ import (
 // nodeAliasedTableExpr handles *tree.AliasedTableExpr nodes.
 func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr, error) {
 	if node.Ordinality {
-		return nil, errors.Errorf("ordinality is not yet supported")
+		if _, ok := node.Expr.(*tree.RowsFromExpr); !ok {
+			return nil, errors.Errorf("WITH ORDINALITY is only supported for functions")
+		}
 	}
 	if node.IndexFlags != nil {
 		return nil, errors.Errorf("index flags are not yet supported")
@@ -74,12 +77,11 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 			if isTrivialSelectStar(inSelect) {
 				if aliasedTblExpr, ok := inSelect.From[0].(*vitess.AliasedTableExpr); ok {
 					if valuesStmt, ok := aliasedTblExpr.Expr.(*vitess.ValuesStatement); ok {
-						if len(node.As.Cols) > 0 {
-							columns := make([]vitess.ColIdent, len(node.As.Cols))
-							for i := range node.As.Cols {
-								columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
-							}
-							valuesStmt.Columns = columns
+						if len(node.As.Cols) > len(valuesStmt.Columns) {
+							valuesStmt.Columns = make([]vitess.ColIdent, len(node.As.Cols))
+						}
+						for i := range node.As.Cols {
+							valuesStmt.Columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
 						}
 						aliasExpr = valuesStmt
 						break
@@ -107,10 +109,32 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 		}
 
 		// TODO: this should be represented as a table function more directly
+		var selectStmt vitess.SelectStatement = &vitess.Select{
+			From: vitess.TableExprs{tableExpr},
+		}
+		if node.Ordinality {
+			// WITH ORDINALITY appends a bigint column numbering the function's result rows, named
+			// "ordinality" unless renamed by a column alias list. The numbering projection has to
+			// live one level above the function's expansion, so we keep the function in table
+			// position within a wrapped subquery.
+			selectStmt = &vitess.Select{
+				SelectExprs: vitess.SelectExprs{
+					&vitess.StarExpr{},
+					&vitess.AliasedExpr{
+						Expr: &vitess.FuncExpr{
+							Name: vitess.NewColIdent("row_number"),
+							Over: &vitess.Over{},
+						},
+						As: vitess.NewColIdent("ordinality"),
+					},
+				},
+				From: vitess.TableExprs{
+					rewriteTableFuncExprs(&vitess.AliasedTableExpr{Expr: &vitess.Subquery{Select: selectStmt}}),
+				},
+			}
+		}
 		subquery := &vitess.Subquery{
-			Select: &vitess.Select{
-				From: vitess.TableExprs{tableExpr},
-			},
+			Select: selectStmt,
 		}
 
 		if len(node.As.Cols) > 0 {
@@ -125,6 +149,17 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 		return nil, errors.Errorf("unhandled table expression: `%T`", expr)
 	}
 	alias := string(node.As.Alias)
+	if alias == "" && node.Ordinality {
+		// A derived table needs an alias; the implicit alias of a function called in FROM is the
+		// function's name, matching Postgres
+		alias = "with_ordinality"
+		if rf, ok := node.Expr.(*tree.RowsFromExpr); ok && len(rf.Items) == 1 {
+			if fe, ok := rf.Items[0].(*tree.FuncExpr); ok {
+				nameParts := strings.Split(fe.Func.String(), ".")
+				alias = strings.ToLower(nameParts[len(nameParts)-1])
+			}
+		}
+	}
 
 	var asOf *vitess.AsOf
 	if node.AsOf != nil {

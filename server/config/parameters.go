@@ -15,10 +15,15 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
@@ -95,6 +100,12 @@ func (p *Parameter) GetSessionScope() sql.SystemVariableScope {
 	return GetPgsqlScope(PsqlScopeSession)
 }
 
+// GetLocalScope implements sql.SystemVariable. Any parameter that can be set at session scope can also be set with
+// transaction-local scope (SET LOCAL).
+func (p *Parameter) GetLocalScope() sql.SystemVariableScope {
+	return GetPgsqlScope(PsqlScopeLocal)
+}
+
 // SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
 	if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
@@ -134,7 +145,7 @@ func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.Syste
 // SetValue implements sql.SystemVariable.
 func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
 	if p.IsReadOnly() {
-		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
+		return sql.SystemVarValue{}, pgerror.Newf(pgcode.CantChangeRuntimeParam, `parameter "%s" cannot be changed now`, p.Name)
 	}
 	// TODO: Do parsing of units for memory and time parameters
 	return p.InitValue(ctx, val, global)
@@ -215,15 +226,65 @@ func GetPgsqlScope(t PgsqlScopeType) sql.SystemVariableScope {
 func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 	switch p.Type {
 	case PsqlScopeSession:
-		err := ctx.SetSessionVariable(ctx, name, val)
-		return err
+		// Reset any cached variables in ContextValues
+		// TODO: this may negatively impact performance for SET expressions
+		_ = core.SetDateStyleOutputFormat(ctx, "")
+		return SetPostgresParameter(ctx, name, val, false)
 	case PsqlScopeLocal:
-		// TODO: support LOCAL scope
-		return cerrors.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
+		_ = core.SetDateStyleOutputFormat(ctx, "")
+		return SetPostgresParameter(ctx, name, val, true)
 	default:
 		return cerrors.Errorf("unable to set `%s` due to unknown scope `%v`", name, p.Type)
 	}
 }
+
+// SetPostgresParameter validates a built-in before journaling its value and
+// projecting it into the session store used by query execution.
+func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) error {
+	name = strings.ToLower(name)
+	variable, ok := postgresConfigParameters[name]
+	if !ok {
+		return sql.ErrUnknownSystemVariable.New(name)
+	}
+	validated, err := variable.SetValue(ctx, val, false)
+	if err != nil {
+		return err
+	}
+	return core.SetPostgresSetting(ctx, name, validated.Val, local)
+}
+
+// FormatPostgresParameterValue renders values as PostgreSQL reports them in
+// SHOW and current_setting, including boolean on/off spelling.
+func FormatPostgresParameterValue(name string, val any) string {
+	if val == nil {
+		return ""
+	}
+	if variable, ok := postgresConfigParameters[strings.ToLower(name)]; ok && variable.GetType().String() == "system_bool" {
+		switch v := val.(type) {
+		case bool:
+			if v {
+				return "on"
+			}
+			return "off"
+		case int8:
+			if v != 0 {
+				return "on"
+			}
+			return "off"
+		case int64:
+			if v != 0 {
+				return "on"
+			}
+			return "off"
+		}
+	}
+	return fmt.Sprint(val)
+}
+
+var customParameterName = regexp.MustCompile(`^[A-Za-z_][A-Za-z_0-9$]*(\.[A-Za-z_][A-Za-z_0-9$]*)+$`)
+
+// IsValidCustomParameterName recognizes PostgreSQL's dot-separated custom GUC names.
+func IsValidCustomParameterName(name string) bool { return customParameterName.MatchString(name) }
 
 // GetValue implements sql.SystemVariableScope.
 func (p *PgsqlScope) GetValue(ctx *sql.Context, name string, _ sql.CollationID) (any, error) {
@@ -235,8 +296,12 @@ func (p *PgsqlScope) GetValue(ctx *sql.Context, name string, _ sql.CollationID) 
 		}
 		return val, nil
 	case PsqlScopeLocal:
-		// TODO: support LOCAL scope
-		return nil, cerrors.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
+		// The session value already reflects any transaction-local override
+		val, err := ctx.GetSessionVariable(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return val, nil
 	default:
 		return nil, cerrors.Errorf("unknown scope `%v` on configuration parameter `%s`", p.Type, name)
 	}

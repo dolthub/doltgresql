@@ -40,7 +40,10 @@ var oidvectorin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		strValues := strings.Split(input, " ")
 		var values = make([]any, len(strValues))
 		for i, strValue := range strValues {

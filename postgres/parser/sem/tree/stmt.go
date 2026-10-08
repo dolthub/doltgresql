@@ -69,6 +69,8 @@ const (
 	Rows
 	// CopyIn indicates a COPY FROM statement.
 	CopyIn
+	// CopyOut indicates a COPY TO statement.
+	CopyOut
 	// Unknown indicates that the statement does not have a known
 	// return style at the time of parsing. This is not first in the
 	// enumeration because it is more convenient to have Ack as a zero
@@ -459,10 +461,22 @@ func (*CopyFrom) StatementType() StatementType { return CopyIn }
 func (*CopyFrom) StatementTag() string { return "COPY" }
 
 // StatementType implements the Statement interface.
+func (*CopyTo) StatementType() StatementType { return CopyOut }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CopyTo) StatementTag() string { return "COPY" }
+
+// StatementType implements the Statement interface.
 func (*CreateAggregate) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*CreateAggregate) StatementTag() string { return "CREATE AGGREGATE" }
+
+// StatementType implements the Statement interface.
+func (*CreateCast) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateCast) StatementTag() string { return "CREATE CAST" }
 
 // StatementType implements the Statement interface.
 func (*CreateChangefeed) StatementType() StatementType { return Rows }
@@ -514,16 +528,28 @@ func (*CreateLanguage) StatementType() StatementType { return DDL }
 func (*CreateLanguage) StatementTag() string { return "CREATE LANGUAGE" }
 
 // StatementType implements the Statement interface.
+func (*Do) StatementType() StatementType { return Ack }
+
+// StatementTag implements the Statement interface.
+func (*Do) StatementTag() string { return "DO" }
+
+// StatementType implements the Statement interface.
 func (*CreateMaterializedView) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*CreateMaterializedView) StatementTag() string { return "CREATE MATERIALIZED VIEW" }
 
 // StatementType implements the Statement interface.
+func (*CreateOperator) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateOperator) StatementTag() string { return "CREATE OPERATOR" }
+
+// StatementType implements the Statement interface.
 func (*CreateProcedure) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*CreateProcedure) StatementTag() string { return "CREATE VIEW" }
+func (*CreateProcedure) StatementTag() string { return "CREATE PROCEDURE" }
 
 // StatementType implements the Statement interface.
 func (n *CreateSchema) StatementType() StatementType { return DDL }
@@ -623,6 +649,12 @@ func (*DropAggregate) StatementType() StatementType { return DDL }
 func (*DropAggregate) StatementTag() string { return "DROP AGGREGATE" }
 
 // StatementType implements the Statement interface.
+func (*DropCast) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropCast) StatementTag() string { return "DROP CAST" }
+
+// StatementType implements the Statement interface.
 func (*DropDatabase) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -657,6 +689,12 @@ func (*DropLanguage) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropLanguage) StatementTag() string { return "DROP LANGUAGE" }
+
+// StatementType implements the Statement interface.
+func (*DropOperator) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropOperator) StatementTag() string { return "DROP OPERATOR" }
 
 // StatementType implements the Statement interface.
 func (*DropProcedure) StatementType() StatementType { return DDL }
@@ -808,7 +846,7 @@ func (*ReparentDatabase) StatementTag() string { return "CONVERT TO SCHEMA" }
 func (*RenameIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*RenameIndex) StatementTag() string { return "RENAME INDEX" }
+func (*RenameIndex) StatementTag() string { return "ALTER INDEX" }
 
 // StatementType implements the Statement interface.
 func (*RenameTable) StatementType() StatementType { return DDL }
@@ -838,7 +876,7 @@ func (n *Relocate) StatementTag() string {
 func (*ResetAll) StatementType() StatementType { return Rows }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*ResetAll) StatementTag() string { return "RESET ALL" }
+func (*ResetAll) StatementTag() string { return "RESET" }
 
 // StatementType implements the Statement interface.
 func (*Restore) StatementType() StatementType { return Rows }
@@ -914,7 +952,12 @@ func (*SelectClause) StatementTag() string { return "SELECT" }
 func (*SetVar) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetVar) StatementTag() string { return "SET" }
+func (s *SetVar) StatementTag() string {
+	if s.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetConstraints) StatementType() StatementType { return Ack }
@@ -926,7 +969,12 @@ func (*SetConstraints) StatementTag() string { return "SET CONSTRAINTS" }
 func (*SetRole) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetRole) StatementTag() string { return "SET ROLE" }
+func (n *SetRole) StatementTag() string {
+	if n.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetTransaction) StatementType() StatementType { return Ack }
@@ -938,7 +986,12 @@ func (*SetTransaction) StatementTag() string { return "SET TRANSACTION" }
 func (*SetSessionAuthorization) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetSessionAuthorization) StatementTag() string { return "SET" }
+func (n *SetSessionAuthorization) StatementTag() string {
+	if n.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetSessionCharacteristics) StatementType() StatementType { return Ack }
@@ -1216,7 +1269,9 @@ func (n *CannedOptPlan) String() string             { return AsString(n) }
 func (n *Comment) String() string                   { return AsString(n) }
 func (n *CommitTransaction) String() string         { return AsString(n) }
 func (n *CopyFrom) String() string                  { return AsString(n) }
+func (n *CopyTo) String() string                    { return AsString(n) }
 func (n *CreateAggregate) String() string           { return AsString(n) }
+func (n *CreateCast) String() string                { return AsString(n) }
 func (n *CreateChangefeed) String() string          { return AsString(n) }
 func (n *CreateDatabase) String() string            { return AsString(n) }
 func (n *CreateDomain) String() string              { return AsString(n) }
@@ -1225,6 +1280,7 @@ func (n *CreateFunction) String() string            { return AsString(n) }
 func (n *CreateIndex) String() string               { return AsString(n) }
 func (n *CreateLanguage) String() string            { return AsString(n) }
 func (n *CreateMaterializedView) String() string    { return AsString(n) }
+func (n *CreateOperator) String() string            { return AsString(n) }
 func (n *CreateProcedure) String() string           { return AsString(n) }
 func (n *CreateRole) String() string                { return AsString(n) }
 func (n *CreateTable) String() string               { return AsString(n) }
@@ -1237,12 +1293,14 @@ func (n *CreateView) String() string                { return AsString(n) }
 func (n *Deallocate) String() string                { return AsString(n) }
 func (n *Delete) String() string                    { return AsString(n) }
 func (n *DropAggregate) String() string             { return AsString(n) }
+func (n *DropCast) String() string                  { return AsString(n) }
 func (n *DropDatabase) String() string              { return AsString(n) }
 func (n *DropDomain) String() string                { return AsString(n) }
 func (n *DropExtension) String() string             { return AsString(n) }
 func (n *DropFunction) String() string              { return AsString(n) }
 func (n *DropIndex) String() string                 { return AsString(n) }
 func (n *DropLanguage) String() string              { return AsString(n) }
+func (n *DropOperator) String() string              { return AsString(n) }
 func (n *DropProcedure) String() string             { return AsString(n) }
 func (n *DropSchema) String() string                { return AsString(n) }
 func (n *DropTable) String() string                 { return AsString(n) }

@@ -1101,6 +1101,12 @@ const (
 	JSONFetchText
 	JSONFetchValPath
 	JSONFetchTextPath
+	L2Distance
+	L1Distance
+	CosineDistance
+	NegInnerProduct
+	JaccardDistance
+	HammingDistance
 
 	NumBinaryOperators
 )
@@ -1125,6 +1131,12 @@ var binaryOpName = [...]string{
 	JSONFetchText:     "->>",
 	JSONFetchValPath:  "#>",
 	JSONFetchTextPath: "#>>",
+	L2Distance:        "<->",
+	L1Distance:        "<+>",
+	CosineDistance:    "<=>",
+	NegInnerProduct:   "<#>",
+	JaccardDistance:   "<%>",
+	HammingDistance:   "<~>",
 }
 
 // binaryOpPrio follows the precedence order in the grammar. Used for pretty-printing.
@@ -1137,6 +1149,8 @@ var binaryOpPrio = [...]int{
 	Bitxor: 6,
 	Bitor:  7,
 	Concat: 8, JSONFetchVal: 8, JSONFetchText: 8, JSONFetchValPath: 8, JSONFetchTextPath: 8,
+	L2Distance: 8, L1Distance: 8, CosineDistance: 8, NegInnerProduct: 8, JaccardDistance: 8,
+	HammingDistance: 8,
 }
 
 // binaryOpFullyAssoc indicates whether an operator is fully associative.
@@ -1412,6 +1426,12 @@ func (node *FuncExpr) Format(ctx *FmtCtx) {
 		}
 	}
 
+	// SESSION_USER is a SQL value expression, not a callable function in
+	// PostgreSQL's grammar. Keep its printed form parseable when the parser
+	// represents it with a zero-argument FuncExpr for function resolution.
+	if node.Func.String() == "session_user" && len(node.Exprs) == 0 {
+		return
+	}
 	if !ctx.HasFlags(FmtOmitFunctionArgs) {
 		ctx.WriteString("(")
 		for i, e := range node.Exprs {
@@ -1770,5 +1790,6 @@ func (node PartitionMinVal) String() string   { return AsString(node) }
 func (node *Placeholder) String() string      { return AsString(node) }
 func (d NullLiteral) String() string          { return AsString(d) }
 func (d DomainColumn) String() string         { return AsString(d) }
+func (u UsingColumn) String() string          { return AsString(u) }
 func (f FunctionColumn) String() string       { return AsString(f) }
 func (list *NameList) String() string         { return AsString(list) }

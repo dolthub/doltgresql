@@ -23,11 +23,13 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 
+	"github.com/dolthub/doltgresql/core/aggregates"
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/operators"
 	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
@@ -48,6 +50,8 @@ var (
 		&conflicts.Collection{},
 		&procedures.Collection{},
 		&casts.Collection{},
+		&operators.Collection{},
+		&aggregates.Collection{},
 	}
 )
 
@@ -519,18 +523,20 @@ func RemoveRootObjectIfExists(ctx context.Context, root objinterface.RootValue, 
 
 // ResolveName returns the fully resolved name of the given item (if the item exists). Also returns the type of the item.
 func ResolveName(ctx context.Context, root objinterface.RootValue, name doltdb.TableName) (doltdb.TableName, id.Id, objinterface.RootObjectID, error) {
+	colls, err := root.ReadOnlyCollections(ctx)
+	if err != nil {
+		return doltdb.TableName{}, id.Null, objinterface.RootObjectID_None, err
+	}
+	return ResolveNameOnCollections(ctx, colls, name)
+}
+
+// ResolveNameOnCollections is ResolveName, but for collections that have already been loaded.
+func ResolveNameOnCollections(ctx context.Context, colls []objinterface.Collection, name doltdb.TableName) (doltdb.TableName, id.Id, objinterface.RootObjectID, error) {
 	var resolvedName doltdb.TableName
 	resolvedRawID := id.Null
 	resolvedObjID := objinterface.RootObjectID_None
 
-	for i, emptyColl := range globalCollections {
-		if emptyColl == nil || i == int(objinterface.RootObjectID_Conflicts) {
-			continue
-		}
-		coll, err := emptyColl.LoadCollection(ctx, root)
-		if err != nil {
-			return doltdb.TableName{}, id.Null, objinterface.RootObjectID_None, err
-		}
+	for _, coll := range colls {
 		if coll == nil {
 			continue
 		}
@@ -540,7 +546,13 @@ func ResolveName(ctx context.Context, root objinterface.RootValue, name doltdb.T
 		}
 		if rID.IsValid() {
 			if resolvedObjID != objinterface.RootObjectID_None {
-				return doltdb.TableName{}, id.Null, objinterface.RootObjectID_None, fmt.Errorf(`"%s" is ambiguous`, name.String())
+				// An exact name match takes precedence over a name that was resolved through the search
+				if resolvedName == name && rName != name {
+					continue
+				}
+				if (resolvedName == name) == (rName == name) {
+					return doltdb.TableName{}, id.Null, objinterface.RootObjectID_None, fmt.Errorf(`"%s" is ambiguous`, name.String())
+				}
 			}
 			resolvedName = rName
 			resolvedRawID = rID
@@ -566,7 +578,13 @@ func resolveNameFromObjects(ctx context.Context, name doltdb.TableName, rootObje
 		}
 		if rID.IsValid() {
 			if resolvedRawID != id.Null {
-				return doltdb.TableName{}, id.Null, fmt.Errorf(`"%s" is ambiguous`, name.String())
+				// An exact name match takes precedence over a name that was resolved through the search
+				if resolvedName == name && rName != name {
+					continue
+				}
+				if (resolvedName == name) == (rName == name) {
+					return doltdb.TableName{}, id.Null, fmt.Errorf(`"%s" is ambiguous`, name.String())
+				}
 			}
 			resolvedName = rName
 			resolvedRawID = rID

@@ -25,18 +25,19 @@ import (
 // nodeCheckConstraintTableDef converts a tree.CheckConstraintTableDef instance
 // into a vitess.DDL instance that can be executed by GMS. |tableName| identifies
 // the table being altered, and |ifExists| indicates whether the IF EXISTS clause
-// was specified.
+// was specified. |notValid| reflects whether the NOT VALID clause was present.
 func nodeCheckConstraintTableDef(
 	ctx *Context,
 	node *tree.CheckConstraintTableDef,
 	tableName vitess.TableName,
-	ifExists bool) (*vitess.DDL, error) {
+	ifExists bool,
+	notValid bool) (*vitess.DDL, error) {
 
 	if node.NoInherit {
 		return nil, errors.Errorf("NO INHERIT is not yet supported for check constraints")
 	}
 
-	expr, err := nodeExpr(ctx, node.Expr)
+	expr, err := nodeCheckExpr(ctx, node.Expr)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +54,7 @@ func nodeCheckConstraintTableDef(
 					Details: &vitess.CheckConstraintDefinition{
 						Expr:     expr,
 						Enforced: true,
+						NotValid: notValid,
 					},
 				},
 			},
@@ -108,6 +110,10 @@ func nodeUniqueConstraintTableDef(
 
 	if node.NullsNotDistinct {
 		return nil, errors.Errorf("NULLS NOT DISTINCT is not yet supported")
+	}
+
+	if tree.IsDeferrable(node.Deferrable, node.Initially) {
+		return nil, errors.Errorf("DEFERRABLE constraints are not yet supported")
 	}
 
 	indexFields, err := nodeIndexElemList(ctx, node.Columns)

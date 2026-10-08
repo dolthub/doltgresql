@@ -17,38 +17,31 @@ package functions
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
 // Collection contains a collection of functions.
 type Collection struct {
+	objinterface.RootObjectMap
 	accessCache   map[id.Function]Function      // This cache is used for general access when you know the exact ID
 	overloadCache map[id.Function][]id.Function // This cache is used to find overloads if you know the name
 	idCache       []id.Function                 // This cache simply contains the name of every function
-	mapHash       hash.Hash                     // This is cached so that we don't have to calculate the hash every time
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
 }
 
 // Function represents a created function.
 type Function struct {
 	ID                 id.Function
 	ReturnType         id.Type
-	ParameterNames     []string
-	ParameterTypes     []id.Type
-	ParameterDefaults  []string
+	AllParams          []procedures.Parameter
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
@@ -64,14 +57,11 @@ var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = Function{}
 
 // NewCollection returns a new Collection.
-func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree.NodeStore) (*Collection, error) {
+func NewCollection(ctx context.Context, rom objinterface.RootObjectMap) (*Collection, error) {
 	collection := &Collection{
+		RootObjectMap: rom,
 		accessCache:   make(map[id.Function]Function),
 		overloadCache: make(map[id.Function][]id.Function),
-		idCache:       nil,
-		mapHash:       hash.Hash{},
-		underlyingMap: underlyingMap,
-		ns:            ns,
 	}
 	return collection, collection.reloadCaches(ctx)
 }
@@ -117,11 +107,11 @@ func (pgf *Collection) AddFunction(ctx context.Context, f Function) error {
 	if err != nil {
 		return err
 	}
-	h, err := pgf.ns.WriteBytes(ctx, data)
+	h, err := pgf.NodeStore().WriteBytes(ctx, data)
 	if err != nil {
 		return err
 	}
-	mapEditor := pgf.underlyingMap.Editor()
+	mapEditor := pgf.Contents().Editor()
 	if err = mapEditor.Add(ctx, string(f.ID), h); err != nil {
 		return err
 	}
@@ -129,8 +119,7 @@ func (pgf *Collection) AddFunction(ctx context.Context, f Function) error {
 	if err != nil {
 		return err
 	}
-	pgf.underlyingMap = newMap
-	pgf.mapHash = pgf.underlyingMap.HashOf()
+	pgf.SetContents(newMap)
 	return pgf.reloadCaches(ctx)
 }
 
@@ -147,7 +136,7 @@ func (pgf *Collection) DropFunction(ctx context.Context, funcIDs ...id.Function)
 	}
 
 	// Now we'll remove the functions from the map
-	mapEditor := pgf.underlyingMap.Editor()
+	mapEditor := pgf.Contents().Editor()
 	for _, funcID := range funcIDs {
 		err := mapEditor.Delete(ctx, string(funcID))
 		if err != nil {
@@ -158,8 +147,7 @@ func (pgf *Collection) DropFunction(ctx context.Context, funcIDs ...id.Function)
 	if err != nil {
 		return err
 	}
-	pgf.underlyingMap = newMap
-	pgf.mapHash = pgf.underlyingMap.HashOf()
+	pgf.SetContents(newMap)
 	return pgf.reloadCaches(ctx)
 }
 
@@ -269,58 +257,22 @@ func (pgf *Collection) IterateFunctions(ctx context.Context, callback func(f Fun
 	return nil
 }
 
-// Clone returns a new *Collection with the same contents as the original.
-func (pgf *Collection) Clone(ctx context.Context) *Collection {
-	return &Collection{
-		accessCache:   maps.Clone(pgf.accessCache),
-		overloadCache: maps.Clone(pgf.overloadCache),
-		idCache:       slices.Clone(pgf.idCache),
-		underlyingMap: pgf.underlyingMap,
-		mapHash:       pgf.mapHash,
-		ns:            pgf.ns,
-	}
-}
-
-// Map writes any cached sequences to the underlying map, and then returns the underlying map.
-func (pgf *Collection) Map(ctx context.Context) (prolly.AddressMap, error) {
-	return pgf.underlyingMap, nil
-}
-
-// DiffersFrom returns true when the hash that is associated with the underlying map for this collection is different
-// from the hash in the given root.
-func (pgf *Collection) DiffersFrom(ctx context.Context, root objinterface.RootValue) bool {
-	hashOnGivenRoot, err := pgf.LoadCollectionHash(ctx, root)
-	if err != nil {
-		return true
-	}
-	if pgf.mapHash.Equal(hashOnGivenRoot) {
-		return false
-	}
-	// An empty map should match an uninitialized collection on the root
-	count, err := pgf.underlyingMap.Count()
-	if err == nil && count == 0 && hashOnGivenRoot.IsEmpty() {
-		return false
-	}
-	return true
-}
-
 // reloadCaches writes the underlying map's contents to the caches.
 func (pgf *Collection) reloadCaches(ctx context.Context) error {
-	count, err := pgf.underlyingMap.Count()
+	count, err := pgf.Contents().Count()
 	if err != nil {
 		return err
 	}
 
 	clear(pgf.accessCache)
 	clear(pgf.overloadCache)
-	pgf.mapHash = pgf.underlyingMap.HashOf()
 	pgf.idCache = make([]id.Function, 0, count)
 
-	return pgf.underlyingMap.IterAll(ctx, func(_ string, h hash.Hash) error {
+	return pgf.Contents().IterAll(ctx, func(_ string, h hash.Hash) error {
 		if h.IsEmpty() {
 			return nil
 		}
-		data, err := pgf.ns.ReadBytes(ctx, h)
+		data, err := pgf.NodeStore().ReadBytes(ctx, h)
 		if err != nil {
 			return err
 		}
@@ -336,9 +288,61 @@ func (pgf *Collection) reloadCaches(ctx context.Context) error {
 	})
 }
 
-// tableNameToID returns the ID that was encoded via the Name() call, as the returned TableName contains additional
-// information (which this is able to process).
-func (pgf *Collection) tableNameToID(schemaName string, formattedName string) id.Function {
+// GetID implements the interface objinterface.RootObject.
+func (function Function) GetID() id.Id {
+	return function.ID.AsId()
+}
+
+// GetInnerDefinition returns the inner definition inside the CREATE FUNCTION statement.
+func (function Function) GetInnerDefinition() string {
+	// TODO: right now we're hardcode searching for $$, which will fail for some definition strings
+	start := strings.Index(function.Definition, "$$")
+	if start != -1 {
+		end := strings.LastIndex(function.Definition, "$$")
+		if end != -1 {
+			return strings.TrimSpace(function.Definition[start+2 : end])
+		}
+	}
+
+	asQuote := strings.Index(strings.ToLower(function.Definition), "as '")
+	if asQuote != -1 {
+		endQuote := strings.LastIndex(function.Definition, "'")
+		if endQuote != -1 {
+			return strings.TrimSpace(function.Definition[asQuote+4 : endQuote])
+		}
+	}
+
+	// Return the whole definition for now
+	return function.Definition
+}
+
+// ReplaceDefinition returns a new definition with the inner portion replaced with the given string.
+func (function Function) ReplaceDefinition(newInner string) string {
+	return strings.Replace(function.Definition, function.GetInnerDefinition(), newInner, 1)
+}
+
+// GetRootObjectID implements the interface objinterface.RootObject.
+func (function Function) GetRootObjectID() objinterface.RootObjectID {
+	return objinterface.RootObjectID_Functions
+}
+
+// HashOf implements the interface objinterface.RootObject.
+func (function Function) HashOf(ctx context.Context) (hash.Hash, error) {
+	data, err := function.Serialize(ctx)
+	if err != nil {
+		return hash.Hash{}, err
+	}
+	return hash.Of(data), nil
+}
+
+// Name implements the interface objinterface.RootObject.
+func (function Function) Name() doltdb.TableName {
+	return FunctionIDToTableName(function.ID)
+}
+
+// TableNameToFunctionID returns the ID that was encoded via the Name() call, as the returned TableName contains
+// additional information (which this is able to process).
+func TableNameToFunctionID(schemaName string, formattedName string) id.Function {
 	leftParenIndex := strings.IndexByte(formattedName, '(')
 	if leftParenIndex == -1 {
 		return id.NullFunction
@@ -366,47 +370,6 @@ func (pgf *Collection) tableNameToID(schemaName string, formattedName string) id
 		}
 	}
 	return id.NewFunction(schemaName, functionName, typeIDs...)
-}
-
-// GetID implements the interface objinterface.RootObject.
-func (function Function) GetID() id.Id {
-	return function.ID.AsId()
-}
-
-// GetInnerDefinition returns the inner definition inside the CREATE FUNCTION statement.
-func (function Function) GetInnerDefinition() string {
-	// TODO: right now we're hardcode searching for $$, which will fail for some definition strings
-	start := strings.Index(function.Definition, "$$")
-	end := strings.LastIndex(function.Definition, "$$")
-	if start == -1 || end == -1 {
-		// Return the whole definition for now
-		return function.Definition
-	}
-	return strings.TrimSpace(function.Definition[start+2 : end])
-}
-
-// ReplaceDefinition returns a new definition with the inner portion replaced with the given string.
-func (function Function) ReplaceDefinition(newInner string) string {
-	return strings.Replace(function.Definition, function.GetInnerDefinition(), newInner, 1)
-}
-
-// GetRootObjectID implements the interface objinterface.RootObject.
-func (function Function) GetRootObjectID() objinterface.RootObjectID {
-	return objinterface.RootObjectID_Functions
-}
-
-// HashOf implements the interface objinterface.RootObject.
-func (function Function) HashOf(ctx context.Context) (hash.Hash, error) {
-	data, err := function.Serialize(ctx)
-	if err != nil {
-		return hash.Hash{}, err
-	}
-	return hash.Of(data), nil
-}
-
-// Name implements the interface objinterface.RootObject.
-func (function Function) Name() doltdb.TableName {
-	return FunctionIDToTableName(function.ID)
 }
 
 // FunctionIDToTableName returns the ID in a format that's better for user consumption.

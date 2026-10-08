@@ -20,8 +20,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -31,9 +33,8 @@ import (
 type SQLFunction struct {
 	ID                 id.Function
 	ReturnType         *pgtypes.DoltgresType
-	ParameterNames     []string
-	ParameterTypes     []*pgtypes.DoltgresType
-	ParameterDefaults  []string
+	AllParams          []procedures.Parameter
+	AllTypes           []*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
@@ -46,7 +47,14 @@ var _ FunctionInterface = SQLFunction{}
 
 // GetExpectedParameterCount implements the interface FunctionInterface.
 func (sqlFunc SQLFunction) GetExpectedParameterCount() int {
-	return len(sqlFunc.ParameterTypes)
+	inputParamCount := 0
+	for _, param := range sqlFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			inputParamCount += 1
+		}
+	}
+	return inputParamCount
 }
 
 // GetName implements the interface FunctionInterface.
@@ -54,9 +62,32 @@ func (sqlFunc SQLFunction) GetName() string {
 	return sqlFunc.ID.FunctionName()
 }
 
-// GetParameters implements the interface FunctionInterface.
-func (sqlFunc SQLFunction) GetParameters() []*pgtypes.DoltgresType {
-	return sqlFunc.ParameterTypes
+// GetOutParameters implements the interface FunctionInterface.
+func (sqlFunc SQLFunction) GetOutParameters() sql.Schema {
+	var outParams []*sql.Column
+	for i, param := range sqlFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_OUT, procedures.ParameterMode_INOUT:
+			outParams = append(outParams, &sql.Column{
+				Name: param.Name,
+				Type: sqlFunc.AllTypes[i],
+				// TODO default val ?
+			})
+		}
+	}
+	return outParams
+}
+
+// GetInputParameterTypes implements the interface FunctionInterface.
+func (sqlFunc SQLFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
+	var typs []*pgtypes.DoltgresType
+	for i, param := range sqlFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			typs = append(typs, sqlFunc.AllTypes[i])
+		}
+	}
+	return typs
 }
 
 // GetReturn implements the interface FunctionInterface.
@@ -101,18 +132,22 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 // CallSqlFunction runs the given SQL definition inside the function on the given runner.
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
 	paramMap := make(map[string]*ParamTypAndValue)
-	for i, name := range f.ParameterNames {
-		formattedVar, err := f.ParameterTypes[i].FormatValueWithContext(ctx, args[i])
-		if err != nil {
-			return nil, err
-		}
-		if name == "" {
-			// sanity check
-			name = fmt.Sprintf("$%d", i+1)
-		}
-		paramMap[name] = &ParamTypAndValue{
-			Typ:    f.ParameterTypes[i],
-			StrVal: formattedVar,
+	idx := 0
+	for i, param := range f.AllParams {
+		if param.Mode != procedures.ParameterMode_OUT && idx < len(args) {
+			// This allows for name references.
+			paramMap[param.Name] = &ParamTypAndValue{
+				Typ:        f.AllTypes[i],
+				Val:        args[idx],
+				FromCreate: false,
+			}
+			// This allows for positional references such as $1, $2, etc.
+			paramMap[fmt.Sprintf("$%d", idx+1)] = &ParamTypAndValue{
+				Typ:        f.AllTypes[i],
+				Val:        args[idx],
+				FromCreate: false,
+			}
+			idx += 1
 		}
 	}
 
@@ -133,8 +168,12 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			if err != nil {
 				return nil, err
 			}
+			convertedAST, err := convertToVitess(parsed)
+			if err != nil {
+				return nil, err
+			}
 			res, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
-				sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
+				sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), convertedAST, nil, nil)
 				if err != nil {
 					return nil, err
 				}
@@ -169,9 +208,13 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 	if err != nil {
 		return nil, err
 	}
+	convertedAST, err := convertToVitess(parsed)
+	if err != nil {
+		return nil, err
+	}
 	// stmt.AST is updated at this point with FunctionColumn
 	return sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
-		sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
+		sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), convertedAST, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -181,19 +224,29 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			if err != nil {
 				return nil, err
 			}
-			// single column row result
-			if len(sch) != 1 {
-				return nil, errors.New("expression does not result in a single value")
-			}
+			// single row result
 			if len(rows) != 1 {
 				return nil, errors.New("expression returned multiple result sets")
 			}
-			if len(rows[0]) != 1 {
-				return nil, errors.New("expression returned multiple results")
+			if len(rows[0]) == 1 {
+				return rows[0][0], nil
 			}
-			return rows[0][0], nil
+
+			// non composite type - multiple column row result
+			if len(rows[0]) != len(sch) {
+				return nil, errors.New("number of row values does not match number of schema columns")
+			}
+			var r = make([]pgtypes.RecordValue, len(sch))
+			for j, col := range sch {
+				r[j] = pgtypes.RecordValue{
+					Type:  col.Type.(*pgtypes.DoltgresType),
+					Value: rows[0][j],
+				}
+			}
+			return r, nil
 		}
-		// multiple column row result
+
+		// composite type - multiple column row result
 		if f.ReturnType.TypCategory == pgtypes.TypeCategory_CompositeTypes {
 			// record type
 			return rowIterToRecord(ctx, rowIter, sch)
@@ -205,8 +258,9 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 // ParamTypAndValue contains the parameter type and
 // string value of argument if applicable
 type ParamTypAndValue struct {
-	Typ    *pgtypes.DoltgresType
-	StrVal string
+	Typ        *pgtypes.DoltgresType
+	Val        any
+	FromCreate bool
 }
 
 // ReplaceFunctionColumn parses and replaces UnresolvedName and Placeholder expressions
@@ -275,19 +329,21 @@ func ReplaceUnresolvedToFunctionColumn(paramMap map[string]*ParamTypAndValue, ex
 			name := fmt.Sprintf("$%d", v.Idx+1)
 			if tv, ok := paramMap[name]; ok {
 				return false, tree.FunctionColumn{
-					Name:   name,
-					Typ:    tv.Typ,
-					Idx:    uint16(v.Idx),
-					StrVal: tv.StrVal,
+					Name:       name,
+					Typ:        tv.Typ,
+					Idx:        uint16(v.Idx),
+					FromCreate: tv.FromCreate,
+					Val:        tv.Val,
 				}, nil
 			}
 		case *tree.UnresolvedName:
 			name := v.String()
 			if tv, ok := paramMap[name]; ok {
 				return false, tree.FunctionColumn{
-					Name:   name,
-					Typ:    tv.Typ,
-					StrVal: tv.StrVal,
+					Name:       name,
+					Typ:        tv.Typ,
+					FromCreate: tv.FromCreate,
+					Val:        tv.Val,
 				}, nil
 			}
 		}
@@ -318,3 +374,6 @@ func rowIterToRecord(ctx *sql.Context, rowIter sql.RowIter, sch sql.Schema) (sql
 	}
 	return sql.RowsToRowIter(newRows...), nil
 }
+
+// convertToVitess is set by init and is used to avoid import cycles
+var convertToVitess func(postgresStmt parser.Statement) (sqlparser.Statement, error)

@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -41,10 +43,52 @@ func (p PgAuthMembersHandler) Name() string {
 	return PgAuthMembersName
 }
 
+// pgAuthMember represents a row in the pg_auth_members table.
+type pgAuthMember struct {
+	roleid      id.Id
+	member      id.Id
+	grantor     id.Id
+	adminOption bool
+}
+
 // RowIter implements the interface tables.Handler.
 func (p PgAuthMembersHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_auth_members row iter
-	return emptyRowIter()
+	var roles []auth.Role
+	var memberships []auth.RoleMembershipValue
+	auth.LockRead(func() {
+		roles = auth.AllRoles()
+		memberships = auth.AllRoleMemberships()
+	})
+	namesByID := make(map[auth.RoleID]string)
+	for _, role := range roles {
+		namesByID[role.ID()] = role.Name
+	}
+	// roleIDToOid returns the OID for the given RoleID, or id.Null if the role no longer exists.
+	roleIDToOid := func(roleID auth.RoleID) id.Id {
+		if name, ok := namesByID[roleID]; ok {
+			return roleOid(name)
+		}
+		return id.Null
+	}
+	members := make([]pgAuthMember, 0, len(memberships))
+	for _, membership := range memberships {
+		if _, ok := namesByID[membership.Member]; !ok {
+			continue
+		}
+		if _, ok := namesByID[membership.Group]; !ok {
+			continue
+		}
+		members = append(members, pgAuthMember{
+			roleid:      roleIDToOid(membership.Group),
+			member:      roleIDToOid(membership.Member),
+			grantor:     roleIDToOid(membership.GrantedBy),
+			adminOption: membership.WithAdminOption,
+		})
+	}
+	return &pgAuthMembersRowIter{
+		members: members,
+		idx:     0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -65,13 +109,25 @@ var pgAuthMembersSchema = sql.Schema{
 
 // pgAuthMembersRowIter is the sql.RowIter for the pg_auth_members table.
 type pgAuthMembersRowIter struct {
+	members []pgAuthMember
+	idx     int
 }
 
 var _ sql.RowIter = (*pgAuthMembersRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgAuthMembersRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.members) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	member := iter.members[iter.idx-1]
+	return sql.Row{
+		member.roleid,      // roleid
+		member.member,      // member
+		member.grantor,     // grantor
+		member.adminOption, // admin_option
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

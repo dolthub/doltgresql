@@ -43,7 +43,9 @@ func (p PgForeignDataWrapperHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgForeignDataWrapperHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_foreign_data_wrapper row iter
+	// pg_foreign_data_wrapper is currently empty, since foreign data wrappers are not supported.
+	// This table is also empty in vanilla Postgres by default.
+	// TODO: fill this in when foreign data wrappers are supported
 	return emptyRowIter()
 }
 

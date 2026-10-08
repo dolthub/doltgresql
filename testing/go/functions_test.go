@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"math"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -124,6 +125,161 @@ func TestAggregateFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{nil},
 					},
+				},
+			},
+		},
+		{
+			Name: "json_agg",
+			SetUpScript: []string{
+				`SET TIME ZONE 'UTC'`,
+				`CREATE TABLE json_agg_records (id int4, label text)`,
+				`INSERT INTO json_agg_records VALUES (1, 'one'), (2, NULL)`,
+				`CREATE TABLE json_agg_arrays (id int4 primary key, v int4[])`,
+				`INSERT INTO json_agg_arrays VALUES (1, ARRAY[1,NULL,3]), (2, ARRAY[4,5,NULL])`,
+				`CREATE TABLE json_agg_stored (id int4 primary key, amount numeric(40,20), payload json)`,
+				`INSERT INTO json_agg_stored VALUES (1, 12345678901234567890.12345678901234567890, '{"kind":"stored"}')`,
+				`CREATE DOMAIN json_agg_positive_int AS int4 CHECK (VALUE > 0)`,
+				`CREATE FUNCTION json_agg_window_step(state int4, value int4) RETURNS int4 LANGUAGE SQL IMMUTABLE AS 'SELECT state + value'`,
+				`CREATE AGGREGATE json_agg_window_custom (int4) (SFUNC = json_agg_window_step, STYPE = int4, INITCOND = '0')`,
+				`CREATE SCHEMA json_agg_collision`,
+				`CREATE FUNCTION json_agg_collision.json_agg(value int4) RETURNS int4 LANGUAGE SQL IMMUTABLE AS 'SELECT value'`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1::int4),(2),(NULL)) AS t(v);`,
+					Expected: []sql.Row{{`[1, 2, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('quote"slash\line'::text),(E'line\nnext')) AS t(v);`,
+					Expected: []sql.Row{{`["quote\"slash\\line", "line\nnext"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (true),(false),(NULL::bool)) AS t(v);`,
+					Expected: []sql.Row{{`[true, false, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1.2300::numeric),('-4.5'::numeric),('NaN'::numeric)) AS t(v);`,
+					Expected: []sql.Row{{`[1.2300, -4.5, "NaN"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('Infinity'::float8),('-Infinity'::float8),('NaN'::float8),(1.5::float8)) AS t(v);`,
+					Expected: []sql.Row{{`["Infinity", "-Infinity", "NaN", 1.5]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('2024-02-29'::date),('0001-01-01 BC'::date)) AS t(v);`,
+					Expected: []sql.Row{{`["2024-02-29", "0001-01-01 BC"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('2024-02-29 12:34:56.123456'::timestamp),('2024-03-01 00:00:00'::timestamp)) AS t(v);`,
+					Expected: []sql.Row{{`["2024-02-29T12:34:56.123456", "2024-03-01T00:00:00"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('550e8400-e29b-41d4-a716-446655440000'::uuid),('00000000-0000-0000-0000-000000000000'::uuid)) AS t(v);`,
+					Expected: []sql.Row{{`["550e8400-e29b-41d4-a716-446655440000", "00000000-0000-0000-0000-000000000000"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('{"b": 2, "a": 1}'::json),('null'::json)) AS t(v);`,
+					Expected: []sql.Row{{`[{"b": 2, "a": 1}, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('{"b": 2, "a": 1}'::jsonb),('[1, null]'::jsonb)) AS t(v);`,
+					Expected: []sql.Row{{`[{"a": 1, "b": 2}, [1, null]]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('1'::json),('"two"'::json),('true'::json),('null'::json),('{"k":3}'::json),('[4]'::json)) AS t(v);`,
+					Expected: []sql.Row{{`[1, "two", true, null, {"k":3}, [4]]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM json_agg_arrays;`,
+					Expected: []sql.Row{{"[[1,null,3], \n [4,5,null]]"}},
+				},
+				{
+					Query:    `SELECT json_agg(amount) FROM json_agg_stored;`,
+					Expected: []sql.Row{{`[12345678901234567890.12345678901234567890]`}},
+				},
+				{
+					Query:    `SELECT json_agg(r) FROM (SELECT * FROM json_agg_stored ORDER BY id) r;`,
+					Expected: []sql.Row{{`[{"id":1,"amount":12345678901234567890.12345678901234567890,"payload":{"kind":"stored"}}]`}},
+				},
+				{
+					Query:    `SELECT json_agg(NULL::text);`,
+					Expected: []sql.Row{{`[null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (SELECT 1::int AS v WHERE false) AS t;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(json_agg(1));`,
+					Expected: []sql.Row{{"json"}},
+				},
+				{
+					Query:    `SELECT json_agg(r) FROM (SELECT * FROM json_agg_records ORDER BY id) r;`,
+					Expected: []sql.Row{{`[{"id":1,"label":"one"}, ` + "\n " + `{"id":2,"label":null}]`}},
+				},
+				{
+					Query: `SELECT g, json_agg(v) FROM (VALUES ('a',1),('a',2),('b',3),('b',NULL)) AS t(g,v) GROUP BY g ORDER BY g;`,
+					Expected: []sql.Row{
+						{"a", `[1, 2]`},
+						{"b", `[3, null]`},
+					},
+				},
+				{
+					Query: `SELECT json_agg(v) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES (1,10),(2,NULL),(3,30)) AS t(id,v) ORDER BY id;`,
+					Expected: []sql.Row{
+						{`[10]`},
+						{`[10, null]`},
+						{`[10, null, 30]`},
+					},
+				},
+				{
+					Query: `SELECT json_agg(v) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) FROM (VALUES (1,10),(2,20)) AS t(id,v) ORDER BY id;`,
+					Expected: []sql.Row{
+						{nil},
+						{`[10]`},
+					},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('\x00ff'::bytea),(NULL::bytea)) AS t(v);`,
+					Expected: []sql.Row{{`["\\x00ff", null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1::json_agg_positive_int),(2::json_agg_positive_int)) AS t(v);`,
+					Expected: []sql.Row{{`[1, 2]`}},
+				},
+				{
+					Query:    `SELECT json_agg(DISTINCT v) FROM (VALUES (1),(1),(NULL),(NULL)) AS t(v);`,
+					Expected: []sql.Row{{`[1, null]`}},
+				},
+				{
+					Query:           `SELECT json_agg(DISTINCT v) OVER (PARTITION BY p ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES ('a',1,1),('a',2,2),('a',3,2),('b',1,NULL),('b',2,2),('b',3,2)) AS t(p,id,v);`,
+					ExpectedErr:     `DISTINCT is not implemented for window functions`,
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT json_agg(DISTINCT v) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) FROM (VALUES (1,1),(2,NULL)) AS t(id,v);`,
+					ExpectedErr:     `DISTINCT is not implemented for window functions`,
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT sum(DISTINCT v) OVER () FROM (VALUES (1),(1),(NULL)) AS t(v);`,
+					ExpectedErr:     `DISTINCT is not implemented for window functions`,
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT abs(DISTINCT v) OVER () FROM (VALUES (-1)) AS t(v);`,
+					ExpectedErr:     `DISTINCT specified, but abs is not an aggregate function`,
+					ExpectedErrCode: "42809",
+				},
+				{
+					Query:           `SELECT json_agg_window_custom(DISTINCT v) OVER () FROM (VALUES (1),(1)) AS t(v);`,
+					ExpectedErr:     `DISTINCT is not implemented for window functions`,
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT json_agg_collision.json_agg(DISTINCT v) OVER () FROM (VALUES (1)) AS t(v);`,
+					ExpectedErr:     `DISTINCT specified, but json_agg_collision.json_agg is not an aggregate function`,
+					ExpectedErrCode: "42809",
 				},
 			},
 		},
@@ -266,7 +422,7 @@ func TestAggregateFunctions(t *testing.T) {
 				{
 					Query: `SELECT array_agg(name ORDER BY nullable_field) FROM test_data;`,
 					Expected: []sql.Row{
-						{"{Bob,Diana,Alice,Charlie,Eve,Frank}"},
+						{"{Alice,Charlie,Eve,Frank,Bob,Diana}"},
 					},
 				},
 				// ORDER BY with GROUP BY
@@ -367,6 +523,213 @@ func TestAggregateFunctions(t *testing.T) {
 					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1 ELSE v2 END) FROM t2;`,
 					Expected: []sql.Row{
 						{"{a,b,30}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "array_agg with DISTINCT",
+			SetUpScript: []string{
+				`CREATE TABLE test_items (
+					id INT PRIMARY KEY,
+					category TEXT NOT NULL,
+					name TEXT NOT NULL
+				);`,
+				`INSERT INTO test_items (id, category, name) VALUES
+					(1, 'A', 'foo'),
+					(2, 'A', 'bar'),
+					(3, 'B', 'baz'),
+					(4, 'A', 'foo');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Order is non-deterministic without ORDER BY; value reflects insertion-order of first occurrences
+					Query: `SELECT array_agg(DISTINCT name) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{foo,bar,baz}"},
+					},
+				},
+				{
+					// https://github.com/dolthub/doltgresql/issues/2334
+					Query: `SELECT array_agg(DISTINCT name ORDER BY name ASC) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{bar,baz,foo}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(DISTINCT name ORDER BY name DESC) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{foo,baz,bar}"},
+					},
+				},
+				{
+					Query: `SELECT category, array_agg(DISTINCT name ORDER BY name ASC) FROM test_items GROUP BY category ORDER BY category;`,
+					Expected: []sql.Row{
+						{"A", "{bar,foo}"},
+						{"B", "{baz}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(DISTINCT category ORDER BY category) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{A,B}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "array_agg with DISTINCT and composite types",
+			SetUpScript: []string{
+				`CREATE TYPE point_t AS (x INT, y INT);`,
+				`CREATE TABLE points (id INT PRIMARY KEY, p point_t);`,
+				`INSERT INTO points VALUES
+					(1, ROW(1, 2)),
+					(2, ROW(3, 4)),
+					(3, ROW(1, 2)),
+					(4, ROW(5, 6));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT array_agg(DISTINCT p ORDER BY p) FROM points;`,
+					Expected: []sql.Row{
+						{`{"(1,2)","(3,4)","(5,6)"}`},
+					},
+				},
+			},
+		},
+		{
+			Name: "array_agg with DISTINCT handles NULL values",
+			SetUpScript: []string{
+				"CREATE TABLE t (v text);",
+				"INSERT INTO t VALUES (NULL), (NULL), ('x');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT array_agg(DISTINCT v ORDER BY v NULLS FIRST)::text FROM t;",
+					Expected: []sql.Row{
+						{"{NULL,x}"},
+					},
+				},
+				{
+					Query: "SELECT array_agg(DISTINCT v)::text FROM (VALUES (NULL::text), (NULL::text)) AS vals(v);",
+					Expected: []sql.Row{
+						{"{NULL}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "array_agg DISTINCT dedups semantically equal numerics",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT array_agg(DISTINCT v ORDER BY v)::text FROM (VALUES (1.0::numeric), (1.00::numeric)) AS vals(v);",
+					Expected: []sql.Row{
+						{"{1.0}"},
+					},
+				},
+				{
+					Query: `
+				SELECT array_agg(DISTINCT v ORDER BY v)::text
+				FROM (
+					VALUES
+						(1::numeric),
+						(1.000000::numeric)
+				) AS vals(v);
+			`,
+					Expected: []sql.Row{
+						{"{1}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "numeric SUM over COALESCE",
+			SetUpScript: []string{
+				`CREATE TABLE numeric_sum_values (grp INT, amount NUMERIC(10,2));`,
+				`INSERT INTO numeric_sum_values VALUES
+					(1, 12.50),
+					(1, NULL),
+					(2, NULL),
+					(3, 99999999.99),
+					(3, 0.01);`,
+				`CREATE TABLE numeric_sum_groups (id INT PRIMARY KEY);`,
+				`INSERT INTO numeric_sum_groups VALUES (1), (2);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*), sum(coalesce(amount, 0)), pg_typeof(sum(coalesce(amount, 0))) FROM numeric_sum_values;`,
+					Expected: []sql.Row{{int64(5), Numeric("100000012.50"), "numeric"}},
+				},
+				{
+					Query: `SELECT grp, sum(coalesce(amount, 0)), pg_typeof(sum(coalesce(amount, 0))) FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, Numeric("0.00"), "numeric"},
+						{3, Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT grp, amount,
+						sum(coalesce(amount, 0)) OVER (PARTITION BY grp ORDER BY amount),
+						pg_typeof(sum(coalesce(amount, 0)) OVER (PARTITION BY grp ORDER BY amount))
+					FROM numeric_sum_values ORDER BY grp, amount;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
+						{1, nil, Numeric("12.50"), "numeric"},
+						{2, nil, Numeric("0.00"), "numeric"},
+						{3, Numeric("0.01"), Numeric("0.01"), "numeric"},
+						{3, Numeric("99999999.99"), Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT id,
+						(SELECT sum(coalesce(amount, 0)) FROM numeric_sum_values WHERE grp = numeric_sum_groups.id),
+						pg_typeof((SELECT sum(coalesce(amount, 0)) FROM numeric_sum_values WHERE grp = numeric_sum_groups.id))
+					FROM numeric_sum_groups ORDER BY id;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, Numeric("0.00"), "numeric"},
+					},
+				},
+			},
+		},
+		{
+			Name: "var_pop/var_samp/stddev_pop/stddev_samp with infinite and NaN float8 input",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)::text FROM (VALUES ('infinity'), ('1')) v(x);`,
+					Expected: []sql.Row{
+						{math.Inf(1), math.Inf(1), "NaN"},
+					},
+				},
+				{
+					Query: `SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)::text FROM (VALUES ('1'), ('infinity')) v(x);`,
+					Expected: []sql.Row{
+						{math.Inf(1), math.Inf(1), "NaN"},
+					},
+				},
+				{
+					Query: `SELECT var_pop(x::float8)::text FROM (VALUES ('infinity'), ('infinity')) v(x);`,
+					Expected: []sql.Row{
+						{"NaN"},
+					},
+				},
+				{
+					Query: `SELECT var_pop(x::float8)::text, var_samp(x::float8)::text, stddev_pop(x::float8)::text, stddev_samp(x::float8)::text FROM (VALUES ('infinity')) v(x);`,
+					Expected: []sql.Row{
+						{"NaN", nil, "NaN", nil},
+					},
+				},
+				{
+					Query: `SELECT var_pop(x::float8)::text, var_samp(x::float8)::text, stddev_pop(x::float8)::text, stddev_samp(x::float8)::text FROM (VALUES ('nan')) v(x);`,
+					Expected: []sql.Row{
+						{"NaN", nil, "NaN", nil},
+					},
+				},
+				{
+					Query: `SELECT var_pop(x::float8), var_samp(x::float8), stddev_pop(x::float8), stddev_samp(x::float8) FROM (VALUES (1::float8), (2::float8), (3::float8), (4::float8)) v(x);`,
+					Expected: []sql.Row{
+						{1.25, 1.6666666666666667, 1.118033988749895, 1.2909944487358056},
 					},
 				},
 			},
@@ -663,11 +1026,133 @@ func TestFunctionsMath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "greatest/least",
+			SetUpScript: []string{
+				`create table t(a decimal(6, 2), b decimal(8, 5), c decimal(5, 1));`,
+				`insert into t values (2.75, 8.8, 3.1);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT GREATEST(25, 6, 7, 10, 20, 54);`,
+					ExpectedColNames: []string{"greatest"},
+					Expected:         []sql.Row{{54}},
+				},
+				{
+					Query:    `SELECT GREATEST(25, 6, 7, NULL, 20, 54);`,
+					Expected: []sql.Row{{54}},
+				},
+				{
+					Query:    `SELECT GREATEST(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:            `SELECT LEAST(25, 6, 7, 10, 20, 54);`,
+					ExpectedColNames: []string{"least"},
+					Expected:         []sql.Row{{6}},
+				},
+				{
+					Query:    `SELECT LEAST(25, 6, 7, NULL, 20, 54);`,
+					Expected: []sql.Row{{6}},
+				},
+				{
+					Query:    `SELECT LEAST(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select greatest(a, b, c), least(a, b, c) from t;`,
+					Expected: []sql.Row{{Numeric("8.80000"), Numeric("2.75")}},
+				},
+			},
+		},
+		{
+			Name: "num_nonnulls and num_nulls",
+			Assertions: []ScriptTestAssertion{
+				{
+					// The OIDs are registered in the built-in catalog, so they must match Postgres.
+					Query:    `SELECT 'num_nonnulls'::regproc::oid, 'num_nulls'::regproc::oid;`,
+					Expected: []sql.Row{{440, 438}},
+				},
+				{
+					Query:            `SELECT num_nonnulls(1, NULL);`,
+					ExpectedColNames: []string{"num_nonnulls"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:            `SELECT num_nulls(1, NULL);`,
+					ExpectedColNames: []string{"num_nulls"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT num_nonnulls(NULL);`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT num_nulls(NULL);`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT num_nonnulls(1, 2, 3), num_nulls(1, 2, 3);`,
+					Expected: []sql.Row{{3, 0}},
+				},
+				{
+					Query:    `SELECT num_nonnulls('a', NULL::int4, true, NULL::text, 1.5), num_nulls('a', NULL::int4, true, NULL::text, 1.5);`,
+					Expected: []sql.Row{{3, 2}},
+				},
+				{
+					Query:       `SELECT num_nonnulls();`,
+					ExpectedErr: "function num_nonnulls() does not exist",
+				},
+				{
+					Query:       `SELECT num_nulls();`,
+					ExpectedErr: "function num_nulls() does not exist",
+				},
+				{
+					Query:    `CREATE TABLE num_nulls_check (a uuid, b uuid, CONSTRAINT t_direction_check CHECK ((num_nonnulls(a, b) = 1)));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', NULL);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');`,
+					ExpectedErr: "Check constraint",
+				},
+				{
+					Query:       `INSERT INTO num_nulls_check VALUES (NULL, NULL);`,
+					ExpectedErr: "Check constraint",
+				},
+			},
+		},
 	})
 }
 
 func TestFunctionsOID(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name: "oid comparisons",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// A raw OID of 0 given by a client and an internal null OID are the same value
+					Query:    `SELECT 0::oid = 0, 0::oid <> 0, 0::oid < 1::oid, 845743985::oid = 845743985::oid, 845743985::oid = 845743986::oid;`,
+					Expected: []sql.Row{{"t", "f", "t", "t", "f"}},
+				},
+				{
+					// conparentid is a null OID internally, and clients compare it against a raw 0
+					Query:    `SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 'testing'::regclass AND conparentid = 0;`,
+					Expected: []sql.Row{{"testing_pkey"}},
+				},
+				{
+					// A relation's cached OID and the same OID given as a numeric literal are equal
+					Query:    `SELECT ('testing'::regclass::oid)::text::oid = 'testing'::regclass::oid;`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
 		{
 			Name: "to_regclass",
 			SetUpScript: []string{
@@ -870,11 +1355,160 @@ func TestFunctionsOID(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "to_regprocedure",
+			SetUpScript: []string{
+				`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE SCHEMA s;`,
+				`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+				`CREATE TABLE t1 (pk INT PRIMARY KEY);`,
+				`CREATE TRIGGER trg AFTER INSERT ON t1 FOR EACH ROW EXECUTE FUNCTION tf();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT to_regprocedure('tf()');`,
+					ExpectedColNames: []string{"to_regprocedure"},
+					Expected:         []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('pg_catalog.now()');`,
+					Expected: []sql.Row{{"now()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('"tf"()');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('public.tf()');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure(' tf ( ) ');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2(int, text)');`,
+					Expected: []sql.Row{{"f2(integer,text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2( integer , text ) ');`,
+					Expected: []sql.Row{{"f2(integer,text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2(int4, varchar)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f3(text)');`,
+					Expected: []sql.Row{{"f3(text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f3(bool)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('s.sf(int)');`,
+					Expected: []sql.Row{{"s.sf(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('sf(int)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('p1(int)');`,
+					Expected: []sql.Row{{"p1(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('abs(float8)');`,
+					Expected: []sql.Row{{"abs(double precision)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('nosuch()');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('nosuchschema.sf(int)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(to_regprocedure('tf()'));`,
+					Expected: []sql.Row{{"regprocedure"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('revision_change()') IS NULL;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 1 FROM pg_trigger t WHERE t.tgname = 'trg' AND t.tgfoid = to_regprocedure('"tf"()');`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:           `SELECT to_regprocedure('tf');`,
+					ExpectedErr:     `expected a left parenthesis`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int,text');`,
+					ExpectedErr:     `expected a right parenthesis`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int,)');`,
+					ExpectedErr:     `expected a type name`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int))');`,
+					ExpectedErr:     `improper type name`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('abs(nosuchtype)');`,
+					ExpectedErr:     `type "nosuchtype" does not exist`,
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:    `SET search_path = s;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT to_regprocedure('s.sf(int)');`,
+					Expected: []sql.Row{{"sf(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('public.f2(int,text)');`,
+					Expected: []sql.Row{{"public.f2(integer,text)"}},
+				},
+			},
+		},
 	})
 }
 
 func TestSystemInformationFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_typeof",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_typeof(42), pg_typeof('abc'::text), pg_typeof(ARRAY['a']);`,
+					Expected: []sql.Row{{"integer", "text", "text[]"}},
+				},
+				{
+					// A null value still has a type, so its type is what gets reported.
+					Query:    `SELECT pg_typeof(NULL::int), pg_typeof(NULL::text[]);`,
+					Expected: []sql.Row{{"integer", "text[]"}},
+				},
+				{
+					// An untyped NULL has resolved to no type at all yet. PostgreSQL reports text here.
+					Query:    `SELECT pg_typeof(NULL);`,
+					Expected: []sql.Row{{"unknown"}},
+				},
+			},
+		},
 		{
 			Name:     "current_database",
 			Database: "test",
@@ -924,7 +1558,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				{
 					Query:       `SELECT current_catalog();`,
-					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE XX000)`,
+					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE 42601)`,
 				},
 				// // TODO: Implement table function for current_catalog
 				{
@@ -936,7 +1570,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM current_catalog();`,
-					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE XX000)`,
+					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE 42601)`,
 				},
 			},
 		},
@@ -1017,14 +1651,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 		{
 			Name: "current_schemas",
 			Assertions: []ScriptTestAssertion{
-				{ // TODO: Not sure why Postgres does not display "$user", which is postgres here
+				{ // "$user" expands to "postgres", which has no matching schema, so it is omitted
 					Query:            `SELECT current_schemas(true);`,
 					ExpectedColNames: []string{"current_schemas"},
 					Expected: []sql.Row{
 						{"{pg_catalog,public}"},
 					},
 				},
-				{ // TODO: Not sure why Postgres does not display "$user" here
+				{ // "$user" expands to "postgres", which has no matching schema, so it is omitted
 					Query: `SELECT current_schemas(false);`,
 					Expected: []sql.Row{
 						{"{public}"},
@@ -1065,6 +1699,153 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{"{public,test_schema}"},
 					},
+				},
+			},
+		},
+		{
+			Name: "current_schema with nonexistent schemas on the search_path",
+			SetUpScript: []string{
+				`CREATE SCHEMA test_schema;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Search path entries that name no existing schema are omitted
+					Query:    `SET search_path TO does_not_exist, test_schema, public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"test_schema"}},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{test_schema,public}"}},
+				},
+				{
+					Query:    `SELECT current_schemas(true);`,
+					Expected: []sql.Row{{"{pg_catalog,test_schema,public}"}},
+				},
+				{
+					// When nothing on the search path exists, current_schema() is NULL and current_schemas() is
+					// empty apart from the implicitly searched pg_catalog
+					Query:    `SET search_path TO does_not_exist;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					Query:    `SELECT current_schemas(true);`,
+					Expected: []sql.Row{{"{pg_catalog}"}},
+				},
+				{
+					// A schema named twice on the search path is only searched, and reported, once
+					Query:    `SET search_path TO test_schema, public, test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{test_schema,public}"}},
+				},
+				{
+					// An explicit pg_catalog keeps its position instead of being prepended again
+					Query:    `SET search_path TO public, pg_catalog;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schemas(true);`,
+					Expected: []sql.Row{{"{public,pg_catalog}"}},
+				},
+				{
+					// Schema lookup is case-insensitive, but the schema's stored name is what gets reported
+					Query:    `SET search_path TO TEST_SCHEMA;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"test_schema"}},
+				},
+			},
+		},
+		{
+			Name: `current_schema with "$user" on the search_path`,
+			Assertions: []ScriptTestAssertion{
+				{
+					// The default search_path leads with "$user", which expands to the session user, "postgres"
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{`"$user", public`}},
+				},
+				{
+					// No schema named "postgres" exists yet, so the entry is omitted
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{public}"}},
+				},
+				{
+					Query:    `CREATE SCHEMA postgres;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// ... and included once it does exist
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"postgres"}},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{postgres,public}"}},
+				},
+				{
+					// Setting the path explicitly keeps the quotes around "$user", which is what distinguishes
+					// the placeholder from a schema of that literal name
+					Query:    `SET search_path TO "$user", public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{`"$user", public`}},
+				},
+				{
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"postgres"}},
+				},
+			},
+		},
+		{
+			// Every other assertion here runs as "postgres", so on its own it cannot tell "$user" expanding to
+			// the session's user from a constant. This connects as a second user to pin that down.
+			Name: `"$user" on the search_path expands to the connected user`,
+			SetUpScript: []string{
+				`CREATE USER tester PASSWORD 'password';`,
+				`CREATE SCHEMA tester;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// A schema named "tester" exists, but no schema is named after this session's user
+					Username: "postgres",
+					Password: "password",
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{public}"}},
+				},
+				{
+					// The same unchanged setting names the tester schema for the session that owns the name
+					Username: "tester",
+					Password: "password",
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"tester"}},
+				},
+				{
+					Username: "tester",
+					Password: "password",
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{tester,public}"}},
 				},
 			},
 		},
@@ -1521,6 +2302,24 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_show_all_settings",
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: add all config parameters
+					Query: `SELECT name FROM pg_show_all_settings();`,
+					Expected: []sql.Row{
+						{"bytea_output"},
+					},
+				},
+				{
+					Query: `SELECT set_config('bytea_output','hex',false) FROM pg_show_all_settings() WHERE name = 'bytea_output';`,
+					Expected: []sql.Row{
+						{"hex"},
+					},
+				},
+			},
+		},
 	})
 }
 
@@ -1607,6 +2406,119 @@ func TestJsonFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "to_json",
+			SetUpScript: []string{
+				`SET TIME ZONE 'UTC'`,
+				`SET DateStyle = 'SQL, MDY'`,
+				`CREATE TABLE to_json_test (id int4, label text)`,
+				`INSERT INTO to_json_test VALUES (7, 'named')`,
+				`CREATE DOMAIN to_json_int_domain AS int4`,
+				`CREATE DOMAIN to_json_oid_domain AS oid`,
+				`CREATE DOMAIN to_json_json_domain AS json`,
+				`CREATE DOMAIN to_json_int_array_domain AS int4[]`,
+				`CREATE TYPE to_json_named_record AS (id int4, label text)`,
+				`CREATE DOMAIN to_json_named_record_domain AS to_json_named_record`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT to_json(E'quote " slash \\ newline\n'::text)`,
+					Expected: []sql.Row{{`"quote \" slash \\ newline\n"`}},
+				},
+				{
+					Query:    `SELECT to_json(42::int4)`,
+					Expected: []sql.Row{{"42"}},
+				},
+				{
+					Query:    `SELECT pg_typeof(to_json(42)), pg_typeof(array_to_json(ARRAY[1])), pg_typeof(row_to_json(ROW(1)))`,
+					Expected: []sql.Row{{"json", "json", "json"}},
+				},
+				{
+					Query:    `SELECT to_json(123.450::numeric)`,
+					Expected: []sql.Row{{"123.450"}},
+				},
+				{
+					Query:    `SELECT to_json('NaN'::numeric), to_json('Infinity'::numeric), to_json('-Infinity'::numeric)`,
+					Expected: []sql.Row{{`"NaN"`, `"Infinity"`, `"-Infinity"`}},
+				},
+				{
+					Query:    `SELECT to_json(1.25::float8), to_json('NaN'::float8), to_json('Infinity'::float8), to_json('-Infinity'::float8)`,
+					Expected: []sql.Row{{"1.25", `"NaN"`, `"Infinity"`, `"-Infinity"`}},
+				},
+				{
+					Query:    `SELECT to_json(1e20::float8), to_json(1e-7::float8)`,
+					Expected: []sql.Row{{"1e+20", "1e-07"}},
+				},
+				{
+					Query:    `SELECT to_json(true)`,
+					Expected: []sql.Row{{"true"}},
+				},
+				{
+					Query:    `SELECT to_json(DATE '2024-02-29')`,
+					Expected: []sql.Row{{`"2024-02-29"`}},
+				},
+				{
+					Query:    `SELECT to_json(TIMESTAMP '2024-02-29 12:34:56.123456')`,
+					Expected: []sql.Row{{`"2024-02-29T12:34:56.123456"`}},
+				},
+				{
+					Query:    `SELECT to_json(TIMESTAMPTZ '2024-02-29 12:34:56.123456+05:30')`,
+					Expected: []sql.Row{{`"2024-02-29T07:04:56.123456+00:00"`}},
+				},
+				{
+					Query:    `SELECT to_json(DATE '0001-01-01 BC'), to_json(TIMESTAMP '0001-01-01 12:34:56.123456 BC'), to_json(TIMESTAMPTZ '0001-01-01 12:34:56.123456+00 BC')`,
+					Expected: []sql.Row{{`"0001-01-01 BC"`, `"0001-01-01T12:34:56.123456 BC"`, `"0001-01-01T12:34:56.123456+00:00 BC"`}},
+				},
+				{
+					Query:    `SELECT to_json('550e8400-e29b-41d4-a716-446655440000'::uuid)`,
+					Expected: []sql.Row{{`"550e8400-e29b-41d4-a716-446655440000"`}},
+				},
+				{
+					Query:    `SELECT to_json(23::oid), to_json('pg_class'::regclass), to_json('42'::xid)`,
+					Expected: []sql.Row{{`"23"`, `"pg_class"`, `"42"`}},
+				},
+				{
+					Query:    `SELECT to_json(7::to_json_int_domain), to_json(23::to_json_oid_domain)`,
+					Expected: []sql.Row{{"7", `"23"`}},
+				},
+				{
+					Query:    `SELECT to_json(ARRAY[1, NULL, 3]::to_json_int_array_domain)`,
+					Expected: []sql.Row{{`[1,null,3]`}},
+				},
+				{
+					Query:    `SELECT to_json((ROW(7, 'named')::to_json_named_record)::to_json_named_record_domain)`,
+					Expected: []sql.Row{{`{"id":7,"label":"named"}`}},
+				},
+				{
+					Query:    `SELECT to_json('{"b": 2, "a":1}'::json), to_json('{"b": 2, "a":1}'::jsonb)`,
+					Expected: []sql.Row{{`{"b": 2, "a":1}`, `{"a": 1, "b": 2}`}},
+				},
+				{
+					Query:    `SELECT to_json('{"b": 2, "a":1}'::to_json_json_domain)`,
+					Expected: []sql.Row{{`{"b": 2, "a":1}`}},
+				},
+				{
+					Query:    `SELECT to_json(E'\\x00ff'::bytea), to_json(INTERVAL '1 day 02:03:04.5')`,
+					Expected: []sql.Row{{`"\\x00ff"`, `"1 day 02:03:04.5"`}},
+				},
+				{
+					Query:    `SELECT to_json(ARRAY[1, NULL, 3]::int4[])`,
+					Expected: []sql.Row{{`[1,null,3]`}},
+				},
+				{
+					Query:    `SELECT to_json(ROW(1, 'x'::text, NULL::bool))`,
+					Expected: []sql.Row{{`{"f1":1,"f2":"x","f3":null}`}},
+				},
+				{
+					Query:    `SELECT to_json(t) FROM to_json_test t`,
+					Expected: []sql.Row{{`{"id":7,"label":"named"}`}},
+				},
+				{
+					Query:    `SELECT to_json(NULL::text)`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
 			Name: "row_to_json anonymous row",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1681,6 +2593,66 @@ func TestArrayFunctions(t *testing.T) {
 					Query:    `select * from unnest(array[1,2,3]);`,
 					Expected: []sql.Row{{1}, {2}, {3}},
 				},
+				{
+					Query:            `SELECT * FROM unnest(ARRAY[1, 2]::integer[], ARRAY[3, 4]::integer[]);`,
+					ExpectedColNames: []string{"unnest", "unnest"},
+					Expected:         []sql.Row{{1, 3}, {2, 4}},
+				},
+				{
+					Query:    `SELECT * FROM unnest(ARRAY[1, 2, 3], ARRAY['a', 'b']::text[]);`,
+					Expected: []sql.Row{{1, "a"}, {2, "b"}, {3, nil}},
+				},
+				{
+					Query:    `SELECT * FROM unnest(ARRAY[]::int[], ARRAY['a']);`,
+					Expected: []sql.Row{{nil, "a"}},
+				},
+				{
+					Query:    `SELECT * FROM unnest(NULL::int[], ARRAY['a']);`,
+					Expected: []sql.Row{{nil, "a"}},
+				},
+				{
+					Query:            `SELECT a, b FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) AS t(a, b);`,
+					ExpectedColNames: []string{"a", "b"},
+					Expected:         []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query:    `SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a', 'b'], ARRAY[true, false]);`,
+					Expected: []sql.Row{{1, "a", "t"}, {2, "b", "f"}},
+				},
+				{
+					Query:    `SELECT * FROM (SELECT 1) s, unnest(ARRAY[1, 2], ARRAY['a', 'b']);`,
+					Expected: []sql.Row{{1, 1, "a"}, {1, 2, "b"}},
+				},
+				{
+					Query:    `SELECT id, a, b FROM testing, unnest(val1, ARRAY['x', 'y', 'z']) AS t(a, b) ORDER BY id, b;`,
+					Expected: []sql.Row{{1, nil, "x"}, {1, nil, "y"}, {1, nil, "z"}, {2, 1, "x"}, {2, nil, "y"}, {2, nil, "z"}, {3, 1, "x"}, {3, 2, "y"}, {3, nil, "z"}},
+				},
+				{
+					Query:       `SELECT * FROM unnest(ARRAY[1, 2], 5);`,
+					ExpectedErr: "function pg_catalog.unnest(integer) does not exist",
+				},
+				{
+					Query:    `SELECT t.* FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) t;`,
+					Expected: []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query:       `SELECT unnest(ARRAY[1, 2], ARRAY[3, 4]);`,
+					ExpectedErr: "function unnest(integer[], integer[]) does not exist",
+				},
+				{
+					Query:            `SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) WITH ORDINALITY;`,
+					ExpectedColNames: []string{"unnest", "unnest", "ordinality"},
+					Expected:         []sql.Row{{1, "a", 1}, {2, "b", 2}},
+				},
+				{
+					Query:            `SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) WITH ORDINALITY AS t(x, y, n);`,
+					ExpectedColNames: []string{"x", "y", "n"},
+					Expected:         []sql.Row{{1, "a", 1}, {2, "b", 2}},
+				},
+				{
+					Query:    `SELECT id, a, b, n FROM testing, unnest(val1, ARRAY['x', 'y']) WITH ORDINALITY AS t(a, b, n) ORDER BY id, n;`,
+					Expected: []sql.Row{{1, nil, "x", 1}, {1, nil, "y", 2}, {2, 1, "x", 1}, {2, nil, "y", 2}, {3, 1, "x", 1}, {3, 2, "y", 2}},
+				},
 			},
 		},
 		{
@@ -1692,12 +2664,24 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{"[1,2,3]"}},
 				},
 				{
+					Query:    `SELECT array_to_json(ARRAY [jsonb '{"a":1}', jsonb '{"b":[2,3]}']);`,
+					Expected: []sql.Row{{`[{"a":1},{"b":[2,3]}]`}},
+				},
+				{
 					Query:    `SELECT array_to_json(ARRAY[1.5, 2.5]::float8[])`,
 					Expected: []sql.Row{{"[1.5,2.5]"}},
 				},
 				{
+					Query:    `SELECT array_to_json(ARRAY[1e20::float8, 1e-7::float8])`,
+					Expected: []sql.Row{{"[1e+20,1e-07]"}},
+				},
+				{
 					Query:    `SELECT array_to_json(ARRAY[true, false])`,
 					Expected: []sql.Row{{"[true,false]"}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY[DATE '2024-02-29', DATE '2025-01-01'])`,
+					Expected: []sql.Row{{`["2024-02-29","2025-01-01"]`}},
 				},
 				{
 					Query:    `SELECT array_to_json(ARRAY['a', 'b', 'c'])`,
@@ -1708,7 +2692,7 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{"[1,null,3]"}},
 				},
 				{
-					Skip:     true, // TODO: multidimensional array literals are not yet supported
+					Skip:     true, // TODO: https://github.com/dolthub/doltgresql/issues/3183
 					Query:    `SELECT array_to_json('{{1,2},{3,4}}'::int[])`,
 					Expected: []sql.Row{{"[[1,2],[3,4]]"}},
 				},
@@ -1742,6 +2726,97 @@ func TestArrayFunctions(t *testing.T) {
 					Skip:     true, // TODO: we currently return "37_1"
 					Query:    `SELECT array_to_string(ARRAY[37.89::int4, 1.2::int4], '_');`,
 					Expected: []sql.Row{{"38_1"}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3108
+			Name: "array_to_string on vector types (int2vector, oidvector)",
+			SetUpScript: []string{
+				`CREATE TABLE vectest (pk INT PRIMARY KEY, a INT, b INT);`,
+				`CREATE INDEX vectest_ab ON vectest (a, b);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_to_string(indkey, ',') FROM pg_index WHERE indexrelid = 'vectest_ab'::regclass;`,
+					Expected: []sql.Row{{"2,3"}},
+				},
+				{
+					Query:    `SELECT array_to_string(indkey, ',') FROM pg_index WHERE indexrelid = 'vectest_pkey'::regclass;`,
+					Expected: []sql.Row{{"1"}},
+				},
+				{
+					Query:    `SELECT array_to_string(indclass, ',') FROM pg_index WHERE indexrelid = 'vectest_ab'::regclass;`,
+					Expected: []sql.Row{{"15009,15009"}},
+				},
+			},
+		},
+		{
+			Name: "string_to_array",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT string_to_array('a,b,c', ',');`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('xx~^~yy~^~zz', '~^~', 'yy');`,
+					Expected: []sql.Row{{"{xx,NULL,zz}"}},
+				},
+				{
+					// NULL delimiter splits into individual characters
+					Query:    `SELECT string_to_array('abc', NULL);`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('abc', NULL, 'b');`,
+					Expected: []sql.Row{{"{a,NULL,c}"}},
+				},
+				{
+					// empty delimiter returns the whole string as a single element
+					Query:    `SELECT string_to_array('abc', '');`,
+					Expected: []sql.Row{{"{abc}"}},
+				},
+				{
+					// empty input string returns an empty array
+					Query:    `SELECT string_to_array('', ',');`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('', NULL);`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					// NULL input string returns NULL
+					Query:    `SELECT string_to_array(NULL, ',');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT string_to_array(NULL, ',', 'a');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// NULL null_string performs no NULL substitution
+					Query:    `SELECT string_to_array('a,b,c', ',', NULL);`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					// delimiters at the edges produce empty-string fields
+					Query:    `SELECT string_to_array(',a,,b,', ',');`,
+					Expected: []sql.Row{{`{"",a,"",b,""}`}},
+				},
+				{
+					// empty null_string maps empty fields to NULL
+					Query:    `SELECT string_to_array(',a,', ',', '');`,
+					Expected: []sql.Row{{"{NULL,a,NULL}"}},
+				},
+				{
+					// result can be cast to other array types
+					Query:    `SELECT string_to_array('1,2,3', ',')::int4[];`,
+					Expected: []sql.Row{{"{1,2,3}"}},
+				},
+				{
+					Query:    `SELECT array_length(string_to_array('a,b,c', ','), 1);`,
+					Expected: []sql.Row{{int32(3)}},
 				},
 			},
 		},
@@ -1854,20 +2929,550 @@ func TestArrayFunctions(t *testing.T) {
 	})
 }
 
+// TestCardinality checks array element counts for literals, table columns, and subqueries.
+func TestCardinality(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "cardinality",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT cardinality(ARRAY[[1,NULL],[3,4]]), cardinality(ARRAY[]::int[]), cardinality(NULL::int[]);",
+				Expected: []sql.Row{{4, 0, nil}},
+			},
+			{Query: "SELECT cardinality(ARRAY[[[1,2]],[[3,4]]]);", Expected: []sql.Row{{4}}},
+			{
+				Query:    "SELECT id, cardinality(a) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, 4}, {2, 0}, {3, nil}},
+			},
+			{
+				Query:    "SELECT cardinality((SELECT a FROM array_inputs WHERE id=1));",
+				Expected: []sql.Row{{4}},
+			},
+			{
+				Query:    "SELECT cardinality(ARRAY[[[[[[NULL::int]]]]]]);",
+				Expected: []sql.Row{{1}},
+			},
+		},
+	}})
+}
+
+// TestArrayLower checks array lower bounds for literals, table columns, and subqueries.
+func TestArrayLower(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "array_lower",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_lower(ARRAY[[1,2],[3,4]],1),array_lower(ARRAY[[1,2],[3,4]],2),array_lower(ARRAY[1],2);",
+				Expected: []sql.Row{{1, 1, nil}},
+			},
+			{
+				Query:    "SELECT array_lower(ARRAY[]::int[],1),array_lower(NULL::int[],1),array_lower(ARRAY[1],0),array_lower('1 2'::int2vector,1);",
+				Expected: []sql.Row{{nil, nil, nil, 0}},
+			},
+			{
+				Query:    "SELECT id, array_lower(a,1) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, 1}, {2, nil}, {3, nil}},
+			},
+			{
+				Query:    "SELECT array_lower((SELECT a FROM array_inputs WHERE id=1),NULL), array_lower(ARRAY[1],-1), array_lower('1 2'::oidvector,1);",
+				Expected: []sql.Row{{nil, nil, 0}},
+			},
+		},
+	}})
+}
+
+// TestArrayFill checks array filling and invalid dimension errors for literals, table columns, and subqueries.
+func TestArrayFill(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "array_fill",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_fill(7,ARRAY[2,3]),array_fill(NULL::int,ARRAY[2,2]),array_fill('x'::varchar,ARRAY[2],ARRAY[1]);",
+				Expected: []sql.Row{{"{{7,7,7},{7,7,7}}", "{{NULL,NULL},{NULL,NULL}}", "{x,x}"}},
+			},
+			{
+				Query:    "SELECT array_fill(1,ARRAY[]::int[]),array_fill(1,ARRAY[2,0]);",
+				Expected: []sql.Row{{"{}", "{}"}},
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[1,1,1,1,1,1,1]);",
+				ExpectedErr:     "array",
+				ExpectedErrCode: "54000",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[NULL]::int[]);",
+				ExpectedErr:     "cannot be null",
+				ExpectedErrCode: "22004",
+			},
+			{
+				Query:           "SELECT array_fill(1,NULL::int[]);",
+				ExpectedErr:     "cannot be null",
+				ExpectedErrCode: "22004",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2],ARRAY[0]);",
+				ExpectedErr:     "array",
+				ExpectedErrCode: "0A000",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[[2,2]]);",
+				ExpectedErr:     "array",
+				ExpectedErrCode: "2202E",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2147483647,2]);",
+				ExpectedErr:     "array",
+				ExpectedErrCode: "54000",
+			},
+			{
+				Query:    "SELECT id, array_fill(id,ARRAY[cardinality(a)]) FROM array_inputs WHERE id<3 ORDER BY id;",
+				Expected: []sql.Row{{1, "{1,1,1,1}"}, {2, "{}"}},
+			},
+			{
+				Query:    "SELECT array_fill((SELECT id FROM array_inputs WHERE id=1),(SELECT ARRAY[2,1]),(SELECT ARRAY[1,1]));",
+				Expected: []sql.Row{{"{{1},{1}}"}},
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2],NULL::int[]);",
+				ExpectedErr:     "cannot be null",
+				ExpectedErrCode: "22004",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2],ARRAY[NULL]::int[]);",
+				ExpectedErr:     "cannot be null",
+				ExpectedErrCode: "22004",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[2,2],ARRAY[1]);",
+				ExpectedErr:     "wrong number of array subscripts",
+				ExpectedErrCode: "2202E",
+			},
+			{
+				Query:           "SELECT array_fill(1,ARRAY[-1]);",
+				ExpectedErr:     "array size exceeds",
+				ExpectedErrCode: "54000",
+			},
+		},
+	}})
+}
+
+// TestArrayRemove checks removal of matching array elements for literals, table columns, and subqueries.
+func TestArrayRemove(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "array_remove",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_remove(ARRAY[1,2,1,NULL],1), array_remove(ARRAY[1,NULL,2],NULL), array_remove(NULL::int[],1);",
+				Expected: []sql.Row{{"{2,NULL}", "{1,2}", nil}},
+			},
+			{
+				Query:    "SELECT array_remove(ARRAY[1,1],1), array_remove(ARRAY[]::text[],'a');",
+				Expected: []sql.Row{{"{}", "{}"}},
+			},
+			{
+				Query:           "SELECT array_remove(ARRAY[[1,2],[3,4]],2);",
+				ExpectedErr:     "removing elements",
+				ExpectedErrCode: "0A000",
+			},
+			{
+				Query:    "SELECT id, array_remove(a,3) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{NULL,1}"}, {2, "{}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT array_remove((SELECT a FROM array_inputs WHERE id=1),(SELECT NULL::int));",
+				Expected: []sql.Row{{"{3,1,3}"}},
+			},
+			{
+				Query:    "SELECT array_remove(ARRAY['NaN'::numeric,1,'NaN'::numeric],'NaN'::numeric),array_remove(ARRAY['a','b'],'z');",
+				Expected: []sql.Row{{"{1}", "{a,b}"}},
+			},
+		},
+	}})
+}
+
+// TestArrayReplace checks replacement of matching array elements for literals, table columns, and subqueries.
+func TestArrayReplace(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "array_replace",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_replace(ARRAY[[1,NULL],[1,4]],1,9), array_replace(ARRAY[[1,NULL],[1,4]],NULL,0);",
+				Expected: []sql.Row{{"{{9,NULL},{9,4}}", "{{1,0},{1,4}}"}},
+			},
+			{
+				Query:    "SELECT array_replace(ARRAY['a','b'],'a',NULL), array_replace(NULL::int[],1,2), array_replace(ARRAY[]::int[],1,2);",
+				Expected: []sql.Row{{"{NULL,b}", nil, "{}"}},
+			},
+			{
+				Query:    "SELECT id, array_replace(a,3,NULL) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{NULL,NULL,1,NULL}"}, {2, "{}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT array_replace((SELECT a FROM array_inputs WHERE id=1),(SELECT NULL::int),(SELECT 2));",
+				Expected: []sql.Row{{"{3,2,1,3}"}},
+			},
+			{
+				Query:    "SELECT array_replace(ARRAY[NULL,NULL]::int[],NULL,NULL),array_replace(ARRAY[1,2],9,0);",
+				Expected: []sql.Row{{"{NULL,NULL}", "{1,2}"}},
+			},
+		},
+	}})
+}
+
+// TestTrimArray checks trimming of the first array dimension for literals, table columns, and subqueries.
+func TestTrimArray(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "trim_array",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT trim_array(ARRAY[[1,2],[3,4],[5,6]],1), trim_array(ARRAY[1,2],2), trim_array(NULL::int[],1);",
+				Expected: []sql.Row{{"{{1,2},{3,4}}", "{}", nil}},
+			},
+			{
+				Query:    "SELECT trim_array(ARRAY[]::int[],0);",
+				Expected: []sql.Row{{"{}"}},
+			},
+			{
+				Query:           "SELECT trim_array(ARRAY[[1,2],[3,4]],3);",
+				ExpectedErr:     "number of elements",
+				ExpectedErrCode: "2202E",
+			},
+			{
+				Query:           "SELECT trim_array(ARRAY[1],-1);",
+				ExpectedErr:     "number of elements",
+				ExpectedErrCode: "2202E",
+			},
+			{
+				Query:    "SELECT id, trim_array(a,0) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{3,NULL,1,3}"}, {2, "{}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT trim_array((SELECT a FROM array_inputs WHERE id=1),(SELECT 2));",
+				Expected: []sql.Row{{"{3,NULL}"}},
+			},
+			{
+				Query:    "SELECT trim_array(ARRAY[1],NULL),trim_array(ARRAY[[1,2],[3,4]],2);",
+				Expected: []sql.Row{{nil, "{}"}},
+			},
+		},
+	}})
+}
+
+// TestArrayReverse checks reversal of the first array dimension for literals, table columns, and subqueries.
+func TestArrayReverse(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "array_reverse",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_reverse(ARRAY[[2,4],[3,1],[1,9]]), array_reverse(ARRAY[1,NULL,2]);",
+				Expected: []sql.Row{{"{{1,9},{3,1},{2,4}}", "{2,NULL,1}"}},
+			},
+			{
+				Query:    "SELECT array_reverse(ARRAY[]::int[]),array_reverse(NULL::int[]);",
+				Expected: []sql.Row{{"{}", nil}},
+			},
+			{
+				Query:    "SELECT id, array_reverse(a) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{3,1,NULL,3}"}, {2, "{}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT array_reverse((SELECT a FROM array_inputs WHERE id=1));",
+				Expected: []sql.Row{{"{3,1,NULL,3}"}},
+			},
+			{
+				Query:    "SELECT array_reverse(ARRAY[NULL]::int[]),array_reverse(ARRAY[[[1,2]],[[3,4]]]);",
+				Expected: []sql.Row{{"{NULL}", "{{{3,4}},{{1,2}}}"}},
+			},
+		},
+	}})
+}
+
+// TestArraySort checks array ordering and null placement for literals, table columns, and subqueries.
+func TestArraySort(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "array_sort",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT array_sort(ARRAY[[2,4],[3,1],[1,9]]), array_sort(ARRAY[3,NULL,1,2]);",
+				Expected: []sql.Row{{"{{1,9},{2,4},{3,1}}", "{1,2,3,NULL}"}},
+			},
+			{
+				Query:    "SELECT array_sort(ARRAY[3,NULL,1],true), array_sort(ARRAY[3,NULL,1],true,false), array_sort(ARRAY[3,NULL,1],false,true);",
+				Expected: []sql.Row{{"{NULL,3,1}", "{3,1,NULL}", "{NULL,1,3}"}},
+			},
+			{
+				Query:    "SELECT array_sort(ARRAY[[1,NULL],[1,2],[NULL,1]]), array_sort(ARRAY[]::int[]), array_sort(NULL::int[]);",
+				Expected: []sql.Row{{"{{1,2},{1,NULL},{NULL,1}}", "{}", nil}},
+			},
+			{
+				Query:    "SELECT array_sort(ARRAY['z','a','m']),array_sort(ARRAY[1],NULL);",
+				Expected: []sql.Row{{"{a,m,z}", nil}},
+			},
+			{
+				Query:    "SELECT id, array_sort(a),array_sort(a,true),array_sort(a,true,false) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "{1,3,3,NULL}", "{NULL,3,3,1}", "{3,3,1,NULL}"}, {2, "{}", "{}", "{}"}, {3, nil, nil, nil}},
+			},
+			{
+				Query:    "SELECT array_sort((SELECT a FROM array_inputs WHERE id=1)),array_sort((SELECT a FROM array_inputs WHERE id=1),false),array_sort((SELECT a FROM array_inputs WHERE id=1),false,true);",
+				Expected: []sql.Row{{"{1,3,3,NULL}", "{1,3,3,NULL}", "{NULL,1,3,3}"}},
+			},
+			{
+				Query:    "SELECT array_sort(ARRAY[[1,NULL],[1,NULL],[1,2]],true,false),array_sort(ARRAY[1],false,NULL),array_sort(ARRAY[NULL,NULL]::int[]);",
+				Expected: []sql.Row{{"{{1,NULL},{1,NULL},{1,2}}", nil, "{NULL,NULL}"}},
+			},
+		},
+	}})
+}
+
+// TestArrayContains checks array containment for literals, table columns, and subqueries.
+func TestArrayContains(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "arraycontains",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[[1,2],[3,4]] @> ARRAY[4,1],ARRAY[1] @> ARRAY[1,1],ARRAY[NULL]::int[] @> ARRAY[NULL]::int[];",
+				Expected: []sql.Row{{"t", "t", "f"}},
+			},
+			{
+				Query:    "SELECT ARRAY['red','blue']::varchar[] @> ARRAY['red']::varchar[],ARRAY[1] @> ARRAY[]::int[],NULL::int[] @> ARRAY[1];",
+				Expected: []sql.Row{{"t", "t", nil}},
+			},
+			{
+				Query:    "SELECT id, a @> ARRAY[3,3], a @> ARRAY[]::int[] FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "t", "t"}, {2, "f", "t"}, {3, nil, nil}},
+			},
+			{
+				Query:    "SELECT (SELECT a FROM array_inputs WHERE id=1) @> (SELECT ARRAY[NULL]::int[]), ARRAY[]::int[] @> ARRAY[]::int[];",
+				Expected: []sql.Row{{"f", "t"}},
+			},
+		},
+	}})
+}
+
+// TestArrayContained checks reversed array containment for literals, table columns, and subqueries.
+func TestArrayContained(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "arraycontained",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[4,1] <@ ARRAY[[1,2],[3,4]],ARRAY[5] <@ ARRAY[1,2],ARRAY[]::int[] <@ ARRAY[1];",
+				Expected: []sql.Row{{"t", "f", "t"}},
+			},
+			{
+				Query:    "SELECT id, a <@ ARRAY[1,3], ARRAY[]::int[] <@ a FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "f", "t"}, {2, "t", "t"}, {3, nil, nil}},
+			},
+			{
+				Query:    "SELECT (SELECT ARRAY[3,3]) <@ (SELECT a FROM array_inputs WHERE id=1), ARRAY[NULL]::int[] <@ ARRAY[NULL]::int[];",
+				Expected: []sql.Row{{"t", "f"}},
+			},
+		},
+	}})
+}
+
+// TestArrayOverlap checks shared array elements for literals, table columns, and subqueries.
+func TestArrayOverlap(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "arrayoverlap",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[[1,2],[3,4]] && ARRAY[4,9],ARRAY[1,2] && ARRAY[9],ARRAY[NULL]::int[] && ARRAY[NULL]::int[];",
+				Expected: []sql.Row{{"t", "f", "f"}},
+			},
+			{
+				Query:    "SELECT ARRAY[]::int[] && ARRAY[1],NULL::int[] && ARRAY[1],ARRAY['a']::varchar[] && ARRAY['b','a']::varchar[];",
+				Expected: []sql.Row{{"f", nil, "t"}},
+			},
+			{
+				Query:    "SELECT id, a && ARRAY[1], a && ARRAY[NULL]::int[] FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, "t", "f"}, {2, "f", "f"}, {3, nil, nil}},
+			},
+			{
+				Query:    "SELECT (SELECT a FROM array_inputs WHERE id=1) && (SELECT ARRAY[9]), ARRAY[]::int[] && ARRAY[]::int[];",
+				Expected: []sql.Row{{"f", "f"}},
+			},
+		},
+	}})
+}
+
+// TestUnnestMultidimensionalArguments checks flattening and padding of array arguments for literals, table columns, and subqueries.
+func TestUnnestMultidimensionalArguments(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name:        "multi-array unnest flattens each input",
+		SetUpScript: []string{"CREATE TABLE array_inputs (id int PRIMARY KEY, a int[]);", "INSERT INTO array_inputs VALUES (1,ARRAY[3,NULL,1,3]),(2,ARRAY[]::int[]),(3,NULL);"},
+		Assertions: []ScriptTestAssertion{
+			{Query: "SELECT unnest('1 2'::int2vector);", Expected: []sql.Row{{1}, {2}}},
+
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2],[3,4]],ARRAY['a','b']::varchar[]) AS u(n,label);",
+				Expected: []sql.Row{{1, "a"}, {2, "b"}, {3, nil}, {4, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(NULL::int[],ARRAY[[1,2],[3,4]]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 1}, {nil, 2}, {nil, 3}, {nil, 4}},
+			},
+			{
+				Query:    "SELECT id, unnest(a) FROM array_inputs ORDER BY id;",
+				Expected: []sql.Row{{1, 3}, {1, nil}, {1, 1}, {1, 3}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT a FROM array_inputs WHERE id=1),(SELECT ARRAY[9,8])) AS u(a,b);",
+				Expected: []sql.Row{{3, 9}, {nil, 8}, {1, nil}, {3, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[]::int[],NULL::int[]) AS u(a,b);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[[1,2]],[[3,4]]],ARRAY[9,8,7]) WITH ORDINALITY AS u(a,b,n);",
+				Expected: []sql.Row{{1, 9, 1}, {2, 8, 2}, {3, 7, 3}, {4, nil, 4}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[NULL,NULL],[NULL,NULL]]::int[],ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 9}, {nil, nil}, {nil, nil}, {nil, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2]],ARRAY[[3],[4],[5]]) AS u(a,b);",
+				Expected: []sql.Row{{1, 3}, {2, 4}, {nil, 5}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2]],ARRAY[]::text[],ARRAY[true,false,true]) AS u(a,b,c);",
+				Expected: []sql.Row{{1, nil, "t"}, {2, nil, "f"}, {nil, nil, "t"}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[[[[[1,2]]]]]],ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{1, 9}, {2, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,2]],NULL::int[]) WITH ORDINALITY AS u(a,b,n);",
+				Expected: []sql.Row{{1, nil, 1}, {2, nil, 2}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[]::int[],ARRAY[[1,2]]) WITH ORDINALITY AS u(a,b,n);",
+				Expected: []sql.Row{{nil, 1, 1}, {nil, 2, 2}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[[1,1],[1,1]],ARRAY[2,2]) AS u(a,b);",
+				Expected: []sql.Row{{1, 2}, {1, 2}, {1, nil}, {1, nil}},
+			},
+			{
+				Query:    "SELECT id,u.v,u.label,u.n FROM array_inputs,unnest(a,ARRAY[9,8]) WITH ORDINALITY AS u(v,label,n) ORDER BY id,n;",
+				Expected: []sql.Row{{1, 3, 9, 1}, {1, nil, 8, 2}, {1, 1, nil, 3}, {1, 3, nil, 4}, {2, nil, 9, 1}, {2, nil, 8, 2}, {3, nil, 9, 1}, {3, nil, 8, 2}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT a FROM array_inputs WHERE id=2),ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 9}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT a FROM array_inputs WHERE id=3),ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 9}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT a FROM array_inputs WHERE id=99),ARRAY[9]) AS u(a,b);",
+				Expected: []sql.Row{{nil, 9}},
+			},
+			{
+				Query:    "SELECT * FROM unnest((SELECT ARRAY[[1,2],[3,4]]),(SELECT ARRAY[NULL,9]::int[])) AS u(a,b);",
+				Expected: []sql.Row{{1, nil}, {2, 9}, {3, nil}, {4, nil}},
+			},
+			{
+				Query:    "SELECT unnest((SELECT a FROM array_inputs WHERE id=1));",
+				Expected: []sql.Row{{3}, {nil}, {1}, {3}},
+			},
+			{
+				Query:    "SELECT unnest(ARRAY[[NULL,NULL],[1,NULL]]::int[]);",
+				Expected: []sql.Row{{nil}, {nil}, {1}, {nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[NULL]::int[],ARRAY[NULL]::text[]) WITH ORDINALITY AS u(a,b,n);",
+				Expected: []sql.Row{{nil, nil, 1}},
+			},
+			{
+				Query:    "SELECT * FROM unnest('1 2'::oidvector,ARRAY['a']::text[]) AS u(a,b);",
+				Expected: []sql.Row{{1, "a"}, {2, nil}},
+			},
+			{
+				Query:    "SELECT * FROM unnest('1 2'::int2vector,ARRAY[9,8,7]) AS u(a,b);",
+				Expected: []sql.Row{{1, 9}, {2, 8}, {nil, 7}},
+			},
+			{
+				Query:    "SELECT * FROM unnest(ARRAY[['a',NULL],['b','c']]::text[],ARRAY[[true,false]]) AS u(a,b);",
+				Expected: []sql.Row{{"a", "t"}, {nil, "f"}, {"b", nil}, {"c", nil}},
+			},
+		},
+	}})
+}
+
 func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Skip:        true, // TODO: not supported
-			Name:        "pg_function_is_visible",
-			SetUpScript: []string{},
+			Name: "pg_function_is_visible",
+			SetUpScript: []string{
+				"CREATE SCHEMA myschema;",
+				"SET search_path TO myschema;",
+				"CREATE FUNCTION myfunc(a int) RETURNS int LANGUAGE sql AS 'SELECT a + 1';",
+				"CREATE PROCEDURE myproc() LANGUAGE sql AS $$ SELECT 1 $$;",
+				"CREATE SCHEMA testschema;",
+				"SET search_path TO testschema;",
+				"CREATE FUNCTION test_func(a int) RETURNS int LANGUAGE sql AS 'SELECT a + 2';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT pg_function_is_visible(1342177280);`,
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'test_func';`,
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `SELECT pg_function_is_visible(22);`, // invalid
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myfunc';`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					// Procedures are also subject to visibility checks
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myproc';`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SET search_path = 'myschema';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myfunc';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myproc';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'test_func';`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					// Built-in functions live in pg_catalog, which is always on the search path.
+					// OID 31 is byteaout.
+					Query:    `SELECT pg_function_is_visible(31);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(22);`, // not a function OID
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(845743985);`, // OID does not exist
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(NULL);`,
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},
@@ -2025,11 +3630,156 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "pg_collation_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_collation_is_visible(950);`, // C
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(100);`, // default
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(397);`, // an operator family, not a collation
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_opclass_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_opclass_is_visible(15000);`, // btree array_ops
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_opclass_is_visible(397);`, // an operator family, not an operator class
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_opclass_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_opfamily_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_opfamily_is_visible(397);`, // btree array_ops
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_opfamily_is_visible(15000);`, // an operator class, not an operator family
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_opfamily_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_operator_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: built-in operators are not yet cataloged, so no OID refers to a visible operator
+					Query:    `SELECT pg_operator_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_conversion_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: encoding conversions are not yet cataloged, so no OID refers to a visible conversion
+					Query:    `SELECT pg_conversion_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_config_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_config_is_visible(3748);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_config_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_dict_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_dict_is_visible(3765);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_dict_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_template_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_template_is_visible(3727);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_template_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_statistics_obj_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: extended statistics objects are not yet supported, so no OID refers to a visible one
+					Query:    `SELECT pg_statistics_obj_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
 	})
 }
 
 func TestSystemCatalogInformationFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name:        "getdatabaseencoding",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT getdatabaseencoding();`,
+					Expected: []sql.Row{
+						{"UTF8"},
+					},
+				},
+			},
+		},
 		{
 			Name:        "pg_encoding_to_char",
 			SetUpScript: []string{},
@@ -2043,14 +3793,201 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name:        "pg_get_functiondef",
+			Name:        "pg_char_to_encoding",
 			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT pg_char_to_encoding('UTF8');`,
+					Expected: []sql.Row{
+						{6},
+					},
+				},
+				{
+					Query: `SELECT pg_char_to_encoding('utf-8');`,
+					Expected: []sql.Row{
+						{6},
+					},
+				},
+				{
+					Query: `SELECT pg_char_to_encoding('LATIN1');`,
+					Expected: []sql.Row{
+						{8},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_function_arguments",
+			SetUpScript: []string{
+				`CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';`,
+				`CREATE TABLE cp_test (a int, b text);`,
+				`CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+				LANGUAGE SQL
+				AS $$
+					INSERT INTO cp_test VALUES(a, b);
+					INSERT INTO cp_test VALUES(c, b);
+				$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT pg_get_function_arguments(22)`, // invalid
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					// caches the function and procedure OIDs so that they can be used below
+					Query: `SELECT oid, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';`,
+					Expected: []sql.Row{
+						{2891346960, "alt_func1"},
+						{1886569565, "ptest5"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_function_arguments(2891346960)`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_function_arguments(1886569565)`,
+					Expected: []sql.Row{
+						{"a integer, b text, c integer DEFAULT 100"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_functiondef",
+			SetUpScript: []string{
+				`CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';`,
+				`CREATE TABLE cp_test (a int, b text);`,
+				`CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+				LANGUAGE SQL
+				AS $$
+					INSERT INTO cp_test VALUES(a, b);
+					INSERT INTO cp_test VALUES(c, b);
+				$$;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					// TODO: not supported yet
 					Query: `SELECT pg_get_functiondef(22)`,
 					Expected: []sql.Row{
 						{""},
+					},
+				},
+				{
+					Skip:  true, // TODO: fails to convert oid to function id because it hasn't been cached.
+					Query: `SELECT pg_get_functiondef(2891346960)`,
+					Expected: []sql.Row{
+						{"CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1'"},
+					},
+				},
+				{
+					Query: `SELECT oid, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';`,
+					Expected: []sql.Row{
+						{2891346960, "alt_func1"},
+						{1886569565, "ptest5"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_functiondef(2891346960)`,
+					Expected: []sql.Row{
+						{"CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1'"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_functiondef(1886569565)`,
+					Expected: []sql.Row{
+						{"CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)\n\t\t\t\tLANGUAGE SQL\n\t\t\t\tAS $$\n\t\t\t\t\tINSERT INTO cp_test VALUES(a, b);\n\t\t\t\t\tINSERT INTO cp_test VALUES(c, b);\n\t\t\t\t$$"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_indexdef",
+			SetUpScript: []string{
+				`CREATE TABLE idx_test (pk INT PRIMARY KEY, a INT, b INT, c TEXT);`,
+				`CREATE UNIQUE INDEX idx_ab ON idx_test (a, b);`,
+				`CREATE INDEX idx_c ON idx_test (c);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// OID does not exist
+					Query:            `SELECT pg_get_indexdef(845743985);`,
+					ExpectedColNames: []string{"pg_get_indexdef"},
+					Expected:         []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_test_pkey'::regclass::oid);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING btree (pk)"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					// A column number of 0 returns the whole definition, same as the one-argument form
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 0, true);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 0, false);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					// A non-zero column number returns just that column's definition
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 1, true);`,
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 2, false);`,
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					// Out-of-range column numbers return an empty string
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 3, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, -1, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_c'::regclass::oid, 1, true);`,
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					// OID does not exist
+					Query:    `SELECT pg_get_indexdef(845743985, 0, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef(845743985, 1, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					// NULL arguments produce a NULL result
+					Query:    `SELECT pg_get_indexdef(NULL, 1, true);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, NULL, true);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// The index listing query issued by psql's \d command
+					Query: `SELECT c2.relname, i.indisprimary, i.indisunique, i.indisclustered, i.indisvalid, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),
+  pg_catalog.pg_get_constraintdef(con.oid, true), contype, condeferrable, condeferred, i.indisreplident, c2.reltablespace
+FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i
+  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ('p','u','x'))
+WHERE c.oid = 'idx_test'::regclass AND c.oid = i.indrelid AND i.indexrelid = c2.oid
+ORDER BY i.indisprimary DESC, c2.relname;`,
+					Expected: []sql.Row{
+						{"idx_test_pkey", "t", "t", "f", "t", "CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING btree (pk)", "PRIMARY KEY (pk)", "p", "f", "f", "f", 0},
+						{"idx_ab", "f", "t", "f", "t", "CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)", "UNIQUE (a, b)", "u", "f", "f", "f", 0},
+						{"idx_c", "f", "f", "f", "t", "CREATE INDEX idx_c ON public.idx_test USING btree (c)", nil, nil, nil, nil, "f", 0},
 					},
 				},
 			},
@@ -2069,14 +4006,37 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name:        "pg_get_triggerdef",
-			SetUpScript: []string{},
+			Name: "pg_get_triggerdef",
+			SetUpScript: []string{
+				"CREATE TABLE trig_test (pk INT PRIMARY KEY, v1 INT);",
+				"CREATE FUNCTION trig_fn() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn();",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: triggers are not supported yet
+					// not a trigger OID
 					Query: `SELECT pg_get_triggerdef(22)`,
 					Expected: []sql.Row{
 						{""},
+					},
+				},
+				{
+					Query: `SELECT pg_get_triggerdef(t.oid) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					},
+				},
+				{
+					// The pretty flag only affects expression formatting, so both variants return the same text
+					Query: `SELECT pg_get_triggerdef(t.oid, true) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_triggerdef(t.oid, false) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
 					},
 				},
 			},
@@ -2738,6 +4698,15 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Query:    `SELECT age(current_date::timestamp);`,
 					Expected: []sql.Row{{"00:00:00"}},
 				},
+				{
+					Query:    `SELECT age(timestamptz '2013-07-01 12:00:00', timestamptz '2013-03-01 12:00:00');`,
+					Expected: []sql.Row{{"4 mons"}},
+				},
+				{
+					Skip:     true, // TODO: need to use the days in the month of the date
+					Query:    `SELECT age(timestamptz '2013-03-01 00:00:00.500 UTC', timestamptz '2013-01-31 23:59:59.250 UTC');`,
+					Expected: []sql.Row{{"28 days 00:00:01.25"}},
+				},
 			},
 		},
 		{
@@ -3397,6 +5366,96 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3090
+			Name: "timestamp/timestamptz minus interval with day component",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00' - interval '90 days';`,
+					Expected: []sql.Row{{"2026-05-17 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-08-15 12:00:00+00' - interval '90 days';`,
+					Expected: []sql.Row{{"2026-05-17 12:00:00+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00' - interval '1 hour';`,
+					Expected: []sql.Row{{"2026-08-15 11:00:00"}},
+				},
+				{
+					Query:    `SELECT (timestamp '2026-08-15 12:00:00' - interval '90 days') = timestamp '2026-08-15 12:00:00';`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3163
+			Name: "timestamp/timestamptz plus/minus interval normalizes month-end overflow",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-03-31 12:00:00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-03-31 12:00:00+00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 12:00:00+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-03-15 12:00:00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-15 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-01-31 00:00:00' + interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 00:00:00"}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/pull/3162#discussion_r3825271782
+			Name: "timestamp/timestamptz plus/minus interval preserves sub-second precision",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00.750000' - interval '0.250000 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.5"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-08-15 12:00:00.750000+00' - interval '0.250000 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.5+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00.5' + interval '0.25 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.75"}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/pull/3162
+			Name: "timestamp/timestamptz plus/minus interval errors on out-of-range results",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT timestamp '2026-01-01' + interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					Query:       `SELECT timestamp '2026-01-01' - interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					Query:       `SELECT timestamptz '2026-01-01+00' + interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					// Confirms the session/connection survives an out-of-range error.
+					Query:    `SELECT timestamp '2026-01-01' + interval '1 day';`,
+					Expected: []sql.Row{{"2026-01-02 00:00:00"}},
+				},
+				{
+					// A large interval that stays within the supported range should still work.
+					Query:    `SELECT timestamp '2026-01-01' + interval '290000 years';`,
+					Expected: []sql.Row{{"292026-01-01 00:00:00"}},
+				},
+			},
+		},
 	})
 }
 
@@ -3647,6 +5706,371 @@ func TestStringFunction(t *testing.T) {
 				{
 					Query:    `SELECT CONCAT(NULL);`,
 					Expected: []sql.Row{{""}},
+				},
+			},
+		},
+		{
+			Name:        "encode",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT encode('\x1234567890abcdef00'::bytea, 'hex');`,
+					Expected: []sql.Row{{"1234567890abcdef00"}},
+				},
+				{
+					Query:    `SELECT encode('\x1234567890abcdef00'::bytea, 'base64');`,
+					Expected: []sql.Row{{"EjRWeJCrze8A"}},
+				},
+				{
+					Skip:     true, // TODO fix
+					Query:    `SELECT encode('\x1234567890abcdef00'::bytea, 'escape');`,
+					Expected: []sql.Row{{`\x124Vx\220\253\315\357\000`}},
+				},
+				{
+					Query:    `SELECT encode(''::bytea, 'hex');`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT encode('hello'::bytea, 'escape');`,
+					Expected: []sql.Row{{"hello"}},
+				},
+				{
+					Query:    `SELECT encode('\x5c'::bytea, 'escape');`,
+					Expected: []sql.Row{{`\\`}},
+				},
+				{
+					Query:       `SELECT encode('hello'::bytea, 'bogus');`,
+					ExpectedErr: "unrecognized encoding",
+				},
+				{
+					Query:    `SELECT encode(NULL, 'hex');`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			Name: "convert_from and decode",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT convert_from('\x68656c6c6f'::BYTEA, 'UTF8'), convert_from(decode('68656c6c6f', 'hex'), 'UTF8'), convert_from('\xc3a9'::BYTEA, 'UTF8'), convert_from('\xe9'::BYTEA, 'LATIN1');`,
+					Expected: []sql.Row{{"hello", "hello", "é", "é"}},
+				},
+				{
+					Query:    `SELECT convert_from('\xa4a2'::BYTEA, 'EUC_JP'), convert_from('\x82a0'::BYTEA, 'SJIS');`,
+					Expected: []sql.Row{{"あ", "あ"}},
+				},
+				{
+					Query:    `SELECT decode('aGVsbG8=', 'base64'), decode('abc\000', 'escape'), decode('a\\b', 'escape'), decode('68 65', 'hex');`,
+					Expected: []sql.Row{{[]byte("hello"), []byte{0x61, 0x62, 0x63, 0x00}, []byte(`a\b`), []byte("he")}},
+				},
+				{
+					Query:       `SELECT convert_from('\xff'::BYTEA, 'UTF8');`,
+					ExpectedErr: `invalid byte sequence for encoding "UTF8": 0xff`,
+				},
+				{
+					Query:       `SELECT convert_from('\xa4'::BYTEA, 'EUC_JP');`,
+					ExpectedErr: `invalid byte sequence for encoding "EUC_JP": 0xa4`,
+				},
+				{
+					Query:       `SELECT convert_from('\x41a4'::BYTEA, 'EUC_JP');`,
+					ExpectedErr: `invalid byte sequence for encoding "EUC_JP": 0xa4`,
+				},
+				{
+					Query:       `SELECT convert_from('\xa4a2ff'::BYTEA, 'EUC_JP');`,
+					ExpectedErr: `invalid byte sequence for encoding "EUC_JP": 0xff`,
+				},
+				{
+					Query:       `SELECT convert_from('\x82'::BYTEA, 'SJIS');`,
+					ExpectedErr: `invalid byte sequence for encoding "SJIS": 0x82`,
+				},
+				{
+					Query:       `SELECT convert_from('\x68'::BYTEA, 'NOPE');`,
+					ExpectedErr: `invalid source encoding name "NOPE"`,
+				},
+				{
+					Query:       "SELECT decode('6', 'hex');",
+					ExpectedErr: "invalid hexadecimal data: odd number of digits",
+				},
+				{
+					Query:       "SELECT decode('6g', 'hex');",
+					ExpectedErr: `invalid hexadecimal digit: "g"`,
+				},
+				{
+					Query:       "SELECT decode('abc', 'nope');",
+					ExpectedErr: `unrecognized encoding: "nope"`,
+				},
+			},
+		},
+		{
+			Name:        "format",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT format('hello'), format('%s', 'a'), format('x %s y %s', 'a', 'b'), format('100%% %s', 'a');`,
+					Expected: []sql.Row{{"hello", "a", "x a y b", "100% a"}},
+				},
+				{
+					Query:    `SELECT format('%I', 'my table'), format('INSERT INTO %I VALUES (1)', 'log');`,
+					Expected: []sql.Row{{`"my table"`, "INSERT INTO log VALUES (1)"}},
+				},
+				{
+					Query:    `SELECT format('%I %I %I %I', 'Abc', 'user', 'select', 'a"b');`,
+					Expected: []sql.Row{{`"Abc" "user" "select" "a""b"`}},
+				},
+				{
+					Query:    `SELECT format('%L', 'it''s'), format('%L', 'a\b'), format('%L', 12);`,
+					Expected: []sql.Row{{`'it''s'`, `E'a\\b'`, `'12'`}},
+				},
+				{
+					Query:    `SELECT format('%s %s', 1, true), format('%s %L', ARRAY[true,false], true), format('%s', 'a', 'b');`,
+					Expected: []sql.Row{{"1 t", "{t,f} 't'", "a"}},
+				},
+				{
+					Query:    `SELECT format(NULL), format(NULL, 'a'), format('%s|%L|', NULL, NULL);`,
+					Expected: []sql.Row{{nil, nil, "|NULL|"}},
+				},
+				{
+					Query:    `SELECT format('%2$s %1$s %s', 'a', 'b');`,
+					Expected: []sql.Row{{"b a b"}},
+				},
+				{
+					Query:    `SELECT format('|%5s|%-5s|%*s|%-*s|%*s|', 'ab', 'cd', 4, 'ef', 4, 'gh', -4, 'ij');`,
+					Expected: []sql.Row{{"|   ab|cd   |  ef|gh  |ij  |"}},
+				},
+				{
+					Query:    `SELECT format('|%*s|', NULL, 'ab'), format('|%*s|', '3'::text, 'ab'), format('|%3s|', 'éé');`,
+					Expected: []sql.Row{{"|ab|", "| ab|", "| éé|"}},
+				},
+				{
+					Query:           `SELECT format(1234.5678, 2);`,
+					ExpectedErr:     "function format(numeric, integer) does not exist",
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:           `SELECT format('%I', NULL);`,
+					ExpectedErr:     "null values cannot be formatted as an SQL identifier",
+					ExpectedErrCode: "22004",
+				},
+				{
+					Query:           `SELECT format('%s');`,
+					ExpectedErr:     "too few arguments for format()",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('|%*2$s|%1$*2$s|', 'ab', 5);`,
+					ExpectedErr:     "too few arguments for format()",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%');`,
+					ExpectedErr:     "unterminated format() type specifier",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%1');`,
+					ExpectedErr:     "unterminated format() type specifier",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%d', 1);`,
+					ExpectedErr:     `unrecognized format() type specifier "d"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%é', 1);`,
+					ExpectedErr:     `unrecognized format() type specifier "é"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%0$s', 1);`,
+					ExpectedErr:     "format specifies argument 0, but arguments are numbered from 1",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%*0$s', 1);`,
+					ExpectedErr:     "format specifies argument 0, but arguments are numbered from 1",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%*1s', 1);`,
+					ExpectedErr:     `width argument position must be ended by "$"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%99999999999s', 1);`,
+					ExpectedErr:     "number is out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT format('|%*s|', 'x'::text, 'ab');`,
+					ExpectedErr:     `invalid input syntax for type integer: "x"`,
+					ExpectedErrCode: "22P02",
+					Skip:            true, // the int4 input error names the type int4 rather than integer
+				},
+				{
+					Query:    `SELECT format('%s %s', VARIADIC ARRAY['a', 'b']);`,
+					Expected: []sql.Row{{"a b"}},
+					Skip:     true, // VARIADIC is not yet supported when calling a function
+				},
+				{
+					Query:           `SELECT format('%2147483647s', 'a');`,
+					ExpectedErr:     "out of memory",
+					ExpectedErrCode: "54000",
+				},
+				{
+					Query:           `SELECT format('%*s', -2147483647, 'a');`,
+					ExpectedErr:     "out of memory",
+					ExpectedErrCode: "54000",
+				},
+				{
+					Query:           `SELECT format('%*s', -2147483648, 'a');`,
+					ExpectedErr:     "number is out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT format('%1073741820s', 'a');`,
+					ExpectedErr:     "invalid memory alloc request size 1073741824",
+					ExpectedErrCode: "XX000",
+					Skip:            true, // lengths just below the limit report out of memory instead
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in a trigger function",
+			SetUpScript: []string{
+				`CREATE TABLE t (id TEXT PRIMARY KEY);`,
+				`CREATE TABLE log (v TEXT);`,
+				`CREATE FUNCTION f() RETURNS TRIGGER LANGUAGE plpgsql AS $f$
+BEGIN EXECUTE format('INSERT INTO %I VALUES (%L)', 'log', NEW.id); RETURN NULL; END $f$;`,
+				`CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `INSERT INTO t VALUES ('a');`,
+				},
+				{
+					Query:    `SELECT v FROM log;`,
+					Expected: []sql.Row{{"a"}},
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in functions",
+			SetUpScript: []string{
+				`CREATE FUNCTION make_table(name TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+BEGIN
+	IF to_regclass(format('%I', name)) IS NULL THEN
+		EXECUTE format('CREATE TABLE %I (id INT PRIMARY KEY, note TEXT)', name);
+		RETURN 'created';
+	END IF;
+	RETURN 'exists';
+END;
+$$;`,
+				`CREATE FUNCTION add_note(name TEXT, id INT, note TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+DECLARE
+	stmt TEXT := format('INSERT INTO %I VALUES (%s, %L)', name, id, note);
+BEGIN
+	EXECUTE stmt;
+	RETURN stmt;
+END;
+$$;`,
+				`CREATE FUNCTION count_rows(name TEXT) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+	n BIGINT;
+BEGIN
+	EXECUTE format('SELECT count(*) FROM %I', name) INTO n;
+	RETURN n;
+END;
+$$;`,
+				`CREATE FUNCTION count_notes(name TEXT, note TEXT) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+	n BIGINT;
+BEGIN
+	EXECUTE format('SELECT count(*) FROM %I WHERE note = $1', name) INTO n USING note;
+	RETURN n;
+END;
+$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT make_table('My Table');`,
+					Expected: []sql.Row{{"created"}},
+				},
+				{
+					Query:    `SELECT make_table('My Table');`,
+					Expected: []sql.Row{{"exists"}},
+				},
+				{
+					Query:    `SELECT make_table('plain');`,
+					Expected: []sql.Row{{"created"}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 1, 'it''s');`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (1, 'it''s')`}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 2, NULL);`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (2, NULL)`}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 3, 'back\slash');`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (3, E'back\\slash')`}},
+				},
+				{
+					Query:    `SELECT * FROM "My Table" ORDER BY id;`,
+					Expected: []sql.Row{{1, "it's"}, {2, nil}, {3, `back\slash`}},
+				},
+				{
+					Query:    `SELECT count_rows('My Table'), count_rows('plain');`,
+					Expected: []sql.Row{{3, 0}},
+				},
+				{
+					Query:    `SELECT count_notes('My Table', 'it''s'), count_notes('My Table', 'nope');`,
+					Expected: []sql.Row{{1, 0}},
+					Skip:     true, // a $1 inside a string literal is replaced by the function's first argument
+				},
+				{
+					Query: `DO $$
+BEGIN
+	EXECUTE format('UPDATE %1$I SET note = %2$L WHERE note IS NULL OR note <> %2$L', 'My Table', 'same');
+END;
+$$;`,
+				},
+				{
+					Query:    `SELECT * FROM "My Table" ORDER BY id;`,
+					Expected: []sql.Row{{1, "same"}, {2, "same"}, {3, "same"}},
+				},
+				{
+					Query:           `SELECT add_note('missing', 1, 'x');`,
+					ExpectedErr:     `relation "missing" does not exist`,
+					ExpectedErrCode: "42P01",
+					Skip:            true, // a missing table is reported as "table not found: missing"
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in an audit trigger",
+			SetUpScript: []string{
+				`CREATE TABLE src (id TEXT PRIMARY KEY);`,
+				`CREATE TABLE audit (tbl TEXT, op TEXT, id TEXT);`,
+				`CREATE FUNCTION audit_row() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+	EXECUTE format('INSERT INTO %I VALUES (%L, %L, %L)', 'audit', TG_TABLE_NAME, TG_OP, NEW.id);
+	RETURN NEW;
+END;
+$$;`,
+				`CREATE TRIGGER src_audit AFTER INSERT OR UPDATE ON src FOR EACH ROW EXECUTE FUNCTION audit_row();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `INSERT INTO src VALUES ('a'), ('b''c');`,
+				},
+				{
+					Query: `UPDATE src SET id = 'd' WHERE id = 'a';`,
+				},
+				{
+					Query:    `SELECT * FROM audit ORDER BY op, id;`,
+					Expected: []sql.Row{{"src", "INSERT", "a"}, {"src", "INSERT", "b'c"}, {"src", "UPDATE", "d"}},
 				},
 			},
 		},
@@ -4026,6 +6450,197 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
+				// The projection materialized below the sort expands the set-returning function; the final
+				// projection must reference the expanded column rather than re-evaluate it, which multiplied
+				// the rows again and clobbered the sort order.
+				Name: "aliased SRF alongside scalar columns with ORDER BY",
+				SetUpScript: []string{
+					"CREATE TABLE srf_sort (id integer PRIMARY KEY, arr integer[]);",
+					"INSERT INTO srf_sort VALUES (7, '{101,202,303}'), (8, '{44}');",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7 ORDER BY elem DESC;`,
+						Expected:         []sql.Row{{7, 303}, {7, 202}, {7, 101}},
+						ExpectedColNames: []string{"source_id", "elem"},
+					},
+					{
+						// run a second time in the same session
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7 ORDER BY elem DESC;`,
+						Expected: []sql.Row{{7, 303}, {7, 202}, {7, 101}},
+					},
+					{
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort ORDER BY elem DESC;`,
+						Expected: []sql.Row{{7, 303}, {7, 202}, {7, 101}, {8, 44}},
+					},
+					{
+						Query:    `SELECT id AS source_id, generate_series(1, 2) AS n FROM srf_sort ORDER BY n, source_id;`,
+						Expected: []sql.Row{{7, 1}, {8, 1}, {7, 2}, {8, 2}},
+					},
+					{
+						// no ORDER BY: the SRF alias is still materialized below the final projection
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7;`,
+						Expected: []sql.Row{{7, 101}, {7, 202}, {7, 303}},
+					},
+				},
+			},
+			{
+				Name: "generate_series as table function with column alias",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT * FROM generate_series(1,3) AS s(r)`,
+						Expected:         []sql.Row{{1}, {2}, {3}},
+						ExpectedColNames: []string{"r"},
+					},
+					{
+						Query:    `SELECT r FROM generate_series(1,3) AS s(r)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `SELECT r + 1 FROM generate_series(1,3) AS s(r) WHERE r > 1`,
+						Expected: []sql.Row{{3}, {4}},
+					},
+					{
+						Query:            `SELECT * FROM generate_series(1, array_upper(current_schemas(false), 1)) AS s(r)`,
+						Expected:         []sql.Row{{1}},
+						ExpectedColNames: []string{"r"},
+					},
+				},
+			},
+			{
+				Name: "table function WITH ORDINALITY",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT * FROM generate_series(2,4) WITH ORDINALITY`,
+						Expected: []sql.Row{{2, 1}, {3, 2}, {4, 3}},
+					},
+					{
+						Query:            `SELECT * FROM generate_series(2,4) WITH ORDINALITY AS a(n, ord)`,
+						Expected:         []sql.Row{{2, 1}, {3, 2}, {4, 3}},
+						ExpectedColNames: []string{"n", "ord"},
+					},
+					{
+						Query:    `SELECT ord, n FROM generate_series(2,4) WITH ORDINALITY AS a(n, ord) ORDER BY ord DESC`,
+						Expected: []sql.Row{{3, 4}, {2, 3}, {1, 2}},
+					},
+					{
+						Query:    `SELECT n FROM generate_series(5,7) WITH ORDINALITY AS a(n, ord) WHERE ord = 2`,
+						Expected: []sql.Row{{6}},
+					},
+				},
+			},
+			{
+				Name: "pg_partition_ancestors",
+				SetUpScript: []string{
+					"CREATE TABLE anc_test (pk INT PRIMARY KEY, v1 INT);",
+					"CREATE VIEW anc_view AS SELECT pk FROM anc_test;",
+					"CREATE TABLE anc_child (pk INT PRIMARY KEY, apk INT REFERENCES anc_test(pk));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						// Partitioning is not supported, so a relation's only ancestor is itself
+						Query:            `SELECT * FROM pg_partition_ancestors('anc_test'::regclass);`,
+						Expected:         []sql.Row{{"anc_test"}},
+						ExpectedColNames: []string{"relid"},
+					},
+					{
+						Query:    `SELECT * FROM pg_partition_ancestors('anc_test'::regclass) WITH ORDINALITY AS a(relid, depth);`,
+						Expected: []sql.Row{{"anc_test", 1}},
+					},
+					{
+						// Relations that aren't tables or indexes return an empty set
+						Query:    `SELECT * FROM pg_partition_ancestors('anc_view'::regclass);`,
+						Expected: []sql.Row{},
+					},
+					{
+						// OID does not exist
+						Query:    `SELECT * FROM pg_partition_ancestors(845743985);`,
+						Expected: []sql.Row{},
+					},
+					{
+						// The foreign-key listing query issued by psql's \d command
+						Query: `SELECT conrelid = 'anc_child'::pg_catalog.regclass AS sametable,
+       conname, pg_catalog.pg_get_constraintdef(oid, true) AS condef, conrelid::pg_catalog.regclass::text AS ontable
+FROM pg_catalog.pg_constraint, pg_catalog.pg_partition_ancestors('anc_child'::regclass)
+WHERE conrelid = relid AND contype = 'f' AND conparentid = 0
+ORDER BY sametable DESC, conname;`,
+						Expected: []sql.Row{{"t", "anc_child_apk_fkey", "FOREIGN KEY (apk) REFERENCES anc_test(pk)", "anc_child"}},
+					},
+					{
+						// The referenced-by listing query issued by psql's \d command
+						Query: `SELECT conname, conrelid::pg_catalog.regclass::text AS ontable,
+       pg_catalog.pg_get_constraintdef(oid, true) AS condef
+FROM pg_catalog.pg_constraint c
+WHERE confrelid IN (SELECT pg_catalog.pg_partition_ancestors('anc_test'::regclass)
+                    UNION ALL VALUES ('anc_test'::pg_catalog.regclass))
+      AND contype = 'f' AND conparentid = 0
+ORDER BY conname;`,
+						Expected: []sql.Row{{"anc_child_apk_fkey", "anc_child", "FOREIGN KEY (apk) REFERENCES anc_test(pk)"}},
+					},
+				},
+			},
+			{
+				Name: "set-returning function as join operand",
+				SetUpScript: []string{
+					"CREATE TABLE test1 (id INT PRIMARY KEY);",
+					"INSERT INTO test1 VALUES (1), (2), (4);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT id, r FROM test1 LEFT JOIN generate_series(1,3) s(r) ON id = r ORDER BY id;`,
+						Expected:         []sql.Row{{1, 1}, {2, 2}, {4, nil}},
+						ExpectedColNames: []string{"id", "r"},
+					},
+					{
+						Query:    `SELECT id, r FROM test1 JOIN generate_series(1,3) AS s(r) ON id = s.r ORDER BY id;`,
+						Expected: []sql.Row{{1, 1}, {2, 2}},
+					},
+					{
+						Query:    `SELECT id, r FROM generate_series(1,3) s(r) LEFT JOIN test1 ON id = r ORDER BY r;`,
+						Expected: []sql.Row{{1, 1}, {2, 2}, {nil, 3}},
+					},
+				},
+			},
+			{
+				// Regression test for query used by DBeaver
+				Name: "generate_series as table function used in pgJDBC-style enum catalog query",
+				SetUpScript: []string{
+					"CREATE TYPE status_enum AS ENUM ('one', 'two', 'three');",
+					"CREATE TABLE test1 (id INT, status status_enum);",
+					"INSERT INTO test1 VALUES (1, 'one'), (2, 'two'), (3, 'three');",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT
+    typinput = 'pg_catalog.array_in'::regproc AS is_array,
+    typtype,
+    typname
+FROM pg_catalog.pg_type
+LEFT JOIN (
+    SELECT ns.oid AS nspoid, ns.nspname, r.r
+    FROM pg_namespace AS ns
+    JOIN (
+        SELECT
+            s.r,
+            (current_schemas(false))[s.r] AS nspname
+        FROM generate_series(
+            1,
+            array_upper(current_schemas(false), 1)
+        ) AS s(r)
+    ) AS r USING (nspname)
+) AS sp ON sp.nspoid = typnamespace
+WHERE pg_type.oid = (
+    SELECT atttypid
+    FROM pg_attribute
+    WHERE attrelid = 'test1'::regclass
+      AND attname = 'status'
+)
+ORDER BY sp.r, pg_type.oid DESC;`,
+						Expected: []sql.Row{{"f", "e", "status_enum"}},
+					},
+				},
+			},
+			{
 				Name: "nested generate_series",
 				// Nested SRF expressions cause an infinite loop, skipped in regression tests.
 				// Challenging to fix with the current expression eval architecture and very marginal as a use case.
@@ -4153,6 +6768,96 @@ func TestSetReturningFunctions(t *testing.T) {
 							{3, "{1,2,3}"},
 							{1, "{4,5}"},
 							{2, "{4,5}"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts as table function with scalar alias",
+				SetUpScript: []string{
+					"CREATE TABLE array_alias_test (id INT primary key, values_array INT[]);",
+					"INSERT INTO array_alias_test VALUES (1, ARRAY[10, 20, 30]), (2, NULL), (3, ARRAY[]::INT[]);",
+					`CREATE OR REPLACE FUNCTION calculate_bonus(
+    IN current_salary NUMERIC,
+    OUT bonus_amount NUMERIC,
+    OUT new_total_salary NUMERIC
+) AS $$
+BEGIN
+    bonus_amount := current_salary * 0.10;
+    new_total_salary := current_salary + bonus_amount;
+END;
+$$ LANGUAGE plpgsql;`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT k FROM generate_subscripts(ARRAY[1, 2, 3], 1) AS k;",
+						Expected: []sql.Row{
+							{1}, {2}, {3},
+						},
+					},
+					{
+						Query:    "SELECT ARRAY(SELECT k + 1 FROM generate_subscripts(ARRAY[10, 20, 30], 1) AS k ORDER BY k);",
+						Expected: []sql.Row{{"{2,3,4}"}},
+					},
+					{
+						Query: "SELECT ARRAY(SELECT values_array[k] + 1 FROM generate_subscripts(values_array, 1) AS k ORDER BY k) FROM array_alias_test WHERE id = 1;",
+						Expected: []sql.Row{
+							{"{11,21,31}"},
+						},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(NULL::INT[], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(ARRAY[]::INT[], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(ARRAY[10, 20]::INT[], NULL::INT) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT generate_subscripts(NULL::INT[], 1);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT idx FROM generate_subscripts(NULL::INT[], 1) AS k(idx) ORDER BY idx;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT id, ARRAY(SELECT k FROM generate_subscripts(values_array, 1) AS k ORDER BY k) FROM array_alias_test ORDER BY id;",
+						Expected: []sql.Row{{1, "{1,2,3}"}, {2, "{}"}, {3, "{}"}},
+					},
+					{
+						Query: "SELECT c.bonus_amount, c.new_total_salary, k FROM calculate_bonus(5000) AS c CROSS JOIN generate_subscripts(ARRAY[10,20], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{
+							{Numeric("500.00"), Numeric("5500.00"), 1},
+							{Numeric("500.00"), Numeric("5500.00"), 2},
+						},
+					},
+					{
+						Query:    "SELECT c.bonus_amount, c.new_total_salary FROM calculate_bonus(5000) AS c;",
+						Expected: []sql.Row{{Numeric("500.00"), Numeric("5500.00")}},
+					},
+					{
+						Query: "SELECT k, c.bonus_amount, c.new_total_salary FROM generate_subscripts(ARRAY[10,20], 1) AS k CROSS JOIN calculate_bonus(5000) AS c ORDER BY k;",
+						Expected: []sql.Row{
+							{1, Numeric("500.00"), Numeric("5500.00")},
+							{2, Numeric("500.00"), Numeric("5500.00")},
+						},
+					},
+					{
+						Query: "SELECT k, j FROM generate_subscripts(ARRAY[10,20], 1) AS k CROSS JOIN generate_subscripts(ARRAY[30,40], 1) AS j ORDER BY k, j;",
+						Expected: []sql.Row{
+							{1, 1}, {1, 2}, {2, 1}, {2, 2},
+						},
+					},
+					{
+						Query: "SELECT c.bonus, c.total, k.idx FROM calculate_bonus(5000) AS c(bonus,total) CROSS JOIN generate_subscripts(ARRAY[10,20], 1) AS k(idx) ORDER BY k.idx;",
+						Expected: []sql.Row{
+							{Numeric("500.00"), Numeric("5500.00"), 1},
+							{Numeric("500.00"), Numeric("5500.00"), 2},
 						},
 					},
 				},

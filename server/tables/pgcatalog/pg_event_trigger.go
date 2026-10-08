@@ -43,7 +43,9 @@ func (p PgEventTriggerHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgEventTriggerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_event_trigger row iter
+	// pg_event_trigger is currently empty, since Doltgres does not yet support event triggers
+	// (CREATE EVENT TRIGGER).
+	// TODO: fill this in when event triggers are supported
 	return emptyRowIter()
 }
 

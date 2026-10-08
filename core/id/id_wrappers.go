@@ -14,7 +14,11 @@
 
 package id
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // AccessMethod is an Id wrapper for access methods. This wrapper must not be returned to the client.
 type AccessMethod Id
@@ -46,6 +50,9 @@ type ForeignKey Id
 // Function is an Id wrapper for functions. This wrapper must not be returned to the client.
 type Function Id
 
+// FunctionLanguage is an Id wrapper for function languages. This wrapper must not be returned to the client.
+type FunctionLanguage Id
+
 // Index is an Id wrapper for indexes. This wrapper must not be returned to the client.
 type Index Id
 
@@ -55,6 +62,9 @@ type Namespace Id
 // Oid is an Id wrapper for OIDs. This wrapper must not be returned to the client.
 type Oid Id
 
+// Operator is an Id wrapper for operators. This wrapper must not be returned to the client.
+type Operator Id
+
 // Procedure is an Id wrapper for procedures. This wrapper must not be returned to the client.
 type Procedure Id
 
@@ -63,6 +73,9 @@ type Sequence Id
 
 // Table is an Id wrapper for tables. This wrapper must not be returned to the client.
 type Table Id
+
+// Tablespace is an Id wrapper for tablespaces. This wrapper must not be returned to the client.
+type Tablespace Id
 
 // Trigger is an Id wrapper for triggers. This wrapper must not be returned to the client.
 type Trigger Id
@@ -159,6 +172,14 @@ func NewFunction(schemaName string, funcName string, params ...Type) Function {
 	return Function(NewId(Section_Function, data...))
 }
 
+// NewFunctionLanguage returns a new FunctionLanguage. This wrapper must not be returned to the client.
+func NewFunctionLanguage(languageName string) FunctionLanguage {
+	if len(languageName) == 0 {
+		return NullFunctionLanguage
+	}
+	return FunctionLanguage(NewId(Section_FunctionLanguage, languageName))
+}
+
 // NewIndex returns a new Index. This wrapper must not be returned to the client.
 func NewIndex(schemaName string, tableName string, indexName string) Index {
 	if len(schemaName) == 0 && len(tableName) == 0 && len(indexName) == 0 {
@@ -178,6 +199,14 @@ func NewNamespace(schemaName string) Namespace {
 // NewOID returns a new Oid. This wrapper must not be returned to the client.
 func NewOID(val uint32) Oid {
 	return Oid(NewId(Section_OID, strconv.FormatUint(uint64(val), 10)))
+}
+
+// NewOperator returns a new Operator. This wrapper must not be returned to the client.
+func NewOperator(schemaName string, symbol string, leftType Type, rightType Type) Operator {
+	if len(symbol) == 0 {
+		return NullOperator
+	}
+	return Operator(NewId(Section_Operator, schemaName, symbol, string(leftType), string(rightType)))
 }
 
 // NewProcedure returns a new Procedure. This wrapper must not be returned to the client.
@@ -208,6 +237,14 @@ func NewTable(schemaName string, tableName string) Table {
 		return NullTable
 	}
 	return Table(NewId(Section_Table, schemaName, tableName))
+}
+
+// NewTablespace returns a new Tablespace. This wrapper must not be returned to the client.
+func NewTablespace(tablespaceName string) Tablespace {
+	if len(tablespaceName) == 0 {
+		return NullTablespace
+	}
+	return Tablespace(NewId(Section_Tablespace, tablespaceName))
 }
 
 // NewTrigger returns a new Trigger. This wrapper must not be returned to the client.
@@ -324,6 +361,19 @@ func (id ForeignKey) TableName() string {
 	return Id(id).Segment(1)
 }
 
+// DisplayString returns the function ID as a suitable display name.
+// For example, the output will generally look like: "func_name(param1, param2)"
+func (id Function) DisplayString() string {
+	if !id.IsValid() {
+		return ""
+	}
+	params := make([]string, id.ParameterCount())
+	for i, paramID := range id.Parameters() {
+		params[i] = paramID.TypeName()
+	}
+	return fmt.Sprintf("%s(%s)", id.FunctionName(), strings.Join(params, ", "))
+}
+
 // FunctionName returns the function's name.
 func (id Function) FunctionName() string {
 	return Id(id).Segment(1)
@@ -346,6 +396,11 @@ func (id Function) ParameterCount() int {
 
 // SchemaName returns the schema name of the function.
 func (id Function) SchemaName() string {
+	return Id(id).Segment(0)
+}
+
+// LanguageName returns the language's name.
+func (id FunctionLanguage) LanguageName() string {
 	return Id(id).Segment(0)
 }
 
@@ -373,6 +428,26 @@ func (id Namespace) SchemaName() string {
 func (id Oid) OID() uint32 {
 	val, _ := strconv.ParseUint(Id(id).Segment(0), 10, 32)
 	return uint32(val)
+}
+
+// LeftType returns the type of the operator's left operand.
+func (id Operator) LeftType() Type {
+	return Type(Id(id).Segment(2))
+}
+
+// RightType returns the type of the operator's right operand.
+func (id Operator) RightType() Type {
+	return Type(Id(id).Segment(3))
+}
+
+// SchemaName returns the name of the schema that the operator belongs to.
+func (id Operator) SchemaName() string {
+	return Id(id).Segment(0)
+}
+
+// Symbol returns the operator's symbol.
+func (id Operator) Symbol() string {
+	return Id(id).Segment(1)
 }
 
 // ProcedureName returns the procedure's name.
@@ -418,6 +493,11 @@ func (id Table) SchemaName() string {
 // TableName returns the table's name.
 func (id Table) TableName() string {
 	return Id(id).Segment(1)
+}
+
+// TablespaceName returns the tablespace's name.
+func (id Tablespace) TablespaceName() string {
+	return Id(id).Segment(0)
 }
 
 // SchemaName returns the schema name of the trigger.
@@ -486,6 +566,9 @@ func (id ForeignKey) IsValid() bool { return Id(id).IsValid() }
 func (id Function) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
+func (id FunctionLanguage) IsValid() bool { return Id(id).IsValid() }
+
+// IsValid returns whether the ID is valid.
 func (id Index) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
@@ -495,6 +578,9 @@ func (id Namespace) IsValid() bool { return Id(id).IsValid() }
 func (id Oid) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
+func (id Operator) IsValid() bool { return Id(id).IsValid() }
+
+// IsValid returns whether the ID is valid.
 func (id Procedure) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
@@ -502,6 +588,9 @@ func (id Sequence) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
 func (id Table) IsValid() bool { return Id(id).IsValid() }
+
+// IsValid returns whether the ID is valid.
+func (id Tablespace) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
 func (id Trigger) IsValid() bool { return Id(id).IsValid() }
@@ -543,6 +632,9 @@ func (id ForeignKey) AsId() Id { return Id(id) }
 func (id Function) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
+func (id FunctionLanguage) AsId() Id { return Id(id) }
+
+// AsId returns the unwrapped ID.
 func (id Index) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
@@ -552,6 +644,9 @@ func (id Namespace) AsId() Id { return Id(id) }
 func (id Oid) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
+func (id Operator) AsId() Id { return Id(id) }
+
+// AsId returns the unwrapped ID.
 func (id Procedure) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
@@ -559,6 +654,9 @@ func (id Sequence) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Table) AsId() Id { return Id(id) }
+
+// AsId returns the unwrapped ID.
+func (id Tablespace) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Trigger) AsId() Id { return Id(id) }

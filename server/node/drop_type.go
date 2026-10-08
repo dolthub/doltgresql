@@ -70,12 +70,12 @@ func (c *DropType) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	var userRole auth.Role
+	var roleErr error
 	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
+		_, roleErr = auth.CurrentRoleLocked(ctx)
 	})
-	if !userRole.IsValid() {
-		return nil, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
+	if roleErr != nil {
+		return nil, roleErr
 	}
 
 	currentDb := ctx.GetCurrentDatabase()
@@ -86,7 +86,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	collection, err := core.GetTypesCollectionFromContext(ctx)
+	collection, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

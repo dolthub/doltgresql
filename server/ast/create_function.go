@@ -23,6 +23,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
@@ -40,39 +41,41 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}
 	// Grab the general information that we'll need to create the function
 	tableName := node.Name.ToTableName()
-	var retType *pgtypes.DoltgresType
-	if len(node.RetType) == 0 {
-		retType = pgtypes.Void
-	} else if !node.ReturnsTable {
-		// Return types may specify "trigger", but this doesn't apply elsewhere
-		_, retType, err = nodeResolvableTypeReference(ctx, node.RetType[0].Type, true)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		retType = createAnonymousCompositeType(node.RetType)
+
+	params, defaults, outTypes, err := resolveRoutineParameters(ctx, node.Args)
+	if err != nil {
+		return nil, err
 	}
 
-	params := make([]pgnodes.RoutineParam, len(node.Args))
-	var defaults []vitess.Expr
-	for i, arg := range node.Args {
-		// parameter name
-		params[i].Name = arg.Name.String()
-		// parameter type
-		_, params[i].Type, err = nodeResolvableTypeReference(ctx, arg.Type, false)
+	var retType *pgtypes.DoltgresType
+	if len(outTypes) == 1 {
+		retType = outTypes[0]
+	} else if len(outTypes) > 1 {
+		retType = pgtypes.Record
+	} else {
+		retType = pgtypes.Void
+	}
+
+	if node.ReturnsTable {
+		if len(outTypes) != 0 {
+			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
+		}
+		retType = createAnonymousCompositeType(node.RetType)
+	} else if len(node.RetType) != 0 {
+		// Return types may specify "trigger", but this doesn't apply elsewhere
+		_, rt, err := nodeResolvableTypeReference(ctx, node.RetType[0].Type, true)
 		if err != nil {
 			return nil, err
 		}
-		// parameter default
-		if arg.Default != nil {
-			params[i].HasDefault = true
-			d, err := nodeExpr(ctx, arg.Default)
-			if err != nil {
-				return nil, err
-			}
-			defaults = append(defaults, d)
+
+		if len(outTypes) == 1 && retType.ID != rt.ID {
+			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
+		} else if len(outTypes) > 1 && rt.ID != pgtypes.Record.ID {
+			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
 		}
+		retType = rt
 	}
+
 	var strict bool
 	if nullInputOption, ok := options[tree.OptionNullInput]; ok {
 		if nullInputOption.NullInput == tree.ReturnsNullOnNullInput || nullInputOption.NullInput == tree.StrictNullInput {
@@ -87,28 +90,9 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	if languageOption, ok := options[tree.OptionLanguage]; ok {
 		switch strings.ToLower(languageOption.Language) {
 		case "plpgsql":
-			// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
-			// This parser also requires the full `CREATE FUNCTION` string, so we'll pass that.
-			parsedBody, err = plpgsql.Parse(ctx.originalQuery)
+			parsedBody, err = parsePlpgsqlBody(ctx)
 			if err != nil {
 				return nil, err
-			}
-			// parse types
-			for i, op := range parsedBody {
-				switch op.OpCode {
-				case plpgsql.OpCode_Declare:
-					// ParseType uses casting to parse the given type, but
-					// some special types cannot be cast. Eg: `user_defined_table_type%ROWTYPE`
-					if declareTyp, err := parser.ParseType(op.PrimaryData); err == nil {
-						if _, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false); err == nil && dt != nil {
-							dtName := dt.Name()
-							if dt.Schema() != "" {
-								dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
-							}
-							parsedBody[i].PrimaryData = dtName
-						}
-					}
-				}
 			}
 		case "sql":
 			as, ok := options[tree.OptionAs1]
@@ -167,7 +151,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			parsedBody,
 			sqlDef,
 			sqlDefParsedStmts,
-			node.ReturnsSetOf,
+			node.ReturnsSetOf || node.ReturnsTable,
 		),
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_CREATE,
@@ -176,6 +160,34 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		},
 		Children: defaults,
 	}, nil
+}
+
+// parsePlpgsqlBody parses the PL/pgSQL body of the statement being converted, resolving the types of its declarations.
+func parsePlpgsqlBody(ctx *Context) ([]plpgsql.InterpreterOperation, error) {
+	// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
+	// This parser also requires the full statement string, so we'll pass that.
+	parsedBody, err := plpgsql.Parse(ctx.originalQuery)
+	if err != nil {
+		return nil, err
+	}
+	// parse types
+	for i, op := range parsedBody {
+		switch op.OpCode {
+		case plpgsql.OpCode_Declare:
+			// ParseType uses casting to parse the given type, but
+			// some special types cannot be cast. Eg: `user_defined_table_type%ROWTYPE`
+			if declareTyp, err := parser.ParseType(op.PrimaryData); err == nil {
+				if _, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false); err == nil && dt != nil {
+					dtName := dt.Name()
+					if dt.Schema() != "" {
+						dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
+					}
+					parsedBody[i].PrimaryData = dtName
+				}
+			}
+		}
+	}
+	return parsedBody, nil
 }
 
 // createAnonymousCompositeType creates a new DoltgresType for the anonymous composite return
@@ -222,8 +234,9 @@ func convertSQLStmts(stmts parser.Statements, params []pgnodes.RoutineParam) (st
 	paramMap := make(map[string]*framework.ParamTypAndValue, len(params))
 	for i, param := range params {
 		tv := &framework.ParamTypAndValue{
-			Typ:    param.Type,
-			StrVal: "", // must be empty string
+			Typ:        param.Type,
+			Val:        nil,
+			FromCreate: true,
 		}
 		// placeholder name is empty
 		if param.Name == "\"\"" {
@@ -264,4 +277,63 @@ func validateRoutineOptions(ctx *Context, options []tree.RoutineOption) (map[tre
 		}
 	}
 	return optDefined, nil
+}
+
+// resolveRoutineParameters takes the parsed routine arguments and resolves their modes, names, types and default expressions if defined.
+// It returns slices of routine parameters, default expressions and output parameter types.
+func resolveRoutineParameters(ctx *Context, args tree.RoutineArgs) ([]pgnodes.RoutineParam, []vitess.Expr, []*pgtypes.DoltgresType, error) {
+	params := make([]pgnodes.RoutineParam, len(args))
+	var err error
+	var defaults []vitess.Expr
+	var seenVariadic = false
+	var seenDefault = false
+	var outTypes []*pgtypes.DoltgresType
+	for i, arg := range args {
+		// parameter name
+		params[i].Name = arg.Name.String()
+		// parameter type
+		_, params[i].Type, err = nodeResolvableTypeReference(ctx, arg.Type, false)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		// parameter mode
+		switch arg.Mode {
+		case tree.RoutineArgModeIn:
+			if seenVariadic {
+				return nil, nil, nil, errors.Errorf("VARIADIC parameter must be the last input parameter")
+			}
+			params[i].Mode = procedures.ParameterMode_IN
+		case tree.RoutineArgModeVariadic:
+			if !params[i].Type.IsArrayType() {
+				return nil, nil, nil, errors.Errorf("VARIADIC parameter must be an array")
+			}
+			seenVariadic = true
+			params[i].Mode = procedures.ParameterMode_VARIADIC
+		case tree.RoutineArgModeOut:
+			outTypes = append(outTypes, params[i].Type)
+			params[i].Mode = procedures.ParameterMode_OUT
+		case tree.RoutineArgModeInout:
+			outTypes = append(outTypes, params[i].Type)
+			if seenVariadic {
+				return nil, nil, nil, errors.Errorf("VARIADIC parameter must be the last input parameter")
+			}
+			params[i].Mode = procedures.ParameterMode_INOUT
+		default:
+			return nil, nil, nil, errors.Newf("unknown routine argmode: `%v`", arg.Mode)
+		}
+		// parameter default
+		if arg.Default != nil {
+			seenDefault = true
+			params[i].HasDefault = true
+			d, err := nodeExpr(ctx, arg.Default)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			defaults = append(defaults, d)
+		} else if seenDefault && arg.Mode != tree.RoutineArgModeOut {
+			return nil, nil, nil, errors.Errorf("input parameters after one with a default value must also have defaults")
+		}
+	}
+
+	return params, defaults, outTypes, nil
 }

@@ -1230,11 +1230,11 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb < '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb < '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'and'::name < 'then'::name;`,
@@ -1578,11 +1578,11 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb > '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb > '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'and'::name > 'then'::name;`,
@@ -2006,7 +2006,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <= '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <= '{"a":1}'::jsonb;`,
@@ -2014,7 +2014,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb <= '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'and'::name <= 'then'::name;`,
@@ -2502,7 +2502,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb >= '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb >= '{"a":1}'::jsonb;`,
@@ -2510,7 +2510,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb >= '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'and'::name >= 'then'::name;`,
@@ -4019,6 +4019,20 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT * FROM users_sync`,
 					Expected: []sql.Row{{`{"id": 2}`, "2"}},
+				},
+			},
+		},
+		{
+			Name: "Error cases",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT, v VARCHAR);",
+				"INSERT INTO t VALUES (1, 'true');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// https://github.com/dolthub/doltgresql/issues/2160
+					Query:       `SELECT * FROM t WHERE v = true;`,
+					ExpectedErr: "operator does not exist: varchar = bool",
 				},
 			},
 		},

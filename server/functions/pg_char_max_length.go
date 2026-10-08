@@ -1,0 +1,58 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package functions
+
+import (
+	"math"
+
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+// initPgCharMaxLength registers the functions to the catalog.
+func initPgCharMaxLength() {
+	framework.RegisterFunction(_pg_char_max_length)
+}
+
+// _pg_char_max_length returns the character or bit length encoded in a type modifier.
+var _pg_char_max_length = framework.Function2{
+	// TODO: Support schema-aware built-in registration and lookup for information_schema functions.
+	// Schema: "information_schema",
+	Name:       "_pg_char_max_length",
+	Return:     pgtypes.Int32,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		typmod := val2.(int32)
+		if typmod == -1 {
+			return nil, nil
+		}
+		switch oid.Oid(id.Cache().ToOID(val1.(id.Id))) {
+		case oid.T_bpchar, oid.T_varchar:
+			if typmod < math.MinInt32+4 {
+				return nil, pgtypes.ErrOutOfRange.New("integer")
+			}
+			return pgtypes.GetCharLengthFromTypmod(typmod), nil
+		case oid.T_bit, oid.T_varbit:
+			return typmod, nil
+		default:
+			return nil, nil
+		}
+	},
+}

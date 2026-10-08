@@ -18,25 +18,29 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"math"
 	"sort"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate/sequences"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // Collection contains a collection of sequences.
 type Collection struct {
-	accessedMap   map[id.Sequence]*Sequence // Whenever a sequence is accessed, it is added to the access map for faster retrieval
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
+	objinterface.RootObjectMap
+	accessedMap map[id.Sequence]*Sequence // Whenever a sequence is accessed, it is added to the access map for faster retrieval
 }
 
 // Persistence controls the persistence of a Sequence.
@@ -48,11 +52,8 @@ const (
 	Persistence_Unlogged  Persistence = 2
 )
 
-// Sequence represents a single sequence within the pg_sequence table.
-type Sequence struct {
+type SequenceState struct {
 	Id            id.Sequence
-	DataTypeID    id.Type
-	Persistence   Persistence
 	Start         int64
 	Current       int64
 	Increment     int64
@@ -62,13 +63,177 @@ type Sequence struct {
 	Cycle         bool
 	IsAtEnd       bool
 	HasBeenCalled bool
-	OwnerTable    id.Table
-	OwnerColumn   string
+}
+
+type SequenceTracker = dsess.SequenceTracker[*Sequence, SequenceState, int64]
+
+// SequenceTrackerKey is the key to identify the SequenceTracker in the globalstate.GlobalState
+var SequenceTrackerKey dsess.TrackerKey[*SequenceTracker] = struct{}{}
+
+func (sequence SequenceState) Merge(otherSequenceState SequenceState) (merged SequenceState) {
+	newSequenceState := sequence
+	thisIsIncrementing := sequence.Increment > 0
+	otherIsIncrementing := otherSequenceState.Increment > 0
+	if thisIsIncrementing != otherIsIncrementing {
+		// These states can't be merged.
+		// A zero-valued state is the "invalid" state.
+		return SequenceState{}
+	}
+	if thisIsIncrementing {
+		newSequenceState.Increment = utils.Min(sequence.Increment, otherSequenceState.Increment)
+		newSequenceState.Start = utils.Min(sequence.Start, otherSequenceState.Start)
+	} else {
+		newSequenceState.Increment = utils.Max(sequence.Increment, otherSequenceState.Increment)
+		newSequenceState.Start = utils.Max(sequence.Start, otherSequenceState.Start)
+	}
+	if sequence.GreaterThan(otherSequenceState) {
+		newSequenceState.Current = sequence.Current
+	} else {
+		newSequenceState.Current = otherSequenceState.Current
+	}
+	newSequenceState.Minimum = utils.Min(sequence.Minimum, otherSequenceState.Minimum)
+	newSequenceState.Maximum = utils.Max(sequence.Maximum, otherSequenceState.Maximum)
+	newSequenceState.Cycle = sequence.Cycle || otherSequenceState.Cycle
+	newSequenceState.IsAtEnd = sequence.IsAtEnd && otherSequenceState.IsAtEnd
+	newSequenceState.HasBeenCalled = sequence.HasBeenCalled || otherSequenceState.HasBeenCalled
+	return newSequenceState
+}
+
+var _ sequences.SequenceState[SequenceState, int64] = SequenceState{}
+
+func (sequence SequenceState) CurrentValue() int64 {
+	return sequence.Current
+}
+
+func (sequence SequenceState) WithValue(v int64) SequenceState {
+	sequence.Current = v
+	sequence.IsAtEnd = false
+	return sequence
+}
+
+func (sequence SequenceState) WithSQLValue(ctx *sql.Context, v interface{}) (SequenceState, error) {
+	// TODO: Coercing happens here, based on the type of the sequence
+	return sequence.WithValue(v.(int64)), nil
+}
+
+func (sequence SequenceState) GreaterThan(other SequenceState) bool {
+	// A sequence that has wrapped around is further along than a sequence that hasn't.
+	// Otherwise, we see which sequence is further alone, in the direction that it's incrementing.
+	if sequence.Increment > 0 {
+		hasWrapped := sequence.Current < sequence.Start
+		otherHasWrapped := other.Current < sequence.Start
+		if hasWrapped == otherHasWrapped {
+			return sequence.Current > other.Current
+		} else {
+			// Exactly one of the sequences has wrapped around. That sequence is greater.
+			return hasWrapped
+		}
+	} else {
+		hasWrapped := sequence.Current > sequence.Start
+		otherHasWrapped := other.Current > sequence.Start
+		if hasWrapped == otherHasWrapped {
+			return sequence.Current < other.Current
+		} else {
+			// Exactly one of the sequences has wrapped around. That sequence is greater.
+			return hasWrapped
+		}
+	}
+}
+
+func (sequence SequenceState) AtEnd() bool {
+	return sequence.IsAtEnd
+}
+
+func (sequence SequenceState) Next() (sqlVal int64, hasNext bool, nextState SequenceState, err error) {
+	// The zero valued state indicates that two incompatible sequences were merged. For now, attempting to advance this
+	// state results in an error.
+	if (sequence == SequenceState{}) {
+		return 0, false, SequenceState{}, errors.New("unable to advance sequence state, possibly due to having incompatible state on different branches")
+	}
+	// First we'll check if we've reached the end, and cycle or error as necessary
+	sequence.HasBeenCalled = true
+	if sequence.IsAtEnd {
+		if !sequence.Cycle {
+			if sequence.Increment > 0 {
+				return 0, false, SequenceState{}, errors.Errorf(`nextval: reached maximum value of sequence "%s" (%d)`, sequence.Id, sequence.Maximum)
+			} else {
+				return 0, false, SequenceState{}, errors.Errorf(`nextval: reached minimum value of sequence "%s" (%d)`, sequence.Id, sequence.Minimum)
+			}
+		}
+		sequence.IsAtEnd = false
+		if sequence.Increment > 0 {
+			sequence.Current = sequence.Minimum
+		} else {
+			sequence.Current = sequence.Maximum
+		}
+	}
+	// We'll return the current value, so everything after this sets the value for the next call
+	valueToReturn := sequence.Current
+	// Increment the current value
+	if sequence.Increment > 0 {
+		// Check for overflow or crossing the maximum, meaning we're at the end
+		if sequence.Current > math.MaxInt64-sequence.Increment || sequence.Current+sequence.Increment > sequence.Maximum {
+			sequence.IsAtEnd = true
+		} else {
+			sequence.Current += sequence.Increment
+		}
+	} else {
+		// Check for underflow or crossing the minimum, meaning we're at the end
+		if sequence.Current < math.MinInt64-sequence.Increment || sequence.Current+sequence.Increment < sequence.Minimum {
+			sequence.IsAtEnd = true
+		} else {
+			sequence.Current += sequence.Increment
+		}
+	}
+	return valueToReturn, true, sequence, nil
+}
+
+// Sequence represents a single sequence within the pg_sequence table.
+type Sequence struct {
+	DataTypeID  id.Type
+	Persistence Persistence
+	SequenceState
+	OwnerTable  id.Table
+	OwnerColumn string
+}
+
+func (sequence *Sequence) GetSequenceState(ctx context.Context) (SequenceState, error) {
+	return sequence.SequenceState, nil
+}
+
+func (sequence *Sequence) HasSequenceState(ctx context.Context) (bool, error) {
+	return true, nil
+}
+
+func (sequence *Sequence) SetSequenceState(ctx context.Context, newSequenceState SequenceState) (*Sequence, error) {
+	newSequence := sequence
+	newSequence.SequenceState = newSequenceState
+	return newSequence, nil
+}
+
+func (sequence *Sequence) GetSequenceSqlType(ctx context.Context) (sql.Type, bool, error) {
+	switch sequence.DataTypeID.TypeName() {
+	case "int8":
+		return types.Int8, true, nil
+	case "int16":
+		return types.Int16, true, nil
+	case "int32":
+		return types.Int32, true, nil
+	case "int64":
+		return types.Int64, true, nil
+	}
+	return nil, false, fmt.Errorf("sequences: unknown sequence data type: %s", sequence.DataTypeID.TypeName())
+}
+
+func (sequence *Sequence) TrySetSequenceState(ctx *sql.Context, val SequenceState) (*Sequence, bool, error) {
+	newSequence, err := sequence.SetSequenceState(ctx, val)
+	return newSequence, true, err
 }
 
 var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = (*Sequence)(nil)
 var _ doltdb.RootObject = (*Sequence)(nil)
+var _ sequences.SequencedRelation[*Sequence, int64, SequenceState] = (*Sequence)(nil)
 
 // GetSequence returns the sequence with the given schema and name. Returns nil if the sequence cannot be found.
 func (pgs *Collection) GetSequence(ctx context.Context, name id.Sequence) (*Sequence, error) {
@@ -130,7 +295,7 @@ func (pgs *Collection) HasSequence(ctx context.Context, name id.Sequence) bool {
 		return true
 	}
 	// The initial load is from the internal map
-	ok, err := pgs.underlyingMap.Has(ctx, string(name))
+	ok, err := pgs.Contents().Has(ctx, string(name))
 	if err == nil && ok {
 		return true
 	}
@@ -143,7 +308,7 @@ func (pgs *Collection) CreateSequence(ctx context.Context, seq *Sequence) error 
 	if _, ok := pgs.accessedMap[seq.Id]; ok {
 		return errors.Errorf(`relation "%s" already exists`, seq.Id.SequenceName())
 	}
-	if ok, err := pgs.underlyingMap.Has(ctx, string(seq.Id)); err != nil {
+	if ok, err := pgs.Contents().Has(ctx, string(seq.Id)); err != nil {
 		return err
 	} else if ok {
 		return errors.Errorf(`relation "%s" already exists`, seq.Id.SequenceName())
@@ -160,14 +325,14 @@ func (pgs *Collection) DropSequence(ctx context.Context, names ...id.Sequence) (
 		return err
 	}
 	for _, name := range names {
-		if ok, err := pgs.underlyingMap.Has(ctx, string(name)); err != nil {
+		if ok, err := pgs.Contents().Has(ctx, string(name)); err != nil {
 			return err
 		} else if !ok {
 			return errors.Errorf(`sequence "%s" does not exist`, name.SequenceName())
 		}
 	}
 	// Now we'll remove the sequences from the underlying map
-	mapEditor := pgs.underlyingMap.Editor()
+	mapEditor := pgs.Contents().Editor()
 	for _, name := range names {
 		if err = mapEditor.Delete(ctx, string(name)); err != nil {
 			return err
@@ -177,7 +342,7 @@ func (pgs *Collection) DropSequence(ctx context.Context, names ...id.Sequence) (
 	if err != nil {
 		return err
 	}
-	pgs.underlyingMap = flushed
+	pgs.SetContents(flushed)
 	return nil
 }
 
@@ -186,14 +351,14 @@ func (pgs *Collection) resolveName(ctx context.Context, schemaName string, seque
 	if err := pgs.writeCache(ctx); err != nil {
 		return id.NullSequence, err
 	}
-	count, err := pgs.underlyingMap.Count()
+	count, err := pgs.Contents().Count()
 	if err != nil || count == 0 {
 		return id.NullSequence, err
 	}
 
 	// First check for an exact match
 	inputID := id.NewSequence(schemaName, sequenceName)
-	ok, err := pgs.underlyingMap.Has(ctx, string(inputID))
+	ok, err := pgs.Contents().Has(ctx, string(inputID))
 	if err != nil {
 		return id.NullSequence, err
 	} else if ok {
@@ -203,7 +368,7 @@ func (pgs *Collection) resolveName(ctx context.Context, schemaName string, seque
 	// Now we'll iterate over all the names
 	var resolvedID id.Sequence
 	if len(schemaName) > 0 {
-		err = pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+		err = pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 			seqID := id.Sequence(k)
 			if strings.EqualFold(sequenceName, seqID.SequenceName()) &&
 				strings.EqualFold(schemaName, seqID.SchemaName()) {
@@ -219,7 +384,7 @@ func (pgs *Collection) resolveName(ctx context.Context, schemaName string, seque
 			return id.NullSequence, err
 		}
 	} else {
-		err = pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+		err = pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 			seqID := id.Sequence(k)
 			if strings.EqualFold(sequenceName, seqID.SequenceName()) {
 				if resolvedID.IsValid() {
@@ -242,7 +407,7 @@ func (pgs *Collection) iterateIDs(ctx context.Context, f func(seqID id.Sequence)
 	if err = pgs.writeCache(ctx); err != nil {
 		return err
 	}
-	return pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+	return pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 		seqID := id.Sequence(k)
 		stop, err := f(seqID)
 		if err != nil {
@@ -278,19 +443,19 @@ func (pgs *Collection) NextVal(ctx context.Context, name id.Sequence) (int64, er
 		return 0, err
 	}
 	if seq == nil {
-		return 0, errors.Errorf(`relation "%s" does not exist`, name.SequenceName())
+		return 0, errors.Errorf(`sequence "%s" does not exist`, name.SequenceName())
 	}
 	return seq.nextValForSequence()
 }
 
 // SetVal sets the sequence to the
-func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue int64, autoAdvance bool) error {
+func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue int64, hasBeenCalled bool, autoAdvance bool) error {
 	seq, err := pgs.getSequence(ctx, name)
 	if err != nil {
 		return err
 	}
 	if seq == nil {
-		return errors.Errorf(`relation "%s" does not exist`, name.SequenceName())
+		return errors.Errorf(`sequence "%s" does not exist`, name.SequenceName())
 	}
 	if newValue < seq.Minimum || newValue > seq.Maximum {
 		return errors.Errorf(`setval: value %d is out of bounds for sequence "%s" (%d..%d)`,
@@ -298,7 +463,7 @@ func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue in
 	}
 	seq.Current = newValue
 	seq.IsAtEnd = false
-	seq.HasBeenCalled = false
+	seq.HasBeenCalled = hasBeenCalled
 	if autoAdvance {
 		_, err := seq.nextValForSequence()
 		return err
@@ -306,25 +471,12 @@ func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue in
 	return nil
 }
 
-// Clone returns a new *Collection with the same contents as the original.
-func (pgs *Collection) Clone(ctx context.Context) *Collection {
-	newCollection := &Collection{
-		accessedMap:   make(map[id.Sequence]*Sequence),
-		underlyingMap: pgs.underlyingMap,
-		ns:            pgs.ns,
-	}
-	for seqID, seq := range pgs.accessedMap {
-		newCollection.accessedMap[seqID] = seq
-	}
-	return newCollection
-}
-
-// Map writes any cached sequences to the underlying map, and then returns the underlying map.
+// Map writes any cached sequences to the collection's contents, and then returns those contents.
 func (pgs *Collection) Map(ctx context.Context) (prolly.AddressMap, error) {
 	if err := pgs.writeCache(ctx); err != nil {
 		return prolly.AddressMap{}, err
 	}
-	return pgs.underlyingMap, nil
+	return pgs.Contents(), nil
 }
 
 // GetID implements the interface objinterface.RootObject.
@@ -361,13 +513,13 @@ func (pgs *Collection) cacheAllSequences(ctx context.Context) error {
 	for seqID := range pgs.accessedMap {
 		found[seqID] = struct{}{}
 	}
-	return pgs.underlyingMap.IterAll(ctx, func(k string, v hash.Hash) error {
+	return pgs.Contents().IterAll(ctx, func(k string, v hash.Hash) error {
 		seqID := id.Sequence(k)
 		if _, ok := found[seqID]; ok {
 			return nil
 		}
 		found[seqID] = struct{}{}
-		data, err := pgs.ns.ReadBytes(ctx, v)
+		data, err := pgs.NodeStore().ReadBytes(ctx, v)
 		if err != nil {
 			return err
 		}
@@ -387,11 +539,11 @@ func (pgs *Collection) getSequence(ctx context.Context, name id.Sequence) (*Sequ
 		return seq, nil
 	}
 	// The initial load is from the internal map
-	h, err := pgs.underlyingMap.Get(ctx, string(name))
+	h, err := pgs.Contents().Get(ctx, string(name))
 	if err != nil || h.IsEmpty() {
 		return nil, err
 	}
-	data, err := pgs.ns.ReadBytes(ctx, h)
+	data, err := pgs.NodeStore().ReadBytes(ctx, h)
 	if err != nil {
 		return nil, err
 	}
@@ -408,13 +560,13 @@ func (pgs *Collection) writeCache(ctx context.Context) (err error) {
 	if len(pgs.accessedMap) == 0 {
 		return nil
 	}
-	mapEditor := pgs.underlyingMap.Editor()
+	mapEditor := pgs.Contents().Editor()
 	for _, seq := range pgs.accessedMap {
 		data, err := seq.Serialize(ctx)
 		if err != nil {
 			return err
 		}
-		h, err := pgs.ns.WriteBytes(ctx, data)
+		h, err := pgs.NodeStore().WriteBytes(ctx, data)
 		if err != nil {
 			return err
 		}
@@ -422,53 +574,52 @@ func (pgs *Collection) writeCache(ctx context.Context) (err error) {
 			return err
 		}
 	}
-	// Assign underlyingMap only after the error check. Flush returns a
+	// Set the contents only after the error check. Flush returns a
 	// zero AddressMap on failure, which would corrupt the Collection.
 	flushed, err := mapEditor.Flush(ctx)
 	if err != nil {
 		return err
 	}
-	pgs.underlyingMap = flushed
+	pgs.SetContents(flushed)
 	clear(pgs.accessedMap)
 	return nil
 }
 
 // nextValForSequence increments the calling sequence.
 func (sequence *Sequence) nextValForSequence() (int64, error) {
-	// First we'll check if we've reached the end, and cycle or error as necessary
-	if sequence.IsAtEnd {
-		if !sequence.Cycle {
-			if sequence.Increment > 0 {
-				return 0, errors.Errorf(`nextval: reached maximum value of sequence "%s" (%d)`, sequence.Id, sequence.Maximum)
-			} else {
-				return 0, errors.Errorf(`nextval: reached minimum value of sequence "%s" (%d)`, sequence.Id, sequence.Minimum)
+	result, _, newSequence, err := sequence.Next()
+	if err != nil {
+		return 0, err
+	}
+	sequence.SequenceState = newSequence
+	return result, nil
+}
+
+// SequenceSource reads relations from a RootValue by reading its RootObjects
+type SequenceSource struct{}
+
+var _ doltdb.RelationSource[*Sequence] = SequenceSource{}
+
+func (s SequenceSource) GetRelation(ctx context.Context, root doltdb.RootValue, tName doltdb.TableName) (relation *Sequence, resolvedName string, found bool, err error) {
+	obj, found, err := root.GetRootObject(ctx, tName)
+	if !found || err != nil {
+		return nil, "", found, err
+	}
+	if seq, ok := obj.(*Sequence); ok {
+		return seq, tName.Name, true, nil
+	}
+	return nil, "", found, nil
+}
+
+func (s SequenceSource) IterRelations(ctx context.Context, root doltdb.RootValue) iter.Seq2[doltdb.TableName, *Sequence] {
+	return func(yield func(doltdb.TableName, *Sequence) bool) {
+		_ = root.IterRootObjects(ctx, func(name doltdb.TableName, obj doltdb.RootObject) (stop bool, err error) {
+			if seq, ok := obj.(*Sequence); ok {
+				if !yield(name, seq) {
+					return true, nil
+				}
 			}
-		}
-		sequence.IsAtEnd = false
-		if sequence.Increment > 0 {
-			sequence.Current = sequence.Minimum
-		} else {
-			sequence.Current = sequence.Maximum
-		}
+			return false, nil
+		})
 	}
-	// We'll return the current value, so everything after this sets the value for the next call
-	sequence.HasBeenCalled = true
-	valueToReturn := sequence.Current
-	// Increment the current value
-	if sequence.Increment > 0 {
-		// Check for overflow or crossing the maximum, meaning we're at the end
-		if sequence.Current > math.MaxInt64-sequence.Increment || sequence.Current+sequence.Increment > sequence.Maximum {
-			sequence.IsAtEnd = true
-		} else {
-			sequence.Current += sequence.Increment
-		}
-	} else {
-		// Check for underflow or crossing the minimum, meaning we're at the end
-		if sequence.Current < math.MinInt64-sequence.Increment || sequence.Current+sequence.Increment < sequence.Minimum {
-			sequence.IsAtEnd = true
-		} else {
-			sequence.Current += sequence.Increment
-		}
-	}
-	return valueToReturn, nil
 }

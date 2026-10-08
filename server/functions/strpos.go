@@ -35,7 +35,15 @@ var strpos_varchar = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.VarChar, pgtypes.VarChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, str any, substring any) (any, error) {
-		idx := strings.Index(str.(string), substring.(string))
+		strStr, err := framework.UnwrapString(ctx, str)
+		if err != nil {
+			return nil, err
+		}
+		substringStr, err := framework.UnwrapString(ctx, substring)
+		if err != nil {
+			return nil, err
+		}
+		idx := strings.Index(strStr, substringStr)
 		if idx == -1 {
 			return int32(0), nil
 		}

@@ -30,10 +30,64 @@ func IsValidPostgresConfigParameter(name string) bool {
 	return ok
 }
 
+// PostgresConfigParameters returns the full set of Postgres configuration parameters, keyed by lowercase
+// parameter name. The returned map is shared, so callers must not modify it (or the parameters within it).
+func PostgresConfigParameters() map[string]sql.SystemVariable {
+	return postgresConfigParameters
+}
+
+// listQuoteConfigParameters are the parameters whose value is a comma separated list of identifiers rather than a
+// plain string. Postgres renders each element of such a list with quote_identifier when the value is assigned, so
+// quoting that carries meaning (case, characters not valid in a bare identifier, a reserved keyword, the "$user"
+// placeholder) survives into the stored value, while any unnecessary quoting is dropped. These are the parameters
+// carrying GUC_LIST_QUOTE in Postgres's guc_tables.c.
+var listQuoteConfigParameters = map[string]struct{}{
+	"local_preload_libraries":   {},
+	"search_path":               {},
+	"session_preload_libraries": {},
+	"shared_preload_libraries":  {},
+	"temp_tablespaces":          {},
+}
+
+// IsListQuoteConfigParameter returns true if the given parameter's value is a comma separated list of identifiers,
+// each of which is quoted as an identifier when the value is assigned. See listQuoteConfigParameters.
+func IsListQuoteConfigParameter(name string) bool {
+	_, ok := listQuoteConfigParameters[strings.ToLower(name)]
+	return ok
+}
+
 // IsValidDoltConfigParameter returns true if the given parameter name is a valid Dolt configuration parameter.
 func IsValidDoltConfigParameter(name string) bool {
 	_, ok := doltConfigParameters[strings.ToLower(name)]
 	return ok
+}
+
+// IsGlobalOnlySystemVariable returns true if the given name refers to a registered system variable that has no
+// session scope (e.g. Dolt's cluster replication variables such as dolt_cluster_role). Such variables can only
+// meaningfully be read from and written to the global scope: sessions snapshot system variables at creation time,
+// so a session copy would go stale (on read) or be invisible to the rest of the server (on write).
+func IsGlobalOnlySystemVariable(name string) bool {
+	_, ok := GlobalOnlySystemVariableScope(name)
+	return ok
+}
+
+// GlobalOnlySystemVariableScope returns the declared scope of the given system variable and true if the variable
+// is registered and has no session scope (Global, Persist, or PersistOnly). See IsGlobalOnlySystemVariable.
+func GlobalOnlySystemVariableScope(name string) (sql.MysqlSVScopeType, bool) {
+	sysVar, _, ok := sql.SystemVariables.GetGlobal(strings.ToLower(name))
+	if !ok {
+		return 0, false
+	}
+	msv, isMysqlVar := sysVar.(*sql.MysqlSystemVariable)
+	if !isMysqlVar || msv.Scope == nil {
+		return 0, false
+	}
+	switch msv.Scope.Type {
+	case sql.SystemVariableScope_Global, sql.SystemVariableScope_Persist, sql.SystemVariableScope_PersistOnly:
+		return msv.Scope.Type, true
+	default:
+		return 0, false
+	}
 }
 
 // postgresConfigParameters is a list of configuration parameters that can be used in SET statement.
@@ -1791,6 +1845,28 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Type:      types.NewSystemStringType("krb_server_keyfile"),
 		Source:    ParameterSourceDefault,
 		ResetVal:  "FILE:/usr/local/etc/postgresql/krb5.keytab",
+		Scope:     GetPgsqlScope(PsqlScopeSession),
+	},
+	"lc_collate": &Parameter{
+		Name:      "lc_collate",
+		Default:   "C",
+		Category:  "Preset Options",
+		ShortDesc: "Shows the collation order locale.",
+		Context:   ParameterContextInternal,
+		Type:      types.NewSystemStringType("lc_collate"),
+		Source:    ParameterSourceDefault,
+		ResetVal:  "C",
+		Scope:     GetPgsqlScope(PsqlScopeSession),
+	},
+	"lc_ctype": &Parameter{
+		Name:      "lc_ctype",
+		Default:   "C",
+		Category:  "Preset Options",
+		ShortDesc: "Shows the character classification and case conversion locale.",
+		Context:   ParameterContextInternal,
+		Type:      types.NewSystemStringType("lc_ctype"),
+		Source:    ParameterSourceDefault,
+		ResetVal:  "C",
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"lc_messages": &Parameter{

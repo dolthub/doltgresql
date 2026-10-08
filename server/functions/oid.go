@@ -45,7 +45,10 @@ var oidin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		iVal, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
 		if err != nil {
 			return id.Null, pgtypes.ErrInvalidSyntaxForType.New("oid", input)
@@ -80,7 +83,10 @@ var oidrecv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
@@ -114,6 +120,8 @@ var btoidcmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		return int32(cmp.Compare(val1.(id.Id), val2.(id.Id))), nil
+		// Postgres compares OIDs numerically, and different internal IDs can map to the same OID (e.g. a raw
+		// numeric OID given by a client and the cached ID it refers to)
+		return int32(cmp.Compare(id.Cache().ToOID(val1.(id.Id)), id.Cache().ToOID(val2.(id.Id)))), nil
 	},
 }

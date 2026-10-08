@@ -21,11 +21,11 @@ import (
 	"testing"
 
 	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 )
 
 // TestMap_RemainsUsableAfterFlushFailure asserts that Collection.Map
@@ -76,12 +76,11 @@ func TestDropSequence_RemainsUsableAfterFlushFailure(t *testing.T) {
 // address map.
 func newTestCollection(t *testing.T, ns tree.NodeStore) *Collection {
 	t.Helper()
-	addrMap, err := prolly.NewEmptyAddressMap(ns)
+	rom, err := objinterface.NewDetachedRootObjectMap(storage, ns)
 	require.NoError(t, err)
 	return &Collection{
+		RootObjectMap: rom,
 		accessedMap:   map[id.Sequence]*Sequence{},
-		underlyingMap: addrMap,
-		ns:            ns,
 	}
 }
 
@@ -89,13 +88,15 @@ func newTestCollection(t *testing.T, ns tree.NodeStore) *Collection {
 // through Serialize and Deserialize. The exact values are not significant.
 func newTestSequence(schema, name string) *Sequence {
 	return &Sequence{
-		Id:        id.NewSequence(schema, name),
-		Start:     1,
-		Current:   1,
-		Increment: 1,
-		Minimum:   1,
-		Maximum:   math.MaxInt64,
-		Cache:     1,
+		SequenceState: SequenceState{
+			Id:        id.NewSequence(schema, name),
+			Start:     1,
+			Current:   1,
+			Increment: 1,
+			Minimum:   1,
+			Maximum:   math.MaxInt64,
+			Cache:     1,
+		},
 	}
 }
 

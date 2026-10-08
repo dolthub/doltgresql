@@ -13,12 +13,13 @@ func _() {
 	_ = x[RowsAffected-2]
 	_ = x[Rows-3]
 	_ = x[CopyIn-4]
-	_ = x[Unknown-5]
+	_ = x[CopyOut-5]
+	_ = x[Unknown-6]
 }
 
-const _StatementType_name = "AckDDLRowsAffectedRowsCopyInUnknown"
+const _StatementType_name = "AckDDLRowsAffectedRowsCopyInCopyOutUnknown"
 
-var _StatementType_index = [...]uint8{0, 3, 6, 18, 22, 28, 35}
+var _StatementType_index = [...]uint8{0, 3, 6, 18, 22, 28, 35, 42}
 
 func (i StatementType) String() string {
 	if i < 0 || i >= StatementType(len(_StatementType_index)-1) {

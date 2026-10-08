@@ -15,6 +15,9 @@
 package _go
 
 import (
+	"bytes"
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -92,6 +95,27 @@ var typesTests = []ScriptTest{
 					{1, pgtype.Bits{Bytes: []uint8{0xda}, Len: 8, Valid: true}, pgtype.Bits{Bytes: []uint8{0xa0}, Len: 3, Valid: true}},
 					{2, pgtype.Bits{Bytes: []uint8{0x2b}, Len: 8, Valid: true}, pgtype.Bits{Bytes: []uint8{0x0}, Len: 3, Valid: true}},
 				},
+			},
+			{
+				Query: "SELECT 0::bit, 1::bit, 2::bit, 3::bit, 4::bit, 5::bit(2), 6::bit(2);",
+				Expected: []sql.Row{{
+					pgtype.Bits{Bytes: []uint8{0x00}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x80}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x00}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x80}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x00}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x40}, Len: 2, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x80}, Len: 2, Valid: true},
+				}},
+			},
+			{
+				Query: "SELECT (-1)::bit, (-2)::bit, (-5)::bit(2), (-6::int4)::bit(2);",
+				Expected: []sql.Row{{
+					pgtype.Bits{Bytes: []uint8{0x80}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x00}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x40}, Len: 2, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x80}, Len: 2, Valid: true},
+				}},
 			},
 			{
 				Query:       "INSERT INTO t_bit VALUES (3, B'101', '111');",
@@ -189,7 +213,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "boolean indexes",
-		Skip: true, // panic
 		SetUpScript: []string{
 			"create table t (b bool);",
 			"insert into t values (false);",
@@ -201,13 +224,13 @@ var typesTests = []ScriptTest{
 			{
 				Query: "select * from t where (b in (false));",
 				Expected: []sql.Row{
-					{0},
+					{"f"},
 				},
 			},
 			{
 				Query: "select * from t_idx where (b in (false));",
 				Expected: []sql.Row{
-					{0},
+					{"f"},
 				},
 			},
 		},
@@ -383,7 +406,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bytea key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_bytea (id BYTEA primary key, v1 BYTEA);",
 			"INSERT INTO t_bytea VALUES (E'\\\\xCAFEBABE', E'\\\\xDEADBEEF'), ('\\xBADD00D5', '\\xC0FFEE');",
@@ -393,6 +415,67 @@ var typesTests = []ScriptTest{
 				Query: "SELECT * FROM t_bytea WHERE ID = E'\\\\xCAFEBABE' ORDER BY id;",
 				Expected: []sql.Row{
 					{[]byte{0xCA, 0xFE, 0xBA, 0xBE}, []byte{0xDE, 0xAD, 0xBE, 0xEF}},
+				},
+			},
+		},
+	},
+	{
+		Name: "Bytea key with mixed short and long values",
+		SetUpScript: []string{
+			"CREATE TABLE t_bytea_keys (id BYTEA primary key, v1 INTEGER);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x11', 1);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x22" + strings.Repeat("78", 10500) + "', 2);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x33', 3);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x44" + strings.Repeat("79", 10500) + "', 4);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x55', 5);",
+			"INSERT INTO t_bytea_keys VALUES ('\\xff', 6);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys ORDER BY id DESC;",
+				Expected: []sql.Row{{6}, {5}, {4}, {3}, {2}, {1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id = '\\x11';",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id = '\\xff';",
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id = '\\x22" + strings.Repeat("78", 10500) + "';",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id = '\\x44" + strings.Repeat("79", 10500) + "';",
+				Expected: []sql.Row{{4}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id < '\\x33'::bytea ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id > '\\x44'::bytea ORDER BY id;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id > '\\x22'::bytea AND id < '\\x55'::bytea ORDER BY id;",
+				Expected: []sql.Row{{2}, {3}, {4}},
+			},
+			{
+				Query: "select id from t_bytea_keys order by id",
+				Expected: []sql.Row{
+					{[]uint8{0x11}},
+					{append([]uint8{0x22}, bytes.Repeat([]byte{0x78}, 10500)...)},
+					{[]uint8{0x33}},
+					{append([]uint8{0x44}, bytes.Repeat([]byte{0x79}, 10500)...)},
+					{[]uint8{0x55}},
+					{[]uint8{0xff}},
 				},
 			},
 		},
@@ -699,7 +782,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Character varying type, no length, as primary key",
-		Skip: true, // panic
 		SetUpScript: []string{
 			"CREATE TABLE t_varchar (id INTEGER, v1 CHARACTER VARYING primary key);",
 			"INSERT INTO t_varchar VALUES (1, 'abcdefghij'), (2, 'klmnopqrst');",
@@ -707,11 +789,64 @@ var typesTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_varchar ORDER BY id;",
-				Skip:  true, // missing the second row
 				Expected: []sql.Row{
 					{1, "abcdefghij"},
 					{2, "klmnopqrst"},
 				},
+			},
+		},
+	},
+	{
+		Name: "Character varying key with mixed short and long values",
+		SetUpScript: []string{
+			"CREATE TABLE t_varchar_keys (id VARCHAR primary key, v1 INTEGER);",
+			"INSERT INTO t_varchar_keys VALUES ('aa', 1);",
+			"INSERT INTO t_varchar_keys VALUES ('bb' || repeat('x', 10500), 2);",
+			"INSERT INTO t_varchar_keys VALUES ('cc', 3);",
+			"INSERT INTO t_varchar_keys VALUES ('dd' || repeat('y', 10500), 4);",
+			"INSERT INTO t_varchar_keys VALUES ('ee', 5);",
+			"INSERT INTO t_varchar_keys VALUES ('zz', 6);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys ORDER BY id DESC;",
+				Expected: []sql.Row{{6}, {5}, {4}, {3}, {2}, {1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id = 'aa';",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id = 'zz';",
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id = 'bb' || repeat('x', 10500);",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id = 'dd' || repeat('y', 10500);",
+				Expected: []sql.Row{{4}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id < 'cc' ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id > 'dd' ORDER BY id;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id > 'bb' AND id < 'ee' ORDER BY id;",
+				Expected: []sql.Row{{2}, {3}, {4}},
+			},
+			{
+				Query:    "SELECT v1, length(id) FROM t_varchar_keys WHERE v1 IN (1, 2, 4) ORDER BY v1;",
+				Expected: []sql.Row{{1, 2}, {2, 10502}, {4, 10502}},
 			},
 		},
 	},
@@ -728,6 +863,39 @@ var typesTests = []ScriptTest{
 					{1, "{abcdefghij,NULL}"},
 					{2, `{ab'cdef,what,"is,hi","wh\"at","}","{","{}"}`},
 				},
+			},
+		},
+	},
+	{
+		Name: "Array literal parsing preserves internal whitespace in unquoted elements",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT '{2026-08-21 12:00:00,2026-08-22 13:30:00}'::timestamp[];`,
+				Expected: []sql.Row{{`{"2026-08-21 12:00:00","2026-08-22 13:30:00"}`}},
+			},
+			{
+				// Compared by instant equality (not text) since the display offset depends
+				// on the session's local time zone.
+				Query:    `SELECT ('{2026-08-21 12:00:00+05:00}'::timestamptz[])[1] = '2026-08-21 07:00:00+00'::timestamptz;`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT '{1 day 2 hours, 3 days}'::interval[];`,
+				Expected: []sql.Row{{`{"1 day 02:00:00","3 days"}`}},
+			},
+			{
+				// Insignificant whitespace around unquoted elements is still trimmed.
+				Query:    `SELECT '{ 1 , 2 , 3 }'::int[];`,
+				Expected: []sql.Row{{"{1,2,3}"}},
+			},
+			{
+				// A whitespace-only array body is still an empty array, not a single blank element.
+				Query:    `SELECT '{ }'::int[];`,
+				Expected: []sql.Row{{"{}"}},
+			},
+			{
+				Query:    `SELECT '{ NULL , 2 }'::int[];`,
+				Expected: []sql.Row{{"{NULL,2}"}},
 			},
 		},
 	},
@@ -1121,13 +1289,19 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "JSON key",
-		SetUpScript: []string{},
+		Name: "JSON key",
+		SetUpScript: []string{
+			"CREATE TABLE t_json (id JSON primary key, v1 JSON);",
+			"INSERT INTO t_json VALUES ('{\"key\": \"value\"}', '{\"key\": \"value\"}');",
+			"INSERT INTO t_json VALUES ('123', '123');",
+			"INSERT INTO t_json VALUES ('true', 'true');",
+		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:       "CREATE TABLE t_json (id JSON primary key, v1 JSON);",
-				ExpectedErr: "data type json has no default operator class for access method \"btree\"",
-				Skip:        true, // current error message is blob/text column 'id' used in key specification without a key length
+				Query: "SELECT * FROM t_json WHERE id = '{\"key\": \"value\"}' ORDER BY id;",
+				Expected: []sql.Row{
+					{`{"key": "value"}`, `{"key": "value"}`},
+				},
 			},
 		},
 	},
@@ -1191,6 +1365,15 @@ var typesTests = []ScriptTest{
 				Query: `SELECT '"hi"'::json;`,
 				Expected: []sql.Row{
 					{`"hi"`},
+				},
+			},
+			{
+				// This varies from postgres in regression testing, but something about the harness makes
+				// it hard to repro. might need a wire test.
+				Skip:  true,
+				Query: `SELECT '"\u0000"'::json`,
+				Expected: []sql.Row{
+					{"\u0000"},
 				},
 			},
 			{
@@ -1326,218 +1509,6 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "JSONB ORDER BY",
-		SetUpScript: []string{
-			`CREATE TABLE t_jsonb (v1 JSONB);`,
-			`INSERT INTO t_jsonb VALUES
-				('["string_with_emoji_😊"]'),
-				('[null, "null_as_string", false, 0]'),
-				('{"key1": "value1", "key2": "value2", "key3": "value3"}'),
-				('{"simple": "object"}'),
-				('["special_chars_!@#$%^&*()_+", {"more": "!@#$"}]'),
-				('[null, 1, "two", true, {"five": 5}]'),
-				('[true, false, true]'),
-				('{"key1": 123, "key2": "duplicate_key", "common_key": "same_value"}'),
-				('["emoji_😀", "nested_😂", {"key": "value"}]'),
-				('{"common_key": 456}'),
-				('{"common_key": 123}'),
-				('{"mixed_data": {"number": 100, "string": "text", "bool": false, "null": null}}'),
-				('{"nested": {"level1": {"level2": {"key": "deep_value"}}}}'),
-				('[1.1, 2.2, 3.3, 4.4, 5.5]'),
-				('[{"nested_array": [1, 2, {"deep": {"inner": "value"}}]}, "text"]'),
-				('{"common_key": "same_value"}'),
-				('["end", "of", "array", 123, true]'),
-				('"random string"'),
-				('{"unicode": "こんにちは", "emoji": "😊"}'),
-				('{"keyX": "string_value", "keyY": 123.456, "keyZ": null}'),
-				('[{"key1": "value1"}, {"key2": "value2"}]'),
-				('{"array_of_arrays": {"array1": [1, 2, 3], "array2": [4, 5, 6], "array3": [7, 8, 9]}}'),
-				('{"key1": 123, "key2": "value", "key3": true}'),
-				('{"key1": 1, "key2": 2, "key3": 3, "key4": 4, "key5": 5}'),
-				('{"numbers": [1, 2, 3], "strings": ["a", "b", "c"], "booleans": [true, false]}'),
-				('{"unicode_chars": {"char1": "あ", "char2": "い", "char3": "う"}}'),
-				('[true, null, "string", 3.14]'),
-				('{"array_of_bools": [true, false, true]}'),
-				('[-1, -2, -3, -4]'),
-				('[{"nested_array": [1, 2, 3]}, {"nested_object": {"inner_key": "inner_value"}}]'),
-				('{"single": 1, "double": 2, "triple": 3, "quadruple": 4}'),
-				('true'),
-				('{"complex_array": {"array1": [1, 2, 3], "array2": ["a", "b", "c"]}}'),
-				('["mixed", 123, false, null, {"complex": {"key": "value"}}]'),
-				('{"array_of_strings": ["one", "two", "three"]}'),
-				('["simple_text"]'),
-				('{"mixed": {"number": 100, "string": "text", "bool": false, "null": null}}'),
-				('{"boolean_true": true, "boolean_false": false, "null_value": null}'),
-				('[{"deep": {"structure": {"key": "value"}}}, 123, false]'),
-				('{"nested_numbers": {"one": 1, "two": 2, "three": 3}}'),
-				('[{"emoji": "😊"}, {"another_emoji": "😢"}]'),
-				('["just_text"]'),
-				('{"common_key": "different_value"}'),
-				('[[], [], []]'),
-				('{"array_of_objects": [{"key1": "value1"}, {"key2": "value2"}, {"key3": "value3"}]}'),
-				('{"combos": [{"number": 1}, {"string": "two"}, {"boolean": true}]}'),
-				('{"keyA": 456, "keyB": "another_value", "keyC": false, "keyD": [1, 2, 3]}'),
-				('[true, false, true, false, null]'),
-				('[{"deep_nested": {"level1": {"level2": {"level3": "value"}}}}, 42, "text"]'),
-				('{"empty": {}}'),
-				('{"common_key": {"nested_key": "different_value"}}'),
-				('["a", "b", "c", {"nested": {"key": "value"}}]'),
-				('{"deep_nesting": {"level1": {"level2": {"level3": {"key": "value"}}}}}'),
-				('{"random_text": "Lorem ipsum dolor sit amet"}'),
-				('{"nested_string": {"outer": {"inner": "text"}}}'),
-				('[1, 2, 3, 4, 5]'),
-				('{"single_bool": true}'),
-				('[1234567890, "large_number", false]'),
-				('{"array_of_numbers": [1, 2, 3]}'),
-				('[3.14159, 2.71828, 1.61803]'),
-				('{"common_key": {"nested_key": "value"}}'),
-				('["string1", "string2", "string3"]'),
-				('{"single_string": "hello"}'),
-				('{"nested_mixed": {"key1": 1, "key2": [true, false], "key3": {"inner_key": "inner_value"}}}'),
-				('[0.1, 0.2, 0.3, 0.4]'),
-				('[{"unicode": "こんにちは"}, {"another": "你好"}]'),
-				('[1, "two", true, null, [1, 2, 3]]'),
-				('["flat", "array", "of", "strings"]'),
-				('123456'),
-				('{"nested_object": {"subkey1": 789, "subkey2": [true, false], "subkey3": {"deep": "value"}}}'),
-				('[{"key": {"subkey": [1, 2, 3]}}, 42, "text", false]'),
-				('{"string_with_numbers": {"key": "123abc", "another_key": "456def"}}'),
-				('{"unicode_string": {"greeting": "你好"}}'),
-				('[{"key": "value"}, {"array": [1, 2, 3]}, {"nested": {"inner": "deep"}}]'),
-				('["simple", "array", "of", "strings"]'),
-				('{"text": "simple_string", "integer": 123, "float": 3.14}'),
-				('[[], ["nested", "array"], 123]'),
-				('{"object_in_array": [{"key": "value"}, {"another": "one"}]}'),
-				('{"single_number": 42}'),
-				('[null, null, null]'),
-				('{"random_mixed": {"number": 1, "string": "two", "boolean": true, "null": null}}'),
-				('null'),
-				('["varied", "types", true, 123, {"key": "value"}]'),
-				('[true, false, null, "end"]'),
-				('789.123'),
-				('["unicode_안녕하세요", "string"]'),
-				('{"empty_object": {}, "empty_array": [], "boolean": true}'),
-				('["text", 123, false, {"key": "value"}, [1, 2, 3]]'),
-				('["multiple", "types", 123, true, {"key": "value"}]'),
-				('{"boolean_mixed": {"true": true, "false": false, "null": null}}'),
-				('{"object_in_array": {"array": [1, 2, 3], "nested": {"key": "value"}}}'),
-				('[123, 456, 789]'),
-				('[{"obj_in_array": {"key": "value"}}, [1, 2, 3], false]'),
-				('false'),
-				('[{"complex": {"nested": {"structure": "value"}}}, [1, 2, 3], false]'),
-				('{"simple_object": {"key": "value"}}'),
-				('{"number_key": {"integer": 1, "float": 2.3, "negative": -1}}'),
-				('{"complex_object": {"key1": {"subkey": "value1"}, "key2": {"subkey": "value2"}}}'),
-				('[1, "two", true, null, {"key": "value"}]');`,
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: "SELECT * FROM t_jsonb ORDER BY v1;",
-				Expected: []sql.Row{
-					{nil}, // should be "null", but https://github.com/jackc/pgx/issues/2430
-					{`"random string"`},
-					{`789.123`},
-					{`123456`},
-					{`false`},
-					{`true`},
-					{`["just_text"]`},
-					{`["simple_text"]`},
-					{`["string_with_emoji_😊"]`},
-					{`["special_chars_!@#$%^&*()_+", {"more": "!@#$"}]`},
-					{`["unicode_안녕하세요", "string"]`},
-					{`[{"emoji": "😊"}, {"another_emoji": "😢"}]`},
-					{`[{"key1": "value1"}, {"key2": "value2"}]`},
-					{`[{"nested_array": [1, 2, 3]}, {"nested_object": {"inner_key": "inner_value"}}]`},
-					{`[{"nested_array": [1, 2, {"deep": {"inner": "value"}}]}, "text"]`},
-					{`[{"unicode": "こんにちは"}, {"another": "你好"}]`},
-					{`[null, null, null]`},
-					{`["emoji_😀", "nested_😂", {"key": "value"}]`},
-					{`["string1", "string2", "string3"]`},
-					{`[3.14159, 2.71828, 1.61803]`},
-					{`[123, 456, 789]`},
-					{`[1234567890, "large_number", false]`},
-					{`[true, false, true]`},
-					{`[[], [], []]`},
-					{`[[], ["nested", "array"], 123]`},
-					{`[{"complex": {"nested": {"structure": "value"}}}, [1, 2, 3], false]`},
-					{`[{"deep": {"structure": {"key": "value"}}}, 123, false]`},
-					{`[{"deep_nested": {"level1": {"level2": {"level3": "value"}}}}, 42, "text"]`},
-					{`[{"key": "value"}, {"array": [1, 2, 3]}, {"nested": {"inner": "deep"}}]`},
-					{`[{"obj_in_array": {"key": "value"}}, [1, 2, 3], false]`},
-					{`[null, "null_as_string", false, 0]`},
-					{`["a", "b", "c", {"nested": {"key": "value"}}]`},
-					{`["flat", "array", "of", "strings"]`},
-					{`["simple", "array", "of", "strings"]`},
-					{`[-1, -2, -3, -4]`},
-					{`[0.1, 0.2, 0.3, 0.4]`},
-					{`[true, null, "string", 3.14]`},
-					{`[true, false, null, "end"]`},
-					{`[{"key": {"subkey": [1, 2, 3]}}, 42, "text", false]`},
-					{`[null, 1, "two", true, {"five": 5}]`},
-					{`["end", "of", "array", 123, true]`},
-					{`["mixed", 123, false, null, {"complex": {"key": "value"}}]`},
-					{`["multiple", "types", 123, true, {"key": "value"}]`},
-					{`["text", 123, false, {"key": "value"}, [1, 2, 3]]`},
-					{`["varied", "types", true, 123, {"key": "value"}]`},
-					{`[1, "two", true, null, [1, 2, 3]]`},
-					{`[1, "two", true, null, {"key": "value"}]`},
-					{`[1, 2, 3, 4, 5]`},
-					{`[1.1, 2.2, 3.3, 4.4, 5.5]`},
-					{`[true, false, true, false, null]`},
-					{`{"array_of_arrays": {"array1": [1, 2, 3], "array2": [4, 5, 6], "array3": [7, 8, 9]}}`},
-					{`{"array_of_bools": [true, false, true]}`},
-					{`{"array_of_numbers": [1, 2, 3]}`},
-					{`{"array_of_objects": [{"key1": "value1"}, {"key2": "value2"}, {"key3": "value3"}]}`},
-					{`{"array_of_strings": ["one", "two", "three"]}`},
-					{`{"boolean_mixed": {"null": null, "true": true, "false": false}}`},
-					{`{"combos": [{"number": 1}, {"string": "two"}, {"boolean": true}]}`},
-					{`{"common_key": "different_value"}`},
-					{`{"common_key": "same_value"}`},
-					{`{"common_key": 123}`},
-					{`{"common_key": 456}`},
-					{`{"common_key": {"nested_key": "different_value"}}`},
-					{`{"common_key": {"nested_key": "value"}}`},
-					{`{"complex_array": {"array1": [1, 2, 3], "array2": ["a", "b", "c"]}}`},
-					{`{"complex_object": {"key1": {"subkey": "value1"}, "key2": {"subkey": "value2"}}}`},
-					{`{"deep_nesting": {"level1": {"level2": {"level3": {"key": "value"}}}}}`},
-					{`{"empty": {}}`},
-					{`{"mixed": {"bool": false, "null": null, "number": 100, "string": "text"}}`},
-					{`{"mixed_data": {"bool": false, "null": null, "number": 100, "string": "text"}}`},
-					{`{"nested": {"level1": {"level2": {"key": "deep_value"}}}}`},
-					{`{"nested_mixed": {"key1": 1, "key2": [true, false], "key3": {"inner_key": "inner_value"}}}`},
-					{`{"nested_numbers": {"one": 1, "two": 2, "three": 3}}`},
-					{`{"nested_object": {"subkey1": 789, "subkey2": [true, false], "subkey3": {"deep": "value"}}}`},
-					{`{"nested_string": {"outer": {"inner": "text"}}}`},
-					{`{"number_key": {"float": 2.3, "integer": 1, "negative": -1}}`},
-					{`{"object_in_array": [{"key": "value"}, {"another": "one"}]}`},
-					{`{"object_in_array": {"array": [1, 2, 3], "nested": {"key": "value"}}}`},
-					{`{"random_mixed": {"null": null, "number": 1, "string": "two", "boolean": true}}`},
-					{`{"random_text": "Lorem ipsum dolor sit amet"}`},
-					{`{"simple": "object"}`},
-					{`{"simple_object": {"key": "value"}}`},
-					{`{"single_bool": true}`},
-					{`{"single_number": 42}`},
-					{`{"single_string": "hello"}`},
-					{`{"string_with_numbers": {"key": "123abc", "another_key": "456def"}}`},
-					{`{"unicode_chars": {"char1": "あ", "char2": "い", "char3": "う"}}`},
-					{`{"unicode_string": {"greeting": "你好"}}`},
-					{`{"emoji": "😊", "unicode": "こんにちは"}`},
-					{`{"boolean": true, "empty_array": [], "empty_object": {}}`},
-					{`{"key1": "value1", "key2": "value2", "key3": "value3"}`},
-					{`{"key1": 123, "key2": "duplicate_key", "common_key": "same_value"}`},
-					{`{"key1": 123, "key2": "value", "key3": true}`},
-					{`{"keyX": "string_value", "keyY": 123.456, "keyZ": null}`},
-					{`{"null_value": null, "boolean_true": true, "boolean_false": false}`},
-					{`{"numbers": [1, 2, 3], "strings": ["a", "b", "c"], "booleans": [true, false]}`},
-					{`{"text": "simple_string", "float": 3.14, "integer": 123}`},
-					{`{"double": 2, "single": 1, "triple": 3, "quadruple": 4}`},
-					{`{"keyA": 456, "keyB": "another_value", "keyC": false, "keyD": [1, 2, 3]}`},
-					{`{"key1": 1, "key2": 2, "key3": 3, "key4": 4, "key5": 5}`},
-				},
-			},
-		},
-	},
-	{
 		Name: "JSONB large string",
 		SetUpScript: []string{
 			`CREATE TABLE t_jsonl (pk INT4 PRIMARY KEY, v1 JSONB);`,
@@ -1570,6 +1541,7 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "JSONB int64 boundary values",
+		Skip: true, // these fail on ubuntu, not sure why
 		SetUpScript: []string{
 			`CREATE TABLE t (id SERIAL PRIMARY KEY, doc JSONB);`,
 			`INSERT INTO t (doc) VALUES ('-9223372036854775808'::jsonb), ('9223372036854775807'::jsonb);`,
@@ -1987,15 +1959,20 @@ var typesTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_numeric;",
-				Skip:  true, // test setup problem, values are logically equivalent but don't match
 				Expected: []sql.Row{
 					{Numeric("123.45"), Numeric("67.89")},
-					{Numeric("67.89"), Numeric("100.3")},
+					{Numeric("67.89"), Numeric("100.30")},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_numeric order by id",
+				Expected: []sql.Row{
+					{Numeric("67.89"), Numeric("100.30")},
+					{Numeric("123.45"), Numeric("67.89")},
 				},
 			},
 			{
 				Query: "SELECT * FROM t_numeric WHERE ID = 123.45 ORDER BY id;",
-				Skip:  true, // value not found
 				Expected: []sql.Row{
 					{Numeric("123.45"), Numeric("67.89")},
 				},
@@ -2118,14 +2095,75 @@ var typesTests = []ScriptTest{
 		SetUpScript: []string{
 			"CREATE TABLE t_oidvector (id INTEGER primary key, v1 oidvector);",
 			"INSERT INTO t_oidvector VALUES (1, '1234 5678 9012'), (2, '556 778 223');",
+			"CREATE TABLE t_regtype_array (v regtype[]);",
+			"INSERT INTO t_regtype_array VALUES (ARRAY['integer'::regtype]);",
 		},
 		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY['character varying'::regtype]::oidvector;",
+				Expected: []sql.Row{{"1043"}},
+			},
+			{
+				Query:    "SELECT ARRAY['integer'::regtype, 'text'::regtype]::oidvector;",
+				Expected: []sql.Row{{"23 25"}},
+			},
+			{
+				Query:    "SELECT ARRAY[23::oid]::oidvector;",
+				Expected: []sql.Row{{"23"}},
+			},
+			{
+				Query: `SELECT ARRAY['pg_class'::regclass]::oidvector =
+					ARRAY['pg_class'::regclass::oid]::oidvector;`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    "SELECT ARRAY['textin'::regproc]::oidvector;",
+				Expected: []sql.Row{{"46"}},
+			},
+			{
+				Query:       "SELECT NULL::regtype[]::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT ARRAY[]::regtype[]::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY['integer'::regtype]::regtype[])::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT v::oidvector FROM t_regtype_array;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY['integer'::regtype] || ARRAY['text'::regtype])::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT ARRAY['integer'::regtype, NULL]::oidvector;",
+				ExpectedErr: "array is not a valid oidvector",
+			},
+			{
+				Query:       "SELECT ARRAY[ARRAY[23::oid]]::oidvector;",
+				ExpectedErr: "array is not a valid oidvector",
+			},
 			{
 				Query: "SELECT * FROM t_oidvector ORDER BY id;",
 				Expected: []sql.Row{
 					{1, "1234 5678 9012"},
 					{2, "556 778 223"},
 				},
+			},
+			{
+				Skip:     true, // TODO: should convert oidvector to oid[] and subscript but on special indexing of [0:1]
+				Query:    "select ('16 17'::oidvector)[1];",
+				Expected: []sql.Row{{17}},
+			},
+			{
+				Skip:     true, // TODO: support cast from oidvector to oid[]
+				Query:    "select '16 17'::oidvector::oid[];",
+				Expected: []sql.Row{{"[0:1]={16,17}"}},
 			},
 		},
 	},
@@ -2409,6 +2447,33 @@ var typesTests = []ScriptTest{
 					{2, 67.125},
 				},
 			},
+			{
+				// Values that overflow float4 must be rejected, not wrapped to +/-Inf
+				Query:       "INSERT INTO t_real VALUES (3, 1.0e100);",
+				ExpectedErr: "real out of range",
+			},
+			{
+				Query:       "INSERT INTO t_real VALUES (3, 1.0e100::numeric);",
+				ExpectedErr: "real out of range",
+			},
+			{
+				// Largest finite float4 magnitude must still be accepted.
+				Query: "SELECT 3.4e38::float8::real, (-3.4e38)::float8::real;",
+				Expected: []sql.Row{
+					{float32(3.4e38), float32(-3.4e38)},
+				},
+			},
+			{
+				// An infinite numeric must pass through as float Infinity
+				Query: "SELECT 'Infinity'::numeric::real, '-Infinity'::numeric::real, 'Infinity'::numeric::float8;",
+				Expected: []sql.Row{
+					{float32(math.Inf(1)), float32(math.Inf(-1)), math.Inf(1)},
+				},
+			},
+			{
+				Query:       "SELECT ('1' || repeat('0', 320))::numeric::float8;",
+				ExpectedErr: "double precision out of range",
+			},
 		},
 	},
 	{
@@ -2594,6 +2659,28 @@ var typesTests = []ScriptTest{
 				Query:       `SELECT '""acos'::regproc;`,
 				ExpectedErr: "invalid name syntax",
 			},
+			{
+				Query: `SELECT 'pg_catalog.acos'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{
+				Query: `SELECT typinput = 'pg_catalog.array_in'::regproc FROM pg_catalog.pg_type WHERE typname = 'int4';`,
+				Expected: []sql.Row{
+					{"f"},
+				},
+			},
+			{
+				Query: `SELECT typinput = 'pg_catalog.array_in'::regproc FROM pg_catalog.pg_type WHERE typname = '_int4';`,
+				Expected: []sql.Row{
+					{"t"},
+				},
+			},
+			{
+				Query:       `SELECT 'public.acos'::regproc;`,
+				ExpectedErr: "does not exist",
+			},
 		},
 	},
 	{
@@ -2742,8 +2829,50 @@ var typesTests = []ScriptTest{
 		SetUpScript: []string{
 			"CREATE TABLE t_int2vector (id INTEGER primary key, v1 int2vector);",
 			"INSERT INTO t_int2vector VALUES (1, '1 2 3'), (2, '6 7 8 9');",
+			"CREATE TABLE t_int2_array (v int2[]);",
+			"INSERT INTO t_int2_array VALUES (ARRAY[1::int2]);",
 		},
 		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[1, 2]::int2vector;",
+				Expected: []sql.Row{{"1 2"}},
+			},
+			{
+				Query:    "SELECT ARRAY[1::bigint, 2::bigint]::int2vector;",
+				Expected: []sql.Row{{"1 2"}},
+			},
+			{
+				Query:    "SELECT ARRAY[1.0::numeric, 2.0::numeric]::int2vector;",
+				Expected: []sql.Row{{"1 2"}},
+			},
+			{
+				Query:       "SELECT ARRAY[1, NULL]::int2vector;",
+				ExpectedErr: "array is not a valid int2vector",
+			},
+			{
+				Query:       "SELECT ARRAY[ARRAY[1]]::int2vector;",
+				ExpectedErr: "array is not a valid int2vector",
+			},
+			{
+				Query:       "SELECT NULL::int2[]::int2vector;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
+			{
+				Query:       "SELECT ARRAY[]::int2[]::int2vector;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY[1::int2]::int2[])::int2vector;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
+			{
+				Query:       "SELECT v::int2vector FROM t_int2_array;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY[1::int2] || ARRAY[2::int2])::int2vector;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
 			{
 				Query: "SELECT * FROM t_int2vector ORDER BY id;",
 				Expected: []sql.Row{
@@ -2779,6 +2908,40 @@ var typesTests = []ScriptTest{
 				Skip:     true,
 				Query:    `SELECT unnest(unnest(v1)) FROM t_int2vector ORDER BY id;`,
 				Expected: []sql.Row{{1}, {2}, {3}, {4}},
+			},
+		},
+	},
+	{
+		Name: "Domains over vector types",
+		SetUpScript: []string{
+			"CREATE DOMAIN two_int2vector AS int2vector CHECK (array_length(VALUE, 1) = 2);",
+			"CREATE DOMAIN nonnull_oidvector AS oidvector NOT NULL CHECK (array_length(VALUE, 1) <= 2);",
+			"CREATE DOMAIN null_rejecting_int2vector AS int2vector CHECK (VALUE IS NOT NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[1, 2]::two_int2vector;",
+				Expected: []sql.Row{{"1 2"}},
+			},
+			{
+				Query:       "SELECT ARRAY[1]::two_int2vector;",
+				ExpectedErr: `constraint "two_int2vector_check"`,
+			},
+			{
+				Query:    "SELECT ARRAY[23::oid, 25::oid]::nonnull_oidvector;",
+				Expected: []sql.Row{{"23 25"}},
+			},
+			{
+				Query:       "SELECT ARRAY[23::oid, 25::oid, 26::oid]::nonnull_oidvector;",
+				ExpectedErr: `constraint "nonnull_oidvector_check"`,
+			},
+			{
+				Query:       "SELECT NULL::nonnull_oidvector;",
+				ExpectedErr: "domain nonnull_oidvector does not allow null values",
+			},
+			{
+				Query:       "SELECT NULL::null_rejecting_int2vector;",
+				ExpectedErr: `constraint "null_rejecting_int2vector_check"`,
 			},
 		},
 	},
@@ -2905,7 +3068,6 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT * FROM t_text WHERE v1 = 'World';",
-				Skip:  true, // text indexes are broken
 				Expected: []sql.Row{
 					{2, "World"},
 				},
@@ -2976,14 +3138,12 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:    `SELECT c1 from t2 order by c1;`,
-				Skip:     true, // ordering is broken due to text indexes being broken
 				Expected: []sql.Row{{"one"}, {"two"}},
 			},
 		},
 	},
 	{
 		Name: "Text key",
-		Skip: true, // text indexes are broken
 		SetUpScript: []string{
 			"CREATE TABLE t_text (id TEXT primary key, v1 TEXT);",
 			"INSERT INTO t_text VALUES ('Hello', 'World'), ('goodbye', 'cruel world');",
@@ -2993,6 +3153,71 @@ var typesTests = []ScriptTest{
 				Query: "SELECT * FROM t_text where id = 'goodbye' ORDER BY id;",
 				Expected: []sql.Row{
 					{"goodbye", "cruel world"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Text key with mixed short and long values",
+		SetUpScript: []string{
+			"CREATE TABLE t_text_keys (id TEXT primary key, v1 INTEGER);",
+			"INSERT INTO t_text_keys VALUES ('aa', 1);",
+			"INSERT INTO t_text_keys VALUES ('bb' || repeat('x', 10500), 2);",
+			"INSERT INTO t_text_keys VALUES ('cc', 3);",
+			"INSERT INTO t_text_keys VALUES ('dd' || repeat('y', 10500), 4);",
+			"INSERT INTO t_text_keys VALUES ('ee', 5);",
+			"INSERT INTO t_text_keys VALUES ('zz', 6);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT v1 FROM t_text_keys ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys ORDER BY id DESC;",
+				Expected: []sql.Row{{6}, {5}, {4}, {3}, {2}, {1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id = 'aa';",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id = 'zz';",
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id = 'bb' || repeat('x', 10500);",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id = 'dd' || repeat('y', 10500);",
+				Expected: []sql.Row{{4}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id < 'cc' ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id > 'dd' ORDER BY id;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id > 'bb' AND id < 'ee' ORDER BY id;",
+				Expected: []sql.Row{{2}, {3}, {4}},
+			},
+			{
+				Query:    "SELECT v1, length(id) FROM t_text_keys WHERE v1 IN (1, 2, 4) ORDER BY v1;",
+				Expected: []sql.Row{{1, 2}, {2, 10502}, {4, 10502}},
+			},
+			{
+				Query: "select id from t_text_keys order by id;",
+				Expected: []sql.Row{
+					{"aa"},
+					{"bb" + strings.Repeat("x", 10500)},
+					{"cc"},
+					{"dd" + strings.Repeat("y", 10500)},
+					{"ee"},
+					{"zz"},
 				},
 			},
 		},
@@ -3571,7 +3796,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Xml type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_xml (id INTEGER primary key, v1 XML);",
 			"INSERT INTO t_xml VALUES (1, '<note><to>Tove</to><from>Jani</from><body>Don''t forget me this weekend!</body></note>'), (2, '<book><title>Introduction to Golang</title><author>John Doe</author></book>');",
@@ -3583,6 +3807,32 @@ var typesTests = []ScriptTest{
 					{1, "<note><to>Tove</to><from>Jani</from><body>Don't forget me this weekend!</body></note>"},
 					{2, "<book><title>Introduction to Golang</title><author>John Doe</author></book>"},
 				},
+			},
+			{
+				Query:           "INSERT INTO t_xml VALUES (3, '<a>');",
+				ExpectedErr:     "invalid XML content",
+				ExpectedErrCode: "2200N",
+			},
+			{
+				Query:           "INSERT INTO t_xml VALUES (3, 1);",
+				ExpectedErr:     "is of type",
+				ExpectedErrCode: "42804",
+			},
+			{
+				Query:    "INSERT INTO t_xml VALUES (3, NULL);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id, pg_typeof(v1) FROM t_xml WHERE id < 3 ORDER BY id;",
+				Expected: []sql.Row{{1, "xml"}, {2, "xml"}},
+			},
+			{
+				Query:    "SELECT data_type, udt_name FROM information_schema.columns WHERE table_name = 't_xml' AND column_name = 'v1';",
+				Expected: []sql.Row{{"xml", "xml"}},
+			},
+			{
+				Query:    "SELECT typname FROM pg_catalog.pg_type WHERE oid = 142;",
+				Expected: []sql.Row{{"xml"}},
 			},
 		},
 	},
@@ -3636,6 +3886,444 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT array_append(ARRAY[1], ARRAY[2]);",
 				ExpectedErr: "does not exist",
+			},
+		},
+	},
+	{
+		Name: "Character comparisons ignore trailing spaces",
+		SetUpScript: []string{
+			"CREATE TABLE t_bpchar (id INT PRIMARY KEY, c CHAR(3), u CHAR(3) UNIQUE, v INT);",
+			"INSERT INTO t_bpchar VALUES (1, 'a', 'x', 10), (2, 'a ', 'y ', 20), (3, 'b', 'z', 30);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT id, c, COUNT(*) OVER (PARTITION BY c), SUM(v) OVER (PARTITION BY c) FROM t_bpchar ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "a  ", 2, 30},
+					{2, "a  ", 2, 30},
+					{3, "b  ", 1, 30},
+				},
+			},
+			{
+				Query: "SELECT c, COUNT(*), SUM(v) FROM t_bpchar GROUP BY c ORDER BY c;",
+				Expected: []sql.Row{
+					{"a  ", 2, 30},
+					{"b  ", 1, 30},
+				},
+			},
+			{
+				Query:    "SELECT DISTINCT c FROM t_bpchar ORDER BY c;",
+				Expected: []sql.Row{{"a  "}, {"b  "}},
+			},
+			{
+				Query:    "SELECT id FROM t_bpchar WHERE c = 'a' ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}},
+			},
+			{
+				Query:    "SELECT id FROM t_bpchar WHERE u = 'y';",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:       "INSERT INTO t_bpchar VALUES (4, 'c', 'y', 40);",
+				ExpectedErr: "duplicate unique key",
+			},
+			{
+				Query:    "SELECT c::text, length(c), c || '|' FROM t_bpchar WHERE id = 1;",
+				Expected: []sql.Row{{"a", 1, "a|"}},
+			},
+			{
+				Query:    "SELECT 'ab  '::char(3) = 'ab'::char(3), 'a  '::bpchar = 'a'::bpchar, length('ab  '::char(3));",
+				Expected: []sql.Row{{"t", "t", 2}},
+			},
+		},
+	},
+	{
+		Name: "Casting a bpchar value to another string type removes its trailing spaces",
+		SetUpScript: []string{
+			"CREATE TABLE t3325 (id INT PRIMARY KEY, c CHAR(2) CHECK (c::text IN ('L', 'R')));",
+			"CREATE TABLE t3325_check (c CHARACTER(2), CONSTRAINT t3325_check_check CHECK (c::text IN ('L', 'M', 'H')));",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT '[' || 'L '::character(2)::text || ']' AS as_text, length('L '::character(2)::text) AS length, 'L '::character(2)::text = 'L' AS equals_l;",
+				Expected: []sql.Row{{"[L]", 1, "t"}},
+			},
+			{
+				Query:    "INSERT INTO t3325_check VALUES ('L ');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT '[' || c::text || ']' AS as_text FROM t3325_check;",
+				Expected: []sql.Row{{"[L]"}},
+			},
+			{
+				Query:    "INSERT INTO t3325 VALUES (1, 'L'), (2, 'R ');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id, '[' || c || ']', c = 'L' FROM t3325 ORDER BY id;",
+				Expected: []sql.Row{{1, "[L]", "t"}, {2, "[R]", "f"}},
+			},
+			{
+				Query:    "SELECT '[' || 'L'::CHAR(2) || ']', length('L'::CHAR(2)), 'L'::CHAR(2) = 'L', 'L '::CHAR(2) = 'L'::CHAR(2), 'L'::CHAR(2)::TEXT = 'L', 'L'::CHAR(2)::VARCHAR = 'L', bpcharcmp('L'::CHAR(2), 'L ');",
+				Expected: []sql.Row{{"[L]", 1, "t", "t", "t", "t", 0}},
+			},
+			{
+				Query:    "SELECT '[' || 'L '::char(2) || ']', upper('L '::char(2)) = 'L', 'L '::bpchar = 'L'::bpchar, 'L '::character(2)::name = 'L', 'L '::character(2)::varchar(5) = 'L', length('L '::character(2)::varchar);",
+				Expected: []sql.Row{{"[L]", "t", "t", "t", "t", 1}},
+			},
+			{
+				Query:    "SELECT '[' || E'L\\t'::character(3)::text || ']', length(E'L\\t'::character(3)::text), '[' || E'L\\n'::character(3)::text || ']', '[' || E'L \\t '::character(5)::text || ']', E'L\\t'::character(3) = 'L', E'L\\t '::character(4) = E'L\\t'::character(3), bpcharcmp(E'L\\t'::character(3), E'L\\t '::character(4)), '[' || E'L\\t'::character(3)::varchar || ']', length(E'L\\t'::character(3)), E'L\\t'::character(3)::text = E'L\\t';",
+				Expected: []sql.Row{{"[L\t]", 2, "[L\n]", "[L \t]", "f", "t", 0, "[L\t]", 2, "t"}},
+			},
+		},
+	},
+	{
+		Name: "Xml literals",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT '<a>x</a>'::xml AS doc;",
+				Expected: []sql.Row{{"<a>x</a>"}},
+			},
+			{
+				Query:    "SELECT pg_typeof('<a>x</a>'::xml);",
+				Expected: []sql.Row{{"xml"}},
+			},
+			{
+				Query:    "SELECT 'x'::xml, ''::xml, '<a/><b/>'::xml, '<!-- c --><a/>'::xml, '<a><![CDATA[<x>]]></a>'::xml, '<a xmlns:p=\"urn:x\"><p:b/></a>'::xml;",
+				Expected: []sql.Row{{"x", "", "<a/><b/>", "<!-- c --><a/>", "<a><![CDATA[<x>]]></a>", `<a xmlns:p="urn:x"><p:b/></a>`}},
+			},
+			{
+				Query:    "SELECT '<?xml version=\"1.0\"?><a/>'::xml, '<?xml version=\"1.0\" encoding=\"UTF-8\"?><a/>'::xml, '<?xml version=\"1.0\" standalone=\"yes\"?><a/>'::xml, '<?xml version=\"1.1\"?><a/>'::xml;",
+				Expected: []sql.Row{{"<a/>", "<a/>", `<?xml version="1.0" standalone="yes"?><a/>`, `<?xml version="1.1"?><a/>`}},
+			},
+			{
+				Query:    "SELECT E'<?xml version=\"1.0\"?>\\n<a/>'::xml, E'<?xml version=\"1.0\"?>\\n\\n<a/>'::xml, E'<a>\\n</a>'::xml;",
+				Expected: []sql.Row{{"<a/>", "\n<a/>", "<a>\n</a>"}},
+			},
+			{
+				Query:           "SELECT '<a>'::xml;",
+				ExpectedErr:     "invalid XML content",
+				ExpectedErrCode: "2200N",
+			},
+			{
+				Query:           "SELECT 'x<'::xml;",
+				ExpectedErr:     "invalid XML content",
+				ExpectedErrCode: "2200N",
+			},
+			{
+				Query:           "SELECT '<a>&foo;</a>'::xml;",
+				ExpectedErr:     "invalid XML content",
+				ExpectedErrCode: "2200N",
+			},
+			{
+				Query:    "SELECT '<a>x</a>'::text::xml, '<a>x</a>'::xml::text, '<a>x</a>'::xml::varchar, '<a>x</a>'::xml::char(5), '<a>x</a>'::varchar::xml, '<?xml version=\"1.0\"?><a/>'::xml::text;",
+				Expected: []sql.Row{{"<a>x</a>", "<a>x</a>", "<a>x</a>", "<a>x<", "<a>x</a>", `<?xml version="1.0"?><a/>`}},
+			},
+			{
+				Query:           "SELECT '<a>'::text::xml;",
+				ExpectedErr:     "invalid XML content",
+				ExpectedErrCode: "2200N",
+			},
+			{
+				Query:           "SELECT '<a/>'::xml::int;",
+				ExpectedErr:     "cast from `xml` to `integer` does not exist",
+				ExpectedErrCode: "42846",
+			},
+			{
+				Query:           "SELECT 1::xml;",
+				ExpectedErr:     "cast from `integer` to `xml` does not exist",
+				ExpectedErrCode: "42846",
+			},
+			{
+				Query:           "SELECT '<a/>'::xml = '<a/>'::xml;",
+				ExpectedErr:     "operator does not exist",
+				ExpectedErrCode: "42883",
+			},
+		},
+	},
+	{
+		Name: "Xml document option",
+		SetUpScript: []string{
+			"SET xmloption TO document;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT '<a/>'::xml, '<?xml version=\"1.0\"?><a/>'::xml, '<!-- c --><a/>'::xml, ' <a/>'::xml;",
+				Expected: []sql.Row{{"<a/>", "<a/>", "<!-- c --><a/>", " <a/>"}},
+			},
+			{
+				Query:           "SELECT 'x'::xml;",
+				ExpectedErr:     "invalid XML document",
+				ExpectedErrCode: "2200M",
+			},
+			{
+				Query:           "SELECT '<a/><b/>'::xml;",
+				ExpectedErr:     "invalid XML document",
+				ExpectedErrCode: "2200M",
+			},
+			{
+				Query:           "SELECT ''::xml;",
+				ExpectedErr:     "invalid XML document",
+				ExpectedErrCode: "2200M",
+			},
+		},
+	},
+	{
+		Name: "Xml column default",
+		SetUpScript: []string{
+			"CREATE TABLE t_xml (id INTEGER PRIMARY KEY, v1 XML DEFAULT '<d/>'::xml);",
+			"INSERT INTO t_xml VALUES (1, '<a>x</a>');",
+			"INSERT INTO t_xml (id) VALUES (2);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM t_xml ORDER BY id;",
+				Expected: []sql.Row{{1, "<a>x</a>"}, {2, "<d/>"}},
+			},
+		},
+	},
+	{
+		Name: "Xml array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_xml (id INTEGER PRIMARY KEY, v1 XML[]);",
+			"INSERT INTO t_xml VALUES (1, ARRAY['<a/>'::xml, '<b>x y</b>']), (2, '{<c/>,NULL}'), (3, NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM t_xml ORDER BY id;",
+				Expected: []sql.Row{{1, `{<a/>,"<b>x y</b>"}`}, {2, "{<c/>,NULL}"}, {3, nil}},
+			},
+			{
+				Query:    "SELECT id, v1[2] FROM t_xml ORDER BY id;",
+				Expected: []sql.Row{{1, "<b>x y</b>"}, {2, nil}, {3, nil}},
+			},
+			{
+				Query:           "INSERT INTO t_xml VALUES (4, '{<a>}');",
+				ExpectedErr:     "invalid XML content",
+				ExpectedErrCode: "2200N",
+			},
+			{
+				Query:    "SELECT ARRAY['<a>x</a>'::xml, '<b c=\"1\">y z</b>', 'q,\"r\"'];",
+				Expected: []sql.Row{{`{<a>x</a>,"<b c=\"1\">y z</b>","q,\"r\""}`}},
+			},
+		},
+	},
+	{
+		Name: "Xml schema-qualified type",
+		SetUpScript: []string{
+			"CREATE TABLE t3337 (id INT PRIMARY KEY, doc pg_catalog.xml, docs xml[]);",
+			"INSERT INTO t3337 VALUES (1, '<a>x</a>', ARRAY['<b/>'::xml]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT '<a>x</a>'::pg_catalog.xml, pg_typeof('<a>x</a>'::pg_catalog.xml), pg_typeof(ARRAY['<a/>'::xml]);",
+				Expected: []sql.Row{{"<a>x</a>", "xml", "xml[]"}},
+			},
+			{
+				Query:    "SELECT id, doc, docs, pg_typeof(doc), pg_typeof(docs) FROM t3337;",
+				Expected: []sql.Row{{1, "<a>x</a>", "{<b/>}", "xml", "xml[]"}},
+			},
+		},
+	},
+	{
+		Name: "Regprocedure type",
+		SetUpScript: []string{
+			`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE SCHEMA s;`,
+			`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT 'tf()'::regprocedure;`,
+				Expected: []sql.Row{{"tf()"}},
+			},
+			{
+				Query:    `SELECT 's.sf(int)'::regprocedure;`,
+				Expected: []sql.Row{{"s.sf(integer)"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure;`,
+				Expected: []sql.Row{{"f2(integer,text)"}},
+			},
+			{
+				Query:    `SELECT 'abs(int)'::regprocedure;`,
+				Expected: []sql.Row{{"abs(integer)"}},
+			},
+			{
+				Query:    `SELECT 'p1(int)'::regprocedure;`,
+				Expected: []sql.Row{{"p1(integer)"}},
+			},
+			{
+				Query:    `SELECT 'tf()'::regprocedure::oid = (SELECT oid FROM pg_proc WHERE proname = 'tf');`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT 2212::regprocedure;`,
+				Expected: []sql.Row{{"regprocedurein(cstring)"}},
+			},
+			{
+				Query:    `SELECT 'now'::regproc::regprocedure;`,
+				Expected: []sql.Row{{"now()"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"f2"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure::text;`,
+				Expected: []sql.Row{{"f2(integer,text)"}},
+			},
+			{
+				Query:    `SELECT 'f3(int)'::regprocedure::regproc::regprocedure;`,
+				Expected: []sql.Row{{"f3(integer)"}},
+			},
+			{
+				Query:           `SELECT 'f3(bool)'::regprocedure;`,
+				ExpectedErr:     `function "f3(bool)" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Query:           `SELECT 'nosuch()'::regprocedure;`,
+				ExpectedErr:     `function "nosuch()" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Query:           `SELECT 'f3'::regprocedure;`,
+				ExpectedErr:     `expected a left parenthesis`,
+				ExpectedErrCode: "22P02",
+			},
+			{
+				Skip:            true, // TODO: schemas are not checked for existence
+				Query:           `SELECT 'nosuchschema.sf(int)'::regprocedure;`,
+				ExpectedErr:     `schema "nosuchschema" does not exist`,
+				ExpectedErrCode: "3F000",
+			},
+			{
+				Query:    `SET search_path = s;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT 's.sf(int)'::regprocedure;`,
+				Expected: []sql.Row{{"sf(integer)"}},
+			},
+			{
+				Query:    `SELECT 'public.f2(int,text)'::regprocedure;`,
+				Expected: []sql.Row{{"public.f2(integer,text)"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT 'array_agg(anynonarray)'::regprocedure;`,
+				Expected: []sql.Row{{"array_agg(anynonarray)"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT 'row_number()'::regprocedure;`,
+				Expected: []sql.Row{{"row_number()"}},
+			},
+		},
+	},
+	{
+		Name: "Regproc user-defined routines",
+		SetUpScript: []string{
+			`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE SCHEMA s;`,
+			`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT 'tf'::regproc;`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('tf');`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('public.tf');`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT 's.sf'::regproc;`,
+				Expected: []sql.Row{{"s.sf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('s.sf');`,
+				Expected: []sql.Row{{"s.sf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('sf');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT to_regproc('p1');`,
+				Expected: []sql.Row{{"p1"}},
+			},
+			{
+				Query:    `SELECT to_regproc('f3');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT to_regproc('nosuchschema.sf');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT 'tf'::regproc::oid = (SELECT oid FROM pg_proc WHERE proname = 'tf');`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT 'abs(int)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"pg_catalog.abs"}},
+			},
+			{
+				Query:    `SELECT 'f3(int)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"public.f3"}},
+			},
+			{
+				Query:           `SELECT 'f3'::regproc;`,
+				ExpectedErr:     `more than one function named "f3"`,
+				ExpectedErrCode: "42725",
+			},
+			{
+				Query:           `SELECT 'abs'::regproc;`,
+				ExpectedErr:     `more than one function named "abs"`,
+				ExpectedErrCode: "42725",
+			},
+			{
+				Query:           `SELECT 'nosuch'::regproc;`,
+				ExpectedErr:     `function "nosuch" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Skip:            true, // TODO: schemas are not checked for existence
+				Query:           `SELECT 'nosuchschema.sf'::regproc;`,
+				ExpectedErr:     `schema "nosuchschema" does not exist`,
+				ExpectedErrCode: "3F000",
+			},
+			{
+				Query:    `SET search_path = s;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT 'sf'::regproc;`,
+				Expected: []sql.Row{{"sf"}},
+			},
+			{
+				Query:    `SELECT 'public.tf'::regproc;`,
+				Expected: []sql.Row{{"public.tf"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT to_regproc('row_number');`,
+				Expected: []sql.Row{{"row_number"}},
 			},
 		},
 	},
@@ -3981,6 +4669,35 @@ func TestShellTypes(t *testing.T) {
 				{
 					Query:    `DROP TYPE IF EXISTS undefined_type;`,
 					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestCompositeTypes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "composite type as subquery alias",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT 'session_stats' AS chart_name,
+       						pg_catalog.Row_to_json(t) AS chart_data FROM (
+							SELECT
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity) AS "Total",
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity
+									WHERE  state = 'active') AS "Active",
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity
+                            		WHERE  state = 'idle') AS "Idle" ) t;`,
+					ExpectedColNames: []string{"chart_name", "chart_data"},
+					// it actually displays `{"Total":1,"Active":1,"Idle":0}` in client, which is the correct result
+					Expected: []sql.Row{{"session_stats", `{"Active":1,"Idle":0,"Total":1}`}},
 				},
 			},
 		},

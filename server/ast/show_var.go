@@ -21,6 +21,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/config"
 )
 
 // nodeShowVar handles *tree.ShowVar nodes.
@@ -40,7 +41,7 @@ func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 	//   need better way to get these info
 	// We treat namespaced variables (e.g. myvar.myvalue) as user variables.
 	// See set_var.go
-	isUserVar := strings.Index(node.Name, ".") > 0
+	isUserVar := strings.Index(node.Name, ".") > 0 || strings.EqualFold(node.Name, "role") || strings.EqualFold(node.Name, "session_authorization")
 	if isUserVar {
 		varName := vitess.NewColIdent(node.Name)
 		return &vitess.Select{
@@ -61,7 +62,14 @@ func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 			},
 		}, nil
 	} else {
-		varName := vitess.NewColIdent("@@session." + node.Name)
+		// Postgres's SHOW has no scope syntax, so system variables with no session scope (e.g. Dolt's
+		// dolt_stats_enabled) must be read from the global scope, symmetric with how SET routes writes to
+		// them. Reading them through the session scope errors out.
+		scopePrefix := "@@session."
+		if config.IsGlobalOnlySystemVariable(node.Name) {
+			scopePrefix = "@@global."
+		}
+		varName := vitess.NewColIdent(scopePrefix + node.Name)
 		return &vitess.Select{
 			SelectExprs: vitess.SelectExprs{
 				&vitess.AliasedExpr{

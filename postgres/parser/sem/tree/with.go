@@ -32,9 +32,17 @@ type With struct {
 
 // CTE represents a common table expression inside of a WITH clause.
 type CTE struct {
-	Name AliasClause
-	Mtr  MaterializeClause
-	Stmt Statement
+	Name  AliasClause
+	Mtr   MaterializeClause
+	Stmt  Statement
+	Cycle CycleClause
+}
+
+// CycleClause represents a CYCLE clause on a RECURSIVE CTE.
+type CycleClause struct {
+	Fields NameList
+	Set    Name
+	Using  Name
 }
 
 // MaterializeClause represents a materialize clause inside of a WITH clause.
@@ -70,6 +78,14 @@ func (node *With) Format(ctx *FmtCtx) {
 		ctx.WriteString("(")
 		ctx.FormatNode(cte.Stmt)
 		ctx.WriteString(")")
+		if len(cte.Cycle.Fields) > 0 {
+			ctx.WriteString(" CYCLE ")
+			ctx.FormatNode(&cte.Cycle.Fields)
+			ctx.WriteString(" SET ")
+			ctx.FormatNode(&cte.Cycle.Set)
+			ctx.WriteString(" USING ")
+			ctx.FormatNode(&cte.Cycle.Using)
+		}
 	}
 	ctx.WriteByte(' ')
 }

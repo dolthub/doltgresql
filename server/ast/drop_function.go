@@ -40,23 +40,29 @@ func nodeDropFunction(ctx *Context, node *tree.DropFunction) (vitess.Statement, 
 	functions := make([]*pgnodes.RoutineWithParams, len(node.Functions))
 	for i, fn := range node.Functions {
 		var args []pgnodes.RoutineParam
-		for _, a := range fn.Args {
-			if a.Mode != tree.RoutineArgModeOut {
-				_, dt, err := nodeResolvableTypeReference(ctx, a.Type, false)
-				if err != nil {
-					return nil, err
+		// `DROP FUNCTION func1;` does not define any argument
+		noArgDefined := fn.Args == nil
+		if !noArgDefined {
+			// `DROP FUNCTION func1();` defines zero argument
+			for _, a := range fn.Args {
+				if a.Mode != tree.RoutineArgModeOut {
+					_, dt, err := nodeResolvableTypeReference(ctx, a.Type, false)
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, pgnodes.RoutineParam{
+						Name: a.Name.String(),
+						Type: dt,
+					})
 				}
-				args = append(args, pgnodes.RoutineParam{
-					Name: a.Name.String(),
-					Type: dt,
-				})
 			}
 		}
 		objName := fn.Name.ToTableName()
 		functions[i] = &pgnodes.RoutineWithParams{
-			Args:        args,
-			SchemaName:  objName.Schema(),
-			RoutineName: objName.Object(),
+			Args:         args,
+			SchemaName:   objName.Schema(),
+			RoutineName:  objName.Object(),
+			NoArgDefined: noArgDefined,
 		}
 	}
 

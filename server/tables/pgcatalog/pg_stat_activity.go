@@ -16,9 +16,13 @@ package pgcatalog
 
 import (
 	"io"
+	"net"
+	"sort"
+	"strconv"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +47,19 @@ func (p PgStatActivityHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatActivityHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_activity row iter
-	return emptyRowIter()
+	// One row per client connection, from the engine's process list. Sessions between queries show as 'idle',
+	// matching Postgres.
+	if ctx.ProcessList == nil {
+		return emptyRowIter()
+	}
+	processes := ctx.ProcessList.Processes()
+	sort.Slice(processes, func(i, j int) bool {
+		return processes[i].Connection < processes[j].Connection
+	})
+	return &pgStatActivityRowIter{
+		processes: processes,
+		idx:       0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -83,13 +98,75 @@ var pgStatActivitySchema = sql.Schema{
 
 // pgStatActivityRowIter is the sql.RowIter for the pg_stat_activity table.
 type pgStatActivityRowIter struct {
+	processes []sql.Process
+	idx       int
 }
 
 var _ sql.RowIter = (*pgStatActivityRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgStatActivityRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.processes) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	process := iter.processes[iter.idx-1]
+
+	var datid any
+	var datname any
+	if process.Database != "" {
+		datid = id.NewDatabase(process.Database).AsId()
+		datname = process.Database
+	}
+	var usesysid any
+	var usename any
+	if process.User != "" {
+		usesysid = roleOid(process.User)
+		usename = process.User
+	}
+	// The host is usually in address:port form, but may be a bare address
+	var clientAddr any
+	var clientPort any
+	if host, port, err := net.SplitHostPort(process.Host); err == nil {
+		clientAddr = host
+		if portNum, err := strconv.Atoi(port); err == nil {
+			clientPort = int32(portNum)
+		}
+	} else if process.Host != "" {
+		clientAddr = process.Host
+	}
+	state := "idle"
+	query := process.Query
+	var queryStart any
+	if process.Command == sql.ProcessCommandQuery {
+		state = "active"
+		queryStart = process.StartedAt
+	}
+
+	return sql.Row{
+		datid,                     // datid
+		datname,                   // datname
+		int32(process.Connection), // pid
+		nil,                       // leader_pid
+		usesysid,                  // usesysid
+		usename,                   // usename
+		"",                        // application_name (TODO: not tracked)
+		clientAddr,                // client_addr
+		nil,                       // client_hostname
+		clientPort,                // client_port
+		nil,                       // backend_start (TODO: connection start time is not tracked)
+		nil,                       // xact_start (TODO: transaction start time is not tracked)
+		queryStart,                // query_start
+		nil,                       // state_change (TODO: not tracked)
+		nil,                       // wait_event_type
+		nil,                       // wait_event
+		state,                     // state
+		nil,                       // backend_xid
+		nil,                       // backend_xmin
+		nil,                       // query_id
+		query,                     // query
+		"client backend",          // backend_type
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

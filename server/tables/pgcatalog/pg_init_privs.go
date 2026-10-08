@@ -43,7 +43,8 @@ func (p PgInitPrivsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgInitPrivsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_init_privs row iter
+	// pg_init_privs is currently empty, since initial object privileges are not tracked.
+	// TODO: fill this in when initial privileges are tracked
 	return emptyRowIter()
 }
 

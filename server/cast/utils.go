@@ -20,13 +20,14 @@ import (
 	"unicode/utf8"
 
 	cerrors "github.com/cockroachdb/errors"
-	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // errOutOfRange is returned when a value is out of range for a given type.
-var errOutOfRange = errors.NewKind("%s out of range")
+var errOutOfRange = pgtypes.ErrOutOfRange
 
 // handleStringCast handles casts to the string types that may have length restrictions. Returns an error if other types
 // are passed in. Will always return the correct string, even on error, as some contexts may ignore the error.
@@ -35,7 +36,7 @@ func handleStringCast(input string, targetType *pgtypes.DoltgresType) (string, e
 	switch targetType.ID {
 	case pgtypes.BpChar.ID:
 		if tm == -1 {
-			return input, nil
+			return strings.TrimRight(input, " "), nil
 		}
 		maxChars, err := pgtypes.GetTypModFromCharLength("char", tm)
 		if err != nil {
@@ -44,12 +45,9 @@ func handleStringCast(input string, targetType *pgtypes.DoltgresType) (string, e
 		length := uint32(maxChars)
 		str, runeLength := truncateString(input, length)
 		if runeLength > length {
-			return input, cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String()))
-		} else if runeLength < length {
-			return str + strings.Repeat(" ", int(length-runeLength)), nil
-		} else {
-			return str, nil
+			return input, pgerror.WithCandidateCode(cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String())), pgcode.StringDataRightTruncation)
 		}
+		return strings.TrimRight(str, " "), nil
 	case pgtypes.InternalChar.ID:
 		str, _ := truncateString(input, pgtypes.InternalCharLength)
 		return str, nil
@@ -64,7 +62,7 @@ func handleStringCast(input string, targetType *pgtypes.DoltgresType) (string, e
 		length := uint32(pgtypes.GetCharLengthFromTypmod(tm))
 		str, runeLength := truncateString(input, length)
 		if runeLength > length {
-			return input, cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String()))
+			return input, pgerror.WithCandidateCode(cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String())), pgcode.StringDataRightTruncation)
 		} else {
 			return str, nil
 		}

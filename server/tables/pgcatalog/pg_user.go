@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -41,10 +42,23 @@ func (p PgUserHandler) Name() string {
 	return PgUserName
 }
 
+// allLoginRoles returns every role from the global auth database that can log in, sorted by name.
+func allLoginRoles() []auth.Role {
+	var loginRoles []auth.Role
+	for _, role := range allRoles() {
+		if role.CanLogin {
+			loginRoles = append(loginRoles, role)
+		}
+	}
+	return loginRoles
+}
+
 // RowIter implements the interface tables.Handler.
 func (p PgUserHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_user row iter
-	return emptyRowIter()
+	return &pgUserRowIter{
+		users: allLoginRoles(),
+		idx:   0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -70,13 +84,34 @@ var pgUserSchema = sql.Schema{
 
 // pgUserRowIter is the sql.RowIter for the pg_user table.
 type pgUserRowIter struct {
+	users []auth.Role
+	idx   int
 }
 
 var _ sql.RowIter = (*pgUserRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgUserRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.users) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	role := iter.users[iter.idx-1]
+	var valUntil any
+	if role.ValidUntil != nil {
+		valUntil = *role.ValidUntil
+	}
+	return sql.Row{
+		role.Name,                      // usename
+		roleOid(role.Name),             // usesysid
+		role.CanCreateDB,               // usecreatedb
+		role.IsSuperUser,               // usesuper
+		role.IsReplicationRole,         // userepl
+		role.CanBypassRowLevelSecurity, // usebypassrls
+		"********",                     // passwd (always masked, matching Postgres)
+		valUntil,                       // valuntil
+		nil,                            // useconfig (per-role settings are not supported)
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

@@ -17,15 +17,12 @@ package procedures
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -42,42 +39,42 @@ const (
 	ParameterMode_VARIADIC ParameterMode = 3
 )
 
+// Parameter represents a routine parameter with mode, name, type and default value.
+type Parameter struct {
+	Mode    ParameterMode
+	Name    string
+	Type    id.Type
+	Default string
+}
+
 // Collection contains a collection of procedures.
 type Collection struct {
+	objinterface.RootObjectMap
 	accessCache   map[id.Procedure]Procedure      // This cache is used for general access when you know the exact ID
 	overloadCache map[id.Procedure][]id.Procedure // This cache is used to find overloads if you know the name
 	idCache       []id.Procedure                  // This cache simply contains the name of every procedure
-	mapHash       hash.Hash                       // This is cached so that we don't have to calculate the hash every time
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
 }
 
 // Procedure represents a created procedure.
 type Procedure struct {
-	ID                id.Procedure
-	ParameterNames    []string
-	ParameterTypes    []id.Type
-	ParameterModes    []ParameterMode
-	ParameterDefaults []string
-	Definition        string
-	ExtensionName     string                         // Only used when this is an extension procedure
-	ExtensionSymbol   string                         // Only used when this is an extension procedure
-	Operations        []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
-	SQLDefinition     string                         // Only used when this is a sql language
+	ID              id.Procedure
+	AllParams       []Parameter
+	Definition      string
+	ExtensionName   string                         // Only used when this is an extension procedure
+	ExtensionSymbol string                         // Only used when this is an extension procedure
+	Operations      []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
+	SQLDefinition   string                         // Only used when this is a sql language
 }
 
 var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = Procedure{}
 
 // NewCollection returns a new Collection.
-func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree.NodeStore) (*Collection, error) {
+func NewCollection(ctx context.Context, rom objinterface.RootObjectMap) (*Collection, error) {
 	collection := &Collection{
+		RootObjectMap: rom,
 		accessCache:   make(map[id.Procedure]Procedure),
 		overloadCache: make(map[id.Procedure][]id.Procedure),
-		idCache:       nil,
-		mapHash:       hash.Hash{},
-		underlyingMap: underlyingMap,
-		ns:            ns,
 	}
 	return collection, collection.reloadCaches(ctx)
 }
@@ -123,11 +120,11 @@ func (pgp *Collection) AddProcedure(ctx context.Context, proc Procedure) error {
 	if err != nil {
 		return err
 	}
-	h, err := pgp.ns.WriteBytes(ctx, data)
+	h, err := pgp.NodeStore().WriteBytes(ctx, data)
 	if err != nil {
 		return err
 	}
-	mapEditor := pgp.underlyingMap.Editor()
+	mapEditor := pgp.Contents().Editor()
 	if err = mapEditor.Add(ctx, string(proc.ID), h); err != nil {
 		return err
 	}
@@ -135,8 +132,7 @@ func (pgp *Collection) AddProcedure(ctx context.Context, proc Procedure) error {
 	if err != nil {
 		return err
 	}
-	pgp.underlyingMap = newMap
-	pgp.mapHash = pgp.underlyingMap.HashOf()
+	pgp.SetContents(newMap)
 	return pgp.reloadCaches(ctx)
 }
 
@@ -153,7 +149,7 @@ func (pgp *Collection) DropProcedure(ctx context.Context, procIDs ...id.Procedur
 	}
 
 	// Now we'll remove the procedure from the map
-	mapEditor := pgp.underlyingMap.Editor()
+	mapEditor := pgp.Contents().Editor()
 	for _, procID := range procIDs {
 		err := mapEditor.Delete(ctx, string(procID))
 		if err != nil {
@@ -164,8 +160,7 @@ func (pgp *Collection) DropProcedure(ctx context.Context, procIDs ...id.Procedur
 	if err != nil {
 		return err
 	}
-	pgp.underlyingMap = newMap
-	pgp.mapHash = pgp.underlyingMap.HashOf()
+	pgp.SetContents(newMap)
 	return pgp.reloadCaches(ctx)
 }
 
@@ -263,7 +258,7 @@ func (pgp *Collection) iterateIDs(_ context.Context, callback func(procID id.Pro
 }
 
 // IterateProcedures iterates over all procedures in the collection.
-func (pgp *Collection) IterateProcedures(_ context.Context, callback func(f Procedure) (stop bool, err error)) error {
+func (pgp *Collection) IterateProcedures(_ context.Context, callback func(p Procedure) (stop bool, err error)) error {
 	for _, procID := range pgp.idCache {
 		stop, err := callback(pgp.accessCache[procID])
 		if err != nil {
@@ -275,58 +270,27 @@ func (pgp *Collection) IterateProcedures(_ context.Context, callback func(f Proc
 	return nil
 }
 
-// Clone returns a new *Collection with the same contents as the original.
-func (pgp *Collection) Clone(_ context.Context) *Collection {
-	return &Collection{
-		accessCache:   maps.Clone(pgp.accessCache),
-		overloadCache: maps.Clone(pgp.overloadCache),
-		idCache:       slices.Clone(pgp.idCache),
-		mapHash:       pgp.mapHash,
-		underlyingMap: pgp.underlyingMap,
-		ns:            pgp.ns,
-	}
-}
-
 // Map returns the underlying map.
 func (pgp *Collection) Map(_ context.Context) (prolly.AddressMap, error) {
-	return pgp.underlyingMap, nil
-}
-
-// DiffersFrom returns true when the hash that is associated with the underlying map for this collection is different
-// from the hash in the given root.
-func (pgp *Collection) DiffersFrom(ctx context.Context, root objinterface.RootValue) bool {
-	hashOnGivenRoot, err := pgp.LoadCollectionHash(ctx, root)
-	if err != nil {
-		return true
-	}
-	if pgp.mapHash.Equal(hashOnGivenRoot) {
-		return false
-	}
-	// An empty map should match an uninitialized collection on the root
-	count, err := pgp.underlyingMap.Count()
-	if err == nil && count == 0 && hashOnGivenRoot.IsEmpty() {
-		return false
-	}
-	return true
+	return pgp.Contents(), nil
 }
 
 // reloadCaches writes the underlying map's contents to the caches.
 func (pgp *Collection) reloadCaches(ctx context.Context) error {
-	count, err := pgp.underlyingMap.Count()
+	count, err := pgp.Contents().Count()
 	if err != nil {
 		return err
 	}
 
 	clear(pgp.accessCache)
 	clear(pgp.overloadCache)
-	pgp.mapHash = pgp.underlyingMap.HashOf()
 	pgp.idCache = make([]id.Procedure, 0, count)
 
-	return pgp.underlyingMap.IterAll(ctx, func(_ string, h hash.Hash) error {
+	return pgp.Contents().IterAll(ctx, func(_ string, h hash.Hash) error {
 		if h.IsEmpty() {
 			return nil
 		}
-		data, err := pgp.ns.ReadBytes(ctx, h)
+		data, err := pgp.NodeStore().ReadBytes(ctx, h)
 		if err != nil {
 			return err
 		}
@@ -415,30 +379,6 @@ func (procedure Procedure) Name() doltdb.TableName {
 	return ProcedureIDToTableName(procedure.ID)
 }
 
-// ParameterModesAsString returns a string that represents the parameter modes. The string may be converted back to a
-// slice using ParameterModesFromString.
-func (procedure Procedure) ParameterModesAsString() string {
-	sb := strings.Builder{}
-	for i, mode := range procedure.ParameterModes {
-		if i > 0 {
-			sb.WriteRune(',')
-		}
-		switch mode {
-		case ParameterMode_IN:
-			sb.WriteString("in")
-		case ParameterMode_OUT:
-			sb.WriteString("out")
-		case ParameterMode_INOUT:
-			sb.WriteString("inout")
-		case ParameterMode_VARIADIC:
-			sb.WriteString("variadic")
-		default:
-			panic("unhandled procedure parameter mode")
-		}
-	}
-	return sb.String()
-}
-
 // ProcedureIDToTableName returns the ID in a format that's better for user consumption.
 func ProcedureIDToTableName(procID id.Procedure) doltdb.TableName {
 	paramTypes := procID.Parameters()
@@ -454,29 +394,4 @@ func ProcedureIDToTableName(procID id.Procedure) doltdb.TableName {
 		Name:   fmt.Sprintf("%s(%s)", procID.ProcedureName(), strings.Join(strTypes, ",")),
 		Schema: procID.SchemaName(),
 	}
-}
-
-// ParameterModesFromString returns a ParameterMode slice from the given string. It is assumed that this string was
-// originally created using Procedure.ParameterModesAsString.
-func ParameterModesFromString(str string) ([]ParameterMode, error) {
-	if len(str) == 0 {
-		return nil, nil
-	}
-	modeStrings := strings.Split(str, ",")
-	modes := make([]ParameterMode, len(modeStrings))
-	for i, modeString := range modeStrings {
-		switch modeString {
-		case "in":
-			modes[i] = ParameterMode_IN
-		case "out":
-			modes[i] = ParameterMode_OUT
-		case "inout":
-			modes[i] = ParameterMode_INOUT
-		case "variadic":
-			modes[i] = ParameterMode_VARIADIC
-		default:
-			return nil, errors.Errorf("`%s` is not a valid parameter argmode, it may be one of the following: in, out, inout, variadic", modeString)
-		}
-	}
-	return modes, nil
 }

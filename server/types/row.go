@@ -60,11 +60,11 @@ var Row = &DoltgresType{
 // We reuse the Elem field to store the given type as it's only used for array types, which it's safely checked if
 // the type is array type before used.
 func RowTypeWithReturnType(baseType *DoltgresType) *DoltgresType {
-	rt := *Row
+	rt := Row.Copy()
 	rt.Elem = baseType
 	rt.InputFunc = baseType.InputFunc
 	rt.OutputFunc = baseType.OutputFunc
-	return &rt
+	return rt
 }
 
 var _ sql.RowIter = (*SetReturningFunctionRowIter)(nil)

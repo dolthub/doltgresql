@@ -201,7 +201,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('allow_in_place_tablespaces')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -231,7 +231,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('allow_system_table_mods')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -275,7 +275,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_cleanup_command TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('archive_cleanup_command')",
@@ -293,7 +293,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_command TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('archive_command')",
@@ -311,7 +311,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_library TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('archive_library')",
@@ -329,7 +329,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_mode TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('archive_mode')",
@@ -347,7 +347,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET archive_timeout TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('archive_timeout')",
@@ -381,7 +381,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('array_nulls')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -395,7 +395,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET authentication_timeout TO '120'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('authentication_timeout')",
@@ -413,11 +413,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -431,7 +431,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_analyze_scale_factor TO '0.1'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_analyze_scale_factor')",
@@ -449,7 +449,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_analyze_threshold TO '50'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_analyze_threshold')",
@@ -467,7 +467,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_freeze_max_age TO '200000000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_freeze_max_age')",
@@ -485,7 +485,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_max_workers TO '3'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_max_workers')",
@@ -503,7 +503,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_multixact_freeze_max_age TO '400000000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_multixact_freeze_max_age')",
@@ -521,7 +521,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_naptime TO '60'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_naptime')",
@@ -539,7 +539,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_cost_delay TO '2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_vacuum_cost_delay')",
@@ -557,7 +557,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_cost_limit TO '-1'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_vacuum_cost_limit')",
@@ -575,7 +575,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_insert_scale_factor TO '0.2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_vacuum_insert_scale_factor')",
@@ -593,7 +593,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_insert_threshold TO '1000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_vacuum_insert_threshold')",
@@ -611,7 +611,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_scale_factor TO '0.2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_vacuum_scale_factor')",
@@ -629,7 +629,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_vacuum_threshold TO '50'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_vacuum_threshold')",
@@ -647,7 +647,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET autovacuum_work_mem TO '-1'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_work_mem')",
@@ -755,7 +755,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bgwriter_delay TO '200'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('bgwriter_delay')",
@@ -773,7 +773,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bgwriter_flush_after TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('bgwriter_flush_after')",
@@ -791,7 +791,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bgwriter_lru_maxpages TO '100'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('bgwriter_lru_maxpages')",
@@ -809,7 +809,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bgwriter_lru_multiplier TO '2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('bgwriter_lru_multiplier')",
@@ -827,7 +827,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET block_size TO '8192'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('block_size')",
@@ -845,11 +845,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bonjour TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('bonjour')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -863,7 +863,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET bonjour_name TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('bonjour_name')",
@@ -927,7 +927,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('check_function_bodies')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -941,7 +941,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET checkpoint_completion_target TO '0.9'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('checkpoint_completion_target')",
@@ -959,7 +959,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET checkpoint_flush_after TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('checkpoint_flush_after')",
@@ -977,7 +977,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET checkpoint_timeout TO '300'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('checkpoint_timeout')",
@@ -995,7 +995,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET checkpoint_warning TO '30'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('checkpoint_warning')",
@@ -1103,7 +1103,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET cluster_name TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('cluster_name')",
@@ -1211,7 +1211,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET config_file TO '/Users/postgres/postgresql.conf'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('config_file')",
@@ -1409,11 +1409,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET data_checksums TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('data_checksums')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -1427,7 +1427,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET data_directory TO '/Users/postgres'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('data_directory')",
@@ -1445,7 +1445,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET data_directory_mode TO '448'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('data_directory_mode')",
@@ -1463,11 +1463,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET data_sync_retry TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('data_sync_retry')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -1511,11 +1511,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET db_user_namespace TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('db_user_namespace')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -1559,11 +1559,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET debug_assertions TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('debug_assertions')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -1599,7 +1599,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET debug_io_direct TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('debug_io_direct')",
@@ -1693,7 +1693,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('debug_pretty_print')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -1723,7 +1723,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('debug_print_parse')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -1753,7 +1753,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('debug_print_plan')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -1783,7 +1783,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('debug_print_rewritten')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -1955,7 +1955,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('default_transaction_deferrable')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -2015,7 +2015,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('default_transaction_read_only')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -2059,7 +2059,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET dynamic_shared_memory_type TO 'posix'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('dynamic_shared_memory_type')",
@@ -2153,7 +2153,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_async_append')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2183,7 +2183,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_bitmapscan')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2213,7 +2213,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_gathermerge')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2243,7 +2243,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_hashagg')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2273,7 +2273,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_hashjoin')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2303,7 +2303,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_incremental_sort')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2333,7 +2333,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_indexonlyscan')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2363,7 +2363,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_indexscan')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2393,7 +2393,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_material')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2423,7 +2423,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_memoize')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2453,7 +2453,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_mergejoin')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2483,7 +2483,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_nestloop')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2513,7 +2513,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_parallel_append')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2543,7 +2543,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_parallel_hash')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2573,7 +2573,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_partition_pruning')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2603,7 +2603,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_partitionwise_aggregate')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -2633,7 +2633,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_partitionwise_join')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -2663,7 +2663,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_presorted_aggregate')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2693,7 +2693,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_seqscan')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2723,7 +2723,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_sort')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2753,7 +2753,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('enable_tidscan')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2783,7 +2783,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('escape_string_warning')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2797,7 +2797,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET event_source TO 'PostgreSQL'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('event_source')",
@@ -2831,7 +2831,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('exit_on_error')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -2845,7 +2845,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET external_pid_file TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('external_pid_file')",
@@ -2923,11 +2923,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET fsync TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('fsync')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2941,11 +2941,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET full_page_writes TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('full_page_writes')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -2975,7 +2975,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('geqo')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -3233,11 +3233,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET gss_accept_delegation TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('gss_accept_delegation')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3281,7 +3281,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET hba_file TO '/Users/postgres/pg_hba.conf'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('hba_file')",
@@ -3299,11 +3299,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET hot_standby TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('hot_standby')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -3317,11 +3317,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET hot_standby_feedback TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('hot_standby_feedback')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3335,7 +3335,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET huge_page_size TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('huge_page_size')",
@@ -3353,7 +3353,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET huge_pages TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('huge_pages')",
@@ -3401,7 +3401,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ident_file TO '/Users/postgres/pg_ident.conf'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ident_file')",
@@ -3495,7 +3495,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('ignore_checksum_failure')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3509,11 +3509,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ignore_invalid_pages TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ignore_invalid_pages')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3527,11 +3527,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ignore_system_indexes TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ignore_system_indexes')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3545,11 +3545,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET in_hot_standby TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('in_hot_standby')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3563,11 +3563,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET integer_datetimes TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('integer_datetimes')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -3627,7 +3627,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('jit')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -3671,11 +3671,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET jit_debugging_support TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('jit_debugging_support')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3705,7 +3705,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('jit_dump_bitcode')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3735,7 +3735,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('jit_expressions')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -3809,11 +3809,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET jit_profiling_support TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('jit_profiling_support')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3827,7 +3827,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET jit_provider TO 'llvmjit'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('jit_provider')",
@@ -3861,7 +3861,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('jit_tuple_deforming')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -3905,11 +3905,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET krb_caseins_users TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('krb_caseins_users')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -3923,7 +3923,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET krb_server_keyfile TO 'FILE:'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('krb_server_keyfile')",
@@ -4061,7 +4061,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET listen_addresses TO 'localhost'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('listen_addresses')",
@@ -4095,7 +4095,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('lo_compat_privileges')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4112,8 +4112,9 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				// This parameter holds a list of identifiers, so "/" is quoted to stay one element
 				Query:    "SHOW local_preload_libraries",
-				Expected: []sql.Row{{"/"}},
+				Expected: []sql.Row{{`"/"`}},
 			},
 			{
 				Query:    "SET local_preload_libraries TO DEFAULT",
@@ -4169,7 +4170,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_autovacuum_min_duration TO '600'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_autovacuum_min_duration')",
@@ -4187,11 +4188,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_checkpoints TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_checkpoints')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -4205,11 +4206,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_connections TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_connections')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4223,7 +4224,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_destination TO 'jsonlog'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_destination')",
@@ -4241,7 +4242,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_directory TO 'log'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_directory')",
@@ -4259,11 +4260,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_disconnections TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_disconnections')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4293,7 +4294,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_duration')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4353,7 +4354,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_executor_stats')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4367,7 +4368,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_file_mode TO '384'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_file_mode')",
@@ -4385,7 +4386,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_filename TO 'postgresql-%Y-%m-%d_%H%M%S.log'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_filename')",
@@ -4403,11 +4404,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_hostname TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_hostname')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4421,7 +4422,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_line_prefix TO '%m [%p]'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_line_prefix')",
@@ -4455,7 +4456,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_lock_waits')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4669,7 +4670,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_parser_stats')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4699,7 +4700,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_planner_stats')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4713,11 +4714,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_recovery_conflict_waits TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_recovery_conflict_waits')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4747,7 +4748,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_replication_commands')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4761,7 +4762,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_rotation_age TO '1440'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_rotation_age')",
@@ -4779,7 +4780,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_rotation_size TO '10240'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_rotation_size')",
@@ -4797,7 +4798,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_startup_progress_interval TO '10'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_startup_progress_interval')",
@@ -4891,7 +4892,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_statement_stats')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -4935,7 +4936,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_timezone TO 'America/Los_Angeles'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_timezone')",
@@ -4983,11 +4984,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET log_truncate_on_rotation TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('log_truncate_on_rotation')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -5001,11 +5002,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET logging_collector TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('logging_collector')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -5109,7 +5110,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_connections TO '150'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_connections')",
@@ -5127,7 +5128,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_files_per_process TO '1000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_files_per_process')",
@@ -5145,7 +5146,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_function_args TO '100'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_function_args')",
@@ -5163,7 +5164,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_identifier_length TO '63'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_identifier_length')",
@@ -5181,7 +5182,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_index_keys TO '32'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_index_keys')",
@@ -5199,7 +5200,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_locks_per_transaction TO '64'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_locks_per_transaction')",
@@ -5217,7 +5218,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_logical_replication_workers TO '4'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_logical_replication_workers')",
@@ -5235,7 +5236,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_parallel_apply_workers_per_subscription TO '2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_parallel_apply_workers_per_subscription')",
@@ -5343,7 +5344,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_pred_locks_per_page TO '2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_pred_locks_per_page')",
@@ -5361,7 +5362,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_pred_locks_per_relation TO '-2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_pred_locks_per_relation')",
@@ -5379,7 +5380,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_pred_locks_per_transaction TO '64'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_pred_locks_per_transaction')",
@@ -5397,7 +5398,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_prepared_transactions TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_prepared_transactions')",
@@ -5415,7 +5416,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_replication_slots TO '10'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_replication_slots')",
@@ -5433,7 +5434,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_slot_wal_keep_size TO '-1'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_slot_wal_keep_size')",
@@ -5481,7 +5482,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_standby_archive_delay TO '30'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_standby_archive_delay')",
@@ -5499,7 +5500,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_standby_streaming_delay TO '30'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_standby_streaming_delay')",
@@ -5517,7 +5518,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_sync_workers_per_subscription TO '2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_sync_workers_per_subscription')",
@@ -5535,7 +5536,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_wal_senders TO '10'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_wal_senders')",
@@ -5553,7 +5554,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_wal_size TO '1000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_wal_size')",
@@ -5571,7 +5572,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET max_worker_processes TO '8'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('max_worker_processes')",
@@ -5589,7 +5590,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET min_dynamic_shared_memory TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('min_dynamic_shared_memory')",
@@ -5667,7 +5668,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET min_wal_size TO '8000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('min_wal_size')",
@@ -5685,7 +5686,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET old_snapshot_threshold TO '-1'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('old_snapshot_threshold')",
@@ -5719,7 +5720,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('parallel_leader_participation')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -5853,7 +5854,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET post_auth_delay TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('post_auth_delay')",
@@ -5871,7 +5872,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET pre_auth_delay TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('pre_auth_delay')",
@@ -5889,7 +5890,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET primary_conninfo TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('primary_conninfo')",
@@ -5907,7 +5908,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET primary_slot_name TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('primary_slot_name')",
@@ -5941,7 +5942,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('quote_all_identifiers')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -5985,7 +5986,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_end_command TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_end_command')",
@@ -6003,7 +6004,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_init_sync_method TO 'fsync'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_init_sync_method')",
@@ -6021,7 +6022,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_min_apply_delay TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_min_apply_delay')",
@@ -6039,7 +6040,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_prefetch TO 'try'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_prefetch')",
@@ -6057,7 +6058,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target')",
@@ -6075,7 +6076,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_action TO 'pause'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_action')",
@@ -6093,11 +6094,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_inclusive TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_inclusive')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -6111,7 +6112,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_lsn TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_lsn')",
@@ -6129,7 +6130,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_name TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_name')",
@@ -6147,7 +6148,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_time TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_time')",
@@ -6165,7 +6166,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_timeline TO 'latest'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_timeline')",
@@ -6183,7 +6184,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET recovery_target_xid TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_xid')",
@@ -6231,11 +6232,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET remove_temp_files_after_crash TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('remove_temp_files_after_crash')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -6249,7 +6250,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET reserved_connections TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('reserved_connections')",
@@ -6267,11 +6268,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET restart_after_crash TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('restart_after_crash')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -6285,7 +6286,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET restore_command TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('restore_command')",
@@ -6319,7 +6320,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('row_security')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -6384,6 +6385,288 @@ var setStmts = []ScriptTest{
 		},
 	},
 	{
+		// Postgres does not store a search_path as it was typed. It re-renders each element with the same quoting
+		// rules an identifier gets, so quoting that carries meaning survives and quoting that does not is dropped.
+		// Every expectation here was taken from PostgreSQL 16.
+		Name:        "search_path elements keep the quoting they need",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				// The quotes around $user are what distinguishes it from a schema of that name, so they are kept.
+				// This is the form pg_dump and most clients emit.
+				Query:    `SET search_path TO "$user", public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				Query:    `SET search_path TO "$user"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user"`}},
+			},
+			{
+				// A bare element needs no quoting and gets none
+				Query:    `SET search_path TO public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`public`}},
+			},
+			{
+				// Quoting a name that does not need it is not preserved
+				Query:    `SET search_path TO "public"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`public`}},
+			},
+			{
+				// Quotes are what preserve case, so they are kept
+				Query:    `SET search_path TO "MixedCase", public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"MixedCase", public`}},
+			},
+			{
+				// An unquoted element is lower cased, so it needs no quoting afterwards
+				Query:    `SET search_path TO MiXeD`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`mixed`}},
+			},
+			{
+				// A space is not valid in a bare identifier, so the quotes are kept
+				Query:    `SET search_path TO "with space"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"with space"`}},
+			},
+			{
+				// A quote within a quoted element stays doubled
+				Query:    `SET search_path TO "with""quote"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"with""quote"`}},
+			},
+			{
+				// A reserved keyword is not valid bare, so the quotes are kept
+				Query:    `SET search_path TO "user", public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"user", public`}},
+			},
+			{
+				Query:    `SET search_path TO pg_catalog, public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`pg_catalog, public`}},
+			},
+			{
+				Query:    `SET search_path TO public, public2`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`public, public2`}},
+			},
+			{
+				// A number is written out as itself, without quoting
+				Query:    `SET search_path TO 1, public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`1, public`}},
+			},
+			{
+				// A string literal is one element, comma and all, so the comma has to be quoted to stay inside it
+				Query:    `SET search_path TO 'a, b'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"a, b"`}},
+			},
+			{
+				Query:    `SET search_path TO 'public, public2'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"public, public2"`}},
+			},
+			{
+				// A string literal that looks like a path is still a single element, quotes included
+				Query:    `SET search_path TO '"$user", public'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"""$user"", public"`}},
+			},
+			{
+				// The empty element is quoted, which is what distinguishes it from a setting naming no schemas
+				Query:    `SET search_path TO ''`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`""`}},
+			},
+			{
+				Query:    `SELECT current_setting('search_path')`,
+				Expected: []sql.Row{{`""`}},
+			},
+			{
+				Query:    `SET search_path TO DEFAULT`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				Query:    `SET search_path TO "MixedCase"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `RESET search_path`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"$user", public`}},
+			},
+			{
+				// SET SCHEMA takes a single schema name, which is quoted only when it has to be
+				Query:    `SET SCHEMA 'MixedCase'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`"MixedCase"`}},
+			},
+			{
+				Query:    `SET SCHEMA 'postgres'`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW search_path`,
+				Expected: []sql.Row{{`postgres`}},
+			},
+		},
+	},
+	{
+		// Parameters that are not lists of identifiers keep their values verbatim, without any quoting applied.
+		Name:        "non-identifier parameters are not quoted",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SET datestyle TO ISO, MDY`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW datestyle`,
+				Expected: []sql.Row{{`ISO, MDY`}},
+			},
+			{
+				Query:    `SET application_name TO "MixedCase"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW application_name`,
+				Expected: []sql.Row{{`MixedCase`}},
+			},
+			{
+				Query:    `SET timezone TO "UTC"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SHOW timezone`,
+				Expected: []sql.Row{{`UTC`}},
+			},
+		},
+	},
+	{
+		// The quoting SHOW reports has to be the quoting name resolution reads back, or a search_path that round
+		// trips through a client stops naming the same schemas.
+		Name: "quoted search_path elements resolve to their schemas",
+		SetUpScript: []string{
+			`CREATE SCHEMA "MixedCase";`,
+			`CREATE SCHEMA postgres;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SET search_path TO "MixedCase"`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT current_schema()`,
+				Expected: []sql.Row{{"MixedCase"}},
+			},
+			{
+				Query:    `CREATE TABLE t1 (a int)`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 't1'`,
+				Expected: []sql.Row{{"MixedCase"}},
+			},
+			{
+				// "$user" expands to the session user, "postgres", which has a schema here. Keeping the quotes
+				// through the SET is what lets it be recognized as the placeholder at all.
+				Query:    `SET search_path TO "$user", public`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT current_schema()`,
+				Expected: []sql.Row{{"postgres"}},
+			},
+			{
+				Query:    `CREATE TABLE t2 (a int)`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 't2'`,
+				Expected: []sql.Row{{"postgres"}},
+			},
+			{
+				// A quoted element holding a comma names one schema, not two
+				Query:    `SET search_path TO 'MixedCase, public'`,
+				Expected: []sql.Row{},
+			},
+			{
+				// No schema is named "MixedCase, public", so the path names nothing searchable. Were the comma
+				// splitting the value into two elements instead, both would name existing schemas and be reported.
+				Query:    `SELECT current_schemas(false)`,
+				Expected: []sql.Row{{`{}`}},
+			},
+		},
+	},
+	{
 		Name:        "set 'segment_size' configuration variable",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
@@ -6393,7 +6676,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET segment_size TO '131072'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('segment_size')",
@@ -6411,11 +6694,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET send_abort_for_crash TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('send_abort_for_crash')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -6429,11 +6712,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET send_abort_for_kill TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('send_abort_for_kill')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -6447,7 +6730,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET seq_page_cost TO '1'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('seq_page_cost')",
@@ -6465,7 +6748,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET server_encoding TO 'UTF8'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('server_encoding')",
@@ -6483,7 +6766,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET server_version TO '15.17 (Homebrew)'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('server_version')",
@@ -6501,7 +6784,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET server_version_num TO '150017'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('server_version_num')",
@@ -6522,8 +6805,9 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				// This parameter holds a list of identifiers, so "/" is quoted to stay one element
 				Query:    "SHOW session_preload_libraries",
-				Expected: []sql.Row{{"/"}},
+				Expected: []sql.Row{{`"/"`}},
 			},
 			{
 				Query:    "SET session_preload_libraries TO DEFAULT",
@@ -6579,7 +6863,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_buffers TO '128000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('shared_buffers')",
@@ -6597,7 +6881,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_memory_size TO '143000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_size')",
@@ -6615,7 +6899,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_memory_size_in_huge_pages TO '-1'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_size_in_huge_pages')",
@@ -6633,7 +6917,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_memory_type TO 'mmap'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_type')",
@@ -6651,7 +6935,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET shared_preload_libraries TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('shared_preload_libraries')",
@@ -6669,11 +6953,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -6687,7 +6971,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_ca_file TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_ca_file')",
@@ -6705,7 +6989,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_cert_file TO 'server.crt'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_cert_file')",
@@ -6723,7 +7007,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_ciphers TO 'HIGH:MEDIUM:'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_ciphers')",
@@ -6741,7 +7025,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_crl_dir TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_crl_dir')",
@@ -6759,7 +7043,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_crl_file TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_crl_file')",
@@ -6777,7 +7061,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_dh_params_file TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_dh_params_file')",
@@ -6795,7 +7079,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_ecdh_curve TO 'prime256v1'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_ecdh_curve')",
@@ -6813,7 +7097,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_key_file TO 'server.key'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_key_file')",
@@ -6831,7 +7115,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_library TO 'OpenSSL'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_library')",
@@ -6849,7 +7133,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_max_protocol_version TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_max_protocol_version')",
@@ -6867,7 +7151,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_min_protocol_version TO 'TLSv1.2'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_min_protocol_version')",
@@ -6885,7 +7169,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_passphrase_command TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_passphrase_command')",
@@ -6903,11 +7187,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_passphrase_command_supports_reload TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_passphrase_command_supports_reload')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -6921,11 +7205,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET ssl_prefer_server_ciphers TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('ssl_prefer_server_ciphers')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -6955,7 +7239,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('standard_conforming_strings')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -7021,7 +7305,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET superuser_reserved_connections TO '3'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('superuser_reserved_connections')",
@@ -7055,7 +7339,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('synchronize_seqscans')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -7099,7 +7383,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET synchronous_standby_names TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('synchronous_standby_names')",
@@ -7117,7 +7401,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET syslog_facility TO 'local0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('syslog_facility')",
@@ -7135,7 +7419,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET syslog_ident TO 'postgres'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('syslog_ident')",
@@ -7153,11 +7437,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET syslog_sequence_numbers TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('syslog_sequence_numbers')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -7171,11 +7455,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET syslog_split_messages TO 'on'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('syslog_split_messages')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -7475,7 +7759,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('trace_notify')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -7489,7 +7773,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET trace_recovery_messages TO 'log'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('trace_recovery_messages')",
@@ -7523,7 +7807,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('trace_sort')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -7553,7 +7837,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('track_activities')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -7567,7 +7851,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET track_activity_query_size TO '1024'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('track_activity_query_size')",
@@ -7585,11 +7869,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET track_commit_timestamp TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('track_commit_timestamp')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -7619,7 +7903,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('track_counts')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -7679,7 +7963,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('track_io_timing')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -7709,7 +7993,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('track_wal_io_timing')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -7739,7 +8023,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('transaction_deferrable')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -7799,7 +8083,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('transaction_read_only')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -7829,7 +8113,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('transform_null_equals')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -7843,7 +8127,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET unix_socket_directories TO '/tmp'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_directories')",
@@ -7861,7 +8145,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET unix_socket_group TO ''",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_group')",
@@ -7879,7 +8163,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET unix_socket_permissions TO '511'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_permissions')",
@@ -7913,7 +8197,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('update_process_title')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -8287,7 +8571,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_block_size TO '8192'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_block_size')",
@@ -8305,7 +8589,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_buffers TO '4000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_buffers')",
@@ -8383,7 +8667,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_decode_buffer_size TO '524288'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_decode_buffer_size')",
@@ -8417,7 +8701,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_init_zero')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -8431,7 +8715,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_keep_size TO '0'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_keep_size')",
@@ -8449,7 +8733,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_level TO 'replica'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_level')",
@@ -8467,11 +8751,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_log_hints TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_log_hints')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -8485,11 +8769,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_receiver_create_temp_slot TO 'off'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_receiver_create_temp_slot')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},
@@ -8503,7 +8787,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_receiver_status_interval TO '10'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_receiver_status_interval')",
@@ -8521,7 +8805,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_receiver_timeout TO '60'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_receiver_timeout')",
@@ -8555,7 +8839,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_recycle')",
-				Expected: []sql.Row{{"1"}},
+				Expected: []sql.Row{{"on"}},
 			},
 		},
 	},
@@ -8569,7 +8853,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_retrieve_retry_interval TO '5'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_retrieve_retry_interval')",
@@ -8587,7 +8871,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_segment_size TO '16777216'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_segment_size')",
@@ -8665,7 +8949,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_sync_method TO 'open_datasync'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_sync_method')",
@@ -8683,7 +8967,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_writer_delay TO '200'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_writer_delay')",
@@ -8701,7 +8985,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:       "SET wal_writer_flush_after TO '1000'",
-				ExpectedErr: "is a read only variable",
+				ExpectedErr: "cannot be changed now",
 			},
 			{
 				Query:    "SELECT current_setting('wal_writer_flush_after')",
@@ -8825,7 +9109,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('zero_damaged_pages')",
-				Expected: []sql.Row{{"0"}},
+				Expected: []sql.Row{{"off"}},
 			},
 		},
 	},

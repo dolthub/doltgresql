@@ -20,6 +20,111 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestUpdateAffectedRows verifies PostgreSQL counts for unchanged updates and conflict updates.
+func TestUpdateAffectedRows(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "UPDATE and ON CONFLICT command counts",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 20)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t SET a = a WHERE id = 1", ExpectedTag: "UPDATE 1"},
+				{Query: "UPDATE t SET a = 10", ExpectedTag: "UPDATE 2"},
+				{Query: "UPDATE t SET a = 10 WHERE id = 999", ExpectedTag: "UPDATE 0"},
+				{Query: "UPDATE t SET a = $1 WHERE id = $2", BindVars: []any{10, 1}, ExpectedTag: "UPDATE 1"},
+				{Query: "UPDATE t SET a = a WHERE id = 1 RETURNING id, a", Expected: []sql.Row{{1, 10}}},
+				{Query: "UPDATE t SET a = a WHERE id = 1 RETURNING id, a", ExpectedTag: "UPDATE 1"},
+				{Query: "INSERT INTO t VALUES (1, 10) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a", ExpectedTag: "INSERT 0 1"},
+				{Query: "INSERT INTO t VALUES (1, 11) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a", ExpectedTag: "INSERT 0 1"},
+				{Query: "INSERT INTO t VALUES (1, 12) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a WHERE false", ExpectedTag: "INSERT 0 0"},
+			},
+		},
+		{
+			Name: "mixed insert and conflict update counts",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "INSERT INTO t VALUES (1, 10), (2, 22), (3, 33), (4, 40) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a WHERE t.id <> 3", ExpectedTag: "INSERT 0 3"},
+				{Query: "SELECT id, a FROM t ORDER BY id", Expected: []sql.Row{{1, 10}, {2, 22}, {3, 30}, {4, 40}}},
+			},
+		},
+		{
+			Name: "PL/pgSQL FOUND after unchanged UPDATE",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `CREATE FUNCTION update_found(target_id INT) RETURNS boolean LANGUAGE plpgsql AS $$
+BEGIN UPDATE t SET a = a WHERE id = target_id; RETURN FOUND; END; $$;`},
+				{Query: "SELECT update_found(1)", Expected: []sql.Row{{"t"}}},
+				{Query: "SELECT update_found(999)", Expected: []sql.Row{{"f"}}},
+			},
+		},
+		{
+			Name: "NULL and transaction counts without a primary key",
+			SetUpScript: []string{
+				"CREATE TABLE t (a INT)",
+				"INSERT INTO t VALUES (NULL), (1)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "BEGIN"},
+				{Query: "UPDATE t SET a = NULL WHERE a IS NULL", ExpectedTag: "UPDATE 1"},
+				{Query: "UPDATE t SET a = a", ExpectedTag: "UPDATE 2"},
+				{Query: "COMMIT"},
+			},
+		},
+		{
+			Name: "BEFORE UPDATE trigger skips a row",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10)",
+				`CREATE FUNCTION skip_update() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RETURN NULL; END; $$;`,
+				"CREATE TRIGGER skip_update BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION skip_update()",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t SET a = a WHERE id = 1", ExpectedTag: "UPDATE 0"},
+				{Query: "UPDATE t SET a = a WHERE id = 1 RETURNING id", Expected: []sql.Row{}},
+				{Query: "UPDATE t SET a = a WHERE id = 1 RETURNING id", ExpectedTag: "UPDATE 0"},
+			},
+		},
+		{
+			Name: "BEFORE UPDATE trigger skips one of several rows",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)",
+				`CREATE FUNCTION skip_one() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN IF OLD.id = 1 THEN RETURN NULL; END IF; RETURN NEW; END; $$;`,
+				"CREATE TRIGGER skip_one BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION skip_one()",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t SET a = CASE WHEN id = 3 THEN 31 ELSE a END", ExpectedTag: "UPDATE 2"},
+				{Query: "SELECT id, a FROM t ORDER BY id", Expected: []sql.Row{{1, 10}, {2, 20}, {3, 31}}},
+			},
+		},
+		{
+			Name: "UPDATE FROM counts and RETURNING",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT)",
+				"CREATE TABLE u (id INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 20)",
+				"INSERT INTO u VALUES (1), (1), (2)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t SET a = t.a FROM u WHERE t.id = u.id", ExpectedTag: "UPDATE 2"},
+				{Query: "UPDATE t SET a = 10 FROM u WHERE t.id = u.id", ExpectedTag: "UPDATE 2"},
+				{Query: "UPDATE t SET a = t.a FROM u WHERE t.id = u.id RETURNING t.id, t.a", Expected: []sql.Row{{1, 10}, {2, 10}}},
+				{Query: "UPDATE t SET a = t.a FROM u WHERE t.id = u.id RETURNING t.id, t.a", ExpectedTag: "UPDATE 2"},
+			},
+		},
+	})
+}
+
 func TestUpdate(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -294,6 +399,241 @@ func TestUpdate(t *testing.T) {
 						{2, 45000, 45500},
 					},
 				},
+			},
+		},
+	})
+}
+
+// TestUpdateAssignmentSemantics covers pre-update-row evaluation, verified against PostgreSQL 18.6.
+// https://github.com/dolthub/doltgresql/issues/3092
+func TestUpdateAssignmentSemantics(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "customer CASE",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = CASE WHEN a = 1 THEN 100 ELSE -1 END"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 100}},
+				},
+			},
+		},
+		{
+			Name: "reversed CASE",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET b = CASE WHEN a = 1 THEN 100 ELSE -1 END, a = 2"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 100}},
+				},
+			},
+		},
+		{
+			Name: "swap",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = b, b = a"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{0, 1}},
+				},
+			},
+		},
+		{
+			Name: "reversed swap",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET b = a, a = b"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{0, 1}},
+				},
+			},
+		},
+		{
+			Name: "arithmetic chain",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = a + 1, b = a + 10"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 11}},
+				},
+			},
+		},
+		{
+			Name: "NULL propagation",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = NULL, b = CASE WHEN a IS NULL THEN 100 ELSE -1 END"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{nil, -1}},
+				},
+			},
+		},
+		{
+			Name: "multiple rows",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+				"INSERT INTO t_seq VALUES (3, 9)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = a + 1, b = a"},
+				{
+					Query:    "SELECT a, b FROM t_seq ORDER BY a",
+					Expected: []sql.Row{{2, 1}, {4, 3}},
+				},
+			},
+		},
+		{
+			Name: "scalar correlated subquery",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = (SELECT a + 10)"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 11}},
+				},
+			},
+		},
+		{
+			Name: "WHERE subquery",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+				"CREATE TABLE src (x int PRIMARY KEY)",
+				"INSERT INTO src VALUES (1)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = a WHERE a IN (SELECT x FROM src)"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 1}},
+				},
+			},
+		},
+		{
+			Name: "assignment conversion",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 1.6, b = a"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 1}},
+				},
+			},
+		},
+		{
+			Name: "generated stored column",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int, c int GENERATED ALWAYS AS (a+b) STORED)",
+				"INSERT INTO t_seq (a,b) VALUES (1,0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = a"},
+				{
+					Query:    "SELECT a,b,c FROM t_seq",
+					Expected: []sql.Row{{2, 1, 3}},
+				},
+			},
+		},
+		{
+			Name: "join same target",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (id int PRIMARY KEY, a int, b int)",
+				"INSERT INTO t_seq VALUES (1,1,0)",
+				"CREATE TABLE src (id int PRIMARY KEY, x int)",
+				"INSERT INTO src VALUES (1,10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = a FROM src WHERE t_seq.id = src.id"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 1}},
+				},
+			},
+		},
+		{
+			Name: "join swap",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (id int PRIMARY KEY, a int, b int)",
+				"INSERT INTO t_seq VALUES (1,1,0)",
+				"CREATE TABLE src (id int PRIMARY KEY, x int)",
+				"INSERT INTO src VALUES (1,10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = b, b = a FROM src WHERE t_seq.id = src.id"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{0, 1}},
+				},
+			},
+		},
+		{
+			Name: "repeated target is rejected",
+			Skip: true, // TODO: Reject duplicate targets (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "UPDATE t_seq SET a = a + 1, a = a + 10, b = a",
+					ExpectedErr: `multiple assignments to same column "a"`,
+				},
+				{Query: "SELECT a, b FROM t_seq", Expected: []sql.Row{{1, 0}}},
+			},
+		},
+		{
+			Name: "assignments through foreign key and check handlers",
+			SetUpScript: []string{
+				"CREATE TABLE parent (id int PRIMARY KEY)",
+				"INSERT INTO parent VALUES (1), (2)",
+				"CREATE TABLE t_seq (id int PRIMARY KEY, a int REFERENCES parent(id), b int, CHECK (b < a))",
+				"INSERT INTO t_seq VALUES (9, 1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = a RETURNING id, a, b", Expected: []sql.Row{{9, 2, 1}}},
+				{Query: "SELECT id, a, b FROM t_seq", Expected: []sql.Row{{9, 2, 1}}},
+			},
+		},
+		{
+			Name: "RETURNING reads completed new row",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = b, b = a RETURNING a, b", Expected: []sql.Row{{0, 1}}},
+				{Query: "SELECT a, b FROM t_seq", Expected: []sql.Row{{0, 1}}},
 			},
 		},
 	})

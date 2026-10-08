@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"fmt"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -26,6 +24,8 @@ import (
 // initLength registers the functions to the catalog.
 func initLength() {
 	framework.RegisterFunction(length_text)
+	framework.RegisterFunction(length_bytea)
+	framework.RegisterFunction(length_bit)
 }
 
 // length_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -35,13 +35,41 @@ var length_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		val1str, ok, err := sql.Unwrap[string](ctx, val1)
+		val1str, err := framework.UnwrapString(ctx, val1)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			return nil, fmt.Errorf("unexpected type for length input, expected string, got %T", val1)
-		}
 		return int32(len([]rune(val1str))), nil
+	},
+}
+
+// length_bytea represents the PostgreSQL function of the same name, taking the same parameters. Unlike length(text),
+// which counts characters, length(bytea) counts bytes.
+var length_bytea = framework.Function1{
+	Name:       "length",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bytea},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		length, err := framework.UnwrapByteLength(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return lengthToInt32(length)
+	},
+}
+
+// length_bit represents the PostgreSQL function of the same name, taking the same parameters.
+var length_bit = framework.Function1{
+	Name:       "length",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bit},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		val1str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return lengthToInt32(int64(len(val1str)))
 	},
 }

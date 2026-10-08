@@ -15,6 +15,9 @@
 package cast
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -34,6 +37,24 @@ func initInt32(builtInCasts map[id.Cast]casts.Cast) {
 
 // int32Explicit registers all explicit casts. This comprises only the source types.
 func int32Explicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Bit,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			width := 1
+			if attTypMod := targetType.GetAttTypMod(); attTypMod != -1 {
+				width = int(attTypMod)
+			}
+			bitStr := strconv.FormatInt(int64(val.(int32)), 2)
+			if len(bitStr) > width {
+				return bitStr[len(bitStr)-width:], nil
+			} else if len(bitStr) < width {
+				return strings.Repeat("0", width-len(bitStr)) + bitStr, nil
+			} else {
+				return bitStr, nil
+			}
+		},
+	})
 	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Bool,
@@ -109,7 +130,27 @@ func int32Implicit(builtInCasts map[id.Cast]casts.Cast) {
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Regnamespace,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewOID(uint32(val.(int32))).AsId(), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Regproc,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewOID(uint32(val.(int32))).AsId(), nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.Int32,
+		ToType:   pgtypes.Regprocedure,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil

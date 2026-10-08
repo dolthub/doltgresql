@@ -15,14 +15,11 @@
 package ast
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core/procedures"
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
@@ -37,39 +34,11 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 	}
 	// Grab the general information that we'll need to create the procedure
 	tableName := node.Name.ToTableName()
-	params := make([]pgnodes.RoutineParam, len(node.Args))
-	var defaults []vitess.Expr
-	for i, arg := range node.Args {
-		// parameter name
-		params[i].Name = arg.Name.String()
-		// parameter type
-		_, params[i].Type, err = nodeResolvableTypeReference(ctx, arg.Type, false)
-		if err != nil {
-			return nil, err
-		}
-		// parameter mode
-		switch arg.Mode {
-		case tree.RoutineArgModeIn:
-			params[i].Mode = procedures.ParameterMode_IN
-		case tree.RoutineArgModeVariadic:
-			params[i].Mode = procedures.ParameterMode_VARIADIC
-		case tree.RoutineArgModeOut:
-			params[i].Mode = procedures.ParameterMode_OUT
-		case tree.RoutineArgModeInout:
-			params[i].Mode = procedures.ParameterMode_INOUT
-		default:
-			return nil, errors.Newf("unknown procedure argmode: `%v`", arg.Mode)
-		}
-		// parameter default
-		if arg.Default != nil {
-			params[i].HasDefault = true
-			d, err := nodeExpr(ctx, arg.Default)
-			if err != nil {
-				return nil, err
-			}
-			defaults = append(defaults, d)
-		}
+	params, defaults, _, err := resolveRoutineParameters(ctx, node.Args)
+	if err != nil {
+		return nil, err
 	}
+
 	// We only support PL/pgSQL, SQL and C for now, so we verify that here
 	var parsedBody []plpgsql.InterpreterOperation
 	var sqlDef string
@@ -78,28 +47,9 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 	if languageOption, ok := options[tree.OptionLanguage]; ok {
 		switch strings.ToLower(languageOption.Language) {
 		case "plpgsql":
-			// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
-			// This parser also requires the full `CREATE PROCEDURE` string, so we'll pass that.
-			parsedBody, err = plpgsql.Parse(ctx.originalQuery)
+			parsedBody, err = parsePlpgsqlBody(ctx)
 			if err != nil {
 				return nil, err
-			}
-			// parse types
-			for i, op := range parsedBody {
-				switch op.OpCode {
-				case plpgsql.OpCode_Declare:
-					// ParseType uses casting to parse the given type, but
-					// some special types cannot be cast. Eg: `user_defined_table_type%ROWTYPE`
-					if declareTyp, err := parser.ParseType(op.PrimaryData); err == nil {
-						if _, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false); err == nil && dt != nil {
-							dtName := dt.Name()
-							if dt.Schema() != "" {
-								dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
-							}
-							parsedBody[i].PrimaryData = dtName
-						}
-					}
-				}
 			}
 		case "sql":
 			as, ok := options[tree.OptionAs1]

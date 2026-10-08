@@ -474,6 +474,318 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "nested parentheses are kept in default and check expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t3324 (a INT PRIMARY KEY, b INT DEFAULT (1 + 1) * 2, c INT DEFAULT 2 * (3 + 1) + 1, d INT DEFAULT -(1 + 1), e INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, f INT DEFAULT (((1 + 2)) * ((3))), g INT DEFAULT 10 - (4 - 1), h INT DEFAULT (2 + 3) % 4, i BOOLEAN DEFAULT (NOT (1 = 1 AND 2 = 2)), j INT DEFAULT abs(1 - 3) * 2, k TEXT DEFAULT ('a' || 'b') || 'c', l INT DEFAULT (1 + 2)::INT * 2, m INT DEFAULT -(-1), n BOOLEAN DEFAULT ((1 IS NULL) IS NULL), CONSTRAINT chk3324 CHECK (((a + 1) * 2) > 3), CONSTRAINT chk3324b CHECK (NOT (a = 0 OR a + 1 = 0) AND a - (a - 1) = 1));",
+				"INSERT INTO t3324 (a) VALUES (1);",
+				"ALTER TABLE t3324 ADD COLUMN o INT DEFAULT (1 + 1) * 2;",
+				"ALTER TABLE t3324 ALTER COLUMN o SET DEFAULT 2 * (1 + 1) + 1;",
+				"ALTER TABLE t3324 ADD CONSTRAINT chk3324c CHECK ((a * 2) - 1 > 0);",
+				"INSERT INTO t3324 (a) VALUES (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t3324 ORDER BY a;",
+					Expected: []sql.Row{{1, 4, 9, -2, 4, 9, 7, 1, "f", 4, "abc", 6, 1, "f", 4}, {2, 4, 9, -2, 6, 9, 7, 1, "f", 4, "abc", 6, 1, "f", 5}},
+				},
+				{
+					Query:       "INSERT INTO t3324 (a) VALUES (0);",
+					ExpectedErr: "violated",
+				},
+			},
+		},
+		{
+			Name: "nested parentheses in generated and check expressions survive ALTER TABLE",
+			SetUpScript: []string{
+				"CREATE TABLE t3324b (a INT NOT NULL, b INT DEFAULT (1 + 1) * 2, c INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, d INT GENERATED ALWAYS AS (2 * (a + 1) - (a - 1)) STORED, CHECK ((a + 1) * 2 > 3));",
+				"INSERT INTO t3324b (a) VALUES (1);",
+				"ALTER TABLE t3324b ADD PRIMARY KEY (a);",
+				"INSERT INTO t3324b (a) VALUES (2);",
+				"ALTER TABLE t3324b ADD COLUMN e INT DEFAULT (3 + 4) * 5;",
+				"INSERT INTO t3324b (a) VALUES (3);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO t3324b (a) VALUES (0);",
+					ExpectedErr: "violated",
+				},
+				{
+					Query:    "SELECT * FROM t3324b ORDER BY a;",
+					Expected: []sql.Row{{1, 4, 4, 4, 35}, {2, 4, 6, 5, 35}, {3, 4, 8, 6, 35}},
+				},
+			},
+		},
+		{
+			Name: "nested parentheses are kept on the right side and under unary minus in generated expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t3324c (a INT, b INT GENERATED ALWAYS AS (-(a + 1)) STORED, c INT GENERATED ALWAYS AS (2 * (a + 1)) STORED, d INT GENERATED ALWAYS AS (a - (1 - 2)) STORED, e INT DEFAULT ((1 + 2) * 3));",
+				"INSERT INTO t3324c (a) VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t3324c;",
+					Expected: []sql.Row{{1, -2, 4, 2, 9}},
+				},
+			},
+		},
+		{
+			Name: "nested parentheses are kept around LIKE, IN, subscripts, and double negation",
+			SetUpScript: []string{
+				"CREATE TABLE t3324d (a TEXT, b BOOLEAN DEFAULT (('abc' LIKE 'a%') IS NOT NULL), c BOOLEAN DEFAULT ((1 + 1) IN (2, 3)), d INT DEFAULT ((ARRAY[1] || ARRAY[2])[1]), e INT DEFAULT -(-1), f INT DEFAULT (- (- 2)), CHECK ((a || 'x') LIKE 'a%'));",
+				"INSERT INTO t3324d (a) VALUES ('a');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO t3324d (a) VALUES ('b');",
+					ExpectedErr: "violated",
+				},
+				{
+					Query:    "SELECT * FROM t3324d;",
+					Expected: []sql.Row{{"a", "t", "t", 1, 1, 2}},
+				},
+			},
+		},
+		{
+			Name: "nested parentheses are kept in check constraints using NOT, AND, OR, BETWEEN, CAST, and LIKE",
+			SetUpScript: []string{
+				"CREATE TABLE tc3324 (a INT, b INT, CONSTRAINT c1 CHECK (NOT (a = 0 OR a + 1 = 0) AND a - (a - 1) = 1), CONSTRAINT c2 CHECK ((a BETWEEN 1 AND 10) OR (b IS NULL)), CONSTRAINT c3 CHECK (((a + 1) * 2) > 3), CONSTRAINT c4 CHECK (NOT ((a + b) > 100)), CONSTRAINT c5 CHECK (CAST(a + 1 AS INT) > 0), CONSTRAINT c6 CHECK ((a || '') NOT LIKE 'x%'));",
+				"INSERT INTO tc3324 VALUES (1, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO tc3324 VALUES (0, 1);",
+					ExpectedErr: "c1",
+				},
+				{
+					Query:       "INSERT INTO tc3324 VALUES (50, 60);",
+					ExpectedErr: "c2",
+				},
+				{
+					Query:       "INSERT INTO tc3324 VALUES (-1, 5);",
+					ExpectedErr: "c1",
+				},
+				{
+					Query:       "INSERT INTO tc3324 VALUES (5, 96);",
+					ExpectedErr: "c4",
+				},
+				{
+					Query:    "INSERT INTO tc3324 VALUES (2, 3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM tc3324 ORDER BY a;",
+					Expected: []sql.Row{{1, nil}, {2, 3}},
+				},
+			},
+		},
+		{
+			Name: "generated column and default with nested parentheses match the equivalent SELECT expressions",
+			SetUpScript: []string{
+				"CREATE TABLE tx3324 (a INT, b INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, c INT DEFAULT ((1 + 2) * 3));",
+				"INSERT INTO tx3324 (a) VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT a, b, (a + 1) * 2 AS expected_b, c, (1 + 2) * 3 AS expected_c FROM tx3324;",
+					Expected: []sql.Row{{1, 4, 4, 9, 9}},
+				},
+			},
+		},
+		{
+			Name: "named column constraints",
+			SetUpScript: []string{
+				"CREATE TABLE t3332_issue (id INTEGER CONSTRAINT id_required NOT NULL, v TEXT);",
+				"CREATE TABLE t3332 (id INT CONSTRAINT id_nn NOT NULL, u INT CONSTRAINT u_uni UNIQUE, d INT CONSTRAINT d_def DEFAULT 5, n INT CONSTRAINT n_null NULL, PRIMARY KEY (id));",
+				"ALTER TABLE t3332 ADD COLUMN w INT CONSTRAINT w_nn NOT NULL DEFAULT 1 CONSTRAINT w_uni UNIQUE;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT table_name FROM information_schema.tables WHERE table_name = 't3332_issue';",
+					Expected: []sql.Row{{"t3332_issue"}},
+				},
+				{
+					Query:    "INSERT INTO t3332 (id, u) VALUES (1, 1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t3332 (id, u, w) VALUES (2, 2, 2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3332 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, 5, nil, 1}, {2, 2, 5, nil, 2}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't3332' ORDER BY indexname;",
+					Expected: []sql.Row{{"t3332_pkey"}, {"u_uni"}, {"w_uni"}},
+				},
+				{
+					Query:    "SELECT conname, contype FROM pg_constraint WHERE conrelid = 't3332'::regclass ORDER BY conname;",
+					Expected: []sql.Row{{"t3332_pkey", "p"}, {"u_uni", "u"}, {"w_uni", "u"}},
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (3, 1, 3);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (3, 3, 2);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (NULL, 4, 4);",
+					ExpectedErr: "non-nullable",
+				},
+			},
+		},
+		{
+			Name: "DEFERRABLE constraints",
+			SetUpScript: []string{
+				"CREATE TABLE p (id INTEGER PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE TABLE a1 (x INTEGER REFERENCES p(id) DEFERRABLE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE a2 (x INTEGER REFERENCES p(id) INITIALLY DEFERRED);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE a3 (x INTEGER REFERENCES p(id) DEFERRABLE INITIALLY IMMEDIATE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query: "CREATE TABLE a4 (x INTEGER REFERENCES p(id) NOT DEFERRABLE INITIALLY IMMEDIATE);",
+				},
+				{
+					Query:           "CREATE TABLE a5 (x INTEGER REFERENCES p(id) NOT DEFERRABLE INITIALLY DEFERRED);",
+					ExpectedErr:     "constraint declared INITIALLY DEFERRED must be DEFERRABLE",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:       "CREATE TABLE a6 (x INTEGER UNIQUE DEFERRABLE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE a7 (x INTEGER PRIMARY KEY DEFERRABLE INITIALLY IMMEDIATE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query: "CREATE TABLE a8 (x INTEGER UNIQUE NOT DEFERRABLE INITIALLY IMMEDIATE);",
+				},
+				{
+					Query:           "CREATE TABLE a9 (x INTEGER CHECK (x > 0) DEFERRABLE);",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a10 (x INTEGER NOT NULL DEFERRABLE);",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a11 (x INTEGER DEFAULT 1 DEFERRABLE);",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a12 (x INTEGER NULL NOT DEFERRABLE);",
+					ExpectedErr:     "misplaced NOT DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a13 (x INTEGER CHECK (x > 0) INITIALLY IMMEDIATE);",
+					ExpectedErr:     "misplaced INITIALLY IMMEDIATE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a14 (x INTEGER CHECK (x > 0) INITIALLY DEFERRED);",
+					ExpectedErr:     "misplaced INITIALLY DEFERRED clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE a15 (x INTEGER GENERATED ALWAYS AS (1) STORED DEFERRABLE);",
+					ExpectedErr:     "misplaced DEFERRABLE clause",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:       "CREATE TABLE b1 (x INTEGER, FOREIGN KEY (x) REFERENCES p(id) DEFERRABLE);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE b2 (x INTEGER, CONSTRAINT b2u UNIQUE (x) INITIALLY DEFERRED);",
+					ExpectedErr: "DEFERRABLE constraints are not yet supported",
+				},
+				{
+					Query: "CREATE TABLE b3 (x INTEGER, PRIMARY KEY (x) NOT DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE b4 (x INTEGER, FOREIGN KEY (x) REFERENCES p(id) INITIALLY IMMEDIATE);",
+				},
+				{
+					Query:           "CREATE TABLE b5 (x INTEGER, UNIQUE (x) NOT DEFERRABLE INITIALLY DEFERRED);",
+					ExpectedErr:     "constraint declared INITIALLY DEFERRED must be DEFERRABLE",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE TABLE b6 (x INTEGER, CHECK (x > 0) DEFERRABLE);",
+					ExpectedErr:     "CHECK constraints cannot be marked DEFERRABLE",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "CREATE TABLE b7 (x INTEGER, CHECK (x > 0) INITIALLY DEFERRED);",
+					ExpectedErr:     "CHECK constraints cannot be marked DEFERRABLE",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "CREATE TABLE b8 (x INTEGER, CHECK (x > 0) NOT DEFERRABLE INITIALLY DEFERRED);",
+					ExpectedErr:     "constraint declared INITIALLY DEFERRED must be DEFERRABLE",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query: "CREATE TABLE b9 (x INTEGER, CHECK (x > 0) NOT DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE b10 (x INTEGER, CHECK (x > 0) INITIALLY IMMEDIATE);",
+				},
+			},
+		},
+		{
+			Name: "DEFERRABLE constraints are stored",
+			Skip: true, // DEFERRABLE is not yet supported
+			SetUpScript: []string{
+				"CREATE TABLE p (id INTEGER PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE a1 (x INTEGER REFERENCES p(id) DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE a2 (x INTEGER REFERENCES p(id) INITIALLY DEFERRED);",
+				},
+				{
+					Query: "CREATE TABLE a3 (x INTEGER REFERENCES p(id) DEFERRABLE INITIALLY IMMEDIATE);",
+				},
+				{
+					Query: "CREATE TABLE a6 (x INTEGER UNIQUE DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE a7 (x INTEGER PRIMARY KEY DEFERRABLE INITIALLY IMMEDIATE);",
+				},
+				{
+					Query: "CREATE TABLE b1 (x INTEGER, FOREIGN KEY (x) REFERENCES p(id) DEFERRABLE);",
+				},
+				{
+					Query: "CREATE TABLE b2 (x INTEGER, CONSTRAINT b2u UNIQUE (x) INITIALLY DEFERRED);",
+				},
+				{
+					Query:    "SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND condeferrable ORDER BY conname;",
+					Expected: []sql.Row{{"a1_x_fkey", "t", "f"}, {"a2_x_fkey", "t", "t"}, {"a3_x_fkey", "t", "f"}, {"a6_x_key", "t", "f"}, {"a7_pkey", "t", "f"}, {"b1_x_fkey", "t", "f"}, {"b2u", "t", "t"}},
+				},
+			},
+		},
 	})
 }
 

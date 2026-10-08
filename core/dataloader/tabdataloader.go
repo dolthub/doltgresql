@@ -111,13 +111,18 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 			return nil, false, nil
 		}
 
-		// Skip over empty lines
+		var values []string
 		if len(line) == 0 {
-			continue
+			if len(tdl.colTypes) != 1 {
+				// Skip over empty lines
+				continue
+			}
+			// For a single-column table, an empty line is a row containing the empty string
+			values = []string{""}
+		} else {
+			// Split the values by the delimiter, ensuring the correct number of values have been read
+			values = splitTextFields(line, tdl.delimiterChar)
 		}
-
-		// Split the values by the delimiter, ensuring the correct number of values have been read
-		values := strings.Split(line, tdl.delimiterChar)
 		if len(values) > len(tdl.colTypes) {
 			return nil, false, errors.Errorf("extra data after last expected column")
 		} else if len(values) < len(tdl.colTypes) {
@@ -127,12 +132,13 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 		// Cast the values using I/O input
 		row := make(sql.Row, len(tdl.colTypes))
 		for i := range tdl.colTypes {
+			// The NULL marker is matched before un-escaping, so that an actual value of `\N` (escaped as `\\N`)
+			// stays distinct from NULL
 			if values[i] == tdl.nullChar {
 				row[i] = nil
 			} else {
 				// We must un-escape strings here since we're receiving everything verbatim
-				values[i] = strings.ReplaceAll(values[i], `\\`, `\`)
-				row[i], err = tdl.colTypes[i].IoInput(ctx, values[i])
+				row[i], err = tdl.colTypes[i].IoInput(ctx, unescapeTextField(values[i]))
 				if err != nil {
 					return nil, false, err
 				}
@@ -141,6 +147,63 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 
 		return row, true, nil
 	}
+}
+
+// splitTextFields splits a line of text-format COPY data on the delimiter given, ignoring delimiters that are
+// escaped with a backslash. The returned fields still contain their escape sequences.
+func splitTextFields(line string, delimiter string) []string {
+	var fields []string
+	start := 0
+	for i := 0; i < len(line); i++ {
+		if line[i] == '\\' {
+			// Skip the escaped character so that an escaped delimiter (or an escaped backslash followed by a
+			// real delimiter) is handled correctly
+			i++
+			continue
+		}
+		if strings.HasPrefix(line[i:], delimiter) {
+			fields = append(fields, line[start:i])
+			i += len(delimiter) - 1
+			start = i + 1
+		}
+	}
+	return append(fields, line[start:])
+}
+
+// unescapeTextField reverses the escaping applied to values in the text COPY format: the control character
+// escapes \b, \f, \n, \r, \t, and \v are converted back to their control characters, and a backslash followed by
+// any other character (covering the backslash and delimiter escapes) is taken as that character.
+func unescapeTextField(field string) string {
+	if !strings.Contains(field, `\`) {
+		return field
+	}
+	var sb strings.Builder
+	sb.Grow(len(field))
+	for i := 0; i < len(field); i++ {
+		c := field[i]
+		if c != '\\' || i+1 == len(field) {
+			sb.WriteByte(c)
+			continue
+		}
+		i++
+		switch field[i] {
+		case 'b':
+			sb.WriteByte('\b')
+		case 'f':
+			sb.WriteByte('\f')
+		case 'n':
+			sb.WriteByte('\n')
+		case 'r':
+			sb.WriteByte('\r')
+		case 't':
+			sb.WriteByte('\t')
+		case 'v':
+			sb.WriteByte('\v')
+		default:
+			sb.WriteByte(field[i])
+		}
+	}
+	return sb.String()
 }
 
 func (tdl *TabularDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error {

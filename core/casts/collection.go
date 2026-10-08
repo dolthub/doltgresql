@@ -23,9 +23,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/procedures"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -34,9 +34,7 @@ import (
 
 // Collection contains a collection of casts.
 type Collection struct {
-	mapHash       hash.Hash // This is cached so that we don't have to calculate the hash every time
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
+	objinterface.RootObjectMap
 }
 
 // CastType is the type of the cast, indicating which contexts it may be called in.
@@ -58,19 +56,16 @@ type Cast struct {
 	Function id.Function
 	BuiltIn  pgtypes.TypeCastFunction
 	UseInOut bool
+
+	request CastType // This contains the type of cast that was requested, as we may request an EXPLICIT cast and receive an IMPLICIT (which is valid)
 }
 
 var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = Cast{}
 
 // NewCollection returns a new Collection.
-func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree.NodeStore) (*Collection, error) {
-	collection := &Collection{
-		mapHash:       underlyingMap.HashOf(),
-		underlyingMap: underlyingMap,
-		ns:            ns,
-	}
-	return collection, nil
+func NewCollection(rom objinterface.RootObjectMap) *Collection {
+	return &Collection{RootObjectMap: rom}
 }
 
 // GetExplicitCast returns the explicit type cast function that will cast the source type to the target type. Returns
@@ -85,7 +80,7 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 		return c, nil
 	}
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
-	if cast := pgc.getSizingOrIdentityCast(sourceType, targetType, CastType_Explicit); cast.ID.IsValid() {
+	if cast := pgc.getSizingOrIdentityCast(castID, sourceType, targetType, CastType_Explicit); cast.ID.IsValid() {
 		return cast, nil
 	}
 	// We then check for a record to composite cast
@@ -98,7 +93,9 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 			ID:       castID,
 			CastType: CastType_Explicit,
 			Function: id.NullFunction,
+			BuiltIn:  nil,
 			UseInOut: true,
+			request:  CastType_Explicit,
 		}, nil
 	} else if targetType.TypCategory == pgtypes.TypeCategory_StringTypes {
 		// All types have a built-in assignment cast to string types, which we can reference in an explicit cast
@@ -106,7 +103,9 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 			ID:       castID,
 			CastType: CastType_Explicit,
 			Function: id.NullFunction,
+			BuiltIn:  nil,
 			UseInOut: true,
+			request:  CastType_Explicit,
 		}, nil
 	}
 	// It is always valid to convert from the `unknown` type
@@ -115,7 +114,9 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 			ID:       castID,
 			CastType: CastType_Explicit,
 			Function: id.NullFunction,
+			BuiltIn:  nil,
 			UseInOut: true,
+			request:  CastType_Explicit,
 		}, nil
 	}
 	return Cast{}, nil
@@ -136,7 +137,7 @@ func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.D
 		return c, nil
 	}
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
-	if cast := pgc.getSizingOrIdentityCast(sourceType, targetType, CastType_Assignment); cast.ID.IsValid() {
+	if cast := pgc.getSizingOrIdentityCast(castID, sourceType, targetType, CastType_Assignment); cast.ID.IsValid() {
 		return cast, nil
 	}
 	// We then check for a record to composite cast
@@ -149,7 +150,9 @@ func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.D
 			ID:       castID,
 			CastType: CastType_Assignment,
 			Function: id.NullFunction,
+			BuiltIn:  nil,
 			UseInOut: true,
+			request:  CastType_Assignment,
 		}, nil
 	}
 	// It is always valid to convert from the `unknown` type
@@ -158,7 +161,9 @@ func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.D
 			ID:       castID,
 			CastType: CastType_Assignment,
 			Function: id.NullFunction,
+			BuiltIn:  nil,
 			UseInOut: true,
+			request:  CastType_Assignment,
 		}, nil
 	}
 	return Cast{}, nil
@@ -179,7 +184,7 @@ func (pgc *Collection) GetImplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 		return Cast{}, nil
 	}
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
-	if cast := pgc.getSizingOrIdentityCast(sourceType, targetType, CastType_Implicit); cast.ID.IsValid() {
+	if cast := pgc.getSizingOrIdentityCast(castID, sourceType, targetType, CastType_Implicit); cast.ID.IsValid() {
 		return cast, nil
 	}
 	// We then check for a record to composite cast
@@ -192,7 +197,9 @@ func (pgc *Collection) GetImplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 			ID:       castID,
 			CastType: CastType_Implicit,
 			Function: id.NullFunction,
+			BuiltIn:  nil,
 			UseInOut: true,
+			request:  CastType_Implicit,
 		}, nil
 	}
 	return Cast{}, nil
@@ -203,7 +210,7 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 	if c, ok := builtInCasts[castID]; ok {
 		return c, nil
 	}
-	h, err := pgc.underlyingMap.Get(ctx, string(castID))
+	h, err := pgc.Contents().Get(ctx, string(castID))
 	if err != nil {
 		return Cast{}, err
 	}
@@ -237,7 +244,8 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 			}
 			if baseCast.ID.IsValid() {
 				// We use a closure that can unwrap the slice, since conversion functions expect a singular non-nil value
-				evalFunc := func(ctx *sql.Context, vals any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (any, error) {
+				var evalFunc func(ctx *sql.Context, vals any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (any, error)
+				evalFunc = func(ctx *sql.Context, vals any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (any, error) {
 					var err error
 					oldVals := vals.([]any)
 					newVals := make([]any, len(oldVals))
@@ -248,9 +256,13 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 						// Some errors are optional depending on the context, so we'll still process all values even
 						// after an error is received.
 						var nErr error
-						sourceBaseType := sourceType.ArrayBaseType()
-						targetBaseType := targetType.ArrayBaseType()
-						newVals[i], nErr = baseCast.Eval(ctx, oldVal, sourceBaseType, targetBaseType)
+						if _, isSubArray := oldVal.([]any); isSubArray {
+							newVals[i], nErr = evalFunc(ctx, oldVal, sourceType, targetType)
+						} else {
+							sourceBaseType := sourceType.ArrayBaseType()
+							targetBaseType := targetType.ArrayBaseType()
+							newVals[i], nErr = baseCast.Eval(ctx, oldVal, sourceBaseType, targetBaseType)
+						}
 						if nErr != nil && err == nil {
 							err = nErr
 						}
@@ -263,51 +275,53 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 					Function: id.NullFunction,
 					BuiltIn:  evalFunc,
 					UseInOut: false,
+					request:  castType,
 				}, nil
 			}
 		}
 		return Cast{}, nil
 	}
-	data, err := pgc.ns.ReadBytes(ctx, h)
+	data, err := pgc.NodeStore().ReadBytes(ctx, h)
 	if err != nil {
 		return Cast{}, err
 	}
-	return DeserializeCast(ctx, data)
+	c, err := DeserializeCast(ctx, data)
+	if err != nil {
+		return Cast{}, err
+	}
+	c.request = castType
+	return c, nil
 }
 
 // getSizingOrIdentityCast returns an identity cast if the two types are exactly the same, and a sizing cast if they
 // only differ in their atttypmod values. Returns a Cast with an invalid ID if no cast is matched. This mirrors the
 // behavior as described in:
 // https://www.postgresql.org/docs/15/typeconv-query.html
-func (pgc *Collection) getSizingOrIdentityCast(sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType, castType CastType) Cast {
+func (pgc *Collection) getSizingOrIdentityCast(castID id.Cast, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType, castType CastType) Cast {
 	// If we receive different types, then we can return immediately
 	if sourceType.ID != targetType.ID {
 		return Cast{}
 	}
+
 	// If we have different atttypmod values, then we need to do a sizing cast only if one exists
-	if sourceType.GetAttTypMod() != targetType.GetAttTypMod() {
-		// TODO: We don't have any sizing cast functions implemented, so for now we'll approximate using output to input.
-		//  We can use the query below to find all implemented sizing cast functions. It's also detailed in the link above.
-		//  Lastly, not all sizing functions accept a boolean, but for those that do, we need to see whether true is
-		//  used for explicit casts, or whether true is used for implicit casts.
-		//      SELECT
-		//        format_type(c.castsource, NULL) AS source,
-		//        format_type(c.casttarget, NULL) AS target,
-		//        p.oid::regprocedure AS func
-		//      FROM pg_cast c JOIN pg_proc p ON p.oid = c.castfunc WHERE c.castsource = c.casttarget ORDER BY 1,2;
-		return Cast{
-			ID:       id.NewCast(sourceType.ID, targetType.ID),
-			CastType: castType,
-			Function: id.NullFunction,
-			UseInOut: true,
-		}
-	}
-	// If there is no sizing cast, then we simply use the identity cast
+	// Otherwise, then we simply use the identity cast
+	// TODO: We don't have any sizing cast functions implemented, so for now we'll approximate using output to input.
+	//  We can use the query below to find all implemented sizing cast functions. It's also detailed in the link above.
+	//  Lastly, not all sizing functions accept a boolean, but for those that do, we need to see whether true is
+	//  used for explicit casts, or whether true is used for implicit casts.
+	//      SELECT
+	//        format_type(c.castsource, NULL) AS source,
+	//        format_type(c.casttarget, NULL) AS target,
+	//        p.oid::regprocedure AS func
+	//      FROM pg_cast c JOIN pg_proc p ON p.oid = c.castfunc WHERE c.castsource = c.casttarget ORDER BY 1,2;
+	useInOut := sourceType.GetAttTypMod() != targetType.GetAttTypMod()
 	return Cast{
-		ID:       id.NewCast(sourceType.ID, targetType.ID),
+		ID:       castID,
 		CastType: castType,
 		Function: id.NullFunction,
-		UseInOut: false,
+		BuiltIn:  nil,
+		UseInOut: useInOut,
+		request:  castType,
 	}
 }
 
@@ -324,7 +338,9 @@ func (pgc *Collection) getRecordCast(sourceType *pgtypes.DoltgresType, targetTyp
 				ID:       id.NewCast(sourceType.ID, targetType.ID),
 				CastType: castType,
 				Function: id.NullFunction,
+				BuiltIn:  nil,
 				UseInOut: false,
+				request:  castType,
 			}
 		} else {
 			evalFunc := func(ctx *sql.Context, val any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (_ any, err error) {
@@ -383,6 +399,7 @@ func (pgc *Collection) getRecordCast(sourceType *pgtypes.DoltgresType, targetTyp
 				Function: id.NullFunction,
 				BuiltIn:  evalFunc,
 				UseInOut: false,
+				request:  castType,
 			}
 		}
 	}
@@ -394,7 +411,7 @@ func (pgc *Collection) HasCast(ctx context.Context, castID id.Cast) bool {
 	if _, ok := builtInCasts[castID]; ok {
 		return true
 	}
-	ok, err := pgc.underlyingMap.Has(ctx, string(castID))
+	ok, err := pgc.Contents().Has(ctx, string(castID))
 	if err == nil && ok {
 		return true
 	}
@@ -418,11 +435,11 @@ func (pgc *Collection) AddCast(ctx context.Context, cast Cast) error {
 	if err != nil {
 		return err
 	}
-	h, err := pgc.ns.WriteBytes(ctx, data)
+	h, err := pgc.NodeStore().WriteBytes(ctx, data)
 	if err != nil {
 		return err
 	}
-	mapEditor := pgc.underlyingMap.Editor()
+	mapEditor := pgc.Contents().Editor()
 	if err = mapEditor.Add(ctx, string(cast.ID), h); err != nil {
 		return err
 	}
@@ -430,8 +447,7 @@ func (pgc *Collection) AddCast(ctx context.Context, cast Cast) error {
 	if err != nil {
 		return err
 	}
-	pgc.underlyingMap = newMap
-	pgc.mapHash = pgc.underlyingMap.HashOf()
+	pgc.SetContents(newMap)
 	return nil
 }
 
@@ -442,11 +458,11 @@ func (pgc *Collection) DropCast(ctx context.Context, castIDs ...id.Cast) error {
 	}
 	// Check that each name exists before performing any deletions
 	for _, castID := range castIDs {
-		if _, ok := builtInCasts[castID]; !ok {
+		if _, ok := builtInCasts[castID]; ok {
 			return errors.Errorf(`cannot delete built-in cast from type %s to type %s`,
 				castID.SourceType().TypeName(), castID.TargetType().TypeName())
 		}
-		if ok, err := pgc.underlyingMap.Has(ctx, string(castID)); err != nil {
+		if ok, err := pgc.Contents().Has(ctx, string(castID)); err != nil {
 			return err
 		} else if !ok {
 			return errors.Errorf(`cast from type %s to type %s does not exist`,
@@ -455,7 +471,7 @@ func (pgc *Collection) DropCast(ctx context.Context, castIDs ...id.Cast) error {
 	}
 
 	// Now we'll remove the casts from the map
-	mapEditor := pgc.underlyingMap.Editor()
+	mapEditor := pgc.Contents().Editor()
 	for _, castID := range castIDs {
 		err := mapEditor.Delete(ctx, string(castID))
 		if err != nil {
@@ -466,8 +482,7 @@ func (pgc *Collection) DropCast(ctx context.Context, castIDs ...id.Cast) error {
 	if err != nil {
 		return err
 	}
-	pgc.underlyingMap = newMap
-	pgc.mapHash = pgc.underlyingMap.HashOf()
+	pgc.SetContents(newMap)
 	return nil
 }
 
@@ -512,8 +527,8 @@ func (pgc *Collection) IterateCasts(ctx context.Context, callback func(c Cast) (
 			return nil
 		}
 	}
-	return pgc.underlyingMap.IterAll(ctx, func(_ string, v hash.Hash) error {
-		data, err := pgc.ns.ReadBytes(ctx, v)
+	return pgc.Contents().IterAll(ctx, func(_ string, v hash.Hash) error {
+		data, err := pgc.NodeStore().ReadBytes(ctx, v)
 		if err != nil {
 			return err
 		}
@@ -532,20 +547,6 @@ func (pgc *Collection) IterateCasts(ctx context.Context, callback func(c Cast) (
 	})
 }
 
-// Clone returns a new *Collection with the same contents as the original.
-func (pgc *Collection) Clone(ctx context.Context) *Collection {
-	return &Collection{
-		mapHash:       pgc.mapHash,
-		underlyingMap: pgc.underlyingMap,
-		ns:            pgc.ns,
-	}
-}
-
-// Map writes any cached sequences to the underlying map, and then returns the underlying map.
-func (pgc *Collection) Map(ctx context.Context) (prolly.AddressMap, error) {
-	return pgc.underlyingMap, nil
-}
-
 // tableNameToID returns the ID that was encoded via the Name() call, as the returned TableName contains additional
 // information (which this is able to process).
 func (pgc *Collection) tableNameToID(schemaName string, formattedName string) id.Cast {
@@ -559,24 +560,6 @@ func (pgc *Collection) tableNameToID(schemaName string, formattedName string) id
 // GetID implements the interface objinterface.RootObject.
 func (cast Cast) GetID() id.Id {
 	return cast.ID.AsId()
-}
-
-// DiffersFrom returns true when the hash that is associated with the underlying map for this collection is different
-// from the hash in the given root.
-func (pgc *Collection) DiffersFrom(ctx context.Context, root objinterface.RootValue) bool {
-	hashOnGivenRoot, err := pgc.LoadCollectionHash(ctx, root)
-	if err != nil {
-		return true
-	}
-	if pgc.mapHash.Equal(hashOnGivenRoot) {
-		return false
-	}
-	// An empty map should match an uninitialized collection on the root
-	count, err := pgc.underlyingMap.Count()
-	if err == nil && count == 0 && hashOnGivenRoot.IsEmpty() {
-		return false
-	}
-	return true
 }
 
 // GetRootObjectID implements the interface objinterface.RootObject.
@@ -611,12 +594,54 @@ func (cast Cast) Eval(ctx *sql.Context, val any, sourceType *pgtypes.DoltgresTyp
 		return targetType.IoInput(ctx, output)
 	}
 	if cast.BuiltIn != nil {
+		// It may not be strictly true that all built-in casts are STRICT, but it seems true so we'll hold the assumption
+		if val == nil {
+			return nil, nil
+		}
 		return cast.BuiltIn(ctx, val, sourceType, targetType)
 	}
 	if cast.Function != id.NullFunction {
-		// TODO: get the function collection and call the pointed-to function (argument count determines parameters)
-		return nil, errors.Errorf(`cannot cast from type %s to type %s as CREATE CAST is not yet implemented`,
-			cast.ID.SourceType().TypeName(), cast.ID.TargetType().TypeName())
+		castFunc, ok := functionProvider.Function(ctx, cast.Function.SchemaName(), cast.Function.FunctionName())
+		if !ok {
+			return nil, sql.ErrFunctionNotFound.New(cast.Function.FunctionName())
+		}
+		var exprs []sql.Expression
+		switch cast.Function.ParameterCount() {
+		case 1:
+			exprs = []sql.Expression{
+				expression.NewLiteral(val, sourceType),
+			}
+		case 2:
+			exprs = []sql.Expression{
+				expression.NewLiteral(val, sourceType),
+				expression.NewLiteral(targetType.GetAttTypMod(), pgtypes.Int32),
+			}
+		case 3:
+			exprs = []sql.Expression{
+				expression.NewLiteral(val, sourceType),
+				expression.NewLiteral(targetType.GetAttTypMod(), pgtypes.Int32),
+				expression.NewLiteral(cast.request == CastType_Explicit, pgtypes.Bool),
+			}
+		default:
+			return nil, errors.New("invalid parameter count for cast function") // TODO: figure out the actual error
+		}
+		castFuncInstance, err := castFunc.NewInstance(ctx, exprs)
+		if err != nil {
+			return nil, err
+		}
+		if val == nil {
+			if getIsStrictFromFunction(castFuncInstance) {
+				return nil, nil
+			}
+		}
+		if setRunner, ok := castFuncInstance.(procedures.InterpreterExpr); ok {
+			runner, err := getRunnerFromContext(ctx)
+			if err != nil {
+				return nil, err
+			}
+			castFuncInstance = setRunner.SetStatementRunner(ctx, runner)
+		}
+		return castFuncInstance.Eval(ctx, nil)
 	}
 	// In this case, the values are binary-coercible, but we still check as we may deviate from Postgres for some reason
 	if _, _, err := targetType.Convert(ctx, val); err != nil {
@@ -638,3 +663,12 @@ func CastIDToTableName(castID id.Cast) doltdb.TableName {
 		Schema: "",
 	}
 }
+
+// functionProvider is set by init and is used to avoid import cycles
+var functionProvider sql.FunctionProvider
+
+// getRunnerFromContext is set by init and is used to avoid import cycles
+var getRunnerFromContext func(ctx *sql.Context) (sql.StatementRunner, error)
+
+// getIsStrictFromFunction is set by init and is used to avoid import cycles
+var getIsStrictFromFunction func(f sql.Expression) bool

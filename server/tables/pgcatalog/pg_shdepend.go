@@ -43,7 +43,9 @@ func (p PgShdependHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgShdependHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_shdepend row iter
+	// pg_shdepend is currently empty, since Doltgres does not yet track dependencies on shared
+	// objects (e.g. role ownership of database objects, which is the primary source of rows here).
+	// TODO: fill this in when object ownership by roles is supported
 	return emptyRowIter()
 }
 

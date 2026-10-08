@@ -33,9 +33,20 @@ var translate_text_text_text = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		str := val1.(string)
-		from := []rune(val2.(string))
-		to := []rune(val3.(string))
+		str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		fromStr, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
+		toStr, err := framework.UnwrapString(ctx, val3)
+		if err != nil {
+			return nil, err
+		}
+		from := []rune(fromStr)
+		to := []rune(toStr)
 		toLen := len(to)
 		fromMap := make(map[string]int)
 		for i, l := range from {
