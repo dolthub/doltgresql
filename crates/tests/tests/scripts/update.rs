@@ -1267,3 +1267,261 @@ fn test_updates_keeping_primary_keys() {
         },
     ]);
 }
+
+#[test]
+fn test_update_from_joins() {
+    run_scripts(&[
+        ScriptTest {
+            name: "UPDATE FROM and DELETE USING joins",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE uf (id INT PRIMARY KEY, k INT, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX uf_k ON uf (k);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ufs (id INT PRIMARY KEY, k INT, d INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ufl (k INT, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uf SELECT i, i % 10, 0 FROM generate_series(1, 200) i;",
+                    expected: Expected::Tag("INSERT 0 200"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ufs SELECT i, i % 20, i FROM generate_series(1, 100) i;",
+                    expected: Expected::Tag("INSERT 0 100"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ufl SELECT i % 5, i FROM generate_series(1, 30) i;",
+                    expected: Expected::Tag("INSERT 0 30"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uf SET v = s.k FROM ufs s WHERE s.k = uf.k AND s.id <= 10 AND uf.id > 150;",
+                    expected: Expected::Tag("UPDATE 45"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT k, count(*), sum(v) FROM uf GROUP BY k ORDER BY k;",
+                    expected: Expected::Rows {
+                        columns: &[Column("k", INT4), Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("0"), T("20"), T("0")],
+                            &[T("1"), T("20"), T("5")],
+                            &[T("2"), T("20"), T("10")],
+                            &[T("3"), T("20"), T("15")],
+                            &[T("4"), T("20"), T("20")],
+                            &[T("5"), T("20"), T("25")],
+                            &[T("6"), T("20"), T("30")],
+                            &[T("7"), T("20"), T("35")],
+                            &[T("8"), T("20"), T("40")],
+                            &[T("9"), T("20"), T("45")],
+                        ],
+                        tag: "SELECT 10",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uf SET v = t.n FROM (SELECT k, count(*) AS n FROM ufs GROUP BY k) t WHERE t.k = uf.k + 10;",
+                    expected: Expected::Tag("UPDATE 200"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT k, count(*), sum(v) FROM uf GROUP BY k ORDER BY k;",
+                    expected: Expected::Rows {
+                        columns: &[Column("k", INT4), Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("0"), T("20"), T("100")],
+                            &[T("1"), T("20"), T("100")],
+                            &[T("2"), T("20"), T("100")],
+                            &[T("3"), T("20"), T("100")],
+                            &[T("4"), T("20"), T("100")],
+                            &[T("5"), T("20"), T("100")],
+                            &[T("6"), T("20"), T("100")],
+                            &[T("7"), T("20"), T("100")],
+                            &[T("8"), T("20"), T("100")],
+                            &[T("9"), T("20"), T("100")],
+                        ],
+                        tag: "SELECT 10",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uf SET v = uf.v + 1 FROM ufs s, ufl l WHERE s.id = uf.id AND l.v = s.d AND l.k = 2;",
+                    expected: Expected::Tag("UPDATE 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v FROM uf WHERE id <= 30 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4)],
+                        rows: &[
+                            &[T("1"), T("5")],
+                            &[T("2"), T("6")],
+                            &[T("3"), T("5")],
+                            &[T("4"), T("5")],
+                            &[T("5"), T("5")],
+                            &[T("6"), T("5")],
+                            &[T("7"), T("6")],
+                            &[T("8"), T("5")],
+                            &[T("9"), T("5")],
+                            &[T("10"), T("5")],
+                            &[T("11"), T("5")],
+                            &[T("12"), T("6")],
+                            &[T("13"), T("5")],
+                            &[T("14"), T("5")],
+                            &[T("15"), T("5")],
+                            &[T("16"), T("5")],
+                            &[T("17"), T("6")],
+                            &[T("18"), T("5")],
+                            &[T("19"), T("5")],
+                            &[T("20"), T("5")],
+                            &[T("21"), T("5")],
+                            &[T("22"), T("6")],
+                            &[T("23"), T("5")],
+                            &[T("24"), T("5")],
+                            &[T("25"), T("5")],
+                            &[T("26"), T("5")],
+                            &[T("27"), T("6")],
+                            &[T("28"), T("5")],
+                            &[T("29"), T("5")],
+                            &[T("30"), T("5")],
+                        ],
+                        tag: "SELECT 30",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uf AS a SET v = b.id FROM uf AS b WHERE b.id = a.id + 100 AND a.k = 3;",
+                    expected: Expected::Tag("UPDATE 10"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v FROM uf WHERE k = 3 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4)],
+                        rows: &[
+                            &[T("3"), T("103")],
+                            &[T("13"), T("113")],
+                            &[T("23"), T("123")],
+                            &[T("33"), T("133")],
+                            &[T("43"), T("143")],
+                            &[T("53"), T("153")],
+                            &[T("63"), T("163")],
+                            &[T("73"), T("173")],
+                            &[T("83"), T("183")],
+                            &[T("93"), T("193")],
+                            &[T("103"), T("5")],
+                            &[T("113"), T("5")],
+                            &[T("123"), T("5")],
+                            &[T("133"), T("5")],
+                            &[T("143"), T("5")],
+                            &[T("153"), T("5")],
+                            &[T("163"), T("5")],
+                            &[T("173"), T("5")],
+                            &[T("183"), T("5")],
+                            &[T("193"), T("5")],
+                        ],
+                        tag: "SELECT 20",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM uf USING ufs s WHERE s.d = uf.id AND s.k > 15;",
+                    expected: Expected::Tag("DELETE 20"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), sum(id) FROM uf;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("180"), T("18950")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM ufl USING uf WHERE uf.k = ufl.k AND uf.id = 7;",
+                    expected: Expected::Tag("DELETE 0"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT k, count(*) FROM ufl GROUP BY k ORDER BY k;",
+                    expected: Expected::Rows {
+                        columns: &[Column("k", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("0"), T("6")],
+                            &[T("1"), T("6")],
+                            &[T("2"), T("6")],
+                            &[T("3"), T("6")],
+                            &[T("4"), T("6")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE ufl SET v = -ufl.v FROM ufs s WHERE s.id = ufl.v AND s.k = 4;",
+                    expected: Expected::Tag("UPDATE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v FROM ufl ORDER BY v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("-24")],
+                            &[T("-4")],
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("5")],
+                            &[T("6")],
+                            &[T("7")],
+                            &[T("8")],
+                            &[T("9")],
+                            &[T("10")],
+                            &[T("11")],
+                            &[T("12")],
+                            &[T("13")],
+                            &[T("14")],
+                            &[T("15")],
+                            &[T("16")],
+                            &[T("17")],
+                            &[T("18")],
+                            &[T("19")],
+                            &[T("20")],
+                            &[T("21")],
+                            &[T("22")],
+                            &[T("23")],
+                            &[T("25")],
+                            &[T("26")],
+                            &[T("27")],
+                            &[T("28")],
+                            &[T("29")],
+                            &[T("30")],
+                        ],
+                        tag: "SELECT 30",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

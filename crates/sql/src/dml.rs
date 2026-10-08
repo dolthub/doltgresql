@@ -30,7 +30,7 @@ use crate::catalog::table::{HIDDEN_BASE, IndexDef, TableDef};
 use crate::error::{ErrorObjects, PgError, Result, code};
 use crate::expr::{Binder, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
 use crate::foreign::Change;
-use crate::plan::{Plan, Planner};
+use crate::plan::{JoinKind, Plan, Planner, push_down};
 use crate::query::{Ctx, scan};
 use crate::triggers::{AFTER, BEFORE, Event, Triggers};
 use crate::txn::Txn;
@@ -1527,7 +1527,7 @@ pub fn insert_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: Vec<Vec<Value>>) -
     insert_checked_rows(ctx, table, &rules, rows).map(|_| ())
 }
 
-/// matches pairs each of a table's rows with the first row of a FROM list that meets a filter, or with no row
+/// matches pairs each of a table's rows with one row of a FROM list that meets a filter, or with no row
 /// without a FROM list, as UPDATE ... FROM and DELETE ... USING join them.
 fn matches(
     ctx: &mut Ctx<'_>,
@@ -1535,6 +1535,30 @@ fn matches(
     from: &Option<Box<Plan>>,
     filter: &Option<Expr>,
 ) -> Result<Vec<(Vec<Value>, Vec<Value>)>> {
+    if let Some(from) = from
+        && !table.keyless()
+    {
+        let join = Plan::Join {
+            left: Box::new(Plan::Scan(Box::new(table.clone()), None)),
+            right: from.clone(),
+            kind: JoinKind::Inner,
+            condition: None,
+            lateral: false,
+        };
+        let plan = match filter {
+            Some(filter) => Planner { ctx, outer: Vec::new() }.use_indexes(push_down(join, filter.clone())),
+            None => join,
+        };
+        let (width, mut seen, mut out) = (table.columns.len(), crate::exec::Groups::new(), Vec::new());
+        for mut row in plan.run(ctx)? {
+            let from_row = row.split_off(width);
+            let key: Vec<Value> = table.key_columns.iter().map(|&i| row[i].clone()).collect();
+            if seen.insert(&key).1 {
+                out.push((row, from_row));
+            }
+        }
+        return Ok(out);
+    }
     let from_rows = match from {
         Some(plan) => Some(plan.run(ctx)?),
         None => None,

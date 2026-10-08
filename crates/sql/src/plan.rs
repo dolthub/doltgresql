@@ -831,7 +831,7 @@ impl<'b, 'a> Planner<'b, 'a> {
 
     /// use_indexes replaces each table scan under a filter with an index scan when an index answers the filter, and
     /// drops the filter when the scan's ranges hold exactly its rows, as go-mysql-server's costedIndexScans does.
-    fn use_indexes(&mut self, plan: Plan) -> Plan {
+    pub(crate) fn use_indexes(&mut self, plan: Plan) -> Plan {
         match plan {
             Plan::Filter { input, predicate } => match *input {
                 Plan::Scan(table, needed) => match crate::indexscan::choose_with_cover(self.ctx, &table, &predicate) {
@@ -2746,7 +2746,7 @@ fn conjuncts(predicate: Expr, out: &mut Vec<Expr>) {
 /// push_down filters a plan's rows by a predicate, applying each condition of an inner join to the input it alone
 /// reads and joining by the rest, so that the join never pairs rows they reject and a lateral side never runs for
 /// them, as Postgres plans it, and giving a commit diff table the commits its conditions name.
-fn push_down(plan: Plan, predicate: Expr) -> Plan {
+pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
     if let Plan::System(crate::dolt::tables::SystemTable::User(mut table)) = plan {
         let mut all = Vec::new();
         conjuncts(predicate.clone(), &mut all);

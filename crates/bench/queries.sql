@@ -32,6 +32,7 @@ CREATE TABLE fk_child (id INT PRIMARY KEY, parent_id INT NOT NULL REFERENCES fk_
 INSERT INTO fk_child SELECT i, i * 3 % 50000 + 1, i FROM generate_series(1, 20000) i;
 CREATE TABLE upserts (id INT PRIMARY KEY, v INT);
 INSERT INTO upserts SELECT i, i FROM generate_series(1, 1000) i;
+CREATE VIEW order_totals AS SELECT customer_id, count(*) AS n, sum(id) AS s FROM orders GROUP BY customer_id;
 
 -- name: pk_point
 SELECT * FROM items WHERE id = 25000;
@@ -307,3 +308,99 @@ INSERT INTO fk_parent VALUES (60000, 'x'); DELETE FROM fk_parent WHERE id = 6000
 -- name: fk_update_child
 -- write
 UPDATE fk_child SET parent_id = parent_id % 49999 + 1 WHERE id BETWEEN 1 AND 50;
+
+-- name: anti_join_left
+SELECT count(*) FROM items i LEFT JOIN orders o ON o.item_id = i.id WHERE o.id IS NULL;
+
+-- name: not_in_subquery
+SELECT count(*) FROM customers WHERE id NOT IN (SELECT customer_id FROM orders WHERE status = 'closed' AND amount > 140);
+
+-- name: join_four_group
+SELECT r.name, count(*), sum(o.id) FROM orders o JOIN customers c ON c.id = o.customer_id JOIN regions r ON r.id = c.region JOIN items i ON i.id = o.item_id WHERE i.flag GROUP BY r.name ORDER BY r.name;
+
+-- name: lateral_top
+SELECT c.id, x.amount FROM customers c, LATERAL (SELECT amount FROM orders o WHERE o.customer_id = c.id ORDER BY amount DESC, id LIMIT 1) x WHERE c.id < 200 ORDER BY c.id;
+
+-- name: rollup_group
+SELECT category % 5, qty % 3, count(*) FROM items GROUP BY ROLLUP (category % 5, qty % 3) ORDER BY 1, 2;
+
+-- name: window_moving_avg
+SELECT sum(m) FROM (SELECT avg(qty) OVER (ORDER BY id ROWS BETWEEN 5 PRECEDING AND 5 FOLLOWING) AS m FROM items) s;
+
+-- name: percentile_group
+SELECT category, percentile_cont(0.5) WITHIN GROUP (ORDER BY qty) FROM items GROUP BY category ORDER BY category;
+
+-- name: array_agg_unnest
+SELECT count(*), sum(x) FROM (SELECT unnest(array_agg(qty)) AS x FROM items GROUP BY category) s;
+
+-- name: regexp_filter
+SELECT count(*) FROM orders WHERE note ~ '^[0-9]{3}[a-f]';
+
+-- name: filter_aggregates
+SELECT customer_id % 10, count(*) FILTER (WHERE status = 'paid'), sum(id) FILTER (WHERE amount > 50) FROM orders GROUP BY 1 ORDER BY 1;
+
+-- name: jsonb_build_agg
+SELECT jsonb_agg(jsonb_build_object('id', id, 'name', name) ORDER BY id) FROM customers WHERE id < 100;
+
+-- name: full_outer_join
+SELECT count(*), count(c.id), count(r.id) FROM customers c FULL JOIN regions r ON r.id = c.region + 5;
+
+-- name: any_array
+SELECT count(*) FROM orders WHERE customer_id = ANY (ARRAY[1, 10, 100, 1000, 1500]);
+
+-- name: min_max_indexed
+SELECT min(category), max(category), max(id), min(id) FROM items;
+
+-- name: secondary_order_limit
+SELECT id, category FROM items ORDER BY category DESC, id DESC LIMIT 20;
+
+-- name: self_join_tree
+SELECT count(*) FROM tree a JOIN tree b ON b.parent = a.id JOIN tree c ON c.parent = b.id;
+
+-- name: case_many_branches
+SELECT CASE WHEN qty < 10 THEN 'a' WHEN qty < 20 THEN 'b' WHEN qty < 40 THEN 'c' WHEN qty < 60 THEN 'd' WHEN qty < 80 THEN 'e' ELSE 'f' END AS k, count(*) FROM items GROUP BY k ORDER BY k;
+
+-- name: view_join
+SELECT c.region, sum(t.n), max(t.s) FROM order_totals t JOIN customers c ON c.id = t.customer_id GROUP BY c.region ORDER BY c.region;
+
+-- name: union_order
+SELECT id, 'i' FROM items WHERE id < 50 UNION SELECT id, 'o' FROM orders WHERE id < 50 ORDER BY 1, 2;
+
+-- name: date_series_group
+SELECT date_trunc('month', d), count(*) FROM generate_series(DATE '2020-01-01', DATE '2025-12-31', INTERVAL '1 day') d GROUP BY 1 ORDER BY 1;
+
+-- name: string_concat_scan
+SELECT max(name || '-' || category::text || '-' || qty::text) FROM items;
+
+-- name: correlated_count_where
+SELECT count(*) FROM customers c WHERE (SELECT count(*) FROM orders o WHERE o.customer_id = c.id AND o.status = 'paid') > 12;
+
+-- name: group_text_large
+SELECT count(*) FROM (SELECT note, count(*) FROM orders GROUP BY note) s;
+
+-- name: sort_text_full
+SELECT note FROM orders ORDER BY note OFFSET 99990;
+
+-- name: exists_uncorrelated
+SELECT count(*) FROM items WHERE EXISTS (SELECT 1 FROM regions WHERE id = 3) AND qty = 5;
+
+-- name: in_subquery_group
+SELECT count(*) FROM items WHERE id IN (SELECT item_id FROM orders GROUP BY item_id HAVING count(*) > 2);
+
+-- name: nested_cte_join
+WITH a AS (SELECT customer_id, sum(id) AS s FROM orders WHERE status = 'new' GROUP BY customer_id), b AS (SELECT customer_id, sum(id) AS s FROM orders WHERE status = 'paid' GROUP BY customer_id) SELECT count(*), sum(a.s - b.s) FROM a JOIN b USING (customer_id);
+
+-- name: big_join_aggregate
+SELECT b.b, count(*) FROM big b JOIN items i ON i.id = b.a WHERE b.id <= 100000 GROUP BY b.b ORDER BY count(*) DESC, b.b LIMIT 10;
+
+-- name: update_from_join
+-- write
+UPDATE items SET qty = items.qty FROM orders o WHERE o.item_id = items.id AND o.id <= 500;
+
+-- name: delete_in_subquery
+-- write
+INSERT INTO scratch SELECT i, 'x' FROM generate_series(1, 300) i; DELETE FROM scratch WHERE id IN (SELECT id FROM scratch WHERE id % 2 = 0); DELETE FROM scratch;
+
+-- name: insert_select_group
+-- write
+INSERT INTO scratch SELECT customer_id, count(*)::text FROM orders GROUP BY customer_id; DELETE FROM scratch;
