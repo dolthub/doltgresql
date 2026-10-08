@@ -248,7 +248,7 @@ fn file_path(url: &str) -> Option<PathBuf> {
     url.strip_prefix("file://").map(PathBuf::from)
 }
 
-/// open_remote opens the database at a remote's URL: a file remote, one that a server serves over http or https, or
+/// open_remote opens the database at a remote's URL: a file remote, one that a server serves over http, https, or ssh, or
 /// one whose files are blobs, such as in a cloud object store or a git repository, which the database directory caches.
 fn open_remote(remote: &Remote, dir: &Path) -> Result<Database> {
     let mut params = remote.params.clone();
@@ -256,34 +256,18 @@ fn open_remote(remote: &Remote, dir: &Path) -> Result<Database> {
         let cache = dir.join(".dolt").join("git-remote-cache");
         params.entry("git_cache_root".into()).or_insert_with(|| cache.display().to_string());
     }
-    let inaccessible = |err: store::Error| {
-        error(format!(
-            "failed to get remote db; the remote: {} '{}' could not be accessed; {err}",
-            remote.name, remote.url
-        ))
-    };
-    if let Some(store) = blobstores::open(&remote.url, &params).map_err(inaccessible)? {
+    if let Some(store) = blobstores::open(&remote.url, &params).map_err(error)? {
         return Ok(Database::with_store(store));
     }
-    if remote.url.starts_with("http://") || remote.url.starts_with("https://") {
-        let store = remotes::client::RemoteStore::open(&remote.url).map_err(|err| {
-            error(format!(
-                "failed to get remote db; the remote: {} '{}' could not be accessed; {err}",
-                remote.name, remote.url
-            ))
-        })?;
+    if ["http://", "https://", "ssh://"].iter().any(|scheme| remote.url.starts_with(scheme)) {
+        let store = remotes::client::RemoteStore::open(&remote.url).map_err(error)?;
         return Ok(Database::with_store(Box::new(store)));
     }
     let Some(path) = file_path(&remote.url) else {
         return Err(PgError::unsupported(format!("remotes at {}", remote.url)));
     };
     if !path.is_dir() {
-        return Err(error(format!(
-            "failed to get remote db; the remote: {} '{}' could not be accessed; stat {}: no such file or directory",
-            remote.name,
-            remote.url,
-            path.display()
-        )));
+        return Err(error(format!("stat {}: no such file or directory", path.display())));
     }
     Ok(Database::open_remote(&path)?)
 }
@@ -753,7 +737,12 @@ pub fn dolt_push(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let dir = database_dir(ctx);
     let mut state = RepoState::load(&dir)?;
     let (targets, remote) = push_targets(ctx, &state, &parsed)?;
-    let mut remote_db = open_remote(&remote, &database_dir(ctx))?;
+    let mut remote_db = open_remote(&remote, &database_dir(ctx)).map_err(|err| {
+        error(format!(
+            "failed to get remote db; the remote: {} '{}' could not be accessed; {}",
+            remote.name, remote.url, err.message
+        ))
+    })?;
     let (mut pushed, mut upstreams, mut rejected) = (Vec::new(), Vec::new(), Vec::new());
     let mut up_to_date = false;
     for target in &targets {
@@ -979,7 +968,8 @@ pub fn dolt_pull(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             upstream.merge.strip_prefix("refs/heads/").unwrap_or(&upstream.merge).to_string()
         }
     };
-    let mut remote_db = open_remote(&remote, &database_dir(ctx))?;
+    let mut remote_db = open_remote(&remote, &database_dir(ctx))
+        .map_err(|err| error(format!("failed to get remote db; {}", err.message)))?;
     if remote_db.head(&branch_ref(&branch))?.is_none() {
         return Err(error(format!("branch \"{branch}\" not found on remote")));
     }

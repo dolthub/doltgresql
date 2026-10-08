@@ -28,6 +28,7 @@ use crate::remotesapi::chunk_store_service_client::ChunkStoreServiceClient;
 use crate::remotesapi::{self as api, download_loc, upload_loc};
 use crate::replicationapi;
 use crate::replicationapi::replication_service_client::ReplicationServiceClient;
+use crate::ssh::Ssh;
 
 /// BATCH is how many chunks one download location request asks for.
 const BATCH: usize = 4096;
@@ -39,7 +40,7 @@ type Client = ChunkStoreServiceClient<Channel>;
 pub struct RemoteStore {
     runtime: tokio::runtime::Runtime,
     client: Client,
-    http: reqwest::Client,
+    transport: Transport,
     /// The repository path that requests name.
     repo: String,
     root: Hash,
@@ -53,15 +54,48 @@ pub struct RemoteStore {
     member: Option<Arc<dyn Member>>,
 }
 
+/// Transport carries the table file downloads and uploads.
+enum Transport {
+    /// Requests go to the hosts that their URLs name.
+    Http(reqwest::Client),
+    /// Requests go over an ssh remote's session.
+    Ssh(Ssh),
+}
+
 /// error returns a store error for a failed remote call.
 fn error(err: impl std::fmt::Display) -> store::Error {
     store::Error::Io(std::io::Error::other(err.to_string()))
 }
 
 impl RemoteStore {
-    /// open connects to a remote at a URL such as `http://host:port/repo` and reads its root.
+    /// open connects to a remote at a URL such as `http://host:port/repo` or `ssh://user@host/path` and reads its root.
     pub fn open(url: &str) -> Result<RemoteStore, String> {
+        if url.starts_with("ssh://") {
+            return RemoteStore::open_ssh(url);
+        }
         RemoteStore::open_as(url, None)
+    }
+
+    /// open_ssh runs `dolt transfer` on an ssh remote's host and reads the root of the repository it serves.
+    fn open_ssh(url: &str) -> Result<RemoteStore, String> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .map_err(|e| e.to_string())?;
+        let mut ssh = runtime.block_on(async { Ssh::start(url) })?;
+        let client = match runtime.block_on(ssh.channel()) {
+            Ok(channel) => ChunkStoreServiceClient::new(channel)
+                .max_decoding_message_size(usize::MAX)
+                .max_encoding_message_size(usize::MAX),
+            Err(err) => return Err(ssh.failure("failed to create gRPC client", err)),
+        };
+        let repo = url.split_once("://").and_then(|(_, rest)| rest.split_once('/')).map_or("", |(_, path)| path);
+        RemoteStore::start(runtime, client, Transport::Ssh(ssh), repo, None).map_err(|(err, transport)| match transport
+        {
+            Transport::Ssh(mut ssh) => ssh.failure("failed to create chunk store", err),
+            Transport::Http(_) => err,
+        })
     }
 
     /// open_as connects to a remote as open does, sending a cluster member's role, epoch, and token with each request
@@ -76,20 +110,36 @@ impl RemoteStore {
             .map_err(|err| err.to_string())?
             .max_decoding_message_size(usize::MAX)
             .max_encoding_message_size(usize::MAX);
+        RemoteStore::start(runtime, client, Transport::Http(reqwest::Client::new()), repo, member)
+            .map_err(|(err, _)| err)
+    }
+
+    /// start checks the remote's storage format and reads its root, handing back the transport when either fails.
+    fn start(
+        runtime: tokio::runtime::Runtime,
+        client: Client,
+        transport: Transport,
+        repo: &str,
+        member: Option<Arc<dyn Member>>,
+    ) -> Result<RemoteStore, (String, Transport)> {
         let mut store = RemoteStore {
             runtime,
             client,
-            http: reqwest::Client::new(),
-            repo: repo.trim_end_matches('/').to_string(),
+            transport,
+            repo: repo.trim_matches('/').to_string(),
             root: Hash::default(),
             pending: Vec::new(),
             cache: Mutex::new(HashMap::new()),
             dictionaries: Mutex::new(HashMap::new()),
             member,
         };
-        store.metadata().map_err(|err| err.to_string())?;
-        store.root = store.fetch_root().map_err(|err| err.to_string())?;
-        Ok(store)
+        match store.metadata().and_then(|_| store.fetch_root()) {
+            Ok(root) => {
+                store.root = root;
+                Ok(store)
+            }
+            Err(err) => Err((err.to_string(), store.transport)),
+        }
     }
 
     /// call sends a request through exchange.
@@ -143,13 +193,24 @@ impl RemoteStore {
 
     /// get_range downloads a byte range of a URL.
     fn get_range(&self, url: &str, offset: u64, length: u64) -> store::Result<Vec<u8>> {
-        let request =
-            self.http.get(url).header("range", format!("bytes={}-{}", offset, offset + length.max(1) - 1)).send();
-        let response = self.runtime.block_on(request).map_err(error)?;
-        if !response.status().is_success() {
-            return Err(error(format!("download of {url} failed with {}", response.status())));
+        let range = format!("bytes={}-{}", offset, offset + length.max(1) - 1);
+        let (status, body) = match &self.transport {
+            Transport::Http(http) => self
+                .runtime
+                .block_on(async {
+                    let response = http.get(url).header("range", range).send().await?;
+                    Ok::<_, reqwest::Error>((response.status(), response.bytes().await?))
+                })
+                .map_err(error)?,
+            Transport::Ssh(ssh) => {
+                let request = axum::http::Request::get(url).header("range", range).body(Default::default());
+                self.runtime.block_on(ssh.send(request.map_err(error)?)).map_err(error)?
+            }
+        };
+        if !status.is_success() {
+            return Err(error(format!("download of {url} failed with {status}")));
         }
-        Ok(self.runtime.block_on(response.bytes()).map_err(error)?.to_vec())
+        Ok(body.to_vec())
     }
 
     /// fetch_ranges downloads the span that covers a file's ranges and decodes each chunk in it.
@@ -217,9 +278,17 @@ impl RemoteStore {
         let response = self.call(request, |mut c, r| async move { c.get_upload_locations(r).await })?;
         for location in response.locs {
             let Some(upload_loc::Location::HttpPost(post)) = location.location else { continue };
-            let sent = self.runtime.block_on(self.http.put(&post.url).body(bytes.clone()).send()).map_err(error)?;
-            if !sent.status().is_success() {
-                return Err(error(format!("upload of table file {name} failed with {}", sent.status())));
+            let status = match &self.transport {
+                Transport::Http(http) => {
+                    self.runtime.block_on(http.put(&post.url).body(bytes.clone()).send()).map_err(error)?.status()
+                }
+                Transport::Ssh(ssh) => {
+                    let request = axum::http::Request::put(&post.url).body(bytes.clone().into()).map_err(error)?;
+                    self.runtime.block_on(ssh.send(request)).map_err(error)?.0
+                }
+            };
+            if !status.is_success() {
+                return Err(error(format!("upload of table file {name} failed with {status}")));
             }
         }
         Ok(Some(api::ChunkTableInfo { hash: name.0.to_vec(), chunk_count: count }))

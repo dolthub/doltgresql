@@ -1823,6 +1823,9 @@ dependencies = [
  "base64 0.22.1",
  "doltdb",
  "hmac",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "md-5",
  "prost",
  "prost-types",
@@ -1835,6 +1838,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tonic",
+ "tower",
  "zstd",
 ]
 
@@ -2419,6 +2423,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2 0.6.5",
  "tokio-macros",
  "windows-sys 0.61.2",

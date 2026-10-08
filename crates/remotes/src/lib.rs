@@ -13,12 +13,14 @@
 // limitations under the License.
 
 //! Dolt's remotes API: the gRPC chunk store service and the HTTP table file transfers that Dolt remotes use, as a
-//! server over local databases and as a chunk store for `http` and `https` remotes.
+//! server over local databases and as a chunk store for `http`, `https`, and `ssh` remotes.
 
 pub mod client;
 pub mod cluster;
 mod sealer;
 pub mod server;
+mod smux;
+mod ssh;
 
 /// remotesapi is the code that tonic-build generates from Dolt's chunk store and credentials protos.
 #[allow(clippy::all)]

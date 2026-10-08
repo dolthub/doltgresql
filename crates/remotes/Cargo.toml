@@ -12,6 +12,9 @@ axum = "0.8"
 base64 = "0.22"
 doltdb = { path = "../doltdb" }
 hmac = "0.12"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 md-5 = "0.10"
 prost = "0.13"
 prost-types = "0.13"
@@ -21,9 +24,10 @@ serde_json = "1"
 serial = { path = "../serial" }
 sha2 = "0.10"
 store = { path = "../store" }
-tokio = { version = "1", features = ["rt-multi-thread", "net", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "process", "io-util", "time"] }
 tokio-stream = "0.1"
 tonic = "0.13"
+tower = { version = "0.5", features = ["util"] }
 zstd = "0.13"
 
 [lints]
