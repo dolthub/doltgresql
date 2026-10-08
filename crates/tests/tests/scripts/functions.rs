@@ -11686,6 +11686,7 @@ fn test_system_information_functions() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE TABLESPACE tblspc_2 LOCATION '/';",
+                    skip: Some("Doltgres has no tablespaces, and Postgres' error here comes from the recording server's file permissions"),
                     expected: Expected::Error(Diagnostic { code: "42501", message: r#"could not set permissions on directory "/": Operation not permitted"#, ..E }),
                     flow: Flow::Query,
                     ..A

@@ -836,7 +836,7 @@ impl Ctx<'_> {
             return Ok(());
         }
         let referenced = if table.key_columns.is_empty() || name != table.primary_name() {
-            table.indexes.iter().find(|ix| ix.unique && ix.name == name).map(|ix| ix.name.clone())
+            table.indexes.iter().find(|ix| ix.unique && !ix.plain && ix.name == name).map(|ix| ix.name.clone())
         } else {
             Some(String::new())
         };
@@ -845,7 +845,7 @@ impl Ctx<'_> {
             self.drop_referencing_foreign_keys(&mut alteration.table, &index, &object, cascade)?;
         }
         let table = &mut alteration.table;
-        if let Some(i) = table.indexes.iter().position(|ix| ix.unique && ix.name == name) {
+        if let Some(i) = table.indexes.iter().position(|ix| ix.unique && !ix.plain && ix.name == name) {
             table.indexes.remove(i);
             alteration.rebuild = true;
             return Ok(());
@@ -996,7 +996,7 @@ impl Ctx<'_> {
                 let table = &mut alteration.table;
                 if let Some(check) = table.checks.iter_mut().find(|c| c.name == stmt.subname) {
                     check.name = stmt.newname.clone();
-                } else if let Some(index) = table.indexes.iter().position(|ix| ix.name == stmt.subname) {
+                } else if let Some(index) = table.indexes.iter().position(|ix| !ix.plain && ix.name == stmt.subname) {
                     let root = table.indexes[index].root;
                     table.indexes[index].name = stmt.newname.clone();
                     table.table.put_index(self.db, &stmt.subname, None)?;

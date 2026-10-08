@@ -207,6 +207,7 @@ fn index(
         op_classes: vec![String::new(); positions.len()],
         predicate: String::new(),
         columns: positions,
+        plain: false,
     }
 }
 

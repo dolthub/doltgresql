@@ -126,6 +126,7 @@ fn table_def(table: &CatalogTable, indexes: &[&CatalogIndex]) -> TableDef {
             vector: None,
             deferrable: false,
             initially_deferred: false,
+            plain: false,
         })
         .collect();
     TableDef {

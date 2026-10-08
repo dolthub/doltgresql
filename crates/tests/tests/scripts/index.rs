@@ -6945,3 +6945,101 @@ fn test_lookups_by_fixed_keys() {
         },
     ]);
 }
+
+#[test]
+fn test_plain_unique_indexes() {
+    run_scripts(&[
+        ScriptTest {
+            name: "unique indexes back no constraint",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE pu (id INT PRIMARY KEY, a INT, b INT CONSTRAINT pu_b_key UNIQUE);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE UNIQUE INDEX pu_a_idx ON pu (a);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT conname, contype FROM pg_constraint WHERE conrelid = 'pu'::regclass ORDER BY conname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("conname", NAME), Column("contype", CHAR)],
+                        rows: &[
+                            &[T("pu_b_key"), T("u")],
+                            &[T("pu_pkey"), T("p")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT constraint_name, constraint_type FROM information_schema.table_constraints WHERE table_name = 'pu' AND constraint_type <> 'CHECK' ORDER BY constraint_name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("constraint_name", NAME), Column("constraint_type", VARCHAR)],
+                        rows: &[
+                            &[T("pu_b_key"), T("UNIQUE")],
+                            &[T("pu_pkey"), T("PRIMARY KEY")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT constraint_name, column_name FROM information_schema.key_column_usage WHERE table_name = 'pu' ORDER BY constraint_name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("constraint_name", NAME), Column("column_name", NAME)],
+                        rows: &[
+                            &[T("pu_b_key"), T("b")],
+                            &[T("pu_pkey"), T("id")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT indexrelid::regclass, indisunique FROM pg_index WHERE indrelid = 'pu'::regclass ORDER BY indexrelid::regclass::text;",
+                    expected: Expected::Rows {
+                        columns: &[Column("indexrelid", REGCLASS), Column("indisunique", BOOL)],
+                        rows: &[
+                            &[T("pu_a_idx"), T("t")],
+                            &[T("pu_b_key"), T("t")],
+                            &[T("pu_pkey"), T("t")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO pu VALUES (1, 1, 1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO pu VALUES (2, 1, 2) ON CONFLICT ON CONSTRAINT pu_a_idx DO NOTHING;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"constraint "pu_a_idx" for table "pu" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO pu VALUES (2, 1, 2) ON CONFLICT (a) DO NOTHING;",
+                    expected: Expected::Tag("INSERT 0 0"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE pu DROP CONSTRAINT pu_a_idx;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"constraint "pu_a_idx" of relation "pu" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP INDEX pu_a_idx;",
+                    expected: Expected::Tag("DROP INDEX"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

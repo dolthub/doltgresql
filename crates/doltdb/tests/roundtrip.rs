@@ -255,6 +255,7 @@ fn rewrite_schema(message: Message<'_>) -> Vec<u8> {
                 vector_distance: i.vector_distance,
                 deferrable: i.deferrable,
                 initially_deferred: i.initially_deferred,
+                plain: i.plain,
             })
             .collect(),
         checks: s

@@ -428,6 +428,8 @@ pub struct Index<'a> {
     pub deferrable: bool,
     /// Whether the unique or primary key constraint is INITIALLY DEFERRED, a Doltgres field that Dolt lacks.
     pub initially_deferred: bool,
+    /// Whether a unique index came from CREATE UNIQUE INDEX and backs no constraint, a Doltgres field that Dolt lacks.
+    pub plain: bool,
     pub fulltext_info: Option<FulltextInfo<'a>>,
     /// The distance type of a vector index.
     pub vector_distance: Option<u8>,
@@ -514,6 +516,7 @@ impl<'a> TableSchema<'a> {
             op_classes,
             deferrable: t.bool(18, false)?,
             initially_deferred: t.bool(19, false)?,
+            plain: t.bool(20, false)?,
             fulltext_info: match t.table(11)? {
                 Some(f) => Some(FulltextInfo {
                     config_table: f.string(0)?.unwrap_or_default(),

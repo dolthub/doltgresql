@@ -110,7 +110,7 @@ impl Ctx<'_> {
                 Body::PlPgSql(_) => PLPGSQL_LANGUAGE,
                 Body::External => C_LANGUAGE,
             };
-            let ret = if routine.procedure { 0 } else { routine.ret.oid };
+            let ret = if routine.procedure { crate::routines::VOID } else { routine.ret.oid };
             let ret = if routine.procedure && !routine.columns.is_empty() { types::RECORD } else { ret };
             rows.push(vec![
                 ("oid", oid(routine_oid(routine))),

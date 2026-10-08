@@ -1093,7 +1093,9 @@ impl Ctx<'_> {
             Some(infer) if !infer.conname.is_empty() => {
                 if !table.keyless() && infer.conname == table.primary_name() {
                     ConflictTarget::Primary
-                } else if let Some(i) = table.indexes.iter().position(|ix| ix.unique && ix.name == infer.conname) {
+                } else if let Some(i) =
+                    table.indexes.iter().position(|ix| ix.unique && !ix.plain && ix.name == infer.conname)
+                {
                     ConflictTarget::Index(i)
                 } else {
                     return Err(PgError::new(

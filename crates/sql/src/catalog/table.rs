@@ -92,6 +92,9 @@ pub struct IndexDef {
     /// Whether a unique index's constraint is DEFERRABLE, and whether it is INITIALLY DEFERRED.
     pub deferrable: bool,
     pub initially_deferred: bool,
+    /// Whether a unique index came from CREATE UNIQUE INDEX rather than a UNIQUE constraint, which leaves it backing
+    /// no constraint.
+    pub plain: bool,
 }
 
 impl IndexDef {
@@ -328,6 +331,7 @@ impl TableDef {
                     root,
                     deferrable: index.deferrable,
                     initially_deferred: index.initially_deferred,
+                    plain: index.plain,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -705,6 +709,7 @@ pub fn schema_message(
                 unique: index.unique,
                 deferrable: index.deferrable,
                 initially_deferred: index.initially_deferred,
+                plain: index.plain,
                 system_defined: index.system,
                 spatial: false,
                 fulltext: None,

@@ -445,6 +445,8 @@ pub struct IndexFields<'a> {
     pub unique: bool,
     pub deferrable: bool,
     pub initially_deferred: bool,
+    /// Whether a unique index came from CREATE UNIQUE INDEX and backs no constraint.
+    pub plain: bool,
     pub system_defined: bool,
     pub spatial: bool,
     pub fulltext: Option<crate::FulltextInfo<'a>>,
@@ -611,7 +613,7 @@ fn write_secondary_indexes(b: &mut Builder, indexes: &[IndexFields<'_>]) -> u32 
             b.add_u8(0, distance, 0);
             b.end_object()
         });
-        b.start_object(20);
+        b.start_object(if index.plain { 21 } else { 20 });
         b.add_offset(0, name);
         b.add_offset(1, comment);
         b.add_offset(2, index_columns);
@@ -633,6 +635,7 @@ fn write_secondary_indexes(b: &mut Builder, indexes: &[IndexFields<'_>]) -> u32 
         b.add_offset(17, op_classes);
         b.add_bool(18, index.deferrable, false);
         b.add_bool(19, index.initially_deferred, false);
+        b.add_bool(20, index.plain, false);
         offsets[i] = b.end_object();
     }
     b.create_vector_of_tables(&offsets)

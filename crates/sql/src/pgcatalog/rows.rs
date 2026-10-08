@@ -195,6 +195,8 @@ pub struct TableIndex {
     pub op_classes: Vec<String>,
     /// The predicate of a partial index, or empty for an index of every row.
     pub predicate: String,
+    /// Whether a unique index came from CREATE UNIQUE INDEX and backs no constraint.
+    pub plain: bool,
 }
 
 impl TableIndex {
@@ -206,7 +208,10 @@ impl TableIndex {
     /// constraint reports whether a primary key or unique index can back a constraint, which needs plain columns and
     /// every row.
     pub fn constraint(&self) -> bool {
-        (self.unique || self.primary) && self.predicate.is_empty() && self.columns.iter().all(|&c| c < HIDDEN_BASE)
+        (self.unique || self.primary)
+            && !self.plain
+            && self.predicate.is_empty()
+            && self.columns.iter().all(|&c| c < HIDDEN_BASE)
     }
 }
 
@@ -246,6 +251,7 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
             names: index_column_names(table, &table.key_columns),
             op_classes: vec![String::new(); table.key_columns.len()],
             predicate: String::new(),
+            plain: false,
         });
     }
     for index in table.indexes.iter().filter(|i| !i.system) {
@@ -263,6 +269,7 @@ pub fn table_indexes(table: &TableDef) -> Vec<TableIndex> {
             names: index_column_names(table, &index.columns),
             op_classes: index.op_classes.clone(),
             predicate: index.predicate.clone(),
+            plain: index.plain,
         });
     }
     out

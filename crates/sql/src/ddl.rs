@@ -452,6 +452,12 @@ impl Ctx<'_> {
                 Some((column, relation)) if !relation.is_empty() => (relation, node_name(column)),
                 _ => return Err(PgError::new(code::SYNTAX_ERROR, "column name must be qualified")),
             },
+            Ok(ObjectType::ObjectTablespace)
+                if !matches!(stmt.object.as_deref().and_then(node_name), Some("pg_default" | "pg_global")) =>
+            {
+                let name = stmt.object.as_deref().and_then(node_name).unwrap_or_default();
+                return Err(PgError::new(code::UNDEFINED_OBJECT, format!("tablespace \"{name}\" does not exist")));
+            }
             _ => {
                 let warning = "COMMENT ON is not yet supported for this kind of object";
                 self.session.notice(PgError { severity: "WARNING", ..PgError::new("01000", warning) });
@@ -1470,7 +1476,14 @@ impl Ctx<'_> {
                 identity: 0,
             });
         }
-        let index = IndexDef { descending, nulls_last, op_classes, predicate, ..new_index(name, columns, stmt.unique) };
+        let index = IndexDef {
+            descending,
+            nulls_last,
+            op_classes,
+            predicate,
+            plain: stmt.unique,
+            ..new_index(name, columns, stmt.unique)
+        };
         self.build_index(table, index)?;
         Ok(Outcome::command("CREATE INDEX"))
     }
@@ -1642,6 +1655,7 @@ pub(crate) fn new_index(name: String, columns: Vec<usize>, unique: bool) -> Inde
         vector: None,
         deferrable: false,
         initially_deferred: false,
+        plain: false,
     }
 }
 

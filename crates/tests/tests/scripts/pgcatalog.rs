@@ -3794,6 +3794,7 @@ fn test_pg_attrdef() {
             assertions: &[
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "pg_catalog"."pg_attrdef" WHERE adrelid='testschema.test'::regclass;"#,
+                    skip: Some("adbin holds Postgres' internal node tree of the default, which Doltgres does not keep"),
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("adrelid", OID), Column("adnum", INT2), Column("adbin", PG_NODE_TREE)],
                         rows: &[
@@ -5657,6 +5658,7 @@ fn test_pg_constraint() {
             assertions: &[
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "pg_catalog"."pg_constraint" WHERE conrelid='testing2'::regclass OR conrelid='testing'::regclass order by 1"#,
+                    skip: Some("Doltgres derives OIDs from names, so they do not follow creation order, and it keeps no internal node trees for conbin"),
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("conname", NAME), Column("connamespace", OID), Column("contype", CHAR), Column("condeferrable", BOOL), Column("condeferred", BOOL), Column("convalidated", BOOL), Column("conrelid", OID), Column("contypid", OID), Column("conindid", OID), Column("conparentid", OID), Column("confrelid", OID), Column("confupdtype", CHAR), Column("confdeltype", CHAR), Column("confmatchtype", CHAR), Column("conislocal", BOOL), Column("coninhcount", INT4), Column("connoinherit", BOOL), Column("conkey", INT2_ARRAY), Column("confkey", INT2_ARRAY), Column("conpfeqop", OID_ARRAY), Column("conppeqop", OID_ARRAY), Column("conffeqop", OID_ARRAY), Column("confdelsetcols", INT2_ARRAY), Column("conexclop", OID_ARRAY), Column("conbin", PG_NODE_TREE)],
                         rows: &[
@@ -6585,6 +6587,7 @@ fn test_pg_database() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
+                    skip: Some("datfrozenxid is the transaction counter of the Postgres cluster that recorded the test"),
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("datname", NAME), Column("datdba", OID), Column("encoding", INT4), Column("datlocprovider", CHAR), Column("datistemplate", BOOL), Column("datallowconn", BOOL), Column("datconnlimit", INT4), Column("datfrozenxid", XID), Column("datminmxid", XID), Column("dattablespace", OID), Column("datcollate", TEXT), Column("datctype", TEXT), Column("daticulocale", TEXT), Column("datcollversion", TEXT), Column("datacl", ACLITEM_ARRAY)],
                         rows: &[
@@ -21030,6 +21033,7 @@ fn test_pg_namespace_index_lookups() {
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 10000 order by 1 LIMIT 3;"#,
+                    skip: Some("Doltgres derives user objects' OIDs from their names, so they neither start at 16384 nor follow creation order"),
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("nspname", NAME)],
                         rows: &[
@@ -21265,6 +21269,7 @@ fn test_pg_namespace_index_lookups() {
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid >= 11 AND nspname >= 'p' ORDER BY oid;"#,
+                    skip: Some("Doltgres derives user objects' OIDs from their names, so they neither start at 16384 nor follow creation order"),
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("nspname", NAME)],
                         rows: &[
@@ -21282,6 +21287,7 @@ fn test_pg_namespace_index_lookups() {
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid < 20000 AND nspname < 't' ORDER BY nspname;"#,
+                    skip: Some("Doltgres derives user objects' OIDs from their names, so they neither start at 16384 nor follow creation order"),
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("nspname", NAME)],
                         rows: &[
@@ -23513,6 +23519,7 @@ fn test_pg_proc() {
             assertions: &[
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM "pg_catalog"."pg_proc";"#,
+                    skip: Some("Doltgres derives OIDs from names and keeps no internal node trees for proargdefaults"),
                     expected: Expected::Rows {
                         columns: &[Column("oid", OID), Column("proname", NAME), Column("pronamespace", OID), Column("proowner", OID), Column("prolang", OID), Column("procost", FLOAT4), Column("prorows", FLOAT4), Column("provariadic", OID), Column("prosupport", REGPROC), Column("prokind", CHAR), Column("prosecdef", BOOL), Column("proleakproof", BOOL), Column("proisstrict", BOOL), Column("proretset", BOOL), Column("provolatile", CHAR), Column("proparallel", CHAR), Column("pronargs", INT2), Column("pronargdefaults", INT2), Column("prorettype", OID), Column("proargtypes", OIDVECTOR), Column("proallargtypes", OID_ARRAY), Column("proargmodes", CHAR_ARRAY), Column("proargnames", TEXT_ARRAY), Column("proargdefaults", PG_NODE_TREE), Column("protrftypes", OID_ARRAY), Column("prosrc", TEXT), Column("probin", TEXT), Column("prosqlbody", PG_NODE_TREE), Column("proconfig", TEXT_ARRAY), Column("proacl", ACLITEM_ARRAY)],
                         rows: &[

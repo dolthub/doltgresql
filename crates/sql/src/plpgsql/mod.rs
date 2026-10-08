@@ -189,6 +189,7 @@ pub fn compile(ctx: &mut Ctx<'_>, text: &str, body: &str) -> Result<Vec<Operatio
             false => err,
         }
     };
+    let (text, body) = &with_row_records(ctx, text, body);
     let json = pg_query::parse_plpgsql(text).map_err(|err| match err {
         pg_query::Error::Parse(message) => locate(PgError::new(code::SYNTAX_ERROR, message)),
         other => PgError::internal(other),
@@ -198,6 +199,65 @@ pub fn compile(ctx: &mut Ctx<'_>, text: &str, body: &str) -> Result<Vec<Operatio
     let function = function.get("PLpgSQL_function").ok_or_else(|| PgError::internal("a PL/pgSQL function"))?;
     check_declarations(ctx, function, body, text.find(body).unwrap_or(0))?;
     compile::compile_json(function, body).map_err(locate)
+}
+
+/// with_row_records returns a statement and its body with each variable declared of a table's row type, by the
+/// table's name or with `%ROWTYPE`, declared as a record instead, whose fields the PL/pgSQL parser can then read, since
+/// it cannot look tables up.
+fn with_row_records(ctx: &mut Ctx<'_>, text: &str, body: &str) -> (String, String) {
+    let Ok(scan) = pg_query::scan(body) else { return (text.to_string(), body.to_string()) };
+    let tokens = scan.tokens;
+    let piece = |i: usize| tokens.get(i).map_or("", |t| &body[t.start as usize..t.end as usize]);
+    let mut replaced: Vec<(usize, usize)> = Vec::new();
+    let mut declaring = false;
+    let mut start = true;
+    for i in 0..tokens.len() {
+        let word = piece(i);
+        if word.eq_ignore_ascii_case("declare") {
+            (declaring, start) = (true, true);
+            continue;
+        }
+        if word.eq_ignore_ascii_case("begin") {
+            declaring = false;
+        }
+        if !declaring {
+            continue;
+        }
+        if word == ";" {
+            start = true;
+            continue;
+        }
+        if !start {
+            continue;
+        }
+        start = false;
+        let mut at = i + 1;
+        if piece(at).eq_ignore_ascii_case("constant") {
+            at += 1;
+        }
+        let (mut schema, mut name, mut end) = (String::new(), normalize_identifier(piece(at)), at);
+        if piece(at + 1) == "." {
+            (schema, name, end) = (name, normalize_identifier(piece(at + 2)), at + 2);
+        }
+        if piece(end + 1) == "%" && piece(end + 2).eq_ignore_ascii_case("rowtype") {
+            end += 2;
+        }
+        if !matches!(piece(end + 1), ";" | ":=" | "=") && !piece(end + 1).eq_ignore_ascii_case("default") {
+            continue;
+        }
+        let relation = pg_query::protobuf::RangeVar { schemaname: schema, relname: name, ..Default::default() };
+        if crate::catalog::builtin_type_named(&relation.relname).is_none() && ctx.resolve_table(&relation).is_ok() {
+            replaced.push((tokens[at].start as usize, tokens[end].end as usize));
+        }
+    }
+    if replaced.is_empty() {
+        return (text.to_string(), body.to_string());
+    }
+    let mut rewritten = body.to_string();
+    for &(start, end) in replaced.iter().rev() {
+        rewritten.replace_range(start..end, "record");
+    }
+    (text.replacen(body, &rewritten, 1), rewritten)
 }
 
 /// statement_position returns the position in a statement of the first PL/pgSQL statement in its body that starts with
