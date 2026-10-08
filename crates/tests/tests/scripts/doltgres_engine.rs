@@ -18596,12 +18596,11 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "ALTER TABLE child ADD FOREIGN KEY (v1) REFERENCES parent (v1)",
-                    expected: Expected::Tag("ALTER TABLE"),
+                    expected: Expected::Error(Diagnostic { code: "42830", message: r#"there is no unique constraint matching given keys for referenced table "parent""#, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres requires a unique constraint on the referenced columns, so this foreign key, which the Go server accepts, is rejected"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -24956,12 +24955,11 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "ALTER TABLE child ADD FOREIGN KEY (y, x) REFERENCES parent (y, x)",
-                    expected: Expected::Tag("ALTER TABLE"),
+                    expected: Expected::Error(Diagnostic { code: "42830", message: r#"there is no unique constraint matching given keys for referenced table "parent""#, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres requires a unique constraint on the referenced columns, so this foreign key, which the Go server accepts, is rejected"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -25097,18 +25095,15 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * from dolt_constraint_violations",
                     expected: Expected::Rows {
                         columns: &[Column("table", TEXT), Column("num_violations", NUMERIC)],
-                        rows: &[
-                            &[T("child"), T("1")],
-                        ],
-                        tag: "SELECT 1",
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
-                    skip: Some("this depends on a foreign key that Postgres rejects, since the referenced columns lack a unique constraint"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -25122,18 +25117,15 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT y, x from dolt_constraint_violations_child",
                     expected: Expected::Rows {
                         columns: &[Column("y", INT4), Column("x", INT4)],
-                        rows: &[
-                            &[T("1"), T("2")],
-                        ],
-                        tag: "SELECT 1",
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
-                    skip: Some("this depends on a foreign key that Postgres rejects, since the referenced columns lack a unique constraint"),
                     ..A
                 },
             ],
@@ -26896,12 +26888,11 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "ALTER TABLE child ADD FOREIGN KEY (fk1, fk2) REFERENCES parent (pk, a)",
-                    expected: Expected::Tag("ALTER TABLE"),
+                    expected: Expected::Error(Diagnostic { code: "42830", message: r#"there is no unique constraint matching given keys for referenced table "parent""#, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres requires a unique constraint on the referenced columns, so this foreign key, which the Go server accepts, is rejected"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -27024,18 +27015,15 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "select violation_type, fk2 from dolt_constraint_violations_child",
                     expected: Expected::Rows {
                         columns: &[Column("violation_type", VARCHAR), Column("fk2", INT4)],
-                        rows: &[
-                            &[T("foreign key"), T("1")],
-                        ],
-                        tag: "SELECT 1",
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
-                    skip: Some("this depends on a foreign key that Postgres rejects, since the referenced columns lack a unique constraint"),
                     ..A
                 },
             ],
@@ -27168,12 +27156,11 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "ALTER TABLE child ADD FOREIGN KEY (fk) REFERENCES parent (v1)",
-                    expected: Expected::Tag("ALTER TABLE"),
+                    expected: Expected::Error(Diagnostic { code: "42830", message: r#"there is no unique constraint matching given keys for referenced table "parent""#, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres requires a unique constraint on the referenced columns, so this foreign key, which the Go server accepts, is rejected"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -27296,18 +27283,15 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "select violation_type, fk from dolt_constraint_violations_child",
                     expected: Expected::Rows {
                         columns: &[Column("violation_type", VARCHAR), Column("fk", INT4)],
-                        rows: &[
-                            &[T("foreign key"), T("1")],
-                        ],
-                        tag: "SELECT 1",
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
-                    skip: Some("this depends on a foreign key that Postgres rejects, since the referenced columns lack a unique constraint"),
                     ..A
                 },
             ],
@@ -30034,20 +30018,18 @@ fn test_dolt_merge_artifacts() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "ALTER TABLE child ADD FOREIGN KEY (col1) REFERENCES parent (col1)",
-                    expected: Expected::Tag("ALTER TABLE"),
+                    expected: Expected::Error(Diagnostic { code: "42830", message: r#"there is no unique constraint matching given keys for referenced table "parent""#, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres requires a unique constraint on the referenced columns, so this foreign key, which the Go server accepts, is rejected"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "ALTER TABLE child ADD FOREIGN KEY (col2) REFERENCES parent (col2)",
-                    expected: Expected::Tag("ALTER TABLE"),
+                    expected: Expected::Error(Diagnostic { code: "42830", message: r#"there is no unique constraint matching given keys for referenced table "parent""#, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres requires a unique constraint on the referenced columns, so this foreign key, which the Go server accepts, is rejected"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -30163,18 +30145,15 @@ fn test_dolt_merge_artifacts() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * from dolt_constraint_violations;",
                     expected: Expected::Rows {
                         columns: &[Column("table", TEXT), Column("num_violations", NUMERIC)],
-                        rows: &[
-                            &[T("child"), T("2")],
-                        ],
-                        tag: "SELECT 1",
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
-                    skip: Some("this depends on a foreign key that Postgres rejects, since the referenced columns lack a unique constraint"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

@@ -192,3 +192,12 @@ queries (`table not found: t1`, `TargetType not handled: DB_TABLE_IDENT`).
 Rust: reports `relation "f_default()" does not exist` and `column "c" does not exist` as Postgres words them, and
 parses DOLT_QUERY_DIFF's queries with Doltgres' grammar, where an unquoted revision after AS OF is a syntax error;
 the nine assertions now expect those.
+
+## Foreign keys accepted without a unique referenced key (confirmed)
+
+Go accepts `ALTER TABLE child ADD FOREIGN KEY (v1) REFERENCES parent (v1)` when parent's v1 has no unique constraint
+or index, and later merges report foreign key violations against it. Postgres rejects the key with 42830 ("there is
+no unique constraint matching given keys for referenced table").
+
+Rust: rejects the key as Postgres does; six dolt_merge scripts now expect the 42830 error and the empty
+constraint violation tables that follow from it.
