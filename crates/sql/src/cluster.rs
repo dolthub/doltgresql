@@ -155,7 +155,7 @@ fn with_database<T>(
         return Some(f(db));
     }
     let handle = engine.database_handle(name)?;
-    let db = handle.lock().ok()?;
+    let db = handle.write();
     Some(f(&db))
 }
 
@@ -759,7 +759,7 @@ impl remotes::cluster::Member for Member {
 }
 
 impl remotes::server::Databases for Member {
-    fn database(&self, name: &str) -> Option<Arc<Mutex<Database>>> {
+    fn database(&self, name: &str) -> Option<Arc<doltdb::handle::Handle>> {
         if !self.engine.database_exists(name) && name != DATABASE {
             self.engine.create_database(name, "postgres", "localhost").ok()?;
             self.engine.add_cluster_database(&self.cluster, name).ok()?;

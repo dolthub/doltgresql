@@ -106,7 +106,7 @@ fn tls_config(cert: &std::path::Path, key: &std::path::Path) -> Result<rustls::S
 struct EngineDatabases(sql::Engine);
 
 impl remotes::server::Databases for EngineDatabases {
-    fn database(&self, name: &str) -> Option<Arc<std::sync::Mutex<doltdb::database::Database>>> {
+    fn database(&self, name: &str) -> Option<Arc<doltdb::handle::Handle>> {
         self.0.database_handle(name)
     }
 }

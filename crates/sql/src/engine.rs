@@ -306,7 +306,7 @@ impl Engine {
         let mut db = Database::with_store(Box::new(store::MemoryStore::default()));
         doltdb::create::initialize(&mut db, DEFAULT_BRANCH, "postgres", "localhost", &create_times())
             .map_err(|err| err.to_string())?;
-        let entry = (Arc::new(Mutex::new(db)), Arc::new(Mutex::new(HashMap::new())));
+        let entry = (Arc::new(doltdb::handle::Handle::new(db)), Arc::new(Mutex::new(HashMap::new())));
         lock(&self.shared.databases).map_err(|err| err.message)?.insert(crate::cluster::DATABASE.to_string(), entry);
         let _ = self.shared.cluster.set(cluster.clone());
         cluster.run(self.clone());
@@ -356,7 +356,7 @@ impl Engine {
     /// store_root returns the store root of an open database.
     fn store_root(&self, name: &str) -> Option<store::Hash> {
         let handle = lock(&self.shared.databases).ok()?.get(name)?.0.clone();
-        handle.lock().ok().map(|db| db.root())
+        Some(handle.read().root())
     }
 
     /// refresh_sequences has every open database reload the latest state of its sequences when its next transaction
@@ -420,7 +420,7 @@ impl Engine {
         let databases: Vec<DbHandle> =
             lock(&self.shared.databases)?.values().map(|(handle, _)| handle.clone()).collect();
         for handle in databases {
-            lock(&handle)?.sync()?;
+            handle.write().sync()?;
         }
         Ok(())
     }
@@ -498,9 +498,9 @@ impl Engine {
             }
             let start = std::time::Instant::now();
             let config = *lock(&self.shared.auto_gc_config)?;
-            let mut run = lock(&handle)?.gc_begin(config)?;
+            let mut run = handle.exclusive().gc_begin(config)?;
             run.copy()?;
-            let mut db = lock(&handle)?;
+            let mut db = handle.exclusive();
             let (keep, roots) = self.gc_roots(&name);
             db.gc_finish(run, keep, &roots)?;
             drop(db);
@@ -647,14 +647,14 @@ impl Engine {
         if let Some(entry) = databases.get(name).cloned() {
             drop(databases);
             if lock(&self.shared.stale_sequences)?.remove(name) {
-                let tracked = tracked_sequences(&mut *lock(&entry.0)?)?;
+                let tracked = tracked_sequences(&mut entry.0.write())?;
                 *lock(&entry.1)? = tracked;
             }
             return Ok(entry);
         }
         let mut db = Database::open(&self.shared.data_dir.join(name).join(".dolt/noms"))?;
         let tracked = tracked_sequences(&mut db)?;
-        let entry = (Arc::new(Mutex::new(db)), Arc::new(Mutex::new(tracked)));
+        let entry = (Arc::new(doltdb::handle::Handle::new(db)), Arc::new(Mutex::new(tracked)));
         databases.insert(name.to_string(), entry.clone());
         Ok(entry)
     }
@@ -702,6 +702,7 @@ impl Engine {
                 sink: None,
                 stream_next: false,
                 gc_published: false,
+                shared_statement: false,
             },
             txns: Vec::new(),
             pending: None,
@@ -823,6 +824,9 @@ pub struct SessionState {
     pub stream_next: bool,
     /// Whether the session told garbage collection what its transactions need since it last had none.
     pub gc_published: bool,
+    /// Whether the running statement only changes the session's own transaction, so that it runs alongside other
+    /// sessions' statements on its databases.
+    pub shared_statement: bool,
 }
 
 /// TempTables is a session's temporary schema in one database, which every working set leaves out.
@@ -832,6 +836,20 @@ pub struct TempTables {
     pub objects: crate::txn::TempObjects,
     /// The tables that commits empty or drop, with whether they drop them.
     pub on_commit: Vec<(String, bool)>,
+}
+
+/// shareable reports whether a statement only changes the session's own transaction: a query or a data change that
+/// names nothing of Dolt's, which runs alongside other sessions' statements.
+fn shareable(statement: &Statement) -> bool {
+    match statement {
+        Statement::Postgres { node, extras } => {
+            matches!(
+                node,
+                NodeEnum::SelectStmt(_) | NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
+            ) && !extras.text.to_ascii_lowercase().contains("dolt")
+        }
+        _ => false,
+    }
 }
 
 /// GcRoots is what garbage collection must keep: addresses, and root values that are not written yet.
@@ -1104,7 +1122,7 @@ impl Session {
         };
         let branch = branch.as_str();
         let handle = self.state.engine.database(database)?;
-        let mut db = lock(&handle)?;
+        let mut db = handle.write();
         let spec = crate::dolt::history::tag_spelling(&mut db, branch)?;
         if db.head(&doltdb::create::branch_ref(branch))?.is_none()
             && crate::dolt::history::resolve(&mut db, store::Hash::default(), &spec).is_err()
@@ -1440,7 +1458,11 @@ impl Session {
         let allow_conflicts = self.state.setting_on("dolt_allow_commit_conflicts");
         let force = self.state.setting_on("dolt_force_transaction_commit");
         let autocommit = !self.state.explicit;
+        self.state.shared_statement = false;
         for txn in std::mem::take(&mut self.txns) {
+            if txn.temp_schema.is_none() && txn.unchanged() {
+                continue;
+            }
             let (_, result) = self.with_txn(txn, &mut Vec::new(), &[], |ctx| {
                 if let Some(objects) = ctx.txn.take_temp(ctx.db)?
                     && let Some(temp) = ctx.session.temp.get_mut(&ctx.txn.database)
@@ -1526,7 +1548,7 @@ impl Session {
         self.state.engine.set_temp_roots(self.state.id, None);
         for txn in &mut self.txns {
             let handle = txn.handle.clone();
-            txn.take_temp(&mut *lock(&handle)?)?;
+            txn.take_temp(&mut handle.write())?;
         }
         Ok(())
     }
@@ -1550,7 +1572,7 @@ impl Session {
                 }
                 if let Some(temp) = self.state.temp.get(database) {
                     let handle = txn.handle.clone();
-                    txn.inject_temp(&mut *lock(&handle)?, &self.state.temp_schema(), &temp.objects)?;
+                    txn.inject_temp(&mut handle.write(), &self.state.temp_schema(), &temp.objects)?;
                 }
                 self.txns.push(txn);
                 self.txns.len() - 1
@@ -1574,9 +1596,9 @@ impl Session {
         crate::datetime::install_now(txn.started);
         self.state.install_format();
         let handle = txn.handle.clone();
-        let mut db = match lock(&handle) {
-            Ok(db) => db,
-            Err(err) => return (txn, Err(err)),
+        let mut db = match self.state.shared_statement {
+            true => handle.read(),
+            false => handle.write(),
         };
         let mut ctx = Ctx {
             db: &mut db,
@@ -1634,7 +1656,9 @@ impl Session {
             let database = self.state.database.clone();
             self.replication = Some((database.clone(), self.state.engine.store_root(&database)));
         }
+        self.state.shared_statement = shareable(statement);
         let result = self.run_statement(statement, params);
+        self.state.shared_statement = false;
         for warning in crate::xml::take_warnings() {
             self.state.notices.push(PgError { severity: "WARNING", ..PgError::new("01000", warning) });
         }

@@ -20,6 +20,7 @@ pub mod create;
 pub mod database;
 mod gorand;
 mod graph;
+pub mod handle;
 pub mod root;
 mod rows;
 pub mod table;

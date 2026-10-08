@@ -19,12 +19,13 @@
 
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use doltdb::database::Database;
+use doltdb::handle::Handle;
 use md5::{Digest, Md5};
 use store::{Hash, TableSpec};
 use tokio_stream::StreamExt;
@@ -40,7 +41,7 @@ use crate::sealer::Sealer;
 /// Databases gives the server the databases it serves by name.
 pub trait Databases: Send + Sync + 'static {
     /// database returns the open database with the name, or None when there is none.
-    fn database(&self, name: &str) -> Option<Arc<Mutex<Database>>>;
+    fn database(&self, name: &str) -> Option<Arc<Handle>>;
 
     /// committed notes that a commit through the server moved a database's root.
     fn committed(&self, _name: &str) {}
@@ -224,7 +225,7 @@ fn origin<T>(request: &Request<T>) -> String {
 
 impl Shared {
     /// database returns the database a repository path names.
-    fn database(&self, repo: &str) -> Result<Arc<Mutex<Database>>, Status> {
+    fn database(&self, repo: &str) -> Result<Arc<Handle>, Status> {
         self.databases.database(repo).ok_or_else(|| Status::not_found(format!("database not found: {repo}")))
     }
 
@@ -242,7 +243,7 @@ impl Shared {
         hashes: &[Vec<u8>],
     ) -> Result<Vec<api::DownloadLoc>, Status> {
         let database = self.database(repo)?;
-        let mut db = database.lock().map_err(|_| internal("a database lock was poisoned"))?;
+        let mut db = database.write();
         let mut by_file: BTreeMap<String, Vec<api::RangeChunk>> = BTreeMap::new();
         for bytes in hashes {
             let hash = hash(bytes)?;
@@ -277,7 +278,7 @@ impl ChunkStoreService for Service {
     ) -> Result<tonic::Response<api::GetRepoMetadataResponse>, Status> {
         let req = request.into_inner();
         let database = self.shared.database(&repo_path(&req.repo_path, req.repo_id.as_ref()))?;
-        let mut db = database.lock().map_err(|_| internal("a database lock was poisoned"))?;
+        let mut db = database.write();
         let dir = db.noms_dir().map_err(internal)?;
         let storage_size = walk_size(&dir);
         Ok(tonic::Response::new(api::GetRepoMetadataResponse {
@@ -294,7 +295,7 @@ impl ChunkStoreService for Service {
     ) -> Result<tonic::Response<api::HasChunksResponse>, Status> {
         let req = request.into_inner();
         let database = self.shared.database(&repo_path(&req.repo_path, req.repo_id.as_ref()))?;
-        let db = database.lock().map_err(|_| internal("a database lock was poisoned"))?;
+        let db = database.write();
         let mut absent = Vec::new();
         for (i, bytes) in req.hashes.iter().enumerate() {
             if !db.has(&hash(bytes)?) {
@@ -393,7 +394,7 @@ impl ChunkStoreService for Service {
     async fn root(&self, request: Request<api::RootRequest>) -> Result<tonic::Response<api::RootResponse>, Status> {
         let req = request.into_inner();
         let database = self.shared.database(&repo_path(&req.repo_path, req.repo_id.as_ref()))?;
-        let db = database.lock().map_err(|_| internal("a database lock was poisoned"))?;
+        let db = database.write();
         Ok(tonic::Response::new(api::RootResponse { root_hash: db.root().0.to_vec(), ..Default::default() }))
     }
 
@@ -406,7 +407,7 @@ impl ChunkStoreService for Service {
             return Err(Status::permission_denied("this server only allows reads"));
         }
         let database = self.shared.database(&repo_path(&req.repo_path, req.repo_id.as_ref()))?;
-        let mut db = database.lock().map_err(|_| internal("a database lock was poisoned"))?;
+        let mut db = database.write();
         add_table_files(&mut db, &req.chunk_table_info)?;
         let success = db.commit_root(hash(&req.current)?, hash(&req.last)?).map_err(|err| match err {
             doltdb::database::Error::Store(store::Error::DanglingRef(_)) => {
@@ -429,7 +430,7 @@ impl ChunkStoreService for Service {
         let req = request.into_inner();
         let repo = repo_path(&req.repo_path, req.repo_id.as_ref());
         let database = self.shared.database(&repo)?;
-        let mut db = database.lock().map_err(|_| internal("a database lock was poisoned"))?;
+        let mut db = database.write();
         db.sync().map_err(internal)?;
         let (root, files) = db.table_files().map_err(internal)?;
         let table_file_info = files
@@ -467,7 +468,7 @@ impl ChunkStoreService for Service {
             return Err(Status::permission_denied("this server only allows reads"));
         }
         let database = self.shared.database(&repo_path(&req.repo_path, req.repo_id.as_ref()))?;
-        let mut db = database.lock().map_err(|_| internal("a database lock was poisoned"))?;
+        let mut db = database.write();
         add_table_files(&mut db, &req.chunk_table_info)?;
         Ok(tonic::Response::new(api::AddTableFilesResponse { success: true, ..Default::default() }))
     }
@@ -521,8 +522,8 @@ fn read_file(shared: &Shared, path: &str, range: Option<&str>) -> Response {
         return StatusCode::BAD_REQUEST.into_response();
     }
     let Ok(database) = shared.database(repo) else { return StatusCode::NOT_FOUND.into_response() };
-    let dir = match database.lock().map(|mut db| db.noms_dir()) {
-        Ok(Ok(dir)) => dir,
+    let dir = match database.write().noms_dir() {
+        Ok(dir) => dir,
         _ => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
     let Ok(mut handle) = std::fs::File::open(dir.join(rest)) else { return StatusCode::NOT_FOUND.into_response() };
@@ -579,8 +580,8 @@ fn write_file(shared: &Shared, path: &str, query: &str, body: &[u8]) -> Response
         }
     }
     let Ok(database) = shared.database(repo) else { return StatusCode::NOT_FOUND.into_response() };
-    let dir = match database.lock().map(|mut db| db.noms_dir()) {
-        Ok(Ok(dir)) => dir,
+    let dir = match database.write().noms_dir() {
+        Ok(dir) => dir,
         _ => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
     let temp = dir.join(format!(".upload-{file}"));

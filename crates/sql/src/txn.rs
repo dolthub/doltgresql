@@ -28,8 +28,8 @@ use store::Hash;
 use crate::catalog::table::TableDef;
 use crate::error::{PgError, Result, code};
 
-/// DbHandle is an open database that sessions share, one statement at a time.
-pub type DbHandle = Arc<Mutex<Database>>;
+/// DbHandle is an open database that sessions share.
+pub type DbHandle = Arc<doltdb::handle::Handle>;
 
 /// SequenceTracker holds the latest state of each of a database's sequences across every branch and transaction,
 /// since sequence values are never handed out twice.
@@ -136,7 +136,7 @@ impl Txn {
     /// begin starts a transaction on the branch, reading its working set.
     pub fn begin(handle: DbHandle, sequences: SequenceTracker, database: &str, branch: &str) -> Result<Txn> {
         let db = handle.clone();
-        let mut db = db.lock().map_err(|_| PgError::internal("a database lock was poisoned"))?;
+        let mut db = db.read();
         Txn::begin_locked(&mut db, handle, sequences, database, branch)
     }
 
@@ -212,6 +212,14 @@ impl Txn {
             crate::sequences::store(db, &mut self.root, &sequence)?;
         }
         Ok(())
+    }
+
+    /// unchanged reports whether the transaction has changed nothing since it began or last wrote its working set.
+    pub fn unchanged(&self) -> bool {
+        self.root == self.original_root
+            && self.staged == self.original_staged_root
+            && self.merge == self.original_merge
+            && self.rebase == self.original_rebase
     }
 
     /// gc_roots returns what garbage collection must keep for the transaction: the addresses of its working set and
