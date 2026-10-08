@@ -41,6 +41,8 @@ pub enum JoinKind {
     Left,
     Right,
     Full,
+    /// Only the left rows that find no match, padded with NULLs as a left join pads them.
+    Anti,
 }
 
 /// SortKey is an ORDER BY key over a plan's rows.
@@ -149,10 +151,12 @@ pub enum Plan {
     },
     /// The rows of the previous round of a recursive WITH query, by the query's ID, and their width.
     WorkTable(usize, usize),
-    /// For each input row, the rows of its set-returning calls side by side, padded with NULLs, after its values.
+    /// For each input row, the rows of its set-returning calls side by side, padded with NULLs, after its values,
+    /// leaving NULL the input columns that nothing above reads.
     ProjectSet {
         input: Box<Plan>,
         functions: Vec<Expr>,
+        dropped: Vec<usize>,
     },
     /// The input's rows, each followed by the value of every window call for it.
     Window {
@@ -1790,7 +1794,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                     columns[k] = input_width + functions.len();
                     functions.push(replace_set_functions(function.clone(), &columns));
                 }
-                plan = Plan::ProjectSet { input: Box::new(plan), functions };
+                plan = Plan::ProjectSet { input: Box::new(plan), functions, dropped: Vec::new() };
             }
             let place = |expr: Expr| replace_set_functions(expr, &columns);
             targets = targets.into_iter().map(|(e, t, n, l)| (place(e), t, n, l)).collect();
@@ -2497,7 +2501,7 @@ impl Plan {
             Plan::Recursive { anchor, .. } => anchor.width(),
             Plan::WorkTable(_, width) => *width,
             Plan::Window { input, calls } => input.width() + calls.len(),
-            Plan::ProjectSet { input, functions } => input.width() + functions.len(),
+            Plan::ProjectSet { input, functions, .. } => input.width() + functions.len(),
             Plan::System(system) => system.columns().len(),
             Plan::Catalog(table) => table.columns.len(),
             Plan::Values(rows) => rows.first().map_or(0, Vec::len),
@@ -2756,6 +2760,27 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
             predicate,
         };
     }
+    let plan = match plan {
+        Plan::Join { left, right, kind: JoinKind::Left, condition, lateral: false } => {
+            let width = left.width();
+            let (_, keys) = condition.as_ref().map_or_else(Default::default, |c| join_keys(c, width));
+            let unmatched = |c: &&Expr| match c {
+                Expr::IsNull(column, false) => match **column {
+                    Expr::Column(i) if i >= width => {
+                        never_null(&right, i - width) || keys.contains(&Expr::Column(i - width))
+                    }
+                    _ => false,
+                },
+                _ => false,
+            };
+            let kind = match crate::indexscan::conjuncts(&predicate).iter().any(unmatched) {
+                true => JoinKind::Anti,
+                false => JoinKind::Left,
+            };
+            Plan::Join { left, right, kind, condition, lateral: false }
+        }
+        plan => plan,
+    };
     let Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral } = plan else {
         return Plan::Filter { input: Box::new(plan), predicate };
     };
@@ -2796,6 +2821,16 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
     }
     let condition = and(condition.into_iter().chain(to_join).collect());
     Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral }
+}
+
+/// never_null reports whether a plan's rows never have NULL in the column, as a table's NOT NULL columns don't.
+fn never_null(plan: &Plan, column: usize) -> bool {
+    match plan {
+        Plan::Scan(table, _) => table.columns.get(column).is_some_and(|c| !c.nullable),
+        Plan::IndexScan(scan) => scan.table.columns.get(column).is_some_and(|c| !c.nullable),
+        Plan::Filter { input, .. } => never_null(input, column),
+        _ => false,
+    }
 }
 
 /// join_keys returns the two sides of the equality conditions between a join's inputs, each side reading only its

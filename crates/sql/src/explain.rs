@@ -184,6 +184,7 @@ impl Printer {
                     JoinKind::Left => "Nested Loop Left Join",
                     JoinKind::Right => "Nested Loop Right Join",
                     JoinKind::Full => "Nested Loop Full Join",
+                    JoinKind::Anti => "Nested Loop Anti Join",
                 };
                 let mut names = columns(left);
                 names.extend(columns(right));

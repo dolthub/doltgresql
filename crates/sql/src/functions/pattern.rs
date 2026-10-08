@@ -14,6 +14,9 @@
 
 //! Pattern matching: LIKE, SIMILAR TO, and Postgres' POSIX regular expressions.
 
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use fancy_regex::{Regex, RegexBuilder};
 
 use super::{ANY, Function, text};
@@ -275,9 +278,34 @@ fn similar_to_escape(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Text(out))
 }
 
-/// compile compiles a Postgres regular expression with flags, as an advanced regular expression where `.` matches
+/// REGEX_CACHE_SIZE is how many compiled regular expressions a thread keeps, as Postgres' RE cache keeps 32.
+const REGEX_CACHE_SIZE: usize = 32;
+
+thread_local! {
+    /// REGEXES are the regular expressions this thread compiled lately, by pattern and flags.
+    static REGEXES: std::cell::RefCell<HashMap<(String, String), Rc<Regex>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// compile returns a Postgres regular expression with flags compiled, reusing one compiled lately.
+fn compile(pattern: &str, flags: &str) -> Result<Rc<Regex>> {
+    let key = (pattern.to_string(), flags.to_string());
+    if let Some(regex) = REGEXES.with(|r| r.borrow().get(&key).cloned()) {
+        return Ok(regex);
+    }
+    let regex = Rc::new(build(pattern, flags)?);
+    REGEXES.with(|r| {
+        let mut regexes = r.borrow_mut();
+        if regexes.len() >= REGEX_CACHE_SIZE {
+            regexes.clear();
+        }
+        regexes.insert(key, regex.clone());
+    });
+    Ok(regex)
+}
+
+/// build compiles a Postgres regular expression with flags, as an advanced regular expression where `.` matches
 /// newlines.
-fn compile(pattern: &str, flags: &str) -> Result<Regex> {
+fn build(pattern: &str, flags: &str) -> Result<Regex> {
     let mut builder = RegexBuilder::new(&translate_regex(pattern));
     builder.dot_matches_new_line(true);
     for flag in flags.chars() {

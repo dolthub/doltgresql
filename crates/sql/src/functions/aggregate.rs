@@ -246,14 +246,15 @@ enum State {
     Rows { rows: Vec<Vec<Value>>, keys: Vec<Vec<Value>>, seen: Option<crate::exec::Groups> },
     /// The number of rows, or of non-NULL values for count of a value.
     Count(i64),
-    /// The running sum of integers into a bigint, or None before the first value.
-    SumInt(Option<i64>),
+    /// The running sum of integers into a bigint and their count, or None before the first value.
+    SumInt(Option<(i64, i64)>),
     /// The running sum and count of floats, or None before the first value.
     SumFloat(Option<(f64, i64)>),
     /// The running float4 sum, or None before the first value.
     SumFloat4(Option<f32>),
-    /// The running numeric sum and count, or None before the first value.
-    SumNumeric(Option<(Numeric, i64)>),
+    /// The running numeric sum, the count, and how many of the values have the sum's scale, or None before the first
+    /// value.
+    SumNumeric(Option<(Numeric, i64, i64)>),
     /// The least or greatest value so far.
     Extreme(Option<Value>),
     /// Whether every or any value so far was true, or None before the first value.
@@ -322,18 +323,11 @@ impl Accumulator {
         match &mut self.state {
             State::Count(n) => *n += 1,
             State::SumInt(total) => {
-                let n = match value {
-                    Value::Int2(i) => i as i64,
-                    Value::Int4(i) => i as i64,
-                    Value::Int8(i) => i,
-                    _ => 0,
-                };
-                *total = Some(
-                    total
-                        .unwrap_or(0)
-                        .checked_add(n)
-                        .ok_or_else(|| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "bigint out of range"))?,
-                );
+                let (sum, count) = total.get_or_insert((0, 0));
+                *sum = sum
+                    .checked_add(int_of(&value))
+                    .ok_or_else(|| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "bigint out of range"))?;
+                *count += 1;
             }
             State::SumFloat(total) => {
                 let (sum, count) = total.get_or_insert((std::iter::empty::<f64>().sum(), 0));
@@ -342,8 +336,14 @@ impl Accumulator {
             }
             State::SumFloat4(total) => *total.get_or_insert(std::iter::empty::<f32>().sum()) += float_of(&value) as f32,
             State::SumNumeric(total) => {
-                let (sum, count) = total.get_or_insert((Numeric::zero(0), 0));
-                *sum = sum.add(&numeric_of(&value));
+                let (sum, count, top) = total.get_or_insert((Numeric::zero(0), 0, 0));
+                let value = numeric_of(&value);
+                match value.scale().cmp(&sum.scale()) {
+                    Ordering::Greater => *top = 1,
+                    Ordering::Equal => *top += 1,
+                    Ordering::Less => {}
+                }
+                *sum = sum.add(&value);
                 *count += 1;
             }
             State::Extreme(extreme) => {
@@ -364,6 +364,68 @@ impl Accumulator {
         Ok(())
     }
 
+    /// invertible reports whether `remove` can take rows back out of the accumulator.
+    pub fn invertible(&self) -> bool {
+        matches!(self.state, State::Count(_) | State::SumInt(_) | State::SumNumeric(_))
+    }
+
+    /// remove takes a row that `add` added back out of the group, as Postgres' inverse transition functions do,
+    /// reporting false when it can't, which leaves the aggregate to be computed again.
+    pub fn remove(&mut self, ctx: &mut Ctx<'_>, call: &AggCall, row: &[Value]) -> Result<bool> {
+        if let Some(filter) = &call.filter
+            && !filter.is_true(ctx, row)?
+        {
+            return Ok(true);
+        }
+        if !self.invertible() {
+            return Ok(false);
+        }
+        if let State::Count(n) = &mut self.state
+            && AGGREGATES[call.index].kind == Kind::CountStar
+        {
+            *n -= 1;
+            return Ok(true);
+        }
+        let value = match call.args.first() {
+            Some(arg) => arg.eval(ctx, row)?,
+            None => Value::Null,
+        };
+        if value.is_null() {
+            return Ok(true);
+        }
+        match &mut self.state {
+            State::Count(n) => *n -= 1,
+            State::SumInt(total) => {
+                let Some((sum, count)) = total else { return Ok(false) };
+                *sum -= int_of(&value);
+                *count -= 1;
+                if *count == 0 {
+                    *total = None;
+                }
+            }
+            State::SumNumeric(total) => {
+                let Some((sum, count, top)) = total else { return Ok(false) };
+                let value = numeric_of(&value);
+                if !matches!(sum, Numeric::Finite { .. }) || !matches!(value, Numeric::Finite { .. }) {
+                    return Ok(false);
+                }
+                if value.scale() == sum.scale() {
+                    if *top <= 1 {
+                        return Ok(false);
+                    }
+                    *top -= 1;
+                }
+                *sum = sum.sub(&value);
+                *count -= 1;
+                if *count == 0 {
+                    *total = None;
+                }
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+
     /// peek computes the aggregate over the rows added so far, keeping them for more.
     pub fn peek(&self, ctx: &mut Ctx<'_>, call: &AggCall) -> Result<Value> {
         Accumulator { state: self.state.clone() }.finish(ctx, call)
@@ -375,17 +437,17 @@ impl Accumulator {
         let (rows, keys) = match self.state {
             State::Rows { rows, keys, .. } => (rows, keys),
             State::Count(n) => return Ok(Value::Int8(n)),
-            State::SumInt(total) => return Ok(total.map_or(Value::Null, Value::Int8)),
+            State::SumInt(total) => return Ok(total.map_or(Value::Null, |(sum, _)| Value::Int8(sum))),
             State::SumFloat(None) | State::SumFloat4(None) | State::SumNumeric(None) => return Ok(Value::Null),
             State::SumFloat(Some((sum, count))) if aggregate.kind == Kind::Avg => {
                 return Ok(Value::Float8(sum / count as f64));
             }
             State::SumFloat(Some((sum, _))) => return Ok(Value::Float8(sum)),
             State::SumFloat4(Some(sum)) => return Ok(Value::Float4(sum)),
-            State::SumNumeric(Some((sum, count))) if aggregate.kind == Kind::Avg => {
+            State::SumNumeric(Some((sum, count, _))) if aggregate.kind == Kind::Avg => {
                 return Ok(Value::Numeric(sum.div(&Numeric::from_i64(count))?));
             }
-            State::SumNumeric(Some((sum, _))) => return Ok(Value::Numeric(sum)),
+            State::SumNumeric(Some((sum, ..))) => return Ok(Value::Numeric(sum)),
             State::Extreme(extreme) => return Ok(extreme.unwrap_or(Value::Null)),
             State::Bool(result) => return Ok(result.map_or(Value::Null, Value::Bool)),
         };
@@ -591,6 +653,16 @@ fn numeric_of(value: &Value) -> Numeric {
         Value::Int8(i) => Numeric::from_i64(*i),
         Value::Numeric(n) => n.clone(),
         _ => Numeric::NaN,
+    }
+}
+
+/// int_of converts an integer value to i64.
+fn int_of(value: &Value) -> i64 {
+    match value {
+        Value::Int2(i) => *i as i64,
+        Value::Int4(i) => *i as i64,
+        Value::Int8(i) => *i,
+        _ => 0,
     }
 }
 

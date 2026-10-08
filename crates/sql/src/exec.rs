@@ -480,6 +480,7 @@ impl Rows for DistinctRows<'_> {
 struct ProjectSetRows<'p> {
     input: Box<dyn Rows + 'p>,
     functions: &'p [Expr],
+    dropped: &'p [usize],
     pending: std::vec::IntoIter<Row>,
 }
 
@@ -489,10 +490,13 @@ impl Rows for ProjectSetRows<'_> {
             if let Some(row) = self.pending.next() {
                 return Ok(Some(row));
             }
-            let Some(row) = self.input.next(ctx)? else { return Ok(None) };
+            let Some(mut row) = self.input.next(ctx)? else { return Ok(None) };
             let mut columns = Vec::with_capacity(self.functions.len());
             for function in self.functions {
                 columns.push(crate::plan::set_rows(ctx, function, &row)?);
+            }
+            for &i in self.dropped {
+                row[i] = Value::Null;
             }
             let count = columns.iter().map(Vec::len).max().unwrap_or(0);
             let mut out = Vec::with_capacity(count);
@@ -746,8 +750,12 @@ struct JoinHash {
     left_keys: Vec<Expr>,
     /// The kind of key each right key holds, which a left key must share for the table to answer it.
     kinds: Vec<Option<std::mem::Discriminant<HashKey>>>,
-    buckets: Vec<Vec<usize>>,
+    /// The hashed rows grouped by bucket in their own order, where bucket `b` is `rows[starts[b]..starts[b + 1]]`.
+    rows: Vec<usize>,
+    starts: Vec<usize>,
     table: crate::plan::KeyMap<usize>,
+    /// Whether the condition is only the hashed equalities, so that every row of a bucket matches.
+    exact: bool,
 }
 
 impl<'p> JoinRows<'p> {
@@ -762,11 +770,11 @@ impl<'p> JoinRows<'p> {
         let (left_width, right_width) = (left.width(), right.width());
         let left_rows = left.open(ctx)?;
         let lookup = match kind {
-            JoinKind::Inner | JoinKind::Left => Lookup::new(right, condition, left_width)?,
+            JoinKind::Inner | JoinKind::Left | JoinKind::Anti => Lookup::new(right, condition, left_width)?,
             _ => None,
         };
         let right_rows = if lookup.is_some() { Vec::new() } else { right.run(ctx)? };
-        let hash = condition.and_then(|c| JoinHash::build(ctx, c, left_width, &right_rows));
+        let hash = condition.and_then(|c| JoinHash::build(ctx, c, left_width, &right_rows, true));
         Ok(JoinRows {
             left: left_rows,
             right_plan: right,
@@ -791,15 +799,24 @@ impl<'p> JoinRows<'p> {
         self.lookup = None;
         self.right = self.right_plan.run(ctx)?;
         self.right_matched = vec![false; self.right.len()];
-        self.hash = self.condition.and_then(|c| JoinHash::build(ctx, c, self.left_width, &self.right));
+        self.hash = self.condition.and_then(|c| JoinHash::build(ctx, c, self.left_width, &self.right, true));
         Ok(self.candidates(ctx, left))
     }
 
     /// candidates returns the right rows that a left row may match.
     fn candidates(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Candidates {
-        let Some(hash) = &self.hash else { return Candidates::All };
-        let mut key = crate::plan::JoinKey::with_capacity(hash.left_keys.len());
-        for (expr, kind) in hash.left_keys.iter().zip(&hash.kinds) {
+        match &self.hash {
+            Some(hash) => hash.candidates(ctx, row),
+            None => Candidates::All,
+        }
+    }
+}
+
+impl JoinHash {
+    /// candidates returns the hashed rows that a row of the other input may match, by its side of the equalities.
+    fn candidates(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Candidates {
+        let mut key = crate::plan::JoinKey::with_capacity(self.left_keys.len());
+        for (expr, kind) in self.left_keys.iter().zip(&self.kinds) {
             match expr.eval(ctx, row) {
                 Ok(Value::Null) => return Candidates::None,
                 Ok(value) => match HashKey::of(value) {
@@ -809,29 +826,42 @@ impl<'p> JoinRows<'p> {
                 Err(_) => return Candidates::All,
             }
         }
-        match hash.table.get(&key) {
+        match self.table.get(&key) {
             Some(&bucket) => Candidates::Bucket(bucket),
             None => Candidates::None,
         }
     }
-}
 
-impl JoinHash {
-    /// build hashes the right rows by their side of the equality conditions between the two sides, or returns None
-    /// when the condition has none or a right key is not one it can hash.
-    fn build(ctx: &mut Ctx<'_>, condition: &Expr, width: usize, right_rows: &[Row]) -> Option<JoinHash> {
+    /// bucket returns the hashed rows of a bucket.
+    fn bucket(&self, bucket: usize) -> &[usize] {
+        &self.rows[self.starts[bucket]..self.starts[bucket + 1]]
+    }
+
+    /// build hashes the rows of one side by their side of the equality conditions between the two sides, the right
+    /// side's rows when `right` is set and the left side's otherwise, or returns None when the condition has none or a
+    /// key is not one it can hash.
+    fn build(ctx: &mut Ctx<'_>, condition: &Expr, width: usize, rows: &[Row], right: bool) -> Option<JoinHash> {
         let (left_keys, right_keys) = crate::plan::join_keys(condition, width);
-        JoinHash::of_keys(ctx, left_keys, right_keys, right_rows)
+        let exact = crate::indexscan::conjuncts(condition).len() == left_keys.len();
+        let (probe, build) = if right { (left_keys, right_keys) } else { (right_keys, left_keys) };
+        JoinHash::of_keys(ctx, probe, build, rows, exact)
     }
 
     /// of_keys hashes rows by the build side's expressions of the join's equalities, which the probe side's
     /// expressions over the other input's rows look up.
-    fn of_keys(ctx: &mut Ctx<'_>, left_keys: Vec<Expr>, right_keys: Vec<Expr>, right_rows: &[Row]) -> Option<JoinHash> {
+    fn of_keys(
+        ctx: &mut Ctx<'_>,
+        left_keys: Vec<Expr>,
+        right_keys: Vec<Expr>,
+        right_rows: &[Row],
+        exact: bool,
+    ) -> Option<JoinHash> {
         if left_keys.is_empty() {
             return None;
         }
         let mut kinds = vec![None; right_keys.len()];
-        let mut buckets: Vec<Vec<usize>> = Vec::new();
+        let mut of_row = vec![usize::MAX; right_rows.len()];
+        let mut sizes: Vec<usize> = Vec::new();
         let mut table: crate::plan::KeyMap<usize> = Default::default();
         'rows: for (j, row) in right_rows.iter().enumerate() {
             let mut key = crate::plan::JoinKey::with_capacity(right_keys.len());
@@ -850,12 +880,25 @@ impl JoinHash {
                 }
             }
             let bucket = *table.entry(key).or_insert_with(|| {
-                buckets.push(Vec::new());
-                buckets.len() - 1
+                sizes.push(0);
+                sizes.len() - 1
             });
-            buckets[bucket].push(j);
+            sizes[bucket] += 1;
+            of_row[j] = bucket;
         }
-        Some(JoinHash { left_keys, kinds, buckets, table })
+        let mut starts = Vec::with_capacity(sizes.len() + 1);
+        let mut total = 0;
+        for size in &sizes {
+            starts.push(total);
+            total += size;
+        }
+        starts.push(total);
+        let (mut next, mut rows) = (starts.clone(), vec![0; total]);
+        for (j, &bucket) in of_row.iter().enumerate().filter(|(_, b)| **b != usize::MAX) {
+            rows[next[bucket]] = j;
+            next[bucket] += 1;
+        }
+        Some(JoinHash { left_keys, kinds, rows, starts, table, exact })
     }
 }
 
@@ -871,32 +914,40 @@ impl Rows for JoinRows<'_> {
                         row.extend(found);
                         if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
                             *matched = true;
-                            return Ok(Some(row));
+                            if self.kind != JoinKind::Anti {
+                                return Ok(Some(row));
+                            }
                         }
                     }
                 }
-                let bucket: &[usize] = match (*candidates, &self.hash) {
-                    (Candidates::Bucket(b), Some(hash)) => &hash.buckets[b],
-                    _ => &[],
+                let (bucket, exact): (&[usize], bool) = match (*candidates, &self.hash) {
+                    (Candidates::Bucket(b), Some(hash)) => (hash.bucket(b), hash.exact),
+                    _ => (&[], false),
                 };
-                loop {
+                while !*matched || self.kind != JoinKind::Anti {
                     let j = match *candidates {
                         Candidates::All if *position < self.right.len() => *position,
                         Candidates::Bucket(_) if *position < bucket.len() => bucket[*position],
                         _ => break,
                     };
                     *position += 1;
+                    if exact && self.kind == JoinKind::Anti {
+                        *matched = true;
+                        break;
+                    }
                     let mut row = Vec::with_capacity(left.len() + self.right[j].len());
                     row.extend_from_slice(left);
                     row.extend_from_slice(&self.right[j]);
-                    if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                    if exact || self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
                         *matched = true;
                         self.right_matched[j] = true;
-                        return Ok(Some(row));
+                        if self.kind != JoinKind::Anti {
+                            return Ok(Some(row));
+                        }
                     }
                 }
                 let (mut left, _, _, matched) = self.current.take().expect("a current left row");
-                if !matched && matches!(self.kind, JoinKind::Left | JoinKind::Full) {
+                if !matched && matches!(self.kind, JoinKind::Left | JoinKind::Full | JoinKind::Anti) {
                     left.extend(std::iter::repeat_n(Value::Null, self.right_width));
                     return Ok(Some(left));
                 }
@@ -939,6 +990,106 @@ impl Rows for JoinRows<'_> {
             }
         }
     }
+}
+
+/// AntiRows runs an anti join the other way around when the left input's table is no larger than the right input's:
+/// it hashes the left rows, reads the right input marking the left rows each right row matches, and then hands out
+/// the unmarked left rows padded with NULLs.
+struct AntiRows<'p> {
+    left: Vec<Row>,
+    matched: Vec<bool>,
+    /// The right input, until it has been read.
+    right: Option<Box<dyn Rows + 'p>>,
+    hash: JoinHash,
+    condition: Option<&'p Expr>,
+    right_width: usize,
+    next: usize,
+}
+
+impl<'p> AntiRows<'p> {
+    /// open returns the anti join of the inputs when both scan tables, the left table holds no more rows than the
+    /// right one, and the condition has equalities to hash the left rows by.
+    fn open(
+        ctx: &mut Ctx<'_>,
+        left: &'p Plan,
+        right: &'p Plan,
+        condition: Option<&'p Expr>,
+    ) -> Result<Option<AntiRows<'p>>> {
+        let (Some(condition), Some(left_rows), Some(right_rows)) = (condition, table_rows(left)?, table_rows(right)?)
+        else {
+            return Ok(None);
+        };
+        if left_rows > right_rows || crate::plan::join_keys(condition, left.width()).0.is_empty() {
+            return Ok(None);
+        }
+        let rows = left.run(ctx)?;
+        let Some(hash) = JoinHash::build(ctx, condition, left.width(), &rows, false) else { return Ok(None) };
+        Ok(Some(AntiRows {
+            matched: vec![false; rows.len()],
+            left: rows,
+            right: Some(right.open(ctx)?),
+            hash,
+            condition: Some(condition),
+            right_width: right.width(),
+            next: 0,
+        }))
+    }
+}
+
+impl Rows for AntiRows<'_> {
+    fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
+        if let Some(mut right) = self.right.take() {
+            let (mut r, mut row) = (Vec::new(), Vec::new());
+            while right.next_into(ctx, &mut r)? {
+                let candidates = self.hash.candidates(ctx, &r);
+                let count = match candidates {
+                    Candidates::Bucket(b) => self.hash.bucket(b).len(),
+                    Candidates::All => self.left.len(),
+                    Candidates::Found | Candidates::None => 0,
+                };
+                for k in 0..count {
+                    let i = match candidates {
+                        Candidates::Bucket(b) => self.hash.bucket(b)[k],
+                        _ => k,
+                    };
+                    if self.matched[i] {
+                        continue;
+                    }
+                    if self.hash.exact && matches!(candidates, Candidates::Bucket(_)) {
+                        self.matched[i] = true;
+                        continue;
+                    }
+                    row.clear();
+                    row.extend_from_slice(&self.left[i]);
+                    row.extend_from_slice(&r);
+                    if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                        self.matched[i] = true;
+                    }
+                }
+            }
+        }
+        while self.next < self.left.len() {
+            let i = self.next;
+            self.next += 1;
+            if !self.matched[i] {
+                let mut row = std::mem::take(&mut self.left[i]);
+                row.extend(std::iter::repeat_n(Value::Null, self.right_width));
+                return Ok(Some(row));
+            }
+        }
+        Ok(None)
+    }
+}
+
+/// table_rows returns how many rows the table under a plan holds, when the plan scans one.
+fn table_rows(plan: &Plan) -> Result<Option<u64>> {
+    let table = match plan {
+        Plan::Scan(table, _) => table,
+        Plan::IndexScan(scan) => &scan.table,
+        Plan::Filter { input, .. } => return table_rows(input),
+        _ => return Ok(None),
+    };
+    Ok(Some(prolly::Node::decode(table.table.primary_index.clone())?.tree_count()))
 }
 
 /// ProbeRows runs an inner join the other way around: it reads its right input in order and finds each right row's
@@ -990,29 +1141,16 @@ impl<'p> ProbeRows<'p> {
         self.lookup = None;
         self.left = self.left_plan.run(ctx)?;
         if let Some(condition) = self.condition {
-            let (left_keys, right_keys) = crate::plan::join_keys(condition, self.left_width);
-            self.hash = JoinHash::of_keys(ctx, right_keys, left_keys, &self.left);
+            self.hash = JoinHash::build(ctx, condition, self.left_width, &self.left, false);
         }
         Ok(self.candidates(ctx, right))
     }
 
     /// candidates returns the left rows that a right row may match.
     fn candidates(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Candidates {
-        let Some(hash) = &self.hash else { return Candidates::All };
-        let mut key = crate::plan::JoinKey::with_capacity(hash.left_keys.len());
-        for (expr, kind) in hash.left_keys.iter().zip(&hash.kinds) {
-            match expr.eval(ctx, row) {
-                Ok(Value::Null) => return Candidates::None,
-                Ok(value) => match HashKey::of(value) {
-                    Some(k) if kind.is_none_or(|kind| kind == std::mem::discriminant(&k)) => key.push(k),
-                    _ => return Candidates::All,
-                },
-                Err(_) => return Candidates::All,
-            }
-        }
-        match hash.table.get(&key) {
-            Some(&bucket) => Candidates::Bucket(bucket),
-            None => Candidates::None,
+        match &self.hash {
+            Some(hash) => hash.candidates(ctx, row),
+            None => Candidates::All,
         }
     }
 }
@@ -1031,9 +1169,9 @@ impl Rows for ProbeRows<'_> {
                         }
                     }
                 }
-                let bucket: &[usize] = match (*candidates, &self.hash) {
-                    (Candidates::Bucket(b), Some(hash)) => &hash.buckets[b],
-                    _ => &[],
+                let (bucket, exact): (&[usize], bool) = match (*candidates, &self.hash) {
+                    (Candidates::Bucket(b), Some(hash)) => (hash.bucket(b), hash.exact),
+                    _ => (&[], false),
                 };
                 loop {
                     let i = match *candidates {
@@ -1045,7 +1183,7 @@ impl Rows for ProbeRows<'_> {
                     let mut row = Vec::with_capacity(self.left[i].len() + right.len());
                     row.extend_from_slice(&self.left[i]);
                     row.extend_from_slice(right);
-                    if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                    if exact || self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
                         return Ok(Some(row));
                     }
                 }
@@ -1392,13 +1530,15 @@ impl Plan {
                 pending: Vec::new().into_iter(),
             }),
             Plan::Join { left, right, kind, condition, .. } => {
-                let probe = match kind {
-                    JoinKind::Inner => ProbeRows::open(ctx, left, right, condition.as_ref())?,
+                let condition = condition.as_ref();
+                let other: Option<Box<dyn Rows + 'p>> = match kind {
+                    JoinKind::Inner => ProbeRows::open(ctx, left, right, condition)?.map(|p| Box::new(p) as _),
+                    JoinKind::Anti => AntiRows::open(ctx, left, right, condition)?.map(|a| Box::new(a) as _),
                     _ => None,
                 };
-                match probe {
-                    Some(probe) => Box::new(probe),
-                    None => Box::new(JoinRows::open(ctx, left, right, *kind, condition.as_ref())?),
+                match other {
+                    Some(rows) => rows,
+                    None => Box::new(JoinRows::open(ctx, left, right, *kind, condition)?),
                 }
             }
             Plan::Aggregate { input, groups, aggregates, sets } => match (&**input, sets) {
@@ -1451,9 +1591,12 @@ impl Plan {
                 recursive.round = recursive.keep(rows);
                 Box::new(recursive)
             }
-            Plan::ProjectSet { input, functions } => {
-                Box::new(ProjectSetRows { input: input.open(ctx)?, functions, pending: Vec::new().into_iter() })
-            }
+            Plan::ProjectSet { input, functions, dropped } => Box::new(ProjectSetRows {
+                input: input.open(ctx)?,
+                functions,
+                dropped,
+                pending: Vec::new().into_iter(),
+            }),
             Plan::Once(_) => Box::new(SharedRows { rows: self.shared_rows(ctx)?, next: 0 }),
             _ => collected(self.run_leaf(ctx)?),
         })

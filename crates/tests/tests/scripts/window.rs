@@ -1152,3 +1152,201 @@ fn test_running_window_frames() {
         },
     ]);
 }
+
+#[test]
+fn test_moving_window_frames() {
+    run_scripts(&[
+        ScriptTest {
+            name: "moving window frames",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE mw (id INT PRIMARY KEY, g INT, i INT, n NUMERIC);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mw VALUES (1, 1, 5, 1.5), (2, 1, NULL, 2.25), (3, 1, 7, NULL), (4, 1, 2, 3), (5, 1, 9, 0.125), (6, 2, 1, 10), (7, 2, 4, 'NaN'), (8, 2, NULL, 1.0), (9, 2, 6, 2.50), (10, 2, 3, 4), (11, 2, 8, 0.5), (12, 1, 1, 7.75);",
+                    expected: Expected::Tag("INSERT 0 12"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(i) OVER w, count(i) OVER w, count(*) OVER w, avg(i) OVER w FROM mw WINDOW w AS (ORDER BY id ROWS BETWEEN 2 PRECEDING AND 1 FOLLOWING) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("count", INT8), Column("count", INT8), Column("avg", NUMERIC)],
+                        rows: &[
+                            &[T("1"), T("5"), T("1"), T("2"), T("5.0000000000000000")],
+                            &[T("2"), T("12"), T("2"), T("3"), T("6.0000000000000000")],
+                            &[T("3"), T("14"), T("3"), T("4"), T("4.6666666666666667")],
+                            &[T("4"), T("18"), T("3"), T("4"), T("6.0000000000000000")],
+                            &[T("5"), T("19"), T("4"), T("4"), T("4.7500000000000000")],
+                            &[T("6"), T("16"), T("4"), T("4"), T("4.0000000000000000")],
+                            &[T("7"), T("14"), T("3"), T("4"), T("4.6666666666666667")],
+                            &[T("8"), T("11"), T("3"), T("4"), T("3.6666666666666667")],
+                            &[T("9"), T("13"), T("3"), T("4"), T("4.3333333333333333")],
+                            &[T("10"), T("17"), T("3"), T("4"), T("5.6666666666666667")],
+                            &[T("11"), T("18"), T("4"), T("4"), T("4.5000000000000000")],
+                            &[T("12"), T("12"), T("3"), T("3"), T("4.0000000000000000")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(n) OVER w, avg(n) OVER w, count(n) OVER w FROM mw WINDOW w AS (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", NUMERIC), Column("avg", NUMERIC), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("3.75"), T("1.8750000000000000"), T("2")],
+                            &[T("2"), T("3.75"), T("1.8750000000000000"), T("2")],
+                            &[T("3"), T("5.25"), T("2.6250000000000000"), T("2")],
+                            &[T("4"), T("3.125"), T("1.5625000000000000"), T("2")],
+                            &[T("5"), T("13.125"), T("4.3750000000000000"), T("3")],
+                            &[T("6"), T("NaN"), T("NaN"), T("3")],
+                            &[T("7"), T("NaN"), T("NaN"), T("3")],
+                            &[T("8"), T("NaN"), T("NaN"), T("3")],
+                            &[T("9"), T("7.50"), T("2.5000000000000000"), T("3")],
+                            &[T("10"), T("7.00"), T("2.3333333333333333"), T("3")],
+                            &[T("11"), T("12.25"), T("4.0833333333333333"), T("3")],
+                            &[T("12"), T("8.25"), T("4.1250000000000000"), T("2")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(n) OVER w, avg(n) OVER w FROM mw WINDOW w AS (PARTITION BY g ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", NUMERIC), Column("avg", NUMERIC)],
+                        rows: &[
+                            &[T("1"), T("1.5"), T("1.50000000000000000000")],
+                            &[T("2"), T("3.75"), T("1.8750000000000000")],
+                            &[T("3"), T("2.25"), T("2.2500000000000000")],
+                            &[T("4"), T("3"), T("3.0000000000000000")],
+                            &[T("5"), T("3.125"), T("1.5625000000000000")],
+                            &[T("6"), T("10"), T("10.0000000000000000")],
+                            &[T("7"), T("NaN"), T("NaN")],
+                            &[T("8"), T("NaN"), T("NaN")],
+                            &[T("9"), T("3.50"), T("1.7500000000000000")],
+                            &[T("10"), T("6.50"), T("3.2500000000000000")],
+                            &[T("11"), T("4.5"), T("2.2500000000000000")],
+                            &[T("12"), T("7.875"), T("3.9375000000000000")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(i) FILTER (WHERE i > 3) OVER w, count(*) FILTER (WHERE n > 1) OVER w FROM mw WINDOW w AS (ORDER BY id ROWS BETWEEN 3 PRECEDING AND 1 PRECEDING) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), Null, T("0")],
+                            &[T("2"), T("5"), T("1")],
+                            &[T("3"), T("5"), T("2")],
+                            &[T("4"), T("12"), T("2")],
+                            &[T("5"), T("7"), T("2")],
+                            &[T("6"), T("16"), T("1")],
+                            &[T("7"), T("9"), T("2")],
+                            &[T("8"), T("13"), T("2")],
+                            &[T("9"), T("4"), T("2")],
+                            &[T("10"), T("10"), T("2")],
+                            &[T("11"), T("6"), T("2")],
+                            &[T("12"), T("14"), T("2")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(i) OVER w, avg(n) OVER w FROM mw WINDOW w AS (ORDER BY id ROWS BETWEEN 2 FOLLOWING AND 4 FOLLOWING) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("avg", NUMERIC)],
+                        rows: &[
+                            &[T("1"), T("18"), T("1.5625000000000000")],
+                            &[T("2"), T("12"), T("4.3750000000000000")],
+                            &[T("3"), T("14"), T("NaN")],
+                            &[T("4"), T("5"), T("NaN")],
+                            &[T("5"), T("10"), T("NaN")],
+                            &[T("6"), T("9"), T("2.5000000000000000")],
+                            &[T("7"), T("17"), T("2.3333333333333333")],
+                            &[T("8"), T("12"), T("4.0833333333333333")],
+                            &[T("9"), T("9"), T("4.1250000000000000")],
+                            &[T("10"), T("1"), T("7.7500000000000000")],
+                            &[T("11"), Null, Null],
+                            &[T("12"), Null, Null],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(i) OVER w, count(*) OVER w FROM mw WINDOW w AS (ORDER BY i RANGE BETWEEN 2 PRECEDING AND 1 FOLLOWING) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("18"), T("4")],
+                            &[T("2"), Null, T("2")],
+                            &[T("3"), T("26"), T("4")],
+                            &[T("4"), T("7"), T("4")],
+                            &[T("5"), T("24"), T("3")],
+                            &[T("6"), T("4"), T("3")],
+                            &[T("7"), T("14"), T("4")],
+                            &[T("8"), Null, T("2")],
+                            &[T("9"), T("22"), T("4")],
+                            &[T("10"), T("11"), T("5")],
+                            &[T("11"), T("30"), T("4")],
+                            &[T("12"), T("4"), T("3")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(n) OVER w FROM mw WINDOW w AS (ORDER BY g GROUPS BETWEEN CURRENT ROW AND 1 FOLLOWING) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", NUMERIC)],
+                        rows: &[
+                            &[T("1"), T("NaN")],
+                            &[T("2"), T("NaN")],
+                            &[T("3"), T("NaN")],
+                            &[T("4"), T("NaN")],
+                            &[T("5"), T("NaN")],
+                            &[T("6"), T("NaN")],
+                            &[T("7"), T("NaN")],
+                            &[T("8"), T("NaN")],
+                            &[T("9"), T("NaN")],
+                            &[T("10"), T("NaN")],
+                            &[T("11"), T("NaN")],
+                            &[T("12"), T("NaN")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, avg(i::int8) OVER w, sum(i::int2) OVER w FROM mw WINDOW w AS (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 2 FOLLOWING) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("avg", NUMERIC), Column("sum", INT8)],
+                        rows: &[
+                            &[T("1"), T("6.0000000000000000"), T("12")],
+                            &[T("2"), T("4.6666666666666667"), T("14")],
+                            &[T("3"), T("6.0000000000000000"), T("18")],
+                            &[T("4"), T("4.7500000000000000"), T("19")],
+                            &[T("5"), T("4.0000000000000000"), T("16")],
+                            &[T("6"), T("4.6666666666666667"), T("14")],
+                            &[T("7"), T("3.6666666666666667"), T("11")],
+                            &[T("8"), T("4.3333333333333333"), T("13")],
+                            &[T("9"), T("5.6666666666666667"), T("17")],
+                            &[T("10"), T("4.5000000000000000"), T("18")],
+                            &[T("11"), T("4.0000000000000000"), T("12")],
+                            &[T("12"), T("4.5000000000000000"), T("9")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

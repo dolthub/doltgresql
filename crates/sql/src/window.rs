@@ -544,6 +544,12 @@ impl WindowCall {
         {
             return self.running(ctx, p, call, out);
         }
+        if let Some(call) = &call
+            && self.options & excludes == 0
+            && Accumulator::new(call).invertible()
+        {
+            return self.moving(ctx, p, call, out);
+        }
         for position in 0..p.part.len() {
             out[p.part[position].2] = self.value(ctx, p, position, call.as_ref())?;
         }
@@ -573,6 +579,38 @@ impl WindowCall {
             };
             out[p.part[position].2] = value.clone();
             previous = Some((end, value));
+        }
+        Ok(())
+    }
+
+    /// moving computes an aggregate whose frames move forward through the partition, adding the rows that enter each
+    /// frame and removing the ones that leave it, as Postgres does for aggregates with inverse transitions, and
+    /// starting over when the aggregate can't remove a row.
+    fn moving(&self, ctx: &mut Ctx<'_>, p: &Partition<'_>, call: &AggCall, out: &mut [Value]) -> Result<()> {
+        let n = p.part.len();
+        let mut accumulator = Accumulator::new(call);
+        let (mut first, mut end) = (0, 0);
+        for position in 0..n {
+            let (start, last) = self.bounds(ctx, p, position)?;
+            let start = start.min(n);
+            let stop = ((last + 1).clamp(0, n as isize) as usize).max(start);
+            let mut restart = start < first || stop < end;
+            while !restart && first < start {
+                if first < end && !accumulator.remove(ctx, call, p.members[first])? {
+                    restart = true;
+                }
+                first += 1;
+            }
+            if restart {
+                accumulator = Accumulator::new(call);
+                (first, end) = (start, start);
+            }
+            end = end.max(first);
+            while end < stop {
+                accumulator.add(ctx, call, p.members[end])?;
+                end += 1;
+            }
+            out[p.part[position].2] = accumulator.peek(ctx, call)?;
         }
         Ok(())
     }

@@ -287,6 +287,17 @@ impl Numeric {
         if coefficient.is_zero() {
             return (0, 0);
         }
+        if let Some(value) = coefficient.to_u128() {
+            let digits = value.ilog10() as i64 + 1;
+            let integer_digits = digits - *scale as i64;
+            let pad = (4 - integer_digits.rem_euclid(4)) % 4;
+            let lead = 4 - pad;
+            let group = match digits >= lead {
+                true => value / 10u128.pow((digits - lead) as u32),
+                false => value * 10u128.pow((lead - digits) as u32),
+            };
+            return ((integer_digits + pad) / 4 - 1, group as u32);
+        }
         let digits = coefficient.to_string();
         let integer_digits = digits.len() as i64 - *scale as i64;
         // The digit groups are aligned on the decimal point, so pad the integer part to a multiple of four digits.
@@ -705,5 +716,26 @@ mod tests {
             assert_eq!(Numeric::decode(&value.encode()).unwrap(), value, "{text}");
         }
         assert_eq!(n("1.5").encode(), [0xff, 0xff, 0xff, 0xff, 1, 0, 0, 0, 0, 0, 0, 0, 15]);
+    }
+
+    #[test]
+    fn weights_match_the_binary_format() {
+        for text in [
+            "0.005",
+            "12345.678",
+            "9999",
+            "10000",
+            "0.0001",
+            "0.00001",
+            "-77.1",
+            "1e40",
+            "123456789012345678901234567890123456789012.5",
+        ] {
+            let value = n(text);
+            let sent = value.send();
+            let weight = i16::from_be_bytes([sent[2], sent[3]]) as i64;
+            let first = u16::from_be_bytes([sent[8], sent[9]]) as u32;
+            assert_eq!(value.weight(), (weight, first), "{text}");
+        }
     }
 }

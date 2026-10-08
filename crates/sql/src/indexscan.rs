@@ -1821,9 +1821,12 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
             let below = needed.map(|n| n.into_iter().filter(|&c| c < width).collect());
             prune_to(input, union(below, columns_read(exprs)));
         }
-        Plan::ProjectSet { input, functions } => {
+        Plan::ProjectSet { input, functions, dropped } => {
             let width = input.width();
-            let below = needed.map(|n| n.into_iter().filter(|&c| c < width).collect());
+            let below: Option<BTreeSet<usize>> = needed.map(|n| n.into_iter().filter(|&c| c < width).collect());
+            if let Some(below) = &below {
+                *dropped = (0..width).filter(|c| !below.contains(c)).collect();
+            }
             prune_to(input, union(below, columns_read(functions.iter())));
         }
         Plan::Once(input) => prune_to(input, needed),
@@ -1942,7 +1945,7 @@ fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
         }
         Plan::SetOp { left, right, .. } => vec![(left, depth), (right, depth)],
         Plan::Recursive { anchor, step, .. } => vec![(anchor, depth), (step, depth)],
-        Plan::ProjectSet { input, functions } => {
+        Plan::ProjectSet { input, functions, .. } => {
             read(&mut functions.iter());
             vec![(input, depth)]
         }
