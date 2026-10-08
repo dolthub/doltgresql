@@ -162,7 +162,21 @@ pub fn parse_pg(lines: &[String]) -> Vec<Node> {
             None => roots.push(done),
         }
     }
+    roots.iter_mut().for_each(label_lookups);
     roots
+}
+
+/// label_lookups relabels each nested loop whose inner input is an index scan by a condition on the outer row as the
+/// lookup join that go-mysql-server calls it.
+fn label_lookups(node: &mut Node) {
+    if node.children.get(1).is_some_and(|inner| property(inner, "Index Cond").is_some()) {
+        match node.label.as_str() {
+            "InnerJoin" => node.label = "LookupJoin".into(),
+            "LeftOuterJoin" => node.label = "LeftOuterLookupJoin".into(),
+            _ => {}
+        }
+    }
+    node.children.iter_mut().for_each(label_lookups);
 }
 
 /// pg_node relabels a Postgres plan node as go-mysql-server labels the same operation.
@@ -185,7 +199,6 @@ fn pg_node(mut node: Node) -> Node {
         node.label = format!("IndexedTableAccess({table})");
     } else {
         let kind = match label.as_str() {
-            "Nested Loop" if node.properties.iter().any(|(k, _)| k == "Index Lookup") => "LookupJoin",
             "Nested Loop" => "InnerJoin",
             "Nested Loop Left Join" => "LeftOuterJoin",
             "Nested Loop Semi Join" | "Hash Semi Join" => "SemiJoin",

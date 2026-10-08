@@ -46,6 +46,7 @@ pub mod formatting;
 pub mod functions;
 pub mod indexscan;
 pub mod integrity;
+pub mod joins;
 pub mod json;
 pub mod jsonpath;
 pub mod jsontable;

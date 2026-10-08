@@ -47,6 +47,12 @@ pub struct IndexScan {
 /// Item is a key of an index and its value.
 type Item = (Vec<u8>, Vec<u8>);
 
+/// ESTIMATED_RANGES is how many of a scan's ranges `IndexScan::estimate` counts the entries of.
+const ESTIMATED_RANGES: usize = 16;
+
+/// ESTIMATED_NEAREST is how many rows `IndexScan::estimate` expects a vector search to find.
+const ESTIMATED_NEAREST: f64 = 10.0;
+
 /// Bounds is where the keys of a range lie in an index.
 struct Bounds {
     /// The key that the range's keys start at.
@@ -1062,6 +1068,7 @@ impl IndexScan {
         Ok(Box::new(IndexRows {
             reader: self.reader()?,
             root,
+            ranges: std::borrow::Cow::Borrowed(&self.ranges),
             bounds,
             exact,
             current: 0,
@@ -1069,6 +1076,46 @@ impl IndexScan {
             edge: None,
             repeat: None,
         }))
+    }
+
+    /// open_lookup starts a reader of the scan's index that reads nothing until `IndexRows::restart` gives it ranges,
+    /// which a join that looks up each left row's matches reuses for every lookup.
+    pub(crate) fn open_lookup<'p>(&'p self, ctx: &mut Ctx<'_>) -> Result<IndexRows<'p>> {
+        let root = match self.index {
+            Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
+            None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
+        };
+        Ok(IndexRows {
+            reader: self.reader()?,
+            root,
+            ranges: std::borrow::Cow::Owned(Vec::new()),
+            bounds: Vec::new(),
+            exact: true,
+            current: 0,
+            items: None,
+            edge: None,
+            repeat: None,
+        })
+    }
+
+    /// estimate returns about how many rows the scan reads: the index entries between the ends of its first ranges,
+    /// scaled up to the rest of them, which counts every entry of a range whose keys need checking.
+    pub(crate) fn estimate(&self, ctx: &mut Ctx<'_>) -> Result<f64> {
+        if self.nearest.is_some() {
+            return Ok(ESTIMATED_NEAREST);
+        }
+        let root = match self.index {
+            Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
+            None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
+        };
+        let sampled = self.ranges.len().min(ESTIMATED_RANGES);
+        let mut total = 0;
+        for range in &self.ranges[..sampled] {
+            let bounds = self.bounds(range);
+            let start = bounds.walk(self, ctx.db, &root, false)?.ordinal()?;
+            total += bounds.past(self, ctx.db, &root)?.saturating_sub(start);
+        }
+        Ok(total as f64 * self.ranges.len() as f64 / sampled.max(1) as f64)
     }
 
     /// count returns how many rows the scan reads, from the positions of its ranges' ends in the index, or None when
@@ -1368,10 +1415,12 @@ impl Bounds {
 }
 
 /// IndexRows hands out the rows of an index scan whose ranges are in key order, walking one range at a time.
-struct IndexRows<'p> {
+pub(crate) struct IndexRows<'p> {
     reader: Reader<'p>,
     root: Arc<prolly::Node>,
-    /// The bounds of each range with the range's position among the scan's ranges, in the order the scan reads them.
+    /// The ranges read, which are the scan's own unless a lookup gave others.
+    ranges: std::borrow::Cow<'p, [Range]>,
+    /// The bounds of each range with the range's position among the ranges, in the order the scan reads them.
     bounds: Vec<(Bounds, usize)>,
     /// Whether every range is exact.
     exact: bool,
@@ -1397,6 +1446,20 @@ fn partition(start: usize, end: usize, holds: impl Fn(usize) -> store::Result<bo
         }
     }
     Ok(low)
+}
+
+impl IndexRows<'_> {
+    /// restart makes the reader read the rows of other ranges from their start.
+    pub(crate) fn restart(&mut self, ranges: Vec<Range>) {
+        let scan = self.reader.scan;
+        self.bounds = ranges.iter().enumerate().map(|(i, r)| (scan.bounds(r), i)).collect();
+        self.exact = self.bounds.iter().all(|(b, _)| b.exact);
+        self.ranges = std::borrow::Cow::Owned(ranges);
+        self.current = 0;
+        self.items = None;
+        self.edge = None;
+        self.repeat = None;
+    }
 }
 
 impl crate::exec::Rows for IndexRows<'_> {
@@ -1487,7 +1550,7 @@ impl crate::exec::Rows for IndexRows<'_> {
                 continue;
             }
             let (key, value) = (leaf.key(at)?, leaf.value(at)?);
-            let check = (!bounds.exact).then(|| std::slice::from_ref(&scan.ranges[*range]));
+            let check = (!bounds.exact).then(|| std::slice::from_ref(&self.ranges[*range]));
             let cardinality = self.reader.row_into(ctx.db, key, value, check, out)?;
             match reverse {
                 true => items.retreat(ctx.db)?,
@@ -1626,7 +1689,14 @@ fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
         Plan::Distinct { input, keys: None } => {
             Some(Plan::Distinct { input: Box::new(ordered(input, keys)?), keys: None })
         }
-        Plan::Join { left, right, kind: crate::plan::JoinKind::Inner, condition, lateral: false } => {
+        Plan::Join {
+            left,
+            right,
+            kind: crate::plan::JoinKind::Inner,
+            condition,
+            lateral: false,
+            method: crate::plan::JoinMethod::Unplanned | crate::plan::JoinMethod::Ordered,
+        } => {
             let width = left.width();
             if keys.iter().any(|k| !matches!(k.expr, Expr::Column(i) if i < width)) {
                 return None;
@@ -1640,6 +1710,7 @@ fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
                 kind: crate::plan::JoinKind::Inner,
                 condition: condition.clone(),
                 lateral: false,
+                method: crate::plan::JoinMethod::Ordered,
             })
         }
         Plan::Scan(table, _) => {
@@ -1792,7 +1863,7 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
     match plan {
         Plan::IndexScan(scan) => scan.needed = needed.map(|n| n.into_iter().collect()),
         Plan::Scan(_, columns) => *columns = needed.map(|n| n.into_iter().collect()),
-        Plan::Join { left, right, condition, lateral, .. } => {
+        Plan::Join { left, right, condition, lateral, method, .. } => {
             let width = left.width();
             let needed: Option<BTreeSet<usize>> = union(needed, columns_read(condition.iter()));
             let side = |right: bool| -> Option<BTreeSet<usize>> {
@@ -1801,6 +1872,14 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
                 })
             };
             let (left_needed, right_needed) = (side(false), side(true));
+            if let crate::plan::JoinMethod::Lookup { scan, .. } = method {
+                let checked = match &**right {
+                    Plan::Filter { predicate, .. } => columns_read([predicate]),
+                    Plan::IndexScan(ranged) => Some(ranged.index_columns().into_iter().collect()),
+                    _ => Some(BTreeSet::new()),
+                };
+                scan.needed = union(right_needed.clone(), checked).map(|n| n.into_iter().collect());
+            }
             prune_to(left, if *lateral { None } else { left_needed });
             prune_to(right, right_needed);
         }
@@ -1892,7 +1971,9 @@ fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
         }
     };
     let inputs: Vec<(&Plan, usize)> = match plan {
-        Plan::OneRow | Plan::Scan(..) | Plan::Catalog(_) | Plan::WorkTable(..) => Vec::new(),
+        Plan::OneRow | Plan::Scan(..) | Plan::Catalog(_) | Plan::CatalogIndexScan(_) | Plan::WorkTable(..) => {
+            Vec::new()
+        }
         Plan::System(_) | Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
         Plan::IndexScan(scan) => {
             if let Some(n) = &scan.nearest {

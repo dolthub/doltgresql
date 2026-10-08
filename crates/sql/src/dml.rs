@@ -1550,6 +1550,7 @@ fn matches(
             kind: JoinKind::Inner,
             condition: None,
             lateral: false,
+            method: crate::plan::JoinMethod::Unplanned,
         };
         let plan = match filter {
             Some(filter) => Planner { ctx, outer: Vec::new() }.use_indexes(push_down(join, filter.clone())),

@@ -156,3 +156,13 @@ Small fix in Go: open the store with NewNoConjoinBSStore, as the S3 and OCI fact
 
 Rust: writes OSS table files whole, as the no-conjoin persister does, so pushes work; the manifest write keeps Go's
 missing condition.
+
+## Catalog joins skip pg_attribute's index (confirmed)
+
+For `pg_class c JOIN pg_attribute a ON c.oid = a.attrelid WHERE c.relname = 't2' ...`, go-mysql-server reads all of
+pg_attribute and loops over the one pg_class row, though pg_attribute declares pg_attribute_relid_attnum_index. PG15
+finds the pg_class row by pg_class_relname_nsp_index and looks its attributes up by pg_attribute_relid_attnum_index.
+The test recorded go-mysql-server's plan, and Go's catalog index ranges print internal IDs such as
+`{Table:["public","t2"]}` instead of OIDs.
+
+Rust: plans the join as PG15 does, and prints catalog index ranges as OIDs; the test's plan facts were rewritten.

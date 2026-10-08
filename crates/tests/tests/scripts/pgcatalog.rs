@@ -5319,7 +5319,7 @@ ORDER BY 1;"#,
 FROM pg_catalog.pg_class c 
 WHERE c.relname = 't2' and c.relnamespace = 2200
 ORDER BY 1;"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["relname", "relnamespace"], ranges: r#"[{[t2, t2], [{Namespace:["public"]}, {Namespace:["public"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["relname", "relnamespace"], ranges: "[{[t2, t2], [2200, 2200]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5328,7 +5328,7 @@ FROM pg_catalog.pg_class c
 WHERE c.relname > 't' AND c.relname < 't2' AND c.relnamespace = 2200 -- public
 AND relkind = 'r'
 ORDER BY 1;"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["relname", "relnamespace"], ranges: r#"[{(t, t2), [{Namespace:["public"]}, {Namespace:["public"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["relname", "relnamespace"], ranges: "[{(t, t2), [2200, 2200]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5336,7 +5336,7 @@ ORDER BY 1;"#,
 FROM pg_catalog.pg_class c 
 WHERE c.oid = 1496157034
 ORDER BY 1;"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["oid"], ranges: r#"[{[{Table:["public","t2"]}, {Table:["public","t2"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["oid"], ranges: "[{[1496157034, 1496157034]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5344,7 +5344,7 @@ ORDER BY 1;"#,
 FROM pg_catalog.pg_class c 
 WHERE c.oid > 1496157033 AND c.oid < 1496157035
 ORDER BY 1;"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["oid"], ranges: r#"[{({OID:["1496157033"]}, {OID:["1496157035"]})}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["oid"], ranges: "[{(1496157033, 1496157035)}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5352,7 +5352,7 @@ ORDER BY 1;"#,
 FROM pg_catalog.pg_class c 
 WHERE c.oid IN (1496157034, 1496157035) 
 ORDER BY 1;"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["oid"], ranges: r#"[{[{Table:["public","t2"]}, {Table:["public","t2"]}]}, {[{OID:["1496157035"]}, {OID:["1496157035"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_class", columns: &["oid"], ranges: "[{[1496157034, 1496157034]}, {[1496157035, 1496157035]}]" }]),
                     ..A
                 },
             ],
@@ -5394,7 +5394,7 @@ WHERE c.relkind = 'r' AND a.attnum > 0
   AND NOT a.attisdropped
   AND c.relname = 't2'
 ORDER BY 1,2;"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::Join { kind: "InnerJoin", left: "pg_attribute", right: "pg_class" }, PlanFact::FullScan { table: "pg_attribute" }, PlanFact::IndexScan { table: "pg_class", columns: &["relname", "relnamespace"], ranges: "[{[t2, t2], [NULL, ∞)}]" }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::Join { kind: "LookupJoin", left: "pg_class", right: "pg_attribute" }, PlanFact::IndexScan { table: "pg_class", columns: &["relname", "relnamespace"], ranges: "[{[t2, t2], [NULL, ∞)}]" }, PlanFact::IndexScan { table: "pg_attribute", columns: &["attrelid", "attnum"], ranges: "" }]),
                     ..A
                 },
             ],
@@ -5848,7 +5848,7 @@ fn test_pg_constraint_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "explain SELECT oid, conname FROM pg_catalog.pg_constraint WHERE oid = 2068729390 order by 1",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["oid"], ranges: r#"[{[{Index:["public","testing2","PRIMARY"]}, {Index:["public","testing2","PRIMARY"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["oid"], ranges: "[{[2068729390, 2068729390]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5938,7 +5938,7 @@ fn test_pg_constraint_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "explain SELECT conname, connamespace FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200 order by 1",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["conname", "connamespace"], ranges: r#"[{[test_table1_pkey, test_table1_pkey], [{Namespace:["public"]}, {Namespace:["public"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["conname", "connamespace"], ranges: "[{[test_table1_pkey, test_table1_pkey], [2200, 2200]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -5977,7 +5977,7 @@ fn test_pg_constraint_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid = 0 ORDER BY conname;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["conrelid", "contypid", "conname"], ranges: r#"[{[{Table:["public","test_table1"]}, {Table:["public","test_table1"]}], [{OID:["0"]}, {OID:["0"]}], [NULL, ∞)}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["conrelid", "contypid", "conname"], ranges: "[{[3645786842, 3645786842], [0, 0], [NULL, ∞)}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6044,7 +6044,7 @@ fn test_pg_constraint_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE contypid = 1309307140 ORDER BY conname;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["contypid"], ranges: r#"[{[{Type:["public","test_domain"]}, {Type:["public","test_domain"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["contypid"], ranges: "[{[1309307140, 1309307140]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6093,7 +6093,7 @@ fn test_pg_constraint_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::FullScan { table: "pg_class" }, PlanFact::IndexScan { table: "pg_constraint", columns: &["contypid"], ranges: r#"[{[{OID:["0"]}, {OID:["0"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::FullScan { table: "pg_class" }, PlanFact::IndexScan { table: "pg_constraint", columns: &["contypid"], ranges: "[{[0, 0]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6121,7 +6121,7 @@ fn test_pg_constraint_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 ORDER BY conname;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["conrelid", "contypid", "conname"], ranges: r#"[{[{Table:["public","test_table1"]}, {Table:["public","test_table1"]}], [NULL, ∞), [NULL, ∞)}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["conrelid", "contypid", "conname"], ranges: "[{[3645786842, 3645786842], [NULL, ∞), [NULL, ∞)}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6142,12 +6142,12 @@ fn test_pg_constraint_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT conname FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200;",
-                    expected: Expected::Plan(&[PlanFact::IndexScan { table: "pg_constraint", columns: &["conname", "connamespace"], ranges: r#"[{[test_table1_pkey, test_table1_pkey], [{Namespace:["public"]}, {Namespace:["public"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::IndexScan { table: "pg_constraint", columns: &["conname", "connamespace"], ranges: "[{[test_table1_pkey, test_table1_pkey], [2200, 2200]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid > 0 order by 1;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["conrelid", "contypid", "conname"], ranges: r#"[{[{Table:["public","test_table1"]}, {Table:["public","test_table1"]}], ({OID:["0"]}, ∞), [NULL, ∞)}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_constraint", columns: &["conrelid", "contypid", "conname"], ranges: "[{[3645786842, 3645786842], (0, ∞), [NULL, ∞)}]" }]),
                     ..A
                 },
             ],
@@ -19926,13 +19926,13 @@ ORDER BY 1;"#,
                 ScriptTestAssertion {
                     query: r#"EXPLAIN SELECT COUNT(*) FROM pg_catalog.pg_index i 
 WHERE i.indrelid = 1496157034 ORDER BY 1"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_index", columns: &["indrelid"], ranges: r#"[{[{Table:["public","t2"]}, {Table:["public","t2"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_index", columns: &["indrelid"], ranges: "[{[1496157034, 1496157034]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"EXPLAIN SELECT COUNT(*) FROM pg_catalog.pg_index i 
 WHERE i.indrelid IN (1496157033, 1496157034) ORDER BY 1"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_index", columns: &["indrelid"], ranges: r#"[{[{OID:["1496157033"]}, {OID:["1496157033"]}]}, {[{Table:["public","t2"]}, {Table:["public","t2"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_index", columns: &["indrelid"], ranges: "[{[1496157033, 1496157033]}, {[1496157034, 1496157034]}]" }]),
                     ..A
                 },
             ],
@@ -20983,7 +20983,7 @@ fn test_pg_namespace_index_lookups() {
                 },
                 ScriptTestAssertion {
                     query: "Explain SELECT nspname FROM pg_namespace WHERE oid = 2200 order by 1",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_namespace", columns: &["oid"], ranges: r#"[{[{Namespace:["public"]}, {Namespace:["public"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_namespace", columns: &["oid"], ranges: "[{[2200, 2200]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -21012,7 +21012,7 @@ fn test_pg_namespace_index_lookups() {
                 },
                 ScriptTestAssertion {
                     query: r#"explain SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 11 AND oid <= 2200 ORDER BY oid;"#,
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_namespace", columns: &["oid"], ranges: r#"[{({Namespace:["pg_catalog"]}, {Namespace:["public"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_namespace", columns: &["oid"], ranges: "[{(11, 2200]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -38570,17 +38570,17 @@ fn test_pg_type_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE oid = 23 ORDER BY 1;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["oid"], ranges: r#"[{[{Type:["pg_catalog","int4"]}, {Type:["pg_catalog","int4"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["oid"], ranges: "[{[23, 23]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE oid > 22 AND oid < 25 ORDER BY 1;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["oid"], ranges: r#"[{({Type:["pg_catalog","int2vector"]}, {Type:["pg_catalog","text"]})}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["oid"], ranges: "[{(22, 25)}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE oid IN (23, 25) ORDER BY typname;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["oid"], ranges: r#"[{[{Type:["pg_catalog","int4"]}, {Type:["pg_catalog","int4"]}]}, {[{Type:["pg_catalog","text"]}, {Type:["pg_catalog","text"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["oid"], ranges: "[{[23, 23]}, {[25, 25]}]" }]),
                     ..A
                 },
             ],
@@ -38652,12 +38652,12 @@ fn test_pg_type_indexes() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT oid FROM pg_catalog.pg_type WHERE typname = 'int4' AND typnamespace = 11 ORDER BY 1;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["typname", "typnamespace"], ranges: r#"[{[int4, int4], [{Namespace:["pg_catalog"]}, {Namespace:["pg_catalog"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["typname", "typnamespace"], ranges: "[{[int4, int4], [11, 11]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE typname > 'int2' AND typname < 'int8' AND typnamespace = 11 ORDER BY 1;",
-                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["typname", "typnamespace"], ranges: r#"[{(int2, int8), [{Namespace:["pg_catalog"]}, {Namespace:["pg_catalog"]}]}]"# }]),
+                    expected: Expected::Plan(&[PlanFact::Sort, PlanFact::IndexScan { table: "pg_type", columns: &["typname", "typnamespace"], ranges: "[{(int2, int8), [11, 11]}]" }]),
                     ..A
                 },
             ],

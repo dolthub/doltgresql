@@ -87,3 +87,426 @@ EXPLAIN
         },
     ]);
 }
+
+#[test]
+fn test_planned_joins() {
+    run_scripts(&[
+        ScriptTest {
+            name: "lookup joins through secondary indexes",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lj_big (id INT PRIMARY KEY, k SMALLINT, v INT, label TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX lj_big_k ON lj_big (k, v);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lj_big SELECT i, (i % 500)::SMALLINT, i % 7, 'b' || i FROM generate_series(1, 3000) i;",
+                    expected: Expected::Tag("INSERT 0 3000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lj_big VALUES (3001, NULL, 1, 'null key');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lj_small (id INT PRIMARY KEY, k BIGINT, w INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lj_small VALUES (1, 3, 1), (2, 40000, 2), (3, NULL, 3), (4, 499, 4), (5, 3, 5), (6, 7, 6);",
+                    expected: Expected::Tag("INSERT 0 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT s.id, b.id, b.k, b.v FROM lj_small s JOIN lj_big b ON b.k = s.k ORDER BY s.id, b.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4), Column("k", INT2), Column("v", INT4)],
+                        rows: &[
+                            &[T("1"), T("3"), T("3"), T("3")],
+                            &[T("1"), T("503"), T("3"), T("6")],
+                            &[T("1"), T("1003"), T("3"), T("2")],
+                            &[T("1"), T("1503"), T("3"), T("5")],
+                            &[T("1"), T("2003"), T("3"), T("1")],
+                            &[T("1"), T("2503"), T("3"), T("4")],
+                            &[T("4"), T("499"), T("499"), T("2")],
+                            &[T("4"), T("999"), T("499"), T("5")],
+                            &[T("4"), T("1499"), T("499"), T("1")],
+                            &[T("4"), T("1999"), T("499"), T("4")],
+                            &[T("4"), T("2499"), T("499"), T("0")],
+                            &[T("4"), T("2999"), T("499"), T("3")],
+                            &[T("5"), T("3"), T("3"), T("3")],
+                            &[T("5"), T("503"), T("3"), T("6")],
+                            &[T("5"), T("1003"), T("3"), T("2")],
+                            &[T("5"), T("1503"), T("3"), T("5")],
+                            &[T("5"), T("2003"), T("3"), T("1")],
+                            &[T("5"), T("2503"), T("3"), T("4")],
+                            &[T("6"), T("7"), T("7"), T("0")],
+                            &[T("6"), T("507"), T("7"), T("3")],
+                            &[T("6"), T("1007"), T("7"), T("6")],
+                            &[T("6"), T("1507"), T("7"), T("2")],
+                            &[T("6"), T("2007"), T("7"), T("5")],
+                            &[T("6"), T("2507"), T("7"), T("1")],
+                        ],
+                        tag: "SELECT 24",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT s.id, b.id FROM lj_small s JOIN lj_big b ON b.k = s.k AND b.v = s.w ORDER BY s.id, b.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("2003")],
+                            &[T("4"), T("1999")],
+                            &[T("5"), T("1503")],
+                            &[T("6"), T("1007")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT s.id, b.id FROM lj_small s LEFT JOIN lj_big b ON b.k = s.k AND b.v = 2 ORDER BY s.id, b.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("1003")],
+                            &[T("2"), Null],
+                            &[T("3"), Null],
+                            &[T("4"), T("499")],
+                            &[T("5"), T("1003")],
+                            &[T("6"), T("1507")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT s.id, b.id, b.label FROM lj_small s JOIN lj_big b ON b.k = s.k WHERE b.label LIKE 'b2%' ORDER BY s.id, b.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4), Column("label", TEXT)],
+                        rows: &[
+                            &[T("1"), T("2003"), T("b2003")],
+                            &[T("1"), T("2503"), T("b2503")],
+                            &[T("4"), T("2499"), T("b2499")],
+                            &[T("4"), T("2999"), T("b2999")],
+                            &[T("5"), T("2003"), T("b2003")],
+                            &[T("5"), T("2503"), T("b2503")],
+                            &[T("6"), T("2007"), T("b2007")],
+                            &[T("6"), T("2507"), T("b2507")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT s.id, b.id FROM lj_big b JOIN lj_small s ON b.k = s.k WHERE b.id > 2000 ORDER BY s.id, b.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("2003")],
+                            &[T("1"), T("2503")],
+                            &[T("4"), T("2499")],
+                            &[T("4"), T("2999")],
+                            &[T("5"), T("2003")],
+                            &[T("5"), T("2503")],
+                            &[T("6"), T("2007")],
+                            &[T("6"), T("2507")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXPLAIN SELECT s.id, b.id FROM lj_small s JOIN lj_big b ON b.k = s.k;",
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "LookupJoin", left: "lj_small", right: "lj_big" }, PlanFact::FullScan { table: "lj_small" }, PlanFact::IndexScan { table: "lj_big", columns: &["k", "v"], ranges: "" }]),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM lj_small s JOIN lj_big b ON b.k = s.k;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("24")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "semi and anti joins from EXISTS",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ex_a (id INT PRIMARY KEY, x INT, y INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ex_b (id INT PRIMARY KEY, x INT, y INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ex_a VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3), (4, NULL, 4), (5, 2, 5);",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ex_b VALUES (1, 1, 1), (2, 2, 9), (3, 2, 2), (4, NULL, 4);",
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXPLAIN SELECT id FROM ex_a WHERE EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x);",
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "SemiJoin", left: "ex_a", right: "ex_b" }]),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE NOT EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("3")],
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x AND ex_b.y = ex_a.y) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x AND ex_b.id > 2) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE id > 1 AND NOT EXISTS (SELECT 1 FROM ex_b WHERE ex_b.id = ex_a.id) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x OR ex_b.y = ex_a.y) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("4")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x) AND NOT EXISTS (SELECT 1 FROM ex_b WHERE ex_b.y = ex_a.y) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM ex_b;",
+                    expected: Expected::Tag("DELETE 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE NOT EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ex_a WHERE EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "catalog index scans and lookups",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE cat_t1 (id INT PRIMARY KEY, v TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE cat_t2 (id INT PRIMARY KEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname FROM pg_catalog.pg_class WHERE oid = 'cat_t1'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME)],
+                        rows: &[
+                            &[T("cat_t1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname FROM pg_catalog.pg_class WHERE oid IN ('cat_t1'::regclass, 'cat_t2'::regclass) ORDER BY relname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME)],
+                        rows: &[
+                            &[T("cat_t1")],
+                            &[T("cat_t2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname FROM pg_catalog.pg_type WHERE oid IN (23, 25) ORDER BY typname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME)],
+                        rows: &[
+                            &[T("int4")],
+                            &[T("text")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname FROM pg_catalog.pg_type WHERE oid > 22 AND oid < 26 ORDER BY oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME)],
+                        rows: &[
+                            &[T("int4")],
+                            &[T("regproc")],
+                            &[T("text")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'public';",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", OID)],
+                        rows: &[
+                            &[T("2200")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c.relname, n.nspname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE c.relname = 'cat_t1';",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("nspname", NAME)],
+                        rows: &[
+                            &[T("cat_t1"), T("public")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c.relname, a.attname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid WHERE c.relname = 'cat_t1' AND a.attnum > 0 ORDER BY a.attnum;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("attname", NAME)],
+                        rows: &[
+                            &[T("cat_t1"), T("id")],
+                            &[T("cat_t1"), T("v")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT t.typname, n.nspname FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.typname = 'int4';",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME), Column("nspname", NAME)],
+                        rows: &[
+                            &[T("int4"), T("pg_catalog")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM pg_catalog.pg_index WHERE indrelid = 'cat_t1'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

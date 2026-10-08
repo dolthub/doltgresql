@@ -26,7 +26,7 @@ use crate::catalog::table::TableDef;
 use crate::error::{Result, code};
 use crate::expr::{CmpOp, Expr, compare_values};
 use crate::functions::aggregate::{Accumulator, AggCall};
-use crate::plan::{HashKey, JoinKind, Plan, SetOp, SortKey, SubqueryRows};
+use crate::plan::{HashKey, JoinKind, JoinMethod, Plan, SetOp, SortKey, SubqueryRows};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -622,6 +622,20 @@ impl<'p> Lookup<'p> {
         Lookup::of_side(right, condition, left_width, true)
     }
 
+    /// finds_whole_keys reports whether a planned lookup in an index is one by the right table's whole primary key that
+    /// `new` makes, which reuses its walk of the index from one lookup to the next.
+    fn finds_whole_keys(
+        scan: &crate::indexscan::IndexScan,
+        keys: &[Expr],
+        right: &Plan,
+        condition: Option<&Expr>,
+        left_width: usize,
+    ) -> Result<bool> {
+        Ok(scan.index.is_none()
+            && keys.len() == scan.table.key_columns.len()
+            && Lookup::new(right, condition, left_width)?.is_some())
+    }
+
     /// of_side is `new` for the right input, or for the left input when `right` is false, which a join then finds by
     /// the values of each right row.
     fn of_side(
@@ -722,7 +736,7 @@ impl<'p> Lookup<'p> {
 
 /// lookup_type reports whether a join can look rows up by a primary key column of the type, whose values encode the
 /// same whenever they are equal.
-fn lookup_type(type_oid: u32) -> bool {
+pub(crate) fn lookup_type(type_oid: u32) -> bool {
     use crate::oid;
     matches!(
         type_oid,
@@ -741,7 +755,7 @@ fn lookup_type(type_oid: u32) -> bool {
 
 /// lookup_value converts a left value to the type of a primary key column, returning Some(None) for an integer out of
 /// the column's range, which no row has, and None for a value the lookup cannot use.
-fn lookup_value(value: Value, type_oid: u32) -> Option<Option<Value>> {
+pub(crate) fn lookup_value(value: Value, type_oid: u32) -> Option<Option<Value>> {
     use crate::oid;
     let integer = match value {
         Value::Int2(i) => Some(i as i64),
@@ -777,18 +791,21 @@ struct JoinHash {
 }
 
 impl<'p> JoinRows<'p> {
-    /// open starts a join of the inputs, reading the right input's rows.
+    /// open starts a join of the inputs, reading the right input's rows unless `lookups` lets it look them up.
     fn open(
         ctx: &mut Ctx<'_>,
         left: &'p Plan,
         right: &'p Plan,
         kind: JoinKind,
         condition: Option<&'p Expr>,
+        lookups: bool,
     ) -> Result<JoinRows<'p>> {
         let (left_width, right_width) = (left.width(), right.width());
         let left_rows = left.open(ctx)?;
         let lookup = match kind {
-            JoinKind::Inner | JoinKind::Left | JoinKind::Anti => Lookup::new(right, condition, left_width)?,
+            JoinKind::Inner | JoinKind::Left | JoinKind::Anti | JoinKind::Semi if lookups => {
+                Lookup::new(right, condition, left_width)?
+            }
             _ => None,
         };
         let right_rows = if lookup.is_some() { Vec::new() } else { right.run(ctx)? };
@@ -932,7 +949,7 @@ impl Rows for JoinRows<'_> {
                         row.extend(found);
                         if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
                             *matched = true;
-                            if self.kind != JoinKind::Anti {
+                            if !self.kind.tests_matches() {
                                 return Ok(Some(row));
                             }
                         }
@@ -942,14 +959,14 @@ impl Rows for JoinRows<'_> {
                     (Candidates::Bucket(b), Some(hash)) => (hash.bucket(b), hash.exact),
                     _ => (&[], false),
                 };
-                while !*matched || self.kind != JoinKind::Anti {
+                while !*matched || !self.kind.tests_matches() {
                     let j = match *candidates {
                         Candidates::All if *position < self.right.len() => *position,
                         Candidates::Bucket(_) if *position < bucket.len() => bucket[*position],
                         _ => break,
                     };
                     *position += 1;
-                    if exact && self.kind == JoinKind::Anti {
+                    if exact && self.kind.tests_matches() {
                         *matched = true;
                         break;
                     }
@@ -959,13 +976,15 @@ impl Rows for JoinRows<'_> {
                     if exact || self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
                         *matched = true;
                         self.right_matched[j] = true;
-                        if self.kind != JoinKind::Anti {
+                        if !self.kind.tests_matches() {
                             return Ok(Some(row));
                         }
                     }
                 }
                 let (mut left, _, _, matched) = self.current.take().expect("a current left row");
-                if !matched && matches!(self.kind, JoinKind::Left | JoinKind::Full | JoinKind::Anti) {
+                if (!matched && matches!(self.kind, JoinKind::Left | JoinKind::Full | JoinKind::Anti))
+                    || (matched && self.kind == JoinKind::Semi)
+                {
                     left.extend(std::iter::repeat_n(Value::Null, self.right_width));
                     return Ok(Some(left));
                 }
@@ -1267,6 +1286,130 @@ impl Rows for LateralRows<'_> {
     }
 }
 
+/// LookupRows joins each left row with the right rows that its key values find in an index of the right input's
+/// table, keeping those that the right input's filter, the ranges of its index scan, and the join condition keep.
+struct LookupRows<'p> {
+    left: Box<dyn Rows + 'p>,
+    right_plan: &'p Plan,
+    keys: &'p [Expr],
+    found: crate::indexscan::IndexRows<'p>,
+    /// The table columns of the index's keys.
+    columns: Vec<usize>,
+    table: &'p TableDef,
+    filter: Option<&'p Expr>,
+    /// The right input's index scan, when it is one with no filter above it, whose ranges the rows must lie in.
+    ranges: Option<&'p crate::indexscan::IndexScan>,
+    kind: JoinKind,
+    condition: Option<&'p Expr>,
+    right_width: usize,
+    /// The right input's rows, read once a left row's key values are ones the index cannot hold.
+    all: Option<Vec<Row>>,
+    pending: std::vec::IntoIter<Row>,
+}
+
+impl<'p> LookupRows<'p> {
+    /// open starts a join that looks up each left row's matches through a scan of the right input's table's index.
+    fn open(
+        ctx: &mut Ctx<'_>,
+        left: &'p Plan,
+        right: &'p Plan,
+        kind: JoinKind,
+        condition: Option<&'p Expr>,
+        scan: &'p crate::indexscan::IndexScan,
+        keys: &'p [Expr],
+    ) -> Result<LookupRows<'p>> {
+        let (filter, ranges) = match right {
+            Plan::Filter { predicate, .. } => (Some(predicate), None),
+            Plan::IndexScan(scan) => (None, Some(&**scan)),
+            _ => (None, None),
+        };
+        Ok(LookupRows {
+            left: left.open(ctx)?,
+            right_plan: right,
+            keys,
+            found: scan.open_lookup(ctx)?,
+            columns: scan.index_columns(),
+            table: &scan.table,
+            filter,
+            ranges,
+            kind,
+            condition,
+            right_width: right.width(),
+            all: None,
+            pending: Vec::new().into_iter(),
+        })
+    }
+
+    /// matches returns the right rows that a left row finds.
+    fn matches(&mut self, ctx: &mut Ctx<'_>, left: &[Value]) -> Result<Vec<Row>> {
+        let mut range = Vec::with_capacity(self.columns.len());
+        for (expr, &c) in self.keys.iter().zip(&self.columns) {
+            let ty = self.table.index_column(c).map_or(0, |c| c.ty.oid);
+            match expr.eval(ctx, left)? {
+                Value::Null => return Ok(Vec::new()),
+                value => match lookup_value(value, ty) {
+                    Some(Some(value)) => range.push(crate::ranges::ColumnRange::closed(value)),
+                    Some(None) => return Ok(Vec::new()),
+                    None => {
+                        if self.all.is_none() {
+                            self.all = Some(self.right_plan.run(ctx)?);
+                        }
+                        return Ok(self.all.clone().unwrap_or_default());
+                    }
+                },
+            }
+        }
+        range.resize(self.columns.len(), crate::ranges::ColumnRange::all());
+        self.found.restart(vec![range]);
+        let mut rows = Vec::new();
+        while let Some(row) = self.found.next(ctx)? {
+            if let Some(scan) = self.ranges {
+                let key: Vec<Value> = scan.index_columns().iter().map(|&c| row[c].clone()).collect();
+                if !scan.ranges.iter().any(|r| crate::ranges::range_contains(r, &key)) {
+                    continue;
+                }
+            }
+            if self.filter.map_or(Ok(true), |f| f.is_true(ctx, &row))? {
+                rows.push(row);
+            }
+        }
+        Ok(rows)
+    }
+}
+
+impl Rows for LookupRows<'_> {
+    fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
+        loop {
+            if let Some(row) = self.pending.next() {
+                return Ok(Some(row));
+            }
+            let Some(l) = self.left.next(ctx)? else { return Ok(None) };
+            let mut out = Vec::new();
+            for r in self.matches(ctx, &l)? {
+                let mut row = l.clone();
+                row.extend(r);
+                if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
+                    out.push(row);
+                }
+            }
+            match self.kind {
+                JoinKind::Anti if out.is_empty() => {}
+                JoinKind::Anti => continue,
+                JoinKind::Semi if out.is_empty() => continue,
+                JoinKind::Semi => {}
+                JoinKind::Left if out.is_empty() => {}
+                _ => {
+                    self.pending = out.into_iter();
+                    continue;
+                }
+            }
+            let mut row = l;
+            row.extend(std::iter::repeat_n(Value::Null, self.right_width));
+            return Ok(Some(row));
+        }
+    }
+}
+
 /// HASHER builds the hashes of grouping keys, the same for every run.
 const HASHER: foldhash::fast::FixedState = foldhash::fast::FixedState::with_seed(0);
 
@@ -1539,7 +1682,7 @@ impl Plan {
                 };
                 Box::new(LimitRows { input, skip, remaining })
             }
-            Plan::Join { left, right, kind, condition, lateral: true } => Box::new(LateralRows {
+            Plan::Join { left, right, kind, condition, lateral: true, .. } => Box::new(LateralRows {
                 left: left.open(ctx)?,
                 right,
                 kind: *kind,
@@ -1547,16 +1690,27 @@ impl Plan {
                 right_width: right.width(),
                 pending: Vec::new().into_iter(),
             }),
-            Plan::Join { left, right, kind, condition, .. } => {
+            Plan::Join { left, right, kind, condition, method: JoinMethod::Lookup { scan, keys }, .. }
+                if !Lookup::finds_whole_keys(scan, keys, right, condition.as_ref(), left.width())? =>
+            {
+                Box::new(LookupRows::open(ctx, left, right, *kind, condition.as_ref(), scan, keys)?)
+            }
+            Plan::Join { left, right, kind, condition, method, .. } => {
                 let condition = condition.as_ref();
+                let unplanned = matches!(method, JoinMethod::Unplanned | JoinMethod::Ordered);
                 let other: Option<Box<dyn Rows + 'p>> = match kind {
-                    JoinKind::Inner => ProbeRows::open(ctx, left, right, condition)?.map(|p| Box::new(p) as _),
-                    JoinKind::Anti => AntiRows::open(ctx, left, right, condition)?.map(|a| Box::new(a) as _),
+                    JoinKind::Inner if unplanned => {
+                        ProbeRows::open(ctx, left, right, condition)?.map(|p| Box::new(p) as _)
+                    }
+                    JoinKind::Anti if unplanned || *method == JoinMethod::Hash => {
+                        AntiRows::open(ctx, left, right, condition)?.map(|a| Box::new(a) as _)
+                    }
                     _ => None,
                 };
+                let lookups = unplanned || matches!(method, JoinMethod::Lookup { .. });
                 match other {
                     Some(rows) => rows,
-                    None => Box::new(JoinRows::open(ctx, left, right, *kind, condition)?),
+                    None => Box::new(JoinRows::open(ctx, left, right, *kind, condition, lookups)?),
                 }
             }
             Plan::Aggregate { input, groups, aggregates, sets } => match (&**input, sets) {

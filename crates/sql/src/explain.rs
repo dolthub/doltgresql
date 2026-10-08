@@ -21,7 +21,7 @@ use pg_query::protobuf::ExplainStmt;
 use crate::Outcome;
 use crate::error::{PgError, Result};
 use crate::expr::{ArithOp, CmpOp, Expr};
-use crate::plan::{JoinKind, Plan, Planner, SetOp};
+use crate::plan::{JoinKind, JoinMethod, Plan, Planner, SetOp};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -77,6 +77,8 @@ fn columns(plan: &Plan) -> Vec<String> {
     match plan {
         Plan::Scan(table, _) => table.columns.iter().map(|c| c.name.clone()).collect(),
         Plan::IndexScan(scan) => scan.table.columns.iter().map(|c| c.name.clone()).collect(),
+        Plan::Catalog(table) => table.columns.iter().map(|c| c.name.to_string()).collect(),
+        Plan::CatalogIndexScan(scan) => scan.table.columns.iter().map(|c| c.name.to_string()).collect(),
         Plan::Filter { input, .. }
         | Plan::Sort { input, .. }
         | Plan::Limit { input, .. }
@@ -102,18 +104,45 @@ fn columns(plan: &Plan) -> Vec<String> {
 /// Printer collects the lines of a plan in Postgres' text format.
 struct Printer {
     lines: Vec<String>,
+    /// The number of subquery plans printed so far, which numbers them.
+    subplans: usize,
+}
+
+/// Child is a node that EXPLAIN prints below another: a plan, the hash table that a hash join builds from a plan, or
+/// the index lookups that a join makes for each of its left rows.
+enum Child<'p> {
+    Plan(&'p Plan),
+    Hash(&'p Plan),
+    Lookup(Lookup<'p>),
+}
+
+/// Lookup is the index lookups that a join makes for each of its left rows: the index and the relation it belongs
+/// to, the index's columns, the key expressions over the left row's columns, and the right input.
+struct Lookup<'p> {
+    index: String,
+    relation: String,
+    columns: Vec<String>,
+    keys: &'p [Expr],
+    left_columns: Vec<String>,
+    right: &'p Plan,
 }
 
 impl Printer {
     /// node prints a plan node at a depth below the root, with the filters that the plans above it applied to its rows,
-    /// as Postgres attaches filters to the nodes they test.
-    fn node(&mut self, plan: &Plan, depth: usize, mut filters: Vec<String>) {
-        let (name, mut properties, children): (String, Vec<String>, Vec<&Plan>) = match plan {
+    /// as Postgres attaches filters to the nodes they test, and the plans of the subqueries in those filters and in the
+    /// expressions of the projections above it.
+    fn node<'p>(&mut self, plan: &'p Plan, depth: usize, mut filters: Vec<String>, mut evaluated: Vec<&'p Expr>) {
+        let (name, mut properties, children): (String, Vec<String>, Vec<Child<'_>>) = match plan {
             Plan::Filter { input, predicate } => {
                 filters.insert(0, format!("Filter: {}", expr_text(predicate, &columns(input))));
-                return self.node(input, depth, filters);
+                evaluated.push(predicate);
+                return self.node(input, depth, filters, evaluated);
             }
-            Plan::Project { input, .. } | Plan::Once(input) => return self.node(input, depth, filters),
+            Plan::Project { input, exprs } => {
+                evaluated.extend(exprs);
+                return self.node(input, depth, filters, evaluated);
+            }
+            Plan::Once(input) => return self.node(input, depth, filters, evaluated),
             Plan::Scan(table, _) => {
                 (format!("Seq Scan on {}", crate::engine::quote_identifier(&table.name)), vec![], vec![])
             }
@@ -165,31 +194,61 @@ impl Printer {
                         format!("{}{}{order}", expr_text(&k.expr, &names), if k.descending { " DESC" } else { "" })
                     })
                     .collect();
-                ("Sort".into(), vec![format!("Sort Key: {}", keys.join(", "))], vec![input.as_ref()])
+                ("Sort".into(), vec![format!("Sort Key: {}", keys.join(", "))], vec![Child::Plan(input)])
             }
-            Plan::Limit { input, .. } => ("Limit".into(), vec![], vec![input.as_ref()]),
-            Plan::Distinct { input, .. } => ("Unique".into(), vec![], vec![input.as_ref()]),
+            Plan::Limit { input, .. } => ("Limit".into(), vec![], vec![Child::Plan(input)]),
+            Plan::Distinct { input, .. } => ("Unique".into(), vec![], vec![Child::Plan(input)]),
             Plan::Aggregate { input, groups, .. } => {
                 let names = columns(input);
                 if groups.is_empty() {
-                    ("Aggregate".into(), vec![], vec![input.as_ref()])
+                    ("Aggregate".into(), vec![], vec![Child::Plan(input)])
                 } else {
                     let keys: Vec<String> = groups.iter().map(|g| expr_text(g, &names)).collect();
-                    ("HashAggregate".into(), vec![format!("Group Key: {}", keys.join(", "))], vec![input.as_ref()])
+                    ("HashAggregate".into(), vec![format!("Group Key: {}", keys.join(", "))], vec![Child::Plan(input)])
                 }
             }
-            Plan::Join { left, right, kind, condition, .. } => {
-                let name = match kind {
-                    JoinKind::Inner => "Nested Loop",
-                    JoinKind::Left => "Nested Loop Left Join",
-                    JoinKind::Right => "Nested Loop Right Join",
-                    JoinKind::Full => "Nested Loop Full Join",
-                    JoinKind::Anti => "Nested Loop Anti Join",
+            Plan::Join { left, right, kind, condition, method, .. } => {
+                evaluated.extend(condition);
+                let kind = match kind {
+                    JoinKind::Inner => "",
+                    JoinKind::Left => " Left Join",
+                    JoinKind::Right => " Right Join",
+                    JoinKind::Full => " Full Join",
+                    JoinKind::Anti => " Anti Join",
+                    JoinKind::Semi => " Semi Join",
                 };
                 let mut names = columns(left);
                 names.extend(columns(right));
-                let properties = condition.iter().map(|c| format!("Join Filter: {}", expr_text(c, &names))).collect();
-                (name.into(), properties, vec![left.as_ref(), right.as_ref()])
+                let printed =
+                    |key: &str| condition.iter().map(|c| format!("{key}: {}", expr_text(c, &names))).collect();
+                match method {
+                    JoinMethod::Hash => (
+                        format!("Hash {}", if kind.is_empty() { "Join" } else { kind.trim_start() }),
+                        printed("Hash Cond"),
+                        vec![Child::Plan(left), Child::Hash(right)],
+                    ),
+                    JoinMethod::Lookup { .. } | JoinMethod::CatalogLookup { .. } => {
+                        let lookup = Lookup::of(method, columns(left), right);
+                        let keys = lookup.keys;
+                        let looked_up = |c: &&Expr| matches!(c, Expr::Compare(CmpOp::Eq, a, b) if keys.contains(a) || keys.contains(b));
+                        let rest: Vec<String> = condition
+                            .iter()
+                            .flat_map(crate::indexscan::conjuncts)
+                            .filter(|c| !looked_up(c))
+                            .map(|c| expr_text(c, &names))
+                            .collect();
+                        let properties = match rest.is_empty() {
+                            true => Vec::new(),
+                            false => vec![format!("Join Filter: {}", rest.join(" AND "))],
+                        };
+                        (format!("Nested Loop{kind}"), properties, vec![Child::Plan(left), Child::Lookup(lookup)])
+                    }
+                    _ => (
+                        format!("Nested Loop{kind}"),
+                        printed("Join Filter"),
+                        vec![Child::Plan(left), Child::Plan(right)],
+                    ),
+                }
             }
             Plan::SetOp { op, all, left, right } => {
                 let name = match (op, all) {
@@ -200,21 +259,31 @@ impl Printer {
                     (SetOp::Except, true) => "HashSetOp Except All",
                     (SetOp::Except, false) => "HashSetOp Except",
                 };
-                (name.into(), vec![], vec![left.as_ref(), right.as_ref()])
+                (name.into(), vec![], vec![Child::Plan(left), Child::Plan(right)])
             }
             Plan::Values(_) => ("Values Scan on \"*VALUES*\"".into(), vec![], vec![]),
             Plan::Function { .. } | Plan::RowsFrom { .. } => ("Function Scan".into(), vec![], vec![]),
-            Plan::QueryDiff(diff, _) => ("Query Diff".into(), vec![], vec![&diff.from, &diff.to]),
+            Plan::QueryDiff(diff, _) => {
+                ("Query Diff".into(), vec![], vec![Child::Plan(&diff.from), Child::Plan(&diff.to)])
+            }
             Plan::XmlTable(_) | Plan::JsonTable(_) => ("Table Function Scan".into(), vec![], vec![]),
             Plan::Catalog(table) => (format!("Seq Scan on {}", table.name), vec![], vec![]),
+            Plan::CatalogIndexScan(scan) => (
+                format!("Index Scan using {} on {}", scan.index.name, scan.table.name),
+                vec![
+                    format!("Index Columns: {}", scan.index.columns.join(", ")),
+                    format!("Index Ranges: {}", crate::ranges::ranges_text(&scan.ranges)),
+                ],
+                vec![],
+            ),
             Plan::System(_) => ("Seq Scan on a Dolt system table".into(), vec![], vec![]),
             Plan::OneRow => ("Result".into(), vec![], vec![]),
             Plan::Recursive { anchor, step, .. } => {
-                ("Recursive Union".into(), vec![], vec![anchor.as_ref(), step.as_ref()])
+                ("Recursive Union".into(), vec![], vec![Child::Plan(anchor), Child::Plan(step)])
             }
             Plan::WorkTable(..) => ("WorkTable Scan".into(), vec![], vec![]),
-            Plan::ProjectSet { input, .. } => ("ProjectSet".into(), vec![], vec![input.as_ref()]),
-            Plan::Window { input, .. } => ("WindowAgg".into(), vec![], vec![input.as_ref()]),
+            Plan::ProjectSet { input, .. } => ("ProjectSet".into(), vec![], vec![Child::Plan(input)]),
+            Plan::Window { input, .. } => ("WindowAgg".into(), vec![], vec![Child::Plan(input)]),
         };
         properties.extend(filters);
         let prefix = if depth == 0 { String::new() } else { format!("{}->  ", " ".repeat(6 * (depth - 1) + 2)) };
@@ -223,16 +292,95 @@ impl Printer {
         for property in properties {
             self.lines.push(format!("{pad}{property}"));
         }
-        for child in children {
-            self.node(child, depth + 1, Vec::new());
+        for expr in evaluated {
+            expr.visit(&mut |e| {
+                let (Expr::Exists(subquery)
+                | Expr::Scalar(subquery)
+                | Expr::ArraySubquery(subquery, _)
+                | Expr::AnySubquery(_, subquery, _)) = e
+                else {
+                    return;
+                };
+                self.subplans += 1;
+                self.lines.push(format!("{pad}SubPlan {}", self.subplans));
+                self.node(subquery, depth + 1, Vec::new(), Vec::new());
+            });
         }
+        for child in children {
+            match child {
+                Child::Plan(plan) => self.node(plan, depth + 1, Vec::new(), Vec::new()),
+                Child::Hash(plan) => {
+                    self.lines.push(format!("{}->  Hash", " ".repeat(6 * depth + 2)));
+                    self.node(plan, depth + 2, Vec::new(), Vec::new());
+                }
+                Child::Lookup(lookup) => self.lookup(&lookup, depth + 1),
+            }
+        }
+    }
+
+    /// lookup prints the index lookups that a join makes for each left row, as Postgres prints the inner index scan of
+    /// a nested loop, with the right input's filter.
+    fn lookup(&mut self, lookup: &Lookup<'_>, depth: usize) {
+        let pad = " ".repeat(6 * depth + 2);
+        self.lines.push(format!(
+            "{}->  Index Scan using {} on {}",
+            " ".repeat(6 * (depth - 1) + 2),
+            crate::engine::quote_identifier(&lookup.index),
+            crate::engine::quote_identifier(&lookup.relation)
+        ));
+        self.lines.push(format!("{pad}Index Columns: {}", lookup.columns.join(", ")));
+        let conditions: Vec<String> = lookup
+            .keys
+            .iter()
+            .zip(&lookup.columns)
+            .map(|(key, column)| format!("({column} = {})", expr_text(key, &lookup.left_columns)))
+            .collect();
+        self.lines.push(format!("{pad}Index Cond: {}", conditions.join(" AND ")));
+        if let Plan::Filter { input, predicate } = lookup.right {
+            self.lines.push(format!("{pad}Filter: {}", expr_text(predicate, &columns(input))));
+        }
+    }
+}
+
+impl<'p> Lookup<'p> {
+    /// of returns the lookups of a join that looks rows up, given the names of its left input's columns.
+    fn of(method: &'p JoinMethod, left_columns: Vec<String>, right: &'p Plan) -> Lookup<'p> {
+        let (index, relation, columns, keys) = match method {
+            JoinMethod::Lookup { scan, keys } => (
+                scan.index_name(),
+                scan.table.name.clone(),
+                scan.index_columns()
+                    .iter()
+                    .map(|&c| scan.table.index_column(c).map_or_else(String::new, |c| c.name.clone()))
+                    .collect(),
+                keys.as_slice(),
+            ),
+            JoinMethod::CatalogLookup { index, keys } => (
+                index.name.to_string(),
+                catalog_name(right),
+                index.columns.iter().map(|c| c.to_string()).collect(),
+                keys.as_slice(),
+            ),
+            _ => (String::new(), String::new(), Vec::new(), &[][..]),
+        };
+        Lookup { index, relation, columns, keys, left_columns, right }
+    }
+}
+
+/// catalog_name returns the name of the system catalog relation that a plan reads.
+fn catalog_name(plan: &Plan) -> String {
+    match plan {
+        Plan::Filter { input, .. } => catalog_name(input),
+        Plan::Catalog(table) => table.name.to_string(),
+        Plan::CatalogIndexScan(scan) => scan.table.name.to_string(),
+        _ => String::new(),
     }
 }
 
 /// lines returns the lines that EXPLAIN prints for a plan.
 pub fn lines(plan: &Plan) -> Vec<String> {
-    let mut printer = Printer { lines: Vec::new() };
-    printer.node(plan, 0, Vec::new());
+    let mut printer = Printer { lines: Vec::new(), subplans: 0 };
+    printer.node(plan, 0, Vec::new(), Vec::new());
     printer.lines
 }
 

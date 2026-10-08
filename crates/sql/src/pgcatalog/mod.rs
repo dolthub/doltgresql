@@ -18,6 +18,7 @@
 mod builtin;
 pub(crate) mod definitions;
 mod extensions;
+pub mod indexes;
 mod infoschema;
 pub mod reg;
 pub(crate) mod routines;
@@ -60,7 +61,7 @@ pub struct CatalogTable {
 
 impl CatalogTable {
     /// column returns the position of a column.
-    fn column(&self, name: &str) -> Option<usize> {
+    pub(crate) fn column(&self, name: &str) -> Option<usize> {
         self.columns.iter().position(|c| c.name == name)
     }
 }

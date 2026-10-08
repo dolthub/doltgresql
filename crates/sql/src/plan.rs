@@ -43,6 +43,35 @@ pub enum JoinKind {
     Full,
     /// Only the left rows that find no match, padded with NULLs as a left join pads them.
     Anti,
+    /// Only the left rows that find a match, once each, padded with NULLs as an anti join pads them.
+    Semi,
+}
+
+impl JoinKind {
+    /// tests_matches reports whether the join keeps only left rows, by whether they find a match, as anti and semi
+    /// joins do.
+    pub fn tests_matches(self) -> bool {
+        matches!(self, JoinKind::Anti | JoinKind::Semi)
+    }
+}
+
+/// JoinMethod is how a join finds the right rows that match each left row.
+#[derive(Clone, Debug, PartialEq)]
+pub enum JoinMethod {
+    /// Not planned yet: the join looks rows up by a primary key or hashes an input as it runs.
+    Unplanned,
+    /// Not planned yet, and the left input must stay on the left, since its order replaced a sort.
+    Ordered,
+    /// Each left row looks its matches up in an index of the right input's table, which a scan of no ranges reads,
+    /// by the left expressions that give the index's first columns.
+    Lookup { scan: Box<crate::indexscan::IndexScan>, keys: Vec<Expr> },
+    /// Each left row looks its matches up in an index of the system catalog relation that the right input reads, by
+    /// the left expressions that give the index's first columns.
+    CatalogLookup { index: &'static crate::pgcatalog::indexes::CatalogIndex, keys: Vec<Expr> },
+    /// The right rows are hashed by their side of the condition's equalities.
+    Hash,
+    /// Each left row is compared with every right row.
+    NestedLoop,
 }
 
 /// SortKey is an ORDER BY key over a plan's rows.
@@ -74,6 +103,8 @@ pub enum Plan {
     System(crate::dolt::tables::SystemTable),
     /// The rows of a system catalog relation.
     Catalog(&'static crate::pgcatalog::CatalogTable),
+    /// The rows of a system catalog relation whose keys in one of its indexes lie in ranges.
+    CatalogIndexScan(Box<crate::pgcatalog::indexes::CatalogIndexScan>),
     /// Rows of expressions, evaluated without an input row.
     Values(Vec<Vec<Expr>>),
     /// The rows a set-returning function returns for its arguments, with a row number when asked, spreading
@@ -101,6 +132,7 @@ pub enum Plan {
         kind: JoinKind,
         condition: Option<Expr>,
         lateral: bool,
+        method: JoinMethod,
     },
     /// The rows of an XMLTABLE.
     XmlTable(Box<crate::xml::table::XmlTable>),
@@ -825,6 +857,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                         kind: JoinKind::Inner,
                         condition: None,
                         lateral,
+                        method: JoinMethod::Unplanned,
                     };
                     (join, left_scope)
                 }
@@ -843,14 +876,22 @@ impl<'b, 'a> Planner<'b, 'a> {
                     Some((scan, false)) => Plan::Filter { input: Box::new(Plan::IndexScan(Box::new(scan))), predicate },
                     None => Plan::Filter { input: Box::new(Plan::Scan(table, needed)), predicate },
                 },
+                Plan::Catalog(table) => match crate::pgcatalog::indexes::choose(self.ctx, table, &predicate) {
+                    Some((scan, true)) => Plan::CatalogIndexScan(Box::new(scan)),
+                    Some((scan, false)) => {
+                        Plan::Filter { input: Box::new(Plan::CatalogIndexScan(Box::new(scan))), predicate }
+                    }
+                    None => Plan::Filter { input: Box::new(Plan::Catalog(table)), predicate },
+                },
                 other => Plan::Filter { input: Box::new(self.use_indexes(other)), predicate },
             },
-            Plan::Join { left, right, kind, condition, lateral } => Plan::Join {
+            Plan::Join { left, right, kind, condition, lateral, method } => Plan::Join {
                 left: Box::new(self.use_indexes(*left)),
                 right: Box::new(self.use_indexes(*right)),
                 kind,
                 condition,
                 lateral,
+                method,
             },
             other => other,
         }
@@ -1500,7 +1541,14 @@ impl<'b, 'a> Planner<'b, 'a> {
                 };
                 merged.push((name.clone(), value, ty, l, width + r));
             }
-            let plan = Plan::Join { left: Box::new(left_plan), right: Box::new(right_plan), kind, condition, lateral };
+            let plan = Plan::Join {
+                left: Box::new(left_plan),
+                right: Box::new(right_plan),
+                kind,
+                condition,
+                lateral,
+                method: JoinMethod::Unplanned,
+            };
             // The merged columns come first, and the joined columns they replace stay reachable only by table name.
             let mut exprs: Vec<Expr> = merged.iter().map(|m| m.1.clone()).collect();
             let mut columns: Vec<ScopeColumn> = merged
@@ -1534,7 +1582,14 @@ impl<'b, 'a> Planner<'b, 'a> {
                 None => None,
             }
         };
-        let plan = Plan::Join { left: Box::new(left_plan), right: Box::new(right_plan), kind, condition, lateral };
+        let plan = Plan::Join {
+            left: Box::new(left_plan),
+            right: Box::new(right_plan),
+            kind,
+            condition,
+            lateral,
+            method: JoinMethod::Unplanned,
+        };
         Ok((plan, scope))
     }
 
@@ -1551,8 +1606,27 @@ impl<'b, 'a> Planner<'b, 'a> {
             let mut binder = self.binder(scope.clone());
             binder.clause = "WHERE";
             let predicate = crate::expr::condition(binder.bind(node)?, "WHERE", crate::expr::arg_location(node))?;
-            plan = push_down(plan, predicate);
+            let mut kept = Vec::new();
+            let mut existences = Vec::new();
+            for c in crate::indexscan::conjuncts(&predicate) {
+                match matches!(c, Expr::Exists(_))
+                    || matches!(c, Expr::Not(inner) if matches!(**inner, Expr::Exists(_)))
+                {
+                    true => existences.push(c.clone()),
+                    false => kept.push(c.clone()),
+                }
+            }
+            if let Some(kept) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
+                plan = push_down(plan, kept);
+            }
             plan = self.use_indexes(plan);
+            for existence in existences {
+                plan = crate::joins::filter_existence(plan, existence);
+            }
+        }
+        let hints = crate::joins::hints(&self.ctx.session.source);
+        if !hints.is_empty() {
+            plan = crate::joins::apply_hints(self.ctx, plan, &scope, &hints);
         }
         let windowed = select.target_list.iter().any(crate::window::has_window)
             || select.sort_clause.iter().any(crate::window::has_window);
@@ -1896,6 +1970,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             let visible = (0..width).map(Expr::Column).collect();
             plan = Plan::Project { input: Box::new(plan), exprs: visible };
         }
+        plan = crate::joins::plan_joins(self.ctx, plan);
         crate::indexscan::prune(&mut plan);
         Ok(Query { plan, columns, types })
     }
@@ -2504,6 +2579,7 @@ impl Plan {
             Plan::ProjectSet { input, functions, .. } => input.width() + functions.len(),
             Plan::System(system) => system.columns().len(),
             Plan::Catalog(table) => table.columns.len(),
+            Plan::CatalogIndexScan(scan) => scan.table.columns.len(),
             Plan::Values(rows) => rows.first().map_or(0, Vec::len),
             Plan::Function { ordinality, width, .. } => width + *ordinality as usize,
             Plan::Filter { input, .. }
@@ -2591,6 +2667,7 @@ impl Plan {
             Plan::WorkTable(id, _) => ctx.work_tables.get(id).cloned().unwrap_or_default(),
             Plan::System(system) => ctx.without_temp(|ctx| system.rows(ctx))?,
             Plan::Catalog(table) => ctx.catalog_rows(table)?,
+            Plan::CatalogIndexScan(scan) => scan.run(ctx)?,
             Plan::Values(rows) => {
                 let mut out = Vec::with_capacity(rows.len());
                 for row in rows {
@@ -2761,7 +2838,7 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
         };
     }
     let plan = match plan {
-        Plan::Join { left, right, kind: JoinKind::Left, condition, lateral: false } => {
+        Plan::Join { left, right, kind: JoinKind::Left, condition, lateral: false, method } => {
             let width = left.width();
             let (_, keys) = condition.as_ref().map_or_else(Default::default, |c| join_keys(c, width));
             let unmatched = |c: &&Expr| match c {
@@ -2777,11 +2854,11 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
                 true => JoinKind::Anti,
                 false => JoinKind::Left,
             };
-            Plan::Join { left, right, kind, condition, lateral: false }
+            Plan::Join { left, right, kind, condition, lateral: false, method }
         }
         plan => plan,
     };
-    let Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral } = plan else {
+    let Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral, method } = plan else {
         return Plan::Filter { input: Box::new(plan), predicate };
     };
     let width = left.width();
@@ -2812,15 +2889,21 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
         None => *right,
     };
     if lateral {
-        let join =
-            Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral };
+        let join = Plan::Join {
+            left: Box::new(left),
+            right: Box::new(right),
+            kind: JoinKind::Inner,
+            condition,
+            lateral,
+            method,
+        };
         return match and(to_join) {
             Some(predicate) => Plan::Filter { input: Box::new(join), predicate },
             None => join,
         };
     }
     let condition = and(condition.into_iter().chain(to_join).collect());
-    Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral }
+    Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral, method }
 }
 
 /// never_null reports whether a plan's rows never have NULL in the column, as a table's NOT NULL columns don't.
@@ -2953,7 +3036,7 @@ pub(crate) fn index_row(ctx: &mut Ctx<'_>, inner: &[Expr], index: &mut RowIndex,
 pub(crate) fn share_scans(plan: Plan) -> Plan {
     match plan {
         Plan::Filter { input, predicate }
-            if matches!(*input, Plan::Scan(..) | Plan::IndexScan(_) | Plan::Catalog(_)) =>
+            if matches!(*input, Plan::Scan(..) | Plan::IndexScan(_) | Plan::Catalog(_) | Plan::CatalogIndexScan(_)) =>
         {
             Plan::Filter { input: Box::new(Plan::Once(input)), predicate }
         }
@@ -2969,7 +3052,7 @@ pub(crate) fn share_scans(plan: Plan) -> Plan {
 }
 
 /// has_subquery reports whether an expression holds a subquery.
-fn has_subquery(e: &Expr) -> bool {
+pub(crate) fn has_subquery(e: &Expr) -> bool {
     let mut found = false;
     e.visit(&mut |e| {
         if matches!(e, Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..)) {
