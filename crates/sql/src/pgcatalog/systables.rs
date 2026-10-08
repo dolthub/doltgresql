@@ -155,6 +155,7 @@ fn table(schema: &str, name: &str, columns: Vec<Column>) -> TableDef {
             generated: false,
             mysql_type: String::new(),
             comment: String::new(),
+            identity: 0,
         })
         .collect();
     TableDef {

@@ -400,6 +400,9 @@ pub struct Column<'a> {
     pub uses_adaptive_encoding: bool,
     pub hidden_system: bool,
     pub adaptive_encoding_breaking_change: bool,
+    /// Whether the column is an identity column, `a` for GENERATED ALWAYS and `d` for BY DEFAULT, or 0, which Doltgres
+    /// adds past Dolt's fields.
+    pub identity: u8,
 }
 
 /// Index is the clustered index or a secondary index of a table schema.
@@ -480,6 +483,7 @@ impl<'a> TableSchema<'a> {
                     uses_adaptive_encoding: t.bool(14, false)?,
                     hidden_system: t.bool(15, false)?,
                     adaptive_encoding_breaking_change: t.bool(16, false)?,
+                    identity: t.u8(20, 0)?,
                 })
             })
             .collect()

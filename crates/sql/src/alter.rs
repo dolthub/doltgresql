@@ -327,14 +327,17 @@ impl Ctx<'_> {
                 ));
             }
         };
-        let options = match cmd.def.as_deref().and_then(|d| d.node.as_ref()) {
-            Some(NodeEnum::Constraint(constraint)) => constraint.options.clone(),
-            _ => Vec::new(),
+        let (options, identity) = match cmd.def.as_deref().and_then(|d| d.node.as_ref()) {
+            Some(NodeEnum::Constraint(constraint)) => {
+                (constraint.options.clone(), constraint.generated_when.bytes().next().unwrap_or(b'a'))
+            }
+            _ => (Vec::new(), b'a'),
         };
         let schema = alteration.table.schema.clone();
         let mut taken = self.relation_names(&schema)?;
         let default = self.create_owned_sequence(&schema, &table, &column.name, data_type, &options, &mut taken)?;
         alteration.table.columns[i].default = default;
+        alteration.table.columns[i].identity = identity;
         Ok(())
     }
 

@@ -848,6 +848,8 @@ impl Ctx<'_> {
                 })
                 .collect::<Result<_>>()?
         };
+        let overriding = pg_query::protobuf::OverridingKind::try_from(insert.r#override)
+            .unwrap_or(pg_query::protobuf::OverridingKind::OverridingNotSet);
         let empty_row = pg_query::Node { node: Some(NodeEnum::List(pg_query::protobuf::List { items: Vec::new() })) };
         let default_values = pg_query::protobuf::SelectStmt { values_lists: vec![empty_row], ..Default::default() };
         let select = match insert.select_stmt.as_deref().and_then(|n| n.node.as_ref()) {
@@ -910,6 +912,12 @@ impl Ctx<'_> {
                 if column.generated {
                     return Err(generated_error(&column.name, "cannot insert a non-DEFAULT value into column"));
                 }
+                if column.identity != 0 && overriding == pg_query::protobuf::OverridingKind::OverridingUserValue {
+                    return Err(PgError::unsupported("OVERRIDING USER VALUE with a query"));
+                }
+                if column.identity == b'a' && overriding != pg_query::protobuf::OverridingKind::OverridingSystemValue {
+                    return Err(identity_error(&column.name, "cannot insert a non-DEFAULT value into column"));
+                }
                 assign((Expr::Column(0), *ty), column.ty, &column.name, -1)?;
             }
             InsertSource::Select(Box::new(query.plan))
@@ -931,6 +939,15 @@ impl Ctx<'_> {
                     }
                     if column.generated {
                         return Err(generated_error(&column.name, "cannot insert a non-DEFAULT value into column"));
+                    }
+                    if column.identity != 0 && overriding == pg_query::protobuf::OverridingKind::OverridingUserValue {
+                        row.push(Expr::Default(target));
+                        continue;
+                    }
+                    if column.identity == b'a'
+                        && overriding != pg_query::protobuf::OverridingKind::OverridingSystemValue
+                    {
+                        return Err(identity_error(&column.name, "cannot insert a non-DEFAULT value into column"));
                     }
                     let bound = binder.bind(item)?;
                     if let Expr::Param(i) = bound.0
@@ -1272,6 +1289,14 @@ fn bind_assignments(
                     format!("column \"{}\" can only be updated to DEFAULT", column.name),
                 )
             });
+        } else if column.identity == b'a' {
+            return Err(PgError {
+                detail: Some(format!("Column \"{}\" is an identity column defined as GENERATED ALWAYS.", column.name)),
+                ..PgError::new(
+                    code::GENERATED_ALWAYS,
+                    format!("column \"{}\" can only be updated to DEFAULT", column.name),
+                )
+            });
         } else {
             let bound = binder.bind(value)?;
             if let Expr::Param(p) = bound.0
@@ -1434,6 +1459,15 @@ impl InsertPlan {
         }
         let tag = format!("INSERT 0 {}", written.len());
         outcome(ctx, &self.returning, &written, tag)
+    }
+}
+
+/// identity_error returns Postgres' error for a value given to an identity column that is GENERATED ALWAYS.
+fn identity_error(column: &str, message: &str) -> PgError {
+    PgError {
+        detail: Some(format!("Column \"{column}\" is an identity column defined as GENERATED ALWAYS.")),
+        hint: Some("Use OVERRIDING SYSTEM VALUE to override.".into()),
+        ..PgError::new(code::GENERATED_ALWAYS, format!("{message} \"{column}\""))
     }
 }
 

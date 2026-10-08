@@ -151,6 +151,8 @@ struct Attribute {
     not_null: bool,
     has_default: bool,
     generated: bool,
+    /// Whether the column is an identity column, `a` for GENERATED ALWAYS and `d` for BY DEFAULT, or 0.
+    identity: u8,
 }
 
 /// SYSTEM_COLUMNS are the system columns of every table, with their numbers and types.
@@ -731,6 +733,7 @@ impl Ctx<'_> {
                     not_null: true,
                     has_default: false,
                     generated: false,
+                    identity: 0,
                 });
             }
         };
@@ -747,6 +750,7 @@ impl Ctx<'_> {
                     not_null: !column.nullable,
                     has_default: !column.default.is_empty(),
                     generated: column.generated,
+                    identity: column.identity,
                 });
             }
             for index in indexes.clone() {
@@ -760,6 +764,7 @@ impl Ctx<'_> {
                         not_null: false,
                         has_default: false,
                         generated: false,
+                        identity: 0,
                     });
                 }
             }
@@ -776,6 +781,7 @@ impl Ctx<'_> {
                     not_null: false,
                     has_default: false,
                     generated: false,
+                    identity: 0,
                 });
             }
         }
@@ -792,6 +798,7 @@ impl Ctx<'_> {
                     not_null: false,
                     has_default: false,
                     generated: false,
+                    identity: 0,
                 });
             }
         }
@@ -811,6 +818,7 @@ impl Ctx<'_> {
                     not_null: true,
                     has_default: false,
                     generated: false,
+                    identity: 0,
                 });
             }
         }
@@ -833,7 +841,7 @@ impl Ctx<'_> {
                 ("attnotnull", boolean(a.not_null)),
                 ("atthasdef", boolean(a.has_default)),
                 ("atthasmissing", boolean(false)),
-                ("attidentity", text("")),
+                ("attidentity", text(if a.identity == 0 { String::new() } else { char::from(a.identity).to_string() })),
                 ("attgenerated", text(if a.generated { "s" } else { "" })),
                 ("attisdropped", boolean(false)),
                 ("attislocal", boolean(true)),

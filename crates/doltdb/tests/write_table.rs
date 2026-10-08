@@ -55,6 +55,7 @@ fn column<'a>(name: &'a [u8], sql_type: &'a [u8], tag: u64, primary_key: bool) -
         adaptive_encoding: false,
         hidden: false,
         hidden_system: false,
+        identity: 0,
     }
 }
 

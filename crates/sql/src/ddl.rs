@@ -230,6 +230,7 @@ impl TableParts {
             generated: false,
             mysql_type: String::new(),
             comment: String::new(),
+            identity: 0,
         };
         check_constraint_attributes(&def.constraints)?;
         let deferrals = column_deferrals(&def.constraints);
@@ -301,6 +302,7 @@ impl TableParts {
                             )
                         });
                     }
+                    column.identity = constraint.generated_when.bytes().next().unwrap_or(b'a');
                     self.generated.push((index, data_type, constraint.options.clone()));
                 }
                 other => return Err(PgError::unsupported(format!("the column constraint {other:?}"))),
@@ -971,6 +973,7 @@ impl Ctx<'_> {
                     generated: false,
                     mysql_type: String::new(),
                     comment: String::new(),
+                    identity: 0,
                 }
             })
             .collect();
@@ -1464,6 +1467,7 @@ impl Ctx<'_> {
                 generated: true,
                 mysql_type: String::new(),
                 comment: String::new(),
+                identity: 0,
             });
         }
         let index = IndexDef { descending, nulls_last, op_classes, predicate, ..new_index(name, columns, stmt.unique) };

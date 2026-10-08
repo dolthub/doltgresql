@@ -50,6 +50,9 @@ pub struct ColumnDef {
     pub mysql_type: String,
     /// The comment that COMMENT ON COLUMN gives the column, which is empty without one.
     pub comment: String,
+    /// Whether the column is an identity column, `a` for GENERATED ALWAYS and `d` for BY DEFAULT, or 0, as
+    /// pg_attribute's attidentity says.
+    pub identity: u8,
 }
 
 /// Check is a check constraint: its name and its expression's SQL text.
@@ -273,6 +276,7 @@ impl TableDef {
                     false => String::from_utf8_lossy(c.sql_type).into_owned(),
                 },
                 comment: String::from_utf8_lossy(c.comment).into_owned(),
+                identity: c.identity,
             };
             if c.hidden_system && c.is_virtual {
                 positions.push(Some(HIDDEN_BASE + hidden.len()));
@@ -672,6 +676,7 @@ pub fn schema_message(
             adaptive_encoding: crate::storage::marks_adaptive(c.encoding),
             hidden: false,
             hidden_system: is_hidden,
+            identity: c.identity,
         })
         .collect();
     let stored = |i: usize| i.checked_sub(HIDDEN_BASE).map_or(i, |k| columns.len() + k) as u16;

@@ -52,6 +52,7 @@ fn dolt_schemas_schema() -> Vec<u8> {
         adaptive_encoding: crate::storage::marks_adaptive(encoding),
         hidden: false,
         hidden_system: false,
+        identity: 0,
     };
     write_schema(&SchemaFields {
         columns: vec![

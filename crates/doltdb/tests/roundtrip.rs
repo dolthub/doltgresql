@@ -227,6 +227,7 @@ fn rewrite_schema(message: Message<'_>) -> Vec<u8> {
                     adaptive_encoding: c.uses_adaptive_encoding,
                     hidden: c.hidden,
                     hidden_system: c.hidden_system,
+                    identity: c.identity,
                 }
             })
             .collect(),
