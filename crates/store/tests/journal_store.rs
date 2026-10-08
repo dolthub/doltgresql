@@ -171,3 +171,38 @@ fn go_reads_databases_rust_extended() {
         assert!(chunks(&actual) == chunks(&expected), "{name}: Go reads other chunks than Rust");
     }
 }
+
+#[test]
+fn deferred_syncs_are_taken_by_the_caller() {
+    let dir = scratch("deferred");
+    let mut store = JournalStore::open(&dir, "__DOLT__").unwrap();
+    let first = chunks(1, 5);
+    for chunk in &first {
+        store.put(chunk.clone(), []).unwrap();
+    }
+    assert!(store.commit(first[0].hash, Hash::default()).unwrap());
+    assert!(store.take_sync().is_none(), "a commit without deferral left a sync");
+    store.defer_syncs(true);
+    let second = chunks(2, 5);
+    for chunk in &second {
+        store.put(chunk.clone(), []).unwrap();
+    }
+    assert!(store.commit(second[0].hash, first[0].hash).unwrap());
+    let third = chunks(3, 5);
+    for chunk in &third {
+        store.put(chunk.clone(), []).unwrap();
+    }
+    assert!(store.commit(third[0].hash, second[0].hash).unwrap());
+    store.defer_syncs(false);
+    let sync = store.take_sync().expect("deferred commits left no sync");
+    assert!(store.take_sync().is_none(), "a sync was taken twice");
+    sync.wait().unwrap();
+    store.close().unwrap();
+
+    let store = JournalStore::open(&dir, "__DOLT__").unwrap();
+    assert_eq!(store.root(), third[0].hash);
+    for chunk in first.iter().chain(&second).chain(&third) {
+        assert_eq!(store.get(&chunk.hash).unwrap().as_ref(), Some(chunk));
+    }
+    store.close().unwrap();
+}

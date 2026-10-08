@@ -1552,14 +1552,20 @@ impl Session {
             aggregate_levels: Vec::new(),
             catalog: None,
         };
+        ctx.db.defer_syncs(true);
         let result = (|| {
             ctx.install_types()?;
             ctx.install_casts()?;
             ctx.install_aggregates()?;
             f(&mut ctx)
         })();
+        db.defer_syncs(false);
+        let sync = db.take_sync();
         drop(db);
-        (txn, result)
+        match sync.map(store::PendingSync::wait) {
+            Some(Err(err)) if result.is_ok() => (txn, Err(err.into())),
+            _ => (txn, result),
+        }
     }
 
     /// run runs one statement with the parameter values.

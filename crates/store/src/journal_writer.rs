@@ -24,6 +24,8 @@
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::chunk::{CASTAGNOLI, Chunk};
@@ -60,6 +62,34 @@ struct Range {
     len: u32,
 }
 
+/// Durable is how much of a journal file is written and how much of it is synced, shared with the commits that sync it
+/// after their writer moved on.
+struct Durable {
+    file: File,
+    written: AtomicU64,
+    synced: Mutex<u64>,
+}
+
+/// PendingSync is a commit's root record that is written to its journal but not yet synced.
+pub struct PendingSync {
+    durable: Arc<Durable>,
+    end: u64,
+}
+
+impl PendingSync {
+    /// wait syncs the journal unless a sync that began after the record was written already did, so that commits made
+    /// at the same time share one sync.
+    pub fn wait(self) -> Result<()> {
+        let mut synced = self.durable.synced.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *synced < self.end {
+            let written = self.durable.written.load(Ordering::Acquire);
+            self.durable.file.sync_all()?;
+            *synced = written;
+        }
+        Ok(())
+    }
+}
+
 /// addr16 returns the first 16 bytes of an address, which the index file keys chunks by.
 fn addr16(hash: &Hash) -> [u8; 16] {
     hash.0[..16].try_into().unwrap()
@@ -91,6 +121,12 @@ pub struct JournalWriter {
     unsynced: u64,
     current_root: Hash,
     uncompressed: u64,
+    /// How much of the journal is written and synced, which deferred syncs share.
+    durable: Arc<Durable>,
+    /// Whether commits leave syncing to their callers, which take the sync with `take_sync`.
+    defer_syncs: bool,
+    /// The end of the last root record that a deferred commit wrote and no caller has taken yet.
+    pending: Option<u64>,
 }
 
 impl JournalWriter {
@@ -102,8 +138,10 @@ impl JournalWriter {
             options.read(true).write(true).create(true).truncate(false);
             options
         };
+        let journal = options().open(dir.join(JOURNAL_FILE))?;
+        let durable = Durable { file: journal.try_clone()?, written: AtomicU64::new(0), synced: Mutex::new(0) };
         let mut writer = JournalWriter {
-            journal: options().open(dir.join(JOURNAL_FILE))?,
+            journal,
             index: options().open(dir.join(JOURNAL_INDEX_FILE))?,
             index_buf: Vec::new(),
             index_len: 0,
@@ -116,6 +154,9 @@ impl JournalWriter {
             unsynced: 0,
             current_root: Hash::default(),
             uncompressed: 0,
+            durable: Arc::new(durable),
+            defer_syncs: false,
+            pending: None,
         };
         let root = writer.bootstrap(&dir.join(JOURNAL_FILE))?;
         Ok((writer, root))
@@ -296,6 +337,7 @@ impl JournalWriter {
         write_at(&self.journal, self.off, &self.buf)?;
         self.off += self.buf.len() as u64;
         self.buf.clear();
+        self.durable.written.store(self.off, Ordering::Release);
         Ok(())
     }
 
@@ -314,13 +356,14 @@ impl JournalWriter {
         Ok(())
     }
 
-    /// commit_root appends a root hash record stamped with the current time and syncs the journal.
+    /// commit_root appends a root hash record stamped with the current time and syncs the journal, unless syncs are
+    /// deferred.
     pub fn commit_root(&mut self, root: Hash) -> Result<()> {
         self.commit_root_at(root, unix_now())
     }
 
-    /// commit_root_at appends a root hash record stamped with the Unix time in seconds and syncs the journal, ending
-    /// an index batch when enough chunks are unindexed.
+    /// commit_root_at appends a root hash record stamped with the Unix time in seconds and syncs the journal unless
+    /// syncs are deferred, ending an index batch when enough chunks are unindexed.
     pub fn commit_root_at(&mut self, root: Hash, timestamp: u64) -> Result<()> {
         let encoded = JournalRecord::Root { hash: root, timestamp }.encode();
         self.reserve(encoded.len())?;
@@ -328,12 +371,27 @@ impl JournalWriter {
         self.current_root = root;
         self.buf.extend_from_slice(&encoded);
         self.flush()?;
-        self.journal.sync_all()?;
+        if self.defer_syncs {
+            self.pending = Some(self.off);
+        } else {
+            self.journal.sync_all()?;
+        }
         self.unsynced = 0;
         if self.novel.len() > MAX_NOVEL {
             self.flush_index_record(root, start)?;
         }
         Ok(())
+    }
+
+    /// defer_syncs sets whether later commits leave syncing the journal to their callers.
+    pub fn defer_syncs(&mut self, defer: bool) {
+        self.defer_syncs = defer;
+    }
+
+    /// take_sync returns the sync that the commits since the last call left to their caller, if any.
+    pub fn take_sync(&mut self) -> Option<PendingSync> {
+        let end = self.pending.take()?;
+        Some(PendingSync { durable: self.durable.clone(), end })
     }
 
     /// root returns the last root hash committed.

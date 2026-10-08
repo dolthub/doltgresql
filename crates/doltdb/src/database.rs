@@ -794,6 +794,19 @@ impl Database {
         Ok(commit)
     }
 
+    /// defer_syncs sets whether later commits leave syncing the journal to their callers, who take each sync with
+    /// `take_sync`.
+    pub fn defer_syncs(&mut self, defer: bool) {
+        if let Some(journal) = self.store.journal() {
+            journal.defer_syncs(defer);
+        }
+    }
+
+    /// take_sync returns the sync that the commits since the last call left to their caller, if any.
+    pub fn take_sync(&mut self) -> Option<store::PendingSync> {
+        self.store.journal()?.take_sync()
+    }
+
     /// sync writes out the store's buffered journal records, leaving the database open.
     pub fn sync(&mut self) -> Result<()> {
         match self.store.journal() {
