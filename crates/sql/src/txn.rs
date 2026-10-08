@@ -50,8 +50,11 @@ pub struct Txn {
     pub root: Root,
     /// The working root as it was when the transaction began.
     original: Vec<u8>,
+    /// The working root as it was when the transaction began, decoded.
+    original_root: Root,
     pub staged: Root,
     original_staged: Vec<u8>,
+    original_staged_root: Root,
     /// The merge in progress, if any.
     pub merge: Option<MergeStateFields>,
     original_merge: Option<MergeStateFields>,
@@ -65,6 +68,9 @@ pub struct Txn {
     /// The schema of the session's temporary tables while a statement runs with them in the root, which writes of
     /// the root leave out.
     pub temp_schema: Option<String>,
+    /// The sequences that nextval advanced in the running statement, which the statement writes to the root once it
+    /// ends rather than at every call.
+    pub pending_sequences: HashMap<Vec<u8>, objects::Sequence>,
 }
 
 /// read returns the message at the address, failing when the database lacks it.
@@ -178,8 +184,10 @@ impl Txn {
             working_set,
             head,
             head_root,
+            original_root: root.clone(),
             root,
             original,
+            original_staged_root: staged.clone(),
             staged,
             original_staged,
             original_merge: merge.clone(),
@@ -189,12 +197,35 @@ impl Txn {
             started: crate::datetime::clock(),
             detached,
             temp_schema: None,
+            pending_sequences: HashMap::new(),
         })
     }
 
     /// changed reports whether the transaction changed the working root.
     pub fn changed(&self) -> bool {
         self.root.encode() != self.original
+    }
+
+    /// store_pending writes the sequences that the running statement advanced to the working root.
+    pub fn store_pending(&mut self, db: &mut Database) -> Result<()> {
+        for (_, sequence) in std::mem::take(&mut self.pending_sequences) {
+            crate::sequences::store(db, &mut self.root, &sequence)?;
+        }
+        Ok(())
+    }
+
+    /// gc_roots returns what garbage collection must keep for the transaction: the addresses of its working set and
+    /// head as they were when it began, and its working and staged roots when it has changed them.
+    pub fn gc_roots(&self) -> (Vec<Hash>, Vec<Vec<u8>>) {
+        let addresses = vec![self.working_set, self.head];
+        let mut roots = Vec::new();
+        if self.root != self.original_root {
+            roots.push(self.root.encode());
+        }
+        if self.staged != self.original_staged_root {
+            roots.push(self.staged.encode());
+        }
+        (addresses, roots)
     }
 
     /// working_set_fields writes the working and staged roots and returns the working set that holds them.
@@ -269,6 +300,7 @@ impl Txn {
     /// flush writes the working and staged roots to the working set now, when they changed, and continues the
     /// transaction from there.
     pub fn flush(&mut self, db: &mut Database, user: &str, host: &str) -> Result<()> {
+        self.store_pending(db)?;
         if !self.changed_persisted(db)? {
             return Ok(());
         }
@@ -278,8 +310,11 @@ impl Txn {
             Err(database::Error::OptimisticLockFailed) => return Err(serialization_failure()),
             Err(err) => return Err(err.into()),
         };
-        self.original = self.persisted_root(db)?.encode();
+        let persisted = self.persisted_root(db)?;
+        self.original = persisted.encode();
+        self.original_root = persisted;
         self.original_staged = self.staged.encode();
+        self.original_staged_root = self.staged.clone();
         self.original_merge = self.merge.clone();
         self.original_rebase = self.rebase.clone();
         Ok(())
@@ -295,6 +330,7 @@ impl Txn {
         parents: Vec<Hash>,
         meta: CommitMeta,
     ) -> Result<Hash> {
+        self.store_pending(db)?;
         self.merge = None;
         let fields = self.working_set_fields(db, user, host)?;
         let pending = PendingCommit { root_value: self.staged.encode(), parents, meta };
@@ -312,8 +348,11 @@ impl Txn {
         self.working_set = Hash::of(&write_working_set(&fields));
         self.head = commit.hash;
         self.head_root = fields.staged_root.unwrap_or_default();
-        self.original = self.persisted_root(db)?.encode();
+        let persisted = self.persisted_root(db)?;
+        self.original = persisted.encode();
+        self.original_root = persisted;
         self.original_staged = self.staged.encode();
+        self.original_staged_root = self.staged.clone();
         self.original_merge = None;
         Ok(commit.hash)
     }

@@ -45,6 +45,28 @@ struct MemTable {
     refs: Vec<Hash>,
 }
 
+/// Snapshot is the chunks that a store's files held when it was taken.
+pub struct Snapshot {
+    sources: Vec<Source>,
+    journal: Option<crate::JournalView>,
+}
+
+impl crate::ChunkReader for Snapshot {
+    fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
+        if let Some(journal) = &self.journal
+            && let Some(chunk) = journal.get(hash)?
+        {
+            return Ok(Some(chunk));
+        }
+        for source in &self.sources {
+            if let Some(chunk) = source.get(hash)? {
+                return Ok(Some(chunk));
+            }
+        }
+        Ok(None)
+    }
+}
+
 /// JournalStore is a writable chunk store whose new chunks go to the chunk journal, or to new table files when it
 /// was opened without one.
 pub struct JournalStore {
@@ -348,10 +370,9 @@ impl JournalStore {
     }
 
     /// rewrite replaces the store's files with the table files given, as garbage collection does: chunks not yet
-    /// written are dropped, the journal is closed, the manifest names only those files at the current root, and the
+    /// written stay pending, the journal is closed, the manifest names only those files at the current root, and the
     /// files it no longer names are deleted. The next write starts a new journal.
     pub fn rewrite(&mut self, specs: Vec<TableSpec>) -> Result<()> {
-        self.memtable = MemTable::default();
         if let Some(journal) = self.journal.take() {
             journal.close()?;
         }
@@ -361,6 +382,25 @@ impl JournalStore {
         self.pending.clear();
         self.upstream = manifest;
         Ok(())
+    }
+
+    /// snapshot returns a read-only view of the chunks that the store's files hold now, leaving out the chunks put
+    /// since the last commit, which garbage collection reads while the store goes on writing.
+    pub fn snapshot(&mut self) -> Result<Snapshot> {
+        let journal = match self.journal.as_mut() {
+            Some(journal) => Some(journal.view()?),
+            None => None,
+        };
+        let journal_name = Hash::parse(JOURNAL_FILE).unwrap();
+        let sources = self
+            .upstream
+            .specs
+            .iter()
+            .chain(&self.pending)
+            .filter(|spec| spec.name != journal_name)
+            .map(|spec| Source::open_file(&self.dir, &spec.name))
+            .collect::<Result<_>>()?;
+        Ok(Snapshot { sources, journal })
     }
 
     /// defer_syncs sets whether later commits leave syncing the journal to their callers, who take each sync with

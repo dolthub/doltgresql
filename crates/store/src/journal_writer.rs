@@ -46,6 +46,22 @@ const MAX_NOVEL: usize = 16384;
 /// MAYBE_SYNC_THRESHOLD is the number of unsynced bytes above which writing a chunk commits the current root again.
 const MAYBE_SYNC_THRESHOLD: u64 = 64 * 1024 * 1024;
 
+/// JournalView reads the chunks a journal held when the view was taken, through its own handle on the file, while the
+/// writer goes on appending.
+pub struct JournalView {
+    file: File,
+    novel: HashMap<Hash, Range>,
+    cached: HashMap<[u8; 16], Range>,
+}
+
+impl JournalView {
+    /// get returns the chunk when the journal held it.
+    pub fn get(&self, hash: &Hash) -> Result<Option<Chunk>> {
+        let Some(range) = self.novel.get(hash).or_else(|| self.cached.get(&addr16(hash))) else { return Ok(None) };
+        Chunk::from_record(*hash, &read_at(&self.file, range.offset, range.len as usize)?).map(Some)
+    }
+}
+
 /// PAD_LEN is how far past its last record the journal is filled with zeros, so that a commit's sync never changes the
 /// file's size and fdatasync can skip its metadata, as Dolt pads it on Linux.
 const PAD_LEN: u64 = 4 << 20;
@@ -403,6 +419,12 @@ impl JournalWriter {
     pub fn take_sync(&mut self) -> Option<PendingSync> {
         let end = self.pending.take()?;
         Some(PendingSync { durable: self.durable.clone(), end })
+    }
+
+    /// view writes out the buffered records and returns a view of the chunks the journal holds now.
+    pub fn view(&mut self) -> Result<JournalView> {
+        self.flush()?;
+        Ok(JournalView { file: self.journal.try_clone()?, novel: self.novel.clone(), cached: self.cached.clone() })
     }
 
     /// root returns the last root hash committed.

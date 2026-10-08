@@ -65,6 +65,9 @@ struct Shared {
     auto_gc: Mutex<HashMap<String, AutoGc>>,
     /// The addresses of each session's temporary objects in each database, which garbage collection keeps.
     temp_roots: Mutex<HashMap<(u64, String), Vec<store::Hash>>>,
+    /// What garbage collection must keep for each open transaction, by session, database, and branch: addresses,
+    /// and root values that are not written yet.
+    gc_roots: Mutex<HashMap<(u64, String, String), GcRoots>>,
     /// Whether the server refuses every write.
     read_only: std::sync::atomic::AtomicBool,
     /// Whether the server collects garbage on its own, which `dolt_auto_gc_enabled` shows.
@@ -244,6 +247,7 @@ impl Engine {
                 ended: Mutex::default(),
                 auto_gc: Mutex::default(),
                 temp_roots: Mutex::default(),
+                gc_roots: Mutex::default(),
                 read_only: std::sync::atomic::AtomicBool::new(false),
                 auto_gc_enabled: std::sync::atomic::AtomicBool::new(true),
                 cluster: std::sync::OnceLock::new(),
@@ -441,6 +445,35 @@ impl Engine {
         }
     }
 
+    /// publish_gc_roots records what garbage collection must keep for a session's transaction on a branch.
+    fn publish_gc_roots(&self, id: u64, txn: &Txn) {
+        if let Ok(mut all) = self.shared.gc_roots.lock() {
+            all.insert((id, txn.database.clone(), txn.branch.clone()), txn.gc_roots());
+        }
+    }
+
+    /// forget_gc_roots drops what a session's transactions asked garbage collection to keep.
+    fn forget_gc_roots(&self, id: u64) {
+        if let Ok(mut all) = self.shared.gc_roots.lock() {
+            all.retain(|(session, _, _), _| *session != id);
+        }
+    }
+
+    /// gc_roots returns what garbage collection must keep in a database for open transactions and temporary objects:
+    /// addresses, and root values that are not written yet.
+    fn gc_roots(&self, database: &str) -> GcRoots {
+        let (mut addresses, mut roots) = (self.temp_roots(database), Vec::new());
+        if let Ok(all) = self.shared.gc_roots.lock() {
+            for ((_, d, _), (a, r)) in all.iter() {
+                if d == database {
+                    addresses.extend(a.iter().copied());
+                    roots.extend(r.iter().cloned());
+                }
+            }
+        }
+        (addresses, roots)
+    }
+
     /// temp_roots returns the addresses of every session's temporary objects in a database.
     pub fn temp_roots(&self, database: &str) -> Vec<store::Hash> {
         let Ok(all) = self.shared.temp_roots.lock() else { return Vec::new() };
@@ -448,8 +481,8 @@ impl Engine {
     }
 
     /// auto_gc collects the garbage of each open database whose store has grown enough since it was last looked at, as
-    /// Dolt's automatic garbage collection does, skipping a database while a session has a transaction open or a
-    /// statement running on it, and returns the databases it collected with how long each took.
+    /// Dolt's automatic garbage collection does, copying what it keeps while sessions go on and keeping what their
+    /// open transactions need, and returns the databases it collected with how long each took.
     pub fn auto_gc(&self) -> Result<Vec<(String, std::time::Duration)>> {
         let databases: Vec<(String, DbHandle)> =
             lock(&self.shared.databases)?.iter().map(|(name, (handle, _))| (name.clone(), handle.clone())).collect();
@@ -463,13 +496,13 @@ impl Engine {
                 lock(&self.shared.auto_gc)?.insert(name, AutoGc { sizes: Some(then), ..state });
                 continue;
             }
-            let mut db = lock(&handle)?;
-            if self.activity().iter().any(|(_, a)| a.database == name && (a.writing || a.started.is_some())) {
-                continue;
-            }
             let start = std::time::Instant::now();
             let config = *lock(&self.shared.auto_gc_config)?;
-            db.gc(config, self.temp_roots(&name))?;
+            let mut run = lock(&handle)?.gc_begin(config)?;
+            run.copy()?;
+            let mut db = lock(&handle)?;
+            let (keep, roots) = self.gc_roots(&name);
+            db.gc_finish(run, keep, &roots)?;
             drop(db);
             let end = std::time::Instant::now();
             let sizes = Some(store_sizes(&noms));
@@ -668,6 +701,7 @@ impl Engine {
                 temp_used: false,
                 sink: None,
                 stream_next: false,
+                gc_published: false,
             },
             txns: Vec::new(),
             pending: None,
@@ -787,6 +821,8 @@ pub struct SessionState {
     pub sink: Option<Box<dyn crate::RowSink>>,
     /// Whether the statement starting now is a simple query's own statement, whose rows a SELECT streams to the sink.
     pub stream_next: bool,
+    /// Whether the session told garbage collection what its transactions need since it last had none.
+    pub gc_published: bool,
 }
 
 /// TempTables is a session's temporary schema in one database, which every working set leaves out.
@@ -798,6 +834,9 @@ pub struct TempTables {
     pub on_commit: Vec<(String, bool)>,
 }
 
+/// GcRoots is what garbage collection must keep: addresses, and root values that are not written yet.
+type GcRoots = (Vec<store::Hash>, Vec<Vec<u8>>);
+
 /// NEXT_SESSION numbers the sessions of the process.
 static NEXT_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -805,6 +844,7 @@ impl Drop for Session {
     fn drop(&mut self) {
         self.state.advisory.release_all(self.state.id, false, true);
         self.state.engine.forget_activity(self.state.id);
+        self.state.engine.forget_gc_roots(self.state.id);
         if let Ok(mut ended) = self.state.engine.shared.ended.lock() {
             ended.remove(&self.state.id);
         }
@@ -1086,6 +1126,9 @@ impl Session {
     fn report_activity(&mut self, query: Option<&str>) {
         if let Some(query) = query {
             self.state.source = query.to_string();
+        }
+        if self.txns.is_empty() && std::mem::take(&mut self.state.gc_published) {
+            self.state.engine.forget_gc_roots(self.state.id);
         }
         let (state, txns) = (&self.state, &self.txns);
         state.engine.update_activity(state.id, |activity| {
@@ -1559,7 +1602,11 @@ impl Session {
             ctx.install_aggregates()?;
             f(&mut ctx)
         })();
+        let stored = ctx.txn.store_pending(ctx.db);
+        let result = result.and_then(|value| stored.map(|_| value));
         db.defer_syncs(false);
+        self.state.engine.publish_gc_roots(self.state.id, &txn);
+        self.state.gc_published = true;
         let sync = db.take_sync();
         drop(db);
         match sync.map(store::PendingSync::wait) {

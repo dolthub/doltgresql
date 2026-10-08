@@ -426,14 +426,15 @@ impl Ctx<'_> {
         })
     }
 
-    /// save records a sequence's new state for every transaction and writes it to the working root.
+    /// save records a sequence's new state for every transaction, and for the working root once the statement ends.
     fn save(&mut self, sequence: &Sequence) -> Result<()> {
         self.txn
             .sequences
             .lock()
             .map_err(|_| PgError::internal("a lock was poisoned"))?
             .insert(sequence.id.clone(), sequence.clone());
-        store(self.db, &mut self.txn.root, sequence)
+        self.txn.pending_sequences.insert(sequence.id.clone(), sequence.clone());
+        Ok(())
     }
 
     /// track_created starts tracking a new sequence from its own state merged with the copies of it on the other

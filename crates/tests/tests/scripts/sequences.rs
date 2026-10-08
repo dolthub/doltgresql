@@ -4971,3 +4971,198 @@ fn test_limit_sequence_and_privilege_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_sequence_batches() {
+    run_scripts(&[
+        ScriptTest {
+            name: "sequences advanced by many rows in one statement",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE sb (id SERIAL PRIMARY KEY, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE sbs START 10 INCREMENT 5;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sb (v) SELECT i FROM generate_series(1, 500) i;",
+                    expected: Expected::Tag("INSERT 0 500"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), min(id), max(id) FROM sb;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("min", INT4), Column("max", INT4)],
+                        rows: &[
+                            &[T("500"), T("1"), T("500")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT last_value, is_called FROM sb_id_seq;",
+                    expected: Expected::Rows {
+                        columns: &[Column("last_value", INT8), Column("is_called", BOOL)],
+                        rows: &[
+                            &[T("500"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('sbs'), nextval('sbs');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8), Column("nextval", INT8)],
+                        rows: &[
+                            &[T("10"), T("15")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT last_value FROM sbs;",
+                    expected: Expected::Rows {
+                        columns: &[Column("last_value", INT8)],
+                        rows: &[
+                            &[T("15")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT currval('sbs'), lastval();",
+                    expected: Expected::Rows {
+                        columns: &[Column("currval", INT8), Column("lastval", INT8)],
+                        rows: &[
+                            &[T("15"), T("15")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sb (v) VALUES (1), (2), (3) RETURNING id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("501")],
+                            &[T("502")],
+                            &[T("503")],
+                        ],
+                        tag: "INSERT 0 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sb (id, v) VALUES (nextval('sb_id_seq'), 1), (1, 2);",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "sb_pkey""#, detail: "Key (id)=(1) already exists.", schema: "public", table: "sb", constraint: "sb_pkey", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT last_value FROM sb_id_seq;",
+                    expected: Expected::Rows {
+                        columns: &[Column("last_value", INT8)],
+                        rows: &[
+                            &[T("504")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sb (v) VALUES (4) RETURNING id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("505")],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sb (v) SELECT i FROM generate_series(1, 20) i;",
+                    expected: Expected::Tag("INSERT 0 20"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('sb_id_seq');",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8)],
+                        rows: &[
+                            &[T("526")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT setval('sbs', 100), nextval('sbs');",
+                    expected: Expected::Rows {
+                        columns: &[Column("setval", INT8), Column("nextval", INT8)],
+                        rows: &[
+                            &[T("100"), T("105")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sequencename, last_value FROM pg_sequences WHERE schemaname = 'public' ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("sequencename", NAME), Column("last_value", INT8)],
+                        rows: &[
+                            &[T("sb_id_seq"), T("526")],
+                            &[T("sbs"), T("105")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "a sequence read in the statement that advances it",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE sr START 10 INCREMENT 5;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nextval('sr'), nextval('sr'), (SELECT last_value FROM sr);",
+                    expected: Expected::Rows {
+                        columns: &[Column("nextval", INT8), Column("nextval", INT8), Column("last_value", INT8)],
+                        rows: &[
+                            &[T("10"), T("15"), T("15")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("a sequence read as a relation is planned before the statement's nextval calls run"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

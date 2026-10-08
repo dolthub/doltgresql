@@ -217,6 +217,8 @@ pub struct Database {
     nodes: Cache<Arc<Node>>,
     /// The chunks most recently read, decompressed.
     chunks: RefCell<Cache<Arc<Vec<u8>>>>,
+    /// Whether a garbage collection is running, which its `GcRun` clears when it ends.
+    collecting: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl ChunkReader for Database {
@@ -275,7 +277,13 @@ impl Database {
         let old_gen_dir = noms.join("oldgen");
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
-        Ok(Database { store, old_gen, nodes: Cache::new(), chunks: RefCell::new(Cache::new()) })
+        Ok(Database {
+            store,
+            old_gen,
+            nodes: Cache::new(),
+            chunks: RefCell::new(Cache::new()),
+            collecting: Arc::default(),
+        })
     }
 
     /// open_remote opens a file remote or backup in a directory for writing, as Dolt's FileFactory does: each commit
@@ -286,12 +294,24 @@ impl Database {
         std::fs::create_dir_all(&old_gen_dir).map_err(store::Error::from)?;
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
-        Ok(Database { store, old_gen, nodes: Cache::new(), chunks: RefCell::new(Cache::new()) })
+        Ok(Database {
+            store,
+            old_gen,
+            nodes: Cache::new(),
+            chunks: RefCell::new(Cache::new()),
+            collecting: Arc::default(),
+        })
     }
 
     /// with_store opens a database over another kind of chunk store, such as a remote, with no old generation.
     pub fn with_store(store: Box<dyn ChunkStore>) -> Database {
-        Database { store, old_gen: None, nodes: Cache::new(), chunks: RefCell::new(Cache::new()) }
+        Database {
+            store,
+            old_gen: None,
+            nodes: Cache::new(),
+            chunks: RefCell::new(Cache::new()),
+            collecting: Arc::default(),
+        }
     }
 
     /// journal returns the database's local journaling store, failing for a database over another kind of store.
@@ -399,9 +419,20 @@ impl Database {
     /// table file, where a full collection also rewrites the old generation's chunks. It also keeps the chunks that
     /// the given addresses reach, with the working sets' chunks.
     pub fn gc(&mut self, config: GcConfig, keep: Vec<Hash>) -> Result<()> {
-        let mode = config.mode;
-        let root = self.root();
-        let old_dir = self.journal()?.dir().join("oldgen");
+        let mut run = self.gc_begin(config)?;
+        run.copy()?;
+        self.gc_finish(run, keep, &[])
+    }
+
+    /// gc_begin starts a garbage collection as `gc` describes, noting the roots it keeps and taking a snapshot of the
+    /// store's files that `GcRun::copy` reads while the database goes on.
+    pub fn gc_begin(&mut self, config: GcConfig) -> Result<GcRun> {
+        if self.collecting.swap(true, std::sync::atomic::Ordering::AcqRel) {
+            return Err(Error::Invalid("a garbage collection is already running".into()));
+        }
+        let collecting = Collecting(self.collecting.clone());
+        let dir = self.journal()?.dir().to_path_buf();
+        let old_dir = dir.join("oldgen");
         if old_dir.join(store::MANIFEST_FILE).exists() {
             self.old_gen = Some(BlockStore::open(&old_dir)?);
         }
@@ -411,87 +442,52 @@ impl Database {
             .filter(|(name, _)| !name.starts_with("workingSets/"))
             .map(|(_, h)| h)
             .collect();
-        let mut seen = std::collections::HashSet::new();
-        let (mut old_chunks, mut moved) = (Vec::new(), Vec::new());
-        for chunk in self.reachable(committed, &mut seen)? {
-            match self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.0.hash)) {
-                true => old_chunks.push(chunk),
-                false => moved.push(chunk),
-            }
+        let old_gen = match old_dir.join(store::MANIFEST_FILE).exists() {
+            true => Some(BlockStore::open(&old_dir)?),
+            false => None,
+        };
+        Ok(GcRun {
+            _collecting: collecting,
+            config,
+            root: self.root(),
+            committed,
+            new_gen: self.journal()?.snapshot()?,
+            old_gen,
+            dir,
+            seen: std::collections::HashSet::new(),
+            old_specs: None,
+            new_specs: Vec::new(),
+        })
+    }
+
+    /// gc_finish ends a garbage collection that `GcRun::copy` ran: it copies the chunks that the store root, the
+    /// given addresses, and the addresses within the given root values reach and the copy did not see, which were
+    /// written since it began, and then replaces the store's files with the collection's.
+    pub fn gc_finish(&mut self, mut run: GcRun, keep: Vec<Hash>, roots: &[Vec<u8>]) -> Result<()> {
+        let mut starts = vec![self.root()];
+        starts.extend(keep);
+        for root in roots {
+            serial::walk::walk_addrs(Message(root), &mut |child| {
+                starts.push(child);
+                Ok(())
+            })?;
         }
-        let mut working = Vec::new();
-        for chunk in self.reachable([vec![root], keep].concat(), &mut seen)? {
-            match self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.0.hash)) {
-                true => old_chunks.push(chunk),
-                false => working.push(chunk),
-            }
-        }
-        let dir = self.journal()?.dir().to_path_buf();
-        if mode == GcMode::Shallow {
-            moved.append(&mut working);
-            let moved: Vec<store::Chunk> = moved.into_iter().map(|(chunk, _)| chunk).collect();
-            let spec = store::write_table(&dir, &moved)?;
-            self.journal()?.rewrite(spec.into_iter().collect())?;
-        } else {
-            let mut specs = match (mode, store::Manifest::read(&old_dir)?) {
-                (GcMode::Default, Some(manifest)) => manifest.specs,
-                _ => Vec::new(),
-            };
-            if mode == GcMode::Full {
-                moved.append(&mut old_chunks);
-            }
-            let database = dir.parent().and_then(Path::parent).and_then(Path::file_name);
-            let database = database.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            if specs.len() > MAX_TABLES {
-                specs = conjoin(&old_dir, specs, &database)?;
-            } else if mode == GcMode::Full
-                && store::Manifest::read(&old_dir)?.is_some_and(|m| m.specs.len() > MAX_TABLES)
-            {
-                log(&format!(
-                    "level=info msg=\"conjoin dynamically disabled. not conjoining.\" database={database} generation=old \
-                     pkg=store.noms"
-                ));
-            }
-            let (archive, size) = (config.archive, config.incremental_file_size);
-            let mut add = |spec: &store::TableSpec| match mode {
-                GcMode::Default => store::add_to_manifest(&old_dir, root, "__DOLT__", spec),
-                _ => Ok(()),
-            };
-            specs.extend(store::write_files(&old_dir, moved, archive, size, &mut add)?);
+        let full = run.config.mode == GcMode::Full;
+        let late: Vec<(Chunk, bool)> = reachable(&*self, starts, &mut run.seen)?
+            .into_iter()
+            .filter(|(chunk, _)| full || !run.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&chunk.hash)))
+            .collect();
+        run.new_specs.extend(store::write_files(&run.dir, late, run.config.archive, 0, &mut |_| Ok(()))?);
+        if let Some(specs) = run.old_specs {
+            let old_dir = run.dir.join("oldgen");
             self.old_gen = None;
-            store::replace_files(&old_dir, root, "__DOLT__", specs)?;
+            store::replace_files(&old_dir, self.root(), "__DOLT__", specs)?;
             self.old_gen = Some(BlockStore::open(&old_dir)?);
-            let specs = store::write_files(&dir, working, archive, size, &mut |_| Ok(()))?;
-            self.journal()?.rewrite(specs)?;
         }
+        self.journal()?.rewrite(run.new_specs)?;
         self.nodes.clear();
         self.chunks.borrow_mut().clear();
         Ok(())
-    }
-
-    /// reachable returns the chunks that the addresses reach and the seen set has not yet seen, adding them to it, each
-    /// with whether it is a leaf, which refers to no other chunk.
-    fn reachable(
-        &mut self,
-        starts: Vec<Hash>,
-        seen: &mut std::collections::HashSet<Hash>,
-    ) -> Result<Vec<(store::Chunk, bool)>> {
-        let mut chunks = Vec::new();
-        let mut stack = starts;
-        while let Some(hash) = stack.pop() {
-            if hash.is_empty() || !seen.insert(hash) {
-                continue;
-            }
-            let chunk = self.require(&hash)?;
-            let mut leaf = true;
-            serial::walk::walk_addrs(Message(&chunk.data), &mut |child| {
-                leaf = false;
-                stack.push(child);
-                Ok(())
-            })?;
-            chunks.push((chunk, leaf));
-        }
-        Ok(chunks)
     }
 
     /// address_map builds an address map of names to addresses, writing any nodes below its root, and returns its
@@ -819,6 +815,134 @@ impl Database {
     pub fn close(mut self) -> Result<()> {
         self.sync()
     }
+}
+
+/// GcRun is a garbage collection that `Database::gc_begin` started: the roots it keeps, a snapshot of the store's
+/// files as they were then, and the files that `copy` wrote for `Database::gc_finish` to swap in.
+pub struct GcRun {
+    _collecting: Collecting,
+    config: GcConfig,
+    root: Hash,
+    /// The heads of the datasets that are not working sets, whose chunks move to the old generation.
+    committed: Vec<Hash>,
+    new_gen: store::Snapshot,
+    old_gen: Option<BlockStore>,
+    dir: std::path::PathBuf,
+    /// The addresses the collection has read.
+    seen: std::collections::HashSet<Hash>,
+    /// The old generation's files after the collection, or None when they stay as they are.
+    old_specs: Option<Vec<store::TableSpec>>,
+    /// The new generation's files after the collection.
+    new_specs: Vec<store::TableSpec>,
+}
+
+impl GcRun {
+    /// copy writes the chunks that the collection's roots reach to new files, reading the snapshot rather than the
+    /// database, so that the database can go on meanwhile.
+    pub fn copy(&mut self) -> Result<()> {
+        let mode = self.config.mode;
+        let old_dir = self.dir.join("oldgen");
+        let reader = GcReader { new_gen: &self.new_gen, old_gen: self.old_gen.as_ref() };
+        let in_old_gen = |hash: &Hash| self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(hash));
+        let (mut old_chunks, mut moved) = (Vec::new(), Vec::new());
+        for chunk in reachable(&reader, self.committed.clone(), &mut self.seen)? {
+            match in_old_gen(&chunk.0.hash) {
+                true => old_chunks.push(chunk),
+                false => moved.push(chunk),
+            }
+        }
+        let mut working = Vec::new();
+        for chunk in reachable(&reader, vec![self.root], &mut self.seen)? {
+            match in_old_gen(&chunk.0.hash) {
+                true => old_chunks.push(chunk),
+                false => working.push(chunk),
+            }
+        }
+        if mode == GcMode::Shallow {
+            moved.append(&mut working);
+            let moved: Vec<store::Chunk> = moved.into_iter().map(|(chunk, _)| chunk).collect();
+            self.new_specs = store::write_table(&self.dir, &moved)?.into_iter().collect();
+            return Ok(());
+        }
+        let mut specs = match (mode, store::Manifest::read(&old_dir)?) {
+            (GcMode::Default, Some(manifest)) => manifest.specs,
+            _ => Vec::new(),
+        };
+        if mode == GcMode::Full {
+            moved.append(&mut old_chunks);
+        }
+        let database = self.dir.parent().and_then(Path::parent).and_then(Path::file_name);
+        let database = database.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if specs.len() > MAX_TABLES {
+            specs = conjoin(&old_dir, specs, &database)?;
+        } else if mode == GcMode::Full && store::Manifest::read(&old_dir)?.is_some_and(|m| m.specs.len() > MAX_TABLES) {
+            log(&format!(
+                "level=info msg=\"conjoin dynamically disabled. not conjoining.\" database={database} generation=old \
+                 pkg=store.noms"
+            ));
+        }
+        let (archive, size, root) = (self.config.archive, self.config.incremental_file_size, self.root);
+        let mut add = |spec: &store::TableSpec| match mode {
+            GcMode::Default => store::add_to_manifest(&old_dir, root, "__DOLT__", spec),
+            _ => Ok(()),
+        };
+        specs.extend(store::write_files(&old_dir, moved, archive, size, &mut add)?);
+        self.old_specs = Some(specs);
+        self.new_specs = store::write_files(&self.dir, working, archive, size, &mut |_| Ok(()))?;
+        Ok(())
+    }
+}
+
+/// Collecting marks a database's garbage collection as running until it is dropped.
+struct Collecting(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for Collecting {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+/// GcReader reads a garbage collection's snapshot of the new generation, then the old generation.
+struct GcReader<'a> {
+    new_gen: &'a store::Snapshot,
+    old_gen: Option<&'a BlockStore>,
+}
+
+impl ChunkReader for GcReader<'_> {
+    fn get(&self, hash: &Hash) -> store::Result<Option<Chunk>> {
+        match self.new_gen.get(hash)? {
+            Some(chunk) => Ok(Some(chunk)),
+            None => match self.old_gen {
+                Some(old_gen) => old_gen.get(hash),
+                None => Ok(None),
+            },
+        }
+    }
+}
+
+/// reachable returns the chunks that the addresses reach and the seen set has not yet seen, adding them to it, each
+/// with whether it is a leaf, which refers to no other chunk.
+fn reachable(
+    reader: &dyn ChunkReader,
+    starts: Vec<Hash>,
+    seen: &mut std::collections::HashSet<Hash>,
+) -> Result<Vec<(Chunk, bool)>> {
+    let mut chunks = Vec::new();
+    let mut stack = starts;
+    while let Some(hash) = stack.pop() {
+        if hash.is_empty() || !seen.insert(hash) {
+            continue;
+        }
+        let chunk = reader.require(&hash)?;
+        let mut leaf = true;
+        serial::walk::walk_addrs(Message(&chunk.data), &mut |child| {
+            leaf = false;
+            stack.push(child);
+            Ok(())
+        })?;
+        chunks.push((chunk, leaf));
+    }
+    Ok(chunks)
 }
 
 /// conjoin writes the chunks of the files that Dolt's conjoiner chooses among an old generation's files to one file,
