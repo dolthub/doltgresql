@@ -209,3 +209,14 @@ variable. Postgres, under its default `plpgsql.variable_conflict = error`, repor
 ambiguous` ("It could refer to either a PL/pgSQL variable or a table column.").
 
 Rust: reports the conflict as Postgres does, for a variable name that a column in the statement's scope also has.
+
+## Bats tests that encode Go-only catalog and message behavior (confirmed)
+
+Four bats tests asserted what the Go server does where Postgres 15 differs: `\dn` listing a `dolt` schema and
+`public` owned by `postgres` (Postgres lists only `public`, owned by `pg_database_owner`), pg_attribute leaving out the
+attributes of indexes (Postgres lists the primary key index's `pk` beside the table's), foreign key errors containing
+"violation" (Postgres says "violates foreign key constraint"), and `version()` reporting `PostgreSQL 15.5` while the
+server reports `server_version` 15.17 at startup.
+
+Rust: matches Postgres 15 in each case (and reports 15.17 from both), and the bats tests now expect that.
+

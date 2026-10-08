@@ -15,33 +15,16 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
-      id: go
-    - name: Install ICU4C (MacOS)
-      if: ${{ matrix.platform == 'macos-latest' }}
-      run: |
-        dir=$(brew --cellar icu4c)
-        dir="$dir"/$(ls "$dir")
-        echo CGO_CPPFLAGS=-I$dir/include >> $GITHUB_ENV
-        echo CGO_LDFLAGS=-L$dir/lib >> $GITHUB_ENV
-    - name: Install ICU4C (Windows)
-      if: ${{ matrix.platform == 'windows-latest' }}
-      uses: msys2/setup-msys2@v2
-      with:
-        path-type: inherit
-        msystem: UCRT64
-        pacboy: icu:p toolchain:p pkg-config:p
-    - name: Build SQL Syntax
-      run: ./build.sh
-      working-directory: ./postgres/parser
+    - name: Set up Rust
+      run: rustup toolchain install
+    - name: Cache Rust builds
+      uses: Swatinem/rust-cache@v2
+    - name: Build server
       shell: bash
-    - name: Test (*nix)
-      if: ${{ matrix.platform != 'windows-latest' }}
-      run: go test --timeout=20m $(go list ./testing/go/enginetest)
-    - name: Test (Windows)
-      if: ${{ matrix.platform == 'windows-latest' }}
-      shell: msys2 {0}
-      run: go.exe test --timeout=20m $(go.exe list ./testing/go/enginetest)
+      run: cargo build --release -p server
+    - name: Test
+      shell: bash
+      run: |
+        bin="$(pwd)/target/release/doltgres"
+        if [ -f "$bin.exe" ]; then bin="$bin.exe"; fi
+        DOLTGRES_TEST_TARGET="doltgres:$bin" cargo test --profile quick -p doltgres-tests --test scripts doltgres_engine::

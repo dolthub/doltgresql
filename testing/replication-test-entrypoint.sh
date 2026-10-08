@@ -22,8 +22,10 @@ do
   sleep 1
 done
 
-# Run the Go test
-go test -run="TestReplication" ./...
+# Run the replication tests against the Rust server
+DOLTGRES_REPLICATION_PRIMARY="postgres://postgres:password@localhost:5432/postgres?sslmode=disable" \
+  DOLTGRES_TEST_TARGET="doltgres:$(pwd)/target/release/doltgres" \
+  cargo test --profile quick -p server --test replication
 
 # Run the bats test
 cd testing/bats

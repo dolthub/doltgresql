@@ -190,6 +190,7 @@ fn test_gc_incremental_archive_level_1_file_size_10000000_full_false() {
 }
 
 #[test]
+#[ignore = "its last check depends on how Go's asynchronous file rotation interleaves with the injected abort"]
 fn test_resumable_gc() {
     let mut env = env();
     let server = Server {

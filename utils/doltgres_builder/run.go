@@ -134,7 +134,12 @@ func buildBinaries(ctx context.Context, tempDir, repoDir, doltgresBinDir, commit
 	parserScriptPath := filepath.Join(checkoutDir, "postgres", "parser", "build.sh")
 	doltgresCommandPath := filepath.Join(checkoutDir, "cmd", "doltgres")
 
-	command, err := goBuild(ctx, parserScriptPath, doltgresCommandPath, checkoutDir, commitDir)
+	var command string
+	if _, err = os.Stat(filepath.Join(checkoutDir, "crates", "server", "Cargo.toml")); err == nil {
+		command, err = cargoBuild(ctx, checkoutDir, commitDir)
+	} else {
+		command, err = goBuild(ctx, parserScriptPath, doltgresCommandPath, checkoutDir, commitDir)
+	}
 	if err != nil {
 		return err
 	}
@@ -163,6 +168,25 @@ func goBuild(ctx context.Context, parserScriptPath, doltgresCommandPath, source,
 		return "", err
 	}
 	return toBuild, nil
+}
+
+// cargoBuild builds the Rust doltgres binary and returns the filename it was copied to
+func cargoBuild(ctx context.Context, source, dest string) (string, error) {
+	build := builder.ExecCommand(ctx, "cargo", "build", "--release", "-p", "server")
+	build.Dir = source
+	if err := build.Run(); err != nil {
+		return "", err
+	}
+	doltgresFileName := "doltgres"
+	if runtime.GOOS == "windows" {
+		doltgresFileName = "doltgres.exe"
+	}
+	binary, err := os.ReadFile(filepath.Join(source, "target", "release", doltgresFileName))
+	if err != nil {
+		return "", err
+	}
+	toBuild := filepath.Join(dest, doltgresFileName)
+	return toBuild, os.WriteFile(toBuild, binary, 0755)
 }
 
 // doltgresVersion prints doltgres version of binary

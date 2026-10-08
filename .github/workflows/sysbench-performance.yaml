@@ -8,48 +8,91 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: sysbench-performance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   mini-sysbench:
-    name: Trigger Mini Benchmark Latency K8s Workflow
+    name: Compare main (Go) with the PR (Rust)
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-22.04
     steps:
-      - name: Build benchmark payload (main HEAD + PR HEAD)
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: main
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: main/go.mod
+          cache-dependency-path: main/go.sum
+      - name: Build main
+        run: |
+          ./postgres/parser/build.sh
+          go build -o "$RUNNER_TEMP/doltgres-main" ./cmd/doltgres
+        working-directory: ./main
+      - name: Set up Rust
+        run: rustup toolchain install
+        working-directory: ./pr
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pr
+      - name: Build PR
+        run: |
+          cargo build --release -p server
+          cp target/release/doltgres "$RUNNER_TEMP/doltgres-pr"
+        working-directory: ./pr
+      - name: Install sysbench and psql
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends sysbench postgresql-client
+          git clone --depth 1 https://github.com/dolthub/sysbench-lua-scripts.git "$RUNNER_TEMP/sysbench-lua-scripts"
+      - name: Run sysbench
+        run: |
+          {
+            echo "<!-- mini-sysbench -->"
+            echo "Mini sysbench, main ${{ github.event.pull_request.base.sha }} (Go) against ${{ github.event.pull_request.head.sha }} (Rust):"
+            echo
+            ./pr/.github/scripts/performance-benchmarking/compare-sysbench.sh "$RUNNER_TEMP/doltgres-main" \
+              "$RUNNER_TEMP/doltgres-pr" "$RUNNER_TEMP/sysbench-lua-scripts" 20
+          } > "$RUNNER_TEMP/sysbench-comment.md"
+          cat "$RUNNER_TEMP/sysbench-comment.md"
+      - name: Post comment
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
-        id: build_payload
+        env:
+          COMMENT_PATH: ${{ runner.temp }}/sysbench-comment.md
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // For PR benchmarks, use the PR base commit (the exact target commit this PR was opened/updated against),
-            // not the moving HEAD of `main`.
-            const fromSha = context.payload.pull_request.base.sha;
-
-            // The latest commit on the PR branch.
-            const toSha = context.payload.pull_request.head.sha;
-
-            const payload = {
-              from_server: "doltgres",
-              from_version: fromSha,
-              to_server: "doltgres",
-              to_version: toSha,
-              mode: "pullRequest",
-              issue_number: String(context.issue.number),
-              init_big_repo: "true",
-              actor: context.actor,
-              sysbench_test_time: "20",
-              template_script: "./.github/scripts/performance-benchmarking/get-doltgres-doltgres-job-json.sh",
-            };
-
-            core.setOutput("from_sha", fromSha);
-            core.setOutput("to_sha", toSha);
-            core.setOutput("payload", JSON.stringify(payload));
-      - name: Log benchmark versions
-        shell: bash
-        run: |
-          echo "from_version_sha=${{ steps.build_payload.outputs.from_sha }}"
-          echo "to_version_sha=${{ steps.build_payload.outputs.to_sha }}"
-      - uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
-          event-type: benchmark-latency
-          client-payload: ${{ steps.build_payload.outputs.payload }}
+            const fs = require('fs')
+            const body = fs.readFileSync(process.env.COMMENT_PATH, 'utf8')
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            })
+            const comment = comments.find(comment => comment.body.includes('<!-- mini-sysbench -->'))
+            if (comment) {
+              await github.rest.issues.updateComment({
+                comment_id: comment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body,
+              })
+            }
