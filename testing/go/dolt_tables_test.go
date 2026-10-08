@@ -3229,7 +3229,6 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{11}},
 				},
 				{
-					Skip: true, // TODO: pg_attribute resolves a view's tables using the current search_path
 					Query: `SELECT a.attname
 						FROM pg_attribute a
 						JOIN pg_class c ON a.attrelid = c.oid

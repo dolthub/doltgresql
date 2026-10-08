@@ -306,7 +306,6 @@ func TestPgAttributeViewColumns(t *testing.T) {
 			},
 		},
 		{
-			Skip: true, // TODO: pg_attribute resolves a view's tables using the current search_path
 			Name: "pg_attribute includes view columns outside the search path",
 			SetUpScript: []string{
 				`CREATE SCHEMA other;`,
@@ -7254,6 +7253,12 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{3947121936, "source_commit", 25, 3, "f", "f", "f"},
 						{3947121936, "target", 25, 4, "f", "f", "f"},
 						{3947121936, "unmerged_tables", 25, 5, "f", "f", "f"},
+						{3962040469, "pk", 23, 1, "f", "f", "f"},
+						{3962040469, "commit", 25, 2, "f", "f", "f"},
+						{3962040469, "commit_date", 1114, 3, "f", "f", "f"},
+						{3962040469, "committer", 25, 4, "f", "f", "f"},
+						{3962040469, "email", 25, 5, "f", "f", "f"},
+						{3962040469, "message", 25, 6, "f", "f", "f"},
 						{3999387287, "branch", 25, 1, "t", "f", "f"},
 						{3999387287, "last_read", 1114, 2, "f", "f", "f"},
 						{3999387287, "last_write", 1114, 3, "f", "f", "f"},
