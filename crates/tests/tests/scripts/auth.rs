@@ -1106,10 +1106,10 @@ fn test_auth_dolt_procedures() {
                 },
                 ScriptTestAssertion {
                     query: "select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Query,
                     username: "auth_test_super",
                     password: "auth_test_spass",
-                    skip: Some("the Go server panics, with a stack trace that differs between runs"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -1904,10 +1904,10 @@ fn test_auth_dolt_procedures() {
                 },
                 ScriptTestAssertion {
                     query: "select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Query,
                     username: "auth_test_basic",
                     password: "auth_test_bpass",
-                    skip: Some("the Go server panics, with a stack trace that differs between runs"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.

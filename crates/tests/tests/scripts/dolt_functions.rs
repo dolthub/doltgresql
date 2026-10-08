@@ -1910,8 +1910,8 @@ fn test_dolt_conflicts_resolve() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT DOLT_MERGE('main');",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Merge conflict detected, @autocommit transaction rolled back. @autocommit must be disabled so that merge conflicts can be resolved using the dolt_conflicts and dolt_schema_conflicts tables before manually committing the transaction. Alternatively, to commit transactions with merge conflicts, set @@dolt_allow_commit_conflicts = 1", ..E }),
                     flow: Flow::Query,
-                    skip: Some("the Go server panics, with a stack trace that differs between runs"),
                     ..A
                 },
             ],
@@ -1964,8 +1964,8 @@ fn test_dolt_conflicts_resolve() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT DOLT_MERGE('main');",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Merge conflict detected, @autocommit transaction rolled back. @autocommit must be disabled so that merge conflicts can be resolved using the dolt_conflicts and dolt_schema_conflicts tables before manually committing the transaction. Alternatively, to commit transactions with merge conflicts, set @@dolt_allow_commit_conflicts = 1", ..E }),
                     flow: Flow::Query,
-                    skip: Some("the Go server panics, with a stack trace that differs between runs"),
                     ..A
                 },
             ],
@@ -2018,8 +2018,8 @@ fn test_dolt_conflicts_resolve() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT DOLT_MERGE('main');",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Merge conflict detected, @autocommit transaction rolled back. @autocommit must be disabled so that merge conflicts can be resolved using the dolt_conflicts and dolt_schema_conflicts tables before manually committing the transaction. Alternatively, to commit transactions with merge conflicts, set @@dolt_allow_commit_conflicts = 1", ..E }),
                     flow: Flow::Query,
-                    skip: Some("the Go server panics, with a stack trace that differs between runs"),
                     ..A
                 },
             ],
@@ -4598,8 +4598,8 @@ fn test_dolt_merge() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT DOLT_MERGE('main');",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "Merge conflict detected, @autocommit transaction rolled back. @autocommit must be disabled so that merge conflicts can be resolved using the dolt_conflicts and dolt_schema_conflicts tables before manually committing the transaction. Alternatively, to commit transactions with merge conflicts, set @@dolt_allow_commit_conflicts = 1", ..E }),
                     flow: Flow::Query,
-                    skip: Some("the Go server panics, with a stack trace that differs between runs"),
                     ..A
                 },
             ],
@@ -5000,8 +5000,14 @@ fn test_dolt_preview_merge_conflicts_summary() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT COUNT(*) FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
-                    skip: Some("the Go server panics, with a stack trace that differs between runs"),
                     ..A
                 },
             ],

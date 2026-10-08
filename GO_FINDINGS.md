@@ -174,3 +174,11 @@ Go matches table and column names without regard to case, so after `CREATE TABLE
 relation does not exist. Four dolt_merge scripts (from Dolt's enginetests) relied on it.
 
 Rust: resolves names as Postgres does; the scripts' 43 assertions now expect Postgres' errors.
+
+## Dolt procedures panic on merge conflicts and empty commits (observed)
+
+dolt_commit_hash_out with nothing to commit, and DOLT_MERGE and DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY in several
+conflict scripts, make the Go server panic, with a stack trace that differs between runs.
+
+Rust: returns Dolt's errors ("nothing to commit", the autocommit merge conflict error) and the summary's counts;
+the seven assertions now expect them.
