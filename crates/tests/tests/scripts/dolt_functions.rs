@@ -5859,3 +5859,59 @@ fn test_writes_after_dolt_gc() {
         },
     ]);
 }
+
+#[test]
+fn test_create_index_after_dolt_gc() {
+    run_scripts(&[
+        ScriptTest {
+            name: "CREATE INDEX after DOLT_GC removed the empty map",
+            set_up_script: &[
+                "CREATE TABLE gi (id INT4 PRIMARY KEY, v INT4);",
+                "INSERT INTO gi SELECT i, i % 7 FROM generate_series(1, 50) i;",
+            ],
+            assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_GC();",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_gc", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX gi_v ON gi (v);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO gi VALUES (51, 3);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM gi WHERE v = 3 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("3")],
+                            &[T("10")],
+                            &[T("17")],
+                            &[T("24")],
+                            &[T("31")],
+                            &[T("38")],
+                            &[T("45")],
+                            &[T("51")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

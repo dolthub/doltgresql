@@ -92,8 +92,8 @@ pub struct IndexDef {
 }
 
 impl IndexDef {
-    /// empty_root returns the address of the index's root when it holds no rows, which a vector index stores as a
-    /// proximity map.
+    /// empty_root writes the index's root for when it holds no rows, which a vector index stores as a proximity map,
+    /// and returns its address.
     pub fn empty_root(&self, db: &mut Database) -> Result<Hash> {
         match self.vector {
             Some(distance) => {
@@ -102,7 +102,7 @@ impl IndexDef {
                 };
                 Ok(prolly::write_proximity_map(Vec::new(), distance, &mut sink)?)
             }
-            None => Ok(Hash::of(&doltdb::table::empty_rows())),
+            None => Ok(db.write_value(doltdb::table::empty_rows())?),
         }
     }
 }

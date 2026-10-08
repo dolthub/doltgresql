@@ -1557,7 +1557,7 @@ impl Ctx<'_> {
             let root = table.write_vector_index(self.db, &index, distance)?;
             stored.put_index(self.db, &index.name, Some(root))?;
         } else {
-            let empty = Hash::of(&empty_rows());
+            let empty = index.empty_root(self.db)?;
             stored.put_index(self.db, &index.name, Some(empty))?;
             keys.dedup_by(|a, b| table.compare_index_keys(&index, &a.0, &b.0) == std::cmp::Ordering::Equal);
             let edits = keys.into_iter().map(|(k, _)| (k, Some(prolly::val::build_tuple(&[])))).collect();
