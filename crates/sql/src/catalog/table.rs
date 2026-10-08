@@ -198,17 +198,23 @@ fn remember(
 impl TableDef {
     /// load reads the table at the address, reusing what this thread decoded of the table or its schema before.
     pub fn load(db: &mut Database, schema: &str, name: &str, address: Hash) -> Result<TableDef> {
-        let named = |(table, user_types): Decoded| {
+        let mut table = TableDef::clone(&*TableDef::shared(db, schema, name, address)?);
+        table.schema = schema.to_string();
+        table.name = name.to_string();
+        Ok(table)
+    }
+
+    /// shared reads the table at the address as this thread decoded it before, without copying it, where the schema
+    /// and name may be another table's with the same contents.
+    pub fn shared(db: &mut Database, schema: &str, name: &str, address: Hash) -> Result<std::sync::Arc<TableDef>> {
+        let shared = |(table, user_types): Decoded| {
             for definition in user_types {
                 crate::usertypes::register(definition);
             }
-            let mut table = TableDef::clone(&table);
-            table.schema = schema.to_string();
-            table.name = name.to_string();
             table
         };
         if let Some(decoded) = TABLES.with(|c| c.borrow().get(&address).cloned()) {
-            return Ok(named(decoded));
+            return Ok(shared(decoded));
         }
         let missing = || PgError::internal(format!("missing chunk for table {schema}.{name}"));
         let table = Table::decode(&db.read_value(&address)?.ok_or_else(missing)?)?;
@@ -231,7 +237,7 @@ impl TableDef {
             }
         };
         remember(&TABLES, address, decoded.clone());
-        Ok(named(decoded))
+        Ok(shared(decoded))
     }
 
     /// decode decodes a table and the definition its schema gives, with the roots of its secondary indexes, listing

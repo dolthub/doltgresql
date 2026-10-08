@@ -112,7 +112,7 @@ fn columns(
     names: &[&[u8]],
 ) -> Result<(String, String, Vec<String>)> {
     let (schema, table) = split_key(key);
-    let def = root.table(db, &schema, &table)?.map(|a| TableDef::load(db, &schema, &table, a)).transpose()?;
+    let def = root.table(db, &schema, &table)?.map(|a| TableDef::shared(db, &schema, &table, a)).transpose()?;
     let found: Option<Vec<String>> = def.as_ref().and_then(|def| {
         tags.iter().map(|tag| def.columns.iter().find(|c| c.tag == *tag).map(|c| c.name.clone())).collect()
     });
