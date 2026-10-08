@@ -101,3 +101,16 @@ fn walks_from_keys_start_at_the_first_key_not_less() {
     assert_eq!(number(&Items::last(&mut empty, root.clone()).unwrap()), None);
     assert_eq!(number(&Items::at_key(&mut empty, root, &key(5), &compare).unwrap()), None);
 }
+
+#[test]
+fn seeks_move_walks_to_keys_in_either_direction() {
+    let mut nodes = MemoryNodes::default();
+    let root = build(&mut nodes, 20_000);
+    let compare = |a: &[u8], b: &[u8]| a.cmp(b);
+    let mut items = Items::first(&mut nodes, root).unwrap();
+    for target in [3, 4, 5_000, 5_001, 39_998, 12, 0, 39_999, 20_000, 7] {
+        items.seek(&mut nodes, &key(target), &compare).unwrap();
+        let expected = target.next_multiple_of(2);
+        assert_eq!(number(&items), (expected < 40_000).then_some(expected), "seeking {target}");
+    }
+}

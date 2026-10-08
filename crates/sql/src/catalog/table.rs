@@ -138,7 +138,7 @@ pub struct Primary {
 
 /// column_type reads a column type from its form in a Dolt schema: a Doltgres type, or one of the MySQL types of
 /// Dolt's own tables, such as dolt_schemas.
-fn column_type(sql_type: &[u8]) -> Result<ColumnType> {
+fn column_type(sql_type: &[u8], user_types: &mut Vec<objects::SerializedType>) -> Result<ColumnType> {
     let unsupported = || PgError::unsupported(format!("the column type {}", String::from_utf8_lossy(sql_type)));
     let Some(hex) = sql_type.strip_prefix(b"extended_") else {
         let text = String::from_utf8_lossy(sql_type);
@@ -159,16 +159,92 @@ fn column_type(sql_type: &[u8]) -> Result<ColumnType> {
     let modifier = definition.att_typ_mod;
     let oid = match builtin_type_by_id(&definition.id) {
         Some(builtin) => builtin.oid,
-        None => crate::usertypes::register(definition),
+        None => {
+            user_types.push(definition.clone());
+            crate::usertypes::register(definition)
+        }
     };
     Ok(ColumnType { oid, modifier })
 }
 
+/// CACHE_LIMIT is how many tables and schemas a thread keeps decoded before it starts over.
+const CACHE_LIMIT: usize = 1024;
+
+/// Decoded is a table definition that a thread decoded, with the user types its columns registered.
+type Decoded = (std::sync::Arc<TableDef>, Vec<objects::SerializedType>);
+
+thread_local! {
+    /// TABLES holds the definitions of the tables this thread decoded by their address, and SCHEMAS by their schema's
+    /// address, which never change since chunks are addressed by their content.
+    static TABLES: std::cell::RefCell<std::collections::HashMap<Hash, Decoded>> = Default::default();
+    static SCHEMAS: std::cell::RefCell<std::collections::HashMap<Hash, Decoded>> = Default::default();
+}
+
+/// remember adds a decoded definition to a cache, emptying the cache first when it is full.
+fn remember(
+    cache: &'static std::thread::LocalKey<std::cell::RefCell<std::collections::HashMap<Hash, Decoded>>>,
+    address: Hash,
+    decoded: Decoded,
+) {
+    cache.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.len() >= CACHE_LIMIT {
+            c.clear();
+        }
+        c.insert(address, decoded);
+    });
+}
+
 impl TableDef {
-    /// load reads the table at the address.
+    /// load reads the table at the address, reusing what this thread decoded of the table or its schema before.
     pub fn load(db: &mut Database, schema: &str, name: &str, address: Hash) -> Result<TableDef> {
+        let named = |(table, user_types): Decoded| {
+            for definition in user_types {
+                crate::usertypes::register(definition);
+            }
+            let mut table = TableDef::clone(&table);
+            table.schema = schema.to_string();
+            table.name = name.to_string();
+            table
+        };
+        if let Some(decoded) = TABLES.with(|c| c.borrow().get(&address).cloned()) {
+            return Ok(named(decoded));
+        }
         let missing = || PgError::internal(format!("missing chunk for table {schema}.{name}"));
         let table = Table::decode(&db.read_value(&address)?.ok_or_else(missing)?)?;
+        let roots = table.indexes(db)?;
+        let decoded = match SCHEMAS.with(|c| c.borrow().get(&table.schema).cloned()) {
+            Some((shape, user_types)) => {
+                let mut def = TableDef::clone(&shape);
+                for index in &mut def.indexes {
+                    index.root = roots.iter().find(|(n, _)| *n == index.name).map(|(_, r)| *r).ok_or_else(missing)?;
+                }
+                def.table = table;
+                (std::sync::Arc::new(def), user_types)
+            }
+            None => {
+                let mut user_types = Vec::new();
+                let def = TableDef::decode(db, schema, name, table, &roots, &mut user_types)?;
+                let decoded = (std::sync::Arc::new(def), user_types);
+                remember(&SCHEMAS, decoded.0.table.schema, decoded.clone());
+                decoded
+            }
+        };
+        remember(&TABLES, address, decoded.clone());
+        Ok(named(decoded))
+    }
+
+    /// decode decodes a table and the definition its schema gives, with the roots of its secondary indexes, listing
+    /// the user types that its columns register.
+    fn decode(
+        db: &mut Database,
+        schema: &str,
+        name: &str,
+        table: Table,
+        roots: &[(String, Hash)],
+        user_types: &mut Vec<objects::SerializedType>,
+    ) -> Result<TableDef> {
+        let missing = || PgError::internal(format!("missing chunk for table {schema}.{name}"));
         let message = db.read_value(&table.schema)?.ok_or_else(missing)?;
         let message = TableSchema::new(Message(&message))?;
         let (mut columns, mut hidden, mut positions) = (Vec::new(), Vec::new(), Vec::new());
@@ -179,7 +255,7 @@ impl TableDef {
             }
             let column = ColumnDef {
                 name: String::from_utf8_lossy(c.name).into_owned(),
-                ty: column_type(c.sql_type)?,
+                ty: column_type(c.sql_type, user_types)?,
                 tag: c.tag,
                 encoding: c.encoding,
                 nullable: c.nullable,
@@ -214,7 +290,6 @@ impl TableDef {
                 expression: String::from_utf8_lossy(c.expression).into_owned(),
             })
             .collect();
-        let roots = table.indexes(db)?;
         let lossy = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
         let indexes = message
             .secondary_indexes()?

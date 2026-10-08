@@ -950,19 +950,23 @@ impl IndexScan {
     }
 
     /// separated reports whether every key of one range sorts before every key of the next, as ranges of ascending
-    /// columns that differ in their first column that is not the same single value in both do.
+    /// columns that differ in their first column that is not the same single value in both do, unless the index puts
+    /// the NULLs that one of them holds after every value.
     fn separated(&self, a: &Range, b: &Range) -> bool {
         let columns = self.index_columns();
         for (i, (x, y)) in a.iter().zip(b).enumerate() {
-            let plain = columns.get(i).and_then(|&c| self.table.index_column(c)).is_some_and(|column| {
-                !crate::storage::is_adaptive(column.encoding)
-                    && self.index.is_none_or(|x| {
-                        let index = &self.table.indexes[x];
-                        !index.descending.get(i).copied().unwrap_or(false)
-                            && !index.nulls_last.get(i).copied().unwrap_or(false)
-                    })
-            });
-            if !plain {
+            let Some(column) = columns.get(i).and_then(|&c| self.table.index_column(c)) else { return false };
+            let (descending, nulls_last) = match self.index {
+                Some(index) => {
+                    let index = &self.table.indexes[index];
+                    (
+                        index.descending.get(i).copied().unwrap_or(false),
+                        index.nulls_last.get(i).copied().unwrap_or(false),
+                    )
+                }
+                None => (false, false),
+            };
+            if descending || crate::storage::is_adaptive(column.encoding) {
                 return false;
             }
             let point = |r: &crate::ranges::ColumnRange| match (&r.lower, &r.upper) {
@@ -972,6 +976,10 @@ impl IndexScan {
             };
             if point(x) && point(y) && x.lower.compare(&y.lower) == std::cmp::Ordering::Equal {
                 continue;
+            }
+            let has_null = |r: &crate::ranges::ColumnRange| matches!(r.lower, Cut::BelowNull);
+            if nulls_last && (has_null(x) || has_null(y)) {
+                return false;
             }
             return x.upper.compare(&y.lower) != std::cmp::Ordering::Greater;
         }
@@ -993,11 +1001,6 @@ impl IndexScan {
             }
         }
         std::cmp::Ordering::Equal
-    }
-
-    /// in_range reports whether a key's leading values lie in any of the scan's ranges.
-    fn in_range(&self, values: &[Value]) -> bool {
-        self.ranges.iter().any(|r| crate::ranges::range_contains(r, values))
     }
 
     /// closest returns the keys of the scan's vector index closest to its query vector, closest first, with their
@@ -1045,11 +1048,12 @@ impl IndexScan {
             Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
             None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
         };
-        let mut bounds: Vec<Bounds> = self.ranges.iter().map(|r| self.bounds(r)).collect();
+        let mut bounds: Vec<(Bounds, usize)> =
+            self.ranges.iter().enumerate().map(|(i, r)| (self.bounds(r), i)).collect();
         if self.reverse {
             bounds.reverse();
         }
-        let exact = bounds.iter().all(|b| b.exact);
+        let exact = bounds.iter().all(|(b, _)| b.exact);
         Ok(Box::new(IndexRows { reader: self.reader()?, root, bounds, exact, current: 0, items: None, repeat: None }))
     }
 
@@ -1069,7 +1073,7 @@ impl IndexScan {
             }
             mask
         });
-        Ok(Reader { scan: self, columns: self.index_columns(), covering, primary, needed })
+        Ok(Reader { scan: self, columns: self.index_columns(), covering, primary, lookup: None, needed })
     }
 
     /// run reads the rows whose keys lie in the scan's ranges, in index order or its reverse, or the rows a vector
@@ -1114,10 +1118,11 @@ impl IndexScan {
         if self.reverse {
             items.reverse();
         }
-        let reader = self.reader()?;
+        let mut reader = self.reader()?;
         let mut rows = Vec::new();
         for (key, value) in items {
-            let Some((row, cardinality)) = reader.row(ctx.db, &key, &value, exact || self.nearest.is_some())? else {
+            let check = (!exact && self.nearest.is_none()).then_some(self.ranges.as_slice());
+            let Some((row, cardinality)) = reader.row(ctx.db, &key, &value, check)? else {
                 continue;
             };
             for _ in 0..cardinality {
@@ -1134,26 +1139,34 @@ struct Reader<'s> {
     /// The table columns of the index's keys, in key order.
     columns: Vec<usize>,
     covering: bool,
-    /// The primary index, which a scan of a secondary index that does not cover the plan looks rows up in.
+    /// The primary index, which a scan of a secondary index that does not cover the plan looks rows up in, and the
+    /// walk of it that the lookups move.
     primary: Option<Arc<prolly::Node>>,
+    lookup: Option<prolly::Items>,
     /// Which table columns the plan reads, or None for every column.
     needed: Option<Vec<bool>>,
 }
 
 impl Reader<'_> {
-    /// row returns the row of an index entry with its cardinality, or None when the entry lies outside the scan's
-    /// ranges, which only an inexact scan checks, or its row is missing from the primary index.
-    fn row(&self, db: &mut Database, key: &[u8], value: &[u8], exact: bool) -> Result<Option<(Vec<Value>, u64)>> {
+    /// row returns the row of an index entry with its cardinality, or None when the entry lies outside all of the
+    /// ranges to check it against, if any, or its row is missing from the primary index.
+    fn row(
+        &mut self,
+        db: &mut Database,
+        key: &[u8],
+        value: &[u8],
+        check: Option<&[Range]>,
+    ) -> Result<Option<(Vec<Value>, u64)>> {
         let (scan, table) = (self.scan, &*self.scan.table);
         let tuple = prolly::Tuple(key);
         let wanted = |c: usize| self.needed.as_ref().is_none_or(|n| n.get(c).copied().unwrap_or(false));
         let mut values: Vec<Value> = Vec::new();
-        if !exact {
+        if let Some(ranges) = check {
             for (field, &c) in self.columns.iter().enumerate() {
                 let column = table.index_column(c).expect("an index column");
                 values.push(crate::storage::decode_field(db, tuple.field(field)?, column.encoding, column.ty)?);
             }
-            if !scan.in_range(&values) {
+            if !ranges.iter().any(|r| crate::ranges::range_contains(r, &values)) {
                 return Ok(None);
             }
         }
@@ -1203,9 +1216,22 @@ impl Reader<'_> {
         }
         let primary_key = prolly::val::build_tuple(&fields);
         let compare = |a: &[u8], b: &[u8]| table.compare_keys(a, b);
-        let primary = self.primary.clone().expect("a primary index");
-        let Some(stored) = prolly::get(db, primary, &primary_key, &compare)? else { return Ok(None) };
-        table.decode_columns(db, &primary_key, &stored, self.needed.as_deref()).map(Some)
+        let lookup = match &mut self.lookup {
+            Some(lookup) => {
+                lookup.seek(db, &primary_key, &compare)?;
+                lookup
+            }
+            None => {
+                let primary = self.primary.clone().expect("a primary index");
+                self.lookup.insert(prolly::Items::at_key(db, primary, &primary_key, &compare)?)
+            }
+        };
+        match lookup.current()? {
+            Some((key, stored)) if compare(key, &primary_key) == std::cmp::Ordering::Equal => {
+                table.decode_columns(db, &primary_key, stored, self.needed.as_deref()).map(Some)
+            }
+            _ => Ok(None),
+        }
     }
 }
 
@@ -1265,8 +1291,9 @@ impl Bounds {
 struct IndexRows<'p> {
     reader: Reader<'p>,
     root: Arc<prolly::Node>,
-    /// The bounds of each range, in the order the scan reads them.
-    bounds: Vec<Bounds>,
+    /// The bounds of each range with the range's position among the scan's ranges, in the order the scan reads them.
+    bounds: Vec<(Bounds, usize)>,
+    /// Whether every range is exact.
     exact: bool,
     current: usize,
     items: Option<prolly::Items>,
@@ -1275,6 +1302,44 @@ struct IndexRows<'p> {
 }
 
 impl crate::exec::Rows for IndexRows<'_> {
+    fn skip(&mut self, ctx: &mut Ctx<'_>, count: usize) -> Result<usize> {
+        let (scan, reverse) = (self.reader.scan, self.reader.scan.reverse);
+        // Only an exact scan of the primary index or of a covering index has a row for every entry it walks.
+        if !self.exact
+            || self.repeat.is_some()
+            || scan.table.keyless()
+            || (scan.index.is_some() && !self.reader.covering)
+        {
+            let mut skipped = 0;
+            while skipped < count && self.next(ctx)?.is_some() {
+                skipped += 1;
+            }
+            return Ok(skipped);
+        }
+        let mut skipped = 0;
+        while skipped < count {
+            let Some((bounds, _)) = self.bounds.get(self.current) else { break };
+            if self.items.is_none() {
+                self.items = Some(bounds.walk(scan, ctx.db, &self.root, reverse)?);
+            }
+            let items = self.items.as_mut().expect("a walk");
+            match items.current()? {
+                Some((key, _)) if bounds.holds(scan, key, reverse) => {}
+                _ => {
+                    self.items = None;
+                    self.current += 1;
+                    continue;
+                }
+            }
+            match reverse {
+                true => items.retreat(ctx.db)?,
+                false => items.advance(ctx.db)?,
+            }
+            skipped += 1;
+        }
+        Ok(skipped)
+    }
+
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Vec<Value>>> {
         if let Some((row, remaining)) = self.repeat.as_mut() {
             if *remaining > 1 {
@@ -1285,7 +1350,7 @@ impl crate::exec::Rows for IndexRows<'_> {
         }
         let (scan, reverse) = (self.reader.scan, self.reader.scan.reverse);
         loop {
-            let Some(bounds) = self.bounds.get(self.current) else { return Ok(None) };
+            let Some((bounds, range)) = self.bounds.get(self.current) else { return Ok(None) };
             if self.items.is_none() {
                 self.items = Some(bounds.walk(scan, ctx.db, &self.root, reverse)?);
             }
@@ -1300,7 +1365,8 @@ impl crate::exec::Rows for IndexRows<'_> {
                 self.current += 1;
                 continue;
             }
-            let row = self.reader.row(ctx.db, key, value, self.exact)?;
+            let check = (!bounds.exact).then(|| std::slice::from_ref(&scan.ranges[*range]));
+            let row = self.reader.row(ctx.db, key, value, check)?;
             match reverse {
                 true => items.retreat(ctx.db)?,
                 false => items.advance(ctx.db)?,
@@ -1665,8 +1731,8 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
     }
 }
 
-/// columns_read returns the columns of the input row that expressions read, or None when one reads the row in a way
-/// that the set cannot tell, as a subquery may.
+/// columns_read returns the columns of the input row that expressions read, counting those that their subqueries read
+/// as their enclosing row, or None when one reads the row in a way that the set cannot tell.
 fn columns_read<'e>(exprs: impl IntoIterator<Item = &'e Expr>) -> Option<BTreeSet<usize>> {
     let mut columns = BTreeSet::new();
     let mut known = true;
@@ -1675,17 +1741,113 @@ fn columns_read<'e>(exprs: impl IntoIterator<Item = &'e Expr>) -> Option<BTreeSe
             Expr::Column(i) => {
                 columns.insert(*i);
             }
-            Expr::Exists(_)
-            | Expr::Scalar(_)
-            | Expr::ArraySubquery(..)
-            | Expr::AnySubquery(..)
-            | Expr::InputColumn(_)
-            | Expr::AggRef(_)
-            | Expr::Default(_) => known = false,
+            Expr::Exists(plan) | Expr::Scalar(plan) | Expr::ArraySubquery(plan, _) | Expr::AnySubquery(_, plan, _) => {
+                known &= outer_reads(plan, 1, &mut columns);
+            }
+            Expr::InputColumn(_) | Expr::AggRef(_) | Expr::Default(_) => known = false,
             _ => {}
         });
     }
     known.then_some(columns)
+}
+
+/// outer_reads adds the columns of the enclosing row `depth` rows out that a plan's expressions read, reporting
+/// whether it could see every expression of the plan.
+fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
+    let mut known = true;
+    let mut read = |exprs: &mut dyn Iterator<Item = &Expr>| {
+        for expr in exprs {
+            expr.visit(&mut |e| match e {
+                Expr::Outer(d, i) if *d == depth => {
+                    out.insert(*i);
+                }
+                Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) => {
+                    known &= outer_reads(p, depth + 1, out);
+                }
+                _ => {}
+            });
+        }
+    };
+    let inputs: Vec<(&Plan, usize)> = match plan {
+        Plan::OneRow | Plan::Scan(..) | Plan::Catalog(_) | Plan::WorkTable(..) => Vec::new(),
+        Plan::System(_) | Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
+        Plan::IndexScan(scan) => {
+            if let Some(n) = &scan.nearest {
+                read(&mut [&n.order, &n.query].into_iter().chain(&n.limit).chain(&n.offset));
+            }
+            Vec::new()
+        }
+        Plan::Values(rows) => {
+            read(&mut rows.iter().flatten());
+            Vec::new()
+        }
+        Plan::Function { call, .. } => {
+            read(&mut std::iter::once(call));
+            Vec::new()
+        }
+        Plan::RowsFrom { calls, .. } => {
+            read(&mut calls.iter());
+            Vec::new()
+        }
+        Plan::Filter { input, predicate } => {
+            read(&mut std::iter::once(predicate));
+            vec![(input, depth)]
+        }
+        Plan::Project { input, exprs } => {
+            read(&mut exprs.iter());
+            vec![(input, depth)]
+        }
+        Plan::Join { left, right, condition, lateral, .. } => {
+            read(&mut condition.iter());
+            vec![(left, depth), (right, depth + usize::from(*lateral))]
+        }
+        Plan::Aggregate { input, groups, aggregates, .. } => {
+            read(&mut groups.iter());
+            for call in aggregates {
+                read(&mut call.args.iter().chain(&call.filter).chain(call.order.iter().map(|(e, _, _)| e)));
+            }
+            vec![(input, depth)]
+        }
+        Plan::Sort { input, keys } => {
+            read(&mut keys.iter().map(|k| &k.expr));
+            vec![(input, depth)]
+        }
+        Plan::Distinct { input, keys } => {
+            read(&mut keys.iter().flatten());
+            vec![(input, depth)]
+        }
+        Plan::Limit { input, limit, offset } => {
+            read(&mut limit.iter().chain(offset));
+            vec![(input, depth)]
+        }
+        Plan::SetOp { left, right, .. } => vec![(left, depth), (right, depth)],
+        Plan::Recursive { anchor, step, .. } => vec![(anchor, depth), (step, depth)],
+        Plan::ProjectSet { input, functions } => {
+            read(&mut functions.iter());
+            vec![(input, depth)]
+        }
+        Plan::Window { input, calls } => {
+            for call in calls {
+                read(
+                    &mut call
+                        .args
+                        .iter()
+                        .chain(&call.filter)
+                        .chain(&call.partition)
+                        .chain(call.order.iter().map(|k| &k.expr)),
+                );
+                if let Some(range) = &call.range {
+                    read(&mut std::iter::once(&range.key).chain(range.start.iter().chain(&range.end).map(|(e, _)| e)));
+                }
+            }
+            vec![(input, depth)]
+        }
+        Plan::Once(input) => vec![(input, depth)],
+    };
+    for (input, depth) in inputs {
+        known &= outer_reads(input, depth, out);
+    }
+    known
 }
 
 /// nearest replaces a sort under a LIMIT with a search of a vector index when the sort orders a table's rows by their

@@ -169,16 +169,24 @@ pub enum Plan {
 #[derive(Debug)]
 pub struct SubqueryRows {
     pub rows: Vec<Vec<Value>>,
-    keys: std::sync::OnceLock<Option<(HashSet<HashKey>, bool)>>,
-    index: std::sync::OnceLock<Option<std::collections::HashMap<Vec<HashKey>, Vec<usize>>>>,
+    keys: std::sync::OnceLock<Option<(KeySet, bool)>>,
+    pub(crate) index: std::sync::OnceLock<RowIndex>,
+}
+
+/// RowIndex is how the filter above a `Once` plan finds its rows: the sides of its equality conditions that read the
+/// enclosing rows, with the rows by the values of the sides that read them, or no table when a value has no hash key.
+#[derive(Debug)]
+pub(crate) struct RowIndex {
+    pub(crate) outer: Vec<Expr>,
+    pub(crate) table: Option<(KeyMap<usize>, Vec<Vec<usize>>)>,
 }
 
 impl SubqueryRows {
     /// keys returns the set of the rows' hash keys and whether a row is NULL, or None when a value has no hash key.
-    pub fn keys(&self) -> Option<&(HashSet<HashKey>, bool)> {
+    pub fn keys(&self) -> Option<&(KeySet, bool)> {
         self.keys
             .get_or_init(|| {
-                let (mut keys, mut null) = (HashSet::new(), false);
+                let (mut keys, mut null) = (KeySet::default(), false);
                 for row in &self.rows {
                     match row.first() {
                         Some(Value::Null) | None => null = true,
@@ -2813,10 +2821,9 @@ pub(crate) fn join_keys(condition: &Expr, width: usize) -> (Vec<Expr>, Vec<Expr>
     (left_keys, right_keys)
 }
 
-/// once_filter runs a filter over a `Once` plan's rows, finding the rows that its equality conditions between their
-/// columns and the enclosing rows hold for through a hash index of the rows, as Postgres' hashed subplans do.
-pub(crate) fn once_filter(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr) -> Result<Vec<Vec<Value>>> {
-    let shared = input.shared_rows(ctx)?;
+/// row_index indexes the rows of a `Once` plan by the sides of a filter's equality conditions that read them, as
+/// Postgres' hashed subplans do.
+pub(crate) fn row_index(ctx: &mut Ctx<'_>, rows: &[Vec<Value>], predicate: &Expr) -> RowIndex {
     let reads = |e: &Expr| {
         let (mut column, mut other) = (false, false);
         e.visit(&mut |e| match e {
@@ -2833,55 +2840,38 @@ pub(crate) fn once_filter(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr) -> 
         if let Expr::Compare(CmpOp::Eq, a, b) = c {
             match (reads(a), reads(b)) {
                 ((true, false), (false, _)) if !has_subquery(b) => {
-                    inner.push(&**a);
-                    outer.push(&**b);
+                    inner.push((**a).clone());
+                    outer.push((**b).clone());
                 }
                 ((false, _), (true, false)) if !has_subquery(a) => {
-                    inner.push(&**b);
-                    outer.push(&**a);
+                    inner.push((**b).clone());
+                    outer.push((**a).clone());
                 }
                 _ => {}
             }
         }
     }
-    let index = match inner.is_empty() {
-        true => None,
-        false => shared
-            .index
-            .get_or_init(|| {
-                let mut index: std::collections::HashMap<Vec<HashKey>, Vec<usize>> = std::collections::HashMap::new();
-                'rows: for (j, row) in shared.rows.iter().enumerate() {
-                    let mut key = Vec::with_capacity(inner.len());
-                    for e in &inner {
-                        match e.eval(ctx, row).ok()? {
-                            Value::Null => continue 'rows,
-                            value => key.push(HashKey::of(value)?),
-                        }
-                    }
-                    index.entry(key).or_default().push(j);
+    let mut build = || {
+        let mut table: KeyMap<usize> = KeyMap::default();
+        let mut buckets: Vec<Vec<usize>> = Vec::new();
+        'rows: for (j, row) in rows.iter().enumerate() {
+            let mut key = Vec::with_capacity(inner.len());
+            for e in &inner {
+                match e.eval(ctx, row).ok()? {
+                    Value::Null => continue 'rows,
+                    value => key.push(HashKey::of(value)?),
                 }
-                Some(index)
-            })
-            .as_ref(),
-    };
-    let mut key = Vec::with_capacity(outer.len());
-    for e in outer.iter().filter(|_| index.is_some()) {
-        match e.eval(ctx, &[])? {
-            Value::Null => return Ok(Vec::new()),
-            value => key.push(HashKey::of(value)),
+            }
+            let bucket = *table.entry(key).or_insert_with(|| {
+                buckets.push(Vec::new());
+                buckets.len() - 1
+            });
+            buckets[bucket].push(j);
         }
-    }
-    let candidates: Vec<usize> = match (index, key.into_iter().collect::<Option<Vec<_>>>()) {
-        (Some(index), Some(key)) => index.get(&key).cloned().unwrap_or_default(),
-        _ => (0..shared.rows.len()).collect(),
+        Some((table, buckets))
     };
-    let mut out = Vec::new();
-    for j in candidates {
-        if predicate.is_true(ctx, &shared.rows[j])? {
-            out.push(shared.rows[j].clone());
-        }
-    }
-    Ok(out)
+    let table = if inner.is_empty() { None } else { build() };
+    RowIndex { outer, table }
 }
 
 /// share_scans wraps the table scan under the filter of a subquery that reads its enclosing rows in a `Once` plan, so
@@ -2914,6 +2904,12 @@ fn has_subquery(e: &Expr) -> bool {
     });
     found
 }
+
+/// KeyMap maps join and filter keys to values, hashing them quickly.
+pub(crate) type KeyMap<V> = std::collections::HashMap<Vec<HashKey>, V, foldhash::fast::FixedState>;
+
+/// KeySet is a set of IN keys, hashed quickly.
+pub type KeySet = HashSet<HashKey, foldhash::fast::FixedState>;
 
 /// HashKey is a join or IN key value whose equality matches the `=` comparison of the values it stands for.
 #[derive(Debug, PartialEq, Eq, Hash)]

@@ -149,6 +149,15 @@ impl Items {
         Ok(Items { cursor: Some(Cursor { levels }) })
     }
 
+    /// seek moves the walk to the first item whose key is not less than the key, searching only the nodes around its
+    /// position that the key lies outside of.
+    pub fn seek(&mut self, store: &mut dyn NodeStore, key: &[u8], compare: &Compare<'_>) -> Result<()> {
+        match self.cursor.as_mut() {
+            Some(cursor) => cursor.seek(0, key, store, compare),
+            None => Ok(()),
+        }
+    }
+
     /// current returns the key and value of the item the walk is at, or None once it has passed either end.
     pub fn current(&self) -> Result<Option<(&[u8], &[u8])>> {
         let Some(cursor) = self.cursor.as_ref().filter(|c| c.valid(0)) else { return Ok(None) };

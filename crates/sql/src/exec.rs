@@ -37,6 +37,15 @@ pub type Row = Vec<Value>;
 pub trait Rows {
     /// next returns the node's next row, or None once it has no more.
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>>;
+
+    /// skip passes over up to a number of rows, as an OFFSET discards them, returning how many it passed.
+    fn skip(&mut self, ctx: &mut Ctx<'_>, count: usize) -> Result<usize> {
+        let mut skipped = 0;
+        while skipped < count && self.next(ctx)?.is_some() {
+            skipped += 1;
+        }
+        Ok(skipped)
+    }
 }
 
 /// Collected hands out rows that a node computed all at once.
@@ -114,6 +123,22 @@ impl Rows for TableWalk<'_> {
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
         TableWalk::next(self, ctx.db)
     }
+
+    fn skip(&mut self, ctx: &mut Ctx<'_>, count: usize) -> Result<usize> {
+        if self.table.keyless() || self.repeat.is_some() {
+            let mut skipped = 0;
+            while skipped < count && TableWalk::next(self, ctx.db)?.is_some() {
+                skipped += 1;
+            }
+            return Ok(skipped);
+        }
+        let mut skipped = 0;
+        while skipped < count && self.items.current()?.is_some() {
+            self.items.advance(ctx.db)?;
+            skipped += 1;
+        }
+        Ok(skipped)
+    }
 }
 
 /// FilterRows keeps the rows of its input that a predicate holds for.
@@ -137,17 +162,54 @@ impl Rows for FilterRows<'_> {
 struct ProjectRows<'p> {
     input: Box<dyn Rows + 'p>,
     exprs: &'p [Expr],
+    /// Whether each expression is a column that nothing else reads, whose value moves out of the input row.
+    moves: Vec<bool>,
+}
+
+impl<'p> ProjectRows<'p> {
+    /// new projects the input's rows.
+    fn new(input: Box<dyn Rows + 'p>, exprs: &'p [Expr]) -> ProjectRows<'p> {
+        let mut reads: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+        for expr in exprs {
+            expr.visit(&mut |e| {
+                if let Expr::Column(i) = e {
+                    *reads.entry(*i).or_default() += 1;
+                }
+            });
+        }
+        let moves = exprs.iter().map(|e| matches!(e, Expr::Column(i) if reads[i] == 1)).collect();
+        ProjectRows { input, exprs, moves }
+    }
 }
 
 impl Rows for ProjectRows<'_> {
+    fn skip(&mut self, ctx: &mut Ctx<'_>, count: usize) -> Result<usize> {
+        match self.exprs.iter().all(|e| matches!(e, Expr::Column(_) | Expr::Const(_))) {
+            true => self.input.skip(ctx, count),
+            false => {
+                let mut skipped = 0;
+                while skipped < count && self.next(ctx)?.is_some() {
+                    skipped += 1;
+                }
+                Ok(skipped)
+            }
+        }
+    }
+
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
-        let Some(row) = self.input.next(ctx)? else { return Ok(None) };
+        let Some(mut row) = self.input.next(ctx)? else { return Ok(None) };
         let mut out = Vec::with_capacity(self.exprs.len());
-        for expr in self.exprs {
+        for (expr, &moves) in self.exprs.iter().zip(&self.moves) {
             out.push(match expr {
+                _ if moves => Value::Null,
                 Expr::Column(i) => row[*i].clone(),
                 expr => expr.eval(ctx, &row)?,
             });
+        }
+        for ((expr, &moves), value) in self.exprs.iter().zip(&self.moves).zip(out.iter_mut()) {
+            if let (true, Expr::Column(i)) = (moves, expr) {
+                *value = std::mem::replace(&mut row[*i], Value::Null);
+            }
         }
         Ok(Some(out))
     }
@@ -165,13 +227,14 @@ impl Rows for LimitRows<'_> {
         if self.remaining == Some(0) {
             return Ok(None);
         }
-        while self.skip > 0 {
-            if self.input.next(ctx)?.is_none() {
+        if self.skip > 0 {
+            let skipped = self.input.skip(ctx, self.skip)?;
+            if skipped < self.skip {
                 self.skip = 0;
                 self.remaining = Some(0);
                 return Ok(None);
             }
-            self.skip -= 1;
+            self.skip = 0;
         }
         let row = self.input.next(ctx)?;
         if let Some(remaining) = self.remaining.as_mut() {
@@ -214,6 +277,72 @@ impl Rows for SharedRows {
         let row = self.rows.rows.get(self.next).cloned();
         self.next += 1;
         Ok(row)
+    }
+}
+
+/// OnceFilterRows hands out the rows of a `Once` plan that a filter keeps for the enclosing row, checking only the
+/// rows whose values match it in the filter's equality conditions when it has some.
+struct OnceFilterRows<'p> {
+    shared: Arc<SubqueryRows>,
+    predicate: &'p Expr,
+    /// The bucket of rows that match the enclosing row, or None to check every row.
+    bucket: Option<usize>,
+    position: usize,
+}
+
+impl<'p> OnceFilterRows<'p> {
+    /// open finds the rows of the `Once` input that may match the enclosing row.
+    fn open(ctx: &mut Ctx<'_>, input: &'p Plan, predicate: &'p Expr) -> Result<OnceFilterRows<'p>> {
+        let shared = input.shared_rows(ctx)?;
+        let index = match shared.index.get() {
+            Some(index) => index,
+            None => {
+                let index = crate::plan::row_index(ctx, &shared.rows, predicate);
+                let _ = shared.index.set(index);
+                shared.index.get().expect("an index")
+            }
+        };
+        let mut bucket = None;
+        if let Some((table, _)) = &index.table {
+            let empty = OnceFilterRows { shared: shared.clone(), predicate, bucket: None, position: usize::MAX };
+            let mut key = Vec::with_capacity(index.outer.len());
+            for e in &index.outer {
+                match e.eval(ctx, &[])? {
+                    Value::Null => return Ok(empty),
+                    value => key.push(HashKey::of(value)),
+                }
+            }
+            if let Some(key) = key.into_iter().collect::<Option<Vec<_>>>() {
+                match table.get(&key) {
+                    Some(&b) => bucket = Some(b),
+                    None => return Ok(empty),
+                }
+            }
+        }
+        Ok(OnceFilterRows { shared, predicate, bucket, position: 0 })
+    }
+}
+
+impl Rows for OnceFilterRows<'_> {
+    fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
+        loop {
+            let j = match self.bucket {
+                Some(b) => {
+                    let buckets = &self.shared.index.get().and_then(|i| i.table.as_ref()).expect("an index").1;
+                    match buckets[b].get(self.position) {
+                        Some(&j) => j,
+                        None => return Ok(None),
+                    }
+                }
+                None if self.position < self.shared.rows.len() => self.position,
+                None => return Ok(None),
+            };
+            self.position += 1;
+            let row = &self.shared.rows[j];
+            if self.predicate.is_true(ctx, row)? {
+                return Ok(Some(row.clone()));
+            }
+        }
     }
 }
 
@@ -355,7 +484,7 @@ struct JoinHash {
     /// The kind of key each right key holds, which a left key must share for the table to answer it.
     kinds: Vec<Option<std::mem::Discriminant<HashKey>>>,
     buckets: Vec<Vec<usize>>,
-    table: std::collections::HashMap<Vec<HashKey>, usize>,
+    table: crate::plan::KeyMap<usize>,
 }
 
 impl<'p> JoinRows<'p> {
@@ -417,7 +546,7 @@ impl JoinHash {
         }
         let mut kinds = vec![None; right_keys.len()];
         let mut buckets: Vec<Vec<usize>> = Vec::new();
-        let mut table: std::collections::HashMap<Vec<HashKey>, usize> = std::collections::HashMap::new();
+        let mut table: crate::plan::KeyMap<usize> = Default::default();
         'rows: for (j, row) in right_rows.iter().enumerate() {
             let mut key = Vec::with_capacity(right_keys.len());
             for (e, kind) in right_keys.iter().zip(kinds.iter_mut()) {
@@ -544,7 +673,8 @@ const HASHER: foldhash::fast::FixedState = foldhash::fast::FixedState::with_seed
 
 /// Groups numbers distinct rows of values in the order they first appear, where NULLs are equal to each other and
 /// values that compare equal are the same, as GROUP BY, DISTINCT, and set operations group rows.
-pub(crate) struct Groups {
+#[derive(Clone, Default)]
+pub struct Groups {
     table: hashbrown::HashTable<usize>,
     hashes: Vec<u64>,
     pub keys: Vec<Row>,
@@ -552,8 +682,8 @@ pub(crate) struct Groups {
 
 impl Groups {
     /// new returns an empty set of groups.
-    pub(crate) fn new() -> Groups {
-        Groups { table: hashbrown::HashTable::new(), hashes: Vec::new(), keys: Vec::new() }
+    pub fn new() -> Groups {
+        Groups::default()
     }
 
     /// find returns the number of a row's group, if it has one.
@@ -563,7 +693,7 @@ impl Groups {
     }
 
     /// insert returns the number of a row's group, adding a group for it when it has none, with whether it added one.
-    pub(crate) fn insert(&mut self, row: &[Value]) -> (usize, bool) {
+    pub fn insert(&mut self, row: &[Value]) -> (usize, bool) {
         let hash = hash_row(row);
         if let Some(&i) = self.table.find(hash, |&i| same_row(&self.keys[i], row)) {
             return (i, false);
@@ -784,7 +914,7 @@ impl Plan {
             Plan::Scan(table, needed) => Box::new(TableWalk::new(ctx.db, table, needed.as_deref())?),
             Plan::IndexScan(scan) => scan.open(ctx)?,
             Plan::Filter { input, predicate } if matches!(**input, Plan::Once(_)) => {
-                collected(crate::plan::once_filter(ctx, input, predicate)?)
+                Box::new(OnceFilterRows::open(ctx, input, predicate)?)
             }
             Plan::Filter { input, predicate } => {
                 let predicate = match predicate.foldable() {
@@ -793,7 +923,7 @@ impl Plan {
                 };
                 Box::new(FilterRows { input: input.open(ctx)?, predicate })
             }
-            Plan::Project { input, exprs } => Box::new(ProjectRows { input: input.open(ctx)?, exprs }),
+            Plan::Project { input, exprs } => Box::new(ProjectRows::new(input.open(ctx)?, exprs)),
             Plan::Limit { input, limit, offset } => {
                 let offset =
                     crate::plan::limit_value(offset, ctx, "OFFSET", code::INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE)?;
@@ -820,9 +950,16 @@ impl Plan {
             Plan::Join { left, right, kind, condition, .. } => {
                 Box::new(JoinRows::open(ctx, left, right, *kind, condition.as_ref())?)
             }
-            Plan::Aggregate { input, groups, aggregates, sets } => {
-                collected(aggregate(ctx, input, groups, aggregates, sets.as_deref())?)
-            }
+            Plan::Aggregate { input, groups, aggregates, sets } => match (&**input, sets) {
+                // A table's row count is in its primary index's root, as go-mysql-server reads it for COUNT(*).
+                (Plan::Scan(table, _), None)
+                    if groups.is_empty() && !table.keyless() && aggregates.iter().all(AggCall::counts_rows) =>
+                {
+                    let count = prolly::Node::decode(table.table.primary_index.clone())?.tree_count() as i64;
+                    collected(vec![vec![Value::Int8(count); aggregates.len()]])
+                }
+                _ => collected(aggregate(ctx, input, groups, aggregates, sets.as_deref())?),
+            },
             Plan::Sort { input, keys } => collected(sort(ctx, input, keys, None)?),
             Plan::Distinct { input, keys } => Box::new(DistinctRows {
                 input: input.open(ctx)?,

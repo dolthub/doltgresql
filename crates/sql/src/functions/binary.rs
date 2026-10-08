@@ -264,8 +264,7 @@ fn byteage(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 
 /// bytea_like implements LIKE, matching byte by byte.
 fn bytea_like(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    let chars = |value: &Value| bytes(value).iter().map(|&b| b as char).collect::<Vec<char>>();
-    Ok(Value::Bool(super::pattern::like_matches(&chars(&args[0]), &chars(&args[1]))?))
+    Ok(Value::Bool(super::pattern::like_matches(bytes(&args[0]), bytes(&args[1]), false)?))
 }
 
 /// bytea_not_like implements NOT LIKE, matching byte by byte.

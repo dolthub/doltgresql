@@ -3161,6 +3161,18 @@ impl Expr {
                 value => Value::Bool(value.is_null() != *negated),
             },
             Expr::Func(index, args) => {
+                if let [Expr::Column(i), Expr::Const(Value::Text(pattern))] = args.as_slice()
+                    && let Some(negated) = functions::pattern::plain_like(*index)
+                {
+                    match &row[*i] {
+                        Value::Null => return Ok(Value::Null),
+                        Value::Text(text) => {
+                            let matched = functions::pattern::like_matches(text.as_bytes(), pattern.as_bytes(), true)?;
+                            return Ok(Value::Bool(matched != negated));
+                        }
+                        _ => {}
+                    }
+                }
                 let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
                 functions::call(ctx, *index, &values)?
             }

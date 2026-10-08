@@ -77,34 +77,44 @@ pub const FUNCTIONS: &[Function] = &[
     Function { name: "format", args: &[TEXT], ret: TEXT, strict: false, variadic: false, implementation: format },
 ];
 
-/// like_matches reports whether text matches a LIKE pattern whose escape character is a backslash.
-pub(super) fn like_matches(text: &[char], pattern: &[char]) -> Result<bool> {
+/// like_matches reports whether text matches a LIKE pattern whose escape character is a backslash, as UTF-8 where `_`
+/// matches one character, or byte by byte.
+pub(crate) fn like_matches(text: &[u8], pattern: &[u8], utf8: bool) -> Result<bool> {
+    // The length of the character that starts with a byte, which keeps every position at a character's start.
+    let width = |b: u8| match b {
+        _ if !utf8 => 1,
+        0xF0.. => 4,
+        0xE0.. => 3,
+        0xC0.. => 2,
+        _ => 1,
+    };
     let (mut t, mut p) = (0, 0);
     let (mut star_p, mut star_t) = (None, 0);
     while t < text.len() {
         if p < pattern.len() {
             match pattern[p] {
-                '%' => {
+                b'%' => {
                     star_p = Some(p);
                     star_t = t;
                     p += 1;
                     continue;
                 }
-                '_' => {
-                    t += 1;
+                b'_' => {
+                    t += width(text[t]);
                     p += 1;
                     continue;
                 }
-                '\\' => {
+                b'\\' => {
                     let Some(&c) = pattern.get(p + 1) else {
                         return Err(PgError::new(
                             code::INVALID_ESCAPE_SEQUENCE,
                             "LIKE pattern must not end with escape character",
                         ));
                     };
-                    if c == text[t] {
-                        t += 1;
-                        p += 2;
+                    let n = width(c);
+                    if text.get(t..t + n) == pattern.get(p + 1..p + 1 + n) {
+                        t += n;
+                        p += 1 + n;
                         continue;
                     }
                 }
@@ -118,27 +128,38 @@ pub(super) fn like_matches(text: &[char], pattern: &[char]) -> Result<bool> {
         }
         match star_p {
             Some(s) => {
-                star_t += 1;
+                star_t += width(text[star_t]);
                 t = star_t;
                 p = s + 1;
             }
             None => return Ok(false),
         }
     }
-    while p < pattern.len() && pattern[p] == '%' {
+    while p < pattern.len() && pattern[p] == b'%' {
         p += 1;
     }
-    if p + 1 == pattern.len() && pattern[p] == '\\' {
+    if p + 1 == pattern.len() && pattern[p] == b'\\' {
         return Err(PgError::new(code::INVALID_ESCAPE_SEQUENCE, "LIKE pattern must not end with escape character"));
     }
     Ok(p == pattern.len())
 }
 
+/// plain_like returns whether a function is NOT LIKE when it is LIKE or NOT LIKE of text, which an expression can
+/// match against a column's value without copying it.
+pub(crate) fn plain_like(index: usize) -> Option<bool> {
+    match super::function(index).name {
+        "textlike" => Some(false),
+        "textnlike" => Some(true),
+        _ => None,
+    }
+}
+
 /// like_value matches LIKE or ILIKE.
 fn like_value(args: &[Value], fold: bool) -> Result<bool> {
-    let fold_chars =
-        |s: &str| -> Vec<char> { if fold { s.to_lowercase().chars().collect() } else { s.chars().collect() } };
-    like_matches(&fold_chars(text(&args[0])), &fold_chars(text(&args[1])))
+    match fold {
+        true => like_matches(text(&args[0]).to_lowercase().as_bytes(), text(&args[1]).to_lowercase().as_bytes(), true),
+        false => like_matches(text(&args[0]).as_bytes(), text(&args[1]).as_bytes(), true),
+    }
 }
 
 /// like implements LIKE.

@@ -152,6 +152,17 @@ pub struct AggCall {
     pub user: Option<std::sync::Arc<crate::aggregates::UserAggregate>>,
 }
 
+impl AggCall {
+    /// counts_rows reports whether the call is a plain COUNT(*), which counts every row of its group.
+    pub fn counts_rows(&self) -> bool {
+        AGGREGATES[self.index].kind == Kind::CountStar
+            && self.filter.is_none()
+            && !self.distinct
+            && self.order.is_empty()
+            && self.user.is_none()
+    }
+}
+
 /// resolve chooses the aggregate overload for arguments of the types, preferring exact matches, then integer and
 /// numeric parameters for integer arguments as Postgres' preferred numeric promotions do.
 pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<(usize, Vec<u32>, u32)> {
@@ -217,9 +228,11 @@ pub struct Accumulator {
 }
 
 /// State is what an accumulator keeps of the rows it has seen.
+#[derive(Clone)]
 enum State {
-    /// The argument rows and the ORDER BY key values of each row.
-    Rows { rows: Vec<Vec<Value>>, keys: Vec<Vec<Value>> },
+    /// The argument rows and the ORDER BY key values of each row, with the distinct argument rows so far for a
+    /// DISTINCT aggregate, which keeps only the first of equal rows.
+    Rows { rows: Vec<Vec<Value>>, keys: Vec<Vec<Value>>, seen: Option<crate::exec::Groups> },
     /// The number of rows, or of non-NULL values for count of a value.
     Count(i64),
     /// The running sum of integers into a bigint, or None before the first value.
@@ -239,7 +252,8 @@ enum State {
 impl Accumulator {
     /// new starts an empty accumulator for the call.
     pub fn new(call: &AggCall) -> Accumulator {
-        let rows = || State::Rows { rows: Vec::new(), keys: Vec::new() };
+        let rows =
+            || State::Rows { rows: Vec::new(), keys: Vec::new(), seen: call.distinct.then(crate::exec::Groups::new) };
         if call.user.is_some() || call.distinct || !call.order.is_empty() {
             return Accumulator { state: rows() };
         }
@@ -265,8 +279,12 @@ impl Accumulator {
         }
         let kind = AGGREGATES[call.index].kind;
         let value = match &mut self.state {
-            State::Rows { rows, keys } => {
-                rows.push(call.args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?);
+            State::Rows { rows, keys, seen } => {
+                let args = call.args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+                if seen.as_mut().is_some_and(|seen| !seen.insert(&args).1) {
+                    return Ok(());
+                }
+                rows.push(args);
                 keys.push(call.order.iter().map(|k| k.0.eval(ctx, row)).collect::<Result<Vec<_>>>()?);
                 return Ok(());
             }
@@ -327,11 +345,16 @@ impl Accumulator {
         Ok(())
     }
 
+    /// peek computes the aggregate over the rows added so far, keeping them for more.
+    pub fn peek(&self, ctx: &mut Ctx<'_>, call: &AggCall) -> Result<Value> {
+        Accumulator { state: self.state.clone() }.finish(ctx, call)
+    }
+
     /// finish computes the aggregate over the group.
     pub fn finish(self, ctx: &mut Ctx<'_>, call: &AggCall) -> Result<Value> {
         let aggregate = &AGGREGATES[call.index];
         let (rows, keys) = match self.state {
-            State::Rows { rows, keys } => (rows, keys),
+            State::Rows { rows, keys, .. } => (rows, keys),
             State::Count(n) => return Ok(Value::Int8(n)),
             State::SumInt(total) => return Ok(total.map_or(Value::Null, Value::Int8)),
             State::SumFloat(None) | State::SumFloat4(None) | State::SumNumeric(None) => return Ok(Value::Null),

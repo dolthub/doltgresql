@@ -455,6 +455,30 @@ fn offset(ctx: &mut Ctx<'_>, expr: &Expr, row: &[Value]) -> Result<usize> {
     }
 }
 
+/// Partition is one partition of a window's rows in window order, with its rows' peer groups.
+struct Partition<'a> {
+    /// Each row's partition key values, ordering values, and position in the input.
+    part: &'a [(Vec<Value>, Vec<Value>, usize)],
+    members: Vec<&'a Vec<Value>>,
+    /// The first position of each peer group, in order.
+    group_starts: Vec<usize>,
+    /// The peer group of each position.
+    group_of: Vec<usize>,
+}
+
+impl Partition<'_> {
+    /// group_end returns the last position of a peer group.
+    fn group_end(&self, group: usize) -> usize {
+        self.group_starts.get(group + 1).map_or(self.part.len(), |&s| s) - 1
+    }
+
+    /// peers returns the first and last positions of the rows that sort equal to the row at a position.
+    fn peers(&self, position: usize) -> (usize, usize) {
+        let group = self.group_of[position];
+        (self.group_starts[group], self.group_end(group))
+    }
+}
+
 impl WindowCall {
     /// compute returns the call's value for each row of the input, in input order.
     pub fn compute(&self, ctx: &mut Ctx<'_>, rows: &[Vec<Value>]) -> Result<Vec<Value>> {
@@ -481,30 +505,76 @@ impl WindowCall {
                 end += 1;
             }
             let part = &keyed[start..end];
-            let members: Vec<&Vec<Value>> = part.iter().map(|k| &rows[k.2]).collect();
-            for (position, entry) in part.iter().enumerate() {
-                out[entry.2] = self.value(ctx, part, &members, position)?;
+            let (mut group_starts, mut group_of) = (Vec::new(), Vec::with_capacity(part.len()));
+            for i in 0..part.len() {
+                if i == 0
+                    || (!self.order.is_empty()
+                        && compare_keys(&self.order, &part[i - 1].1, &part[i].1) != Ordering::Equal)
+                {
+                    group_starts.push(i);
+                }
+                group_of.push(group_starts.len() - 1);
             }
+            let partition =
+                Partition { part, members: part.iter().map(|k| &rows[k.2]).collect(), group_starts, group_of };
+            self.partition_values(ctx, &partition, &mut out)?;
             start = end;
         }
         Ok(out)
     }
 
-    /// peers returns the first and last positions of the rows that sort equal to a row of a partition.
-    fn peers(&self, part: &[(Vec<Value>, Vec<Value>, usize)], position: usize) -> (usize, usize) {
-        if self.order.is_empty() {
-            return (0, part.len() - 1);
+    /// partition_values computes the call for every row of a partition.
+    fn partition_values(&self, ctx: &mut Ctx<'_>, p: &Partition<'_>, out: &mut [Value]) -> Result<()> {
+        let excludes = frame::EXCLUDE_CURRENT_ROW | frame::EXCLUDE_GROUP | frame::EXCLUDE_TIES;
+        let call = match self.kind {
+            WindowKind::Aggregate(index) => Some(AggCall {
+                index,
+                args: self.args.clone(),
+                distinct: self.distinct,
+                filter: self.filter.clone(),
+                order: Vec::new(),
+                ret: self.ret.oid,
+                user: None,
+            }),
+            _ => None,
+        };
+        if let Some(call) = &call
+            && self.start == Bound::UnboundedPreceding
+            && self.options & excludes == 0
+        {
+            return self.running(ctx, p, call, out);
         }
-        let same = |i: usize| compare_keys(&self.order, &part[i].1, &part[position].1) == Ordering::Equal;
-        let mut first = position;
-        while first > 0 && same(first - 1) {
-            first -= 1;
+        for position in 0..p.part.len() {
+            out[p.part[position].2] = self.value(ctx, p, position, call.as_ref())?;
         }
-        let mut last = position;
-        while last + 1 < part.len() && same(last + 1) {
-            last += 1;
+        Ok(())
+    }
+
+    /// running computes an aggregate whose frames start at the partition's first row, adding each row to one running
+    /// aggregate as the frames grow, as Postgres' window aggregation does when frame heads never move.
+    fn running(&self, ctx: &mut Ctx<'_>, p: &Partition<'_>, call: &AggCall, out: &mut [Value]) -> Result<()> {
+        let mut accumulator = Accumulator::new(call);
+        let mut added = 0;
+        let mut previous: Option<(usize, Value)> = None;
+        for position in 0..p.part.len() {
+            let (_, end) = self.bounds(ctx, p, position)?;
+            let end = (end + 1).clamp(0, p.part.len() as isize) as usize;
+            if end < added {
+                accumulator = Accumulator::new(call);
+                added = 0;
+            }
+            while added < end {
+                accumulator.add(ctx, call, p.members[added])?;
+                added += 1;
+            }
+            let value = match &previous {
+                Some((last, value)) if *last == end => value.clone(),
+                _ => accumulator.peek(ctx, call)?,
+            };
+            out[p.part[position].2] = value.clone();
+            previous = Some((end, value));
         }
-        (first, last)
+        Ok(())
     }
 
     /// range_edge returns the first position of a RANGE frame with an offset start, or the last position of one with an
@@ -512,12 +582,13 @@ impl WindowCall {
     fn range_edge(
         &self,
         ctx: &mut Ctx<'_>,
-        part: &[(Vec<Value>, Vec<Value>, usize)],
+        p: &Partition<'_>,
         row: &[Value],
         position: usize,
         offset: &Expr,
         starting: bool,
     ) -> Result<isize> {
+        let part = p.part;
         let sums = self.range.as_ref().and_then(|r| if starting { r.start.as_ref() } else { r.end.as_ref() });
         let (sum, at_most) = sums.ok_or_else(|| PgError::internal("a RANGE frame bound without an offset"))?;
         let negative = match offset.eval(ctx, row)? {
@@ -541,7 +612,7 @@ impl WindowCall {
             ));
         }
         if part[position].1[0].is_null() {
-            let (first, last) = self.peers(part, position);
+            let (first, last) = p.peers(position);
             return Ok(if starting { first } else { last } as isize);
         }
         let bound = sum.eval(ctx, row)?;
@@ -560,52 +631,35 @@ impl WindowCall {
         })
     }
 
-    /// frame returns the positions of the rows in a row's frame.
-    fn frame(
-        &self,
-        ctx: &mut Ctx<'_>,
-        part: &[(Vec<Value>, Vec<Value>, usize)],
-        members: &[&Vec<Value>],
-        position: usize,
-    ) -> Result<Vec<usize>> {
-        let n = part.len();
+    /// bounds returns the first and last positions of a row's frame before any exclusion, where a last position
+    /// before the first makes the frame empty.
+    fn bounds(&self, ctx: &mut Ctx<'_>, p: &Partition<'_>, position: usize) -> Result<(usize, isize)> {
+        let n = p.part.len();
         let rows_mode = self.options & frame::ROWS != 0;
         let groups_mode = self.options & frame::GROUPS != 0;
-        let (peer_first, peer_last) = self.peers(part, position);
-        let row = members[position];
-        let group_starts: Vec<usize> = if groups_mode {
-            (0..n)
-                .filter(|&i| i == 0 || compare_keys(&self.order, &part[i - 1].1, &part[i].1) != Ordering::Equal)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let group_of = |i: usize| group_starts.iter().rposition(|&s| s <= i).unwrap_or(0);
-        let group_end = |g: usize| group_starts.get(g + 1).map_or(n, |&s| s) - 1;
+        let (peer_first, peer_last) = p.peers(position);
+        let row = p.members[position];
+        let group = p.group_of[position];
         let start = match &self.start {
             Bound::Preceding(e) | Bound::Following(e) if self.range.is_some() => {
-                self.range_edge(ctx, part, row, position, e, true)? as usize
+                self.range_edge(ctx, p, row, position, e, true)? as usize
             }
             Bound::UnboundedPreceding => 0,
             Bound::CurrentRow if rows_mode => position,
             Bound::CurrentRow => peer_first,
             Bound::Preceding(e) => {
                 let k = offset(ctx, e, row)?;
-                if groups_mode {
-                    group_starts[group_of(position).saturating_sub(k)]
-                } else {
-                    position.saturating_sub(k)
-                }
+                if groups_mode { p.group_starts[group.saturating_sub(k)] } else { position.saturating_sub(k) }
             }
             Bound::Following(e) => {
                 let k = offset(ctx, e, row)?;
-                if groups_mode { group_starts.get(group_of(position) + k).copied().unwrap_or(n) } else { position + k }
+                if groups_mode { p.group_starts.get(group + k).copied().unwrap_or(n) } else { position + k }
             }
             Bound::UnboundedFollowing => n,
         };
         let end = match &self.end {
             Bound::Preceding(e) | Bound::Following(e) if self.range.is_some() => {
-                self.range_edge(ctx, part, row, position, e, false)?
+                self.range_edge(ctx, p, row, position, e, false)?
             }
             Bound::UnboundedFollowing => n as isize - 1,
             Bound::CurrentRow if rows_mode => position as isize,
@@ -613,8 +667,8 @@ impl WindowCall {
             Bound::Preceding(e) => {
                 let k = offset(ctx, e, row)? as isize;
                 if groups_mode {
-                    let g = group_of(position) as isize - k;
-                    if g < 0 { -1 } else { group_end(g as usize) as isize }
+                    let g = group as isize - k;
+                    if g < 0 { -1 } else { p.group_end(g as usize) as isize }
                 } else {
                     position as isize - k
                 }
@@ -622,14 +676,22 @@ impl WindowCall {
             Bound::Following(e) => {
                 let k = offset(ctx, e, row)?;
                 if groups_mode {
-                    let g = group_of(position) + k;
-                    if g >= group_starts.len() { n as isize - 1 } else { group_end(g) as isize }
+                    let g = group + k;
+                    if g >= p.group_starts.len() { n as isize - 1 } else { p.group_end(g) as isize }
                 } else {
                     (position + k).min(n - 1) as isize
                 }
             }
             Bound::UnboundedPreceding => -1,
         };
+        Ok((start, end))
+    }
+
+    /// frame returns the positions of the rows in a row's frame.
+    fn frame(&self, ctx: &mut Ctx<'_>, p: &Partition<'_>, position: usize) -> Result<Vec<usize>> {
+        let n = p.part.len();
+        let (start, end) = self.bounds(ctx, p, position)?;
+        let (peer_first, peer_last) = p.peers(position);
         let mut positions: Vec<usize> =
             if end < start as isize { Vec::new() } else { (start..=(end as usize).min(n - 1)).collect() };
         if self.options & frame::EXCLUDE_CURRENT_ROW != 0 {
@@ -642,33 +704,20 @@ impl WindowCall {
         Ok(positions)
     }
 
-    /// value computes the call for the row at a position of a sorted partition.
-    fn value(
-        &self,
-        ctx: &mut Ctx<'_>,
-        part: &[(Vec<Value>, Vec<Value>, usize)],
-        members: &[&Vec<Value>],
-        position: usize,
-    ) -> Result<Value> {
-        let n = part.len();
-        let row = members[position];
-        let rank = |p: usize| self.peers(part, p).0 + 1;
+    /// value computes the call for the row at a position of a sorted partition, given the aggregate call of an
+    /// aggregate window function.
+    fn value(&self, ctx: &mut Ctx<'_>, p: &Partition<'_>, position: usize, call: Option<&AggCall>) -> Result<Value> {
+        let n = p.part.len();
+        let row = p.members[position];
+        let rank = |position: usize| p.peers(position).0 + 1;
         Ok(match self.kind {
             WindowKind::RowNumber => Value::Int8(position as i64 + 1),
             WindowKind::Rank => Value::Int8(rank(position) as i64),
-            WindowKind::DenseRank => {
-                let mut groups = 1;
-                for i in 1..=position {
-                    if compare_keys(&self.order, &part[i - 1].1, &part[i].1) != Ordering::Equal {
-                        groups += 1;
-                    }
-                }
-                Value::Int8(groups)
-            }
+            WindowKind::DenseRank => Value::Int8(p.group_of[position] as i64 + 1),
             WindowKind::PercentRank => {
                 Value::Float8(if n <= 1 { 0.0 } else { (rank(position) - 1) as f64 / (n - 1) as f64 })
             }
-            WindowKind::CumeDist => Value::Float8((self.peers(part, position).1 + 1) as f64 / n as f64),
+            WindowKind::CumeDist => Value::Float8((p.peers(position).1 + 1) as f64 / n as f64),
             WindowKind::Ntile => {
                 let buckets = match self.args[0].eval(ctx, row)? {
                     Value::Int4(b) if b > 0 => b as usize,
@@ -694,7 +743,7 @@ impl WindowCall {
                 };
                 let target = if self.kind == WindowKind::Lag { position as i64 - k } else { position as i64 + k };
                 if target >= 0 && (target as usize) < n {
-                    self.args[0].eval(ctx, members[target as usize])?
+                    self.args[0].eval(ctx, p.members[target as usize])?
                 } else {
                     match self.args.get(2) {
                         Some(default) => default.eval(ctx, row)?,
@@ -703,7 +752,7 @@ impl WindowCall {
                 }
             }
             WindowKind::FirstValue | WindowKind::LastValue | WindowKind::NthValue => {
-                let positions = self.frame(ctx, part, members, position)?;
+                let positions = self.frame(ctx, p, position)?;
                 let chosen = match self.kind {
                     WindowKind::FirstValue => positions.first().copied(),
                     WindowKind::LastValue => positions.last().copied(),
@@ -719,25 +768,17 @@ impl WindowCall {
                     },
                 };
                 match chosen {
-                    Some(p) => self.args[0].eval(ctx, members[p])?,
+                    Some(i) => self.args[0].eval(ctx, p.members[i])?,
                     None => Value::Null,
                 }
             }
-            WindowKind::Aggregate(index) => {
-                let call = AggCall {
-                    index,
-                    args: self.args.clone(),
-                    distinct: self.distinct,
-                    filter: self.filter.clone(),
-                    order: Vec::new(),
-                    ret: self.ret.oid,
-                    user: None,
-                };
-                let mut accumulator = Accumulator::new(&call);
-                for p in self.frame(ctx, part, members, position)? {
-                    accumulator.add(ctx, &call, members[p])?;
+            WindowKind::Aggregate(_) => {
+                let call = call.expect("an aggregate call");
+                let mut accumulator = Accumulator::new(call);
+                for i in self.frame(ctx, p, position)? {
+                    accumulator.add(ctx, call, p.members[i])?;
                 }
-                accumulator.finish(ctx, &call)?
+                accumulator.finish(ctx, call)?
             }
         })
     }

@@ -84,9 +84,15 @@ struct Registry {
     search_path: Vec<String>,
 }
 
+/// RowTypeKey is what decides a table's row type: the address of the table's schema and its schema and table names.
+type RowTypeKey = (store::Hash, String, String);
+
 thread_local! {
     /// REGISTRY is the registry of the statement running on this thread.
     static REGISTRY: RefCell<Registry> = RefCell::new(Registry::default());
+    /// ROW_TYPES holds the array and row types of the tables this thread built them for, by the address of the table's
+    /// schema and its schema and table names, which decide them.
+    static ROW_TYPES: RefCell<HashMap<RowTypeKey, [Arc<UserType>; 2]>> = Default::default();
 }
 
 /// type_oid returns the OID of the type a stored type ID names.
@@ -188,9 +194,26 @@ pub fn register(definition: SerializedType) -> u32 {
 /// register_row_type makes a table's row type and its array type known to this thread's statement, returning the row
 /// type's OID.
 pub fn register_row_type(table: &crate::catalog::table::TableDef) -> u32 {
-    let definition = row_type(table);
-    register(array_type(&definition));
-    register(definition)
+    let key = (table.table.schema, table.schema.clone(), table.name.clone());
+    let types = ROW_TYPES.with(|r| r.borrow().get(&key).cloned()).unwrap_or_else(|| {
+        let definition = row_type(table);
+        let types = [array_type(&definition), definition].map(|d| Arc::new(UserType::from_definition(d)));
+        ROW_TYPES.with(|r| {
+            let mut r = r.borrow_mut();
+            if r.len() >= 1024 {
+                r.clear();
+            }
+            r.insert(key, types.clone());
+        });
+        types
+    });
+    REGISTRY.with(|r| {
+        let mut r = r.borrow_mut();
+        for user_type in &types {
+            r.types.entry(user_type.oid).or_insert_with(|| user_type.clone());
+        }
+    });
+    types[1].oid
 }
 
 /// replace_row_type makes a table's row type and its array type, as the table's columns now are, known to this
