@@ -243,6 +243,7 @@ func TestAmbiguousColumnResolution(t *testing.T) {
 
 func TestInsertInto(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"values and rows", // MySQL VALUES ROW syntax; previously in the skipped SQL logic suite
 		"with t (i,f) as (select 4,'fourth row' from dual) insert into mytable select i,f from t",                                                 // WITH unsupported syntax
 		"with recursive t (i,f) as (select 4,4 from dual union all select i + 1, i + 1 from t where i < 5) insert into mytable select i,f from t", // WITH unsupported syntax
 		"issue 6675: on duplicate rearranged getfield indexes from select source",                                                                 // panic
