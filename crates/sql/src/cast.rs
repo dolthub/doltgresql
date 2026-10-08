@@ -808,9 +808,7 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
                 Value::Int2(i) => Numeric::from_i64(i as i64),
                 Value::Int4(i) => Numeric::from_i64(i as i64),
                 Value::Int8(i) => Numeric::from_i64(i),
-                Value::Float4(f) => {
-                    Numeric::from_f64(Value::Float4(f).output().unwrap_or_default().parse().unwrap_or(f64::NAN))
-                }
+                Value::Float4(f) => Numeric::from_float(f as f64, 6),
                 Value::Float8(f) => Numeric::from_f64(f),
                 Value::Numeric(n) => n,
                 Value::Text(text) => Numeric::parse(&text)?,

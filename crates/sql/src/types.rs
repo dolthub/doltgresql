@@ -106,32 +106,67 @@ pub struct Reg {
     pub name: String,
 }
 
-/// format_float formats a float as Postgres does with the default extra_float_digits: the shortest digits that read
-/// back exactly, in exponential notation when the exponent is below -4 or at least `max_exponent`.
-fn format_float(shortest_exponential: String, max_exponent: i32) -> String {
-    match shortest_exponential.as_str() {
-        "NaN" => return "NaN".into(),
-        "inf" => return "Infinity".into(),
-        "-inf" => return "-Infinity".into(),
-        _ => {}
+/// write_float appends a float's text as Postgres prints it with the default extra_float_digits: its shortest digits
+/// that read back as the float, which Postgres also finds with Ryu, with an exponent when the decimal exponent is below
+/// -4 or at least `max_exponent`.
+fn write_float(out: &mut Vec<u8>, value: f64, shortest: &str, max_exponent: i32) {
+    if value.is_nan() {
+        return out.extend_from_slice(b"NaN");
     }
-    let (mantissa, exponent) = shortest_exponential.split_once('e').unwrap_or((&shortest_exponential, "0"));
-    let exponent: i32 = exponent.parse().unwrap_or(0);
-    let (sign, mantissa) = mantissa.strip_prefix('-').map_or(("", mantissa), |m| ("-", m));
-    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    if value.is_infinite() {
+        return out.extend_from_slice(if value < 0.0 { b"-Infinity" } else { b"Infinity" });
+    }
+    // Split ryu's text, which is either plain like 0.0001 or 123.0, or exponential like 1e-7 or 1.5e20, into its
+    // digits and the decimal exponent of the first digit.
+    let (sign, text) = match shortest.strip_prefix('-') {
+        Some(text) => (true, text),
+        None => (false, shortest),
+    };
+    let (mantissa, mut exponent) = match text.split_once('e') {
+        Some((m, e)) => (m, e.parse::<i32>().unwrap_or(0)),
+        None => (text, 0),
+    };
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let mut digits: smallvec::SmallVec<[u8; 32]> = whole.bytes().chain(fraction.bytes()).collect();
+    exponent += whole.len() as i32 - 1;
+    let leading = digits.iter().take_while(|&&d| d == b'0').count().min(digits.len() - 1);
+    digits.drain(..leading);
+    exponent -= leading as i32;
+    while digits.len() > 1 && digits.last() == Some(&b'0') {
+        digits.pop();
+    }
+    if digits.as_slice() == b"0" {
+        exponent = 0;
+    }
+    if sign {
+        out.push(b'-');
+    }
     if exponent < -4 || exponent >= max_exponent {
-        let rest = if digits.len() > 1 { format!(".{}", &digits[1..]) } else { String::new() };
-        let exponent_sign = if exponent < 0 { '-' } else { '+' };
-        return format!("{sign}{}{rest}e{exponent_sign}{:02}", &digits[..1], exponent.abs());
-    }
-    if exponent < 0 {
-        return format!("{sign}0.{}{digits}", "0".repeat((-exponent - 1) as usize));
-    }
-    let point = exponent as usize + 1;
-    if digits.len() <= point {
-        format!("{sign}{digits}{}", "0".repeat(point - digits.len()))
+        out.push(digits[0]);
+        if digits.len() > 1 {
+            out.push(b'.');
+            out.extend_from_slice(&digits[1..]);
+        }
+        out.extend_from_slice(if exponent < 0 { b"e-" } else { b"e+" });
+        let abs = exponent.unsigned_abs();
+        if abs < 10 {
+            out.push(b'0');
+        }
+        out.extend_from_slice(itoa::Buffer::new().format(abs).as_bytes());
+    } else if exponent < 0 {
+        out.extend_from_slice(b"0.");
+        out.extend(std::iter::repeat_n(b'0', (-exponent - 1) as usize));
+        out.extend_from_slice(&digits);
     } else {
-        format!("{sign}{}.{}", &digits[..point], &digits[point..])
+        let point = exponent as usize + 1;
+        if digits.len() <= point {
+            out.extend_from_slice(&digits);
+            out.extend(std::iter::repeat_n(b'0', point - digits.len()));
+        } else {
+            out.extend_from_slice(&digits[..point]);
+            out.push(b'.');
+            out.extend_from_slice(&digits[point..]);
+        }
     }
 }
 
@@ -154,6 +189,50 @@ impl Value {
         self.output().map(String::into_bytes)
     }
 
+    /// write_text appends the value's text format, as `output` returns it, reporting false for NULL, which appends
+    /// nothing.
+    pub fn write_text(&self, out: &mut Vec<u8>) -> bool {
+        use std::io::Write;
+        let mut integer = itoa::Buffer::new();
+        let _ = match self {
+            Value::Null | Value::Set(_) => return false,
+            Value::Bool(b) => out.write_all(if *b { b"t" } else { b"f" }),
+            Value::Int2(i) => out.write_all(integer.format(*i).as_bytes()),
+            Value::Int4(i) => out.write_all(integer.format(*i).as_bytes()),
+            Value::Int8(i) => out.write_all(integer.format(*i).as_bytes()),
+            Value::Oid(o) => out.write_all(integer.format(*o).as_bytes()),
+            Value::Float4(f) => {
+                write_float(out, *f as f64, ryu::Buffer::new().format(*f), 6);
+                Ok(())
+            }
+            Value::Float8(f) => {
+                write_float(out, *f, ryu::Buffer::new().format(*f), 15);
+                Ok(())
+            }
+            Value::Date(d) if *d != datetime::DATE_NOBEGIN && *d != datetime::DATE_NOEND => {
+                match datetime::write_iso(out, *d as i64, None) {
+                    true => Ok(()),
+                    false => out.write_all(self.output().unwrap_or_default().as_bytes()),
+                }
+            }
+            Value::Timestamp(ts) if *ts != datetime::TIMESTAMP_NOBEGIN && *ts != datetime::TIMESTAMP_NOEND => {
+                let (days, time) = (ts.div_euclid(datetime::USECS_PER_DAY), ts.rem_euclid(datetime::USECS_PER_DAY));
+                match datetime::write_iso(out, days, Some((time, None))) {
+                    true => Ok(()),
+                    false => out.write_all(self.output().unwrap_or_default().as_bytes()),
+                }
+            }
+            Value::Text(s) | Value::Json(s) | Value::Bit(s) => out.write_all(s.as_bytes()),
+            Value::Reg(reg) => out.write_all(reg.name.as_bytes()),
+            Value::Enum(e) => out.write_all(e.label.as_bytes()),
+            other => match other.output() {
+                Some(text) => out.write_all(text.as_bytes()),
+                None => return false,
+            },
+        };
+        true
+    }
+
     /// output returns the value's text format, or None for NULL.
     pub fn output(&self) -> Option<String> {
         Some(match self {
@@ -162,8 +241,11 @@ impl Value {
             Value::Int2(i) => i.to_string(),
             Value::Int4(i) => i.to_string(),
             Value::Int8(i) => i.to_string(),
-            Value::Float4(f) => format_float(format!("{f:e}"), 6),
-            Value::Float8(f) => format_float(format!("{f:e}"), 15),
+            Value::Float4(_) | Value::Float8(_) => {
+                let mut out = Vec::new();
+                self.write_text(&mut out);
+                String::from_utf8(out).unwrap_or_default()
+            }
             Value::Numeric(n) => n.to_string(),
             Value::Date(d) => datetime::with_format(|f| datetime::format_date(*d, f)),
             Value::Time(t) => datetime::format_time(*t),
@@ -471,5 +553,47 @@ mod tests {
         assert_eq!(float8(-0.0), "-0");
         assert_eq!(Value::Float4(1.25).output().unwrap(), "1.25");
         assert_eq!(Value::Float4(1234567.0).output().unwrap(), "1.234567e+06");
+    }
+
+    #[test]
+    fn written_text_matches_output() {
+        let mut values = vec![
+            Value::Null,
+            Value::Bool(true),
+            Value::Bool(false),
+            Value::Int2(-32768),
+            Value::Int4(0),
+            Value::Int8(i64::MIN),
+            Value::Oid(4294967295),
+            Value::Text("héllo".into()),
+            Value::Date(0),
+            Value::Date(-800_000),
+            Value::Date(crate::datetime::DATE_NOEND),
+            Value::Timestamp(0),
+            Value::Timestamp(1_234_567_890_123_456),
+            Value::Timestamp(-63_000_000_000_000_000),
+            Value::Timestamp(86_399_999_999),
+            Value::Timestamp(crate::datetime::TIMESTAMP_NOBEGIN),
+        ];
+        let mut seed: u64 = 7;
+        for _ in 0..5000 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            values.push(Value::Float8(f64::from_bits(seed)));
+            values.push(Value::Float4(f32::from_bits(seed as u32)));
+            values.push(Value::Float8((seed % 100_000) as f64 / 7.0));
+            values.push(Value::Timestamp((seed >> 8) as i64 - (1 << 55)));
+        }
+        for f in [0.0, -0.0, 1.0, 1e15, 1e-5, 123456789012345.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 0.1 + 0.2]
+        {
+            values.push(Value::Float8(f));
+            values.push(Value::Float4(f as f32));
+        }
+        for value in values {
+            let mut out = Vec::new();
+            let written = value.write_text(&mut out);
+            assert_eq!(written.then_some(out), value.output().map(String::into_bytes), "{value:?}");
+        }
     }
 }

@@ -521,6 +521,49 @@ pub fn offset_text(seconds: i32) -> String {
     }
 }
 
+/// write_digits appends a non-negative number with at least `width` digits, zero-padded.
+fn write_digits(out: &mut Vec<u8>, value: i64, width: usize) {
+    let mut buffer = itoa::Buffer::new();
+    let digits = buffer.format(value);
+    out.extend(std::iter::repeat_n(b'0', width.saturating_sub(digits.len())));
+    out.extend_from_slice(digits.as_bytes());
+}
+
+/// write_iso appends a date of the common era, and with a time its time of day and zone offset, in the ISO DateStyle,
+/// reporting false without writing when the value needs another style or is infinite or before the common era.
+pub fn write_iso(out: &mut Vec<u8>, days: i64, time: Option<(i64, Option<i32>)>) -> bool {
+    let (year, month, day) = j2date(days + POSTGRES_EPOCH_JDATE);
+    if year <= 0 || !with_format(|f| f.style == Style::Iso) {
+        return false;
+    }
+    write_digits(out, year, 4);
+    out.push(b'-');
+    write_digits(out, month, 2);
+    out.push(b'-');
+    write_digits(out, day, 2);
+    let Some((time, offset)) = time else { return true };
+    out.push(b' ');
+    write_digits(out, time / USECS_PER_HOUR, 2);
+    out.push(b':');
+    write_digits(out, time / USECS_PER_MINUTE % 60, 2);
+    out.push(b':');
+    write_digits(out, time / USECS_PER_SEC % 60, 2);
+    let mut micros = time % USECS_PER_SEC;
+    if micros != 0 {
+        let mut width = 6;
+        while micros % 10 == 0 {
+            micros /= 10;
+            width -= 1;
+        }
+        out.push(b'.');
+        write_digits(out, micros, width);
+    }
+    if let Some(offset) = offset {
+        out.extend_from_slice(offset_text(offset).as_bytes());
+    }
+    true
+}
+
 /// format_date prints a date in the DateStyle.
 pub fn format_date(days: i32, format: &Format) -> String {
     match days {

@@ -9024,3 +9024,133 @@ fn test_numeric_datetime_input_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_values_written_into_rows() {
+    run_scripts(&[
+        ScriptTest {
+            name: "values written straight into result rows",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ov (id INT PRIMARY KEY, f4 FLOAT4, f8 FLOAT8, d DATE, ts TIMESTAMP, n INT8, b BOOLEAN);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ov VALUES (1, '2636433.25', 2636433.25, '2024-02-29', '2024-02-29 13:05:09.120300', -9223372036854775808, true), (2, '-0', '-0', '0001-01-01', '0001-01-01 00:00:00', 0, false), (3, 'NaN', 'Infinity', 'infinity', '-infinity', 9223372036854775807, NULL), (4, '1.5e-07', '1e15', '0044-03-15 BC', '0044-03-15 12:00:00.5 BC', 42, true), (5, '3.4028235e38', '1.7976931348623157e308', '9999-12-31', '12345-12-31 23:59:59.999999', -1, NULL), (6, '0.1', '0.30000000000000004', '1999-01-08', '1999-01-08 04:05:06', 7, false);",
+                    expected: Expected::Tag("INSERT 0 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM ov ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("f4", FLOAT4), Column("f8", FLOAT8), Column("d", DATE), Column("ts", TIMESTAMP), Column("n", INT8), Column("b", BOOL)],
+                        rows: &[
+                            &[T("1"), T("2.6364333e+06"), T("2636433.25"), T("2024-02-29"), T("2024-02-29 13:05:09.1203"), T("-9223372036854775808"), T("t")],
+                            &[T("2"), T("-0"), T("-0"), T("0001-01-01"), T("0001-01-01 00:00:00"), T("0"), T("f")],
+                            &[T("3"), T("NaN"), T("Infinity"), T("infinity"), T("-infinity"), T("9223372036854775807"), Null],
+                            &[T("4"), T("1.5e-07"), T("1e+15"), T("0044-03-15 BC"), T("0044-03-15 12:00:00.5 BC"), T("42"), T("t")],
+                            &[T("5"), T("3.4028235e+38"), T("1.7976931348623157e+308"), T("9999-12-31"), T("12345-12-31 23:59:59.999999"), T("-1"), Null],
+                            &[T("6"), T("0.1"), T("0.30000000000000004"), T("1999-01-08"), T("1999-01-08 04:05:06"), T("7"), T("f")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT f4::numeric, f8::numeric FROM ov WHERE id IN (1, 4, 6) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("f4", NUMERIC), Column("f8", NUMERIC)],
+                        rows: &[
+                            &[T("2636430"), T("2636433.25")],
+                            &[T("0.00000015"), T("1000000000000000")],
+                            &[T("0.1"), T("0.3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT f4 * 3, f8 / 7 FROM ov ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", FLOAT8), Column("?column?", FLOAT8)],
+                        rows: &[
+                            &[T("7909299.75"), T("376633.3214285714")],
+                            &[T("-0"), T("-0")],
+                            &[T("NaN"), T("Infinity")],
+                            &[T("4.500000159168849e-07"), T("142857142857142.84")],
+                            &[T("1.0208470399155866e+39"), T("2.5681330498033083e+307")],
+                            &[T("0.30000000447034836"), T("0.042857142857142864")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET DateStyle = 'SQL, DMY';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT d, ts FROM ov ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("d", DATE), Column("ts", TIMESTAMP)],
+                        rows: &[
+                            &[T("2024-02-29"), T("2024-02-29 13:05:09.1203")],
+                            &[T("0001-01-01"), T("0001-01-01 00:00:00")],
+                            &[T("infinity"), T("-infinity")],
+                            &[T("0044-03-15 BC"), T("0044-03-15 12:00:00.5 BC")],
+                            &[T("9999-12-31"), T("12345-12-31 23:59:59.999999")],
+                            &[T("1999-01-08"), T("1999-01-08 04:05:06")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET DateStyle = 'German';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT d, ts FROM ov ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("d", DATE), Column("ts", TIMESTAMP)],
+                        rows: &[
+                            &[T("2024-02-29"), T("2024-02-29 13:05:09.1203")],
+                            &[T("0001-01-01"), T("0001-01-01 00:00:00")],
+                            &[T("infinity"), T("-infinity")],
+                            &[T("0044-03-15 BC"), T("0044-03-15 12:00:00.5 BC")],
+                            &[T("9999-12-31"), T("12345-12-31 23:59:59.999999")],
+                            &[T("1999-01-08"), T("1999-01-08 04:05:06")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET DateStyle = 'ISO, MDY';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT d, ts FROM ov ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("d", DATE), Column("ts", TIMESTAMP)],
+                        rows: &[
+                            &[T("2024-02-29"), T("2024-02-29 13:05:09.1203")],
+                            &[T("0001-01-01"), T("0001-01-01 00:00:00")],
+                            &[T("infinity"), T("-infinity")],
+                            &[T("0044-03-15 BC"), T("0044-03-15 12:00:00.5 BC")],
+                            &[T("9999-12-31"), T("12345-12-31 23:59:59.999999")],
+                            &[T("1999-01-08"), T("1999-01-08 04:05:06")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

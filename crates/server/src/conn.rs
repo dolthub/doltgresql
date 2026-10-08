@@ -536,6 +536,44 @@ impl Conn {
         }
     }
 
+    /// queue_data_row writes a DataRow message of a row's values in the formats asked for, writing text in UTF-8
+    /// straight into the output buffer, and leaves the buffer as it was when a value cannot be sent.
+    fn queue_data_row(&mut self, row: &[Value], columns: &[Column], formats: &[i16]) -> Result<(), PgError> {
+        let start = self.out.len();
+        self.out.push(b'D');
+        self.out.extend_from_slice(&[0; 4]);
+        self.out.extend_from_slice(&(row.len() as u16).to_be_bytes());
+        for (i, value) in row.iter().enumerate() {
+            let length_at = self.out.len();
+            self.out.extend_from_slice(&[0; 4]);
+            let length = if format(formats, i) == 0 && self.client_encoding == sql::encodings::UTF8 {
+                value.write_text(&mut self.out).then(|| self.out.len() - length_at - 4)
+            } else {
+                let bytes = match value.encode(columns[i].type_oid, format(formats, i)) {
+                    Some(text) if format(formats, i) == 0 => {
+                        match self.client_encoding.encode(&String::from_utf8_lossy(&text)) {
+                            Ok(encoded) => Some(encoded),
+                            Err(err) => {
+                                self.out.truncate(start);
+                                return Err(err);
+                            }
+                        }
+                    }
+                    other => other,
+                };
+                bytes.map(|bytes| {
+                    self.out.extend_from_slice(&bytes);
+                    bytes.len()
+                })
+            };
+            let length = length.map_or(-1, |n| n as i32);
+            self.out[length_at..length_at + 4].copy_from_slice(&length.to_be_bytes());
+        }
+        let size = (self.out.len() - start - 1) as u32;
+        self.out[start + 1..start + 5].copy_from_slice(&size.to_be_bytes());
+        Ok(())
+    }
+
     /// queue_outcome queues the messages of one statement's outcome, with rows in the formats. Without formats, as
     /// for a simple query, it describes the rows first and sends them as text.
     fn queue_outcome(&mut self, outcome: Outcome, formats: Option<&[i16]>) {
@@ -549,25 +587,8 @@ impl Conn {
                     }
                 };
                 for row in rows {
-                    let values: Result<Vec<Option<Vec<u8>>>, PgError> = row
-                        .iter()
-                        .enumerate()
-                        .map(|(i, value)| {
-                            let bytes = value.encode(columns[i].type_oid, format(formats, i));
-                            match bytes {
-                                Some(text)
-                                    if format(formats, i) == 0 && self.client_encoding != sql::encodings::UTF8 =>
-                                {
-                                    let text = String::from_utf8_lossy(&text);
-                                    self.client_encoding.encode(&text).map(Some)
-                                }
-                                other => Ok(other),
-                            }
-                        })
-                        .collect();
-                    match values {
-                        Ok(values) => self.queue(BackendMessage::DataRow { values }),
-                        Err(err) => return self.queue(BackendMessage::ErrorResponse(error_fields(&err))),
+                    if let Err(err) = self.queue_data_row(&row, &columns, formats) {
+                        return self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                     }
                 }
                 self.queue(BackendMessage::CommandComplete { command_tag: tag });

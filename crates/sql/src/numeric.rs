@@ -447,15 +447,34 @@ impl Numeric {
         }
     }
 
-    /// from_f64 converts a float as Postgres does, through its shortest exact text.
+    /// from_f64 converts a float8 as Postgres' float8_numeric does, through its text with 15 significant digits.
     pub fn from_f64(value: f64) -> Numeric {
+        Numeric::from_float(value, 15)
+    }
+
+    /// from_float converts a float as Postgres' float8_numeric and float4_numeric do, through C's `%.*g` text with
+    /// the significant digits of the float's type.
+    pub fn from_float(value: f64, digits: usize) -> Numeric {
         if value.is_nan() {
             return Numeric::NaN;
         }
         if value.is_infinite() {
             return if value > 0.0 { Numeric::Infinity } else { Numeric::NegativeInfinity };
         }
-        Numeric::parse(&format!("{value:e}")).unwrap_or(Numeric::NaN)
+        let scientific = format!("{:.*e}", digits - 1, value);
+        let exponent: i64 = scientific.split_once('e').map_or(0, |(_, e)| e.parse().unwrap_or(0));
+        let text = match exponent < -4 || exponent >= digits as i64 {
+            true => scientific,
+            false => format!("{:.*}", (digits as i64 - 1 - exponent).max(0) as usize, value),
+        };
+        let text = match text.split_once('e') {
+            Some((mantissa, exponent)) if mantissa.contains('.') => {
+                format!("{}e{exponent}", mantissa.trim_end_matches('0').trim_end_matches('.'))
+            }
+            None if text.contains('.') => text.trim_end_matches('0').trim_end_matches('.').to_string(),
+            _ => text,
+        };
+        Numeric::parse(&text).unwrap_or(Numeric::NaN)
     }
 
     /// send returns Postgres' binary format: the digit group count, weight, sign, display scale, and base-10000
