@@ -90,6 +90,9 @@ const OPTION_RETYPE_TARGET: &str = "retype_target";
 const OPTION_LOOP_CONDITION: &str = "loop_condition";
 /// OPTION_STRICT marks an INTO STRICT, which Go ignores.
 const OPTION_STRICT: &str = "strict";
+/// OPTION_CONTEXT is where an operation's statement is in the body, such as `line 3 at RAISE`, which Go never stores.
+/// It is a number past RAISE's options, which Go's RAISE logs and skips while its other operations ignore it.
+const OPTION_CONTEXT: &str = "100";
 /// CONTINUE_TARGET is the option compilation uses for where a loop's CONTINUE jumps, which never reaches storage.
 const CONTINUE_TARGET: &str = "continue_target";
 
@@ -376,6 +379,10 @@ pub(crate) struct Frame<'r> {
     returned: Option<Vec<Vec<Value>>>,
     /// The names of the output parameters, whose values a routine without RETURN values returns.
     outputs: Vec<String>,
+    /// The position of the operation running.
+    current: usize,
+    /// What the operation running is evaluating, such as `SQL statement`, with its text, which errors report.
+    running: Option<(&'static str, String)>,
 }
 
 /// call runs a PL/pgSQL routine on arguments already converted to its input types, where an argument of a composite
@@ -477,7 +484,38 @@ impl<'r> Frame<'r> {
             scopes: vec![Scope::default()],
             returned: None,
             outputs: Vec::new(),
+            current: 0,
+            running: None,
         }
+    }
+
+    /// add_context adds where in the routine an error happened to its context, after the SQL statement or expression
+    /// that raised it, or moves the error's position into that SQL statement, as Postgres reports PL/pgSQL errors.
+    fn add_context(&self, mut err: PgError) -> PgError {
+        let Some(context) = self.ops.get(self.current).and_then(|op| option(op, OPTION_CONTEXT)) else { return err };
+        let mut objects = err.objects.take().map(|o| *o).unwrap_or_default();
+        let mut lines: Vec<String> = objects.where_.take().into_iter().collect();
+        match (&self.running, err.position) {
+            (Some(("SQL statement", text)), Some(position)) => {
+                objects.internal_query = Some(text.clone());
+                objects.internal_position = Some(position);
+                err.position = None;
+            }
+            (Some((label, text)), _) => lines.push(format!("{label} \"{text}\"")),
+            (None, _) => {}
+        }
+        let name = match self.routine.name.is_empty() {
+            true => "inline_code_block".to_string(),
+            false => {
+                let types: Vec<String> =
+                    self.routine.inputs().map(|p| crate::cast::type_display(p.ty.oid).into_owned()).collect();
+                format!("{}({})", self.routine.name, types.join(","))
+            }
+        };
+        lines.push(format!("PL/pgSQL function {name} {context}"));
+        objects.where_ = Some(lines.join("\n"));
+        err.objects = Some(Box::new(objects));
+        err
     }
 
     /// declare_rows declares a trigger's NEW and OLD records of the table's row type, which are NULL when the event
@@ -848,9 +886,16 @@ impl<'r> Frame<'r> {
 
     /// run runs the operations from the first, returning the routine's result.
     fn run(&mut self, ctx: &mut Ctx<'_>) -> Result<Value> {
+        self.run_operations(ctx).map_err(|err| self.add_context(err))
+    }
+
+    /// run_operations runs the operations from the first, returning the routine's result.
+    fn run_operations(&mut self, ctx: &mut Ctx<'_>) -> Result<Value> {
         let mut pc = 0usize;
         while pc < self.ops.len() {
             let op = &self.ops[pc];
+            self.current = pc;
+            self.running = None;
             let mut next = pc + 1;
             let primary = text(&op.primary_data);
             let secondary: Vec<String> = op.secondary_data.iter().map(|s| text(s)).collect();
@@ -861,6 +906,8 @@ impl<'r> Frame<'r> {
                     self.alias(&target, index);
                 }
                 Some(OpCode::Assign) => {
+                    let expression = primary.trim_start_matches("SELECT ").trim_end_matches(';');
+                    self.running = Some(("PL/pgSQL assignment", format!("{target} := {expression}")));
                     let bindings = self.expand_whole_row(&primary, secondary, "assignment source")?;
                     if option(op, OPTION_RETYPE_TARGET).as_deref() == Some("true") {
                         let (value, ty) = self.single(ctx, &primary, &bindings)?;
@@ -967,6 +1014,7 @@ impl<'r> Frame<'r> {
                 }
                 Some(OpCode::Perform) => {
                     let sql = perform_query(&primary);
+                    self.running = Some(("SQL statement", sql.trim_end_matches(';').to_string()));
                     let result = self.query(ctx, &sql, &secondary)?;
                     self.set_found(result.found);
                 }
@@ -1117,6 +1165,7 @@ impl<'r> Frame<'r> {
                 values.push(value);
                 types.push(ty.oid);
             }
+            self.running = Some(("SQL statement", query.clone()));
             let statement = parse(&query)?;
             self.run_statement(ctx, &statement, &mut types, &values)?
         } else {
@@ -1134,6 +1183,7 @@ impl<'r> Frame<'r> {
                 values.push(value);
                 types.push(ty.oid);
             }
+            self.running = Some(("SQL statement", primary.trim_end_matches(';').to_string()));
             self.run_statement(ctx, &statement, &mut types, &values)?
         };
         if !target.is_empty() {
@@ -1191,7 +1241,7 @@ impl<'r> Frame<'r> {
             return Err(PgError::new(code::SYNTAX_ERROR, "too many parameters specified for RAISE"));
         }
         let mut options = HashMap::new();
-        for (key, value) in &op.options {
+        for (key, value) in op.options.iter().filter(|(key, _)| key.as_slice() != OPTION_CONTEXT.as_bytes()) {
             let key = text(key);
             let raw = text(value);
             let value = if key == RAISE_ERRCODE

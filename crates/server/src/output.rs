@@ -257,6 +257,8 @@ pub fn error_fields(err: &PgError) -> ErrorFields {
         column_name: objects.column.clone().unwrap_or_default(),
         data_type_name: objects.data_type.clone().unwrap_or_default(),
         constraint_name: objects.constraint.clone().unwrap_or_default(),
+        internal_query: objects.internal_query.clone().unwrap_or_default(),
+        internal_position: objects.internal_position.map_or(0, |p| p as i32),
         ..ErrorFields::default()
     }
 }

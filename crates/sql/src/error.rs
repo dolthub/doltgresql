@@ -156,6 +156,9 @@ pub struct ErrorObjects {
     pub column: Option<String>,
     pub data_type: Option<String>,
     pub constraint: Option<String>,
+    /// The query that the error's position is in, when it is one that a PL/pgSQL routine ran, and that position.
+    pub internal_query: Option<String>,
+    pub internal_position: Option<u32>,
 }
 
 impl PgError {

@@ -2458,13 +2458,11 @@ impl Ctx<'_> {
         if fresh {
             self.once = Some(HashMap::new());
         }
+        sink.begin(std::mem::take(&mut self.session.notices), &query.columns);
         let result = (|| -> Result<u64> {
             let mut rows = query.plan.open(self)?;
             let (mut row, mut count) = (Vec::new(), 0u64);
             while rows.next_into(self, &mut row)? {
-                if count == 0 {
-                    sink.begin(std::mem::take(&mut self.session.notices), &query.columns);
-                }
                 sink.row(&row)?;
                 count += 1;
                 if !self.session.notices.is_empty() {
@@ -2477,8 +2475,8 @@ impl Ctx<'_> {
             self.once = None;
         }
         let count = result?;
-        if count == 0 {
-            sink.begin(std::mem::take(&mut self.session.notices), &query.columns);
+        if !self.session.notices.is_empty() {
+            sink.notices(std::mem::take(&mut self.session.notices));
         }
         Ok(Outcome::Streamed { tag: format!("SELECT {count}") })
     }

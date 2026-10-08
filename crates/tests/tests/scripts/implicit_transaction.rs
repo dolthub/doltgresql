@@ -2179,3 +2179,62 @@ fn test_issue3116_wire_format() {
         },
     ]);
 }
+
+#[test]
+fn test_plpgsql_error_context() {
+    run_wire_tests(&[
+        WireTest {
+            name: "PL/pgSQL errors report where they happened",
+            set_up_script: &[
+                "CREATE TABLE ctx_t (i INT);",
+                "CREATE FUNCTION ctx_f(a INT, b TEXT) RETURNS INT LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'boom %', a; END $$;",
+            ],
+            steps: &[
+                Step::Send(&[
+                    Send::Query("DO $$ BEGIN INSERT INTO ctx_missing VALUES (1); END $$;"),
+                ]),
+                Step::Receive(&[
+                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "42P01", message: r#"relation "ctx_missing" does not exist"#, internal_position: 13, internal_query: "INSERT INTO ctx_missing VALUES (1)", where_: "PL/pgSQL function inline_code_block line 1 at SQL statement", ..F }),
+                    Receive::ReadyForQuery(b'I'),
+                ]),
+                Step::Send(&[
+                    Send::Query("DO $$ BEGIN\n  INSERT INTO ctx_t VALUES (1/0); END $$;"),
+                ]),
+                Step::Receive(&[
+                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "22012", message: "division by zero", where_: "SQL statement \"INSERT INTO ctx_t VALUES (1/0)\"\nPL/pgSQL function inline_code_block line 2 at SQL statement", ..F }),
+                    Receive::ReadyForQuery(b'I'),
+                ]),
+                Step::Send(&[
+                    Send::Query("DO $$ BEGIN EXECUTE 'SELECT 1/0'; END $$;"),
+                ]),
+                Step::Receive(&[
+                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "22012", message: "division by zero", where_: "SQL statement \"SELECT 1/0\"\nPL/pgSQL function inline_code_block line 1 at EXECUTE", ..F }),
+                    Receive::ReadyForQuery(b'I'),
+                ]),
+                Step::Send(&[
+                    Send::Query("DO $$ DECLARE x INT; BEGIN x := 1/0; END $$;"),
+                ]),
+                Step::Receive(&[
+                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "22012", message: "division by zero", where_: "PL/pgSQL assignment \"x := 1/0\"\nPL/pgSQL function inline_code_block line 1 at assignment", ..F }),
+                    Receive::ReadyForQuery(b'I'),
+                ]),
+                Step::Send(&[
+                    Send::Query("SELECT ctx_f(1, 'x');"),
+                ]),
+                Step::Receive(&[
+                    Receive::RowDescription(&[Field { name: "ctx_f", attnum: 0, type_oid: INT4, size: 4, typmod: -1, format: 0 }]),
+                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "P0001", message: "boom 1", where_: "PL/pgSQL function ctx_f(integer,text) line 1 at RAISE", ..F }),
+                    Receive::ReadyForQuery(b'I'),
+                ]),
+                Step::Send(&[
+                    Send::Query("DO $$ BEGIN PERFORM ctx_f(2, 'y'); END $$;"),
+                ]),
+                Step::Receive(&[
+                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "P0001", message: "boom 2", where_: "PL/pgSQL function ctx_f(integer,text) line 1 at RAISE\nSQL statement \"SELECT ctx_f(2, 'y')\"\nPL/pgSQL function inline_code_block line 1 at PERFORM", ..F }),
+                    Receive::ReadyForQuery(b'I'),
+                ]),
+            ],
+            ..W
+        },
+    ]);
+}

@@ -22,28 +22,73 @@ use pg_query::protobuf::Token;
 use serde_json::Value as Json;
 
 use super::{
-    CONTINUE_TARGET, FOUND, OPTION_DYNAMIC_BINDING, OPTION_DYNAMIC_BINDING_COUNT, OPTION_DYNAMIC_EXPRESSION,
-    OPTION_DYNAMIC_USING_BINDING, OPTION_DYNAMIC_USING_BINDING_COUNT, OPTION_DYNAMIC_USING_COUNT,
-    OPTION_DYNAMIC_USING_EXPRESSION, OPTION_LOOP_CONDITION, OPTION_RETYPE_TARGET, OPTION_SETS_FOUND, OPTION_STRICT,
-    OpCode, TRIGGER_VARIABLES, normalize_identifier, normalize_path, quote_identifier,
+    CONTINUE_TARGET, FOUND, OPTION_CONTEXT, OPTION_DYNAMIC_BINDING, OPTION_DYNAMIC_BINDING_COUNT,
+    OPTION_DYNAMIC_EXPRESSION, OPTION_DYNAMIC_USING_BINDING, OPTION_DYNAMIC_USING_BINDING_COUNT,
+    OPTION_DYNAMIC_USING_COUNT, OPTION_DYNAMIC_USING_EXPRESSION, OPTION_LOOP_CONDITION, OPTION_RETYPE_TARGET,
+    OPTION_SETS_FOUND, OPTION_STRICT, OpCode, TRIGGER_VARIABLES, normalize_identifier, normalize_path,
+    quote_identifier,
 };
 use crate::error::{PgError, Result, code};
 
 /// Statement is a PL/pgSQL statement on its way to becoming operations.
 #[derive(Clone, Debug)]
 enum Statement {
-    Assignment { variable: String, expression: String, retype: bool },
+    Assignment {
+        variable: String,
+        expression: String,
+        retype: bool,
+    },
     Block(Block),
-    ExecuteSql { statement: String, target: String, record: bool, sets_found: bool, strict: bool },
-    DynamicExecute { query: String, params: Vec<String>, target: String, record: bool },
-    ForQueryInit { query: String },
-    ForQueryNext { record: String, offset: i32 },
-    Goto { offset: i32, label: String, nearest: bool },
-    If { condition: String, offset: i32, loop_condition: bool },
-    Perform { statement: String },
-    Raise { level: String, message: String, params: Vec<String>, options: BTreeMap<String, String> },
-    ReturnQuery { query: String },
-    Return { expression: String },
+    ExecuteSql {
+        statement: String,
+        target: String,
+        record: bool,
+        sets_found: bool,
+        strict: bool,
+    },
+    DynamicExecute {
+        query: String,
+        params: Vec<String>,
+        target: String,
+        record: bool,
+    },
+    ForQueryInit {
+        query: String,
+    },
+    ForQueryNext {
+        record: String,
+        offset: i32,
+    },
+    Goto {
+        offset: i32,
+        label: String,
+        nearest: bool,
+    },
+    If {
+        condition: String,
+        offset: i32,
+        loop_condition: bool,
+    },
+    Perform {
+        statement: String,
+    },
+    Raise {
+        level: String,
+        message: String,
+        params: Vec<String>,
+        options: BTreeMap<String, String>,
+    },
+    ReturnQuery {
+        query: String,
+    },
+    Return {
+        expression: String,
+    },
+    /// A statement with where it is in the body, such as `line 3 at RAISE`, which errors it raises report.
+    At {
+        context: String,
+        statement: Box<Statement>,
+    },
 }
 
 /// Block is a scope of statements with the variables and records it declares.
@@ -95,6 +140,7 @@ impl Statement {
                     + block.records.iter().filter(|r| r.is_declared()).count() as i32
                     + size(&block.body)
             }
+            Statement::At { statement, .. } => statement.size(),
             _ => 1,
         }
     }
@@ -208,6 +254,16 @@ impl Statement {
                 ops.push(operation);
             }
             Statement::Block(block) => block.append(ops, names)?,
+            Statement::At { context, statement } => {
+                let start = ops.len();
+                statement.append(ops, names)?;
+                for operation in &mut ops[start..] {
+                    operation
+                        .options
+                        .entry(OPTION_CONTEXT.as_bytes().to_vec())
+                        .or_insert_with(|| context.clone().into_bytes());
+                }
+            }
             Statement::ExecuteSql { statement, target, record, sets_found, strict } => {
                 let (statement, bindings) = substitute(statement, names)?;
                 let mut operation = op(if *record { OpCode::ExecuteInto } else { OpCode::Execute }, statement);
@@ -404,7 +460,7 @@ impl Block {
 }
 
 /// substitute replaces each variable an expression names, or field of one, with `$N`, returning the expression, with
-/// its tokens rejoined by spaces as Go does, and the names the parameters bind, where a name before `(` is a function
+/// the text between its tokens kept, and the names the parameters bind, where a name before `(` is a function
 /// and the columns that an INSERT lists or an UPDATE sets stay column names.
 fn substitute(expression: &str, names: &Names) -> Result<(String, Vec<String>)> {
     let tokens = pg_query::scan(expression).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?.tokens;
@@ -413,35 +469,36 @@ fn substitute(expression: &str, names: &Names) -> Result<(String, Vec<String>)> 
     let is = |i: usize, token: Token| tokens.get(i).is_some_and(|t| t.token == token as i32);
     let mut out = String::new();
     let mut bindings = Vec::new();
+    let mut written = 0;
     let mut i = 0;
     while i < tokens.len() {
-        let mut substring = text(i).to_string();
+        let start = tokens[i].start as usize;
+        out.push_str(&expression[written..start]);
         let after_dot = i > 0 && is(i - 1, Token::Ascii46);
-        let normalized = names.aliases.resolve(&normalize_identifier(&substring));
+        let normalized = names.aliases.resolve(&normalize_identifier(text(i)));
         if !after_dot && !targets.contains(&tokens[i].start) && names.contains(&normalized) {
             let mut binding = normalized;
             while i + 2 < tokens.len() && is(i + 1, Token::Ascii46) {
-                let field = text(i + 2);
-                substring = format!("{substring}.{field}");
-                binding = format!("{binding}.{field}");
+                binding = format!("{binding}.{}", text(i + 2));
                 i += 2;
             }
+            let end = tokens[i].end as usize;
             if is(i + 1, Token::Ascii40) {
-                out.push_str(&substring);
-                out.push(' ');
+                out.push_str(&expression[start..end]);
             } else {
                 bindings.push(binding);
-                out.push_str(&format!("${} ", bindings.len()));
+                out.push_str(&format!("${}", bindings.len()));
             }
         } else if !after_dot && TRIGGER_VARIABLES.iter().any(|(name, _)| *name == normalized) {
             bindings.push(normalized);
-            out.push_str(&format!("${} ", bindings.len()));
+            out.push_str(&format!("${}", bindings.len()));
         } else {
-            out.push_str(&substring);
-            out.push(' ');
+            out.push_str(text(i));
         }
+        written = tokens[i].end as usize;
         i += 1;
     }
+    out.push_str(&expression[written..]);
     Ok((out, bindings))
 }
 
@@ -639,7 +696,55 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
 
 /// convert_statements converts a list of statements.
 fn convert_statements(statements: &[Json], datums: &Datums) -> Result<Vec<Statement>> {
-    statements.iter().map(|s| convert_statement(s, datums)).collect()
+    statements
+        .iter()
+        .map(|s| {
+            let statement = Box::new(convert_statement(s, datums)?);
+            Ok(match variant(s) {
+                Some((kind, fields)) => Statement::At {
+                    context: format!("line {} at {}", int(fields, "lineno"), kind_name(kind, fields)),
+                    statement,
+                },
+                None => *statement,
+            })
+        })
+        .collect()
+}
+
+/// kind_name returns the name that Postgres' error context gives a kind of PL/pgSQL statement.
+fn kind_name(kind: &str, statement: &Json) -> &'static str {
+    match kind.trim_start_matches("PLpgSQL_stmt_") {
+        "block" => "statement block",
+        "assign" => "assignment",
+        "if" => "IF",
+        "case" => "CASE",
+        "loop" => "LOOP",
+        "while" => "WHILE",
+        "fori" => "FOR with integer loop variable",
+        "fors" => "FOR over SELECT rows",
+        "forc" => "FOR over cursor",
+        "foreach_a" => "FOREACH over array",
+        "exit" if flag(statement, "is_exit") => "EXIT",
+        "exit" => "CONTINUE",
+        "return" => "RETURN",
+        "return_next" => "RETURN NEXT",
+        "return_query" => "RETURN QUERY",
+        "raise" => "RAISE",
+        "assert" => "ASSERT",
+        "execsql" => "SQL statement",
+        "dynexecute" => "EXECUTE",
+        "dynfors" => "FOR over EXECUTE statement",
+        "getdiag" => "GET DIAGNOSTICS",
+        "open" => "OPEN",
+        "fetch" => "FETCH",
+        "close" => "CLOSE",
+        "perform" => "PERFORM",
+        "call" if flag(statement, "is_call") => "CALL",
+        "call" => "DO",
+        "commit" => "COMMIT",
+        "rollback" => "ROLLBACK",
+        _ => "statement",
+    }
 }
 
 /// into_target returns what an INTO clause writes: a record by name, or the comma-separated names of a row's

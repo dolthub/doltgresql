@@ -2000,7 +2000,12 @@ impl<'b, 'a> Binder<'b, 'a> {
         if numeric_rank(domain.oid).is_none() {
             return Err(missing());
         }
-        Ok((Expr::Arith(arith, Box::new(left), Box::new(right), domain), domain))
+        let constant = matches!((&left, &right), (Expr::Const(_), Expr::Const(_)));
+        let expr = Expr::Arith(arith, Box::new(left), Box::new(right), domain);
+        match constant {
+            true => Ok((Expr::Const(expr.eval(self.ctx, &[])?), domain)),
+            false => Ok((expr, domain)),
+        }
     }
 }
 
