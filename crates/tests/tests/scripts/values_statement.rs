@@ -1233,5 +1233,203 @@ fn test_values_statement() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "VALUES column names",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "VALUES (1, 2), (3, 4);",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("3"), T("4")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (VALUES (1, 2)) v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (VALUES (1, 2)) v(a);",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("column2", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VALUES (1) UNION VALUES (2);",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VALUES (1, 'a') UNION ALL VALUES (2, 'b');",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", TEXT)],
+                        rows: &[
+                            &[T("1"), T("a")],
+                            &[T("2"), T("b")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "VALUES (1, 2) ORDER BY column2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v.column2 FROM (VALUES (1, 2)) v WHERE column1 = 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column2", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (VALUES (1), (2.5)) v WHERE column1 > 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", NUMERIC)],
+                        rows: &[
+                            &[T("2.5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "WITH w AS (VALUES (1)) SELECT * FROM w;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (VALUES (1, 2)) AS v JOIN (VALUES (1, 3)) AS w ON v.column1 = w.column1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", INT4), Column("column1", INT4), Column("column2", INT4)],
+                        rows: &[
+                            &[T("1"), T("2"), T("1"), T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (VALUES (1, 2)) v(a, b, c);",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: r#"table "v" has 2 columns available but 3 columns specified"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (VALUES (1));",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "VALUES column names in a view",
+            set_up_script: &[
+                "CREATE VIEW vv AS VALUES (1, 'a');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM vv;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", TEXT)],
+                        rows: &[
+                            &[T("1"), T("a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "VALUES column names in CREATE TABLE AS",
+            set_up_script: &[
+                "CREATE TABLE vt AS VALUES (1, 'a');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM vt;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", TEXT)],
+                        rows: &[
+                            &[T("1"), T("a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "VALUES column names in a cursor",
+            skip: Some("SQL cursors are not supported yet, as in the Go server"),
+            set_up_script: &[
+                "BEGIN;",
+                "DECLARE c CURSOR FOR VALUES (1), (2);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "FETCH ALL c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "FETCH 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

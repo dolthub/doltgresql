@@ -597,10 +597,13 @@ impl Triggers {
         let table_id = id::new(crate::catalog::id::SECTION_TABLE, &[&self.table.schema, &self.table.name]);
         let arguments: Vec<Value> =
             fired.trigger.arguments.iter().map(|a| Value::Text(String::from_utf8_lossy(a).into_owned())).collect();
-        let argv = crate::array::Array {
-            element: oid::TEXT,
-            dims: if arguments.is_empty() { Vec::new() } else { vec![(arguments.len() as i32, 0)] },
-            values: arguments.clone(),
+        let argv = match arguments.is_empty() {
+            true => Value::Null,
+            false => Value::Array(Box::new(crate::array::Array {
+                element: oid::TEXT,
+                dims: vec![(arguments.len() as i32, 0)],
+                values: arguments.clone(),
+            })),
         };
         let special = vec![
             ("tg_name", Value::Text(fired.name.clone())),
@@ -612,7 +615,7 @@ impl Triggers {
             ("tg_table_name", Value::Text(self.table.name.clone())),
             ("tg_table_schema", Value::Text(self.table.schema.clone())),
             ("tg_nargs", Value::Int4(arguments.len() as i32)),
-            ("tg_argv", Value::Array(Box::new(argv))),
+            ("tg_argv", argv),
         ];
         let (old, new) = match event {
             Event::Insert => (None, new),

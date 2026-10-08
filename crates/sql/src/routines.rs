@@ -876,6 +876,7 @@ impl Ctx<'_> {
             aggregate_levels: Vec::new(),
             catalog: None,
             variables: Vec::new(),
+            expanding: Vec::new(),
         };
         f(&mut ctx)
     }

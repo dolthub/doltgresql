@@ -2556,6 +2556,71 @@ fn test_basic_indexing() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "ALTER INDEX RENAME TO on indexes used by foreign keys",
+            set_up_script: &[
+                "CREATE TABLE zi_parent (id INT PRIMARY KEY, u INT);",
+                "CREATE UNIQUE INDEX zi_parent_u_idx ON zi_parent (u);",
+                "CREATE TABLE zi_child (id INT PRIMARY KEY, a INT NOT NULL, b INT);",
+                "CREATE INDEX zi_child_a_idx ON zi_child (a);",
+                "CREATE INDEX zi_child_b_idx ON zi_child (b);",
+                "ALTER TABLE zi_child ADD CONSTRAINT zi_child_a_fk FOREIGN KEY (a) REFERENCES zi_parent(id);",
+                "ALTER TABLE zi_child ADD CONSTRAINT zi_child_b_fk FOREIGN KEY (b) REFERENCES zi_parent(u);",
+                "INSERT INTO zi_parent VALUES (1, 10);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "ALTER INDEX zi_child_a_idx RENAME TO zi_child_a_idx_new;",
+                    expected: Expected::Tag("ALTER INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER INDEX zi_parent_u_idx RENAME TO zi_parent_u_idx_new;",
+                    expected: Expected::Tag("ALTER INDEX"),
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "SELECT dolt_commit('-Am', 'renamed indexes');",
+                    expected: Expected::Tag("SELECT 1"),
+                    flow: Flow::Exec,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO zi_child VALUES (1, 1, 10);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                // Doltgres-specific: the Go server words foreign key violations as go-mysql-server does, so this expectation follows Postgres' wording.
+                ScriptTestAssertion {
+                    query: "INSERT INTO zi_child VALUES (2, 2, 10);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "zi_child" violates foreign key constraint "zi_child_a_fk""#, detail: r#"Key (a)=(2) is not present in table "zi_parent"."#, schema: "public", table: "zi_child", constraint: "zi_child_a_fk", ..E }),
+                    ..A
+                },
+                // Doltgres-specific: the Go server words foreign key violations as go-mysql-server does, so this expectation follows Postgres' wording.
+                ScriptTestAssertion {
+                    query: "INSERT INTO zi_child VALUES (3, 1, 20);",
+                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"insert or update on table "zi_child" violates foreign key constraint "zi_child_b_fk""#, detail: r#"Key (b)=(20) is not present in table "zi_parent"."#, schema: "public", table: "zi_child", constraint: "zi_child_b_fk", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT indexname FROM pg_indexes WHERE tablename IN ('zi_parent', 'zi_child') ORDER BY indexname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("indexname", NAME)],
+                        rows: &[
+                            &[T("zi_child_a_idx_new")],
+                            &[T("zi_child_b_idx")],
+                            &[T("zi_child_pkey")],
+                            &[T("zi_parent_pkey")],
+                            &[T("zi_parent_u_idx_new")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }
 

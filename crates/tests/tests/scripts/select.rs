@@ -579,6 +579,51 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'"#,
             ..S
         },
         ScriptTest {
+            name: "column names of schema-qualified functions",
+            set_up_script: &[
+                "CREATE SCHEMA function_labels;",
+                "CREATE FUNCTION public.label_fn(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1 + 1';",
+                "CREATE FUNCTION function_labels.label_fn(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1 + 2';",
+                r#"CREATE FUNCTION function_labels."label.fn"(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1 + 3';"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT public.label_fn(1), function_labels.label_fn(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("label_fn", INT4), Column("label_fn", INT4)],
+                        rows: &[
+                            &[T("2"), T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT function_labels.label_fn(1) AS custom_label;",
+                    expected: Expected::Rows {
+                        columns: &[Column("custom_label", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT function_labels."label.fn"(1);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("label.fn", INT4)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
             name: "column names of functions called in FROM",
             set_up_script: &[
                 "CREATE TABLE ft (id integer primary key);",

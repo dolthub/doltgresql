@@ -28,7 +28,7 @@ const fn f(name: &'static str, args: &'static [u32], ret: u32, implementation: s
     Function { name, args, ret, strict: true, variadic: false, implementation }
 }
 
-/// v declares a json function that takes any number of arguments of any type.
+/// v declares a json function that takes one or more arguments of any type.
 const fn v(name: &'static str, ret: u32, implementation: super::Implementation) -> Function {
     Function { name, args: &[ANY], ret, strict: false, variadic: true, implementation }
 }
@@ -121,6 +121,10 @@ pub const FUNCTIONS: &[Function] = &[
     v("jsonb_build_object", JSONB, build_object_b),
     v("json_build_array", JSON, build_array),
     v("jsonb_build_array", JSONB, build_array_b),
+    f("json_build_object", &[], JSON, build_object),
+    f("jsonb_build_object", &[], JSONB, build_object_b),
+    f("json_build_array", &[], JSON, build_array),
+    f("jsonb_build_array", &[], JSONB, build_array_b),
     f("json_object", &[TEXT_ARRAY], JSON, json_object),
     f("jsonb_object", &[TEXT_ARRAY], JSONB, jsonb_object),
 ];

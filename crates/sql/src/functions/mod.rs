@@ -21,7 +21,7 @@ pub use json::OUT_COLUMNS as JSON_OUT_COLUMNS;
 mod advisory;
 mod array;
 mod binary;
-mod catalog;
+pub(crate) mod catalog;
 pub mod datetime;
 pub mod json;
 mod jsonpath;
@@ -226,11 +226,12 @@ pub struct Resolved {
     pub ret: u32,
 }
 
-/// parameter_types returns the parameter types an overload gives a number of arguments, repeating a variadic one.
+/// parameter_types returns the parameter types an overload gives a number of arguments, repeating a variadic one,
+/// which takes at least one argument unless it is the only parameter and its type is not `any`.
 fn parameter_types(f: &Function, count: usize) -> Option<Vec<u32>> {
     if f.variadic {
         let (last, fixed) = f.args.split_last()?;
-        if count < fixed.len() {
+        if count < fixed.len() || (count == fixed.len() && (!fixed.is_empty() || *last == ANY)) {
             return None;
         }
         let mut types = fixed.to_vec();

@@ -249,7 +249,8 @@ impl Ctx<'_> {
         Ok(Outcome::command("CREATE EXTENSION"))
     }
 
-    /// drop_extensions runs DROP EXTENSION, removing the objects of each extension, which no table column may use.
+    /// drop_extensions runs DROP EXTENSION, removing the objects of each extension along with the objects that use them
+    /// when CASCADE asks.
     pub fn drop_extensions(&mut self, drop: &DropStmt) -> Result<Outcome> {
         let installed = self.installed_extensions()?;
         let mut dropping = Vec::new();
@@ -266,35 +267,32 @@ impl Ctx<'_> {
                 }
             }
         }
+        let mut dependents = Vec::new();
+        for (_, installed) in &dropping {
+            let Some(extension) = get(&id::segments(&installed.ext_name).into_iter().next().unwrap_or_default()) else {
+                continue;
+            };
+            let schema = id::segments(&installed.namespace).into_iter().next().unwrap_or_default();
+            dependents.extend(self.extension_dependents(extension, &schema)?);
+        }
+        if !dependents.is_empty() && drop.behavior != pg_query::protobuf::DropBehavior::DropCascade as i32 {
+            let message = match dropping.as_slice() {
+                [(name, _)] => format!("cannot drop extension {name} because other objects depend on it"),
+                _ => "cannot drop desired object(s) because other objects depend on them".to_string(),
+            };
+            let detail: Vec<String> = dependents.iter().map(|d| format!("{} depends on {}", d.object, d.on)).collect();
+            return Err(PgError {
+                detail: Some(detail.join("\n")),
+                hint: Some("Use DROP ... CASCADE to drop the dependent objects too.".into()),
+                ..PgError::new(code::DEPENDENT_OBJECTS_STILL_EXIST, message)
+            });
+        }
+        if !dependents.is_empty() {
+            self.drop_extension_dependents(&dependents)?;
+        }
         for (name, installed) in dropping {
             let Some(extension) = get(&name) else { continue };
             let schema = id::segments(&installed.namespace).into_iter().next().unwrap_or_default();
-            let snapshot = self.snapshot()?;
-            let mut dependents = Vec::new();
-            for base in &extension.types {
-                for type_name in [format!("_{}", base.name), base.name.to_string()] {
-                    let oid = crate::catalog::oids::oid(&id::new(SECTION_TYPE, &[&schema, &type_name]));
-                    for table in &snapshot.tables {
-                        for column in table.columns.iter().filter(|c| c.ty.oid == oid) {
-                            let shown = crate::cast::type_display(oid);
-                            dependents.push(format!(
-                                "column {} of table {} depends on type {shown}",
-                                column.name, table.name
-                            ));
-                        }
-                    }
-                }
-            }
-            if !dependents.is_empty() {
-                return Err(PgError {
-                    detail: Some(dependents.join("\n")),
-                    hint: Some("Use DROP ... CASCADE to drop the dependent objects too.".into()),
-                    ..PgError::new(
-                        code::DEPENDENT_OBJECTS_STILL_EXIST,
-                        format!("cannot drop extension {name} because other objects depend on it"),
-                    )
-                });
-            }
             let objects = Objects { extension, schema: schema.clone() };
             for base in &extension.types {
                 for type_name in [base.name.to_string(), format!("_{}", base.name)] {

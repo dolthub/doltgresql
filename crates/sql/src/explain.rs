@@ -50,6 +50,7 @@ fn expr_text(e: &Expr, columns: &[String]) -> String {
         Expr::And(l, r) => format!("({} AND {})", text(l), text(r)),
         Expr::Or(l, r) => format!("({} OR {})", text(l), text(r)),
         Expr::Not(inner) => format!("(NOT {})", text(inner)),
+        Expr::Spread(inner) => format!("VARIADIC {}", text(inner)),
         Expr::IsNull(inner, negated) => format!("({} IS {}NULL)", text(inner), if *negated { "NOT " } else { "" }),
         Expr::Cast(inner, ty, _) => format!("({})::{}", text(inner), crate::cast::type_display(ty.oid)),
         Expr::Concat(l, r) => format!("({} || {})", text(l), text(r)),

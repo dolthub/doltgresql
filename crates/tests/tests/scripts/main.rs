@@ -62,6 +62,7 @@ mod dolt_tables;
 mod doltgres_engine;
 mod domain;
 mod drop_database;
+mod drop_extension;
 mod drop_function;
 mod drop_procedure;
 mod drop_table;

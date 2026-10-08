@@ -2688,5 +2688,58 @@ ORDER BY schema_name, table_name;"#,
             ],
             ..S
         },
+        ScriptTest {
+            name: "column defaults with user-defined functions keep working after table rewrites",
+            set_up_script: &[
+                "CREATE FUNCTION f() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;",
+                "CREATE TABLE t (id INT, a INT DEFAULT f());",
+                "INSERT INTO t (id) VALUES (1);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t ALTER COLUMN a SET NOT NULL;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t ALTER COLUMN a TYPE BIGINT;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t ADD COLUMN b INT DEFAULT 2;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t DROP COLUMN b;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE t ADD PRIMARY KEY (id);",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO t (id) VALUES (2);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("a", INT8)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), T("1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

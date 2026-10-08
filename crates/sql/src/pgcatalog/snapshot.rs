@@ -120,7 +120,8 @@ impl Ctx<'_> {
         Ok(snapshot)
     }
 
-    /// read_snapshot reads every user object of the working root value, with Dolt's own tables when asked.
+    /// read_snapshot reads every user object of the working root value, with Dolt's own tables and each table's blame
+    /// view when asked.
     fn read_snapshot(&mut self, system: bool) -> Result<Snapshot> {
         let mut schemas: Vec<String> =
             self.txn.root.schemas.iter().map(|s| String::from_utf8_lossy(s).into_owned()).collect();
@@ -139,6 +140,7 @@ impl Ctx<'_> {
                 false => tables.push(TableDef::load(self.db, schema, name, address)?),
             }
         }
+        let show_system = system;
         let system = match system {
             true => crate::pgcatalog::systables::generated(&schemas, &tables, stored_system),
             false => Vec::new(),
@@ -156,6 +158,12 @@ impl Ctx<'_> {
             for (name, statement) in self.views(schema)? {
                 views.push(ViewDef { schema: schema.clone(), name, statement });
             }
+        }
+        for table in tables.iter().filter(|t| show_system && !t.keyless()) {
+            let name = format!("dolt_blame_{}", table.name);
+            let Some(statement) = crate::dolt::diff::blame_view(self, &table.schema, &name)? else { continue };
+            views.retain(|v| v.schema != table.schema || v.name != name);
+            views.push(ViewDef { schema: table.schema.clone(), name, statement });
         }
         let sequences = crate::sequences::all(self.db, &self.txn.root)?;
         let foreign_keys = self.foreign_keys()?;

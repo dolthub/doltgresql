@@ -1713,6 +1713,215 @@ $$ LANGUAGE plpgsql;"#,
 }
 
 #[test]
+fn test_trigger_special_variables() {
+    run_scripts(&[
+        ScriptTest {
+            name: "TG_ARGV assigned to a NEW column",
+            set_up_script: &[
+                "CREATE TABLE t (id TEXT PRIMARY KEY, seen TEXT);",
+                r#"CREATE FUNCTION f_argv() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					NEW.seen := TG_ARGV[0];
+					RETURN NEW;
+				END;
+				$$;"#,
+                "CREATE TRIGGER tr_argv BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION f_argv('hello', 'world');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO t (id) VALUES ('a');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", TEXT), Column("seen", TEXT)],
+                        rows: &[
+                            &[T("a"), T("hello")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "TG_ARGV subscripts and slices count from 0",
+            set_up_script: &[
+                "CREATE TABLE t (id TEXT PRIMARY KEY);",
+                "CREATE TABLE log (v TEXT);",
+                r#"CREATE FUNCTION f_argv() RETURNS trigger LANGUAGE plpgsql AS $$
+				DECLARE
+					i INT := 0;
+				BEGIN
+					INSERT INTO log (v) VALUES (concat_ws(',', TG_NARGS, TG_ARGV[0], TG_ARGV[1],
+						coalesce(TG_ARGV[2], 'none'), coalesce(TG_ARGV[-1], 'none'), tg_argv[i + 1], TG_ARGV[0:1]::text, TG_ARGV[:0]::text, TG_ARGV[1:]::text,
+						array_length(TG_ARGV, 1)));
+					RETURN NULL;
+				END;
+				$$;"#,
+                "CREATE TRIGGER tr_args AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f_argv('x', 'y');",
+                "CREATE TRIGGER tr_no_args AFTER DELETE ON t FOR EACH ROW EXECUTE FUNCTION f_argv();",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES ('a');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM t;",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v FROM log ORDER BY v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT)],
+                        rows: &[
+                            &[T("0,none,none")],
+                            &[T("2,x,y,none,none,y,{x,y},{x},{y},2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "TG_ARGV keeps its lower bound of 0",
+            set_up_script: &[
+                "CREATE TABLE t (id TEXT PRIMARY KEY);",
+                "CREATE TABLE log (v TEXT);",
+                r#"CREATE FUNCTION f_argv() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					INSERT INTO log (v) VALUES (TG_ARGV::text);
+					RETURN NULL;
+				END;
+				$$;"#,
+                "CREATE TRIGGER tr_args AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f_argv('x', 'y');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES ('a');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v FROM log ORDER BY v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT)],
+                        rows: &[
+                            &[T("[0:1]={x,y}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "TG_OP and TG_WHEN in BEFORE triggers",
+            set_up_script: &[
+                "CREATE TABLE t (id TEXT PRIMARY KEY, seen TEXT);",
+                "CREATE TABLE log (v TEXT);",
+                r#"CREATE FUNCTION f_before() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					IF TG_OP = 'DELETE' THEN
+						INSERT INTO log (v) VALUES (TG_WHEN || ' ' || TG_OP || ' ' || OLD.id);
+						RETURN OLD;
+					END IF;
+					NEW.seen := TG_WHEN || ' ' || TG_OP;
+					RETURN NEW;
+				END;
+				$$;"#,
+                "CREATE TRIGGER tr_before BEFORE INSERT OR UPDATE OR DELETE ON t FOR EACH ROW EXECUTE FUNCTION f_before();",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO t (id) VALUES ('a'), ('b');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE t SET id = 'c' WHERE id = 'b';",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM t ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", TEXT), Column("seen", TEXT)],
+                        rows: &[
+                            &[T("a"), T("BEFORE INSERT")],
+                            &[T("c"), T("BEFORE UPDATE")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM t WHERE id = 'a';",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v FROM log ORDER BY v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT)],
+                        rows: &[
+                            &[T("BEFORE DELETE a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "trigger and table names",
+            set_up_script: &[
+                "CREATE SCHEMA s;",
+                "CREATE TABLE s.t (id TEXT PRIMARY KEY);",
+                "CREATE TABLE log (v TEXT);",
+                r#"CREATE FUNCTION f_after() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					INSERT INTO public.log (v) VALUES (concat_ws(',', TG_NAME, TG_WHEN, TG_LEVEL, TG_OP, TG_TABLE_NAME,
+						TG_TABLE_SCHEMA, TG_RELNAME, TG_RELID::regclass::text));
+					RETURN NULL;
+				END;
+				$$;"#,
+                "CREATE TRIGGER tr_after AFTER INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION f_after();",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO s.t VALUES ('a');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v FROM log ORDER BY v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT)],
+                        rows: &[
+                            &[T("tr_after,AFTER,ROW,INSERT,t,s,t,s.t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
 fn test_trigger_whole_record_reference() {
     run_scripts(&[
         ScriptTest {

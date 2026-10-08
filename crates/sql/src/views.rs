@@ -141,6 +141,23 @@ impl Ctx<'_> {
         Ok(None)
     }
 
+    /// view_before_table returns the schema of the view that an unqualified relation name finds in the search path
+    /// before any table of that name, as Postgres looks for both in each schema in turn.
+    pub fn view_before_table(&mut self, relation: &pg_query::protobuf::RangeVar) -> Result<Option<String>> {
+        if !relation.schemaname.is_empty() {
+            return Ok(None);
+        }
+        for schema in self.session.search_path() {
+            if self.txn.table(self.db, &schema, &relation.relname)?.is_some() {
+                return Ok(None);
+            }
+            if self.views(&schema)?.iter().any(|(name, _)| *name == relation.relname) {
+                return Ok(Some(schema));
+            }
+        }
+        Ok(None)
+    }
+
     /// put_view stores a view's statement in its schema's dolt_schemas table, or removes the view without one.
     fn put_view(&mut self, schema: &str, name: &str, fragment: Option<&str>) -> Result<()> {
         let table = match self.txn.table(self.db, schema, DOLT_SCHEMAS)? {

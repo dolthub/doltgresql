@@ -709,103 +709,164 @@ fn translate(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 fn format(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let Value::Text(spec) = &args[0] else { return Ok(Value::Null) };
     let values = &args[1..];
+    let unterminated = || PgError {
+        hint: Some("For a single \"%\" use \"%%\".".into()),
+        ..PgError::new(code::INVALID_PARAMETER_VALUE, "unterminated format() type specifier")
+    };
+    let invalid = |message: &str| PgError::new(code::INVALID_PARAMETER_VALUE, message);
+    let chars: Vec<char> = spec.chars().collect();
+    let mut at = 0;
+    let advance = |at: &mut usize| {
+        *at += 1;
+        if *at >= chars.len() { Err(unterminated()) } else { Ok(()) }
+    };
+    let digits = |at: &mut usize| -> Result<Option<i32>> {
+        let mut number: Option<i32> = None;
+        while chars[*at].is_ascii_digit() {
+            let digit = chars[*at] as i32 - '0' as i32;
+            number = Some(
+                number
+                    .unwrap_or(0)
+                    .checked_mul(10)
+                    .and_then(|n| n.checked_add(digit))
+                    .ok_or_else(|| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "number is out of range"))?,
+            );
+            advance(at)?;
+        }
+        Ok(number)
+    };
     let mut out = String::new();
-    let mut chars = spec.chars().peekable();
     let mut next = 0;
-    let unterminated = || PgError::new(code::INVALID_PARAMETER_VALUE, "unterminated format() type specifier");
-    while let Some(c) = chars.next() {
-        if c != '%' {
-            out.push(c);
+    while at < chars.len() {
+        if chars[at] != '%' {
+            out.push(chars[at]);
+            at += 1;
             continue;
         }
-        if chars.peek() == Some(&'%') {
-            chars.next();
+        advance(&mut at)?;
+        if chars[at] == '%' {
             out.push('%');
+            at += 1;
             continue;
         }
-        let mut digits = String::new();
-        while chars.peek().is_some_and(|c| c.is_ascii_digit()) {
-            digits.push(chars.next().unwrap_or_default());
-        }
-        let mut position = None;
-        if chars.peek() == Some(&'$') && !digits.is_empty() {
-            chars.next();
-            position = Some(digits.parse::<usize>().unwrap_or(0));
-            digits.clear();
-        }
-        let mut left = false;
-        if chars.peek() == Some(&'-') {
-            chars.next();
-            left = true;
-        }
-        let mut width = None;
-        if chars.peek() == Some(&'*') {
-            chars.next();
-            let w = values.get(next).and_then(|v| v.output()).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
-            next += 1;
-            if w < 0 {
-                left = true;
-            }
-            width = Some(w.unsigned_abs() as usize);
-        } else {
-            while chars.peek().is_some_and(|c| c.is_ascii_digit()) {
-                digits.push(chars.next().unwrap_or_default());
-            }
-            if !digits.is_empty() {
-                width = digits.parse().ok();
-            }
-        }
-        let kind = chars.next().ok_or_else(unterminated)?;
-        let index = match position {
-            Some(0) => {
-                return Err(PgError::new(
-                    code::INVALID_PARAMETER_VALUE,
-                    "format specifies argument 0, but arguments are numbered from 1",
-                ));
-            }
-            Some(p) => {
-                next = p;
-                p - 1
-            }
-            None => {
-                next += 1;
-                next - 1
-            }
-        };
-        let value = values
-            .get(index)
-            .ok_or_else(|| PgError::new(code::INVALID_PARAMETER_VALUE, "too few arguments for format()"))?;
-        let rendered = match kind {
-            's' => value.output().unwrap_or_default(),
-            'I' => match value.output() {
-                Some(v) => crate::engine::quote_identifier(&v),
-                None => {
-                    return Err(PgError::new(
-                        code::NULL_VALUE_NOT_ALLOWED,
-                        "null values cannot be formatted as an SQL identifier",
-                    ));
+        let (mut position, mut width_position, mut width, mut left) = (None, None, 0, false);
+        match digits(&mut at)? {
+            Some(n) if chars[at] != '$' => width = n,
+            found => {
+                if let Some(n) = found {
+                    if n == 0 {
+                        return Err(invalid("format specifies argument 0, but arguments are numbered from 1"));
+                    }
+                    position = Some(n as usize);
+                    advance(&mut at)?;
                 }
-            },
-            'L' => match value.output() {
-                Some(v) if v.contains('\\') => format!("E'{}'", v.replace('\\', "\\\\").replace('\'', "''")),
-                Some(v) => format!("'{}'", v.replace('\'', "''")),
-                None => "NULL".to_string(),
-            },
-            other => {
+                while chars[at] == '-' {
+                    left = true;
+                    advance(&mut at)?;
+                }
+                if chars[at] == '*' {
+                    advance(&mut at)?;
+                    match digits(&mut at)? {
+                        Some(_) if chars[at] != '$' => {
+                            return Err(invalid("width argument position must be ended by \"$\""));
+                        }
+                        Some(0) => {
+                            return Err(invalid("format specifies argument 0, but arguments are numbered from 1"));
+                        }
+                        Some(n) => {
+                            width_position = Some(n as usize);
+                            advance(&mut at)?;
+                        }
+                        None => width_position = Some(0),
+                    }
+                } else if let Some(n) = digits(&mut at)? {
+                    width = n;
+                }
+            }
+        }
+        let kind = chars[at];
+        if !matches!(kind, 's' | 'I' | 'L') {
+            return Err(PgError {
+                hint: Some("For a single \"%\" use \"%%\".".into()),
+                ..invalid(&format!("unrecognized format() type specifier \"{kind}\""))
+            });
+        }
+        at += 1;
+        if let Some(p) = width_position {
+            if p > 0 {
+                next = p - 1;
+            }
+            let value = values.get(next).ok_or_else(|| invalid("too few arguments for format()"))?;
+            next += 1;
+            width = match value {
+                Value::Null => 0,
+                Value::Int4(n) => *n,
+                Value::Int2(n) => *n as i32,
+                other => {
+                    crate::cast::input(&other.output().unwrap_or_default(), crate::oid::INT4).map(|v| match v {
+                        Value::Int4(n) => n,
+                        _ => 0,
+                    })?
+                }
+            };
+        }
+        if let Some(p) = position {
+            next = p - 1;
+        }
+        let value = values.get(next).ok_or_else(|| invalid("too few arguments for format()"))?;
+        next += 1;
+        let rendered = match (kind, value.output()) {
+            ('s', text) => text.unwrap_or_default(),
+            ('L', None) => "NULL".to_string(),
+            ('L', Some(v)) if v.contains('\\') => format!("E'{}'", v.replace('\\', "\\\\").replace('\'', "''")),
+            ('L', Some(v)) => format!("'{}'", v.replace('\'', "''")),
+            (_, Some(v)) => crate::engine::quote_identifier(&v),
+            (_, None) => {
                 return Err(PgError::new(
-                    code::INVALID_PARAMETER_VALUE,
-                    format!("unrecognized format() type specifier \"{other}\""),
+                    code::NULL_VALUE_NOT_ALLOWED,
+                    "null values cannot be formatted as an SQL identifier",
                 ));
             }
         };
-        let pad = width.unwrap_or(0).saturating_sub(rendered.chars().count());
+        if width < 0 {
+            if width == i32::MIN {
+                return Err(PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "number is out of range"));
+            }
+            left = true;
+            width = -width;
+        }
+        let pad = (width as usize).saturating_sub(rendered.chars().count());
         if left {
+            grow(&out, rendered.len())?;
             out.push_str(&rendered);
+            grow(&out, pad)?;
             out.extend(std::iter::repeat_n(' ', pad));
         } else {
+            grow(&out, pad)?;
             out.extend(std::iter::repeat_n(' ', pad));
+            grow(&out, rendered.len())?;
             out.push_str(&rendered);
         }
     }
+    if out.len() + 4 > MAX_ALLOC {
+        return Err(PgError::new(code::INTERNAL_ERROR, format!("invalid memory alloc request size {}", out.len() + 4)));
+    }
     Ok(Value::Text(out))
+}
+
+/// MAX_ALLOC is the largest allocation Postgres makes, which limits the text that format builds.
+const MAX_ALLOC: usize = 0x3fffffff;
+
+/// grow fails as Postgres' string buffers do when adding bytes to text would reach its allocation limit.
+fn grow(out: &str, needed: usize) -> Result<()> {
+    if needed >= MAX_ALLOC - out.len() {
+        return Err(PgError {
+            detail: Some(format!(
+                "Cannot enlarge string buffer containing {} bytes by {needed} more bytes.",
+                out.len()
+            )),
+            ..PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "out of memory")
+        });
+    }
+    Ok(())
 }

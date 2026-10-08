@@ -1074,6 +1074,14 @@ impl<'b, 'a> Planner<'b, 'a> {
                 }
                 let as_of =
                     self.ctx.session.as_of.iter().find(|(l, _)| *l == relation.location).map(|(_, r)| r.clone());
+                let qualified;
+                let relation = match self.ctx.view_before_table(relation)? {
+                    Some(schema) if as_of.is_none() => {
+                        qualified = pg_query::protobuf::RangeVar { schemaname: schema, ..relation.clone() };
+                        &qualified
+                    }
+                    _ => relation,
+                };
                 let resolved = match (&as_of, self.ctx.catalog_root(relation)?) {
                     (Some(revision), _) => self.ctx.resolve_table_as_of(relation, revision),
                     (None, Some(root)) => self.ctx.resolve_table_in(relation, &root),
@@ -1085,8 +1093,24 @@ impl<'b, 'a> Planner<'b, 'a> {
                         if let Some(sequence) = self.ctx.find_sequence(relation)? {
                             return self.plan_sequence(sequence, relation);
                         }
+                        if let Some(view) =
+                            crate::dolt::diff::blame_view(self.ctx, &relation.schemaname, &relation.relname)?
+                        {
+                            return self.plan_view(&view, relation);
+                        }
                         if let Some((schema, fragment)) = self.ctx.find_view(&relation.schemaname, &relation.relname)? {
                             self.ctx.require_view(&schema, &relation.relname, "r", relation.location)?;
+                            let key = (schema.clone(), relation.relname.clone());
+                            if self.ctx.expanding.contains(&key) {
+                                return Err(PgError::new(
+                                    code::INVALID_OBJECT_DEFINITION,
+                                    format!(
+                                        "infinite recursion detected in rules for relation \"{}\"",
+                                        relation.relname
+                                    ),
+                                ));
+                            }
+                            self.ctx.expanding.push(key);
                             let object = crate::auth::Object::Table(schema.clone(), relation.relname.clone());
                             let owner = self.ctx.owner_name(&object)?;
                             let role = std::mem::replace(&mut self.ctx.session.role, owner);
@@ -1094,6 +1118,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                             let planned = self.plan_view(&fragment, relation);
                             self.ctx.session.view_schema = schema;
                             self.ctx.session.role = role;
+                            self.ctx.expanding.pop();
                             return planned;
                         }
                         let schema = match relation.schemaname.as_str() {
@@ -1107,11 +1132,6 @@ impl<'b, 'a> Planner<'b, 'a> {
                             .filter(|s| !s.per_schema() || schema_exists)
                         {
                             return Ok(self.plan_system(system, relation));
-                        }
-                        if let Some(view) =
-                            crate::dolt::diff::blame_view(self.ctx, &relation.schemaname, &relation.relname)?
-                        {
-                            return self.plan_view(&view, relation);
                         }
                         if let Some(table) =
                             crate::dolt::conflicts::lookup(self.ctx, &relation.schemaname, &relation.relname)?
@@ -1302,6 +1322,17 @@ impl<'b, 'a> Planner<'b, 'a> {
         };
         let query = Planner { ctx: self.ctx, outer: self.outer.clone() }.plan_query(select)?;
         let renames: Vec<&str> = alias.colnames.iter().filter_map(node_name).collect();
+        if renames.len() > query.columns.len() {
+            return Err(PgError::new(
+                code::INVALID_COLUMN_REFERENCE,
+                format!(
+                    "table \"{}\" has {} columns available but {} columns specified",
+                    alias.aliasname,
+                    query.columns.len(),
+                    renames.len()
+                ),
+            ));
+        }
         let scope = Scope {
             columns: query
                 .columns

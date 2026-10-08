@@ -248,6 +248,19 @@ pub fn binary_coercible(from: u32, to: u32) -> bool {
         .contains(&(from, to))
 }
 
+/// row_type returns the row type of a system catalog relation, when it is one of the built-in types.
+pub fn row_type(relation: u32) -> Option<u32> {
+    let pg_type = lookup("pg_catalog", "pg_type")?;
+    let (oid, relid) = (pg_type.column("oid")?, pg_type.column("typrelid")?);
+    builtin::rows_where(pg_type, &|row| row[relid] == Value::Oid(relation))
+        .first()
+        .and_then(|row| match row[oid] {
+            Value::Oid(type_oid) => Some(type_oid),
+            _ => None,
+        })
+        .filter(|&type_oid| crate::catalog::builtin_type(type_oid).is_some())
+}
+
 /// Rows collects the rows of a system catalog relation, with each column NULL unless set, keeping only those that an
 /// index scan reads when there is one.
 pub struct Rows<'t> {

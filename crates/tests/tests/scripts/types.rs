@@ -7241,6 +7241,416 @@ line 1: Document is empty
             ],
             ..S
         },
+        ScriptTest {
+            name: "Regprocedure type",
+            set_up_script: &[
+                "CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE SCHEMA s;",
+                "CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'tf()'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("tf()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 's.sf(int)'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("s.sf(integer)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'f2(int,text)'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("f2(integer,text)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'abs(int)'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("abs(integer)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'p1(int)'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("p1(integer)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'tf()'::regprocedure::oid = (SELECT oid FROM pg_proc WHERE proname = 'tf');",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 2212::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("regprocedurein(cstring)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'now'::regproc::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("now()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'f2(int,text)'::regprocedure::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("f2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'f2(int,text)'::regprocedure::text;",
+                    expected: Expected::Rows {
+                        columns: &[Column("text", TEXT)],
+                        rows: &[
+                            &[T("f2(integer,text)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'f3(int)'::regprocedure::regproc::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("f3(integer)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'f3(bool)'::regprocedure;",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function "f3(bool)" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nosuch()'::regprocedure;",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function "nosuch()" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'f3'::regprocedure;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a left parenthesis", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nosuchschema.sf(int)'::regprocedure;",
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "nosuchschema" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path = s;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 's.sf(int)'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("sf(integer)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'public.f2(int,text)'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("public.f2(integer,text)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'array_agg(anynonarray)'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("array_agg(anynonarray)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'row_number()'::regprocedure;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("row_number()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Regproc user-defined routines",
+            set_up_script: &[
+                "CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE SCHEMA s;",
+                "CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'tf'::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("tf")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regproc('tf');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regproc", REGPROC)],
+                        rows: &[
+                            &[T("tf")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regproc('public.tf');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regproc", REGPROC)],
+                        rows: &[
+                            &[T("tf")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 's.sf'::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("s.sf")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regproc('s.sf');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regproc", REGPROC)],
+                        rows: &[
+                            &[T("s.sf")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regproc('sf');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regproc", REGPROC)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regproc('p1');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regproc", REGPROC)],
+                        rows: &[
+                            &[T("p1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regproc('f3');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regproc", REGPROC)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regproc('nosuchschema.sf');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regproc", REGPROC)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'tf'::regproc::oid = (SELECT oid FROM pg_proc WHERE proname = 'tf');",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'abs(int)'::regprocedure::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("pg_catalog.abs")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'f3(int)'::regprocedure::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("public.f3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'f3'::regproc;",
+                    expected: Expected::Error(Diagnostic { code: "42725", message: r#"more than one function named "f3""#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'abs'::regproc;",
+                    expected: Expected::Error(Diagnostic { code: "42725", message: r#"more than one function named "abs""#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nosuch'::regproc;",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function "nosuch" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nosuchschema.sf'::regproc;",
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "nosuchschema" does not exist"#, position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path = s;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'sf'::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("sf")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'public.tf'::regproc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("regproc", REGPROC)],
+                        rows: &[
+                            &[T("public.tf")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regproc('row_number');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regproc", REGPROC)],
+                        rows: &[
+                            &[T("row_number")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }
 

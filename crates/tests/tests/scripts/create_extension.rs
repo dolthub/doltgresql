@@ -184,19 +184,8 @@ fn test_create_extension() {
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: r#"CREATE EXTENSION "uuid-ossp" WITH SCHEMA myschema;"#,
-                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "myschema" does not exist"#, ..E }),
-                    ..A
-                },
-                ScriptTestAssertion {
                     query: r#"CREATE EXTENSION "uuid-ossp" CASCADE;"#,
                     expected: Expected::Tag("CREATE EXTENSION"),
-                    flow: Flow::Exec,
-                    ..A
-                },
-                ScriptTestAssertion {
-                    query: r#"DROP EXTENSION "uuid-ossp";"#,
-                    expected: Expected::Tag("DROP EXTENSION"),
                     flow: Flow::Exec,
                     ..A
                 },
@@ -280,6 +269,198 @@ fn test_create_extension() {
                         ],
                         tag: "SELECT 1",
                     },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "uuid-ossp in a non-public schema",
+            set_up_script: &[
+                "CREATE SCHEMA extensions;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"CREATE EXTENSION "uuid-ossp" WITH SCHEMA nosuchschema;"#,
+                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "nosuchschema" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;"#,
+                    expected: Expected::Tag("CREATE EXTENSION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;"#,
+                    expected: Expected::Tag("CREATE EXTENSION"),
+                    notices: &[Diagnostic { code: "42710", message: r#"extension "uuid-ossp" already exists, skipping"#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT extensions.uuid_nil();",
+                    expected: Expected::Rows {
+                        columns: &[Column("uuid_nil", UUID)],
+                        rows: &[
+                            &[T("00000000-0000-0000-0000-000000000000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT uuid_nil();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function uuid_nil() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT public.uuid_nil();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function public.uuid_nil() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT e.extname, n.nspname FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON e.extnamespace = n.oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("extname", NAME), Column("nspname", NAME)],
+                        rows: &[
+                            &[T("plpgsql"), T("pg_catalog")],
+                            &[T("uuid-ossp"), T("extensions")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE goals (id UUID DEFAULT extensions.uuid_generate_v4() PRIMARY KEY, note TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO goals (note) VALUES ('first');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP SCHEMA extensions;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop schema extensions because other objects depend on it", detail: r#"extension uuid-ossp depends on schema extensions
+default value for column id of table goals depends on function extensions.uuid_generate_v4()"#, hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path = public, extensions;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT uuid_nil();",
+                    expected: Expected::Rows {
+                        columns: &[Column("uuid_nil", UUID)],
+                        rows: &[
+                            &[T("00000000-0000-0000-0000-000000000000")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO goals (note) VALUES ('second');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT note, length(id::text) FROM goals;",
+                    expected: Expected::Rows {
+                        columns: &[Column("note", TEXT), Column("length", INT4)],
+                        rows: &[
+                            &[T("first"), T("36")],
+                            &[T("second"), T("36")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE goals;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"DROP EXTENSION "uuid-ossp";"#,
+                    expected: Expected::Tag("DROP EXTENSION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT extensions.uuid_nil();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function extensions.uuid_nil() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP SCHEMA extensions;",
+                    expected: Expected::Tag("DROP SCHEMA"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "vector in a non-public schema",
+            set_up_script: &[
+                "CREATE SCHEMA extensions;",
+                "CREATE EXTENSION vector WITH SCHEMA extensions;",
+                "CREATE TABLE items (id INT PRIMARY KEY, embedding extensions.vector(3));",
+                "INSERT INTO items VALUES (1, '[1,2,3]'), (2, '[4,5,6]');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '[1,2,3]'::vector;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "vector" does not exist"#, position: 19, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[1,2,3]'::extensions.vector <-> '[1,2,4]'::extensions.vector;",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "operator does not exist: extensions.vector <-> extensions.vector", hint: "No operator matches the given name and argument types. You might need to add explicit type casts.", position: 37, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[1,2,3]'::extensions.vector OPERATOR(extensions.<->) '[1,2,4]'::extensions.vector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", FLOAT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT extensions.l2_distance('[1,2,3]'::extensions.vector, '[1,2,4]'::extensions.vector);",
+                    expected: Expected::Rows {
+                        columns: &[Column("l2_distance", FLOAT8)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path = public, extensions;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP EXTENSION vector;",
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop extension vector because other objects depend on it", detail: "column embedding of table items depends on type vector", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
                     ..A
                 },
             ],

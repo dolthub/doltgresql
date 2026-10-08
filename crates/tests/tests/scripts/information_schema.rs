@@ -410,6 +410,458 @@ fn test_info_schema_columns() {
 }
 
 #[test]
+fn test_info_schema_pg_char_max_length() {
+    run_scripts(&[
+        ScriptTest {
+            name: "information_schema._pg_char_max_length",
+            skip: Some(r#"setup fails on Postgres ("conversion: unsupported bind variable: {\"$type\":\"uint32\",\"$value\":1043}") and on the Go server ("conversion: unsupported bind variable: {\"$type\":\"uint32\",\"$value\":1043}")"#),
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(1043::oid, 14);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(1042::oid, 14);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(1560::oid, 10);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(1562::oid, 10);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_char_max_length(1042::oid, -1),
+						information_schema._pg_char_max_length(1043::oid, -1),
+						information_schema._pg_char_max_length(1560::oid, -1),
+						information_schema._pg_char_max_length(1562::oid, -1);"#,
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(NULL::oid, 14);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(1043::oid, NULL::integer);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(NULL::oid, NULL::integer);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(NULL, NULL);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_char_max_length(25::oid, 14),
+						information_schema._pg_char_max_length(23::oid, 14),
+						information_schema._pg_char_max_length(18::oid, 14),
+						information_schema._pg_char_max_length(19::oid, 14),
+						information_schema._pg_char_max_length(1015::oid, 14),
+						information_schema._pg_char_max_length(0::oid, 14),
+						information_schema._pg_char_max_length(999999::oid, 14);"#,
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_char_max_length(1042::oid, 0),
+						information_schema._pg_char_max_length(1043::oid, 4),
+						information_schema._pg_char_max_length(1043::oid, -2),
+						information_schema._pg_char_max_length(1560::oid, 0),
+						information_schema._pg_char_max_length(1562::oid, -2);"#,
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_char_max_length(1043::oid, 2147483647),
+						information_schema._pg_char_max_length(1042::oid, '-2147483644'::integer),
+						information_schema._pg_char_max_length(1560::oid, '-2147483648'::integer),
+						information_schema._pg_char_max_length(1562::oid, 2147483647);"#,
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(1042::oid, '-2147483648'::integer);",
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(1043::oid, '-2147483645'::integer);",
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length(25::oid, '-2147483648'::integer);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_char_max_length('varchar'::regtype::oid, 14);",
+                    flow: Flow::Query,
+                    skip: Some("no observation"),
+                    ..A
+                },
+                // cannot convert: unsupported bind variable: {"$type":"uint32","$value":1043}
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "information_schema._pg_char_max_length with catalog inputs",
+            set_up_script: &[
+                "CREATE DOMAIN char_max_length_domain AS varchar(10);",
+                r#"CREATE TABLE char_max_length_columns (
+					id integer PRIMARY KEY, c char(10), v varchar(10), txt text,
+					default_c character, unlimited_v varchar, b bit(10), vb bit varying(10),
+					unlimited_vb bit varying, internal_c "char", va varchar(10)[], d char_max_length_domain
+				);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT a.attname, information_schema._pg_char_max_length(a.atttypid, a.atttypmod)
+						FROM pg_attribute a
+						WHERE a.attrelid = 'char_max_length_columns'::regclass AND a.attnum > 0
+						ORDER BY a.attnum;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("attname", NAME), Column("_pg_char_max_length", INT4)],
+                        rows: &[
+                            &[T("id"), Null],
+                            &[T("c"), T("10")],
+                            &[T("v"), T("10")],
+                            &[T("txt"), Null],
+                            &[T("default_c"), T("1")],
+                            &[T("unlimited_v"), Null],
+                            &[T("b"), T("10")],
+                            &[T("vb"), T("10")],
+                            &[T("unlimited_vb"), Null],
+                            &[T("internal_c"), Null],
+                            &[T("va"), Null],
+                            &[T("d"), Null],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_info_schema_pg_true_typ_id() {
+    run_scripts(&[
+        ScriptTest {
+            name: "information_schema._pg_truetypid catalog reproduction",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'pg_catalog.pg_class'::regclass AND a.attname = 'relname';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[T("19")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(pg_attribute.*, pg_type.*)
+						FROM pg_catalog.pg_attribute
+						JOIN pg_catalog.pg_type ON pg_attribute.atttypid = pg_type.oid
+						WHERE pg_attribute.attrelid = 'pg_catalog.pg_class'::regclass AND pg_attribute.attname = 'relname';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[T("19")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_truetypid(23::oid, 23::oid);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function information_schema._pg_truetypid(oid, oid) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(t.*, a.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t;"#,
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function information_schema._pg_truetypid(pg_type, pg_attribute) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_truetypid(NULL::pg_catalog.pg_attribute, NULL::pg_catalog.pg_type);",
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT length(typname) FROM pg_catalog.pg_type typname WHERE oid = 23::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("length", INT4)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "information_schema._pg_truetypid types and domains",
+            set_up_script: &[
+                "CREATE TYPE truetypid_mood AS ENUM ('sad', 'happy');",
+                "CREATE DOMAIN truetypid_integer_domain AS integer;",
+                "CREATE DOMAIN truetypid_varchar_domain AS varchar(10);",
+                "CREATE DOMAIN truetypid_array_domain AS integer[];",
+                "CREATE DOMAIN truetypid_nested_domain AS truetypid_varchar_domain;",
+                r#"CREATE TABLE truetypid_columns (
+					id integer PRIMARY KEY, c char(10), v varchar(10), txt text,
+					b bit(10), vb bit varying(10), va varchar(10)[], internal_c "char",
+					mood truetypid_mood, di truetypid_integer_domain, dv truetypid_varchar_domain,
+					da truetypid_array_domain, dn truetypid_nested_domain, ad truetypid_integer_domain[]
+				);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT a.attname, information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attnum BETWEEN 1 AND 8
+						ORDER BY a.attnum;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("attname", NAME), Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[T("id"), T("23")],
+                            &[T("c"), T("1042")],
+                            &[T("v"), T("1043")],
+                            &[T("txt"), T("25")],
+                            &[T("b"), T("1560")],
+                            &[T("vb"), T("1562")],
+                            &[T("va"), T("1015")],
+                            &[T("internal_c"), T("18")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, t.*) = t.oid
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'mood';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT a.attname, information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname IN ('di', 'dv', 'da')
+						ORDER BY a.attnum;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("attname", NAME), Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[T("di"), T("23")],
+                            &[T("dv"), T("1043")],
+                            &[T("da"), T("1007")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, t.*) = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain')
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'dn';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, t.*) = a.atttypid
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'ad';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a, t)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'dv';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[T("1043")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id'
+						AND t.oid = 1043::oid;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[T("23")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id'
+						AND t.oid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[T("1043")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(NULL, t.*)
+						FROM pg_catalog.pg_type t WHERE t.oid = 23::oid;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(NULL, t.*)
+						FROM pg_catalog.pg_type t WHERE t.oid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, NULL)
+						FROM pg_catalog.pg_attribute a
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT information_schema._pg_truetypid(NULL, NULL);",
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_type t LEFT JOIN pg_catalog.pg_attribute a ON false
+						WHERE t.typname = 'truetypid_varchar_domain';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_type t ON false
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id';"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("_pg_truetypid", OID)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
 fn test_info_schema_revision_db() {
     run_scripts(&[
         ScriptTest {

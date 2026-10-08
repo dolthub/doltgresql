@@ -1683,6 +1683,7 @@ impl Session {
             aggregate_levels: Vec::new(),
             catalog: None,
             variables: Vec::new(),
+            expanding: Vec::new(),
         };
         store::defer_syncs(true);
         let result = (|| {

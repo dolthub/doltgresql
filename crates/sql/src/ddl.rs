@@ -1242,7 +1242,7 @@ impl Ctx<'_> {
                 .filter_map(|segments| segments.get(1).cloned())
                 .collect();
             let views: Vec<String> = self.views(name)?.into_iter().map(|(view, _)| view).collect();
-            let dependents: Vec<String> = tables
+            let mut dependents: Vec<String> = tables
                 .iter()
                 .filter(|t| !t.starts_with("dolt_"))
                 .map(|t| format!("table {name}.{t}"))
@@ -1250,8 +1250,22 @@ impl Ctx<'_> {
                 .chain(types.iter().map(|(t, _)| format!("type {name}.{t}")))
                 .chain(sequences.iter().map(|s| format!("sequence {name}.{s}")))
                 .collect();
+            let mut detail: Vec<String> = dependents.iter().map(|d| format!("{d} depends on schema {name}")).collect();
+            let mut extensions = Vec::new();
+            for installed in self.installed_extensions()? {
+                let extension_name =
+                    crate::catalog::id::segments(&installed.ext_name).into_iter().next().unwrap_or_default();
+                let in_schema = crate::catalog::id::segments(&installed.namespace).first().is_some_and(|s| s == name);
+                let Some(extension) = crate::extensions::get(&extension_name).filter(|_| in_schema) else { continue };
+                dependents.push(format!("extension {extension_name}"));
+                detail.push(format!("extension {extension_name} depends on schema {name}"));
+                for dependent in self.extension_dependents(extension, name)? {
+                    detail.push(format!("{} depends on {}", dependent.object, dependent.on));
+                    dependents.push(dependent.object);
+                }
+                extensions.push(extension_name);
+            }
             if !dependents.is_empty() && !cascade {
-                let detail = dependents.iter().map(|d| format!("{d} depends on schema {name}")).collect::<Vec<_>>();
                 return Err(PgError {
                     detail: Some(detail.join("\n")),
                     hint: Some("Use DROP ... CASCADE to drop the dependent objects too.".into()),
@@ -1261,9 +1275,9 @@ impl Ctx<'_> {
                     )
                 });
             }
-            doomed.push((name.to_string(), tables, types, sequences, dependents));
+            doomed.push((name.to_string(), tables, types, sequences, dependents, extensions));
         }
-        for (name, tables, types, sequences, dependents) in doomed {
+        for (name, tables, types, sequences, dependents, extensions) in doomed {
             match dependents.len() {
                 0 => {}
                 1 => self.session.notice(PgError::notice("00000", format!("drop cascades to {}", dependents[0]))),
@@ -1283,10 +1297,15 @@ impl Ctx<'_> {
             let quoted = |object: &str| {
                 format!("{}.{}", crate::engine::quote_identifier(&name), crate::engine::quote_identifier(object))
             };
-            let mut statements: Vec<String> = types
+            let mut statements: Vec<String> = extensions
                 .iter()
-                .map(|(t, domain)| format!("DROP {} {} CASCADE", if *domain { "DOMAIN" } else { "TYPE" }, quoted(t)))
+                .map(|e| format!("DROP EXTENSION {} CASCADE", crate::engine::quote_identifier(e)))
                 .collect();
+            statements.extend(
+                types.iter().map(|(t, domain)| {
+                    format!("DROP {} {} CASCADE", if *domain { "DOMAIN" } else { "TYPE" }, quoted(t))
+                }),
+            );
             statements.extend(sequences.iter().map(|s| format!("DROP SEQUENCE {}", quoted(s))));
             for statement in statements {
                 let parsed = pg_query::parse(&statement).map_err(PgError::internal)?;

@@ -137,10 +137,10 @@ fn test_create_view_statements() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so this expectation follows Postgres' wording for the error.
+                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' wording for the error.
                 ScriptTestAssertion {
                     query: "select * from myview order by pk; /* err */",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "relation \"myview\" does not exist", position: 15, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "myview" does not exist"#, position: 15, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -198,7 +198,6 @@ fn test_create_view_statements() {
                     },
                     ..A
                 },
-                // Doltgres-specific: an earlier Dolt statement changed state Postgres lacks, so this expectation follows Postgres' behavior.
                 ScriptTestAssertion {
                     query: "select v1 from myview order by pk;",
                     expected: Expected::Rows {
@@ -235,6 +234,193 @@ fn test_create_view_statements() {
                         ],
                         tag: "SELECT 1",
                     },
+                    ..A
+                },
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "select name from myschema.dolt_schemas;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT)],
+                        rows: &[
+                            &[T("myview")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "view lookup follows relation order on search_path",
+            set_up_script: &[
+                "CREATE SCHEMA first_schema",
+                "CREATE SCHEMA second_schema",
+                "CREATE TABLE second_schema.source (v INT)",
+                "INSERT INTO second_schema.source VALUES (42)",
+                "CREATE VIEW second_schema.later_view AS SELECT v FROM second_schema.source",
+                "CREATE TABLE first_schema.shadow (v INT)",
+                "INSERT INTO first_schema.shadow VALUES (10)",
+                "CREATE VIEW second_schema.shadow AS SELECT 20 AS v",
+                "CREATE VIEW first_schema.first_view AS SELECT 30 AS v",
+                "CREATE TABLE second_schema.first_view (v INT)",
+                "INSERT INTO second_schema.first_view VALUES (40)",
+                "CREATE VIEW first_schema.same_view AS SELECT 1 AS v",
+                "CREATE VIEW second_schema.same_view AS SELECT 2 AS v",
+                "SET search_path TO first_schema, second_schema",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM later_view",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("42")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM second_schema.later_view",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("42")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM shadow",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM first_view",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("30")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM same_view",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path TO missing_schema, second_schema, first_schema",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM later_view",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("42")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM shadow",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("20")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM first_view",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("40")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM same_view",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "view in later search_path schema reaches privilege checks",
+            set_up_script: &[
+                "CREATE SCHEMA empty_schema",
+                "CREATE SCHEMA protected_schema",
+                "CREATE VIEW protected_schema.target_view AS SELECT 42 AS v",
+                "CREATE ROLE allowed_reader LOGIN PASSWORD 'password'",
+                "CREATE ROLE denied_reader LOGIN PASSWORD 'password'",
+                "GRANT USAGE ON SCHEMA empty_schema, protected_schema TO allowed_reader, denied_reader",
+                "GRANT SELECT ON protected_schema.target_view TO allowed_reader",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET search_path TO empty_schema, protected_schema",
+                    expected: Expected::Tag("SET"),
+                    username: "allowed_reader",
+                    password: "password",
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM target_view",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("42")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    username: "allowed_reader",
+                    password: "password",
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path TO empty_schema, protected_schema",
+                    expected: Expected::Tag("SET"),
+                    username: "denied_reader",
+                    password: "password",
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM target_view",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for view target_view", ..E }),
+                    username: "denied_reader",
+                    password: "password",
                     ..A
                 },
             ],
@@ -529,6 +715,104 @@ fn test_create_view_statements() {
                 ScriptTestAssertion {
                     query: "CREATE OR REPLACE VIEW idx1 AS SELECT pk FROM tbl1;",
                     expected: Expected::Error(Diagnostic { code: "42809", message: r#""idx1" is not a view"#, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Views that reference each other",
+            set_up_script: &[
+                "CREATE TABLE cyc_t1 (a BIGINT);",
+                "CREATE TABLE cyc_t2 (b BIGINT);",
+                "CREATE VIEW cyc_v2 AS SELECT * FROM cyc_t1, cyc_t2;",
+                "CREATE VIEW cyc_v3 AS SELECT * FROM cyc_v2;",
+                "CREATE OR REPLACE VIEW cyc_v2 AS SELECT * FROM cyc_v3;",
+                "CREATE VIEW cyc_self AS SELECT 1 AS x;",
+                "CREATE OR REPLACE VIEW cyc_self AS SELECT * FROM cyc_self;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM cyc_v2;",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: r#"infinite recursion detected in rules for relation "cyc_v2""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM cyc_v3;",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: r#"infinite recursion detected in rules for relation "cyc_v3""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (SELECT * FROM cyc_v3) sq;",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: r#"infinite recursion detected in rules for relation "cyc_v3""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM cyc_self;",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: r#"infinite recursion detected in rules for relation "cyc_self""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM cyc_v2;",
+                    expected: Expected::Error(Diagnostic { code: "42P17", message: r#"infinite recursion detected in rules for relation "cyc_v2""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c.relname, a.attname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname IN ('cyc_t1', 'cyc_t2') AND a.attnum > 0 ORDER BY c.relname, a.attnum;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("attname", NAME)],
+                        rows: &[
+                            &[T("cyc_t1"), T("a")],
+                            &[T("cyc_t2"), T("b")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c.relname, a.attname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname IN ('cyc_v2', 'cyc_v3') ORDER BY c.relname, a.attnum;",
+                    skip: Some("views store their query rather than their columns, so a view in a cycle has no columns to report"),
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("attname", NAME)],
+                        rows: &[
+                            &[T("cyc_v2"), T("a")],
+                            &[T("cyc_v2"), T("b")],
+                            &[T("cyc_v3"), T("a")],
+                            &[T("cyc_v3"), T("b")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW cyc_v4 AS SELECT * FROM cyc_v2;",
+                    skip: Some("views store their query rather than their columns, so a view in a cycle has no columns to report"),
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Views with the same name in different schemas",
+            set_up_script: &[
+                "CREATE SCHEMA cyc_s1;",
+                "CREATE SCHEMA cyc_s2;",
+                "CREATE TABLE cyc_s2.t (a INT);",
+                "INSERT INTO cyc_s2.t VALUES (1);",
+                "CREATE VIEW cyc_s2.v AS SELECT a FROM cyc_s2.t;",
+                "CREATE VIEW cyc_s1.v AS SELECT a FROM cyc_s2.v;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM cyc_s1.v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
             ],

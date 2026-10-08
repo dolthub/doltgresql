@@ -151,6 +151,8 @@ pub enum Expr {
     IsNull(Box<Expr>, bool),
     /// A call of the built-in function at the index.
     Func(usize, Vec<Expr>),
+    /// An array that a built-in function call's last argument passes with VARIADIC, whose elements become arguments.
+    Spread(Box<Expr>),
     /// A call of a user-defined function, with an argument for each of its input parameters.
     Routine(std::sync::Arc<crate::routines::Routine>, Vec<Expr>),
     /// A user-defined binary operator, by its symbol, with the routine that computes it.
@@ -238,6 +240,8 @@ pub struct Binder<'b, 'a> {
     /// Whether the expression is part of a definition named by `clause`, such as a default, where subqueries and
     /// aggregates aren't allowed.
     pub definition: bool,
+    /// The schema that `OPERATOR(schema.op)` names for the operator being bound, which holds the stored operator.
+    pub operator_schema: Option<String>,
 }
 
 impl<'b, 'a> Binder<'b, 'a> {
@@ -258,6 +262,7 @@ impl<'b, 'a> Binder<'b, 'a> {
             clause: "this context",
             set_functions: None,
             definition: false,
+            operator_schema: None,
         }
     }
 
@@ -639,7 +644,10 @@ impl<'b, 'a> Binder<'b, 'a> {
             let columns = self.whole_row_columns(name);
             if !columns.is_empty() {
                 let types: Vec<(String, ColumnType)> = columns.iter().map(|(n, _, t)| (n.clone(), *t)).collect();
-                let type_oid = match self.whole_row_table(name).and_then(crate::usertypes::table_row_type) {
+                let table = self.whole_row_table(name);
+                let row_type =
+                    table.and_then(|t| crate::usertypes::table_row_type(t).or_else(|| crate::pgcatalog::row_type(t)));
+                let type_oid = match row_type {
                     Some(type_oid) => type_oid,
                     None => crate::usertypes::transient(name, &types),
                 };
@@ -885,8 +893,11 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         if call.over.is_none() && !call.agg_star {
             let routines = self.ctx.routines_named(schema, name)?;
+            let builtin_schema = |s: &str| {
+                s == "pg_catalog" || s == "information_schema" && functions::catalog::INFORMATION_SCHEMA.contains(&name)
+            };
             if (!routines.is_empty()
-                || schema.is_some_and(|s| s != "pg_catalog") && !crate::aggregates::exists(schema, name))
+                || schema.is_some_and(|s| !builtin_schema(s)) && !crate::aggregates::exists(schema, name))
                 && let Some(bound) = self.routine_call(call, schema, name, routines, false)?
             {
                 return Ok(bound);
@@ -960,7 +971,18 @@ impl<'b, 'a> Binder<'b, 'a> {
             let (expr, ty) = self.bind(arg)?;
             bound.push((expr, crate::usertypes::base_type(ty)));
         }
-        let types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
+        let mut types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
+        if call.func_variadic
+            && let Some(last) = types.last_mut()
+        {
+            if !crate::array::is_array_type(*last) {
+                return Err(PgError {
+                    position: call.args.last().and_then(|a| position(arg_location(a))),
+                    ..PgError::new(code::DATATYPE_MISMATCH, "VARIADIC argument must be an array")
+                });
+            }
+            *last = element_type(*last);
+        }
         let resolved = match functions::resolve(name, &types, call.location) {
             Ok(resolved) => resolved,
             Err(err) => {
@@ -1008,17 +1030,21 @@ impl<'b, 'a> Binder<'b, 'a> {
             self.ctx.resolve_sequence(text, arg_location(&call.args[0]))?;
         }
         let mut args = Vec::with_capacity(bound.len());
-        for (((expr, ty), &target), node) in bound.into_iter().zip(&resolved.arg_types).zip(&call.args) {
+        let count = bound.len();
+        for (i, (((expr, ty), &target), node)) in bound.into_iter().zip(&resolved.arg_types).zip(&call.args).enumerate()
+        {
             if let Expr::Param(i) = expr
                 && self.ctx.parameters[i] == 0
             {
                 self.ctx.parameters[i] = target;
             }
-            if target == functions::ANY {
-                args.push(expr);
-            } else {
-                args.push(coerce((expr, ty), typ(target), false, arg_location(node))?.0);
-            }
+            let spread = call.func_variadic && i + 1 == count;
+            let target = if spread && target != functions::ANY { array_of(target) } else { target };
+            let arg = match target == functions::ANY {
+                true => expr,
+                false => coerce((expr, ty), typ(target), false, arg_location(node))?.0,
+            };
+            args.push(if spread { Expr::Spread(Box::new(arg)) } else { arg });
         }
         let mut call_expr = Expr::Func(resolved.index, args);
         if functions::function(resolved.index).ret == functions::ANYARRAY
@@ -1311,7 +1337,13 @@ impl<'b, 'a> Binder<'b, 'a> {
                 let left = self.bind(operand(&e.lexpr)?)?;
                 let right = self.bind(operand(&e.rexpr)?)?;
                 let operands = [operand(&e.lexpr)?, operand(&e.rexpr)?];
-                self.binary(&op, left, right, e.location).map_err(|err| literal_position(err, e.location, &operands))
+                self.operator_schema = match e.name.iter().filter_map(node_name).collect::<Vec<_>>().as_slice() {
+                    [schema, _] => Some(schema.to_string()),
+                    _ => None,
+                };
+                let bound = self.binary(&op, left, right, e.location);
+                self.operator_schema = None;
+                bound.map_err(|err| literal_position(err, e.location, &operands))
             }
             AExprKind::AexprIn => {
                 let left_node = operand(&e.lexpr)?;
@@ -1781,7 +1813,8 @@ impl<'b, 'a> Binder<'b, 'a> {
         Ok(Expr::And(Box::new(lower), Box::new(upper)))
     }
 
-    /// user_operator returns the visible stored operator of the name for operands of the types, where the left type
+    /// user_operator returns the visible stored operator of the name, or the one in the schema that
+    /// `OPERATOR(schema.op)` names, for operands of the types, where the left type
     /// is 0 for a prefix operator. An untyped operand first takes the other operand's type, and for operators that
     /// Postgres lacks it then matches any type, preferring text when several operators match, as Postgres'
     /// oper_select_candidate does.
@@ -1794,7 +1827,13 @@ impl<'b, 'a> Binder<'b, 'a> {
         let operators = self.ctx.user_operators()?;
         let named: Vec<_> = operators
             .iter()
-            .filter(|o| o.name == op && (o.left == 0) == (lt == 0) && crate::usertypes::in_search_path(&o.schema))
+            .filter(|o| {
+                let visible = match &self.operator_schema {
+                    Some(schema) => o.schema == *schema,
+                    None => crate::usertypes::in_search_path(&o.schema),
+                };
+                o.name == op && (o.left == 0) == (lt == 0) && visible
+            })
             .collect();
         let (exact_left, exact_right) = match (lt == oid::UNKNOWN, rt == oid::UNKNOWN) {
             (true, false) => (rt, rt),
@@ -2966,6 +3005,9 @@ fn figure_name_strength(node: &Node) -> (String, u8) {
                 while let Some(left) = select.larg.as_deref() {
                     select = left;
                 }
+                if !select.values_lists.is_empty() {
+                    return strong("column1");
+                }
                 select
                     .target_list
                     .first()
@@ -3191,9 +3233,16 @@ impl Expr {
                         _ => {}
                     }
                 }
-                let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+                let mut values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
+                if let Some(Expr::Spread(_)) = args.last() {
+                    match values.pop() {
+                        Some(Value::Array(array)) => values.extend(array.values),
+                        _ => return Ok(Value::Null),
+                    }
+                }
                 functions::call(ctx, *index, &values)?
             }
+            Expr::Spread(array) => array.eval(ctx, row)?,
             Expr::Routine(routine, args) => {
                 let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
                 crate::routines::call(ctx, routine, values)?
@@ -3547,6 +3596,7 @@ impl Expr {
                 Expr::Or(l, b(r))
             }
             Expr::Not(e) => Expr::Not(b(e)),
+            Expr::Spread(e) => Expr::Spread(b(e)),
             Expr::IsNull(e, n) => Expr::IsNull(b(e), n),
             Expr::Func(i, args) => Expr::Func(i, args.into_iter().map(&mut *f).collect()),
             Expr::Routine(r, args) => Expr::Routine(r, args.into_iter().map(&mut *f).collect()),
@@ -3613,6 +3663,7 @@ impl Expr {
             Expr::Cast(e, ..)
             | Expr::Neg(e, _)
             | Expr::Not(e)
+            | Expr::Spread(e)
             | Expr::IsNull(e, _)
             | Expr::BoolTest(e, ..)
             | Expr::Field(e, _) => e.visit(f),

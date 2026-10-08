@@ -4207,6 +4207,31 @@ fn test_pg_attribute_view_columns() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "pg_attribute includes view columns outside the search path",
+            set_up_script: &[
+                "CREATE SCHEMA other;",
+                "SET search_path = other;",
+                "CREATE TABLE remote (id INT PRIMARY KEY, label TEXT);",
+                "CREATE VIEW v AS SELECT id, label AS name FROM remote;",
+                "SET search_path = public;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT a.attname, a.atttypid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname = 'v' ORDER BY a.attnum;",
+                    expected: Expected::Rows {
+                        columns: &[Column("attname", NAME), Column("atttypid", OID)],
+                        rows: &[
+                            &[T("id"), T("23")],
+                            &[T("name"), T("25")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }
 
@@ -39677,6 +39702,7 @@ fn test_system_tables_in_pgcatalog() {
                             &[T("1241754361"), T("dolt_tags_dolt_tags_name_idx_key"), T("2200"), T("i")],
                             &[T("2969045375"), T("commits_from"), T("1634633383"), T("i")],
                             &[T("1819666711"), T("commits_to"), T("1634633383"), T("i")],
+                            &[T("3962040469"), T("dolt_blame_t1"), T("1634633383"), T("v")],
                             &[T("1763579892"), T("dolt_branches"), T("1634633383"), T("r")],
                             &[T("3929519011"), T("dolt_branches_dolt_branches_name_idx_key"), T("1634633383"), T("i")],
                             &[T("1212681264"), T("dolt_column_diff"), T("1634633383"), T("r")],
@@ -39733,7 +39759,7 @@ fn test_system_tables_in_pgcatalog() {
                             &[T("3431637196"), T("status"), T("1882653564"), T("r")],
                             &[T("3418072419"), T("status_ignored"), T("1882653564"), T("r")],
                         ],
-                        tag: "SELECT 159",
+                        tag: "SELECT 160",
                     },
                     ..A
                 },
@@ -40845,6 +40871,12 @@ fn test_system_tables_in_pgcatalog() {
                             &[T("3947121936"), T("source_commit"), T("25"), T("3"), T("f"), T("f"), T("f")],
                             &[T("3947121936"), T("target"), T("25"), T("4"), T("f"), T("f"), T("f")],
                             &[T("3947121936"), T("unmerged_tables"), T("25"), T("5"), T("f"), T("f"), T("f")],
+                            &[T("3962040469"), T("pk"), T("23"), T("1"), T("f"), T("f"), T("f")],
+                            &[T("3962040469"), T("commit"), T("25"), T("2"), T("f"), T("f"), T("f")],
+                            &[T("3962040469"), T("commit_date"), T("1114"), T("3"), T("f"), T("f"), T("f")],
+                            &[T("3962040469"), T("committer"), T("25"), T("4"), T("f"), T("f"), T("f")],
+                            &[T("3962040469"), T("email"), T("25"), T("5"), T("f"), T("f"), T("f")],
+                            &[T("3962040469"), T("message"), T("25"), T("6"), T("f"), T("f"), T("f")],
                             &[T("3999387287"), T("tableoid"), T("26"), T("-6"), T("t"), T("f"), T("f")],
                             &[T("3999387287"), T("cmax"), T("29"), T("-5"), T("t"), T("f"), T("f")],
                             &[T("3999387287"), T("xmax"), T("28"), T("-4"), T("t"), T("f"), T("f")],
@@ -40875,7 +40907,7 @@ fn test_system_tables_in_pgcatalog() {
                             &[T("4126412490"), T("parent_hash"), T("25"), T("2"), T("t"), T("f"), T("f")],
                             &[T("4126412490"), T("parent_index"), T("23"), T("3"), T("t"), T("f"), T("f")],
                         ],
-                        tag: "SELECT 1097",
+                        tag: "SELECT 1103",
                     },
                     ..A
                 },

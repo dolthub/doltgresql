@@ -7152,6 +7152,284 @@ fn test_functions_oid() {
             ],
             ..S
         },
+        ScriptTest {
+            name: "to_regprocedure",
+            set_up_script: &[
+                "CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE SCHEMA s;",
+                "CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;",
+                "CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;",
+                "CREATE TABLE t1 (pk INT PRIMARY KEY);",
+                "CREATE TRIGGER trg AFTER INSERT ON t1 FOR EACH ROW EXECUTE FUNCTION tf();",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('tf()');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("tf()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('pg_catalog.now()');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("now()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT to_regprocedure('"tf"()');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("tf()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('public.tf()');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("tf()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure(' tf ( ) ');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("tf()")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('f2(int, text)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("f2(integer,text)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('f2( integer , text ) ');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("f2(integer,text)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('f2(int4, varchar)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('f3(text)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("f3(text)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('f3(bool)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('s.sf(int)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("s.sf(integer)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('sf(int)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('p1(int)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("p1(integer)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('abs(float8)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("abs(double precision)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('nosuch()');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('nosuchschema.sf(int)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(to_regprocedure('tf()'));",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("regprocedure")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('revision_change()') IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT 1 FROM pg_trigger t WHERE t.tgname = 'trg' AND t.tgfoid = to_regprocedure('"tf"()');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('tf');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a left parenthesis", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('f2(int,text');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a right parenthesis", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('f2(int,)');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a type name", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('f2(int))');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "improper type name", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('abs(nosuchtype)');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "nosuchtype" does not exist"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET search_path = s;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('s.sf(int)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("sf(integer)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('public.f2(int,text)');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("public.f2(integer,text)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }
 
@@ -10421,6 +10699,445 @@ fn test_string_function() {
                 ScriptTestAssertion {
                     query: "SELECT decode('abc', 'nope');",
                     expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized encoding: "nope""#, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "format",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT format('hello'), format('%s', 'a'), format('x %s y %s', 'a', 'b'), format('100%% %s', 'a');",
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT), Column("format", TEXT), Column("format", TEXT), Column("format", TEXT)],
+                        rows: &[
+                            &[T("hello"), T("a"), T("x a y b"), T("100% a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%I', 'my table'), format('INSERT INTO %I VALUES (1)', 'log');",
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT), Column("format", TEXT)],
+                        rows: &[
+                            &[T(r#""my table""#), T("INSERT INTO log VALUES (1)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT format('%I %I %I %I', 'Abc', 'user', 'select', 'a"b');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT)],
+                        rows: &[
+                            &[T(r#""Abc" "user" "select" "a""b""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT format('%L', 'it''s'), format('%L', 'a\b'), format('%L', 12);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT), Column("format", TEXT), Column("format", TEXT)],
+                        rows: &[
+                            &[T("'it''s'"), T(r#"E'a\\b'"#), T("'12'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%s %s', 1, true), format('%s %L', ARRAY[true,false], true), format('%s', 'a', 'b');",
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT), Column("format", TEXT), Column("format", TEXT)],
+                        rows: &[
+                            &[T("1 t"), T("{t,f} 't'"), T("a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format(NULL), format(NULL, 'a'), format('%s|%L|', NULL, NULL);",
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT), Column("format", TEXT), Column("format", TEXT)],
+                        rows: &[
+                            &[Null, Null, T("|NULL|")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%2$s %1$s %s', 'a', 'b');",
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT)],
+                        rows: &[
+                            &[T("b a b")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('|%5s|%-5s|%*s|%-*s|%*s|', 'ab', 'cd', 4, 'ef', 4, 'gh', -4, 'ij');",
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT)],
+                        rows: &[
+                            &[T("|   ab|cd   |  ef|gh  |ij  |")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('|%*s|', NULL, 'ab'), format('|%*s|', '3'::text, 'ab'), format('|%3s|', 'éé');",
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT), Column("format", TEXT), Column("format", TEXT)],
+                        rows: &[
+                            &[T("|ab|"), T("| ab|"), T("| éé|")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format(1234.5678, 2);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function format(numeric, integer) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%I', NULL);",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "null values cannot be formatted as an SQL identifier", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%s');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "too few arguments for format()", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('|%*2$s|%1$*2$s|', 'ab', 5);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "too few arguments for format()", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "unterminated format() type specifier", hint: r#"For a single "%" use "%%"."#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%1');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "unterminated format() type specifier", hint: r#"For a single "%" use "%%"."#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%d', 1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized format() type specifier "d""#, hint: r#"For a single "%" use "%%"."#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%é', 1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized format() type specifier "é""#, hint: r#"For a single "%" use "%%"."#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%0$s', 1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "format specifies argument 0, but arguments are numbered from 1", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%*0$s', 1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "format specifies argument 0, but arguments are numbered from 1", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%*1s', 1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"width argument position must be ended by "$""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%99999999999s', 1);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "number is out of range", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('|%*s|', 'x'::text, 'ab');",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "x""#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%s %s', VARIADIC ARRAY['a', 'b']);",
+                    expected: Expected::Rows {
+                        columns: &[Column("format", TEXT)],
+                        rows: &[
+                            &[T("a b")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%2147483647s', 'a');",
+                    expected: Expected::Error(Diagnostic { code: "54000", message: "out of memory", detail: "Cannot enlarge string buffer containing 0 bytes by 2147483646 more bytes.", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%*s', -2147483647, 'a');",
+                    expected: Expected::Error(Diagnostic { code: "54000", message: "out of memory", detail: "Cannot enlarge string buffer containing 1 bytes by 2147483646 more bytes.", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%*s', -2147483648, 'a');",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "number is out of range", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT format('%1073741820s', 'a');",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "invalid memory alloc request size 1073741824", ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "format builds dynamic SQL in a trigger function",
+            set_up_script: &[
+                "CREATE TABLE t (id TEXT PRIMARY KEY);",
+                "CREATE TABLE log (v TEXT);",
+                r#"CREATE FUNCTION f() RETURNS TRIGGER LANGUAGE plpgsql AS $f$
+BEGIN EXECUTE format('INSERT INTO %I VALUES (%L)', 'log', NEW.id); RETURN NULL; END $f$;"#,
+                "CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f();",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO t VALUES ('a');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v FROM log;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", TEXT)],
+                        rows: &[
+                            &[T("a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "format builds dynamic SQL in functions",
+            set_up_script: &[
+                r#"CREATE FUNCTION make_table(name TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+BEGIN
+	IF to_regclass(format('%I', name)) IS NULL THEN
+		EXECUTE format('CREATE TABLE %I (id INT PRIMARY KEY, note TEXT)', name);
+		RETURN 'created';
+	END IF;
+	RETURN 'exists';
+END;
+$$;"#,
+                r#"CREATE FUNCTION add_note(name TEXT, id INT, note TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+DECLARE
+	stmt TEXT := format('INSERT INTO %I VALUES (%s, %L)', name, id, note);
+BEGIN
+	EXECUTE stmt;
+	RETURN stmt;
+END;
+$$;"#,
+                r#"CREATE FUNCTION count_rows(name TEXT) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+	n BIGINT;
+BEGIN
+	EXECUTE format('SELECT count(*) FROM %I', name) INTO n;
+	RETURN n;
+END;
+$$;"#,
+                r#"CREATE FUNCTION count_notes(name TEXT, note TEXT) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+	n BIGINT;
+BEGIN
+	EXECUTE format('SELECT count(*) FROM %I WHERE note = $1', name) INTO n USING note;
+	RETURN n;
+END;
+$$;"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT make_table('My Table');",
+                    expected: Expected::Rows {
+                        columns: &[Column("make_table", TEXT)],
+                        rows: &[
+                            &[T("created")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT make_table('My Table');",
+                    expected: Expected::Rows {
+                        columns: &[Column("make_table", TEXT)],
+                        rows: &[
+                            &[T("exists")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT make_table('plain');",
+                    expected: Expected::Rows {
+                        columns: &[Column("make_table", TEXT)],
+                        rows: &[
+                            &[T("created")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT add_note('My Table', 1, 'it''s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("add_note", TEXT)],
+                        rows: &[
+                            &[T(r#"INSERT INTO "My Table" VALUES (1, 'it''s')"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT add_note('My Table', 2, NULL);",
+                    expected: Expected::Rows {
+                        columns: &[Column("add_note", TEXT)],
+                        rows: &[
+                            &[T(r#"INSERT INTO "My Table" VALUES (2, NULL)"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT add_note('My Table', 3, 'back\slash');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("add_note", TEXT)],
+                        rows: &[
+                            &[T(r#"INSERT INTO "My Table" VALUES (3, E'back\\slash')"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM "My Table" ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("note", TEXT)],
+                        rows: &[
+                            &[T("1"), T("it's")],
+                            &[T("2"), Null],
+                            &[T("3"), T(r#"back\slash"#)],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count_rows('My Table'), count_rows('plain');",
+                    expected: Expected::Rows {
+                        columns: &[Column("count_rows", INT8), Column("count_rows", INT8)],
+                        rows: &[
+                            &[T("3"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count_notes('My Table', 'it''s'), count_notes('My Table', 'nope');",
+                    expected: Expected::Rows {
+                        columns: &[Column("count_notes", INT8), Column("count_notes", INT8)],
+                        rows: &[
+                            &[T("1"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"DO $$
+BEGIN
+	EXECUTE format('UPDATE %1$I SET note = %2$L WHERE note IS NULL OR note <> %2$L', 'My Table', 'same');
+END;
+$$;"#,
+                    expected: Expected::Tag("DO"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM "My Table" ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("note", TEXT)],
+                        rows: &[
+                            &[T("1"), T("same")],
+                            &[T("2"), T("same")],
+                            &[T("3"), T("same")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT add_note('missing', 1, 'x');",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "missing" does not exist"#, ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "format builds dynamic SQL in an audit trigger",
+            set_up_script: &[
+                "CREATE TABLE src (id TEXT PRIMARY KEY);",
+                "CREATE TABLE audit (tbl TEXT, op TEXT, id TEXT);",
+                r#"CREATE FUNCTION audit_row() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+	EXECUTE format('INSERT INTO %I VALUES (%L, %L, %L)', 'audit', TG_TABLE_NAME, TG_OP, NEW.id);
+	RETURN NEW;
+END;
+$$;"#,
+                "CREATE TRIGGER src_audit AFTER INSERT OR UPDATE ON src FOR EACH ROW EXECUTE FUNCTION audit_row();",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO src VALUES ('a'), ('b''c');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE src SET id = 'd' WHERE id = 'a';",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM audit ORDER BY op, id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tbl", TEXT), Column("op", TEXT), Column("id", TEXT)],
+                        rows: &[
+                            &[T("src"), T("INSERT"), T("a")],
+                            &[T("src"), T("INSERT"), T("b'c")],
+                            &[T("src"), T("UPDATE"), T("d")],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     ..A
                 },
             ],

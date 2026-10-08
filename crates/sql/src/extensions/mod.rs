@@ -15,6 +15,7 @@
 //! The extensions that Doltgres emulates, whose objects CREATE EXTENSION writes as their installation scripts would and
 //! whose library functions Rust implements.
 
+mod depend;
 mod index;
 mod install;
 mod uuid_ossp;

@@ -18,7 +18,7 @@ use crate::catalog::{ColumnType, builtin_type};
 use crate::error::{PgError, Result, code};
 use crate::numeric::Numeric;
 use crate::oid;
-use crate::types::Value;
+use crate::types::{CompositeValue, Value};
 
 /// type_display returns the name Postgres uses for a type in error messages.
 pub fn type_display(type_oid: u32) -> std::borrow::Cow<'static, str> {
@@ -879,6 +879,11 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
         target if is_reg_type(target) => match value {
             Value::Reg(reg) if reg.type_oid == target => Value::Reg(reg),
             _ => return Err(PgError::unsupported(format!("casts to {}", type_display(to.oid)))),
+        },
+        target if builtin_type(target).is_some_and(|t| t.definition.typ_type == b"c") => match value {
+            Value::Record(fields) => Value::Composite(Box::new(CompositeValue { type_oid: target, fields })),
+            Value::Composite(c) if c.type_oid == target => Value::Composite(c),
+            other => return Err(cannot_cast(&other, to.oid)),
         },
         _ => return Err(PgError::unsupported(format!("casts to {}", type_display(to.oid)))),
     })

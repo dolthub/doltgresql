@@ -34,6 +34,48 @@ fn test_do_statements() {
             ..S
         },
         ScriptTest {
+            name: "line comments in subqueries",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"DO $$
+BEGIN
+  IF EXISTS (SELECT 1 -- comment
+  ) THEN
+    NULL;
+  END IF;
+END $$;"#,
+                    expected: Expected::Tag("DO"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"DO $$
+DECLARE v INT := 7;
+BEGIN
+  IF EXISTS (SELECT 1 -- v must not be substituted in this comment
+             WHERE v = 7) THEN
+    NULL;
+  ELSE
+    RAISE EXCEPTION 'expected true';
+  END IF;
+  IF NOT EXISTS (SELECT 1 -- comment before a false condition
+                 WHERE v = 8) THEN
+    NULL;
+  ELSE
+    RAISE EXCEPTION 'expected false';
+  END IF;
+  v := (SELECT v -- assignment subquery
+        ) + 1;
+  IF v <> 8 THEN
+    RAISE EXCEPTION 'incorrect assignment';
+  END IF;
+END $$;"#,
+                    expected: Expected::Tag("DO"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
             name: "declarations and mutations",
             set_up_script: &[
                 "CREATE TABLE do_values (v INT PRIMARY KEY)",

@@ -56,6 +56,11 @@ impl NodeEnum {
                             iter.push_back((n.to_ref(), depth, Context::Select, false));
                         }
                     }
+                    s.window_clause.iter().for_each(|n| {
+                        if let Some(n) = n.node.as_ref() {
+                            iter.push_back((n.to_ref(), depth, Context::Select, false));
+                        }
+                    });
                     if let Some(clause) = &s.with_clause {
                         clause.ctes.iter().for_each(|n| {
                             if let Some(n) = n.node.as_ref() {
@@ -391,7 +396,17 @@ impl NodeEnum {
                     }
                 }
                 NodeRef::FuncCall(c) => {
-                    c.args.iter().for_each(|n| {
+                    c.args.iter().chain(c.agg_order.iter()).chain(c.agg_filter.as_deref()).for_each(|n| {
+                        if let Some(n) = n.node.as_ref() {
+                            iter.push_back((n.to_ref(), depth, context, has_filter_columns));
+                        }
+                    });
+                    if let Some(w) = &c.over {
+                        iter.push_back((NodeRef::WindowDef(w), depth, context, has_filter_columns));
+                    }
+                }
+                NodeRef::WindowDef(w) => {
+                    w.partition_clause.iter().chain(w.order_clause.iter()).for_each(|n| {
                         if let Some(n) = n.node.as_ref() {
                             iter.push_back((n.to_ref(), depth, context, has_filter_columns));
                         }

@@ -22,6 +22,15 @@ use crate::oid::{
 use crate::query::Ctx;
 use crate::types::Value;
 
+/// INFORMATION_SCHEMA are the built-in functions that information_schema holds, which calls name with that schema.
+pub const INFORMATION_SCHEMA: &[&str] = &["_pg_char_max_length", "_pg_truetypid"];
+
+/// PG_TYPE is the row type of the pg_type catalog.
+const PG_TYPE: u32 = 71;
+
+/// PG_ATTRIBUTE is the row type of the pg_attribute catalog.
+const PG_ATTRIBUTE: u32 = 75;
+
 /// f declares a strict catalog function.
 const fn f(name: &'static str, args: &'static [u32], ret: u32, implementation: super::Implementation) -> Function {
     Function { name, args, ret, strict: true, variadic: false, implementation }
@@ -30,6 +39,8 @@ const fn f(name: &'static str, args: &'static [u32], ret: u32, implementation: s
 /// FUNCTIONS are the catalog functions.
 pub const FUNCTIONS: &[Function] = &[
     f("to_regclass", &[TEXT], REGCLASS, to_regclass),
+    f("_pg_char_max_length", &[OID, INT4], INT4, pg_char_max_length),
+    f("_pg_truetypid", &[PG_ATTRIBUTE, PG_TYPE], OID, pg_truetypid),
     f("to_regtype", &[TEXT], REGTYPE, to_regtype),
     f("to_regproc", &[TEXT], REGPROC, to_regproc),
     f("to_regprocedure", &[TEXT], REGPROCEDURE, to_regprocedure),
@@ -67,17 +78,10 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_get_partkeydef", &[OID], TEXT, pg_get_partkeydef),
     f("pg_tablespace_location", &[OID], TEXT, pg_tablespace_location),
     f("pg_stat_get_numscans", &[OID], INT8, pg_stat_get_numscans),
-    Function {
-        name: "num_nulls",
-        args: &[ANY, ANY],
-        ret: INT4,
-        strict: false,
-        variadic: true,
-        implementation: num_nulls,
-    },
+    Function { name: "num_nulls", args: &[ANY], ret: INT4, strict: false, variadic: true, implementation: num_nulls },
     Function {
         name: "num_nonnulls",
-        args: &[ANY, ANY],
+        args: &[ANY],
         ret: INT4,
         strict: false,
         variadic: true,
@@ -373,4 +377,41 @@ fn pg_tablespace_location(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
 /// pg_stat_get_numscans returns how many scans used a relation, which Doltgres does not count.
 fn pg_stat_get_numscans(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     Ok(Value::Int8(0))
+}
+
+/// pg_char_max_length returns the length limit of a character or bit string type's modifier, as
+/// information_schema._pg_char_max_length does.
+fn pg_char_max_length(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let (Value::Oid(type_oid), Value::Int4(modifier)) = (&args[0], &args[1]) else { return Ok(Value::Null) };
+    Ok(match (*type_oid, *modifier) {
+        (_, -1) => Value::Null,
+        (crate::oid::BPCHAR | crate::oid::VARCHAR, modifier) => Value::Int4(modifier - 4),
+        (crate::oid::BIT | crate::oid::VARBIT, modifier) => Value::Int4(modifier),
+        _ => Value::Null,
+    })
+}
+
+/// pg_truetypid returns a column's type, or a domain's base type when the column's type is a domain, given the column's
+/// pg_attribute row and its type's pg_type row, as information_schema._pg_truetypid does, where a row of only NULLs
+/// comes from the missing side of an outer join and so is NULL.
+fn pg_truetypid(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let fields = |row: &Value| match row {
+        Value::Composite(c) => c.fields.clone(),
+        Value::Record(fields) => fields.clone(),
+        _ => Vec::new(),
+    };
+    if args.iter().any(|row| fields(row).iter().all(Value::is_null)) {
+        return Ok(Value::Null);
+    }
+    let field = |row: &Value, catalog: &str, column: &str| {
+        let fields = fields(row);
+        crate::pgcatalog::lookup("pg_catalog", catalog)
+            .and_then(|t| t.column(column))
+            .and_then(|i| fields.get(i).cloned())
+            .unwrap_or(Value::Null)
+    };
+    Ok(match field(&args[1], "pg_type", "typtype") {
+        Value::Text(kind) if kind == "d" => field(&args[1], "pg_type", "typbasetype"),
+        _ => field(&args[0], "pg_attribute", "atttypid"),
+    })
 }

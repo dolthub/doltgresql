@@ -56,6 +56,36 @@ fn builtin_relations() -> &'static [Relation] {
     })
 }
 
+/// Proc is a routine that regproc and regprocedure can name: its OID, schema, name, and input types.
+#[derive(Clone)]
+struct Proc {
+    oid: u32,
+    schema: String,
+    name: String,
+    args: Vec<u32>,
+}
+
+/// builtin_procs returns the built-in routines.
+fn builtin_procs() -> &'static [Proc] {
+    static PROCS: OnceLock<Vec<Proc>> = OnceLock::new();
+    PROCS.get_or_init(|| {
+        let names = builtin_column("pg_proc", "proname");
+        let namespaces = builtin_column("pg_proc", "pronamespace");
+        let args = builtin_column("pg_proc", "proargtypes");
+        names
+            .into_iter()
+            .zip(namespaces)
+            .zip(args)
+            .map(|(((oid, name), (_, namespace)), (_, args))| Proc {
+                oid,
+                schema: if namespace == Value::Oid(11) { "pg_catalog" } else { "information_schema" }.into(),
+                name: text_of(&name),
+                args: text_of(&args).split_whitespace().filter_map(|a| a.parse().ok()).collect(),
+            })
+            .collect()
+    })
+}
+
 /// builtin_column returns a column of a built-in catalog's rows by name, as pairs of OID and value.
 pub(crate) fn builtin_column(catalog: &str, column: &str) -> Vec<(u32, Value)> {
     let Some(table) = lookup("pg_catalog", catalog) else { return Vec::new() };
@@ -123,16 +153,7 @@ impl Ctx<'_> {
             },
             types::REGNAMESPACE => self.namespaces().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n),
             types::REGROLE => self.roles().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n),
-            types::REGPROC | types::REGPROCEDURE => {
-                match builtin_column("pg_proc", "proname").into_iter().find(|(o, _)| *o == oid) {
-                    Some((_, name)) => Some(text_of(&name)),
-                    None => self
-                        .routines()?
-                        .iter()
-                        .find(|r| crate::pgcatalog::routines::routine_oid(r) == oid)
-                        .map(|r| r.name.clone()),
-                }
-            }
+            types::REGPROC | types::REGPROCEDURE => self.proc_name(oid, type_oid)?,
             _ => {
                 builtin_column("pg_operator", "oprname").into_iter().find(|(o, _)| *o == oid).map(|(_, n)| text_of(&n))
             }
@@ -210,74 +231,53 @@ impl Ctx<'_> {
                     })?;
                 Ok(Reg { type_oid, oid, name })
             }
-            types::REGPROCEDURE => {
-                let (names, args) = name_and_arg_types(text)?;
+            types::REGPROCEDURE | types::REGPROC => {
+                let (names, args) = match type_oid {
+                    types::REGPROC => (text, None),
+                    _ => {
+                        let (names, args) = name_and_arg_types(text)?;
+                        (names, Some(args))
+                    }
+                };
                 let mut names = crate::sequences::parse_qualified_name(names)?;
                 let name = names.pop().unwrap_or_default();
                 let schemas = match names.pop() {
+                    Some(schema) if !self.namespaces().iter().any(|(n, _)| *n == schema) => {
+                        return Err(PgError::new(
+                            code::INVALID_SCHEMA_NAME,
+                            format!("schema \"{schema}\" does not exist"),
+                        ));
+                    }
                     Some(schema) => vec![schema],
                     None => self.effective_search_path(),
                 };
-                let mut found = None;
-                if schemas.iter().any(|s| s == "pg_catalog") {
-                    let arg_types = builtin_column("pg_proc", "proargtypes");
-                    found = builtin_column("pg_proc", "proname")
-                        .into_iter()
-                        .zip(arg_types)
-                        .find(|((_, n), (_, a))| {
-                            text_of(n) == name
-                                && a.output().unwrap_or_default().split_whitespace().eq(args.iter().map(u32::to_string))
-                        })
-                        .map(|((o, _), _)| o);
-                }
-                if found.is_none() {
-                    found = self
-                        .routines()?
-                        .iter()
-                        .find(|r| {
-                            r.name == name
-                                && schemas.contains(&r.schema)
-                                && r.inputs().map(|p| p.ty.oid).eq(args.iter().copied())
-                        })
-                        .map(|r| crate::pgcatalog::routines::routine_oid(r));
-                }
-                let Some(oid) = found else {
-                    return Err(PgError::new(code::UNDEFINED_FUNCTION, format!("function \"{text}\" does not exist")));
-                };
-                let types: Vec<String> =
-                    args.iter().map(|&a| crate::cast::format_type(a, None).unwrap_or_default()).collect();
-                Ok(Reg { type_oid, oid, name: format!("{name}({})", types.join(",")) })
-            }
-            types::REGPROC => {
-                let name = text.split('(').next().unwrap_or(text).trim();
-                let mut names = crate::sequences::parse_qualified_name(name)?;
-                let name = names.pop().unwrap_or_default();
-                let schemas = match names.pop() {
-                    Some(schema) => vec![schema],
-                    None => self.effective_search_path(),
-                };
-                let mut matches: Vec<u32> = Vec::new();
-                if schemas.iter().any(|s| s == "pg_catalog") {
-                    matches.extend(
-                        builtin_column("pg_proc", "proname")
-                            .into_iter()
-                            .filter(|(_, n)| text_of(n) == name)
-                            .map(|(o, _)| o),
-                    );
-                }
-                matches.extend(
-                    self.routines()?
-                        .iter()
-                        .filter(|r| r.name == name && schemas.contains(&r.schema))
-                        .map(|r| crate::pgcatalog::routines::routine_oid(r)),
-                );
-                match matches.as_slice() {
-                    [oid] => Ok(Reg { type_oid, oid: *oid, name }),
-                    [] => Err(PgError::new(code::UNDEFINED_FUNCTION, format!("function \"{text}\" does not exist"))),
-                    _ => {
-                        Err(PgError::new(code::AMBIGUOUS_FUNCTION, format!("more than one function named \"{text}\"")))
+                let procs = self.procs()?;
+                let mut matches: Vec<&Proc> = Vec::new();
+                for schema in &schemas {
+                    for proc in procs.iter().filter(|p| p.name == name && p.schema == *schema) {
+                        if args.as_ref().is_none_or(|a| *a == proc.args) && !matches.iter().any(|m| m.args == proc.args)
+                        {
+                            matches.push(proc);
+                        }
                     }
                 }
+                let oid = match matches.as_slice() {
+                    [proc] => proc.oid,
+                    [] => {
+                        return Err(PgError::new(
+                            code::UNDEFINED_FUNCTION,
+                            format!("function \"{text}\" does not exist"),
+                        ));
+                    }
+                    _ => {
+                        return Err(PgError::new(
+                            code::AMBIGUOUS_FUNCTION,
+                            format!("more than one function named \"{text}\""),
+                        ));
+                    }
+                };
+                let name = self.proc_name(oid, type_oid)?.unwrap_or_else(|| oid.to_string());
+                Ok(Reg { type_oid, oid, name })
             }
             _ => Err(PgError::unsupported(format!("reading values of type {}", crate::cast::type_display(type_oid)))),
         }
@@ -293,8 +293,10 @@ impl Ctx<'_> {
             code::UNDEFINED_FUNCTION,
             code::AMBIGUOUS_FUNCTION,
         ];
+        let procedure = matches!(type_oid, types::REGPROC | types::REGPROCEDURE);
         match self.reg_named(text.trim(), type_oid) {
             Ok(reg) => Ok(Value::Reg(Box::new(reg))),
+            Err(err) if procedure && err.code == code::UNDEFINED_OBJECT => Err(err),
             Err(err) if missing.contains(&err.code) => Ok(Value::Null),
             Err(err) => Err(err),
         }
@@ -395,6 +397,44 @@ impl Ctx<'_> {
             path.insert(usize::from(temp), "pg_catalog".into());
         }
         path
+    }
+
+    /// procs returns every routine that regproc and regprocedure can name, the built-in ones first.
+    fn procs(&mut self) -> Result<Vec<Proc>> {
+        let mut procs = builtin_procs().to_vec();
+        procs.extend(self.routines()?.iter().map(|r| Proc {
+            oid: crate::pgcatalog::routines::routine_oid(r),
+            schema: r.schema.clone(),
+            name: r.name.clone(),
+            args: r.inputs().map(|p| p.ty.oid).collect(),
+        }));
+        Ok(procs)
+    }
+
+    /// proc_name prints the routine with an OID as regproc does, qualified unless its name alone finds only it in the
+    /// search path, or as regprocedure does, with its argument types and qualified unless it is visible.
+    pub(crate) fn proc_name(&mut self, oid: u32, type_oid: u32) -> Result<Option<String>> {
+        let procs = self.procs()?;
+        let Some(proc) = procs.iter().find(|p| p.oid == oid) else { return Ok(None) };
+        let path = self.effective_search_path();
+        let found: Vec<&Proc> = path
+            .iter()
+            .flat_map(|schema| procs.iter().filter(move |p| p.name == proc.name && p.schema == *schema))
+            .collect();
+        let unqualified = match type_oid {
+            types::REGPROC => found.len() == 1 && found[0].oid == oid,
+            _ => found.iter().find(|p| p.args == proc.args).is_some_and(|p| p.oid == oid),
+        };
+        let mut name = crate::engine::quote_identifier(&proc.name);
+        if !unqualified {
+            name = format!("{}.{name}", crate::engine::quote_identifier(&proc.schema));
+        }
+        if type_oid == types::REGPROCEDURE {
+            let args: Vec<String> =
+                proc.args.iter().map(|&a| crate::cast::format_type(a, None).unwrap_or_default()).collect();
+            name = format!("{name}({})", args.join(","));
+        }
+        Ok(Some(name))
     }
 
     /// visible_name returns a relation's name, qualified with its schema unless an unqualified name finds it.
@@ -523,23 +563,44 @@ fn parse_type_name(text: &str) -> Result<u32> {
 /// types, as Postgres' parseNameAndArgTypes does.
 fn name_and_arg_types(text: &str) -> Result<(&str, Vec<u32>)> {
     let invalid = |message: &str| PgError::new(code::INVALID_TEXT_REPRESENTATION, message);
-    let open = text.find('(').ok_or_else(|| invalid("expected a left parenthesis"))?;
+    let mut quoted = false;
+    let open = text
+        .char_indices()
+        .find(|&(_, c)| {
+            quoted ^= c == '"';
+            c == '(' && !quoted
+        })
+        .map(|(i, _)| i)
+        .ok_or_else(|| invalid("expected a left parenthesis"))?;
     let args = text[open + 1..].trim_end().strip_suffix(')').ok_or_else(|| invalid("expected a right parenthesis"))?;
-    let (mut types, mut start, mut depth, mut quoted) = (Vec::new(), 0, 0, false);
-    for (i, c) in args.char_indices() {
-        match c {
-            '"' => quoted = !quoted,
-            '(' if !quoted => depth += 1,
-            ')' if !quoted => depth -= 1,
-            ',' if !quoted && depth == 0 => {
-                types.push(parse_type_name(args[start..i].trim())?);
-                start = i + 1;
+    let (mut types, mut rest, mut had_comma) = (Vec::new(), args, false);
+    loop {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            if had_comma {
+                return Err(invalid("expected a type name"));
             }
-            _ => {}
+            break;
         }
-    }
-    if !args[start..].trim().is_empty() || !types.is_empty() {
-        types.push(parse_type_name(args[start..].trim())?);
+        let (mut quoted, mut depth, mut end) = (false, 0, rest.len());
+        for (i, c) in rest.char_indices() {
+            match c {
+                '"' => quoted = !quoted,
+                ',' if !quoted && depth == 0 => {
+                    end = i;
+                    break;
+                }
+                '(' | '[' if !quoted => depth += 1,
+                ')' | ']' if !quoted => depth -= 1,
+                _ => {}
+            }
+        }
+        if quoted || depth != 0 {
+            return Err(invalid("improper type name"));
+        }
+        types.push(parse_type_name(rest[..end].trim_end())?);
+        had_comma = end < rest.len();
+        rest = rest.get(end + 1..).unwrap_or("");
     }
     Ok((text[..open].trim(), types))
 }

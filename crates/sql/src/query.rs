@@ -63,6 +63,8 @@ pub struct Ctx<'a> {
     /// The PL/pgSQL variables that the statement's parameters stand for, by position, which a column of the same name
     /// makes ambiguous.
     pub variables: Vec<String>,
+    /// The views being expanded while planning, outermost first, by schema and name.
+    pub expanding: Vec<(String, String)>,
 }
 
 /// column returns the description of a result column of the type.

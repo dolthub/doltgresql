@@ -747,7 +747,11 @@ impl Ctx<'_> {
 
     /// view_columns returns the names and types of a view's columns, by planning its query.
     pub fn view_columns(&mut self, schema: &str, name: &str) -> Option<Vec<(String, ColumnType)>> {
-        let (schema, fragment) = self.find_view(schema, name).ok()??;
+        let listed = self.snapshot().ok()?.views.iter().find(|v| v.schema == schema && v.name == name).cloned();
+        let (schema, fragment) = match listed {
+            Some(view) => (view.schema, view.statement),
+            None => self.find_view(schema, name).ok()??,
+        };
         let (select, aliases) = crate::views::view_query(&fragment).ok()?;
         let schema = self.session.view_schema.replace(schema);
         let query = crate::plan::Planner { ctx: self, outer: Vec::new() }.plan_query(&select);
