@@ -959,3 +959,196 @@ fn test_range_offset_and_window_chain_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_running_window_frames() {
+    run_scripts(&[
+        ScriptTest {
+            name: "running and moving window frames",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE wf (id INT PRIMARY KEY, g INT, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO wf VALUES (1, 1, 5), (2, 1, 5), (3, 1, NULL), (4, 1, 7), (5, 2, 1), (6, 2, 1), (7, 2, 2), (8, 2, 3), (9, 3, NULL);",
+                    expected: Expected::Tag("INSERT 0 9"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(v) OVER (ORDER BY v), count(*) OVER (ORDER BY v), max(v) OVER (ORDER BY v) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("count", INT8), Column("max", INT4)],
+                        rows: &[
+                            &[T("1"), T("17"), T("6"), T("5")],
+                            &[T("2"), T("17"), T("6"), T("5")],
+                            &[T("3"), T("24"), T("9"), T("7")],
+                            &[T("4"), T("24"), T("7"), T("7")],
+                            &[T("5"), T("2"), T("2"), T("1")],
+                            &[T("6"), T("2"), T("2"), T("1")],
+                            &[T("7"), T("4"), T("3"), T("2")],
+                            &[T("8"), T("7"), T("4"), T("3")],
+                            &[T("9"), T("24"), T("9"), T("7")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(v) OVER (PARTITION BY g ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), avg(v) OVER (PARTITION BY g ORDER BY v) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("avg", NUMERIC)],
+                        rows: &[
+                            &[T("1"), T("5"), T("5.0000000000000000")],
+                            &[T("2"), T("10"), T("5.0000000000000000")],
+                            &[T("3"), T("10"), T("5.6666666666666667")],
+                            &[T("4"), T("17"), T("5.6666666666666667")],
+                            &[T("5"), T("1"), T("1.00000000000000000000")],
+                            &[T("6"), T("2"), T("1.00000000000000000000")],
+                            &[T("7"), T("4"), T("1.3333333333333333")],
+                            &[T("8"), T("7"), T("1.7500000000000000")],
+                            &[T("9"), Null, Null],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(v) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), min(v) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND 2 FOLLOWING) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("min", INT4)],
+                        rows: &[
+                            &[T("1"), Null, T("5")],
+                            &[T("2"), T("5"), T("5")],
+                            &[T("3"), T("10"), T("1")],
+                            &[T("4"), T("10"), T("1")],
+                            &[T("5"), T("17"), T("1")],
+                            &[T("6"), T("18"), T("1")],
+                            &[T("7"), T("19"), T("1")],
+                            &[T("8"), T("21"), T("1")],
+                            &[T("9"), T("24"), T("1")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(v) OVER (ORDER BY v GROUPS BETWEEN UNBOUNDED PRECEDING AND 1 FOLLOWING), count(v) OVER (ORDER BY v RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("24"), T("7")],
+                            &[T("2"), T("24"), T("7")],
+                            &[T("3"), T("24"), T("7")],
+                            &[T("4"), T("24"), T("7")],
+                            &[T("5"), T("4"), T("7")],
+                            &[T("6"), T("4"), T("7")],
+                            &[T("7"), T("7"), T("7")],
+                            &[T("8"), T("17"), T("7")],
+                            &[T("9"), T("24"), T("7")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(v) OVER (ORDER BY v, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE CURRENT ROW), sum(v) OVER (ORDER BY v RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW EXCLUDE TIES) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("1"), T("7"), T("12")],
+                            &[T("2"), T("12"), T("12")],
+                            &[T("3"), T("24"), T("24")],
+                            &[T("4"), T("17"), T("24")],
+                            &[T("5"), Null, T("1")],
+                            &[T("6"), T("1"), T("1")],
+                            &[T("7"), T("2"), T("4")],
+                            &[T("8"), T("4"), T("7")],
+                            &[T("9"), T("24"), T("24")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, string_agg(v::text, ',') OVER (ORDER BY id), array_agg(v) OVER (PARTITION BY g ORDER BY v DESC) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("string_agg", TEXT), Column("array_agg", INT4_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("5"), T("{NULL,7,5,5}")],
+                            &[T("2"), T("5,5"), T("{NULL,7,5,5}")],
+                            &[T("3"), T("5,5"), T("{NULL}")],
+                            &[T("4"), T("5,5,7"), T("{NULL,7}")],
+                            &[T("5"), T("5,5,7,1"), T("{3,2,1,1}")],
+                            &[T("6"), T("5,5,7,1,1"), T("{3,2,1,1}")],
+                            &[T("7"), T("5,5,7,1,1,2"), T("{3,2}")],
+                            &[T("8"), T("5,5,7,1,1,2,3"), T("{3}")],
+                            &[T("9"), T("5,5,7,1,1,2,3"), T("{NULL}")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, rank() OVER (ORDER BY v), dense_rank() OVER (ORDER BY v), percent_rank() OVER (ORDER BY v), cume_dist() OVER (ORDER BY v) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("rank", INT8), Column("dense_rank", INT8), Column("percent_rank", FLOAT8), Column("cume_dist", FLOAT8)],
+                        rows: &[
+                            &[T("1"), T("5"), T("4"), T("0.5"), T("0.6666666666666666")],
+                            &[T("2"), T("5"), T("4"), T("0.5"), T("0.6666666666666666")],
+                            &[T("3"), T("8"), T("6"), T("0.875"), T("1")],
+                            &[T("4"), T("7"), T("5"), T("0.75"), T("0.7777777777777778")],
+                            &[T("5"), T("1"), T("1"), T("0"), T("0.2222222222222222")],
+                            &[T("6"), T("1"), T("1"), T("0"), T("0.2222222222222222")],
+                            &[T("7"), T("3"), T("2"), T("0.25"), T("0.3333333333333333")],
+                            &[T("8"), T("4"), T("3"), T("0.375"), T("0.4444444444444444")],
+                            &[T("9"), T("8"), T("6"), T("0.875"), T("1")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, first_value(id) OVER (ORDER BY v, id), last_value(id) OVER (ORDER BY v, id), nth_value(id, 2) OVER (ORDER BY v, id) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("first_value", INT4), Column("last_value", INT4), Column("nth_value", INT4)],
+                        rows: &[
+                            &[T("1"), T("5"), T("1"), T("6")],
+                            &[T("2"), T("5"), T("2"), T("6")],
+                            &[T("3"), T("5"), T("3"), T("6")],
+                            &[T("4"), T("5"), T("4"), T("6")],
+                            &[T("5"), T("5"), T("5"), Null],
+                            &[T("6"), T("5"), T("6"), T("6")],
+                            &[T("7"), T("5"), T("7"), T("6")],
+                            &[T("8"), T("5"), T("8"), T("6")],
+                            &[T("9"), T("5"), T("9"), T("6")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(v) OVER (ORDER BY v RANGE BETWEEN 1 PRECEDING AND CURRENT ROW), bool_and(v > 1) OVER (ORDER BY id) FROM wf ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("bool_and", BOOL)],
+                        rows: &[
+                            &[T("1"), T("10"), T("t")],
+                            &[T("2"), T("10"), T("t")],
+                            &[T("3"), Null, T("t")],
+                            &[T("4"), T("7"), T("t")],
+                            &[T("5"), T("2"), T("f")],
+                            &[T("6"), T("2"), T("f")],
+                            &[T("7"), T("4"), T("f")],
+                            &[T("8"), T("5"), T("f")],
+                            &[T("9"), Null, T("f")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

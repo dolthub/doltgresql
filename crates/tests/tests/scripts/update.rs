@@ -1128,3 +1128,142 @@ fn test_update_assignment_semantics() {
         },
     ]);
 }
+
+#[test]
+fn test_updates_keeping_primary_keys() {
+    run_scripts(&[
+        ScriptTest {
+            name: "updates that keep primary keys",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE up (id INT PRIMARY KEY, u INT UNIQUE, v INT, w TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX up_v ON up (v);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX up_w ON up (lower(w));",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO up SELECT i, i, i % 3, 'W' || i FROM generate_series(1, 20) i;",
+                    expected: Expected::Tag("INSERT 0 20"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE up SET w = w || 'x' WHERE id <= 5;",
+                    expected: Expected::Tag("UPDATE 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE up SET v = v + 10 WHERE id BETWEEN 3 AND 8;",
+                    expected: Expected::Tag("UPDATE 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE up SET u = u + 100, v = v WHERE id > 15;",
+                    expected: Expected::Tag("UPDATE 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE up SET u = u + 1000 WHERE id <= 20;",
+                    expected: Expected::Tag("UPDATE 20"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, u, v, w FROM up ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("u", INT4), Column("v", INT4), Column("w", TEXT)],
+                        rows: &[
+                            &[T("1"), T("1001"), T("1"), T("W1x")],
+                            &[T("2"), T("1002"), T("2"), T("W2x")],
+                            &[T("3"), T("1003"), T("10"), T("W3x")],
+                            &[T("4"), T("1004"), T("11"), T("W4x")],
+                            &[T("5"), T("1005"), T("12"), T("W5x")],
+                            &[T("6"), T("1006"), T("10"), T("W6")],
+                            &[T("7"), T("1007"), T("11"), T("W7")],
+                            &[T("8"), T("1008"), T("12"), T("W8")],
+                            &[T("9"), T("1009"), T("0"), T("W9")],
+                            &[T("10"), T("1010"), T("1"), T("W10")],
+                            &[T("11"), T("1011"), T("2"), T("W11")],
+                            &[T("12"), T("1012"), T("0"), T("W12")],
+                            &[T("13"), T("1013"), T("1"), T("W13")],
+                            &[T("14"), T("1014"), T("2"), T("W14")],
+                            &[T("15"), T("1015"), T("0"), T("W15")],
+                            &[T("16"), T("1116"), T("1"), T("W16")],
+                            &[T("17"), T("1117"), T("2"), T("W17")],
+                            &[T("18"), T("1118"), T("0"), T("W18")],
+                            &[T("19"), T("1119"), T("1"), T("W19")],
+                            &[T("20"), T("1120"), T("2"), T("W20")],
+                        ],
+                        tag: "SELECT 20",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM up WHERE v = 11 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("4")],
+                            &[T("7")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM up WHERE lower(w) = 'w2x' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM up WHERE u = 1003;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE up SET u = 1003 WHERE id = 1;",
+                    expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "up_u_key""#, detail: "Key (u)=(1003) already exists.", schema: "public", table: "up", constraint: "up_u_key", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE up SET id = id + 100 WHERE id = 2;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, u FROM up WHERE id > 100 OR u = 1001 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("u", INT4)],
+                        rows: &[
+                            &[T("1"), T("1001")],
+                            &[T("102"), T("1002")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -318,6 +318,14 @@ type KeyEdits = Vec<(Vec<u8>, Option<Vec<u8>>)>;
 /// PrefixPositions are the positions of an index's edits by the bytes of their indexed values.
 type PrefixPositions = std::collections::HashMap<Vec<Option<Vec<u8>>>, Vec<usize>>;
 
+/// Kept is what an update keeps of a row whose primary key it keeps: whether each secondary index keeps the row's key,
+/// and the row's encoded primary key and new value.
+struct Kept {
+    indexes: Vec<bool>,
+    key: Vec<u8>,
+    value: Vec<u8>,
+}
+
 /// Edits collects changes to a table's primary index and secondary indexes by key.
 struct Edits<'a> {
     table: &'a TableDef,
@@ -582,39 +590,42 @@ impl<'a> Edits<'a> {
         Ok(())
     }
 
-    /// kept returns, for an update of a row that keeps its primary key, whether each secondary index keeps the row's
-    /// key, or None when the update changes the primary key or the table is keyless.
-    fn kept(&self, ctx: &mut Ctx<'_>, old: &[Value], new: &[Value]) -> Result<Option<Vec<bool>>> {
-        if self.table.keyless() || self.table.encode_row(ctx.db, old)?.0 != self.table.encode_row(ctx.db, new)?.0 {
+    /// kept returns what an update of a row keeps when it keeps the row's primary key: whether each secondary index
+    /// keeps the row's key, with the row's encoded key and new value, or None when the update changes the primary key
+    /// or the table is keyless.
+    fn kept(&self, ctx: &mut Ctx<'_>, old: &[Value], new: &[Value]) -> Result<Option<Kept>> {
+        if self.table.keyless() {
+            return Ok(None);
+        }
+        let (key, value) = self.table.encode_row(ctx.db, new)?;
+        if self.table.encode_row(ctx.db, old)?.0 != key {
             return Ok(None);
         }
         let (old, old_held) = self.rules.indexed(ctx, old)?;
         let (new, new_held) = self.rules.indexed(ctx, new)?;
-        let primary = self.table.encode_row(ctx.db, &old)?.0;
-        let mut kept = Vec::with_capacity(self.table.indexes.len());
-        for (i, index) in self.table.indexes.iter().enumerate() {
-            let same = old_held[i] == new_held[i]
-                && (!old_held[i]
-                    || self.table.index_key(ctx.db, index, &old, &primary)?
-                        == self.table.index_key(ctx.db, index, &new, &primary)?);
-            kept.push(same);
-        }
-        Ok(Some(kept))
+        let indexes = (self.table.indexes.iter().enumerate())
+            .map(|(i, index)| {
+                old_held[i] == new_held[i]
+                    && index.columns.iter().all(|&c| {
+                        let position = self.table.row_position(c);
+                        old[position] == new[position]
+                    })
+            })
+            .collect();
+        Ok(Some(Kept { indexes, key, value }))
     }
 
     /// retire removes the keys of a row that an update changes from the secondary indexes, where the update keeps the
     /// row's primary key.
-    fn retire(&mut self, ctx: &mut Ctx<'_>, row: &[Value], kept: &[bool]) -> Result<()> {
-        let (key, _) = self.table.encode_row(ctx.db, row)?;
-        self.index_row_with_kept(ctx, row, &key, false, kept)
+    fn retire(&mut self, ctx: &mut Ctx<'_>, row: &[Value], kept: &Kept) -> Result<()> {
+        self.index_row_with_kept(ctx, row, &kept.key, false, &kept.indexes)
     }
 
     /// replace writes the new values of a row whose primary key an update keeps, adding its changed keys to the
     /// secondary indexes.
-    fn replace(&mut self, ctx: &mut Ctx<'_>, row: &[Value], kept: &[bool]) -> Result<()> {
-        let (key, value) = self.table.encode_row(ctx.db, row)?;
-        self.index_row_with_kept(ctx, row, &key, true, kept)?;
-        self.push(key, Some(value));
+    fn replace(&mut self, ctx: &mut Ctx<'_>, row: &[Value], kept: Kept) -> Result<()> {
+        self.index_row_with_kept(ctx, row, &kept.key, true, &kept.indexes)?;
+        self.push(kept.key, Some(kept.value));
         Ok(())
     }
 
@@ -1591,7 +1602,7 @@ impl UpdatePlan {
             }
             kept.push(same);
         }
-        for ((_, new_row, _), same) in changes.iter().zip(&kept) {
+        for ((_, new_row, _), same) in changes.iter().zip(kept) {
             match same {
                 Some(same) => edits.replace(ctx, new_row, same)?,
                 None => edits.insert(ctx, new_row)?,

@@ -130,3 +130,81 @@ fn test_count_distinct_uuid() {
         },
     ]);
 }
+
+#[test]
+fn test_distinct_aggregate_kinds() {
+    run_scripts(&[
+        ScriptTest {
+            name: "DISTINCT aggregates",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE da (id INT PRIMARY KEY, n NUMERIC, f FLOAT8, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO da VALUES (1, 1.0, 0.0, 'a'), (2, 1.00, -0.0, 'b'), (3, 2, 'NaN', 'a'), (4, NULL, 'NaN', NULL), (5, 2.000, 1.5, 'b'), (6, 3, 1.5, 'c');",
+                    expected: Expected::Tag("INSERT 0 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(DISTINCT n), count(DISTINCT f), count(DISTINCT t), count(DISTINCT id % 2) FROM da;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("count", INT8), Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("3"), T("3"), T("3"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT string_agg(DISTINCT t, ',' ORDER BY t), array_agg(DISTINCT n ORDER BY n) FROM da;",
+                    expected: Expected::Rows {
+                        columns: &[Column("string_agg", TEXT), Column("array_agg", NUMERIC_ARRAY)],
+                        rows: &[
+                            &[T("a,b,c"), T("{1.0,2,3,NULL}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(DISTINCT n), avg(DISTINCT f) FROM da;",
+                    expected: Expected::Rows {
+                        columns: &[Column("sum", NUMERIC), Column("avg", FLOAT8)],
+                        rows: &[
+                            &[T("6.0"), T("NaN")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id % 2, count(DISTINCT n) FROM da GROUP BY id % 2 ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("0"), T("2")],
+                            &[T("1"), T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(DISTINCT (n, t)) FROM da;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

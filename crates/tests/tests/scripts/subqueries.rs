@@ -759,3 +759,135 @@ fn test_subquery_evaluation_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_hashed_correlated_subqueries() {
+    run_scripts(&[
+        ScriptTest {
+            name: "correlated subqueries over hashed scans",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE so (id INT PRIMARY KEY, c INT, amt INT, note TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE sc (id INT PRIMARY KEY, name TEXT, lim INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO so SELECT i, i % 20, i % 50, 'n' || i FROM generate_series(1, 400) i;",
+                    expected: Expected::Tag("INSERT 0 400"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO sc SELECT i, 'c' || i, i * 2 FROM generate_series(0, 24) i;",
+                    expected: Expected::Tag("INSERT 0 25"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sc WHERE EXISTS (SELECT 1 FROM so WHERE so.c = sc.id AND so.amt > 45);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("8")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM sc WHERE NOT EXISTS (SELECT 1 FROM so WHERE so.c = sc.id) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("20")],
+                            &[T("21")],
+                            &[T("22")],
+                            &[T("23")],
+                            &[T("24")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, (SELECT count(*) FROM so WHERE so.c = sc.id AND so.amt < sc.lim) FROM sc ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("0"), T("0")],
+                            &[T("1"), T("4")],
+                            &[T("2"), T("4")],
+                            &[T("3"), T("4")],
+                            &[T("4"), T("4")],
+                            &[T("5"), T("4")],
+                            &[T("6"), T("4")],
+                            &[T("7"), T("4")],
+                            &[T("8"), T("4")],
+                            &[T("9"), T("4")],
+                            &[T("10"), T("8")],
+                            &[T("11"), T("12")],
+                            &[T("12"), T("12")],
+                            &[T("13"), T("12")],
+                            &[T("14"), T("12")],
+                            &[T("15"), T("12")],
+                            &[T("16"), T("12")],
+                            &[T("17"), T("12")],
+                            &[T("18"), T("12")],
+                            &[T("19"), T("12")],
+                            &[T("20"), T("0")],
+                            &[T("21"), T("0")],
+                            &[T("22"), T("0")],
+                            &[T("23"), T("0")],
+                            &[T("24"), T("0")],
+                        ],
+                        tag: "SELECT 25",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, name FROM sc WHERE EXISTS (SELECT 1 FROM so WHERE so.c = sc.id AND so.note LIKE 'n1%' AND so.amt = sc.lim) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("name", TEXT)],
+                        rows: &[
+                            &[T("0"), T("c0")],
+                            &[T("10"), T("c10")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sc.id, (SELECT max(amt) FROM so WHERE so.c = sc.id + 0 AND so.amt * 2 > sc.lim) FROM sc WHERE sc.id < 6 ORDER BY sc.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("max", INT4)],
+                        rows: &[
+                            &[T("0"), T("40")],
+                            &[T("1"), T("41")],
+                            &[T("2"), T("42")],
+                            &[T("3"), T("43")],
+                            &[T("4"), T("44")],
+                            &[T("5"), T("45")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM so WHERE so.amt IN (SELECT lim FROM sc WHERE sc.id = so.c);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("8")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

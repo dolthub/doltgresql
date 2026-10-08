@@ -165,6 +165,12 @@ impl Items {
         Ok(Some((node.key(idx)?, node.value(idx)?)))
     }
 
+    /// leaf returns the leaf node the walk is in and the index of its item there, or None once it has passed either end.
+    pub fn leaf(&self) -> Option<(&Arc<Node>, usize)> {
+        let cursor = self.cursor.as_ref().filter(|c| c.valid(0))?;
+        Some((cursor.node(0), cursor.levels[0].idx as usize))
+    }
+
     /// advance moves the walk to the next item.
     pub fn advance(&mut self, store: &mut dyn NodeStore) -> Result<()> {
         match self.cursor.as_mut() {

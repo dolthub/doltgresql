@@ -65,14 +65,15 @@ pub fn build_tuple(fields: &[Option<&[u8]>]) -> Vec<u8> {
     if count == 0 {
         return vec![0, 0];
     }
-    let mut tuple = Vec::new();
-    let mut offsets = Vec::with_capacity(count);
+    let size: usize = fields[..count].iter().map(|f| f.map_or(0, <[u8]>::len)).sum();
+    let mut tuple = Vec::with_capacity(size + count * 2);
     for field in &fields[..count] {
-        offsets.push(tuple.len() as u16);
         tuple.extend_from_slice(field.unwrap_or_default());
     }
-    for offset in &offsets[1..] {
-        tuple.extend_from_slice(&offset.to_le_bytes());
+    let mut offset = 0;
+    for field in &fields[..count - 1] {
+        offset += field.map_or(0, <[u8]>::len);
+        tuple.extend_from_slice(&(offset as u16).to_le_bytes());
     }
     tuple.extend_from_slice(&(count as u16).to_le_bytes());
     tuple

@@ -1054,7 +1054,16 @@ impl IndexScan {
             bounds.reverse();
         }
         let exact = bounds.iter().all(|(b, _)| b.exact);
-        Ok(Box::new(IndexRows { reader: self.reader()?, root, bounds, exact, current: 0, items: None, repeat: None }))
+        Ok(Box::new(IndexRows {
+            reader: self.reader()?,
+            root,
+            bounds,
+            exact,
+            current: 0,
+            items: None,
+            edge: None,
+            repeat: None,
+        }))
     }
 
     /// reader returns what decodes the scan's index entries into rows.
@@ -1297,8 +1306,26 @@ struct IndexRows<'p> {
     exact: bool,
     current: usize,
     items: Option<prolly::Items>,
+    /// The position the walk reaches next if it stays in its leaf, and the position in that leaf where the range's
+    /// items end: the first one past the range walking forward, or the first one in it walking backward.
+    edge: Option<(usize, usize)>,
     /// A row of a keyless table to hand out again, with how many more times.
     repeat: Option<(Vec<Value>, u64)>,
+}
+
+/// partition returns the first position from `start` up to `end` where a test that holds for a run of positions and
+/// then fails stops holding.
+fn partition(start: usize, end: usize, holds: impl Fn(usize) -> store::Result<bool>) -> Result<usize> {
+    let (mut low, mut high) = (start, end);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if holds(middle)? {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    Ok(low)
 }
 
 impl crate::exec::Rows for IndexRows<'_> {
@@ -1355,16 +1382,34 @@ impl crate::exec::Rows for IndexRows<'_> {
                 self.items = Some(bounds.walk(scan, ctx.db, &self.root, reverse)?);
             }
             let items = self.items.as_mut().expect("a walk");
-            let Some((key, value)) = items.current()? else {
+            let Some((leaf, at)) = items.leaf() else {
                 self.items = None;
                 self.current += 1;
                 continue;
             };
-            if !bounds.holds(scan, key, reverse) {
+            // Each leaf's items hold the bounds up to one position in the direction of the walk, which a binary
+            // search finds once for the leaf. The walk is still in the leaf when it moved by one position.
+            let edge = match self.edge {
+                Some((expected, edge)) if expected == at => edge,
+                _ => {
+                    let holds = |i: usize| leaf.key(i).map(|key| bounds.holds(scan, key, reverse));
+                    match reverse {
+                        false => partition(at, leaf.count(), holds)?,
+                        true => partition(0, at + 1, |i| holds(i).map(|h| !h))?,
+                    }
+                }
+            };
+            self.edge = match reverse {
+                false => Some((at + 1, edge)),
+                true => at.checked_sub(1).map(|previous| (previous, edge)),
+            };
+            if (!reverse && at >= edge) || (reverse && at < edge) {
                 self.items = None;
+                self.edge = None;
                 self.current += 1;
                 continue;
             }
+            let (key, value) = (leaf.key(at)?, leaf.value(at)?);
             let check = (!bounds.exact).then(|| std::slice::from_ref(&scan.ranges[*range]));
             let row = self.reader.row(ctx.db, key, value, check)?;
             match reverse {

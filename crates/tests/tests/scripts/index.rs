@@ -5675,3 +5675,562 @@ fn test_keyless_duplicate_index_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_streamed_index_scans() {
+    run_scripts(&[
+        ScriptTest {
+            name: "index scans over several ranges in both directions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ir (id INT PRIMARY KEY, a INT, b INT, c TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ir_ab ON ir (a, b);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ir_ad ON ir (a DESC);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ir SELECT i, CASE WHEN i % 11 = 0 THEN NULL ELSE i % 7 END, CASE WHEN i % 13 = 0 THEN NULL ELSE i % 5 END, 'c' || i FROM generate_series(1, 300) i;",
+                    expected: Expected::Tag("INSERT 0 300"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ir WHERE a BETWEEN 1 AND 2 OR a BETWEEN 4 AND 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("156")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, a, b FROM ir WHERE (a = 1 AND b >= 3) OR a = 6 ORDER BY a, b, id LIMIT 12;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("a", INT4), Column("b", INT4)],
+                        rows: &[
+                            &[T("8"), T("1"), T("3")],
+                            &[T("43"), T("1"), T("3")],
+                            &[T("113"), T("1"), T("3")],
+                            &[T("148"), T("1"), T("3")],
+                            &[T("183"), T("1"), T("3")],
+                            &[T("218"), T("1"), T("3")],
+                            &[T("288"), T("1"), T("3")],
+                            &[T("29"), T("1"), T("4")],
+                            &[T("64"), T("1"), T("4")],
+                            &[T("134"), T("1"), T("4")],
+                            &[T("204"), T("1"), T("4")],
+                            &[T("239"), T("1"), T("4")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, a, b FROM ir WHERE (a = 1 AND b >= 3) OR a = 6 ORDER BY a DESC, b DESC, id DESC LIMIT 12;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("a", INT4), Column("b", INT4)],
+                        rows: &[
+                            &[T("195"), T("6"), Null],
+                            &[T("104"), T("6"), Null],
+                            &[T("13"), T("6"), Null],
+                            &[T("279"), T("6"), T("4")],
+                            &[T("244"), T("6"), T("4")],
+                            &[T("174"), T("6"), T("4")],
+                            &[T("139"), T("6"), T("4")],
+                            &[T("69"), T("6"), T("4")],
+                            &[T("34"), T("6"), T("4")],
+                            &[T("293"), T("6"), T("3")],
+                            &[T("258"), T("6"), T("3")],
+                            &[T("223"), T("6"), T("3")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ir WHERE (a, b) >= (5, 3) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("6")],
+                            &[T("13")],
+                            &[T("19")],
+                            &[T("20")],
+                            &[T("27")],
+                            &[T("34")],
+                            &[T("41")],
+                            &[T("48")],
+                            &[T("54")],
+                            &[T("62")],
+                            &[T("68")],
+                            &[T("69")],
+                            &[T("76")],
+                            &[T("83")],
+                            &[T("89")],
+                            &[T("90")],
+                            &[T("97")],
+                            &[T("103")],
+                            &[T("104")],
+                            &[T("111")],
+                            &[T("118")],
+                            &[T("124")],
+                            &[T("125")],
+                            &[T("138")],
+                            &[T("139")],
+                            &[T("146")],
+                            &[T("153")],
+                            &[T("159")],
+                            &[T("160")],
+                            &[T("167")],
+                            &[T("173")],
+                            &[T("174")],
+                            &[T("181")],
+                            &[T("188")],
+                            &[T("194")],
+                            &[T("195")],
+                            &[T("202")],
+                            &[T("216")],
+                            &[T("223")],
+                            &[T("229")],
+                            &[T("230")],
+                            &[T("237")],
+                            &[T("243")],
+                            &[T("244")],
+                            &[T("251")],
+                            &[T("258")],
+                            &[T("265")],
+                            &[T("272")],
+                            &[T("278")],
+                            &[T("279")],
+                            &[T("293")],
+                            &[T("300")],
+                        ],
+                        tag: "SELECT 52",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ir WHERE (a, b) > (5, 3) ORDER BY a DESC, b DESC, id DESC LIMIT 7;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("195")],
+                            &[T("104")],
+                            &[T("13")],
+                            &[T("279")],
+                            &[T("244")],
+                            &[T("174")],
+                            &[T("139")],
+                        ],
+                        tag: "SELECT 7",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ir WHERE a < 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("117")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ir WHERE a IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("27")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ir WHERE a IS NOT NULL AND b IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("21")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, a FROM ir WHERE a > 4 ORDER BY a DESC, id LIMIT 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("6"), T("6")],
+                            &[T("13"), T("6")],
+                            &[T("20"), T("6")],
+                            &[T("27"), T("6")],
+                            &[T("34"), T("6")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, a FROM ir WHERE a <= 1 ORDER BY a, id DESC LIMIT 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("294"), T("0")],
+                            &[T("287"), T("0")],
+                            &[T("280"), T("0")],
+                            &[T("273"), T("0")],
+                            &[T("266"), T("0")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ir WHERE id < 10 ORDER BY id DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("9")],
+                            &[T("8")],
+                            &[T("7")],
+                            &[T("6")],
+                            &[T("5")],
+                            &[T("4")],
+                            &[T("3")],
+                            &[T("2")],
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM ir WHERE id > 290 OR id < 3 ORDER BY id DESC;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("300")],
+                            &[T("299")],
+                            &[T("298")],
+                            &[T("297")],
+                            &[T("296")],
+                            &[T("295")],
+                            &[T("294")],
+                            &[T("293")],
+                            &[T("292")],
+                            &[T("291")],
+                            &[T("2")],
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, c FROM ir WHERE a = 3 AND b = 2 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("c", TEXT)],
+                        rows: &[
+                            &[T("17"), T("c17")],
+                            &[T("87"), T("c87")],
+                            &[T("122"), T("c122")],
+                            &[T("157"), T("c157")],
+                            &[T("192"), T("c192")],
+                            &[T("227"), T("c227")],
+                            &[T("262"), T("c262")],
+                        ],
+                        tag: "SELECT 7",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT max(id), min(id) FROM ir WHERE a IN (2, 4, 6);",
+                    expected: Expected::Rows {
+                        columns: &[Column("max", INT4), Column("min", INT4)],
+                        rows: &[
+                            &[T("300"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "offsets skip rows of scans",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE os (id INT PRIMARY KEY, v INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX os_v ON os (v);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO os SELECT i, i % 10, 't' || i FROM generate_series(1, 500) i;",
+                    expected: Expected::Tag("INSERT 0 500"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ok (v INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ok SELECT i % 4, 'x' FROM generate_series(1, 20) i;",
+                    expected: Expected::Tag("INSERT 0 20"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, t FROM os ORDER BY id LIMIT 3 OFFSET 250;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("t", TEXT)],
+                        rows: &[
+                            &[T("251"), T("t251")],
+                            &[T("252"), T("t252")],
+                            &[T("253"), T("t253")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, t FROM os ORDER BY id DESC LIMIT 3 OFFSET 250;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("t", TEXT)],
+                        rows: &[
+                            &[T("250"), T("t250")],
+                            &[T("249"), T("t249")],
+                            &[T("248"), T("t248")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM os WHERE v = 3 ORDER BY v, id LIMIT 2 OFFSET 40;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("403")],
+                            &[T("413")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v, id FROM os WHERE v BETWEEN 2 AND 4 ORDER BY v, id LIMIT 3 OFFSET 99;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("3"), T("493")],
+                            &[T("4"), T("4")],
+                            &[T("4"), T("14")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM os ORDER BY id OFFSET 498;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("499")],
+                            &[T("500")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM os ORDER BY id LIMIT 5 OFFSET 600;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM (SELECT * FROM ok OFFSET 7) s;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("13")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v FROM ok ORDER BY v LIMIT 3 OFFSET 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", INT4)],
+                        rows: &[
+                            &[T("0")],
+                            &[T("1")],
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM ok;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("20")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "counting rows",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE cr (id INT PRIMARY KEY, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO cr SELECT i, i FROM generate_series(1, 1000) i;",
+                    expected: Expected::Tag("INSERT 0 1000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM cr WHERE id % 3 = 0;",
+                    expected: Expected::Tag("DELETE 333"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE crk (v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO crk VALUES (1), (1), (1), (2), (NULL);",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM cr;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("667")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), count(*) FROM cr;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("667"), T("667")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM crk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(v), count(*) FROM crk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("4"), T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM cr WHERE v > 500;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("333")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO cr VALUES (1002, 1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM cr;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("668")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM cr;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("667")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

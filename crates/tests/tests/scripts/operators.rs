@@ -10662,3 +10662,189 @@ fn test_operators() {
         },
     ]);
 }
+
+#[test]
+fn test_like_multibyte() {
+    run_scripts(&[
+        ScriptTest {
+            name: "LIKE over multibyte text",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lk (id INT PRIMARY KEY, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO lk VALUES (1, 'héllo'), (2, 'hello'), (3, 'h€llo wörld'), (4, '日本語テキスト'), (5, 'a%b'), (6, 'a_b'), (7, NULL), (8, ''), (9, 'ab\c');"#,
+                    expected: Expected::Tag("INSERT 0 9"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t LIKE 'h_llo%' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t LIKE '%ö%' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t LIKE '日_語%' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t LIKE '%テ_スト' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT id FROM lk WHERE t LIKE 'a\%b' ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT id FROM lk WHERE t LIKE 'a\_b' ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t LIKE 'a_b' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("5")],
+                            &[T("6")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t NOT LIKE '%l%' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                            &[T("8")],
+                            &[T("9")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t LIKE '' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("8")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t LIKE '%' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                            &[T("4")],
+                            &[T("5")],
+                            &[T("6")],
+                            &[T("8")],
+                            &[T("9")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT id FROM lk WHERE t LIKE 'ab\\c' ORDER BY id;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("9")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM lk WHERE t ILIKE 'H_LLO' ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'h€' LIKE 'h_', 'h€x' LIKE 'h_', '€' LIKE '%_%', 'abc' LIKE 'a%c%';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT id FROM lk WHERE t LIKE 'a\';"#,
+                    expected: Expected::Error(Diagnostic { code: "22025", message: "LIKE pattern must not end with escape character", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
