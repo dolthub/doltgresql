@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 base64 = "0.22"
+blobstores = { path = "../blobstores" }
 chrono = "0.4"
 chrono-tz = "0.10"
 crc = "3"

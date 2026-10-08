@@ -143,3 +143,16 @@ Small fixes in Go, apart from streaming, which needs per-transaction buffering o
 Rust: requests no streaming (Postgres then sends large transactions whole at commit), quotes every value as an
 escaped literal that the replica casts, joins key conditions with AND, finds updated rows by the old key when
 Postgres sends it, leaves unchanged TOAST columns out, applies TRUNCATE, and resets the counter after each message.
+
+## OSS remotes cannot be pushed to (confirmed against a fake OSS server)
+
+Dolt's OSS factory opens its store with NewBSStore, whose persister writes each table file as its records and tail
+and then concatenates them, but OSSBlobstore.Concatenate always fails ("Conjoin is not implemented for
+OSSBlobstore"), so every push to an oss:// remote fails with "unknown push error". Its CheckAndPutManifest also has
+no condition: it passes the expected version as a versionId parameter, which a write ignores, so concurrent pushes
+can overwrite each other's manifests.
+
+Small fix in Go: open the store with NewNoConjoinBSStore, as the S3 and OCI factories do.
+
+Rust: writes OSS table files whole, as the no-conjoin persister does, so pushes work; the manifest write keeps Go's
+missing condition.

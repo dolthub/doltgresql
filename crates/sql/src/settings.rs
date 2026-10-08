@@ -56,6 +56,9 @@ const DOLT_VARIABLES: &[(&str, &str, &str)] = &[
     ("dolt_stats_gc_interval", "integer", "3600000"),
     ("dolt_stats_gc_enabled", "bool", "on"),
     ("dolt_stats_branches", "string", ""),
+    ("aws_credentials_file", "string", ""),
+    ("aws_credentials_profile", "string", ""),
+    ("aws_credentials_region", "string", ""),
 ];
 
 /// Setting is a configuration parameter's definition.

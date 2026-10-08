@@ -1,0 +1,22 @@
+[package]
+name = "blobstores"
+description = "The blobstores of Dolt's remote URL schemes: local directories, memory, and cloud object stores"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+aws-lc-rs = "1.18.1"
+base64 = "0.22"
+chrono = "0.4"
+hmac = "0.12"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking", "json"] }
+rustls = "0.23"
+serde_json = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+store = { path = "../store" }
+
+[lints]
+workspace = true

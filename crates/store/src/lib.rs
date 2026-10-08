@@ -18,6 +18,7 @@
 //! database's noms directory, with a manifest naming the files and the root.
 
 mod archive;
+mod blob;
 mod chunk;
 mod error;
 mod file;
@@ -32,8 +33,10 @@ mod store;
 mod table;
 
 pub use archive::{ArchiveReader, ArchiveWriter};
+pub use blob::{Blob, BlobChunkStore, BlobRange, Blobstore, LocalBlobstore, MANIFEST_KEY, not_found};
 pub use chunk::Chunk;
 pub use error::{Error, Result};
+pub use file::ReadAt;
 pub use gc::{add_to_manifest, replace_files, write_files, write_table};
 pub use hash::Hash;
 pub use journal::{JOURNAL_FILE, JournalRecord, read_records};

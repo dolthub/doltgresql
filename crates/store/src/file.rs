@@ -16,6 +16,25 @@ use std::fs::File;
 
 use crate::error::Result;
 
+/// ReadAt reads bytes at offsets of a file or of a blob that a remote store holds.
+pub trait ReadAt: Send + Sync {
+    /// read_at reads exactly `len` bytes at the offset.
+    fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>>;
+
+    /// size returns the number of bytes.
+    fn size(&self) -> Result<u64>;
+}
+
+impl ReadAt for File {
+    fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        read_at(self, offset, len)
+    }
+
+    fn size(&self) -> Result<u64> {
+        Ok(self.metadata()?.len())
+    }
+}
+
 /// read_at reads exactly `len` bytes at the offset without moving the file's cursor, so readers can share the file.
 pub fn read_at(file: &File, offset: u64, len: usize) -> Result<Vec<u8>> {
     let mut buffer = vec![0; len];

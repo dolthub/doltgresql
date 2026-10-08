@@ -30,7 +30,7 @@ use crate::store::Source;
 const LOCK_FILE: &str = "LOCK";
 
 /// MANIFEST_VERSION is the manifest version Dolt writes.
-const MANIFEST_VERSION: &str = "5";
+pub(crate) const MANIFEST_VERSION: &str = "5";
 
 /// MEM_TABLE_SIZE is the size of chunk data a store holds in memory before writing it to the journal.
 const MEM_TABLE_SIZE: u64 = 128 << 20;

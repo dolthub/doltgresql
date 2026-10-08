@@ -248,8 +248,18 @@ fn file_path(url: &str) -> Option<PathBuf> {
     url.strip_prefix("file://").map(PathBuf::from)
 }
 
-/// open_remote opens the database at a remote's URL: a file remote, or one that a server serves over http or https.
+/// open_remote opens the database at a remote's URL: a file remote, one that a server serves over http or https, or
+/// one whose files are blobs, such as in a cloud object store.
 fn open_remote(remote: &Remote) -> Result<Database> {
+    let inaccessible = |err: store::Error| {
+        error(format!(
+            "failed to get remote db; the remote: {} '{}' could not be accessed; {err}",
+            remote.name, remote.url
+        ))
+    };
+    if let Some(store) = blobstores::open(&remote.url, &remote.params).map_err(inaccessible)? {
+        return Ok(Database::with_store(store));
+    }
     if remote.url.starts_with("http://") || remote.url.starts_with("https://") {
         let store = remotes::client::RemoteStore::open(&remote.url).map_err(|err| {
             error(format!(
@@ -1017,6 +1027,12 @@ const CLONE: Parser = Parser {
         ("ref", "", Kind::Value),
         ("user", "u", Kind::Value),
         ("single-branch", "", Kind::Flag),
+        ("aws-region", "", Kind::Value),
+        ("aws-creds-type", "", Kind::Value),
+        ("aws-creds-file", "", Kind::Value),
+        ("aws-creds-profile", "", Kind::Value),
+        ("oss-creds-file", "", Kind::Value),
+        ("oss-creds-profile", "", Kind::Value),
     ],
     max_args: None,
 };
@@ -1145,6 +1161,28 @@ const BACKUP: Parser = Parser {
     max_args: None,
 };
 
+/// AWS_PARAMS are the options that name an aws:// remote's region and credentials.
+const AWS_PARAMS: [&str; 4] = ["aws-region", "aws-creds-type", "aws-creds-file", "aws-creds-profile"];
+
+/// aws_session_params returns the region and credentials of an aws:// URL from the aws_credentials_* settings, as
+/// Dolt's newParamsWithAwsSessionVars reads them, and none for any other URL.
+fn aws_session_params(ctx: &Ctx<'_>, url: &str) -> BTreeMap<String, String> {
+    let mut params = BTreeMap::new();
+    if !url.starts_with("aws://") {
+        return params;
+    }
+    for (setting, param) in [
+        ("aws_credentials_file", "aws-creds-file"),
+        ("aws_credentials_profile", "aws-creds-profile"),
+        ("aws_credentials_region", "aws-region"),
+    ] {
+        if let Some(value) = ctx.session.settings.get(setting).filter(|v| !v.is_empty()) {
+            params.insert(param.to_string(), value.clone());
+        }
+    }
+    params
+}
+
 /// AWS_USAGE are the optional AWS arguments that dolt_backup's usage errors list.
 const AWS_USAGE: &[&str] =
     &["--aws-region=<region>", "--aws-creds-type=<type>", "--aws-creds-file=<file>", "--aws-creds-profile=<profile>"];
@@ -1186,6 +1224,9 @@ pub fn dolt_backup(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         return Err(error("use 'dolt_backups' table to list backups"));
     }
     let command = parsed.args[0].clone();
+    if AWS_PARAMS.iter().any(|p| parsed.has(p)) {
+        return Err(error("AWS parameters are unavailable when running in server mode"));
+    }
     if parsed.has("prune-with-grace-period") && command != "sync" && command != "sync-url" {
         return Err(error("--prune-with-grace-period is only supported with 'sync' and 'sync-url'"));
     }
@@ -1208,7 +1249,9 @@ pub fn dolt_backup(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             if let Some(other) = state.remotes.values().chain(state.backups.values()).find(|r| r.url == url) {
                 return Err(error(format!("address conflict with a remote: '{}' -> {}", other.name, other.url)));
             }
-            state.backups.insert(name.clone(), Remote::new(&name, &url));
+            let mut backup = Remote::new(&name, &url);
+            backup.params = aws_session_params(ctx, &url);
+            state.backups.insert(name.clone(), backup);
             state.save(&dir)?;
         }
         "remove" | "rm" => {
@@ -1238,7 +1281,9 @@ pub fn dolt_backup(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
                 return Err(backup_usage(&command, &["remote_url"], AWS_USAGE));
             }
             let url = absolute_url(&data_dir, &parsed.args[1])?;
-            sync_to(ctx, &Remote::new("sync-url", &url))?;
+            let mut remote = Remote::new("sync-url", &url);
+            remote.params = aws_session_params(ctx, &url);
+            sync_to(ctx, &remote)?;
         }
         "restore" => {
             if parsed.args.len() != 3 {
@@ -1246,7 +1291,9 @@ pub fn dolt_backup(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
                 return Err(backup_usage(&command, &["remote_url", "new_db_name"], &optional));
             }
             let url = absolute_url(&data_dir, &parsed.args[1])?;
-            let src = open_remote(&Remote::new("restore", &url))?;
+            let mut remote = Remote::new("restore", &url);
+            remote.params = aws_session_params(ctx, &url);
+            let src = open_remote(&remote)?;
             let name = parsed.args[2].clone();
             let engine = ctx.session.engine.clone();
             if data_dir.join(&name).exists() {

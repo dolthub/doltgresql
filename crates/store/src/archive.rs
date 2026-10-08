@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::chunk::Chunk;
 use crate::error::{Result, corrupt};
-use crate::file::{be_u32, be_u64, read_at};
+use crate::file::{ReadAt, be_u32, be_u64};
 use crate::hash::Hash;
 
 /// SIGNATURE ends every archive.
@@ -43,7 +43,7 @@ const SNAPPY_VERSION: u8 = 2;
 
 /// ArchiveReader reads the chunks of an archive, keeping its index in memory.
 pub struct ArchiveReader {
-    file: File,
+    file: Box<dyn ReadAt>,
     /// The file's name.
     name: String,
     version: u8,
@@ -62,12 +62,17 @@ pub struct ArchiveReader {
 impl ArchiveReader {
     /// open reads the footer and index of an archive.
     pub fn open(path: &Path) -> Result<ArchiveReader> {
-        let file = File::open(path)?;
-        let size = file.metadata()?.len();
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        ArchiveReader::open_reader(Box::new(File::open(path)?), name, &path.display().to_string())
+    }
+
+    /// open_reader reads the index of a archive that a reader reads, with its name and the name that errors show.
+    pub fn open_reader(file: Box<dyn ReadAt>, name: String, shown: &str) -> Result<ArchiveReader> {
+        let size = file.size()?;
         if size < FOOTER_LEN as u64 {
-            return Err(corrupt(format!("{} is too short for an archive", path.display())));
+            return Err(corrupt(format!("{shown} is too short for an archive")));
         }
-        let footer = read_at(&file, size - FOOTER_LEN as u64, FOOTER_LEN)?;
+        let footer = file.read_at(size - FOOTER_LEN as u64, FOOTER_LEN)?;
         if &footer[FOOTER_LEN - SIGNATURE.len()..] != SIGNATURE {
             return Err(corrupt("invalid file signature"));
         }
@@ -82,12 +87,12 @@ impl ArchiveReader {
         let metadata_len = be_u32(&footer, 16) as u64;
         let expected = (span_count * 8 + chunk_count * (8 + 8 + Hash::SUFFIX_LEN)) as u64;
         if index_len != expected {
-            return Err(corrupt(format!("{}: corrupt archive index", path.display())));
+            return Err(corrupt(format!("{}: corrupt archive index", shown)));
         }
         let Some(index_at) = size.checked_sub(footer_len as u64 + metadata_len + index_len) else {
-            return Err(corrupt(format!("{}: corrupt archive index", path.display())));
+            return Err(corrupt(format!("{}: corrupt archive index", shown)));
         };
-        let index = read_at(&file, index_at, index_len as usize)?;
+        let index = file.read_at(index_at, index_len as usize)?;
         let span_ends: Vec<u64> = (0..span_count).map(|i| be_u64(&index, i * 8)).collect();
         let prefixes_at = span_count * 8;
         let prefixes: Vec<u64> = (0..chunk_count).map(|i| be_u64(&index, prefixes_at + i * 8)).collect();
@@ -102,9 +107,8 @@ impl ArchiveReader {
                 .iter()
                 .any(|&(dictionary, data)| data == 0 || data as usize > span_count || dictionary as usize > span_count)
         {
-            return Err(corrupt(format!("{}: corrupt archive index", path.display())));
+            return Err(corrupt(format!("{}: corrupt archive index", shown)));
         }
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         Ok(ArchiveReader {
             file,
             name,
@@ -168,7 +172,7 @@ impl ArchiveReader {
     fn span(&self, id: u32) -> Result<Vec<u8>> {
         let index = id as usize - 1;
         let start = if index == 0 { 0 } else { self.span_ends[index - 1] };
-        read_at(&self.file, start, (self.span_ends[index] - start) as usize)
+        self.file.read_at(start, (self.span_ends[index] - start) as usize)
     }
 
     /// dictionary returns the decompressed dictionary in the span with the id.

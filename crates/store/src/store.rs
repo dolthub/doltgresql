@@ -23,7 +23,7 @@ use crate::manifest::Manifest;
 use crate::table::TableReader;
 
 /// ARCHIVE_SUFFIX ends the file name of an archive.
-const ARCHIVE_SUFFIX: &str = ".darc";
+pub(crate) const ARCHIVE_SUFFIX: &str = ".darc";
 /// OLDGEN_DIR is the noms subdirectory holding the old generation.
 const OLDGEN_DIR: &str = "oldgen";
 

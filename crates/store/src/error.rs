@@ -23,6 +23,10 @@ pub enum Error {
     Corrupt(String),
     /// Chunks refer to chunks the store lacks, which Dolt calls ErrDanglingRef.
     DanglingRef(Vec<crate::Hash>),
+    /// A blobstore lacks a blob, which Dolt calls blobstore.NotFound.
+    NotFound(String),
+    /// A blob's version is not the one a check-and-put expected, which Dolt calls blobstore.CheckAndPutError.
+    VersionMismatch { key: String, expected: String, actual: String },
 }
 
 /// Result is a storage result.
@@ -33,6 +37,10 @@ impl fmt::Display for Error {
         match self {
             Error::Io(err) => write!(f, "{err}"),
             Error::Corrupt(message) => write!(f, "{message}"),
+            Error::NotFound(key) => write!(f, "Blob not found: {key}"),
+            Error::VersionMismatch { key, expected, actual } => {
+                write!(f, "Blob: \"{key}\" expected: \"{expected}\" actual: \"{actual}\"")
+            }
             Error::DanglingRef(hashes) => {
                 // Go prints its hash set in map order, which varies, where this prints the hashes sorted.
                 writeln!(f, "dangling ref: found dangling references to HashSet {{")?;

@@ -26,7 +26,7 @@ use std::path::Path;
 
 use crate::chunk::{CHECKSUM_LEN, Chunk};
 use crate::error::{Result, corrupt};
-use crate::file::{be_u32, be_u64, read_at};
+use crate::file::{ReadAt, be_u32, be_u64};
 use crate::hash::Hash;
 
 /// MAGIC ends every table file: the first 8 bytes of the SHA-256 of "https://github.com/attic-labs/nbs".
@@ -43,9 +43,14 @@ fn index_len(count: u64) -> u64 {
     count * (PREFIX_TUPLE_LEN as u64 + 4 + Hash::SUFFIX_LEN as u64)
 }
 
+/// tail_len returns the length of the index and footer that end a table file with the chunk count.
+pub(crate) fn tail_len(count: u64) -> u64 {
+    index_len(count) + FOOTER_LEN as u64
+}
+
 /// TableReader reads the chunks of a table file, keeping its index in memory.
 pub struct TableReader {
-    file: File,
+    file: Box<dyn ReadAt>,
     /// The file's name.
     name: String,
     /// The hash prefix of each prefix map entry, in prefix order.
@@ -61,12 +66,17 @@ pub struct TableReader {
 impl TableReader {
     /// open reads the index of a table file.
     pub fn open(path: &Path) -> Result<TableReader> {
-        let file = File::open(path)?;
-        let size = file.metadata()?.len();
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        TableReader::open_reader(Box::new(File::open(path)?), name, &path.display().to_string())
+    }
+
+    /// open_reader reads the index of a table file that a reader reads, with its name and the name that errors show.
+    pub fn open_reader(file: Box<dyn ReadAt>, name: String, shown: &str) -> Result<TableReader> {
+        let size = file.size()?;
         if size < FOOTER_LEN as u64 {
-            return Err(corrupt(format!("{} is too short for a table file", path.display())));
+            return Err(corrupt(format!("{shown} is too short for a table file")));
         }
-        let footer = read_at(&file, size - FOOTER_LEN as u64, FOOTER_LEN)?;
+        let footer = file.read_at(size - FOOTER_LEN as u64, FOOTER_LEN)?;
         if &footer[12..] != MAGIC {
             if &footer[FOOTER_LEN - ARCHIVE_SIGNATURE.len()..] == ARCHIVE_SIGNATURE {
                 return Err(corrupt("unsupported table file format"));
@@ -76,9 +86,9 @@ impl TableReader {
         let count = be_u32(&footer, 0) as u64;
         let index_len = index_len(count);
         if index_len + FOOTER_LEN as u64 > size {
-            return Err(corrupt(format!("{} is too short for its index", path.display())));
+            return Err(corrupt(format!("{shown} is too short for its index")));
         }
-        let index = read_at(&file, size - FOOTER_LEN as u64 - index_len, index_len as usize)?;
+        let index = file.read_at(size - FOOTER_LEN as u64 - index_len, index_len as usize)?;
         let count = count as usize;
         let lengths_at = count * PREFIX_TUPLE_LEN;
         let suffixes_at = lengths_at + count * 4;
@@ -94,27 +104,26 @@ impl TableReader {
         for i in 0..count {
             let length = be_u32(&index, lengths_at + i * 4) as u64;
             if length <= CHECKSUM_LEN as u64 {
-                return Err(corrupt(format!("{}: chunk record {i} is too short", path.display())));
+                return Err(corrupt(format!("{shown}: chunk record {i} is too short")));
             }
             offset += length;
             offsets.push(offset);
         }
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let reader = TableReader { file, name, prefixes, ordinals, offsets, suffixes: index[suffixes_at..].to_vec() };
-        reader.validate(path, size - FOOTER_LEN as u64 - index_len)?;
+        reader.validate(shown, size - FOOTER_LEN as u64 - index_len)?;
         Ok(reader)
     }
 
     /// validate checks that the prefixes are sorted, the ordinals are in range, and the records fit before the index.
-    fn validate(&self, path: &Path, data_len: u64) -> Result<()> {
+    fn validate(&self, shown: &str, data_len: u64) -> Result<()> {
         if self.prefixes.windows(2).any(|pair| pair[0] > pair[1]) {
-            return Err(corrupt(format!("{}: table file index prefixes are not sorted", path.display())));
+            return Err(corrupt(format!("{}: table file index prefixes are not sorted", shown)));
         }
         if self.ordinals.iter().any(|&ordinal| ordinal as usize >= self.ordinals.len()) {
-            return Err(corrupt(format!("{}: table file index ordinal out of range", path.display())));
+            return Err(corrupt(format!("{}: table file index ordinal out of range", shown)));
         }
         if *self.offsets.last().unwrap() > data_len {
-            return Err(corrupt(format!("{}: table file records overrun the index", path.display())));
+            return Err(corrupt(format!("{}: table file records overrun the index", shown)));
         }
         Ok(())
     }
@@ -162,7 +171,7 @@ impl TableReader {
     /// read reads and decompresses the record with the ordinal.
     fn read(&self, hash: Hash, ordinal: usize) -> Result<Chunk> {
         let start = self.offsets[ordinal];
-        let record = read_at(&self.file, start, (self.offsets[ordinal + 1] - start) as usize)?;
+        let record = self.file.read_at(start, (self.offsets[ordinal + 1] - start) as usize)?;
         Chunk::from_record(hash, &record)
     }
 
@@ -187,7 +196,7 @@ impl TableReader {
     pub fn for_each_record(&self, f: &mut dyn FnMut(Hash, &[u8]) -> Result<()>) -> Result<()> {
         for (ordinal, hash) in self.hashes().into_iter().enumerate() {
             let start = self.offsets[ordinal];
-            f(hash, &read_at(&self.file, start, (self.offsets[ordinal + 1] - start) as usize)?)?;
+            f(hash, &self.file.read_at(start, (self.offsets[ordinal + 1] - start) as usize)?)?;
         }
         Ok(())
     }
