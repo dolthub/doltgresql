@@ -666,6 +666,8 @@ impl Engine {
                 checked_out: HashMap::new(),
                 temp: HashMap::new(),
                 temp_used: false,
+                sink: None,
+                stream_next: false,
             },
             txns: Vec::new(),
             pending: None,
@@ -781,6 +783,10 @@ pub struct SessionState {
     pub temp: HashMap<String, TempTables>,
     /// Whether the transaction used an object of the session's temporary schema.
     pub temp_used: bool,
+    /// Where a simple query's outcomes go as its statements produce them, when the connection streams them.
+    pub sink: Option<Box<dyn crate::RowSink>>,
+    /// Whether the statement starting now is a simple query's own statement, whose rows a SELECT streams to the sink.
+    pub stream_next: bool,
 }
 
 /// TempTables is a session's temporary schema in one database, which every working set leaves out.
@@ -1118,13 +1124,23 @@ impl Session {
     fn run_batch(&mut self, statements: Vec<Statement>, mut outcomes: Results) -> (Results, Option<PgError>) {
         let mut statements = statements.into_iter();
         while let Some(statement) = statements.next() {
-            match self.run(&statement, &[]) {
+            self.state.stream_next = self.state.sink.is_some()
+                && matches!(&statement, Statement::Postgres { node: NodeEnum::SelectStmt(select), .. } if select.into_clause.is_none());
+            let result = self.run(&statement, &[]);
+            self.state.stream_next = false;
+            match result {
                 Ok(outcome @ Outcome::CopyIn { .. }) => {
                     self.pending = Some(statements.collect());
                     outcomes.push((self.take_notices(), outcome));
                     return (outcomes, None);
                 }
-                Ok(outcome) => outcomes.push((self.take_notices(), outcome)),
+                Ok(outcome) => {
+                    let notices = self.take_notices();
+                    match self.state.sink.as_mut() {
+                        Some(sink) => sink.outcome(notices, outcome),
+                        None => outcomes.push((notices, outcome)),
+                    }
+                }
                 Err(err) => return (outcomes, Some(self.fail(err))),
             }
         }
@@ -2324,9 +2340,42 @@ impl Ctx<'_> {
         self.on_branch(&branch, |ctx| f(ctx, &node)).map(Some)
     }
 
+    /// stream runs a query and sends its rows to a sink as it produces them, after its columns and the notices raised
+    /// so far, passing on the notices raised along the way.
+    fn stream(&mut self, query: &crate::plan::Query, sink: &mut dyn crate::RowSink) -> Result<Outcome> {
+        let fresh = self.once.is_none();
+        if fresh {
+            self.once = Some(HashMap::new());
+        }
+        let result = (|| -> Result<u64> {
+            let mut rows = query.plan.open(self)?;
+            let (mut row, mut count) = (Vec::new(), 0u64);
+            while rows.next_into(self, &mut row)? {
+                if count == 0 {
+                    sink.begin(std::mem::take(&mut self.session.notices), &query.columns);
+                }
+                sink.row(&row)?;
+                count += 1;
+                if !self.session.notices.is_empty() {
+                    sink.notices(std::mem::take(&mut self.session.notices));
+                }
+            }
+            Ok(count)
+        })();
+        if fresh {
+            self.once = None;
+        }
+        let count = result?;
+        if count == 0 {
+            sink.begin(std::mem::take(&mut self.session.notices), &query.columns);
+        }
+        Ok(Outcome::Streamed { tag: format!("SELECT {count}") })
+    }
+
     /// run plans and runs a statement, after checking that the session may write to its branch when the statement
     /// changes tables.
     pub(crate) fn run(&mut self, node: &NodeEnum) -> Result<Outcome> {
+        let stream = std::mem::take(&mut self.session.stream_next);
         let writes = matches!(
             node,
             NodeEnum::InsertStmt(_)
@@ -2384,6 +2433,11 @@ impl Ctx<'_> {
             }
             NodeEnum::SelectStmt(select) => {
                 let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
+                if stream && let Some(mut sink) = self.session.sink.take() {
+                    let outcome = self.stream(&query, &mut *sink);
+                    self.session.sink = Some(sink);
+                    return outcome;
+                }
                 let rows = query.plan.run(self)?;
                 let tag = format!("SELECT {}", rows.len());
                 Ok(Outcome::Rows { columns: query.columns, rows, tag })

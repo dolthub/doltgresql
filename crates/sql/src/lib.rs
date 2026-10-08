@@ -166,6 +166,27 @@ pub enum Outcome {
     CopyIn { binary: bool, columns: usize },
     /// The data of a COPY TO STDOUT, in chunks to send in turn, with the command tag that ends it.
     CopyOut { binary: bool, columns: usize, chunks: Vec<Vec<u8>>, tag: String },
+    /// Rows that went to the session's sink as they were produced, with the command tag that ends them.
+    Streamed { tag: String },
+}
+
+/// RowSink receives a simple query's outcomes as its statements produce them, so that a SELECT's rows can start on
+/// their way to the client while later rows are still being computed.
+pub trait RowSink: std::any::Any + Send {
+    /// outcome sends a statement's outcome after the notices it raised.
+    fn outcome(&mut self, notices: Vec<PgError>, outcome: Outcome);
+
+    /// begin starts a statement's rows with their columns, after the notices raised before them.
+    fn begin(&mut self, notices: Vec<PgError>, columns: &[Column]);
+
+    /// row sends one row of the rows begun last.
+    fn row(&mut self, row: &[Value]) -> Result<()>;
+
+    /// notices sends notices raised while rows are being sent.
+    fn notices(&mut self, notices: Vec<PgError>);
+
+    /// into_any returns the sink as Any, so that its owner can take it back.
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any>;
 }
 
 /// Results are the outcomes of a simple query's statements, each with the notices its statement raised first.

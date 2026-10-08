@@ -754,7 +754,7 @@ impl<'r> Frame<'r> {
                 let found = !rows.is_empty() || (!tag.starts_with("SELECT") && affected(&tag) > 0);
                 Ok(QueryResult { columns, rows, found })
             }
-            Outcome::Command { tag } => {
+            Outcome::Command { tag } | Outcome::Streamed { tag } => {
                 Ok(QueryResult { columns: Vec::new(), rows: Vec::new(), found: affected(&tag) > 0 })
             }
             Outcome::Empty => Ok(QueryResult { columns: Vec::new(), rows: Vec::new(), found: false }),

@@ -19,10 +19,11 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
 
-use pgproto::{BackendMessage, ErrorFields, FieldDescription, Frame, FrameReader, FrontendMessage, PasswordKind};
-use sql::{Column, Outcome, PgError, Prepared, Results, Session, Value, code};
+use pgproto::{BackendMessage, Frame, FrameReader, FrontendMessage, PasswordKind};
+use sql::{Outcome, PgError, Prepared, Results, Session, Value, code};
 
 use crate::Server;
+use crate::output::{Output, error_fields, format};
 use crate::scram::Exchange;
 
 /// PROTOCOL_VERSION is protocol 3.0.
@@ -47,27 +48,6 @@ impl std::fmt::Display for ConnError {
 impl From<std::io::Error> for ConnError {
     fn from(err: std::io::Error) -> ConnError {
         ConnError::Io(err)
-    }
-}
-
-/// error_fields converts an engine error to the fields of an ErrorResponse.
-fn error_fields(err: &PgError) -> ErrorFields {
-    let objects = err.objects.as_deref().cloned().unwrap_or_default();
-    ErrorFields {
-        severity: err.severity.to_string(),
-        severity_unlocalized: err.severity.to_string(),
-        code: err.code.to_string(),
-        message: err.message.clone(),
-        detail: err.detail.clone().unwrap_or_default(),
-        hint: err.hint.clone().unwrap_or_default(),
-        position: err.position.map_or(0, |p| p as i32),
-        where_: objects.where_.clone().unwrap_or_default(),
-        schema_name: objects.schema.clone().unwrap_or_default(),
-        table_name: objects.table.clone().unwrap_or_default(),
-        column_name: objects.column.clone().unwrap_or_default(),
-        data_type_name: objects.data_type.clone().unwrap_or_default(),
-        constraint_name: objects.constraint.clone().unwrap_or_default(),
-        ..ErrorFields::default()
     }
 }
 
@@ -116,27 +96,27 @@ impl Write for Stream {
 pub struct Conn {
     stream: Stream,
     frames: FrameReader,
-    out: Vec<u8>,
+    output: Output,
     server: Arc<Server>,
-    /// The encoding that text values go to the client in.
-    client_encoding: sql::encodings::Encoding,
 }
 
 impl Conn {
     pub fn new(stream: TcpStream, server: Arc<Server>) -> Conn {
-        let client_encoding = sql::encodings::UTF8;
-        Conn { stream: Stream::Plain(stream), frames: FrameReader::new(), out: Vec::new(), server, client_encoding }
+        Conn { stream: Stream::Plain(stream), frames: FrameReader::new(), output: Output::default(), server }
     }
 
     /// queue adds a message to the output buffer.
     fn queue(&mut self, message: BackendMessage) {
-        message.encode(&mut self.out);
+        self.output.queue(message);
     }
 
-    /// flush sends the output buffer.
+    /// flush sends the output buffer, through the writer thread while it still has earlier batches to write.
     fn flush(&mut self) -> Result<(), ConnError> {
-        self.stream.write_all(&self.out)?;
-        self.out.clear();
+        if self.output.send()? {
+            return Ok(());
+        }
+        self.stream.write_all(&self.output.out)?;
+        self.output.out.clear();
         Ok(())
     }
 
@@ -254,7 +234,12 @@ impl Conn {
         self.queue(BackendMessage::BackendKeyData { process_id: session.state.id as u32, secret_key: vec![0; 4] });
         self.queue(BackendMessage::ReadyForQuery { tx_status: b'I' });
         self.flush()?;
-        self.serve(&mut session)
+        if let Stream::Plain(stream) = &self.stream {
+            self.output.start_writer(stream.try_clone()?);
+        }
+        let result = self.serve(&mut session);
+        self.output.finish();
+        result
     }
 
     /// authenticate runs a SCRAM-SHA-256 exchange, reporting whether the client proved it knows the password.
@@ -308,17 +293,22 @@ impl Conn {
                 FrontendMessage::Query { query } => {
                     session.prepared.remove("");
                     extended.portals.remove("");
+                    session.state.sink = Some(Box::new(std::mem::take(&mut self.output)));
                     let (mut outcomes, mut error) = session.execute(&query);
+                    if let Some(output) = session.state.sink.take().and_then(|s| s.into_any().downcast::<Output>().ok())
+                    {
+                        self.output = *output;
+                    }
                     loop {
                         let copy = match outcomes.last() {
                             Some((_, Outcome::CopyIn { binary, .. })) => Some(*binary),
                             _ => None,
                         };
                         for (notices, outcome) in outcomes {
-                            self.queue_notices(notices);
-                            self.queue_outcome(outcome, None);
+                            self.output.queue_notices(notices);
+                            self.output.queue_outcome(outcome, None);
                         }
-                        self.queue_notices(session.take_notices());
+                        self.output.queue_notices(session.take_notices());
                         if let Some(err) = error {
                             self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                         }
@@ -342,7 +332,7 @@ impl Conn {
                 FrontendMessage::Terminate => return Ok(()),
                 message => {
                     let result = self.extended_message(session, &mut extended, message);
-                    self.queue_notices(session.take_notices());
+                    self.output.queue_notices(session.take_notices());
                     if let Err(err) = result {
                         let err = session.abort(err);
                         self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
@@ -351,10 +341,10 @@ impl Conn {
                     if let Some(binary) = extended.copying.take() {
                         let (outcomes, error) = self.copy_in(session, binary)?;
                         for (notices, outcome) in outcomes {
-                            self.queue_notices(notices);
-                            self.queue_outcome(outcome, Some(&[]));
+                            self.output.queue_notices(notices);
+                            self.output.queue_outcome(outcome, Some(&[]));
                         }
-                        self.queue_notices(session.take_notices());
+                        self.output.queue_notices(session.take_notices());
                         if let Some(err) = error {
                             self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
                             extended.failed = true;
@@ -426,12 +416,12 @@ impl Conn {
             FrontendMessage::Describe { object_type: b'S', name } => {
                 let prepared = session.statement(&name)?;
                 self.queue(BackendMessage::ParameterDescription { parameter_oids: prepared.parameter_types.clone() });
-                self.queue_description(prepared.columns.as_deref(), &[]);
+                self.output.queue_description(prepared.columns.as_deref(), &[]);
             }
             FrontendMessage::Describe { object_type: b'P', name } => {
                 let portal = extended.portal(&name)?;
                 let (prepared, formats) = (portal.prepared.clone(), portal.result_formats.clone());
-                self.queue_description(prepared.columns.as_deref(), &formats);
+                self.output.queue_description(prepared.columns.as_deref(), &formats);
             }
             FrontendMessage::Describe { object_type, .. } => {
                 return Err(PgError::new(
@@ -443,11 +433,11 @@ impl Conn {
                 let portal = extended.portal(&portal)?;
                 let (prepared, formats) = (portal.prepared.clone(), portal.result_formats.clone());
                 let outcome = session.execute_prepared(&prepared, &portal.parameters.clone())?;
-                self.queue_notices(session.take_notices());
+                self.output.queue_notices(session.take_notices());
                 if let Outcome::CopyIn { binary, .. } = outcome {
                     extended.copying = Some(binary);
                 }
-                self.queue_outcome(outcome, Some(&formats));
+                self.output.queue_outcome(outcome, Some(&formats));
             }
             FrontendMessage::Close { object_type, name } => {
                 match object_type {
@@ -500,8 +490,8 @@ impl Conn {
                 }
             }
         }
-        if !binary && self.client_encoding != sql::encodings::UTF8 {
-            match self.client_encoding.decode(&data) {
+        if !binary && self.output.client_encoding != sql::encodings::UTF8 {
+            match self.output.client_encoding.decode(&data) {
                 Ok(text) => data = text.into_bytes(),
                 Err(err) => return Ok((Vec::new(), Some(session.abort_copy(err, line(&data))))),
             }
@@ -515,109 +505,9 @@ impl Conn {
             if name == "client_encoding"
                 && let Some(encoding) = sql::encodings::Encoding::lookup(&value)
             {
-                self.client_encoding = encoding;
+                self.output.client_encoding = encoding;
             }
             self.queue(BackendMessage::ParameterStatus { name, value });
-        }
-    }
-
-    /// queue_notices queues a NoticeResponse for each notice.
-    fn queue_notices(&mut self, notices: Vec<PgError>) {
-        for notice in notices {
-            self.queue(BackendMessage::NoticeResponse(error_fields(&notice)));
-        }
-    }
-
-    /// queue_description queues the RowDescription of the columns in the formats, or NoData without columns.
-    fn queue_description(&mut self, columns: Option<&[Column]>, formats: &[i16]) {
-        match columns {
-            Some(columns) => self.queue(BackendMessage::RowDescription { fields: fields(columns, formats) }),
-            None => self.queue(BackendMessage::NoData),
-        }
-    }
-
-    /// queue_data_row writes a DataRow message of a row's values in the formats asked for, writing text in UTF-8
-    /// straight into the output buffer, and leaves the buffer as it was when a value cannot be sent.
-    fn queue_data_row(&mut self, row: &[Value], columns: &[Column], formats: &[i16]) -> Result<(), PgError> {
-        let start = self.out.len();
-        self.out.push(b'D');
-        self.out.extend_from_slice(&[0; 4]);
-        self.out.extend_from_slice(&(row.len() as u16).to_be_bytes());
-        for (i, value) in row.iter().enumerate() {
-            let length_at = self.out.len();
-            self.out.extend_from_slice(&[0; 4]);
-            let length = if format(formats, i) == 0 && self.client_encoding == sql::encodings::UTF8 {
-                value.write_text(&mut self.out).then(|| self.out.len() - length_at - 4)
-            } else {
-                let bytes = match value.encode(columns[i].type_oid, format(formats, i)) {
-                    Some(text) if format(formats, i) == 0 => {
-                        match self.client_encoding.encode(&String::from_utf8_lossy(&text)) {
-                            Ok(encoded) => Some(encoded),
-                            Err(err) => {
-                                self.out.truncate(start);
-                                return Err(err);
-                            }
-                        }
-                    }
-                    other => other,
-                };
-                bytes.map(|bytes| {
-                    self.out.extend_from_slice(&bytes);
-                    bytes.len()
-                })
-            };
-            let length = length.map_or(-1, |n| n as i32);
-            self.out[length_at..length_at + 4].copy_from_slice(&length.to_be_bytes());
-        }
-        let size = (self.out.len() - start - 1) as u32;
-        self.out[start + 1..start + 5].copy_from_slice(&size.to_be_bytes());
-        Ok(())
-    }
-
-    /// queue_outcome queues the messages of one statement's outcome, with rows in the formats. Without formats, as
-    /// for a simple query, it describes the rows first and sends them as text.
-    fn queue_outcome(&mut self, outcome: Outcome, formats: Option<&[i16]>) {
-        match outcome {
-            Outcome::Rows { columns, rows, tag } => {
-                let formats = match formats {
-                    Some(formats) => formats,
-                    None => {
-                        self.queue(BackendMessage::RowDescription { fields: fields(&columns, &[]) });
-                        &[]
-                    }
-                };
-                for row in rows {
-                    if let Err(err) = self.queue_data_row(&row, &columns, formats) {
-                        return self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
-                    }
-                }
-                self.queue(BackendMessage::CommandComplete { command_tag: tag });
-            }
-            Outcome::Command { tag } => self.queue(BackendMessage::CommandComplete { command_tag: tag }),
-            Outcome::Empty => self.queue(BackendMessage::EmptyQueryResponse),
-            Outcome::CopyIn { binary, columns } => {
-                let format = u8::from(binary);
-                let column_format_codes = vec![format as u16; columns];
-                self.queue(BackendMessage::CopyInResponse { overall_format: format, column_format_codes });
-            }
-            Outcome::CopyOut { binary, columns, chunks, tag } => {
-                let format = u8::from(binary);
-                let column_format_codes = vec![format as u16; columns];
-                self.queue(BackendMessage::CopyOutResponse { overall_format: format, column_format_codes });
-                for chunk in chunks {
-                    let data = if binary || self.client_encoding == sql::encodings::UTF8 {
-                        chunk
-                    } else {
-                        match self.client_encoding.encode(&String::from_utf8_lossy(&chunk)) {
-                            Ok(encoded) => encoded,
-                            Err(err) => return self.queue(BackendMessage::ErrorResponse(error_fields(&err))),
-                        }
-                    };
-                    self.queue(BackendMessage::CopyData { data });
-                }
-                self.queue(BackendMessage::CopyDone);
-                self.queue(BackendMessage::CommandComplete { command_tag: tag });
-            }
         }
     }
 }
@@ -646,33 +536,6 @@ struct Portal {
     prepared: Arc<Prepared>,
     parameters: Vec<Value>,
     result_formats: Vec<i16>,
-}
-
-/// format returns the format code of the value at the index: the only code when there is one, and text when there
-/// are none.
-fn format(codes: &[i16], index: usize) -> i16 {
-    match codes {
-        [] => 0,
-        [code] => *code,
-        codes => codes.get(index).copied().unwrap_or(0),
-    }
-}
-
-/// fields describes the columns, with the result formats.
-fn fields(columns: &[Column], formats: &[i16]) -> Vec<FieldDescription> {
-    columns
-        .iter()
-        .enumerate()
-        .map(|(i, c)| FieldDescription {
-            name: c.name.clone(),
-            data_type_oid: c.type_oid,
-            data_type_size: c.type_size,
-            type_modifier: c.type_modifier,
-            table_oid: c.origin.0,
-            table_attribute_number: c.origin.1,
-            format: format(formats, i),
-        })
-        .collect()
 }
 
 /// message_name names a frontend message for errors.

@@ -19,6 +19,7 @@
 pub mod config;
 mod conn;
 pub mod logrepl;
+mod output;
 pub mod scram;
 
 use std::io::Write;
