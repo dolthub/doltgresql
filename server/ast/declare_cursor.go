@@ -63,7 +63,7 @@ func nodeDeclareCursor(ctx *Context, node *tree.DeclareCursor) (vitess.Statement
 			Name:         string(node.Name),
 			Select:       selectStmt,
 			IsHoldable:   node.Options&tree.CursorOptionHold != 0,
-			IsScrollable: node.Options&tree.CursorOptionScroll != 0,
+			IsScrollable: node.Options&tree.CursorOptionNoScroll == 0,
 		},
 	}, nil
 }

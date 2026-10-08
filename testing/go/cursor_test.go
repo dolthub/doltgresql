@@ -158,22 +158,18 @@ func TestCursors(t *testing.T) {
 				{
 					Query:    "FETCH PRIOR FROM d;",
 					Expected: []sql.Row{{1, "a"}},
-					Skip:     true, // cursors without SCROLL only move forward
 				},
 				{
 					Query:    "FETCH BACKWARD 1 FROM d;",
 					Expected: []sql.Row{},
-					Skip:     true, // cursors without SCROLL only move forward
 				},
 				{
 					Query:    "FETCH ALL FROM d;",
 					Expected: []sql.Row{{1, "a"}, {2, "b"}, {3, "c"}, {4, "d"}, {5, "e"}},
-					Skip:     true, // cursors without SCROLL only move forward
 				},
 				{
 					Query:    "FETCH BACKWARD ALL FROM d;",
 					Expected: []sql.Row{{5, "e"}, {4, "d"}, {3, "c"}, {2, "b"}, {1, "a"}},
-					Skip:     true, // cursors without SCROLL only move forward
 				},
 				{
 					Query: "ROLLBACK;",
@@ -259,12 +255,10 @@ func TestCursors(t *testing.T) {
 				{
 					Query:    "FETCH FORWARD 0 FROM i;",
 					Expected: []sql.Row{{1, "a"}},
-					Skip:     true, // cursors without SCROLL only move forward
 				},
 				{
 					Query:    "FETCH BACKWARD 0 FROM i;",
 					Expected: []sql.Row{{1, "a"}},
-					Skip:     true, // cursors without SCROLL only move forward
 				},
 				{
 					Query:       "MOVE 0 FROM i;",
@@ -429,13 +423,11 @@ func TestCursors(t *testing.T) {
 					Query:           "DECLARE f CURSOR FOR SELECT 1 / 0;",
 					ExpectedErr:     "division by zero",
 					ExpectedErrCode: "22012",
-					Skip:            true, // constant expressions are not evaluated until rows are fetched
 				},
 				{
 					Query:           "FETCH f;",
 					ExpectedErr:     "current transaction is aborted",
 					ExpectedErrCode: "25P02",
-					Skip:            true, // constant expressions are not evaluated until rows are fetched
 				},
 				{
 					Query: "ROLLBACK;",
@@ -465,7 +457,6 @@ func TestCursors(t *testing.T) {
 						{"d", "DECLARE d NO SCROLL CURSOR WITHOUT HOLD FOR SELECT 1 AS x;", "f", "f", "f", "t"},
 						{"e", "DECLARE e INSENSITIVE CURSOR WITH HOLD FOR SELECT * FROM ct;", "t", "f", "t", "t"},
 					},
-					Skip: true, // cursors without SCROLL only move forward
 				},
 				{
 					Query: "SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors WHERE name IN ('c', 'd') ORDER BY name;",
@@ -484,7 +475,7 @@ func TestCursors(t *testing.T) {
 				{
 					Query:    "SELECT name, statement FROM pg_cursors WHERE name = '';",
 					Expected: []sql.Row{{"", "SELECT name, statement FROM pg_cursors WHERE name = '';"}},
-					Skip:     true, // portals from the extended query protocol are not listed yet
+					Skip:     true, // pg_cursors does not yet list the portals that the extended query protocol's Bind message creates, which Postgres lists
 				},
 			},
 		},
@@ -530,7 +521,6 @@ func TestCursors(t *testing.T) {
 				{
 					Query:    "FETCH PRIOR FROM h2;",
 					Expected: []sql.Row{{5, "e"}},
-					Skip:     true, // cursors without SCROLL only move forward
 				},
 				{
 					Query:    "FETCH h;",
@@ -624,7 +614,7 @@ func TestCursors(t *testing.T) {
 				{
 					Query:    "SELECT name FROM pg_cursors WHERE name <> '' ORDER BY name;",
 					Expected: []sql.Row{{"s"}},
-					Skip:     true, // ROLLBACK TO SAVEPOINT does not close cursors yet
+					Skip:     true, // ROLLBACK TO SAVEPOINT does not yet close the cursors declared after the savepoint, which Postgres does
 				},
 				{
 					Query:    "FETCH 1 FROM s;",
@@ -643,12 +633,12 @@ func TestCursors(t *testing.T) {
 				},
 				{
 					Query: "DECLARE b BINARY CURSOR FOR SELECT 1;",
-					Skip:  true, // BINARY cursors are not yet supported
+					Skip:  true, // BINARY cursors are not yet supported, since FETCH would have to return their rows in the binary format over the simple query protocol
 				},
 				{
 					Query:    "SELECT name, is_binary FROM pg_cursors WHERE name <> '';",
 					Expected: []sql.Row{{"b", "t"}},
-					Skip:     true, // BINARY cursors are not yet supported
+					Skip:     true, // BINARY cursors are not yet supported, since FETCH would have to return their rows in the binary format over the simple query protocol
 				},
 				{
 					Query: "ROLLBACK;",
@@ -664,15 +654,18 @@ func TestCursors(t *testing.T) {
 				},
 				{
 					Query: "DECLARE r CURSOR FOR SELECT 10 / (id - 3) FROM ct ORDER BY id;",
+					Skip:  true, // Postgres raises an error from a row once FETCH reaches that row, but Doltgres reads every row at DECLARE, so DECLARE raises it
 				},
 				{
 					Query:    "FETCH 2 FROM r;",
 					Expected: []sql.Row{{-5}, {-10}},
+					Skip:     true, // Postgres raises an error from a row once FETCH reaches that row, but Doltgres reads every row at DECLARE, so DECLARE raises it
 				},
 				{
 					Query:           "FETCH 1 FROM r;",
 					ExpectedErr:     "division by zero",
 					ExpectedErrCode: "22012",
+					Skip:            true, // Postgres raises an error from a row once FETCH reaches that row, but Doltgres reads every row at DECLARE, so DECLARE raises it
 				},
 				{
 					Query: "ROLLBACK;",
@@ -748,6 +741,7 @@ func TestCursors(t *testing.T) {
 					Query:           "FETCH BACKWARD ALL FROM j;",
 					ExpectedErr:     "cursor can only scan forward",
 					ExpectedErrCode: "55000",
+					Skip:            true, // Postgres only scrolls a cursor declared without SCROLL when its plan can scan backward, which this join's plan cannot, but Doltgres holds every row of a cursor, so it scrolls them all
 				},
 				{
 					Query: "ROLLBACK;",
@@ -757,6 +751,7 @@ func TestCursors(t *testing.T) {
 		{
 			Name:        "WITH HOLD cursors read their remaining rows when their transaction commits",
 			SetUpScript: setup,
+			Skip:        true, // Postgres reads the remaining rows of a WITH HOLD cursor at COMMIT, so COMMIT raises their errors, but Doltgres reads every row at DECLARE, so DECLARE raises them
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "BEGIN;",
@@ -1008,6 +1003,411 @@ func TestCursors(t *testing.T) {
 				},
 				{
 					Query: "ROLLBACK;",
+				},
+			},
+		},
+		{
+			Name:        "moving and rewinding a SCROLL cursor",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query: "DECLARE s SCROLL CURSOR FOR SELECT * FROM ct ORDER BY id;",
+				},
+				{
+					Query:    "FETCH ABSOLUTE 7 FROM s;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "FETCH PRIOR FROM s;",
+					Expected: []sql.Row{{5, "e"}},
+				},
+				{
+					Query:    "FETCH RELATIVE -10 FROM s;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "FETCH NEXT FROM s;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "FETCH LAST FROM s;",
+					Expected: []sql.Row{{5, "e"}},
+				},
+				{
+					Query:    "FETCH NEXT FROM s;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "FETCH NEXT FROM s;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "FETCH PRIOR FROM s;",
+					Expected: []sql.Row{{5, "e"}},
+				},
+				{
+					Query:       "MOVE ABSOLUTE 0 IN s;",
+					ExpectedTag: "MOVE 0",
+				},
+				{
+					Query:    "FETCH NEXT FROM s;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "FETCH RELATIVE 3 FROM s;",
+					Expected: []sql.Row{{4, "d"}},
+				},
+				{
+					Query:    "FETCH BACKWARD ALL FROM s;",
+					Expected: []sql.Row{{3, "c"}, {2, "b"}, {1, "a"}},
+				},
+				{
+					Query:       "MOVE FORWARD ALL IN s;",
+					ExpectedTag: "MOVE 5",
+				},
+				{
+					Query:    "FETCH BACKWARD 2 FROM s;",
+					Expected: []sql.Row{{5, "e"}, {4, "d"}},
+				},
+				{
+					Query:    "FETCH ABSOLUTE -5 FROM s;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "FETCH ABSOLUTE -6 FROM s;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "FETCH NEXT FROM s;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:       "MOVE 0 IN s;",
+					ExpectedTag: "MOVE 1",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+			},
+		},
+		{
+			Name:        "moving and rewinding a SCROLL WITH HOLD cursor after its transaction commits",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query: "DECLARE h SCROLL CURSOR WITH HOLD FOR SELECT * FROM ct ORDER BY id;",
+				},
+				{
+					Query:    "FETCH 2 FROM h;",
+					Expected: []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query: "COMMIT;",
+				},
+				{
+					Query:    "FETCH RELATIVE -1 FROM h;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "FETCH ABSOLUTE 7 FROM h;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "FETCH PRIOR FROM h;",
+					Expected: []sql.Row{{5, "e"}},
+				},
+				{
+					Query:       "MOVE BACKWARD ALL IN h;",
+					ExpectedTag: "MOVE 4",
+				},
+				{
+					Query:    "FETCH NEXT FROM h;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "FETCH LAST FROM h;",
+					Expected: []sql.Row{{5, "e"}},
+				},
+				{
+					Query:       "MOVE FORWARD 2 IN h;",
+					ExpectedTag: "MOVE 0",
+				},
+				{
+					Query:    "FETCH BACKWARD 1 FROM h;",
+					Expected: []sql.Row{{5, "e"}},
+				},
+				{
+					Query: "CLOSE h;",
+				},
+			},
+		},
+		{
+			Name:        "moving a NO SCROLL WITH HOLD cursor",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "DECLARE n NO SCROLL CURSOR WITH HOLD FOR SELECT * FROM ct ORDER BY id;",
+				},
+				{
+					Query:       "MOVE BACKWARD ALL IN n;",
+					ExpectedTag: "MOVE 0",
+				},
+				{
+					Query:    "FETCH ABSOLUTE 2 FROM n;",
+					Expected: []sql.Row{{2, "b"}},
+				},
+				{
+					Query:    "FETCH RELATIVE 2 FROM n;",
+					Expected: []sql.Row{{4, "d"}},
+				},
+				{
+					Query:       "MOVE 0 IN n;",
+					ExpectedTag: "MOVE 1",
+				},
+				{
+					Query:           "FETCH ABSOLUTE 4 FROM n;",
+					ExpectedErr:     "cursor can only scan forward",
+					ExpectedErrCode: "55000",
+				},
+				{
+					Query: "CLOSE ALL;",
+				},
+			},
+		},
+		{
+			Name:        "moving through a cursor without rows",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query: "DECLARE e SCROLL CURSOR FOR SELECT * FROM ct WHERE id > 10;",
+				},
+				{
+					Query:    "FETCH e;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "FETCH PRIOR FROM e;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "MOVE ALL IN e;",
+					ExpectedTag: "MOVE 0",
+				},
+				{
+					Query:    "FETCH ABSOLUTE -1 FROM e;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "FETCH ABSOLUTE 1 FROM e;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "MOVE 0 IN e;",
+					ExpectedTag: "MOVE 0",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+			},
+		},
+		{
+			Name:        "moving a cursor without a scroll option past its last row",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query: "DECLARE f CURSOR FOR SELECT * FROM ct ORDER BY id;",
+				},
+				{
+					Query:    "FETCH FORWARD 2 FROM f;",
+					Expected: []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query:       "MOVE 1 IN f;",
+					ExpectedTag: "MOVE 1",
+				},
+				{
+					Query:    "FETCH ALL FROM f;",
+					Expected: []sql.Row{{4, "d"}, {5, "e"}},
+				},
+				{
+					Query:    "FETCH ALL FROM f;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "MOVE FORWARD 0 IN f;",
+					ExpectedTag: "MOVE 0",
+				},
+				{
+					Query:       "MOVE FORWARD 3 IN f;",
+					ExpectedTag: "MOVE 0",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+			},
+		},
+		{
+			Name:        "scrolling WITH HOLD cursors after their transaction commits",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query: "DECLARE w SCROLL CURSOR WITH HOLD FOR SELECT * FROM ct ORDER BY id;",
+				},
+				{
+					Query:    "FETCH 2 FROM w;",
+					Expected: []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query: "COMMIT;",
+				},
+				{
+					Query:    "FETCH PRIOR FROM w;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "FETCH ALL FROM w;",
+					Expected: []sql.Row{{2, "b"}, {3, "c"}, {4, "d"}, {5, "e"}},
+				},
+				{
+					Query:    "FETCH BACKWARD 2 FROM w;",
+					Expected: []sql.Row{{5, "e"}, {4, "d"}},
+				},
+				{
+					Query: "DECLARE w2 NO SCROLL CURSOR WITH HOLD FOR SELECT * FROM ct ORDER BY id;",
+				},
+				{
+					Query:    "FETCH 2 FROM w2;",
+					Expected: []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query:           "FETCH PRIOR FROM w2;",
+					ExpectedErr:     "cursor can only scan forward",
+					ExpectedErrCode: "55000",
+				},
+			},
+		},
+	})
+}
+
+func TestCursorsExtendedProtocol(t *testing.T) {
+	setup := []string{
+		"CREATE TABLE ct (id INT4 PRIMARY KEY, v TEXT);",
+		"INSERT INTO ct VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd'), (5, 'e');",
+	}
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name:        "DECLARE without WITH HOLD needs a transaction block",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Parse{Query: "DECLARE c CURSOR FOR SELECT * FROM ct ORDER BY id;"},
+				Bind{},
+				Execute{ExpectedErr: "DECLARE CURSOR can only be used in transaction blocks", ExpectedErrCode: "25P01"},
+				Sync{},
+			},
+		},
+		{
+			Name:        "DECLARE, FETCH, and MOVE in a single batch",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "BEGIN;",
+					Expected:            []StatementResult{{Tag: "BEGIN"}},
+					ExpectedReadyStatus: 'T',
+				},
+				Parse{Query: "DECLARE c SCROLL CURSOR FOR SELECT * FROM ct ORDER BY id;"},
+				Bind{},
+				Execute{Tag: "DECLARE CURSOR"},
+				Parse{Query: "FETCH 2 FROM c;"},
+				Bind{},
+				Describe{ObjectType: 'P'},
+				Execute{Tag: "FETCH 2", Rows: [][]string{{"1", "a"}, {"2", "b"}}},
+				Parse{Query: "MOVE 1 IN c;"},
+				Bind{},
+				Execute{Tag: "MOVE 1"},
+				Parse{Query: "FETCH PRIOR FROM c;"},
+				Bind{},
+				Execute{Tag: "FETCH 1", Rows: [][]string{{"2", "b"}}},
+				Sync{ExpectedReadyStatus: 'T'},
+				SimpleQuery{
+					Query:    "COMMIT;",
+					Expected: []StatementResult{{Tag: "COMMIT"}},
+				},
+				SimpleQuery{
+					Query:           "FETCH c;",
+					ExpectedErr:     `cursor "c" does not exist`,
+					ExpectedErrCode: "34000",
+				},
+			},
+		},
+		{
+			Name:        "WITH HOLD cursors outlive the implicit transaction of a batch",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Parse{Query: "DECLARE h CURSOR WITH HOLD FOR SELECT * FROM ct ORDER BY id;"},
+				Bind{},
+				Execute{Tag: "DECLARE CURSOR"},
+				Parse{Query: "FETCH 2 FROM h;"},
+				Bind{},
+				Execute{Tag: "FETCH 2", Rows: [][]string{{"1", "a"}, {"2", "b"}}},
+				Sync{},
+				Parse{Query: "FETCH ALL FROM h;"},
+				Bind{},
+				Execute{Tag: "FETCH 3", Rows: [][]string{{"3", "c"}, {"4", "d"}, {"5", "e"}}},
+				Sync{},
+			},
+		},
+		{
+			Name:        "cursor queries with bound parameters",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "BEGIN;",
+					Expected:            []StatementResult{{Tag: "BEGIN"}},
+					ExpectedReadyStatus: 'T',
+				},
+				Parse{Query: "DECLARE p CURSOR FOR SELECT * FROM ct WHERE id > $1 ORDER BY id;"},
+				Bind{Parameters: []string{"3"}},
+				Execute{Tag: "DECLARE CURSOR"},
+				Parse{Query: "FETCH ALL FROM p;"},
+				Bind{},
+				Execute{Tag: "FETCH 2", Rows: [][]string{{"4", "d"}, {"5", "e"}}},
+				Sync{ExpectedReadyStatus: 'T'},
+				SimpleQuery{
+					Query:    "ROLLBACK;",
+					Expected: []StatementResult{{Tag: "ROLLBACK"}},
+				},
+			},
+		},
+		{
+			Name:        "cursors without WITH HOLD close when a multi-statement query ends",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query: "DECLARE c CURSOR FOR SELECT * FROM ct ORDER BY id; FETCH 1 FROM c;",
+					Expected: []StatementResult{
+						{Tag: "DECLARE CURSOR"},
+						{Tag: "FETCH 1", Rows: [][]string{{"1", "a"}}},
+					},
+				},
+				SimpleQuery{
+					Query:           "FETCH c;",
+					ExpectedErr:     `cursor "c" does not exist`,
+					ExpectedErrCode: "34000",
 				},
 			},
 		},

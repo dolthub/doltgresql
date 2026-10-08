@@ -84,15 +84,16 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	return h.send(makeCommandComplete(query.StatementTag, rowsAffected))
 }
 
-// inTransactionBlock reports whether a statement runs inside a transaction block, which is either an explicit block or
-// the implicit block of a simple query that holds multiple statements.
-func (h *ConnectionHandler) inTransactionBlock(simpleQuery *simpleQueryExecution) bool {
+// isInTransactionBlock reports whether a transaction block is active as Postgres defines one: an explicit block opened by
+// BEGIN, including a failed one, or the implicit block of a simple query with several statements. The implicit
+// transaction of an extended-protocol batch is not a transaction block.
+func (h *ConnectionHandler) isInTransactionBlock(simpleQuery *simpleQueryExecution) bool {
 	return h.state.txState.inExplicitTransactionBlock() || (simpleQuery != nil && h.state.txState == implicitTransactionState)
 }
 
 // warnOutsideTransactionBlock warns that a transaction-block-only command ran outside a transaction block.
 func (h *ConnectionHandler) warnOutsideTransactionBlock(query ConvertedQuery, simpleQuery *simpleQueryExecution) error {
-	if h.inTransactionBlock(simpleQuery) {
+	if h.isInTransactionBlock(simpleQuery) {
 		return nil
 	}
 	return h.send(&pgproto3.NoticeResponse{

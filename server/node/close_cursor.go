@@ -17,7 +17,6 @@ package node
 import (
 	"context"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -52,26 +51,19 @@ func (c *CloseCursor) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CloseCursor) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	cursors, err := core.GetCursors(ctx)
-	if err != nil {
-		return nil, err
-	}
 	if c.Name == "" {
-		var closeErr error
-		for _, cursor := range cursors {
-			closeErr = errors.CombineErrors(closeErr, cursor.Close(ctx))
-		}
-		clear(cursors)
-		if closeErr != nil {
-			return nil, closeErr
+		if err := core.CloseAllCursors(ctx); err != nil {
+			return nil, err
 		}
 		return sql.RowsToRowIter(), nil
 	}
-	cursor, ok := cursors[c.Name]
+	cursor, ok, err := core.GetCursor(ctx, c.Name)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return nil, pgerror.Newf(pgcode.InvalidCursorName, `cursor "%s" does not exist`, c.Name)
 	}
-	delete(cursors, c.Name)
 	if err = cursor.Close(ctx); err != nil {
 		return nil, err
 	}

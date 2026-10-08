@@ -96,13 +96,6 @@ func (h *ConnectionHandler) handleTransactionStatement(query ConvertedQuery) (bo
 		// COMMIT ends either kind of active block; the engine still executes the statement itself.
 		h.state.txState = idleTransactionState
 		h.clearTransactionLocalVars()
-		if err := h.materializeHoldableCursors(); err != nil {
-			h.closeTransactionCursors(false)
-			if rollbackErr := h.runEngineTransactionControl("ROLLBACK"); rollbackErr != nil {
-				logrus.Warnf("error rolling back transaction after failed commit: %s", rollbackErr)
-			}
-			return true, err
-		}
 		h.closeTransactionCursors(true)
 		return false, nil
 	case *sqlparser.Rollback:
