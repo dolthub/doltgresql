@@ -377,6 +377,15 @@ impl<'b, 'a> Binder<'b, 'a> {
             NodeEnum::ColumnRef(column) => self.column(column),
             NodeEnum::ParamRef(param) => {
                 let index = param.number as usize - 1;
+                if let Some(name) = self.ctx.variables.get(index).filter(|n| !n.contains('.'))
+                    && self.scopes.iter().any(|s| s.columns.iter().any(|c| !c.hidden && c.name == *name))
+                {
+                    return Err(PgError {
+                        detail: Some("It could refer to either a PL/pgSQL variable or a table column.".into()),
+                        position: position(param.location),
+                        ..PgError::new(code::AMBIGUOUS_COLUMN, format!("column reference \"{name}\" is ambiguous"))
+                    });
+                }
                 if self.ctx.parameters.len() <= index {
                     self.ctx.parameters.resize(index + 1, 0);
                 }

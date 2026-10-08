@@ -201,3 +201,11 @@ no unique constraint matching given keys for referenced table").
 
 Rust: rejects the key as Postgres does; six dolt_merge scripts now expect the 42830 error and the empty
 constraint violation tables that follow from it.
+
+## PL/pgSQL names that are both a variable and a column (confirmed)
+
+In `UPDATE tjv SET gross = gross` inside a function with a variable `gross`, Go binds the right-hand `gross` to the
+variable. Postgres, under its default `plpgsql.variable_conflict = error`, reports 42702 `column reference "gross" is
+ambiguous` ("It could refer to either a PL/pgSQL variable or a table column.").
+
+Rust: reports the conflict as Postgres does, for a variable name that a column in the statement's scope also has.

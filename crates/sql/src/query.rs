@@ -60,6 +60,9 @@ pub struct Ctx<'a> {
     pub aggregate_levels: Vec<usize>,
     /// What the statement has read of the catalogs, for the root value it read them from.
     pub catalog: Option<crate::pgcatalog::snapshot::CatalogCache>,
+    /// The PL/pgSQL variables that the statement's parameters stand for, by position, which a column of the same name
+    /// makes ambiguous.
+    pub variables: Vec<String>,
 }
 
 /// column returns the description of a result column of the type.

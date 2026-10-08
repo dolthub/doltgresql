@@ -832,18 +832,24 @@ impl<'r> Frame<'r> {
             values.push(value);
             types.push(ty.oid);
         }
-        self.run_statement(ctx, &statement, &mut types, &values)
+        self.run_statement(ctx, &statement, &mut types, &values, bindings)
     }
 
-    /// run_statement runs a parsed statement with parameters of the types and values.
+    /// run_statement runs a parsed statement with parameters of the types and values, which stand for the variables
+    /// named, if any.
     fn run_statement(
         &self,
         ctx: &mut Ctx<'_>,
         statement: &NodeEnum,
         types: &mut Vec<u32>,
         values: &[Value],
+        variables: &[String],
     ) -> Result<QueryResult> {
-        match ctx.nested(types, values, None, |ctx| ctx.run(statement))? {
+        let outcome = ctx.nested(types, values, None, |ctx| {
+            ctx.variables = variables.to_vec();
+            ctx.run(statement)
+        });
+        match outcome? {
             Outcome::Rows { columns, rows, tag } => {
                 let columns: Vec<(String, ColumnType)> = columns
                     .into_iter()
@@ -1227,7 +1233,7 @@ impl<'r> Frame<'r> {
             }
             self.running = Some(("SQL statement", query.clone()));
             let statement = parse(&query)?;
-            self.run_statement(ctx, &statement, &mut types, &values)?
+            self.run_statement(ctx, &statement, &mut types, &values, &[])?
         } else {
             let statement = parse(primary)?;
             if target.is_empty() && returns_rows(&statement) {
@@ -1244,7 +1250,7 @@ impl<'r> Frame<'r> {
                 types.push(ty.oid);
             }
             self.running = Some(("SQL statement", primary.trim_end_matches(';').to_string()));
-            self.run_statement(ctx, &statement, &mut types, &values)?
+            self.run_statement(ctx, &statement, &mut types, &values, &secondary)?
         };
         if !target.is_empty() {
             if option(op, OPTION_STRICT).as_deref() == Some("true") {

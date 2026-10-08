@@ -1682,6 +1682,7 @@ impl Session {
             outer_reach: usize::MAX,
             aggregate_levels: Vec::new(),
             catalog: None,
+            variables: Vec::new(),
         };
         store::defer_syncs(true);
         let result = (|| {

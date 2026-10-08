@@ -4538,7 +4538,6 @@ fn test_plpgsql_binding_rules() {
                     query: "SELECT p2();",
                     expected: Expected::Error(Diagnostic { code: "42702", message: r#"column reference "gross" is ambiguous"#, detail: "It could refer to either a PL/pgSQL variable or a table column.", ..E }),
                     flow: Flow::Query,
-                    skip: Some("PL/pgSQL binds a name that is both a variable and a column to the variable, where Postgres reports the conflict"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -4550,7 +4549,6 @@ fn test_plpgsql_binding_rules() {
                         ],
                         tag: "SELECT 1",
                     },
-                    skip: Some("PL/pgSQL binds a name that is both a variable and a column to the variable, where Postgres reports the conflict"),
                     ..A
                 },
                 ScriptTestAssertion {
