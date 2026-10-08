@@ -27,6 +27,8 @@ jobs:
         run: rustup toolchain install
       - name: Cache Rust builds
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
       - name: Build DoltgreSQL
         run: |
           cargo build --release -p server

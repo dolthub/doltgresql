@@ -31,6 +31,8 @@ jobs:
       run: rustup toolchain install
     - name: Cache Rust builds
       uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
     - name: Setup PostgreSQL
       uses: tj-actions/install-postgresql@v3
       with:

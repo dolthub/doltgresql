@@ -181,6 +181,9 @@ pub enum Cell {
     Text(&'static str),
     /// Any value that is not NULL, for values that are inherently arbitrary such as OIDs and process IDs.
     Any,
+    /// A float8 value within two units in the last place of this one, for results that Postgres computes with the
+    /// platform's math library, whose last digit differs between platforms.
+    Approx(&'static str),
     /// An OID that Postgres gave a user object, which matches the OID the server gave the same object: within a
     /// script, each expected OID matches one OID of the server, and different expected OIDs match different ones.
     Oid(u32),
@@ -905,6 +908,10 @@ fn cell_matches(expected: &Cell, actual: &Option<String>, bindings: &mut HashMap
         (Cell::Null, None) => true,
         (Cell::Text(text), Some(value)) => expand(text) == value.as_str(),
         (Cell::Any, Some(_)) => true,
+        (Cell::Approx(text), Some(value)) => match (text.parse::<f64>(), value.parse::<f64>()) {
+            (Ok(e), Ok(a)) => e.is_sign_negative() == a.is_sign_negative() && e.to_bits().abs_diff(a.to_bits()) <= 2,
+            _ => false,
+        },
         (Cell::Oid(oid), Some(value)) => match bindings.get(oid) {
             Some(bound) => bound == value,
             None if bindings.values().any(|v| v == value) => false,
@@ -1195,5 +1202,20 @@ mod tests {
         );
         assert_eq!(postgres_set_up("CREATE ROLE IF NOT EXISTS r1;"), "CREATE ROLE r1;");
         assert_eq!(postgres_set_up("CREATE TABLE t (a int);"), "CREATE TABLE t (a int);");
+    }
+
+    #[test]
+    fn approximate_floats_match_within_two_units_in_the_last_place() {
+        let mut bindings = HashMap::new();
+        let mut matches = |expected: &'static str, actual: &str| {
+            cell_matches(&Cell::Approx(expected), &Some(actual.to_string()), &mut bindings)
+        };
+        assert!(matches("1.0471975511965976", "1.0471975511965976"));
+        assert!(matches("1.0471975511965976", "1.0471975511965979"));
+        assert!(matches("0.5493061443340549", "0.5493061443340548"));
+        assert!(!matches("1.0471975511965976", "1.047197551196599"));
+        assert!(!matches("1.0471975511965976", "-1.0471975511965976"));
+        assert!(!matches("1.0471975511965976", "NaN"));
+        assert!(!cell_matches(&Cell::Approx("1"), &None, &mut bindings));
     }
 }

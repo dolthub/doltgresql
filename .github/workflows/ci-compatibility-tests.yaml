@@ -29,6 +29,8 @@ jobs:
 
       - name: Cache Rust builds
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
 
       - uses: actions/setup-node@v4
         with:

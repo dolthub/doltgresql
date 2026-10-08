@@ -15,7 +15,7 @@
 use harness::oid::*;
 use harness::pgx::Time;
 use harness::plan::PlanFact;
-use harness::script::Cell::{Any, Null, Oid, Text as T};
+use harness::script::Cell::{Any, Approx, Null, Oid, Text as T};
 use harness::script::{A, BindVar, Column, Diagnostic, E, Expected, Flow, N, S, ScriptTest, ScriptTestAssertion, USER_DEFINED, run_scripts, run_scripts_repeated};
 use harness::wire::{Datum, F, Field, Fields, PGX_STARTUP, Receive, Send, Step, W, WireTest, run_wire_tests};
 
@@ -13627,13 +13627,13 @@ fn test_builtin_functions() {
                     },
                     ..A
                 },
-                // Postgres prints acos, asin, cot, and atanh with the platform's libm, whose last digit differs between macOS and glibc.
+                // Postgres computes acos, asin, cot, and atanh with the platform's libm, whose last digit differs between macOS and glibc.
                 ScriptTestAssertion {
                     query: "SELECT acos(0.5), asin(0.5), atan(1), atan2(1, 2), cot(1), sinh(1), cosh(1), tanh(1), asinh(1), acosh(2), atanh(0.5);",
                     expected: Expected::Rows {
                         columns: &[Column("acos", FLOAT8), Column("asin", FLOAT8), Column("atan", FLOAT8), Column("atan2", FLOAT8), Column("cot", FLOAT8), Column("sinh", FLOAT8), Column("cosh", FLOAT8), Column("tanh", FLOAT8), Column("asinh", FLOAT8), Column("acosh", FLOAT8), Column("atanh", FLOAT8)],
                         rows: &[
-                            &[Any, Any, T("0.7853981633974483"), T("0.4636476090008061"), Any, T("1.1752011936438014"), T("1.5430806348152437"), T("0.7615941559557649"), T("0.881373587019543"), T("1.3169578969248166"), Any],
+                            &[Approx("1.0471975511965976"), Approx("0.5235987755982988"), T("0.7853981633974483"), T("0.4636476090008061"), Approx("0.6420926159343308"), T("1.1752011936438014"), T("1.5430806348152437"), T("0.7615941559557649"), T("0.881373587019543"), T("1.3169578969248166"), Approx("0.5493061443340549")],
                         ],
                         tag: "SELECT 1",
                     },
