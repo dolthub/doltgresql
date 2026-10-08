@@ -13,7 +13,8 @@ end state contains only Rust code.
 2. Storage bidirectional: Go and Rust read, write, push, and pull each other's repositories and remotes, including
    every legacy format the Go version can still read, with the same behavior (merges and diffs included). Bytes and
    hashes may differ from Go's wherever readers cannot tell, so internals follow the fastest design rather than Go's.
-3. Performance equal to or better than Go on the sysbench workloads in `scripts/quick_sysbench.sh`.
+3. Performance better than Go's on every tested workload and data size: DoltHub's published sysbench tests and
+   TPC-C, a benchmark of complex queries, several threads, and databases of a gigabyte and more.
 4. The ported script tests (`testing/go`, extensions) assert real Postgres 15 output, and the Rust server
    must pass all of them, including assertions the Go server fails. The other suites (regression replay,
    sqllogictest, dump imports, enginetest Dolt sets) are gated on Go parity: everything the Go version
@@ -122,8 +123,11 @@ captured and re-verified.
    prolly trees. Syntax newer than Postgres 15 is accepted; a statement fails only when what it needs is unsupported.
 4. Breadth: types, functions, operators, DDL, DML, pg_catalog, PL/pgSQL, triggers, sequences, auth.
 5. Version control: branches, commits, merge, conflicts, diff, remotes, backups, GC, cluster replication.
-6. Operational features, logical replication, admin tool, and performance work against sysbench.
-7. Remove the Go code.
+6. Operational features, logical replication, admin tool, and performance work.
+7. The planner (rule-based choices with adaptive joins, catalog index scans, statistics-driven join order), the
+   remaining test failures, and the git and ssh remotes.
+8. Continuous integration against the Rust server, with comparisons between Go on `main` and Rust on this branch,
+   and a rebase onto the latest `main` that ports what changed in Go since. The Go code stays in the repository.
 
 ## Phase 0 status
 
