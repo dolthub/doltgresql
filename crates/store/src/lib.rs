@@ -34,11 +34,11 @@ mod memory;
 mod store;
 mod table;
 
-pub use archive::{ArchiveReader, ArchiveWriter};
+pub use archive::{ArchiveReader, ArchiveWriter, Stored};
 pub use blob::{Blob, BlobChunkStore, BlobRange, Blobstore, LocalBlobstore, MANIFEST_KEY, not_found};
 pub use chunk::Chunk;
 pub use error::{Error, Result};
-pub use file::ReadAt;
+pub use file::{ReadAt, remove_spills};
 pub use gc::{GcWriter, add_to_manifest, replace_files, write_files, write_table};
 pub use hash::Hash;
 pub use journal::{JOURNAL_FILE, JournalRecord, read_records};
@@ -64,6 +64,12 @@ pub struct Location {
 pub trait ChunkReader {
     /// get returns the chunk when the reader holds it.
     fn get(&self, hash: &Hash) -> Result<Option<Chunk>>;
+
+    /// get_stored returns the chunk when the reader holds it, with its stored form when an archive's dictionary
+    /// compressed it.
+    fn get_stored(&self, hash: &Hash) -> Result<Option<(Chunk, Option<Stored>)>> {
+        Ok(self.get(hash)?.map(|chunk| (chunk, None)))
+    }
 
     /// require returns the chunk, failing when the reader lacks it.
     fn require(&self, hash: &Hash) -> Result<Chunk> {

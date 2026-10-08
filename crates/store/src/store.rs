@@ -53,6 +53,15 @@ impl Source {
         }
     }
 
+    /// get_stored returns the chunk when the source holds it, with its stored form when an archive's dictionary
+    /// compressed it.
+    pub(crate) fn get_stored(&self, hash: &Hash) -> Result<Option<(Chunk, Option<crate::Stored>)>> {
+        match self {
+            Source::Archive(archive) => archive.get_stored(hash),
+            other => Ok(other.get(hash)?.map(|chunk| (chunk, None))),
+        }
+    }
+
     pub(crate) fn locate(&self, hash: &Hash) -> Option<crate::Location> {
         match self {
             Source::Table(table) => table.locate(hash),
@@ -135,6 +144,17 @@ impl BlockStore {
         for source in &self.sources {
             if let Some(chunk) = source.get(hash)? {
                 return Ok(Some(chunk));
+            }
+        }
+        Ok(None)
+    }
+
+    /// get_stored returns the chunk when the store holds it, with its stored form when an archive's dictionary
+    /// compressed it.
+    pub fn get_stored(&self, hash: &Hash) -> Result<Option<(Chunk, Option<crate::Stored>)>> {
+        for source in &self.sources {
+            if let Some(found) = source.get_stored(hash)? {
+                return Ok(Some(found));
             }
         }
         Ok(None)

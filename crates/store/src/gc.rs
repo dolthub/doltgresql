@@ -73,15 +73,18 @@ impl FileWriter {
         Ok(FileWriter { writer, spill: crate::file::Spill::create(dir)? })
     }
 
-    /// add adds a chunk.
-    fn add(&mut self, chunk: Chunk) -> Result<()> {
+    /// add adds a chunk, which an archive takes over as another archive stores it when it comes with that form.
+    fn add(&mut self, chunk: Chunk, stored: Option<crate::Stored>) -> Result<()> {
         let buffered = match &mut self.writer {
             Writer::Table(writer) => {
                 writer.add_chunk(&chunk);
                 writer.buffered()
             }
             Writer::Archive(writer) => {
-                writer.add_chunk(chunk)?;
+                match stored {
+                    Some(stored) => writer.add_stored(chunk.hash, stored),
+                    None => writer.add_chunk(chunk)?,
+                }
                 writer.buffered()
             }
         };
@@ -148,7 +151,7 @@ pub fn write_files(
 ) -> Result<Vec<TableSpec>> {
     let mut writer = GcWriter::new(dir, archive, incremental_file_size)?;
     for (chunk, leaf) in chunks {
-        writer.add(chunk, leaf, written)?;
+        writer.add(chunk, None, leaf, written)?;
     }
     writer.finish(written)
 }
@@ -180,13 +183,20 @@ impl GcWriter {
         })
     }
 
-    /// add adds a chunk, with whether it is a leaf, which refers to no other chunk.
-    pub fn add(&mut self, chunk: Chunk, leaf: bool, written: &mut dyn FnMut(&TableSpec) -> Result<()>) -> Result<()> {
+    /// add adds a chunk, with its stored form in an archive when it has one and whether it is a leaf, which refers to
+    /// no other chunk.
+    pub fn add(
+        &mut self,
+        chunk: Chunk,
+        stored: Option<crate::Stored>,
+        leaf: bool,
+        written: &mut dyn FnMut(&TableSpec) -> Result<()>,
+    ) -> Result<()> {
         if !leaf || self.incremental_file_size == 0 {
-            return self.others.add(chunk);
+            return self.others.add(chunk, stored);
         }
         self.leaf_bytes += chunk.to_record().len() as u64;
-        self.leaves.add(chunk)?;
+        self.leaves.add(chunk, stored)?;
         if self.leaf_bytes >= self.incremental_file_size {
             let full = std::mem::replace(&mut self.leaves, FileWriter::new(&self.dir, self.archive)?);
             self.specs.extend(finish_incremental(&self.dir, full, written)?);

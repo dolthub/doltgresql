@@ -321,6 +321,8 @@ impl Database {
     pub fn open(noms: &Path) -> Result<Database> {
         let store = Box::new(JournalStore::open(noms, "__DOLT__")?);
         let old_gen_dir = noms.join("oldgen");
+        store::remove_spills(noms);
+        store::remove_spills(&old_gen_dir);
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
         Ok(Database::new(store, old_gen))
@@ -540,10 +542,10 @@ impl Database {
             None => store::GcWriter::new(&run.dir, run.config.archive, 0)?,
         };
         let old_gen = run.old_gen.as_ref();
-        walk(&*self, starts, &mut run.seen, &mut |chunk, leaf| match full
+        walk(&*self, starts, &mut run.seen, &mut |chunk, stored, leaf| match full
             || !old_gen.is_some_and(|g| g.has(&chunk.hash))
         {
-            true => late.add(chunk, leaf, &mut |_| Ok(())).map_err(Error::from),
+            true => late.add(chunk, stored, leaf, &mut |_| Ok(())).map_err(Error::from),
             false => Ok(()),
         })?;
         let new_specs = late.finish(&mut |_| Ok(()))?;
@@ -909,9 +911,9 @@ impl GcRun {
         if mode == GcMode::Shallow {
             let mut writer = store::GcWriter::new(&self.dir, false, 0)?;
             let starts = [self.committed.clone(), vec![root]].concat();
-            walk(&reader, starts, &mut self.seen, &mut |chunk, leaf| match in_old_gen(&chunk.hash) {
+            walk(&reader, starts, &mut self.seen, &mut |chunk, stored, leaf| match in_old_gen(&chunk.hash) {
                 true => Ok(()),
-                false => writer.add(chunk, leaf, &mut |_| Ok(())).map_err(Error::from),
+                false => writer.add(chunk, stored, leaf, &mut |_| Ok(())).map_err(Error::from),
             })?;
             self.new_gen_writer = Some(writer);
             return Ok(());
@@ -936,20 +938,17 @@ impl GcRun {
         };
         let full = mode == GcMode::Full;
         let mut moved = store::GcWriter::new(&old_dir, archive, size)?;
-        walk(
-            &reader,
-            self.committed.clone(),
-            &mut self.seen,
-            &mut |chunk, leaf| match full || !in_old_gen(&chunk.hash) {
-                true => moved.add(chunk, leaf, &mut add).map_err(Error::from),
-                false => Ok(()),
-            },
-        )?;
+        walk(&reader, self.committed.clone(), &mut self.seen, &mut |chunk, stored, leaf| match full
+            || !in_old_gen(&chunk.hash)
+        {
+            true => moved.add(chunk, stored, leaf, &mut add).map_err(Error::from),
+            false => Ok(()),
+        })?;
         let mut working = store::GcWriter::new(&self.dir, archive, size)?;
-        walk(&reader, vec![root], &mut self.seen, &mut |chunk, leaf| match in_old_gen(&chunk.hash) {
-            true if full => moved.add(chunk, leaf, &mut add).map_err(Error::from),
+        walk(&reader, vec![root], &mut self.seen, &mut |chunk, stored, leaf| match in_old_gen(&chunk.hash) {
+            true if full => moved.add(chunk, stored, leaf, &mut add).map_err(Error::from),
             true => Ok(()),
-            false => working.add(chunk, leaf, &mut |_| Ok(())).map_err(Error::from),
+            false => working.add(chunk, stored, leaf, &mut |_| Ok(())).map_err(Error::from),
         })?;
         specs.extend(moved.finish(&mut add)?);
         self.old_specs = Some(specs);
@@ -983,29 +982,40 @@ impl ChunkReader for GcReader<'_> {
             },
         }
     }
+
+    fn get_stored(&self, hash: &Hash) -> store::Result<Option<(Chunk, Option<store::Stored>)>> {
+        match self.new_gen.get_stored(hash)? {
+            Some(found) => Ok(Some(found)),
+            None => match self.old_gen {
+                Some(old_gen) => old_gen.get_stored(hash),
+                None => Ok(None),
+            },
+        }
+    }
 }
 
 /// walk visits the chunks that the addresses reach and the seen set has not yet seen, adding them to it, each with
-/// whether it is a leaf, which refers to no other chunk.
+/// its stored form in an archive when it has one and whether it is a leaf, which refers to no other chunk.
 fn walk(
     reader: &dyn ChunkReader,
     starts: Vec<Hash>,
     seen: &mut std::collections::HashSet<Hash>,
-    visit: &mut dyn FnMut(Chunk, bool) -> Result<()>,
+    visit: &mut dyn FnMut(Chunk, Option<store::Stored>, bool) -> Result<()>,
 ) -> Result<()> {
     let mut stack = starts;
     while let Some(hash) = stack.pop() {
         if hash.is_empty() || !seen.insert(hash) {
             continue;
         }
-        let chunk = reader.require(&hash)?;
+        let missing = || store::Error::Corrupt(format!("chunk {hash} is missing"));
+        let (chunk, stored) = reader.get_stored(&hash)?.ok_or_else(missing)?;
         let mut leaf = true;
         serial::walk::walk_addrs(Message(&chunk.data), &mut |child| {
             leaf = false;
             stack.push(child);
             Ok(())
         })?;
-        visit(chunk, leaf)?;
+        visit(chunk, stored, leaf)?;
     }
     Ok(())
 }

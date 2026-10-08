@@ -240,3 +240,13 @@ fn journals_reopen_past_padding_and_close_without_it() {
     }
     store.close().unwrap();
 }
+
+#[test]
+fn stale_spill_files_are_removed() {
+    let dir = scratch("spills");
+    std::fs::write(dir.join(".spill-1-7.tmp"), b"partial archive").unwrap();
+    std::fs::write(dir.join("keep.tmp"), b"not a spill").unwrap();
+    store::remove_spills(&dir);
+    assert!(!dir.join(".spill-1-7.tmp").exists(), "a stale spill file stayed");
+    assert!(dir.join("keep.tmp").exists(), "a file that isn't a spill was removed");
+}

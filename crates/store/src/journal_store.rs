@@ -69,6 +69,20 @@ impl crate::ChunkReader for Snapshot {
         }
         Ok(None)
     }
+
+    fn get_stored(&self, hash: &Hash) -> Result<Option<(Chunk, Option<crate::Stored>)>> {
+        if let Some(journal) = &self.journal
+            && let Some(chunk) = journal.get(hash)?
+        {
+            return Ok(Some((chunk, None)));
+        }
+        for source in self.sources.iter() {
+            if let Some(found) = source.get_stored(hash)? {
+                return Ok(Some(found));
+            }
+        }
+        Ok(None)
+    }
 }
 
 /// JournalStore is a writable chunk store whose new chunks go to the chunk journal, or to new table files when it

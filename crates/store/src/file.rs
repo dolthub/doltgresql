@@ -92,6 +92,18 @@ pub(crate) const SPILL_LEN: usize = 8 << 20;
 /// NEXT_SPILL numbers the spill files of the process, so that writers running at once never share one.
 static NEXT_SPILL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// remove_spills deletes the spill files that a process stopped before finishing left in a directory, which only the
+/// process holding the directory's store may call.
+pub fn remove_spills(dir: &std::path::Path) {
+    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(|entry| entry.ok()) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with(".spill-") && name.ends_with(".tmp") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 /// Spill is a temporary file in a directory that a writer moves its bytes to as they pile up, hashing them on the way,
 /// until it renames the file to its final name. A spill dropped before then deletes its file.
 pub(crate) struct Spill {

@@ -41,6 +41,16 @@ const MAX_VERSION: u8 = 3;
 /// SNAPPY_VERSION is the first version that stores snappy chunks.
 const SNAPPY_VERSION: u8 = 2;
 
+/// Dictionary is a dictionary span of an archive as it is stored, and the dictionary prepared for decompressing.
+type Dictionary = (Arc<Vec<u8>>, Arc<zstd::dict::DecoderDictionary<'static>>);
+
+/// Stored is a chunk as an archive stores it: its data compressed with a dictionary, and that dictionary's span as the
+/// archive stores it, which another archive can take over without compressing the chunk again.
+pub struct Stored {
+    dictionary: Arc<Vec<u8>>,
+    data: Vec<u8>,
+}
+
 /// ArchiveReader reads the chunks of an archive, keeping its index in memory.
 pub struct ArchiveReader {
     file: Box<dyn ReadAt>,
@@ -55,8 +65,8 @@ pub struct ArchiveReader {
     refs: Vec<(u32, u32)>,
     /// The hash suffix of each chunk.
     suffixes: Vec<u8>,
-    /// The decompressed dictionaries read so far, by span id.
-    dictionaries: Mutex<HashMap<u32, Arc<Vec<u8>>>>,
+    /// The dictionaries read so far, by span id: each span as stored, and the dictionary prepared for decompressing.
+    dictionaries: Mutex<HashMap<u32, Dictionary>>,
 }
 
 impl ArchiveReader {
@@ -153,6 +163,14 @@ impl ArchiveReader {
         }
     }
 
+    /// get_stored returns the chunk when the archive holds it, with its stored form when a dictionary compressed it.
+    pub fn get_stored(&self, hash: &Hash) -> Result<Option<(Chunk, Option<Stored>)>> {
+        match self.find(hash) {
+            Some(id) => self.read_stored(*hash, id).map(Some),
+            None => Ok(None),
+        }
+    }
+
     /// span_range returns the offset and length of the span with the id.
     fn span_range(&self, id: u32) -> (u64, u32) {
         let index = id as usize - 1;
@@ -175,35 +193,41 @@ impl ArchiveReader {
         self.file.read_at(start, (self.span_ends[index] - start) as usize)
     }
 
-    /// dictionary returns the decompressed dictionary in the span with the id.
-    fn dictionary(&self, id: u32) -> Result<Arc<Vec<u8>>> {
+    /// dictionary returns the dictionary in the span with the id, prepared for decompressing.
+    fn dictionary(&self, id: u32) -> Result<Dictionary> {
         if let Some(dictionary) = self.dictionaries.lock().unwrap().get(&id) {
             return Ok(dictionary.clone());
         }
-        let dictionary = Arc::new(
-            zstd::stream::decode_all(self.span(id)?.as_slice())
-                .map_err(|err| corrupt(format!("cannot decompress archive dictionary: {err}")))?,
-        );
+        let span = self.span(id)?;
+        let bytes = zstd::stream::decode_all(span.as_slice())
+            .map_err(|err| corrupt(format!("cannot decompress archive dictionary: {err}")))?;
+        let dictionary = (Arc::new(span), Arc::new(zstd::dict::DecoderDictionary::copy(&bytes)));
         self.dictionaries.lock().unwrap().insert(id, dictionary.clone());
         Ok(dictionary)
     }
 
     /// read reads and decompresses the chunk with the id.
     fn read(&self, hash: Hash, id: usize) -> Result<Chunk> {
+        self.read_stored(hash, id).map(|(chunk, _)| chunk)
+    }
+
+    /// read_stored reads and decompresses the chunk with the id, returning its stored form too when a dictionary
+    /// compressed it.
+    fn read_stored(&self, hash: Hash, id: usize) -> Result<(Chunk, Option<Stored>)> {
         let (dictionary, data) = self.refs[id];
         let compressed = self.span(data)?;
         if dictionary == 0 {
             if self.version < SNAPPY_VERSION {
                 return Err(corrupt("runtime error: unable to get archived chunk. dictionary is nil"));
             }
-            return Chunk::from_record(hash, &compressed);
+            return Ok((Chunk::from_record(hash, &compressed)?, None));
         }
-        let dictionary = self.dictionary(dictionary)?;
+        let (span, dictionary) = self.dictionary(dictionary)?;
         let mut data = Vec::new();
-        zstd::stream::read::Decoder::with_dictionary(compressed.as_slice(), &dictionary)
+        zstd::stream::read::Decoder::with_prepared_dictionary(compressed.as_slice(), &dictionary)
             .and_then(|mut decoder| std::io::Read::read_to_end(&mut decoder, &mut data))
             .map_err(|err| corrupt(format!("cannot decompress archived chunk {hash}: {err}")))?;
-        Ok(Chunk { hash, data })
+        Ok((Chunk { hash, data }, Some(Stored { dictionary: span, data: compressed })))
     }
 
     /// hashes returns the address of every chunk, in index order.
@@ -243,10 +267,13 @@ pub struct ArchiveWriter {
     chunks: Vec<(Hash, u32, u32)>,
     /// The chunks held back until a dictionary is trained.
     queue: Vec<Chunk>,
-    /// The span id of the trained dictionary and the dictionary itself.
-    dictionary: Option<(u32, Vec<u8>)>,
+    /// The span id of the trained dictionary, with a compressor that uses it.
+    dictionary: Option<(u32, zstd::bulk::Compressor<'static>)>,
     /// How many bytes the writer moved to a spill file, which come before `buf`.
     spilled: u64,
+    /// The span ids of the dictionaries that chunks taken over from other archives use, by the address of the
+    /// dictionaries' shared bytes, which the writer holds on to so that no other dictionary takes that address.
+    taken: HashMap<usize, (u32, Arc<Vec<u8>>)>,
 }
 
 impl ArchiveWriter {
@@ -287,7 +314,7 @@ impl ArchiveWriter {
             let dictionary = train_dictionary(&self.queue);
             let compressed = zstd::bulk::compress(&dictionary, LEVEL)?;
             let id = self.span(&compressed);
-            self.dictionary = Some((id, dictionary));
+            self.dictionary = Some((id, zstd::bulk::Compressor::with_dictionary(LEVEL, &dictionary)?));
             for chunk in std::mem::take(&mut self.queue) {
                 self.compress(chunk)?;
             }
@@ -296,11 +323,27 @@ impl ArchiveWriter {
         self.compress(chunk)
     }
 
+    /// add_stored adds a chunk that another archive stores, as that archive stores it, writing its dictionary's span
+    /// the first time a chunk uses it.
+    pub fn add_stored(&mut self, hash: Hash, stored: Stored) {
+        let key = Arc::as_ptr(&stored.dictionary) as usize;
+        let dictionary = match self.taken.get(&key) {
+            Some((id, _)) => *id,
+            None => {
+                let id = self.span(&stored.dictionary);
+                self.taken.insert(key, (id, stored.dictionary));
+                id
+            }
+        };
+        let data = self.span(&stored.data);
+        self.chunks.push((hash, dictionary, data));
+    }
+
     /// compress adds a chunk compressed with the trained dictionary.
     fn compress(&mut self, chunk: Chunk) -> Result<()> {
-        let Some((id, dictionary)) = &self.dictionary else { return Ok(()) };
+        let Some((id, compressor)) = &mut self.dictionary else { return Ok(()) };
         let id = *id;
-        let data = zstd::bulk::Compressor::with_dictionary(LEVEL, dictionary)?.compress(&chunk.data)?;
+        let data = compressor.compress(&chunk.data)?;
         let span = self.span(&data);
         self.chunks.push((chunk.hash, id, span));
         Ok(())
