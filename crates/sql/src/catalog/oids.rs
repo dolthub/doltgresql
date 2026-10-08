@@ -23,9 +23,6 @@ use crate::catalog::id;
 /// BUILTIN_OID_LIMIT is the largest OID that Postgres gives built-in objects, which user objects never take.
 const BUILTIN_OID_LIMIT: u32 = 65535;
 
-/// CRC32C computes the Castagnoli checksums that OIDs come from.
-const CRC32C: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
-
 /// Cache maps internal IDs to OIDs and back.
 #[derive(Default)]
 struct Cache {
@@ -68,7 +65,7 @@ pub fn oid(id: &[u8]) -> u32 {
     if let Some(&oid) = cache.to_oid.get(id) {
         return oid;
     }
-    let mut candidate = CRC32C.checksum(id);
+    let mut candidate = crc32c::crc32c(id);
     while candidate <= BUILTIN_OID_LIMIT || cache.to_id.contains_key(&candidate) {
         candidate = candidate.wrapping_sub(1);
     }

@@ -28,10 +28,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::chunk::{CASTAGNOLI, Chunk};
+use crate::chunk::Chunk;
 use crate::error::{Result, corrupt};
 use crate::file::{be_u32, be_u64, read_at, write_at};
-use crate::hash::Hash;
+use crate::hash::{BuildAddrHasher, Hash};
 use crate::journal::{
     JOURNAL_FILE, JournalRecord, MAX_RECORD_LEN, PAYLOAD_OFFSET, ROOT_RECORD_LEN, data_loss_error, parse_record,
     possible_data_loss, record_len_at,
@@ -50,8 +50,8 @@ const MAYBE_SYNC_THRESHOLD: u64 = 64 * 1024 * 1024;
 /// writer goes on appending.
 pub struct JournalView {
     file: File,
-    novel: HashMap<Hash, Range>,
-    cached: HashMap<[u8; 16], Range>,
+    novel: HashMap<Hash, Range, BuildAddrHasher>,
+    cached: HashMap<[u8; 16], Range, BuildAddrHasher>,
 }
 
 impl JournalView {
@@ -162,12 +162,12 @@ pub struct JournalWriter {
     off: u64,
     buf: Vec<u8>,
     /// The chunks written since the last index batch.
-    novel: HashMap<Hash, Range>,
+    novel: HashMap<Hash, Range, BuildAddrHasher>,
     /// The chunks in earlier index batches, by the first 16 bytes of their addresses.
-    cached: HashMap<[u8; 16], Range>,
+    cached: HashMap<[u8; 16], Range, BuildAddrHasher>,
     /// The journal offset that the index file covers.
     indexed: u64,
-    batch_crc: crc::Digest<'static, u32>,
+    batch_crc: u32,
     unsynced: u64,
     current_root: Hash,
     uncompressed: u64,
@@ -195,10 +195,10 @@ impl JournalWriter {
             index_len: 0,
             off: 0,
             buf: Vec::with_capacity(MAX_RECORD_LEN as usize),
-            novel: HashMap::new(),
-            cached: HashMap::new(),
+            novel: HashMap::default(),
+            cached: HashMap::default(),
             indexed: 0,
-            batch_crc: CASTAGNOLI.digest(),
+            batch_crc: 0,
             unsynced: 0,
             current_root: Hash::default(),
             uncompressed: 0,
@@ -220,7 +220,7 @@ impl JournalWriter {
                 self.index_len = 0;
                 self.indexed = 0;
                 self.cached.clear();
-                self.batch_crc = CASTAGNOLI.digest();
+                self.batch_crc = 0;
             }
         }
         self.index.set_len(self.index_len)?;
@@ -271,7 +271,7 @@ impl JournalWriter {
     fn read_index(&mut self, bytes: &[u8]) -> Result<u64> {
         let (mut at, mut safe, mut previous) = (0, 0, 0);
         let mut batch = Vec::new();
-        let mut digest = CASTAGNOLI.digest();
+        let mut digest = 0;
         while at < bytes.len() {
             let kind = bytes[at];
             at += 1;
@@ -281,7 +281,7 @@ impl JournalWriter {
                         break;
                     }
                     let prefix: [u8; 16] = bytes[at..at + 16].try_into().unwrap();
-                    digest.update(&prefix);
+                    digest = crc32c::crc32c_append(digest, &prefix);
                     batch.push((prefix, Range { offset: be_u64(bytes, at + 16), len: be_u32(bytes, at + 24) }));
                     at += LOOKUP_LEN;
                 }
@@ -292,7 +292,7 @@ impl JournalWriter {
                     let (start, end) = (be_u64(bytes, at), be_u64(bytes, at + 8));
                     let checksum = be_u32(bytes, at + 16);
                     let root = Hash(bytes[at + 20..at + 20 + Hash::LEN].try_into().unwrap());
-                    let actual = std::mem::replace(&mut digest, CASTAGNOLI.digest()).finalize();
+                    let actual = std::mem::take(&mut digest);
                     if checksum != actual {
                         return Err(corrupt(format!("invalid index checksum ({actual} != {checksum})")));
                     }
@@ -332,7 +332,7 @@ impl JournalWriter {
         self.index_buf.extend_from_slice(&prefix);
         self.index_buf.extend_from_slice(&range.offset.to_be_bytes());
         self.index_buf.extend_from_slice(&range.len.to_be_bytes());
-        self.batch_crc.update(&prefix);
+        self.batch_crc = crc32c::crc32c_append(self.batch_crc, &prefix);
         if self.index_buf.len() >= INDEX_BUFFER_LEN {
             self.flush_index()?;
         }
@@ -349,7 +349,7 @@ impl JournalWriter {
 
     /// flush_index_record ends the index batch at the root hash record at the journal offset.
     fn flush_index_record(&mut self, root: Hash, end: u64) -> Result<()> {
-        let checksum = std::mem::replace(&mut self.batch_crc, CASTAGNOLI.digest()).finalize();
+        let checksum = std::mem::take(&mut self.batch_crc);
         self.index_buf.push(INDEX_META);
         self.index_buf.extend_from_slice(&self.indexed.to_be_bytes());
         self.index_buf.extend_from_slice(&end.to_be_bytes());

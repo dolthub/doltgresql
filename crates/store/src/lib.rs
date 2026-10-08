@@ -40,7 +40,7 @@ pub use chunk::Chunk;
 pub use error::{Error, Result};
 pub use file::{ReadAt, remove_spills};
 pub use gc::{GcWriter, add_to_manifest, replace_files, write_files, write_table};
-pub use hash::Hash;
+pub use hash::{AddrHasher, BuildAddrHasher, Hash};
 pub use journal::{JOURNAL_FILE, JournalRecord, read_records};
 pub use journal_store::{JournalStore, Snapshot};
 pub use journal_writer::{JOURNAL_INDEX_FILE, JournalView, JournalWriter, PendingSync, defer_syncs, take_sync};

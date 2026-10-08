@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use crate::chunk::Chunk;
 use crate::error::{Error, Result, corrupt};
-use crate::hash::Hash;
+use crate::hash::{BuildAddrHasher, Hash};
 use crate::journal::JOURNAL_FILE;
 use crate::journal_writer::JournalWriter;
 use crate::manifest::{MANIFEST_FILE, Manifest, TableSpec, lock_hash};
@@ -39,7 +39,7 @@ const MEM_TABLE_SIZE: u64 = 128 << 20;
 /// MemTable holds the chunks put since the store last wrote to the journal, in the order they were put.
 #[derive(Default)]
 struct MemTable {
-    chunks: HashMap<Hash, Vec<u8>>,
+    chunks: HashMap<Hash, Vec<u8>, BuildAddrHasher>,
     order: Vec<Hash>,
     size: u64,
     /// The addresses the chunks refer to, which must be in the store before the chunks are written.
@@ -284,7 +284,7 @@ impl JournalStore {
         let memtable = std::mem::take(&mut self.memtable);
         if !self.journaled {
             let mut writer = crate::table::TableWriter::new();
-            let mut written = HashSet::new();
+            let mut written = HashSet::<Hash, BuildAddrHasher>::default();
             for hash in memtable.order.iter().filter(|hash| !self.has_persisted(hash)) {
                 if written.insert(*hash) {
                     writer.add_chunk(&Chunk { hash: *hash, data: memtable.chunks[hash].clone() });
@@ -311,7 +311,7 @@ impl JournalStore {
         }
         let novel: Vec<Hash> = memtable.order.iter().filter(|hash| !self.has_persisted(hash)).copied().collect();
         let journal = self.journal.as_mut().unwrap();
-        let mut written = HashSet::new();
+        let mut written = HashSet::<Hash, BuildAddrHasher>::default();
         for hash in novel {
             if written.insert(hash) {
                 let chunk = Chunk { hash, data: memtable.chunks[&hash].clone() };

@@ -13,8 +13,31 @@
 // limitations under the License.
 
 use std::fmt;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use sha2::{Digest, Sha512};
+
+/// AddrHasher hashes chunk addresses by folding their bytes together, which suffices because addresses are already
+/// uniformly random.
+#[derive(Default)]
+pub struct AddrHasher(u64);
+
+impl Hasher for AddrHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for part in bytes.chunks(8) {
+            let mut word = [0; 8];
+            word[..part.len()].copy_from_slice(part);
+            self.0 = self.0.rotate_left(29) ^ u64::from_le_bytes(word);
+        }
+    }
+}
+
+/// BuildAddrHasher builds the `AddrHasher` that maps and sets keyed by chunk addresses use.
+pub type BuildAddrHasher = BuildHasherDefault<AddrHasher>;
 
 /// ALPHABET is the base32 alphabet of hash strings, which is base32hex in lower case.
 const ALPHABET: &[u8; 32] = b"0123456789abcdefghijklmnopqrstuv";

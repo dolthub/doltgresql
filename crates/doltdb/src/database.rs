@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use prolly::{AddressMapSerializer, CommitClosureSerializer, Node, NodeStore, apply_mutations};
 use serial::write::{CommitFields, WorkingSetFields, write_commit, write_store_root, write_working_set};
 use serial::{Commit, Message, StoreRoot};
-use store::{BlockStore, Chunk, ChunkReader, ChunkStore, Hash, JournalStore};
+use store::{BlockStore, BuildAddrHasher, Chunk, ChunkReader, ChunkStore, Hash, JournalStore};
 
 /// Error is a failure of a database operation.
 #[derive(Debug)]
@@ -170,8 +170,8 @@ const CACHE_SIZE: usize = 256 << 20;
 /// Cache keeps the values most recently used up to a total size, in two generations: when the young generation
 /// fills, it becomes the old one and the old one is dropped, and a value used from the old generation moves back.
 struct Cache<V> {
-    young: HashMap<Hash, (V, usize)>,
-    old: HashMap<Hash, (V, usize)>,
+    young: HashMap<Hash, (V, usize), BuildAddrHasher>,
+    old: HashMap<Hash, (V, usize), BuildAddrHasher>,
     young_size: usize,
 }
 
@@ -216,7 +216,7 @@ impl<V: Clone> Caches<V> {
 impl<V: Clone> Cache<V> {
     /// new returns an empty cache.
     fn new() -> Cache<V> {
-        Cache { young: HashMap::new(), old: HashMap::new(), young_size: 0 }
+        Cache { young: HashMap::default(), old: HashMap::default(), young_size: 0 }
     }
 
     /// get returns the value cached at the address.
@@ -432,7 +432,7 @@ impl Database {
     /// before the chunks that refer to them, taking a chunk the database holds to have everything it refers to, as
     /// Dolt's puller does.
     pub fn pull(&mut self, from: &Database, address: Hash) -> Result<()> {
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = std::collections::HashSet::<Hash, BuildAddrHasher>::default();
         let mut levels = Vec::new();
         let mut frontier = vec![address];
         while !frontier.is_empty() {
@@ -517,7 +517,7 @@ impl Database {
             new_gen: self.with_journal(|journal| Ok(journal.snapshot()?))?,
             old_gen,
             dir,
-            seen: std::collections::HashSet::new(),
+            seen: std::collections::HashSet::default(),
             old_specs: None,
             new_gen_writer: None,
         })
@@ -891,7 +891,7 @@ pub struct GcRun {
     old_gen: Option<BlockStore>,
     dir: std::path::PathBuf,
     /// The addresses the collection has read.
-    seen: std::collections::HashSet<Hash>,
+    seen: std::collections::HashSet<Hash, BuildAddrHasher>,
     /// The old generation's files after the collection, or None when they stay as they are.
     old_specs: Option<Vec<store::TableSpec>>,
     /// The writer of the new generation's file, which the chunks written during the copy join before it finishes.
@@ -999,7 +999,7 @@ impl ChunkReader for GcReader<'_> {
 fn walk(
     reader: &dyn ChunkReader,
     starts: Vec<Hash>,
-    seen: &mut std::collections::HashSet<Hash>,
+    seen: &mut std::collections::HashSet<Hash, BuildAddrHasher>,
     visit: &mut dyn FnMut(Chunk, Option<store::Stored>, bool) -> Result<()>,
 ) -> Result<()> {
     let mut stack = starts;

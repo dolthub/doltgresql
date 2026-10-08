@@ -15,15 +15,12 @@
 use crate::error::{Result, corrupt};
 use crate::hash::Hash;
 
-/// CASTAGNOLI computes the CRC-32C checksums of chunk records.
-pub(crate) const CASTAGNOLI: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
-
 /// CHECKSUM_LEN is the length of the checksum that ends a compressed chunk record.
 pub const CHECKSUM_LEN: usize = 4;
 
 /// crc returns the CRC-32C checksum of the bytes.
 pub fn crc(bytes: &[u8]) -> u32 {
-    CASTAGNOLI.checksum(bytes)
+    crc32c::crc32c(bytes)
 }
 
 /// Chunk is a chunk's data and its address.

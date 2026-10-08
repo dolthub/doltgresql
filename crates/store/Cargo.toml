@@ -7,7 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-crc = "3"
+crc32c = "0.6"
 sha2 = "0.10"
 snap = "1"
 zstd = "0.13"
