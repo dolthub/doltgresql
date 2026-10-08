@@ -38,6 +38,19 @@ pub trait Rows {
     /// next returns the node's next row, or None once it has no more.
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>>;
 
+    /// next_into puts the node's next row in a buffer, reporting whether there was one. The buffer is empty or holds a
+    /// row that this node put there, maybe with values taken out and left NULL, which lets a node reuse it and fill in
+    /// only the values that change.
+    fn next_into(&mut self, ctx: &mut Ctx<'_>, row: &mut Row) -> Result<bool> {
+        match self.next(ctx)? {
+            Some(next) => {
+                *row = next;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     /// skip passes over up to a number of rows, as an OFFSET discards them, returning how many it passed.
     fn skip(&mut self, ctx: &mut Ctx<'_>, count: usize) -> Result<usize> {
         let mut skipped = 0;
@@ -100,28 +113,41 @@ impl<'t> TableWalk<'t> {
 
     /// next returns the table's next row.
     pub(crate) fn next(&mut self, db: &mut Database) -> Result<Option<Row>> {
-        if let Some((row, remaining)) = self.repeat.as_mut() {
-            if *remaining > 1 {
-                *remaining -= 1;
-                return Ok(Some(row.clone()));
+        let mut row = Vec::new();
+        Ok(self.next_into(db, &mut row)?.then_some(row))
+    }
+
+    /// next_into puts the table's next row in a buffer, as `Rows::next_into` describes.
+    pub(crate) fn next_into(&mut self, db: &mut Database, row: &mut Row) -> Result<bool> {
+        if let Some((repeated, remaining)) = self.repeat.as_mut() {
+            row.clone_from(repeated);
+            *remaining -= 1;
+            if *remaining == 0 {
+                self.repeat = None;
             }
-            return Ok(self.repeat.take().map(|(row, _)| row));
+            return Ok(true);
         }
-        let Some((key, value)) = self.items.current()? else { return Ok(None) };
-        let (row, cardinality) = self.table.decode_columns(db, key, value, self.needed.as_deref())?;
-        self.items.advance(db)?;
-        if cardinality > 1 {
-            self.repeat = Some((row.clone(), cardinality - 1));
-        } else if cardinality == 0 {
-            return self.next(db);
+        loop {
+            let Some((key, value)) = self.items.current()? else { return Ok(false) };
+            let cardinality = self.table.decode_columns_into(db, key, value, self.needed.as_deref(), row)?;
+            self.items.advance(db)?;
+            if cardinality > 1 {
+                self.repeat = Some((row.clone(), cardinality - 1));
+            }
+            if cardinality > 0 {
+                return Ok(true);
+            }
         }
-        Ok(Some(row))
     }
 }
 
 impl Rows for TableWalk<'_> {
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
         TableWalk::next(self, ctx.db)
+    }
+
+    fn next_into(&mut self, ctx: &mut Ctx<'_>, row: &mut Row) -> Result<bool> {
+        TableWalk::next_into(self, ctx.db, row)
     }
 
     fn skip(&mut self, ctx: &mut Ctx<'_>, count: usize) -> Result<usize> {
@@ -149,12 +175,17 @@ struct FilterRows<'p> {
 
 impl Rows for FilterRows<'_> {
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
-        while let Some(row) = self.input.next(ctx)? {
-            if self.predicate.is_true(ctx, &row)? {
-                return Ok(Some(row));
+        let mut row = Vec::new();
+        Ok(self.next_into(ctx, &mut row)?.then_some(row))
+    }
+
+    fn next_into(&mut self, ctx: &mut Ctx<'_>, row: &mut Row) -> Result<bool> {
+        while self.input.next_into(ctx, row)? {
+            if self.predicate.is_true(ctx, row)? {
+                return Ok(true);
             }
         }
-        Ok(None)
+        Ok(false)
     }
 }
 
@@ -164,21 +195,26 @@ struct ProjectRows<'p> {
     exprs: &'p [Expr],
     /// Whether each expression is a column that nothing else reads, whose value moves out of the input row.
     moves: Vec<bool>,
+    /// The buffer that the input's rows arrive in.
+    input_row: Row,
 }
 
 impl<'p> ProjectRows<'p> {
     /// new projects the input's rows.
     fn new(input: Box<dyn Rows + 'p>, exprs: &'p [Expr]) -> ProjectRows<'p> {
-        let mut reads: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+        let mut reads: Vec<usize> = Vec::new();
         for expr in exprs {
             expr.visit(&mut |e| {
                 if let Expr::Column(i) = e {
-                    *reads.entry(*i).or_default() += 1;
+                    if reads.len() <= *i {
+                        reads.resize(i + 1, 0);
+                    }
+                    reads[*i] += 1;
                 }
             });
         }
-        let moves = exprs.iter().map(|e| matches!(e, Expr::Column(i) if reads[i] == 1)).collect();
-        ProjectRows { input, exprs, moves }
+        let moves = exprs.iter().map(|e| matches!(e, Expr::Column(i) if reads[*i] == 1)).collect();
+        ProjectRows { input, exprs, moves, input_row: Vec::new() }
     }
 }
 
@@ -197,13 +233,21 @@ impl Rows for ProjectRows<'_> {
     }
 
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
-        let Some(mut row) = self.input.next(ctx)? else { return Ok(None) };
         let mut out = Vec::with_capacity(self.exprs.len());
+        Ok(self.next_into(ctx, &mut out)?.then_some(out))
+    }
+
+    fn next_into(&mut self, ctx: &mut Ctx<'_>, out: &mut Row) -> Result<bool> {
+        if !self.input.next_into(ctx, &mut self.input_row)? {
+            return Ok(false);
+        }
+        let row = &mut self.input_row;
+        out.clear();
         for (expr, &moves) in self.exprs.iter().zip(&self.moves) {
             out.push(match expr {
                 _ if moves => Value::Null,
                 Expr::Column(i) => row[*i].clone(),
-                expr => expr.eval(ctx, &row)?,
+                expr => expr.eval(ctx, row)?,
             });
         }
         for ((expr, &moves), value) in self.exprs.iter().zip(&self.moves).zip(out.iter_mut()) {
@@ -211,7 +255,7 @@ impl Rows for ProjectRows<'_> {
                 *value = std::mem::replace(&mut row[*i], Value::Null);
             }
         }
-        Ok(Some(out))
+        Ok(true)
     }
 }
 
@@ -223,6 +267,26 @@ struct LimitRows<'p> {
 }
 
 impl Rows for LimitRows<'_> {
+    fn next_into(&mut self, ctx: &mut Ctx<'_>, row: &mut Row) -> Result<bool> {
+        if self.remaining == Some(0) {
+            return Ok(false);
+        }
+        if self.skip > 0 {
+            let skipped = self.input.skip(ctx, self.skip)?;
+            if skipped < self.skip {
+                self.skip = 0;
+                self.remaining = Some(0);
+                return Ok(false);
+            }
+            self.skip = 0;
+        }
+        let found = self.input.next_into(ctx, row)?;
+        if let Some(remaining) = self.remaining.as_mut() {
+            *remaining = if found { *remaining - 1 } else { 0 };
+        }
+        Ok(found)
+    }
+
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
         if self.remaining == Some(0) {
             return Ok(None);
@@ -292,7 +356,29 @@ struct OnceFilterRows {
 impl OnceFilterRows {
     /// open finds the rows of the `Once` input that may match the enclosing row.
     fn open(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr) -> Result<OnceFilterRows> {
-        let shared = input.shared_rows(ctx)?;
+        let key = input as *const Plan as usize;
+        let shared = match ctx.once.as_ref().and_then(|once| once.get(&key)).cloned() {
+            Some(shared) => shared,
+            None => {
+                // Index the rows as the scan reads them, rather than walking them again.
+                let Plan::Once(scanned) = input else {
+                    return Err(crate::error::PgError::internal("a filter without its rows"));
+                };
+                let (inner, mut index) = crate::plan::index_parts(ctx, predicate);
+                let mut source = scanned.open(ctx)?;
+                let mut rows = Vec::new();
+                while let Some(row) = source.next(ctx)? {
+                    crate::plan::index_row(ctx, &inner, &mut index, &row, rows.len());
+                    rows.push(row);
+                }
+                drop(source);
+                let shared = Arc::new(SubqueryRows::indexed(rows, index));
+                if let Some(once) = ctx.once.as_mut() {
+                    once.insert(key, shared.clone());
+                }
+                shared
+            }
+        };
         let index = match shared.index.get() {
             Some(index) => index,
             None => {
@@ -304,14 +390,14 @@ impl OnceFilterRows {
         let mut bucket = None;
         if let Some((table, _)) = &index.table {
             let empty = OnceFilterRows { shared: shared.clone(), bucket: None, position: usize::MAX };
-            let mut key = Vec::with_capacity(index.outer.len());
+            let mut key: smallvec::SmallVec<[Option<HashKey>; 2]> = smallvec::SmallVec::new();
             for e in &index.outer {
                 match e.eval(ctx, &[])? {
                     Value::Null => return Ok(empty),
                     value => key.push(HashKey::of(value)),
                 }
             }
-            if let Some(key) = key.into_iter().collect::<Option<Vec<_>>>() {
+            if let Some(key) = key.into_iter().collect::<Option<crate::plan::JoinKey>>() {
                 match table.get(&key) {
                     Some(&b) => bucket = Some(b),
                     None => return Ok(empty),
@@ -323,7 +409,24 @@ impl OnceFilterRows {
 }
 
 impl Rows for OnceFilterRows {
+    fn next_into(&mut self, ctx: &mut Ctx<'_>, row: &mut Row) -> Result<bool> {
+        match self.matching(ctx)? {
+            Some(j) => {
+                row.clone_from(&self.shared.rows[j]);
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
+        Ok(self.matching(ctx)?.map(|j| self.shared.rows[j].clone()))
+    }
+}
+
+impl OnceFilterRows {
+    /// matching returns the position of the next row that the filter keeps.
+    fn matching(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<usize>> {
         let index = self.shared.index.get().expect("an index");
         loop {
             let (j, predicate) = match self.bucket {
@@ -335,9 +438,8 @@ impl Rows for OnceFilterRows {
                 None => return Ok(None),
             };
             self.position += 1;
-            let row = &self.shared.rows[j];
-            if predicate.is_true(ctx, row)? {
-                return Ok(Some(row.clone()));
+            if predicate.is_true(ctx, &self.shared.rows[j])? {
+                return Ok(Some(j));
             }
         }
     }
@@ -515,7 +617,7 @@ impl<'p> JoinRows<'p> {
     /// candidates returns the right rows that a left row may match.
     fn candidates(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Candidates {
         let Some(hash) = &self.hash else { return Candidates::All };
-        let mut key = Vec::with_capacity(hash.left_keys.len());
+        let mut key = crate::plan::JoinKey::with_capacity(hash.left_keys.len());
         for (expr, kind) in hash.left_keys.iter().zip(&hash.kinds) {
             match expr.eval(ctx, row) {
                 Ok(Value::Null) => return Candidates::None,
@@ -545,7 +647,7 @@ impl JoinHash {
         let mut buckets: Vec<Vec<usize>> = Vec::new();
         let mut table: crate::plan::KeyMap<usize> = Default::default();
         'rows: for (j, row) in right_rows.iter().enumerate() {
-            let mut key = Vec::with_capacity(right_keys.len());
+            let mut key = crate::plan::JoinKey::with_capacity(right_keys.len());
             for (e, kind) in right_keys.iter().zip(kinds.iter_mut()) {
                 match e.eval(ctx, row).ok()? {
                     Value::Null => continue 'rows,
@@ -845,7 +947,8 @@ fn aggregate(
         let mut index = Groups::new();
         let mut states: Vec<Vec<Accumulator>> = Vec::new();
         let mut key = vec![Value::Null; groups.len()];
-        while let Some(row) = rows.next(ctx)? {
+        let mut row = Vec::new();
+        while rows.next_into(ctx, &mut row)? {
             for &i in set {
                 key[i] = groups[i].eval(ctx, &row)?;
             }

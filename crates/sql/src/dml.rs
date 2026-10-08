@@ -319,11 +319,11 @@ type KeyEdits = Vec<(Vec<u8>, Option<Vec<u8>>)>;
 type PrefixPositions = std::collections::HashMap<Vec<Option<Vec<u8>>>, Vec<usize>>;
 
 /// Kept is what an update keeps of a row whose primary key it keeps: whether each secondary index keeps the row's key,
-/// and the row's encoded primary key and new value.
+/// and the row's encoded primary key and new value, which is None when the update leaves the stored row as it was.
 struct Kept {
     indexes: Vec<bool>,
     key: Vec<u8>,
-    value: Vec<u8>,
+    value: Option<Vec<u8>>,
 }
 
 /// Edits collects changes to a table's primary index and secondary indexes by key.
@@ -598,8 +598,12 @@ impl<'a> Edits<'a> {
             return Ok(None);
         }
         let (key, value) = self.table.encode_row(ctx.db, new)?;
-        if self.table.encode_row(ctx.db, old)?.0 != key {
+        let (old_key, old_value) = self.table.encode_row(ctx.db, old)?;
+        if old_key != key {
             return Ok(None);
+        }
+        if old_value == value {
+            return Ok(Some(Kept { indexes: vec![true; self.table.indexes.len()], key, value: None }));
         }
         let (old, old_held) = self.rules.indexed(ctx, old)?;
         let (new, new_held) = self.rules.indexed(ctx, new)?;
@@ -612,20 +616,24 @@ impl<'a> Edits<'a> {
                     })
             })
             .collect();
-        Ok(Some(Kept { indexes, key, value }))
+        Ok(Some(Kept { indexes, key, value: Some(value) }))
     }
 
     /// retire removes the keys of a row that an update changes from the secondary indexes, where the update keeps the
     /// row's primary key.
     fn retire(&mut self, ctx: &mut Ctx<'_>, row: &[Value], kept: &Kept) -> Result<()> {
+        if kept.value.is_none() {
+            return Ok(());
+        }
         self.index_row_with_kept(ctx, row, &kept.key, false, &kept.indexes)
     }
 
     /// replace writes the new values of a row whose primary key an update keeps, adding its changed keys to the
     /// secondary indexes.
     fn replace(&mut self, ctx: &mut Ctx<'_>, row: &[Value], kept: Kept) -> Result<()> {
+        let Some(value) = kept.value else { return Ok(()) };
         self.index_row_with_kept(ctx, row, &kept.key, true, &kept.indexes)?;
-        self.push(kept.key, Some(kept.value));
+        self.push(kept.key, Some(value));
         Ok(())
     }
 

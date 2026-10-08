@@ -1166,6 +1166,20 @@ impl Reader<'_> {
         value: &[u8],
         check: Option<&[Range]>,
     ) -> Result<Option<(Vec<Value>, u64)>> {
+        let mut row = Vec::new();
+        Ok(self.row_into(db, key, value, check, &mut row)?.map(|cardinality| (row, cardinality)))
+    }
+
+    /// row_into is `row` into a buffer that holds nothing or a row it put there before, whose columns that the plan
+    /// does not read are still NULL, returning the cardinality.
+    fn row_into(
+        &mut self,
+        db: &mut Database,
+        key: &[u8],
+        value: &[u8],
+        check: Option<&[Range]>,
+        row: &mut Vec<Value>,
+    ) -> Result<Option<u64>> {
         let (scan, table) = (self.scan, &*self.scan.table);
         let tuple = prolly::Tuple(key);
         let wanted = |c: usize| self.needed.as_ref().is_none_or(|n| n.get(c).copied().unwrap_or(false));
@@ -1179,10 +1193,14 @@ impl Reader<'_> {
                 return Ok(None);
             }
         }
-        let Some(i) = scan.index else { return table.decode_columns(db, key, value, self.needed.as_deref()).map(Some) };
+        let Some(i) = scan.index else {
+            return table.decode_columns_into(db, key, value, self.needed.as_deref(), row).map(Some);
+        };
         let index = &table.indexes[i];
         if self.covering {
-            let mut row = Value::nulls(table.columns.len());
+            if row.len() != table.columns.len() {
+                *row = Value::nulls(table.columns.len());
+            }
             for (field, &c) in self.columns.iter().enumerate() {
                 if c < row.len() && wanted(c) {
                     row[c] = match values.get_mut(field) {
@@ -1206,7 +1224,7 @@ impl Reader<'_> {
                 }
                 position += 1;
             }
-            return Ok(Some((row, 1)));
+            return Ok(Some(1));
         }
         let mut fields = Vec::with_capacity(table.key_columns.len() + 1);
         let mut extra = index.columns.len();
@@ -1237,7 +1255,7 @@ impl Reader<'_> {
         };
         match lookup.current()? {
             Some((key, stored)) if compare(key, &primary_key) == std::cmp::Ordering::Equal => {
-                table.decode_columns(db, &primary_key, stored, self.needed.as_deref()).map(Some)
+                table.decode_columns_into(db, &primary_key, stored, self.needed.as_deref(), row).map(Some)
             }
             _ => Ok(None),
         }
@@ -1368,16 +1386,22 @@ impl crate::exec::Rows for IndexRows<'_> {
     }
 
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Vec<Value>>> {
-        if let Some((row, remaining)) = self.repeat.as_mut() {
-            if *remaining > 1 {
-                *remaining -= 1;
-                return Ok(Some(row.clone()));
+        let mut row = Vec::new();
+        Ok(self.next_into(ctx, &mut row)?.then_some(row))
+    }
+
+    fn next_into(&mut self, ctx: &mut Ctx<'_>, out: &mut Vec<Value>) -> Result<bool> {
+        if let Some((repeated, remaining)) = self.repeat.as_mut() {
+            out.clone_from(repeated);
+            *remaining -= 1;
+            if *remaining == 0 {
+                self.repeat = None;
             }
-            return Ok(self.repeat.take().map(|(row, _)| row));
+            return Ok(true);
         }
         let (scan, reverse) = (self.reader.scan, self.reader.scan.reverse);
         loop {
-            let Some((bounds, range)) = self.bounds.get(self.current) else { return Ok(None) };
+            let Some((bounds, range)) = self.bounds.get(self.current) else { return Ok(false) };
             if self.items.is_none() {
                 self.items = Some(bounds.walk(scan, ctx.db, &self.root, reverse)?);
             }
@@ -1411,18 +1435,16 @@ impl crate::exec::Rows for IndexRows<'_> {
             }
             let (key, value) = (leaf.key(at)?, leaf.value(at)?);
             let check = (!bounds.exact).then(|| std::slice::from_ref(&scan.ranges[*range]));
-            let row = self.reader.row(ctx.db, key, value, check)?;
+            let cardinality = self.reader.row_into(ctx.db, key, value, check, out)?;
             match reverse {
                 true => items.retreat(ctx.db)?,
                 false => items.advance(ctx.db)?,
             }
-            let Some((row, cardinality)) = row else { continue };
+            let Some(cardinality) = cardinality.filter(|&c| c > 0) else { continue };
             if cardinality > 1 {
-                self.repeat = Some((row.clone(), cardinality - 1));
-            } else if cardinality == 0 {
-                continue;
+                self.repeat = Some((out.clone(), cardinality - 1));
             }
-            return Ok(Some(row));
+            return Ok(true);
         }
     }
 }

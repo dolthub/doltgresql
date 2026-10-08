@@ -565,7 +565,24 @@ impl TableDef {
         value: &[u8],
         needed: Option<&[bool]>,
     ) -> Result<(Vec<Value>, u64)> {
-        let mut row = Value::nulls(self.columns.len());
+        let mut row = Vec::new();
+        let cardinality = self.decode_columns_into(db, key, value, needed, &mut row)?;
+        Ok((row, cardinality))
+    }
+
+    /// decode_columns_into is `decode_columns` into a buffer that holds nothing or a row it decoded before with the
+    /// same mask, whose other columns are still NULL, returning the row's cardinality.
+    pub fn decode_columns_into(
+        &self,
+        db: &Database,
+        key: &[u8],
+        value: &[u8],
+        needed: Option<&[bool]>,
+        row: &mut Vec<Value>,
+    ) -> Result<u64> {
+        if row.len() != self.columns.len() {
+            *row = Value::nulls(self.columns.len());
+        }
         let (key, value) = (Tuple(key), Tuple(value));
         let wanted = |i: usize| needed.is_none_or(|n| n[i]);
         for (field, &i) in self.key_columns.iter().enumerate() {
@@ -586,7 +603,7 @@ impl TableDef {
                 row[i] = decode_field(db, value.field(field + offset)?, self.columns[i].encoding, self.columns[i].ty)?;
             }
         }
-        Ok((row, cardinality))
+        Ok(cardinality)
     }
 }
 

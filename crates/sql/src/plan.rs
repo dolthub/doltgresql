@@ -185,6 +185,11 @@ pub(crate) struct RowIndex {
 }
 
 impl SubqueryRows {
+    /// indexed returns the rows of a plan with the index that the filter above it finds them by.
+    pub(crate) fn indexed(rows: Vec<Vec<Value>>, index: RowIndex) -> SubqueryRows {
+        SubqueryRows { rows, keys: std::sync::OnceLock::new(), index: std::sync::OnceLock::from(index) }
+    }
+
     /// keys returns the set of the rows' hash keys and whether a row is NULL, or None when a value has no hash key.
     pub fn keys(&self) -> Option<&(KeySet, bool)> {
         self.keys
@@ -2528,8 +2533,13 @@ impl Plan {
         if let Plan::Once(_) = self {
             return Ok(!self.subquery_rows(ctx, row)?.rows.is_empty());
         }
+        // EXISTS ignores the subquery's select list, as Postgres' planner drops it.
+        let mut plan = self;
+        while let Plan::Project { input, .. } = plan {
+            plan = input;
+        }
         ctx.outer.push(row.to_vec());
-        let found = self.open(ctx).and_then(|mut rows| rows.next(ctx));
+        let found = plan.open(ctx).and_then(|mut rows| rows.next(ctx));
         ctx.outer.pop();
         Ok(found?.is_some())
     }
@@ -2827,6 +2837,16 @@ pub(crate) fn join_keys(condition: &Expr, width: usize) -> (Vec<Expr>, Vec<Expr>
 /// row_index indexes the rows of a `Once` plan by the sides of a filter's equality conditions that read them, as
 /// Postgres' hashed subplans do.
 pub(crate) fn row_index(ctx: &mut Ctx<'_>, rows: &[Vec<Value>], predicate: &Expr) -> RowIndex {
+    let (inner, mut index) = index_parts(ctx, predicate);
+    for (j, row) in rows.iter().enumerate() {
+        index_row(ctx, &inner, &mut index, row, j);
+    }
+    index
+}
+
+/// index_parts splits a filter over a `Once` plan's rows into the sides of its equality conditions that read the rows,
+/// which it returns, and a row index without rows yet, which has no table when there are no such conditions.
+pub(crate) fn index_parts(ctx: &mut Ctx<'_>, predicate: &Expr) -> (Vec<Expr>, RowIndex) {
     let reads = |e: &Expr| {
         let (mut column, mut other) = (false, false);
         e.visit(&mut |e| match e {
@@ -2860,27 +2880,37 @@ pub(crate) fn row_index(ctx: &mut Ctx<'_>, rows: &[Vec<Value>], predicate: &Expr
     let residual = rest.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
     let residual = residual.unwrap_or(Expr::Const(Value::Bool(true))).fold(ctx);
     let predicate = predicate.clone().fold(ctx);
-    let mut build = || {
-        let mut table: KeyMap<usize> = KeyMap::default();
-        let mut buckets: Vec<Vec<usize>> = Vec::new();
-        'rows: for (j, row) in rows.iter().enumerate() {
-            let mut key = Vec::with_capacity(inner.len());
-            for e in &inner {
-                match e.eval(ctx, row).ok()? {
-                    Value::Null => continue 'rows,
-                    value => key.push(HashKey::of(value)?),
+    let table = (!inner.is_empty()).then(Default::default);
+    (inner, RowIndex { outer, predicate, residual, table })
+}
+
+/// index_row adds the row at a position to an index by the values of the sides of the equality conditions that read
+/// it, leaving out a row with a NULL among them, which no condition holds for, and dropping the table when a value
+/// has no hash key.
+pub(crate) fn index_row(ctx: &mut Ctx<'_>, inner: &[Expr], index: &mut RowIndex, row: &[Value], j: usize) {
+    let Some((table, buckets)) = index.table.as_mut() else { return };
+    let mut key = JoinKey::with_capacity(inner.len());
+    for e in inner {
+        match e.eval(ctx, row) {
+            Ok(Value::Null) => return,
+            Ok(value) => match HashKey::of(value) {
+                Some(k) => key.push(k),
+                None => {
+                    index.table = None;
+                    return;
                 }
+            },
+            Err(_) => {
+                index.table = None;
+                return;
             }
-            let bucket = *table.entry(key).or_insert_with(|| {
-                buckets.push(Vec::new());
-                buckets.len() - 1
-            });
-            buckets[bucket].push(j);
         }
-        Some((table, buckets))
-    };
-    let table = if inner.is_empty() { None } else { build() };
-    RowIndex { outer, predicate, residual, table }
+    }
+    let bucket = *table.entry(key).or_insert_with(|| {
+        buckets.push(Vec::new());
+        buckets.len() - 1
+    });
+    buckets[bucket].push(j);
 }
 
 /// share_scans wraps the table scan under the filter of a subquery that reads its enclosing rows in a `Once` plan, so
@@ -2915,7 +2945,10 @@ fn has_subquery(e: &Expr) -> bool {
 }
 
 /// KeyMap maps join and filter keys to values, hashing them quickly.
-pub(crate) type KeyMap<V> = std::collections::HashMap<Vec<HashKey>, V, foldhash::fast::FixedState>;
+pub(crate) type KeyMap<V> = std::collections::HashMap<JoinKey, V, foldhash::fast::FixedState>;
+
+/// JoinKey is the hash keys of a row's join or filter values, held inline for the usual one or two.
+pub(crate) type JoinKey = smallvec::SmallVec<[HashKey; 2]>;
 
 /// KeySet is a set of IN keys, hashed quickly.
 pub type KeySet = HashSet<HashKey, foldhash::fast::FixedState>;
