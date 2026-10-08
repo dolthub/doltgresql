@@ -51,6 +51,7 @@ fn writes_during_a_collection_survive_it() {
         let empty_map = db.address_map(&[]).unwrap();
         let empty = db.write_value(empty_map).unwrap();
         let before = map(&mut db, "before", empty);
+        let orphan = map(&mut db, "orphan", empty);
         persist(&mut db);
 
         let mut run = db.gc_begin(GcConfig { mode, archive, incremental_file_size: 0 }).unwrap();
@@ -64,10 +65,13 @@ fn writes_during_a_collection_survive_it() {
         let garbage = map(&mut db, "garbage", empty);
         persist(&mut db);
         let pending = map(&mut db, "pending", empty);
+        let parent = map(&mut db, "parent", orphan);
         let root_value = db.address_map(&[("root".to_string(), published)]).unwrap();
         db.gc_finish(run, vec![kept], &[root_value]).unwrap();
 
-        for (name, address) in [("kept", kept), ("published", published), ("pending", pending), ("empty", empty)] {
+        for (name, address) in
+            [("kept", kept), ("published", published), ("pending", pending), ("empty", empty), ("orphan", orphan)]
+        {
             assert!(db.read_value(&address).unwrap().is_some(), "{mode:?}: lost the {name} chunk");
         }
         for (name, address) in [("before", before), ("garbage", garbage)] {
@@ -80,7 +84,7 @@ fn writes_during_a_collection_survive_it() {
         persist(&mut db);
         drop(db);
         let db = Database::open(&noms).unwrap();
-        for (name, address) in [("kept", kept), ("published", published), ("pending", pending)] {
+        for (name, address) in [("kept", kept), ("published", published), ("pending", pending), ("parent", parent)] {
             assert!(db.read_value(&address).unwrap().is_some(), "{mode:?}: lost the {name} chunk after reopening");
         }
     }

@@ -522,11 +522,12 @@ impl Database {
     }
 
     /// gc_finish ends a garbage collection that `GcRun::copy` ran: it copies the chunks that the store root, the
-    /// given addresses, and the addresses within the given root values reach and the copy did not see, which were
-    /// written since it began, and then replaces the store's files with the collection's.
+    /// given addresses, the addresses within the given root values, and the chunks not yet written reach and the copy
+    /// did not see, which were written since it began, and then replaces the store's files with the collection's.
     pub fn gc_finish(&mut self, mut run: GcRun, keep: Vec<Hash>, roots: &[Vec<u8>]) -> Result<()> {
         let mut starts = vec![self.root()];
         starts.extend(keep);
+        starts.extend(self.with_journal(|journal| Ok(journal.unwritten()))?);
         for root in roots {
             serial::walk::walk_addrs(Message(root), &mut |child| {
                 starts.push(child);

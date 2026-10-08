@@ -1566,7 +1566,13 @@ impl Session {
             Some(index) => index,
             None => {
                 let (handle, tracker) = self.state.engine.open_database(database)?;
-                let mut txn = Txn::begin(handle, tracker, database, branch)?;
+                let mut txn = {
+                    let mut db = handle.read();
+                    let txn = Txn::begin_locked(&mut db, handle.clone(), tracker, database, branch)?;
+                    self.state.engine.publish_gc_roots(self.state.id, &txn);
+                    self.state.gc_published = true;
+                    txn
+                };
                 if let Some(first) = self.txns.first() {
                     txn.started = first.started;
                 }
@@ -1628,6 +1634,9 @@ impl Session {
         let result = result.and_then(|value| stored.map(|_| value));
         store::defer_syncs(false);
         self.state.engine.publish_gc_roots(self.state.id, &txn);
+        for other in &self.txns {
+            self.state.engine.publish_gc_roots(self.state.id, other);
+        }
         self.state.gc_published = true;
         let sync = store::take_sync();
         drop(db);

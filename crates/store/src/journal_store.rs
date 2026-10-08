@@ -397,6 +397,12 @@ impl JournalStore {
         Ok(())
     }
 
+    /// unwritten returns the addresses of the chunks put since the last commit, which garbage collection keeps along
+    /// with what they refer to.
+    pub fn unwritten(&self) -> Vec<Hash> {
+        self.memtable.order.clone()
+    }
+
     /// snapshot returns a read-only view of the chunks that the store's files hold now, leaving out the chunks put
     /// since the last commit, which garbage collection reads while the store goes on writing.
     pub fn snapshot(&mut self) -> Result<Snapshot> {

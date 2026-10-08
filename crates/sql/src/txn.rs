@@ -133,13 +133,6 @@ pub fn read_working_set(db: &Database, address: &Hash) -> Result<WorkingSetField
 }
 
 impl Txn {
-    /// begin starts a transaction on the branch, reading its working set.
-    pub fn begin(handle: DbHandle, sequences: SequenceTracker, database: &str, branch: &str) -> Result<Txn> {
-        let db = handle.clone();
-        let mut db = db.read();
-        Txn::begin_locked(&mut db, handle, sequences, database, branch)
-    }
-
     /// begin_locked starts a transaction on the branch of a database whose lock the caller holds, or a detached one on
     /// the commit of another revision, as Dolt's revision databases are.
     pub fn begin_locked(
