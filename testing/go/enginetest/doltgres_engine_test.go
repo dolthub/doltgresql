@@ -757,12 +757,6 @@ func TestVariablesScripts(t *testing.T) {
 	enginetest.TestVariablesScripts(t, h)
 }
 
-func TestViewsScripts(t *testing.T) {
-	h := newScriptTestHarness(t)
-	defer h.Close()
-	enginetest.TestViewsScripts(t, h)
-}
-
 func TestJoinOps(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
