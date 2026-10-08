@@ -103,6 +103,29 @@ fn merge_state_fields(state: &MergeState<'_>) -> Result<MergeStateFields> {
     })
 }
 
+/// read_working_set reads the working set at the address.
+pub fn read_working_set(db: &Database, address: &Hash) -> Result<WorkingSetFields> {
+    let data = read(db, address)?;
+    let ws = WorkingSet::new(Message(&data))?;
+    let meta = match (ws.name(), ws.email(), ws.description()) {
+        (Ok(name), Ok(email), Ok(description)) => Some(Meta {
+            name: name.to_vec(),
+            email: email.to_vec(),
+            description: description.to_vec(),
+            timestamp_millis: ws.timestamp_millis()?,
+            user_timestamp_millis: 0,
+        }),
+        _ => None,
+    };
+    Ok(WorkingSetFields {
+        working_root: ws.working_root()?,
+        staged_root: ws.staged_root()?,
+        merge_state: ws.merge_state()?.map(|t| merge_state_fields(&MergeState(t))).transpose()?,
+        rebase_state: ws.rebase_state()?.map(|t| rebase_state_fields(&RebaseState(t))).transpose()?,
+        meta,
+    })
+}
+
 impl Txn {
     /// begin starts a transaction on the branch, reading its working set.
     pub fn begin(handle: DbHandle, sequences: SequenceTracker, database: &str, branch: &str) -> Result<Txn> {

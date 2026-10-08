@@ -1,0 +1,26 @@
+[package]
+name = "admin"
+description = "The offline tool that reports and repairs chunk addresses that earlier Doltgres releases failed to record"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "doltgres-admin"
+path = "src/main.rs"
+
+[dependencies]
+chrono = "0.4"
+chrono-tz = "0.10"
+doltdb = { path = "../doltdb" }
+prolly = { path = "../prolly" }
+serial = { path = "../serial" }
+sql = { path = "../sql" }
+store = { path = "../store" }
+
+[dev-dependencies]
+driver = { path = "../driver" }
+
+[lints]
+workspace = true

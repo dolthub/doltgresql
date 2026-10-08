@@ -58,7 +58,7 @@ pub fn rows_serializer() -> prolly::ProllyMapSerializer<AddressOffsets, AddressO
 }
 
 /// ADDRESS_ENCODINGS are the field encodings that hold the address of a blob tree.
-const ADDRESS_ENCODINGS: [u8; 5] = [21, 23, 24, 26, 27];
+pub const ADDRESS_ENCODINGS: [u8; 5] = [21, 23, 24, 26, 27];
 /// ADAPTIVE_ENCODINGS are the field encodings that hold an adaptive value, inline after a 0 byte or out of band.
 pub const ADAPTIVE_ENCODINGS: [u8; 5] = [135, 136, 137, 138, 139];
 
