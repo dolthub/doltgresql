@@ -1699,11 +1699,11 @@ fn test_unique_clause_and_rename_rules() {
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "SELECT now()::date || 'x';",
+                    query: "SELECT length(now()::date || 'x');",
                     expected: Expected::Rows {
-                        columns: &[Column("?column?", TEXT)],
+                        columns: &[Column("length", INT4)],
                         rows: &[
-                            &[T("2026-10-07x")],
+                            &[T("11")],
                         ],
                         tag: "SELECT 1",
                     },
