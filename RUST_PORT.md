@@ -126,10 +126,10 @@ Status as of 2026-10-08. The untracked `HANDOFF.md` holds the exact position and
 4. (Done) Breadth: types, functions, operators, DDL, DML, pg_catalog, PL/pgSQL, triggers, sequences, auth.
 5. (Done) Version control: branches, commits, merge, conflicts, diff, remotes, backups, GC, archives, cluster
    replication, apart from persisted statistics and column-level schema merges.
-6. (In progress) Operational features, logical replication, and the admin tool are done. Performance: faster than Go
-   on DoltHub's published sysbench tests, TPC-C, and a benchmark of 115 complex queries, at one thread and on small
-   data; at a gigabyte, faster at one thread, while several threads still need concurrent reads and merges that
-   read only what changed.
+6. (Done) Operational features, logical replication, the admin tool, and performance: faster than Go on DoltHub's
+   published sysbench tests, TPC-C, and a benchmark of 115 complex queries, at one and four threads, on small data,
+   at a gigabyte, and at three gigabytes. Sessions share each database, reads run concurrently, merges read only what
+   changed, and garbage collection copies without blocking writers.
 7. The planner (rule-based choices with adaptive joins, catalog index scans, statistics-driven join order), the
    remaining test failures, fixes for Go bugs that tests encode, and the git and ssh remotes.
 8. Continuous integration against the Rust server, with comparisons between Go on `main` and Rust on this branch,
