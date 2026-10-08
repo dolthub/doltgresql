@@ -222,8 +222,7 @@ pub const FILES: [&str; 205] = [
 ];
 
 /// QUERIES_TO_SKIP lists text that fails any query containing it.
-pub const QUERIES_TO_SKIP: [&str; 17] = [
-    "CREATE VIEW lock_view7 AS SELECT * from lock_view2;",
+pub const QUERIES_TO_SKIP: [&str; 16] = [
     "create index testtable_apple_index on testtable_apple(logdate);",
     "create index testtable_orange_index on testtable_orange(logdate);",
     "create table child_0_10 partition of parent_tab\n  for values from (0) to (10);",
