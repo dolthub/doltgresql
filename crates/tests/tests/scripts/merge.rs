@@ -319,3 +319,344 @@ fn test_merge() {
         },
     ]);
 }
+
+#[test]
+fn test_merge_large_tables() {
+    run_scripts(&[
+        ScriptTest {
+            name: "merging tables of several tree levels",
+            assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "CREATE TABLE mt (id INT PRIMARY KEY, v INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mt SELECT i, i, 'row ' || i FROM generate_series(1, 20000) i;",
+                    expected: Expected::Tag("INSERT 0 20000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_COMMIT('-Am', 'base');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_commit", TEXT)],
+                        rows: &[
+                            &[Any],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_BRANCH('other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_branch", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE mt SET v = v + 1 WHERE id % 1000 = 1;",
+                    expected: Expected::Tag("UPDATE 20"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM mt WHERE id BETWEEN 5000 AND 5010;",
+                    expected: Expected::Tag("DELETE 11"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mt SELECT i, i, 'main ' || i FROM generate_series(30001, 30005) i;",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_COMMIT('-Am', 'main changes');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_commit", TEXT)],
+                        rows: &[
+                            &[Any],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_CHECKOUT('other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_checkout", RECORD)],
+                        rows: &[
+                            &[T(r#"(0,"Switched to branch 'other'")"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE mt SET v = -id WHERE id % 1500 = 2;",
+                    expected: Expected::Tag("UPDATE 14"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM mt WHERE id BETWEEN 15002 AND 15006;",
+                    expected: Expected::Tag("DELETE 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mt SELECT i, i, 'other ' || i FROM generate_series(40001, 40003) i;",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_COMMIT('-Am', 'other changes');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_commit", TEXT)],
+                        rows: &[
+                            &[Any],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_CHECKOUT('main');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_checkout", RECORD)],
+                        rows: &[
+                            &[T(r#"(0,"Switched to branch 'main'")"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_MERGE('other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_merge", RECORD)],
+                        rows: &[
+                            &[Any],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), sum(v), count(DISTINCT t) FROM mt;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("sum", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("19992"), T("199906913"), T("19992")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v, t FROM mt WHERE id % 1000 = 1 AND id < 6000 OR id % 1500 = 2 AND id < 7000 OR id > 30000 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4), Column("t", TEXT)],
+                        rows: &[
+                            &[T("1"), T("2"), T("row 1")],
+                            &[T("2"), T("-2"), T("row 2")],
+                            &[T("1001"), T("1002"), T("row 1001")],
+                            &[T("1502"), T("-1502"), T("row 1502")],
+                            &[T("2001"), T("2002"), T("row 2001")],
+                            &[T("3001"), T("3002"), T("row 3001")],
+                            &[T("3002"), T("-3002"), T("row 3002")],
+                            &[T("4001"), T("4002"), T("row 4001")],
+                            &[T("4502"), T("-4502"), T("row 4502")],
+                            &[T("6002"), T("-6002"), T("row 6002")],
+                            &[T("30001"), T("30001"), T("main 30001")],
+                            &[T("30002"), T("30002"), T("main 30002")],
+                            &[T("30003"), T("30003"), T("main 30003")],
+                            &[T("30004"), T("30004"), T("main 30004")],
+                            &[T("30005"), T("30005"), T("main 30005")],
+                            &[T("40001"), T("40001"), T("other 40001")],
+                            &[T("40002"), T("40002"), T("other 40002")],
+                            &[T("40003"), T("40003"), T("other 40003")],
+                        ],
+                        tag: "SELECT 18",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM mt WHERE id BETWEEN 5000 AND 5010 OR id BETWEEN 15002 AND 15006;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "merge conflicts in tables of several tree levels",
+            assertions: &[
+                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                ScriptTestAssertion {
+                    query: "CREATE TABLE mc (id INT PRIMARY KEY, v INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO mc SELECT i, i, 'row ' || i FROM generate_series(1, 20000) i;",
+                    expected: Expected::Tag("INSERT 0 20000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_COMMIT('-Am', 'base');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_commit", TEXT)],
+                        rows: &[
+                            &[Any],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_BRANCH('other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_branch", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE mc SET t = 'main' WHERE id IN (7777, 12345);",
+                    expected: Expected::Tag("UPDATE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE mc SET v = 0 WHERE id = 100;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_COMMIT('-Am', 'main changes');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_commit", TEXT)],
+                        rows: &[
+                            &[Any],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_CHECKOUT('other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_checkout", RECORD)],
+                        rows: &[
+                            &[T(r#"(0,"Switched to branch 'other'")"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE mc SET t = 'other' WHERE id IN (7777, 19999);",
+                    expected: Expected::Tag("UPDATE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE mc SET v = 1 WHERE id = 200;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_COMMIT('-Am', 'other changes');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_commit", TEXT)],
+                        rows: &[
+                            &[Any],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_CHECKOUT('main');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_checkout", RECORD)],
+                        rows: &[
+                            &[T(r#"(0,"Switched to branch 'main'")"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT DOLT_MERGE('other');",
+                    expected: Expected::Rows {
+                        columns: &[Column("dolt_merge", RECORD)],
+                        rows: &[
+                            &[T(r#"("",0,1,"conflicts found")"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT "table", num_conflicts FROM dolt_conflicts;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("table", TEXT), Column("num_conflicts", NUMERIC)],
+                        rows: &[
+                            &[T("mc"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT our_id, our_t, their_t, base_t FROM dolt_conflicts_mc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("our_id", INT4), Column("our_t", TEXT), Column("their_t", TEXT), Column("base_t", TEXT)],
+                        rows: &[
+                            &[T("7777"), T("main"), T("other"), T("row 7777")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, v, t FROM mc WHERE id IN (100, 200, 7777, 12345, 19999) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", INT4), Column("t", TEXT)],
+                        rows: &[
+                            &[T("100"), T("0"), T("row 100")],
+                            &[T("200"), T("1"), T("row 200")],
+                            &[T("7777"), T("7777"), T("main")],
+                            &[T("12345"), T("12345"), T("main")],
+                            &[T("19999"), T("19999"), T("other")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

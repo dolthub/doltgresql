@@ -118,6 +118,121 @@ fn changes(table: &TableDef, from: &[Entry], to: &[Entry]) -> Vec<Change> {
     out
 }
 
+/// changes_between returns the rows that differ between two versions of a table's rows, in key order, reading only
+/// the nodes of the subtrees where the versions differ.
+fn changes_between(db: &mut Database, table: &TableDef, from: &TableDef, to: &TableDef) -> Result<Vec<Change>> {
+    let from = prolly::Node::decode(from.table.primary_index.clone())?;
+    let to = prolly::Node::decode(to.table.primary_index.clone())?;
+    let mut out = Vec::new();
+    if from.bytes() != to.bytes() {
+        diff_runs(db, table, vec![from], vec![to], &mut out)?;
+    }
+    Ok(out)
+}
+
+/// diff_runs adds the changes between two key-ordered runs of nodes that cover the same keys to a list, expanding
+/// the higher run until both are of one level and then skipping the subtrees that both runs share.
+fn diff_runs(
+    db: &mut Database,
+    table: &TableDef,
+    mut from: Vec<prolly::Node>,
+    mut to: Vec<prolly::Node>,
+    out: &mut Vec<Change>,
+) -> Result<()> {
+    let level = |run: &[prolly::Node]| run.iter().map(prolly::Node::level).max().unwrap_or(0);
+    while level(&from) > level(&to) {
+        from = children(db, &from)?;
+    }
+    while level(&to) > level(&from) {
+        to = children(db, &to)?;
+    }
+    if level(&from) == 0 {
+        out.extend(changes(table, &node_rows(&from)?, &node_rows(&to)?));
+        return Ok(());
+    }
+    let child_addresses = |run: &[prolly::Node]| -> Result<Vec<Hash>> {
+        let mut addresses = Vec::new();
+        for node in run {
+            for i in 0..node.count() {
+                addresses.push(node.child(i)?);
+            }
+        }
+        Ok(addresses)
+    };
+    let (a, b) = (child_addresses(&from)?, child_addresses(&to)?);
+    let positions: HashMap<Hash, usize> = b.iter().enumerate().map(|(i, h)| (*h, i)).collect();
+    let (mut i, mut j) = (0, 0);
+    while i < a.len() || j < b.len() {
+        if i < a.len() && j < b.len() && a[i] == b[j] {
+            i += 1;
+            j += 1;
+            continue;
+        }
+        let (mut k, mut l) = (i, b.len());
+        while k < a.len() {
+            if let Some(&p) = positions.get(&a[k])
+                && p >= j
+            {
+                l = p;
+                break;
+            }
+            k += 1;
+        }
+        let load = |db: &mut Database, addresses: &[Hash]| -> Result<Vec<prolly::Node>> {
+            Ok(addresses.iter().map(|h| prolly::Node::load(db, h)).collect::<store::Result<_>>()?)
+        };
+        let (stretch_from, stretch_to) = (load(db, &a[i..k])?, load(db, &b[j..l])?);
+        diff_runs(db, table, stretch_from, stretch_to, out)?;
+        (i, j) = (k, l);
+    }
+    Ok(())
+}
+
+/// children returns the child nodes of a run of internal nodes, in order.
+fn children(db: &mut Database, run: &[prolly::Node]) -> Result<Vec<prolly::Node>> {
+    let mut out = Vec::new();
+    for node in run {
+        for i in 0..node.count() {
+            out.push(prolly::Node::load(db, &node.child(i)?)?);
+        }
+    }
+    Ok(out)
+}
+
+/// node_rows returns the rows of a run of leaf nodes, in order.
+fn node_rows(run: &[prolly::Node]) -> Result<Vec<Entry>> {
+    let mut rows = Vec::new();
+    for node in run {
+        for i in 0..node.count() {
+            rows.push((node.key(i)?.to_vec(), node.value(i)?.to_vec()));
+        }
+    }
+    Ok(rows)
+}
+
+/// tree_value returns the value that a table's primary index holds for a key, if it holds the key.
+fn tree_value(db: &mut Database, table: &TableDef, key: &[u8]) -> Result<Option<Vec<u8>>> {
+    let mut node = prolly::Node::decode(table.table.primary_index.clone())?;
+    loop {
+        let (mut low, mut high) = (0, node.count());
+        while low < high {
+            let middle = (low + high) / 2;
+            match table.compare_keys(node.key(middle)?, key) {
+                Ordering::Less => low = middle + 1,
+                _ => high = middle,
+            }
+        }
+        if low == node.count() {
+            return Ok(None);
+        }
+        if node.is_leaf() {
+            let found = table.compare_keys(node.key(low)?, key) == Ordering::Equal;
+            return Ok(found.then(|| node.value(low).map(<[u8]>::to_vec)).transpose()?);
+        }
+        node = prolly::Node::load(db, &node.child(low)?)?;
+    }
+}
+
 /// value_fields returns the fields of a row's value that hold its columns, which follow the cardinality of a keyless
 /// row.
 fn value_fields(table: &TableDef, value: &[u8]) -> Vec<Option<Vec<u8>>> {
@@ -626,8 +741,21 @@ fn merge_rows(
     commits: Commits,
     brought: bool,
 ) -> Result<TableOutcome> {
-    let left = changes(table, base, ours);
-    let right = changes(table, base, theirs);
+    let (left, right) = (changes(table, base, ours), changes(table, base, theirs));
+    merge_changes(ctx, table, ours, &left, &right, commits, brought)
+}
+
+/// merge_changes merges both sides' changes to the rows of a table, given our rows, or at least our rows of every key
+/// that either side changed when the table has no unique indexes.
+fn merge_changes(
+    ctx: &mut Ctx<'_>,
+    table: &TableDef,
+    ours: &[Entry],
+    left: &[Change],
+    right: &[Change],
+    commits: Commits,
+    brought: bool,
+) -> Result<TableOutcome> {
     let merge_json = !ctx.session.setting_on("dolt_dont_merge_json");
     let mut merger = RowMerger {
         table,
@@ -639,7 +767,7 @@ fn merge_rows(
         db: ctx.db,
         merge_json,
     };
-    merger.merge(&left, &right);
+    merger.merge(left, right);
     let Merged { edits, artifacts: found, new_artifacts } = merger.merged;
     let mut stored = apply(ctx, table, ours, edits)?;
     stored.artifacts = artifacts::write(ctx.db, table, found)?;
@@ -696,6 +824,23 @@ fn merge_table(
             empty
         }
     };
+    if ours.table.schema == theirs.table.schema
+        && base.table.schema == ours.table.schema
+        && unique_indexes(&ours, &[]).is_empty()
+    {
+        let left = changes_between(ctx.db, &ours, &base, &ours)?;
+        let right = changes_between(ctx.db, &ours, &base, &theirs)?;
+        let mut keys: Vec<&[u8]> = left.iter().chain(&right).map(|c| c.key.as_slice()).collect();
+        keys.sort_by(|a, b| ours.compare_keys(a, b));
+        keys.dedup_by(|a, b| ours.compare_keys(a, b) == Ordering::Equal);
+        let mut our_rows = Vec::with_capacity(keys.len());
+        for key in keys {
+            if let Some(value) = tree_value(ctx.db, &ours, key)? {
+                our_rows.push((key.to_vec(), value));
+            }
+        }
+        return merge_changes(ctx, &ours, &our_rows, &left, &right, commits, brought);
+    }
     let (our_rows, their_rows, base_rows) =
         (entries(ctx.db, &ours)?, entries(ctx.db, &theirs)?, entries(ctx.db, &base)?);
     if ours.table.schema == theirs.table.schema {
