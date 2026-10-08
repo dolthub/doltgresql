@@ -22,6 +22,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 )
 
 // nodeSelectClause handles tree.SelectClause nodes.
@@ -247,6 +248,18 @@ func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
 								Exprs:   funcExpr.Exprs,
 								Alias:   expr.As,
 								Columns: subquery.Columns,
+							}
+							// Named OUT parameters keep their column names even when the relation is aliased.
+							// Supply them before GMS builds its scope, including when argument casts defer
+							// overload resolution. An explicit column alias list takes precedence.
+							if len(tableFuncExpr.Columns) == 0 &&
+								(funcExpr.Qualifier.IsEmpty() || funcExpr.Qualifier.String() == "pg_catalog") {
+								overloads := framework.Catalog[strings.ToLower(tableFuncExpr.Name)]
+								if len(overloads) == 1 {
+									for _, outParam := range overloads[0].GetOutParameters() {
+										tableFuncExpr.Columns = append(tableFuncExpr.Columns, vitess.NewColIdent(outParam.Name))
+									}
+								}
 							}
 							if expr.Lateral {
 								// GMS only supports lateral scoping for subqueries, so we wrap the table function

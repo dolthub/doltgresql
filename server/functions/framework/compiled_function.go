@@ -224,6 +224,11 @@ func (c *CompiledFunction) Description() string {
 // return type for a function declared RETURNS TABLE(...) or RETURNS SETOF <composite>.
 func (c *CompiledFunction) OutParametersSchema() sql.Schema {
 	if !c.overload.Valid() {
+		// A single candidate's named OUT parameters define its columns before input casts resolve.
+		// The plan builder needs this schema when an untyped literal initially defers resolution.
+		if len(c.fnOverloads) == 1 {
+			return c.fnOverloads[0].function.GetOutParameters()
+		}
 		return nil
 	}
 	if outParams := c.overload.Function().GetOutParameters(); len(outParams) > 0 {

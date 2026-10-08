@@ -32,7 +32,11 @@ import (
 
 // ResolveType replaces types.ResolvableType to appropriate pgtypes.DoltgresType.
 func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	n, sameExpr, err := ResolveTypeForExprs(ctx, a, node, scope, selector, qFlags)
+	n, sameAliases, err := resolveScalarFunctionAliases(ctx, node)
+	if err != nil {
+		return nil, transform.NewTree, err
+	}
+	n, sameExpr, err := ResolveTypeForExprs(ctx, a, n, scope, selector, qFlags)
 	if err != nil {
 		return nil, transform.NewTree, err
 	}
@@ -42,7 +46,7 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 		return nil, transform.NewTree, err
 	}
 
-	return n, sameExpr && sameNode, nil
+	return n, sameAliases && sameExpr && sameNode, nil
 }
 
 // ResolveTypeForNodes replaces types.ResolvableType to appropriate pgtypes.DoltgresType.
