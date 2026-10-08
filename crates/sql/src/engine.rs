@@ -132,6 +132,30 @@ fn should_collect(now: StoreSizes, then: StoreSizes, last: Option<(std::time::In
     }
 }
 
+/// GC_LOAD_THRESHOLD is the load average at or below which automatic garbage collection runs, as Dolt's
+/// DEFAULT_LOAD_THRESHOLD is.
+const GC_LOAD_THRESHOLD: f64 = 0.5;
+
+/// GC_MAX_WAITS is how many minutes of higher load automatic garbage collection waits through before it runs anyway,
+/// as Dolt's DEFAULT_SKIPPED_THRESHOLD is.
+const GC_MAX_WAITS: u32 = 30;
+
+/// wait_for_quiet waits until the system's one-minute load average is at most GC_LOAD_THRESHOLD, checking once a
+/// minute and giving up after GC_MAX_WAITS checks, as Dolt's loadAvgGCScheduler does on Linux. It doesn't wait where
+/// /proc/loadavg can't be read, as Dolt doesn't without procfs, or when DOLT_GC_SCHEDULER is NONE.
+fn wait_for_quiet() {
+    if std::env::var("DOLT_GC_SCHEDULER").is_ok_and(|scheduler| scheduler == "NONE") {
+        return;
+    }
+    let load = || std::fs::read_to_string("/proc/loadavg").ok()?.split_whitespace().next()?.parse::<f64>().ok();
+    for _ in 0..GC_MAX_WAITS {
+        match load() {
+            Some(load) if load > GC_LOAD_THRESHOLD => std::thread::sleep(std::time::Duration::from_secs(60)),
+            _ => return,
+        }
+    }
+}
+
 /// Activity is what a session is doing, as pg_stat_activity shows it.
 #[derive(Clone, Debug, Default)]
 pub struct Activity {
@@ -496,6 +520,7 @@ impl Engine {
                 lock(&self.shared.auto_gc)?.insert(name, AutoGc { sizes: Some(then), ..state });
                 continue;
             }
+            wait_for_quiet();
             let start = std::time::Instant::now();
             let config = *lock(&self.shared.auto_gc_config)?;
             let mut run = handle.exclusive().gc_begin(config)?;
