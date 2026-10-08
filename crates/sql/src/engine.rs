@@ -726,6 +726,7 @@ impl Engine {
                 temp_used: false,
                 sink: None,
                 stream_next: false,
+                unfolded: None,
                 gc_published: false,
                 shared_statement: false,
             },
@@ -847,6 +848,10 @@ pub struct SessionState {
     pub sink: Option<Box<dyn crate::RowSink>>,
     /// Whether the statement starting now is a simple query's own statement, whose rows a SELECT streams to the sink.
     pub stream_next: bool,
+    /// While a statement is only being described, whether its plan left constant arithmetic unfolded, which planning
+    /// it with its parameters then folds, as Postgres folds constants when it plans a portal rather than when it
+    /// parses a statement.
+    pub unfolded: Option<bool>,
     /// Whether the session told garbage collection what its transactions need since it last had none.
     pub gc_published: bool,
     /// Whether the running statement only changes the session's own transaction, so that it runs alongside other
@@ -1270,8 +1275,24 @@ impl Session {
             return Err(PgError::new(code::SYNTAX_ERROR, "cannot insert multiple commands into a prepared statement"));
         }
         let statement = statements.pop();
+        if self.failed
+            && !matches!(
+                statement.as_ref().and_then(transaction_kind),
+                Some(
+                    TransactionStmtKind::TransStmtCommit
+                        | TransactionStmtKind::TransStmtRollback
+                        | TransactionStmtKind::TransStmtRollbackTo
+                )
+            )
+        {
+            return Err(PgError::new(
+                code::IN_FAILED_SQL_TRANSACTION,
+                "current transaction is aborted, commands ignored until end of transaction block",
+            ));
+        }
         let mut parameters = parameter_types.to_vec();
         let mut columns = None;
+        let mut unfolded = false;
         if let Some(Statement::Postgres { node: NodeEnum::VariableShowStmt(show), .. }) = &statement {
             if show.name != "all" {
                 self.state.settings.show(&show.name)?;
@@ -1288,15 +1309,29 @@ impl Session {
         } else if let Some(Statement::Postgres { node, .. }) = &statement
             && describable(node)
         {
-            columns = self
-                .in_named_database(node, |session| session.with_ctx(&mut parameters, &[], |ctx| ctx.describe(node)))?;
+            self.state.unfolded = Some(false);
+            let described = self
+                .in_named_database(node, |session| session.with_ctx(&mut parameters, &[], |ctx| ctx.describe(node)));
+            unfolded = self.state.unfolded.take().unwrap_or(false);
+            columns = described?;
         }
         for parameter in &mut parameters {
             if *parameter == 0 {
                 *parameter = crate::oid::TEXT;
             }
         }
-        Ok(Prepared { query: query.to_string(), statement, parameter_types: parameters, columns })
+        Ok(Prepared { query: query.to_string(), statement, parameter_types: parameters, columns, unfolded })
+    }
+
+    /// bind plans a prepared statement whose description left constant arithmetic unfolded with its parameters,
+    /// raising the errors that folding it raises, as Postgres raises them when it binds a portal.
+    pub fn bind(&mut self, prepared: &Prepared, parameters: &[Value]) -> Result<()> {
+        let Some(Statement::Postgres { node, .. }) = prepared.statement.as_ref().filter(|_| prepared.unfolded) else {
+            return Ok(());
+        };
+        let mut types = prepared.parameter_types.clone();
+        self.in_named_database(node, |session| session.with_ctx(&mut types, parameters, |ctx| ctx.describe(node)))
+            .map(|_| ())
     }
 
     /// statement returns a prepared statement by name, or the unnamed one for an empty name.

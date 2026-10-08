@@ -203,6 +203,8 @@ pub struct Prepared {
     pub parameter_types: Vec<u32>,
     /// The result columns, or None when the statement returns no rows.
     pub columns: Option<Vec<Column>>,
+    /// Whether describing the statement left constant arithmetic unfolded, which binding it then folds.
+    pub unfolded: bool,
 }
 
 impl Outcome {

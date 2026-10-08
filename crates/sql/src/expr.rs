@@ -2002,6 +2002,10 @@ impl<'b, 'a> Binder<'b, 'a> {
         }
         let constant = matches!((&left, &right), (Expr::Const(_), Expr::Const(_)));
         let expr = Expr::Arith(arith, Box::new(left), Box::new(right), domain);
+        if constant && let Some(unfolded) = self.ctx.session.unfolded.as_mut() {
+            *unfolded = true;
+            return Ok((expr, domain));
+        }
         match constant {
             true => Ok((Expr::Const(expr.eval(self.ctx, &[])?), domain)),
             false => Ok((expr, domain)),

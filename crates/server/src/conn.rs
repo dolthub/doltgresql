@@ -409,6 +409,7 @@ impl Conn {
                         Value::decode(prepared.parameter_types[i], format(&parameter_format_codes, i), value.as_deref())
                     })
                     .collect::<sql::Result<Vec<Value>>>()?;
+                session.bind(&prepared, &values)?;
                 let portal = Portal { prepared, parameters: values, result_formats: result_format_codes };
                 extended.portals.insert(destination_portal, portal);
                 self.queue(BackendMessage::BindComplete);
