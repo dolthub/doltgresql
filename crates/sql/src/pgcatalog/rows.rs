@@ -520,6 +520,14 @@ impl Ctx<'_> {
     /// pg_type lists the row types of the user tables and views.
     fn pg_type(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         for user_type in self.user_types()?.values() {
+            let key = vec![
+                ("oid", oid(user_type.oid)),
+                ("typname", text(user_type.name.clone())),
+                ("typnamespace", oid(namespace_oid(&user_type.schema))),
+            ];
+            if !rows.wants(key) {
+                continue;
+            }
             let definition = &user_type.definition;
             let (base, element) = match &user_type.kind {
                 crate::usertypes::Kind::Domain(domain) => (domain.base.oid, 0),
@@ -579,6 +587,17 @@ impl Ctx<'_> {
             .chain(snapshot.views.iter().map(|v| (v.schema.clone(), v.name.clone(), view_oid(&v.schema, &v.name))));
         for (schema, name, relation) in relations {
             let array = oids::oid(&id::new(id::SECTION_TYPE, &[&schema, &format!("_{name}")]));
+            let namespace = oid(namespace_oid(&schema));
+            let array_key =
+                vec![("oid", oid(array)), ("typname", text(format!("_{name}"))), ("typnamespace", namespace.clone())];
+            let row_key = vec![
+                ("oid", oid(row_type_oid(&schema, &name))),
+                ("typname", text(name.clone())),
+                ("typnamespace", namespace),
+            ];
+            if !rows.wants(array_key) && !rows.wants(row_key) {
+                continue;
+            }
             rows.push(vec![
                 ("oid", oid(array)),
                 ("typname", text(format!("_{name}"))),
@@ -651,6 +670,16 @@ impl Ctx<'_> {
         let triggered = self.triggered_tables()?;
         for (table, indexes) in snapshot.listed() {
             let relation = table_oid(&table.schema, &table.name);
+            let wanted = |rows: &Rows<'_>, relation: u32, name: &str| {
+                rows.wants(vec![
+                    ("oid", oid(relation)),
+                    ("relname", text(name)),
+                    ("relnamespace", oid(namespace_oid(&table.schema))),
+                ])
+            };
+            if !wanted(rows, relation, &table.name) && !indexes.iter().any(|i| wanted(rows, i.oid(table), &i.name)) {
+                continue;
+            }
             let mut row = class_row(relation, &table.name, &table.schema, "r", table.columns.len() as i16, 2);
             row.extend([
                 ("reltype", oid(row_type_oid(&table.schema, &table.name))),
@@ -685,9 +714,17 @@ impl Ctx<'_> {
             }
         }
         for view in &snapshot.views {
+            let relation = view_oid(&view.schema, &view.name);
+            let key = vec![
+                ("oid", oid(relation)),
+                ("relname", text(view.name.clone())),
+                ("relnamespace", oid(namespace_oid(&view.schema))),
+            ];
+            if !rows.wants(key) {
+                continue;
+            }
             let columns = self.view_columns(&view.schema, &view.name).map_or(0, |c| c.len());
-            let mut row =
-                class_row(view_oid(&view.schema, &view.name), &view.name, &view.schema, "v", columns as i16, 0);
+            let mut row = class_row(relation, &view.name, &view.schema, "v", columns as i16, 0);
             row.extend([("reltype", oid(row_type_oid(&view.schema, &view.name))), ("relhasrules", boolean(true))]);
             rows.push(row);
         }

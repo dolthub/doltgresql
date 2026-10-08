@@ -14,6 +14,8 @@
 
 //! The reg types, whose values are OIDs that print as the names of the catalog objects they identify.
 
+use std::sync::OnceLock;
+
 use crate::catalog::builtin_type;
 use crate::error::{PgError, Result, code};
 use crate::oid as types;
@@ -27,6 +29,31 @@ pub struct Relation {
     schema: String,
     name: String,
     oid: u32,
+}
+
+/// builtin_relations returns the system catalogs and their indexes, which regclass can name.
+fn builtin_relations() -> &'static [Relation] {
+    static RELATIONS: OnceLock<Vec<Relation>> = OnceLock::new();
+    RELATIONS.get_or_init(|| {
+        let Some(class) = lookup("pg_catalog", "pg_class") else { return Vec::new() };
+        let (Some(oid), Some(name), Some(namespace)) =
+            (class.column("oid"), class.column("relname"), class.column("relnamespace"))
+        else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for row in builtin::rows(class) {
+            let schema = match &row[namespace] {
+                Value::Oid(11) => "pg_catalog",
+                Value::Oid(99) => "pg_toast",
+                _ => "information_schema",
+            };
+            if let Value::Oid(o) = row[oid] {
+                out.push(Relation { schema: schema.into(), name: text_of(&row[name]), oid: o });
+            }
+        }
+        out
+    })
 }
 
 /// builtin_column returns a column of a built-in catalog's rows by name, as pairs of OID and value.
@@ -76,7 +103,10 @@ impl Ctx<'_> {
     fn reg_from_oid(&mut self, oid: u32, type_oid: u32) -> Result<Reg> {
         let name = match type_oid {
             _ if oid == 0 => Some("-".to_string()),
-            types::REGCLASS => self.relations()?.iter().find(|r| r.oid == oid).map(|r| self.visible_name(r)),
+            types::REGCLASS => {
+                let user = self.relations()?;
+                builtin_relations().iter().chain(user.iter()).find(|r| r.oid == oid).map(|r| self.visible_name(r))
+            }
             types::REGTYPE => match builtin_type(oid).is_some() || crate::usertypes::get(oid).is_some() {
                 true => Some(crate::cast::type_display(oid).into_owned()),
                 false => self.snapshot()?.tables.iter().find_map(|t| {
@@ -153,7 +183,8 @@ impl Ctx<'_> {
                     None => self.effective_search_path(),
                 };
                 for s in &schemas {
-                    if let Some(r) = relations.iter().find(|r| r.schema == *s && r.name == name) {
+                    let mut all = builtin_relations().iter().chain(relations.iter());
+                    if let Some(r) = all.find(|r| r.schema == *s && r.name == name) {
                         return Ok(Reg { type_oid, oid: r.oid, name: self.visible_name(r) });
                     }
                 }
@@ -276,7 +307,10 @@ impl Ctx<'_> {
         let path = self.effective_search_path();
         let builtin = |catalog: &str, column: &str| builtin_column(catalog, column).iter().any(|(o, _)| *o == oid);
         let schema = match catalog {
-            "pg_class" => self.relations()?.iter().find(|r| r.oid == oid).map(|r| r.schema.clone()),
+            "pg_class" => {
+                let user = self.relations()?;
+                builtin_relations().iter().chain(user.iter()).find(|r| r.oid == oid).map(|r| r.schema.clone())
+            }
             "pg_type" => match builtin_type(oid) {
                 Some(_) => Some("pg_catalog".to_string()),
                 None => self.user_types()?.get(&oid).map(|t| t.schema.clone()),
@@ -333,7 +367,7 @@ impl Ctx<'_> {
 
     /// relation_exists reports whether a relation has the OID.
     pub fn relation_exists(&mut self, oid: u32) -> Result<bool> {
-        Ok(self.relations()?.iter().any(|r| r.oid == oid))
+        Ok(builtin_relations().iter().chain(self.relations()?.iter()).any(|r| r.oid == oid))
     }
 
     /// is_publishable reports whether the relation with the OID is a user table, which logical replication can
@@ -377,31 +411,14 @@ impl Ctx<'_> {
         }
     }
 
-    /// relations returns every relation that regclass can name: the system catalogs, their indexes, and the user
-    /// relations, reading them once for each root value that a statement sees.
+    /// relations returns the user relations that regclass can name, reading them once for each root value that a
+    /// statement sees.
     fn relations(&mut self) -> Result<std::sync::Arc<Vec<Relation>>> {
         let snapshot = self.snapshot()?;
         if let Some(relations) = self.catalog.as_ref().and_then(|c| c.relations.clone()) {
             return Ok(relations);
         }
         let mut out = Vec::new();
-        if let Some(class) = lookup("pg_catalog", "pg_class") {
-            let (Some(oid), Some(name), Some(namespace)) =
-                (class.column("oid"), class.column("relname"), class.column("relnamespace"))
-            else {
-                return Ok(std::sync::Arc::new(out));
-            };
-            for row in builtin::rows(class) {
-                let schema = match &row[namespace] {
-                    Value::Oid(11) => "pg_catalog",
-                    Value::Oid(99) => "pg_toast",
-                    _ => "information_schema",
-                };
-                if let Value::Oid(o) = row[oid] {
-                    out.push(Relation { schema: schema.into(), name: text_of(&row[name]), oid: o });
-                }
-            }
-        }
         for (table, indexes) in snapshot.listed() {
             out.push(Relation {
                 schema: table.schema.clone(),

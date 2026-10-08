@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::error::Result;
+use crate::pgcatalog::indexes::CatalogIndexScan;
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -247,16 +248,45 @@ pub fn binary_coercible(from: u32, to: u32) -> bool {
         .contains(&(from, to))
 }
 
-/// Rows collects the rows of a system catalog relation, with each column NULL unless set.
+/// Rows collects the rows of a system catalog relation, with each column NULL unless set, keeping only those that an
+/// index scan reads when there is one.
 pub struct Rows<'t> {
     table: &'t CatalogTable,
     rows: Vec<Vec<Value>>,
+    scan: Option<&'t CatalogIndexScan>,
 }
 
 impl<'t> Rows<'t> {
     /// new starts the rows of a relation.
-    fn new(table: &'t CatalogTable) -> Rows<'t> {
-        Rows { table, rows: Vec::new() }
+    fn new(table: &'t CatalogTable, scan: Option<&'t CatalogIndexScan>) -> Rows<'t> {
+        Rows { table, rows: Vec::new(), scan }
+    }
+
+    /// row returns a row with the given columns set, ignoring columns the relation lacks.
+    fn row(&self, fields: Vec<(&str, Value)>) -> Vec<Value> {
+        let columns = &self.table.columns;
+        let mut row = vec![Value::Null; columns.len()];
+        let mut at = 0;
+        for (name, value) in fields {
+            let Some(i) = (at..columns.len()).chain(0..at).find(|&i| columns[i].name == name) else { continue };
+            at = i + 1;
+            row[i] = match value {
+                Value::Text(text) if crate::array::is_vector_type(columns[i].type_oid) => {
+                    crate::cast::input(&text, columns[i].type_oid).unwrap_or(Value::Text(text))
+                }
+                value => value,
+            };
+        }
+        row
+    }
+
+    /// wants returns whether the scan could read a row with these columns, which is when they leave out a column of
+    /// the scan's key or the key lies in its ranges.
+    fn wants(&self, fields: Vec<(&str, Value)>) -> bool {
+        let Some(scan) = self.scan else { return true };
+        let names: Vec<&str> = fields.iter().map(|(name, _)| *name).collect();
+        let row = self.row(fields);
+        !scan.index.columns.iter().all(|c| names.contains(c)) || scan.contains(&row)
     }
 
     /// zeros returns a zero of each named column's type, for the counters of the statistics views.
@@ -272,19 +302,10 @@ impl<'t> Rows<'t> {
 
     /// push adds a row with the given columns set, ignoring columns the relation lacks.
     fn push(&mut self, fields: Vec<(&str, Value)>) {
-        let mut row = vec![Value::Null; self.table.columns.len()];
-        for (name, value) in fields {
-            if let Some(i) = self.table.column(name) {
-                let type_oid = self.table.columns[i].type_oid;
-                row[i] = match value {
-                    Value::Text(text) if crate::array::is_vector_type(type_oid) => {
-                        crate::cast::input(&text, type_oid).unwrap_or(Value::Text(text))
-                    }
-                    value => value,
-                };
-            }
+        let row = self.row(fields);
+        if self.scan.is_none_or(|scan| scan.contains(&row)) {
+            self.rows.push(row);
         }
-        self.rows.push(row);
     }
 }
 
@@ -316,8 +337,18 @@ fn boolean(value: bool) -> Value {
 impl Ctx<'_> {
     /// catalog_rows returns the rows of a system catalog relation.
     pub fn catalog_rows(&mut self, table: &'static CatalogTable) -> Result<Vec<Vec<Value>>> {
-        let mut rows = Rows::new(table);
-        rows.rows = builtin::rows(table);
+        self.catalog_rows_in(table, None)
+    }
+
+    /// catalog_rows_in returns the rows of a system catalog relation that an index scan reads, when given one, building
+    /// only those.
+    pub fn catalog_rows_in(
+        &mut self,
+        table: &'static CatalogTable,
+        scan: Option<&CatalogIndexScan>,
+    ) -> Result<Vec<Vec<Value>>> {
+        let mut rows = Rows::new(table, scan);
+        rows.rows = builtin::rows_where(table, &|row| scan.is_none_or(|scan| scan.contains(row)));
         if table.schema == "information_schema" {
             let database = Value::Text(self.session.display.clone());
             let catalogs: Vec<usize> = table

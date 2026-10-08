@@ -404,3 +404,25 @@ INSERT INTO scratch SELECT i, 'x' FROM generate_series(1, 300) i; DELETE FROM sc
 -- name: insert_select_group
 -- write
 INSERT INTO scratch SELECT customer_id, count(*)::text FROM orders GROUP BY customer_id; DELETE FROM scratch;
+
+-- name: catalog_type_by_oid
+SELECT typname, typlen FROM pg_type WHERE oid = 23;
+
+-- name: catalog_type_by_name
+SELECT oid FROM pg_type WHERE typname = 'int4' AND typnamespace = 11;
+
+-- name: catalog_class_by_oid
+SELECT relname, relkind FROM pg_class WHERE oid = 'items'::regclass;
+
+-- name: catalog_class_by_name
+SELECT c.oid, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'items' AND n.nspname = 'public';
+
+-- name: catalog_namespace_by_oid
+SELECT nspname FROM pg_namespace WHERE oid = 2200;
+
+-- name: catalog_namespace_by_name
+SELECT oid FROM pg_namespace WHERE nspname = 'public';
+
+-- name: catalog_type_join
+-- extended
+SELECT t.typname, n.nspname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.oid = 1043;

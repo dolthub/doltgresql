@@ -41291,3 +41291,261 @@ fn test_catalog_rows_for_user_objects() {
         },
     ]);
 }
+
+#[test]
+fn test_catalog_lookups_by_key() {
+    run_scripts(&[
+        ScriptTest {
+            name: "catalog lookups by oid and name build only the matching rows",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA s1;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE s1.ct (id INT PRIMARY KEY, v TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX ct_v ON s1.ct (v);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW s1.cv AS SELECT id FROM s1.ct;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE s1.cs;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE s1.cp AS (a INT, b TEXT);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ct (x INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relkind, relnatts FROM pg_class WHERE oid = 's1.ct'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relkind", CHAR), Column("relnatts", INT2)],
+                        rows: &[
+                            &[T("ct"), T("r"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relkind FROM pg_class WHERE oid = 's1.ct_v'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relkind", CHAR)],
+                        rows: &[
+                            &[T("ct_v"), T("i")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relkind, relnatts FROM pg_class WHERE oid = 's1.cv'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relkind", CHAR), Column("relnatts", INT2)],
+                        rows: &[
+                            &[T("cv"), T("v"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relkind FROM pg_class WHERE oid = 's1.cs'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relkind", CHAR)],
+                        rows: &[
+                            &[T("cs"), T("S")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relkind, relnatts FROM pg_class WHERE oid = 's1.cp'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relkind", CHAR), Column("relnatts", INT2)],
+                        rows: &[
+                            &[T("cp"), T("c"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname, relnatts FROM pg_class WHERE oid = 'ct'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relnatts", INT2)],
+                        rows: &[
+                            &[T("ct"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname FROM pg_class WHERE oid = 'pg_class'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME)],
+                        rows: &[
+                            &[T("pg_class")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'ct' AND n.nspname = 's1';",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME), Column("relkind", CHAR)],
+                        rows: &[
+                            &[T("ct"), T("r")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM pg_class WHERE relname = 'ct';",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT relname FROM pg_class WHERE relname IN ('ct_v', 'cv', 'cs') ORDER BY relname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("relname", NAME)],
+                        rows: &[
+                            &[T("cs")],
+                            &[T("ct_v")],
+                            &[T("cv")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT t.typname, t.typtype FROM pg_type t JOIN pg_class c ON t.oid = c.reltype WHERE c.oid = 's1.ct'::regclass;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME), Column("typtype", CHAR)],
+                        rows: &[
+                            &[T("ct"), T("c")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname, typtype, typcategory FROM pg_type WHERE typname = '_ct' AND typnamespace = 's1'::regnamespace;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME), Column("typtype", CHAR), Column("typcategory", CHAR)],
+                        rows: &[
+                            &[T("_ct"), T("b"), T("A")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname, typtype FROM pg_type WHERE typname = 'cp' AND typnamespace = 's1'::regnamespace;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME), Column("typtype", CHAR)],
+                        rows: &[
+                            &[T("cp"), T("c")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT t.typname FROM pg_type t WHERE t.oid = (SELECT typarray FROM pg_type WHERE typname = 'cv' AND typnamespace = 's1'::regnamespace);",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME)],
+                        rows: &[
+                            &[T("_cv")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT typname, typlen FROM pg_type WHERE oid = 23;",
+                    expected: Expected::Rows {
+                        columns: &[Column("typname", NAME), Column("typlen", INT2)],
+                        rows: &[
+                            &[T("int4"), T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT oid::regtype FROM pg_type WHERE typname = 'int4' AND typnamespace = 'pg_catalog'::regnamespace;",
+                    expected: Expected::Rows {
+                        columns: &[Column("oid", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nspname FROM pg_namespace WHERE oid = 's1'::regnamespace;",
+                    expected: Expected::Rows {
+                        columns: &[Column("nspname", NAME)],
+                        rows: &[
+                            &[T("s1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT nspname FROM pg_namespace WHERE nspname = 's1';",
+                    expected: Expected::Rows {
+                        columns: &[Column("nspname", NAME)],
+                        rows: &[
+                            &[T("s1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM pg_namespace WHERE nspname = 'missing';",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

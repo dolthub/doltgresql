@@ -135,11 +135,24 @@ impl ColumnRange {
 
     /// contains reports whether a value lies in the range.
     pub fn contains(&self, value: &Value) -> bool {
-        let (below, above) = match value {
-            Value::Null => (Cut::BelowNull, Cut::AboveNull),
-            v => (Cut::Below(v.clone()), Cut::Above(v.clone())),
+        if matches!(value, Value::Null) {
+            return self.lower.compare(&Cut::AboveNull) == Ordering::Less
+                && Cut::BelowNull.compare(&self.upper) == Ordering::Less;
+        }
+        let compare = crate::expr::compare_values;
+        let above_lower = match &self.lower {
+            Cut::BelowNull | Cut::AboveNull => true,
+            Cut::Below(lower) => compare(lower, value) != Ordering::Greater,
+            Cut::Above(lower) => compare(lower, value) == Ordering::Less,
+            Cut::AboveAll => false,
         };
-        self.lower.compare(&above) == Ordering::Less && below.compare(&self.upper) == Ordering::Less
+        above_lower
+            && match &self.upper {
+                Cut::BelowNull | Cut::AboveNull => false,
+                Cut::Below(upper) => compare(value, upper) == Ordering::Less,
+                Cut::Above(upper) => compare(value, upper) != Ordering::Greater,
+                Cut::AboveAll => true,
+            }
     }
 
     /// try_intersect returns the values both ranges hold, or None when they share none.

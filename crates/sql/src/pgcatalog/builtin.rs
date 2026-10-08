@@ -104,6 +104,11 @@ type Parsed = Mutex<HashMap<(&'static str, &'static str), Vec<Vec<Value>>>>;
 
 /// rows returns the built-in rows of a system catalog relation.
 pub fn rows(table: &CatalogTable) -> Vec<Vec<Value>> {
+    rows_where(table, &|_| true)
+}
+
+/// rows_where returns the built-in rows of a system catalog relation that `keep` accepts.
+pub fn rows_where(table: &CatalogTable, keep: &dyn Fn(&[Value]) -> bool) -> Vec<Vec<Value>> {
     static PARSED: OnceLock<Parsed> = OnceLock::new();
     let parsed = PARSED.get_or_init(|| Mutex::new(HashMap::new()));
     let mut parsed = parsed.lock().unwrap_or_else(|e| e.into_inner());
@@ -116,7 +121,10 @@ pub fn rows(table: &CatalogTable) -> Vec<Vec<Value>> {
                 .map(|line| line.split('\t').zip(&table.columns).map(|(f, c)| value(f, c.type_oid)).collect())
                 .collect()
         })
-        .clone()
+        .iter()
+        .filter(|row| keep(row))
+        .cloned()
+        .collect()
 }
 
 /// Implemented is an operator that a function implements: its name and its left and right operand types, with a left

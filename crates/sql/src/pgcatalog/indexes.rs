@@ -83,6 +83,8 @@ pub struct CatalogIndexScan {
     pub table: &'static CatalogTable,
     pub index: &'static CatalogIndex,
     pub ranges: Vec<Range>,
+    /// The positions of the index's columns among the relation's columns.
+    pub key: Vec<usize>,
 }
 
 /// key_columns returns the positions of an index's columns among its relation's columns.
@@ -161,18 +163,17 @@ pub fn choose(ctx: &mut Ctx<'_>, table: &'static CatalogTable, predicate: &Expr)
     }
     let (scan, covered) = crate::indexscan::choose_with_cover(ctx, &table_def(table, &indexes), predicate)?;
     let index = indexes[scan.index?];
-    Some((CatalogIndexScan { table, index, ranges: scan.ranges }, covered))
+    Some((CatalogIndexScan { table, index, ranges: scan.ranges, key: key_columns(table, index) }, covered))
 }
 
 impl CatalogIndexScan {
     /// run returns the rows whose keys lie in the scan's ranges, in the relation's order.
     pub fn run(&self, ctx: &mut Ctx<'_>) -> crate::error::Result<Vec<Vec<Value>>> {
-        let columns = key_columns(self.table, self.index);
-        let mut rows = ctx.catalog_rows(self.table)?;
-        rows.retain(|row| {
-            let key: Vec<Value> = columns.iter().map(|&c| row[c].clone()).collect();
-            self.ranges.iter().any(|r| crate::ranges::range_contains(r, &key))
-        });
-        Ok(rows)
+        ctx.catalog_rows_in(self.table, Some(self))
+    }
+
+    /// contains returns whether a row's key lies in the scan's ranges.
+    pub fn contains(&self, row: &[Value]) -> bool {
+        self.ranges.iter().any(|range| range.iter().zip(&self.key).all(|(r, &c)| r.contains(&row[c])))
     }
 }
