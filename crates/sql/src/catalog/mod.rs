@@ -280,7 +280,7 @@ mod tests {
         let int8 = builtin_type(20).unwrap();
         assert_eq!((int8.name, int8.array, int8.definition.typ_length), ("int8", 1016, 8));
         assert_eq!(builtin_type(1016).unwrap().elem, 20);
-        assert_eq!(builtin_types_count(), 113);
+        assert_eq!(builtin_types_count(), 117);
     }
 
     #[test]
