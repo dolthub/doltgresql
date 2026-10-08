@@ -417,6 +417,12 @@ impl JournalStore {
         self.memtable.order.clone()
     }
 
+    /// forget_refs stops checking that the store holds the addresses that chunks put since the last commit refer to
+    /// and that another generation now holds, as garbage collection's moves into the old generation leave them.
+    pub fn forget_refs(&mut self, elsewhere: &dyn Fn(&Hash) -> bool) {
+        self.memtable.refs.retain(|hash| !elsewhere(hash));
+    }
+
     /// snapshot returns a read-only view of the chunks that the store's files hold now, leaving out the chunks put
     /// since the last commit, which garbage collection reads while the store goes on writing.
     pub fn snapshot(&mut self) -> Result<Snapshot> {

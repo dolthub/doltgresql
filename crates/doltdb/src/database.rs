@@ -555,6 +555,12 @@ impl Database {
             store::replace_files(&old_dir, self.root(), "__DOLT__", specs)?;
             self.set_old_gen(Some(BlockStore::open(&old_dir)?));
         }
+        if let Some(old_gen) = self.old_gen() {
+            self.with_journal(|journal| {
+                journal.forget_refs(&|hash| old_gen.has(hash));
+                Ok(())
+            })?;
+        }
         self.with_journal(|journal| Ok(journal.rewrite(new_specs)?))?;
         self.shared.nodes.clear();
         self.shared.chunks.clear();

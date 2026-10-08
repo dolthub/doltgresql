@@ -92,3 +92,29 @@ fn writes_during_a_collection_survive_it() {
         }
     }
 }
+
+#[test]
+fn chunks_put_before_a_collection_moves_their_children_still_commit() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("gc_phases/moved_children/postgres");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let times = CreateTimes {
+        init_author_millis: 1_791_276_329_745,
+        init_committer_millis: 1_791_276_329_756,
+        environment_seconds: 1_791_276_329,
+        session_seconds: 1_791_276_329,
+        commit_millis: 1_791_276_329_815,
+    };
+    create_database(&dir, "main", "postgres", "localhost", &times).unwrap();
+    let mut db = Database::open(&dir.join(".dolt/noms")).unwrap();
+    let head = db.head("refs/heads/main").unwrap().expect("a main branch");
+    let mut run = db.gc_begin(GcConfig { mode: GcMode::Default, archive: false, incremental_file_size: 0 }).unwrap();
+    run.copy().unwrap();
+    let pending = map(&mut db, "pending", head);
+    db.gc_finish(run, Vec::new(), &[]).unwrap();
+    let root = db.address_map(&[("pending".to_string(), pending)]).unwrap();
+    let root = db.write_value(root).unwrap();
+    persist(&mut db);
+    assert!(db.read_value(&root).unwrap().is_some(), "lost the chunk put before the collection finished");
+    assert!(db.read_value(&head).unwrap().is_some(), "lost the commit that the old generation now holds");
+}

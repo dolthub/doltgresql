@@ -114,6 +114,7 @@ fn run_gc_incremental_test(archive_level: i64, file_size: i64, full: bool) {
 }
 
 /// require_file_added_to_manifest checks whether the generation's first table file is listed in its manifest.
+#[track_caller]
 fn require_file_added_to_manifest(path: &Path, expected: bool) {
     let manifest = match std::fs::read(path.join("manifest")) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
