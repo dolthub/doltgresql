@@ -15,6 +15,7 @@
 //! A database's datasets, the named heads in its store root (branches, tags, working sets), written as Dolt's datas
 //! package writes them, value by value in the same order.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -163,22 +164,77 @@ pub struct GcConfig {
     pub incremental_file_size: u64,
 }
 
+/// CACHE_SIZE is how many bytes of chunks, and of decoded nodes, a database keeps in memory, as Dolt's node store
+/// cache holds.
+const CACHE_SIZE: usize = 256 << 20;
+
+/// Cache keeps the values most recently used up to a total size, in two generations: when the young generation
+/// fills, it becomes the old one and the old one is dropped, and a value used from the old generation moves back.
+struct Cache<V> {
+    young: HashMap<Hash, (V, usize)>,
+    old: HashMap<Hash, (V, usize)>,
+    young_size: usize,
+}
+
+impl<V: Clone> Cache<V> {
+    /// new returns an empty cache.
+    fn new() -> Cache<V> {
+        Cache { young: HashMap::new(), old: HashMap::new(), young_size: 0 }
+    }
+
+    /// get returns the value cached at the address.
+    fn get(&mut self, hash: &Hash) -> Option<V> {
+        if let Some((value, _)) = self.young.get(hash) {
+            return Some(value.clone());
+        }
+        let (value, size) = self.old.remove(hash)?;
+        self.insert(*hash, value.clone(), size);
+        Some(value)
+    }
+
+    /// insert caches a value of a size at the address.
+    fn insert(&mut self, hash: Hash, value: V, size: usize) {
+        self.young_size += size;
+        self.young.insert(hash, (value, size));
+        if self.young_size > CACHE_SIZE / 2 {
+            self.old = std::mem::take(&mut self.young);
+            self.young_size = 0;
+        }
+    }
+
+    /// clear drops every cached value.
+    fn clear(&mut self) {
+        self.young.clear();
+        self.old.clear();
+        self.young_size = 0;
+    }
+}
+
 /// Database is a chunk store whose store root names its datasets.
 pub struct Database {
     store: Box<dyn ChunkStore>,
     old_gen: Option<BlockStore>,
-    nodes: HashMap<Hash, Arc<Node>>,
+    nodes: Cache<Arc<Node>>,
+    /// The chunks most recently read, decompressed.
+    chunks: RefCell<Cache<Arc<Vec<u8>>>>,
 }
 
 impl ChunkReader for Database {
     fn get(&self, hash: &Hash) -> store::Result<Option<Chunk>> {
-        if let Some(chunk) = self.store.get(hash)? {
-            return Ok(Some(chunk));
+        if let Some(data) = self.chunks.borrow_mut().get(hash) {
+            return Ok(Some(Chunk { hash: *hash, data: data.to_vec() }));
         }
-        match &self.old_gen {
-            Some(old_gen) => old_gen.get(hash),
-            None => Ok(None),
+        let chunk = match self.store.get(hash)? {
+            Some(chunk) => Some(chunk),
+            None => match &self.old_gen {
+                Some(old_gen) => old_gen.get(hash)?,
+                None => None,
+            },
+        };
+        if let Some(chunk) = &chunk {
+            self.chunks.borrow_mut().insert(*hash, Arc::new(chunk.data.clone()), chunk.data.len());
         }
+        Ok(chunk)
     }
 
     fn get_many(&self, hashes: &[Hash]) -> store::Result<Vec<Option<Chunk>>> {
@@ -197,17 +253,17 @@ impl ChunkReader for Database {
 impl NodeStore for Database {
     fn read(&mut self, hash: &Hash) -> store::Result<Arc<Node>> {
         if let Some(node) = self.nodes.get(hash) {
-            return Ok(node.clone());
+            return Ok(node);
         }
         let node = Arc::new(Node::load(self, hash)?);
-        self.nodes.insert(*hash, node.clone());
+        self.nodes.insert(*hash, node.clone(), node.bytes().len());
         Ok(node)
     }
 
     fn write(&mut self, hash: Hash, bytes: Vec<u8>) -> store::Result<Arc<Node>> {
         let node = Arc::new(Node::decode(bytes.clone())?);
         self.put(Chunk { hash, data: bytes })?;
-        self.nodes.insert(hash, node.clone());
+        self.nodes.insert(hash, node.clone(), node.bytes().len());
         Ok(node)
     }
 }
@@ -219,7 +275,7 @@ impl Database {
         let old_gen_dir = noms.join("oldgen");
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
-        Ok(Database { store, old_gen, nodes: HashMap::new() })
+        Ok(Database { store, old_gen, nodes: Cache::new(), chunks: RefCell::new(Cache::new()) })
     }
 
     /// open_remote opens a file remote or backup in a directory for writing, as Dolt's FileFactory does: each commit
@@ -230,12 +286,12 @@ impl Database {
         std::fs::create_dir_all(&old_gen_dir).map_err(store::Error::from)?;
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
-        Ok(Database { store, old_gen, nodes: HashMap::new() })
+        Ok(Database { store, old_gen, nodes: Cache::new(), chunks: RefCell::new(Cache::new()) })
     }
 
     /// with_store opens a database over another kind of chunk store, such as a remote, with no old generation.
     pub fn with_store(store: Box<dyn ChunkStore>) -> Database {
-        Database { store, old_gen: None, nodes: HashMap::new() }
+        Database { store, old_gen: None, nodes: Cache::new(), chunks: RefCell::new(Cache::new()) }
     }
 
     /// journal returns the database's local journaling store, failing for a database over another kind of store.
@@ -409,6 +465,7 @@ impl Database {
             self.journal()?.rewrite(specs)?;
         }
         self.nodes.clear();
+        self.chunks.borrow_mut().clear();
         Ok(())
     }
 

@@ -72,6 +72,20 @@ pub enum CmpOp {
     Ge,
 }
 
+impl CmpOp {
+    /// test reports whether an ordering of the left operand against the right meets the comparison.
+    pub fn test(self, ordering: Ordering) -> bool {
+        match self {
+            CmpOp::Eq => ordering.is_eq(),
+            CmpOp::Ne => ordering.is_ne(),
+            CmpOp::Lt => ordering.is_lt(),
+            CmpOp::Le => ordering.is_le(),
+            CmpOp::Gt => ordering.is_gt(),
+            CmpOp::Ge => ordering.is_ge(),
+        }
+    }
+}
+
 /// DateOp is an operator on dates, times, timestamps, and intervals.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DateOp {
@@ -3104,19 +3118,18 @@ impl Expr {
                 value => int_result(as_i64(&value).and_then(i64::checked_neg), *ty)?,
             },
             Expr::Compare(op, left, right) => {
+                if let (Expr::Column(i), Expr::Const(constant)) = (&**left, &**right) {
+                    let value = &row[*i];
+                    if value.is_null() || constant.is_null() {
+                        return Ok(Value::Null);
+                    }
+                    return Ok(Value::Bool(op.test(compare_values(value, constant))));
+                }
                 let (left, right) = (left.eval(ctx, row)?, right.eval(ctx, row)?);
                 if left.is_null() || right.is_null() {
                     return Ok(Value::Null);
                 }
-                let ordering = compare_values(&left, &right);
-                Value::Bool(match op {
-                    CmpOp::Eq => ordering == Ordering::Equal,
-                    CmpOp::Ne => ordering != Ordering::Equal,
-                    CmpOp::Lt => ordering == Ordering::Less,
-                    CmpOp::Le => ordering != Ordering::Greater,
-                    CmpOp::Gt => ordering == Ordering::Greater,
-                    CmpOp::Ge => ordering != Ordering::Less,
-                })
+                Value::Bool(op.test(compare_values(&left, &right)))
             }
             Expr::Concat(left, right) => match (left.eval(ctx, row)?, right.eval(ctx, row)?) {
                 (Value::Null, _) | (_, Value::Null) => Value::Null,

@@ -1471,8 +1471,16 @@ fn matches(
         Some(plan) => Some(plan.run(ctx)?),
         None => None,
     };
+    let index_scan = match (&from_rows, filter) {
+        (None, Some(filter)) => crate::indexscan::choose(ctx, table, filter),
+        _ => None,
+    };
+    let rows = match index_scan {
+        Some(index_scan) => index_scan.run(ctx)?,
+        None => scan(ctx.db, table)?,
+    };
     let mut out = Vec::new();
-    for row in scan(ctx.db, table)? {
+    for row in rows {
         match &from_rows {
             None => {
                 if filter.as_ref().map_or(Ok(true), |f| f.is_true(ctx, &row))? {

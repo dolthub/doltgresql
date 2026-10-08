@@ -359,7 +359,13 @@ impl TableDef {
     /// compare_index_prefix orders the first fields of two keys of an index.
     pub fn compare_index_prefix(&self, index: &IndexDef, fields: usize, left: &[u8], right: &[u8]) -> Ordering {
         let (left, right) = (Tuple(left), Tuple(right));
-        for (i, c) in self.index_key_columns(index).into_iter().enumerate().take(fields) {
+        let key_columns = index
+            .columns
+            .iter()
+            .copied()
+            .chain(self.keyless().then_some(KEYLESS_HASH))
+            .chain(self.key_columns.iter().copied().filter(|c| !index.columns.contains(c)));
+        for (i, c) in key_columns.enumerate().take(fields) {
             let (l, r) = (left.field(i).ok().flatten(), right.field(i).ok().flatten());
             let (encoding, ty) = self
                 .index_column(c)
@@ -418,10 +424,23 @@ impl TableDef {
     /// compare_keys orders two keys of the primary index.
     pub fn compare_keys(&self, left: &[u8], right: &[u8]) -> Ordering {
         let (left, right) = (Tuple(left), Tuple(right));
-        for (i, field_encoding) in self.key_encodings().into_iter().enumerate() {
-            let ty = self.key_columns.get(i).map_or(ColumnType { oid: 0, modifier: -1 }, |&c| self.columns[c].ty);
-            let ordering =
-                compare_key_field(field_encoding, ty, left.field(i).ok().flatten(), right.field(i).ok().flatten());
+        if self.keyless() {
+            let ty = ColumnType { oid: 0, modifier: -1 };
+            return compare_key_field(
+                encoding::HASH128,
+                ty,
+                left.field(0).ok().flatten(),
+                right.field(0).ok().flatten(),
+            );
+        }
+        for (i, &c) in self.key_columns.iter().enumerate() {
+            let column = &self.columns[c];
+            let ordering = compare_key_field(
+                column.encoding,
+                column.ty,
+                left.field(i).ok().flatten(),
+                right.field(i).ok().flatten(),
+            );
             if ordering != Ordering::Equal {
                 return ordering;
             }

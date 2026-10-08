@@ -1873,11 +1873,12 @@ impl<'b, 'a> Planner<'b, 'a> {
             }
         }
         plan = crate::indexscan::nearest(self.limit(plan, select)?);
-        if matches!(&plan, Plan::Project { exprs, .. } if exprs.len() == width) {
-            return Ok(Query { plan, columns, types });
+        if !matches!(&plan, Plan::Project { exprs, .. } if exprs.len() == width) {
+            let visible = (0..width).map(Expr::Column).collect();
+            plan = Plan::Project { input: Box::new(plan), exprs: visible };
         }
-        let visible = (0..width).map(Expr::Column).collect();
-        Ok(Query { plan: Plan::Project { input: Box::new(plan), exprs: visible }, columns, types })
+        crate::indexscan::prune(&mut plan);
+        Ok(Query { plan, columns, types })
     }
 }
 
