@@ -42,7 +42,7 @@ pub fn write_table(dir: &Path, chunks: &[Chunk]) -> Result<Option<TableSpec>> {
     let (name, bytes) = writer.finish();
     let path = dir.join(name.to_string());
     std::fs::write(&path, bytes)?;
-    File::open(&path)?.sync_all()?;
+    File::options().write(true).open(&path)?.sync_all()?;
     Ok(Some(TableSpec { name, chunk_count }))
 }
 

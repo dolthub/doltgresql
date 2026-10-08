@@ -297,7 +297,7 @@ impl JournalStore {
             let (name, bytes) = writer.finish();
             let path = self.dir.join(name.to_string());
             std::fs::write(&path, bytes)?;
-            File::open(&path)?.sync_all()?;
+            File::options().write(true).open(&path)?.sync_all()?;
             Arc::make_mut(&mut self.sources).push(Arc::new(Source::open_file(&self.dir, &name)?));
             self.pending.push(TableSpec { name, chunk_count });
             return Ok(());
@@ -454,7 +454,7 @@ impl JournalStore {
 pub(crate) fn write_manifest(dir: &Path, manifest: &Manifest) -> Result<()> {
     let temp = dir.join(format!("nbs_manifest_{}", Hash::of(manifest.format().as_bytes())));
     std::fs::write(&temp, manifest.format())?;
-    File::open(&temp)?.sync_all()?;
+    File::options().write(true).open(&temp)?.sync_all()?;
     std::fs::rename(&temp, dir.join(MANIFEST_FILE))?;
     #[cfg(unix)]
     File::open(dir)?.sync_all()?;

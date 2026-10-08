@@ -209,16 +209,13 @@ pub fn serve(config: &Config) -> Result<(), String> {
         });
     }
     let engine = server.engine.clone();
-    let mut signals = signal_hook::iterator::Signals::new([signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM])
-        .map_err(|err| format!("cannot handle signals: {err}"))?;
-    std::thread::spawn(move || {
-        if signals.forever().next().is_some() {
-            if let Err(err) = engine.sync() {
-                log(&format!("error writing out databases on shutdown: {err}"));
-            }
-            std::process::exit(0);
+    ctrlc::set_handler(move || {
+        if let Err(err) = engine.sync() {
+            log(&format!("error writing out databases on shutdown: {err}"));
         }
-    });
+        std::process::exit(0);
+    })
+    .map_err(|err| format!("cannot handle signals: {err}"))?;
     let host = if config.host == "localhost" { "127.0.0.1" } else { config.host.as_str() };
     if let Some((port, read_only)) = config.remotesapi {
         let listener = bind(host, port)?;

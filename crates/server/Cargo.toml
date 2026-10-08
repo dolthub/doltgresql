@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 base64 = "0.22"
+ctrlc = { version = "3", features = ["termination"] }
 doltdb = { path = "../doltdb" }
 harness = { path = "../harness" }
 hmac = "0.12"
@@ -22,7 +23,6 @@ rand = "0.8"
 remotes = { path = "../remotes" }
 rustls = "0.23"
 sha2 = "0.10"
-signal-hook = "0.3"
 sql = { path = "../sql" }
 yaml-rust2 = "0.13"
 
