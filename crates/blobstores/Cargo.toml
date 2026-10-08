@@ -1,6 +1,6 @@
 [package]
 name = "blobstores"
-description = "The blobstores of Dolt's remote URL schemes: local directories, memory, and cloud object stores"
+description = "The blobstores of Dolt's remote URL schemes: local directories, memory, cloud object stores, and git repositories"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

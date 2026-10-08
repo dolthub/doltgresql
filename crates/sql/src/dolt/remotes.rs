@@ -249,15 +249,20 @@ fn file_path(url: &str) -> Option<PathBuf> {
 }
 
 /// open_remote opens the database at a remote's URL: a file remote, one that a server serves over http or https, or
-/// one whose files are blobs, such as in a cloud object store.
-fn open_remote(remote: &Remote) -> Result<Database> {
+/// one whose files are blobs, such as in a cloud object store or a git repository, which the database directory caches.
+fn open_remote(remote: &Remote, dir: &Path) -> Result<Database> {
+    let mut params = remote.params.clone();
+    if remote.url.starts_with("git+") {
+        let cache = dir.join(".dolt").join("git-remote-cache");
+        params.entry("git_cache_root".into()).or_insert_with(|| cache.display().to_string());
+    }
     let inaccessible = |err: store::Error| {
         error(format!(
             "failed to get remote db; the remote: {} '{}' could not be accessed; {err}",
             remote.name, remote.url
         ))
     };
-    if let Some(store) = blobstores::open(&remote.url, &remote.params).map_err(inaccessible)? {
+    if let Some(store) = blobstores::open(&remote.url, &params).map_err(inaccessible)? {
         return Ok(Database::with_store(store));
     }
     if remote.url.starts_with("http://") || remote.url.starts_with("https://") {
@@ -748,7 +753,7 @@ pub fn dolt_push(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let dir = database_dir(ctx);
     let mut state = RepoState::load(&dir)?;
     let (targets, remote) = push_targets(ctx, &state, &parsed)?;
-    let mut remote_db = open_remote(&remote)?;
+    let mut remote_db = open_remote(&remote, &database_dir(ctx))?;
     let (mut pushed, mut upstreams, mut rejected) = (Vec::new(), Vec::new(), Vec::new());
     let mut up_to_date = false;
     for target in &targets {
@@ -898,7 +903,7 @@ pub fn dolt_fetch(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     }
     let (specs, defaults) =
         if spec_args.is_empty() { (remote_specs(&remote)?, true) } else { (fetch_specs(&remote, spec_args)?, false) };
-    let mut remote_db = open_remote(&remote)?;
+    let mut remote_db = open_remote(&remote, &database_dir(ctx))?;
     fetch(ctx, &mut remote_db, &remote, &specs, defaults, parsed.has("prune"))
         .map_err(|e| error(format!("fetch failed: {}", e.message)))?;
     remote_db.close()?;
@@ -974,7 +979,7 @@ pub fn dolt_pull(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             upstream.merge.strip_prefix("refs/heads/").unwrap_or(&upstream.merge).to_string()
         }
     };
-    let mut remote_db = open_remote(&remote)?;
+    let mut remote_db = open_remote(&remote, &database_dir(ctx))?;
     if remote_db.head(&branch_ref(&branch))?.is_none() {
         return Err(error(format!("branch \"{branch}\" not found on remote")));
     }
@@ -1131,8 +1136,8 @@ pub fn dolt_clone(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     }
     let url = absolute_url(&data_dir, url_arg).map_err(|_| error(format!("error: '{url_arg}' is not valid.")))?;
     let remote = Remote::new(parsed.value("remote").unwrap_or("origin"), &url);
-    let mut remote_db = open_remote(&remote)?;
     let dir = data_dir.join(&name);
+    let mut remote_db = open_remote(&remote, &dir)?;
     let cloned = clone_into(&mut remote_db, &remote, &dir, parsed.value("branch"), parsed.has("single-branch"));
     remote_db.close()?;
     if cloned.is_err() && dir.exists() {
@@ -1206,7 +1211,7 @@ fn sync_to(ctx: &mut Ctx<'_>, backup: &Remote) -> Result<()> {
     if let Some(path) = file_path(&backup.url) {
         let _ = make_dirs(&path);
     }
-    let mut dest = open_remote(backup)?;
+    let mut dest = open_remote(backup, &database_dir(ctx))?;
     let root = ctx.db.root();
     if dest.root() != root {
         dest.pull(ctx.db, root)?;
@@ -1293,8 +1298,8 @@ pub fn dolt_backup(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             let url = absolute_url(&data_dir, &parsed.args[1])?;
             let mut remote = Remote::new("restore", &url);
             remote.params = aws_session_params(ctx, &url);
-            let src = open_remote(&remote)?;
             let name = parsed.args[2].clone();
+            let src = open_remote(&remote, &database_dir(ctx))?;
             let engine = ctx.session.engine.clone();
             if data_dir.join(&name).exists() {
                 if !parsed.has("force") {

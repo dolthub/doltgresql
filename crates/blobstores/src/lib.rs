@@ -19,6 +19,7 @@
 mod aws;
 mod azure;
 mod gcs;
+mod git;
 mod http;
 mod memory;
 mod oci;
@@ -47,6 +48,7 @@ pub fn open(url: &str, params: &BTreeMap<String, String>) -> Result<Option<Box<d
         "az" => (Arc::new(azure::open_azure(rest)?), true),
         "oci" => (Arc::new(oci::open_oci(rest)?), false),
         "oss" => (Arc::new(oss::open_oss(rest, params)?), false),
+        "git+file" | "git+http" | "git+https" | "git+ssh" => (Arc::new(git::open(url, params)?), false),
         _ => return Ok(None),
     };
     Ok(Some(Box::new(BlobChunkStore::open(blobs, FORMAT, concatenates)?)))

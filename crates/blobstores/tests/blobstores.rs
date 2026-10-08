@@ -25,9 +25,16 @@ fn unique() -> String {
     format!("test{}x{nanos}", std::process::id())
 }
 
-/// open opens the store at a URL.
+/// open opens the store at a URL, caching a git remote's repository in the temporary directory.
 fn open(url: &str) -> Box<dyn ChunkStore> {
-    blobstores::open(url, &BTreeMap::new()).unwrap().expect("a blobstore scheme")
+    let mut params = BTreeMap::new();
+    if url.starts_with("git+") {
+        params.insert(
+            "git_cache_root".to_string(),
+            std::env::temp_dir().join("doltgres-git-cache").display().to_string(),
+        );
+    }
+    blobstores::open(url, &params).unwrap().expect("a blobstore scheme")
 }
 
 /// check writes chunks to the store at a URL, reads them back from a fresh store, and checks that a store whose view
@@ -116,4 +123,19 @@ fn test_oci() {
 #[test]
 fn test_oss() {
     check_env("DOLTGRES_TEST_OSS_URL");
+}
+
+#[test]
+fn test_git() {
+    let dir = std::env::temp_dir().join(unique());
+    let git = |args: &[&str]| assert!(std::process::Command::new("git").args(args).output().unwrap().status.success());
+    let remote = dir.join("remote.git");
+    let work = dir.join("work");
+    git(&["init", "--bare", "-b", "main", &remote.display().to_string()]);
+    git(&["init", "-b", "main", &work.display().to_string()]);
+    let work = work.display().to_string();
+    git(&["-C", &work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "init"]);
+    git(&["-C", &work, "push", &remote.display().to_string(), "main"]);
+    check(&format!("git+file://{}", remote.display()));
+    let _ = std::fs::remove_dir_all(dir);
 }
