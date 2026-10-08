@@ -206,3 +206,37 @@ fn deferred_syncs_are_taken_by_the_caller() {
     }
     store.close().unwrap();
 }
+
+#[test]
+fn journals_reopen_past_padding_and_close_without_it() {
+    let dir = scratch("padded");
+    let mut store = JournalStore::open(&dir, "__DOLT__").unwrap();
+    let first = chunks(1, 5);
+    for chunk in &first {
+        store.put(chunk.clone(), []).unwrap();
+    }
+    assert!(store.commit(first[0].hash, Hash::default()).unwrap());
+    store.close().unwrap();
+    let journal = dir.join(JOURNAL_FILE);
+    let mut bytes = std::fs::read(&journal).unwrap();
+    bytes.extend(std::iter::repeat_n(0, 1 << 16));
+    std::fs::write(&journal, &bytes).unwrap();
+
+    let mut store = JournalStore::open(&dir, "__DOLT__").unwrap();
+    assert_eq!(store.root(), first[0].hash);
+    let second = chunks(2, 5);
+    for chunk in &second {
+        store.put(chunk.clone(), []).unwrap();
+    }
+    assert!(store.commit(second[0].hash, first[0].hash).unwrap());
+    store.close().unwrap();
+    let bytes = std::fs::read(&journal).unwrap();
+    let records = store::read_records(&bytes).unwrap();
+    assert_eq!(records.iter().map(|(_, raw)| raw.len()).sum::<usize>(), bytes.len(), "padding was left behind");
+    let store = JournalStore::open(&dir, "__DOLT__").unwrap();
+    assert_eq!(store.root(), second[0].hash);
+    for chunk in first.iter().chain(&second) {
+        assert_eq!(store.get(&chunk.hash).unwrap().as_ref(), Some(chunk));
+    }
+    store.close().unwrap();
+}

@@ -46,6 +46,10 @@ const MAX_NOVEL: usize = 16384;
 /// MAYBE_SYNC_THRESHOLD is the number of unsynced bytes above which writing a chunk commits the current root again.
 const MAYBE_SYNC_THRESHOLD: u64 = 64 * 1024 * 1024;
 
+/// PAD_LEN is how far past its last record the journal is filled with zeros, so that a commit's sync never changes the
+/// file's size and fdatasync can skip its metadata, as Dolt pads it on Linux.
+const PAD_LEN: u64 = 4 << 20;
+
 /// INDEX_BUFFER_LEN is the size of the index file's write buffer.
 const INDEX_BUFFER_LEN: usize = 16384;
 
@@ -83,7 +87,7 @@ impl PendingSync {
         let mut synced = self.durable.synced.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if *synced < self.end {
             let written = self.durable.written.load(Ordering::Acquire);
-            self.durable.file.sync_all()?;
+            self.durable.file.sync_data()?;
             *synced = written;
         }
         Ok(())
@@ -127,6 +131,8 @@ pub struct JournalWriter {
     defer_syncs: bool,
     /// The end of the last root record that a deferred commit wrote and no caller has taken yet.
     pending: Option<u64>,
+    /// How far the journal file is filled with zeros past its records.
+    padded: u64,
 }
 
 impl JournalWriter {
@@ -157,6 +163,7 @@ impl JournalWriter {
             durable: Arc::new(durable),
             defer_syncs: false,
             pending: None,
+            padded: 0,
         };
         let root = writer.bootstrap(&dir.join(JOURNAL_FILE))?;
         Ok((writer, root))
@@ -336,6 +343,10 @@ impl JournalWriter {
     pub fn flush(&mut self) -> Result<()> {
         write_at(&self.journal, self.off, &self.buf)?;
         self.off += self.buf.len() as u64;
+        if !self.buf.is_empty() && self.off > self.padded {
+            write_at(&self.journal, self.off, &vec![0; PAD_LEN as usize])?;
+            self.padded = self.off + PAD_LEN;
+        }
         self.buf.clear();
         self.durable.written.store(self.off, Ordering::Release);
         Ok(())
@@ -374,7 +385,7 @@ impl JournalWriter {
         if self.defer_syncs {
             self.pending = Some(self.off);
         } else {
-            self.journal.sync_all()?;
+            self.journal.sync_data()?;
         }
         self.unsynced = 0;
         if self.novel.len() > MAX_NOVEL {
@@ -444,7 +455,12 @@ impl JournalWriter {
 
     /// close writes out the buffered records and index, and syncs the journal.
     pub fn close(mut self) -> Result<()> {
-        self.sync()
+        self.sync()?;
+        if self.padded > self.off {
+            self.journal.set_len(self.off)?;
+            self.journal.sync_all()?;
+        }
+        Ok(())
     }
 
     /// sync writes out the buffered records and index, and syncs the journal, which stays open.
