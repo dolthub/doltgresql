@@ -28,7 +28,7 @@ pub mod val;
 
 pub use blob::{BLOB_CHUNK_SIZE, NodeSink, read_blob, write_blob};
 pub use chunker::{Chunker, NodeSerializer, apply_mutations};
-pub use cursor::{Compare, NodeStore, get, scan_from};
+pub use cursor::{Compare, Items, NodeStore, get, scan_from};
 pub use node::{ItemVisitor, Node, walk_leaves};
 pub use proximity::{Distance, Entry, closest, write_proximity_map};
 pub use serialize::{

@@ -478,10 +478,25 @@ impl TableDef {
 
     /// decode_row reads a row from its key and value tuples, with its cardinality, which is 1 for a keyed table.
     pub fn decode_row(&self, db: &Database, key: &[u8], value: &[u8]) -> Result<(Vec<Value>, u64)> {
+        self.decode_columns(db, key, value, None)
+    }
+
+    /// decode_columns decodes the columns of a primary index entry that the mask selects, or all of them without a
+    /// mask, leaving the others NULL, with the row's cardinality.
+    pub fn decode_columns(
+        &self,
+        db: &Database,
+        key: &[u8],
+        value: &[u8],
+        needed: Option<&[bool]>,
+    ) -> Result<(Vec<Value>, u64)> {
         let mut row = vec![Value::Null; self.columns.len()];
         let (key, value) = (Tuple(key), Tuple(value));
+        let wanted = |i: usize| needed.is_none_or(|n| n[i]);
         for (field, &i) in self.key_columns.iter().enumerate() {
-            row[i] = decode_field(db, key.field(field)?, self.columns[i].encoding, self.columns[i].ty)?;
+            if wanted(i) {
+                row[i] = decode_field(db, key.field(field)?, self.columns[i].encoding, self.columns[i].ty)?;
+            }
         }
         let mut cardinality = 1;
         let offset = if self.keyless() {
@@ -492,7 +507,9 @@ impl TableDef {
             0
         };
         for (field, &i) in self.value_columns.iter().enumerate() {
-            row[i] = decode_field(db, value.field(field + offset)?, self.columns[i].encoding, self.columns[i].ty)?;
+            if wanted(i) {
+                row[i] = decode_field(db, value.field(field + offset)?, self.columns[i].encoding, self.columns[i].ty)?;
+            }
         }
         Ok((row, cardinality))
     }

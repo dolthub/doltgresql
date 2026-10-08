@@ -15,6 +15,7 @@ base64 = "0.22"
 doltdb = { path = "../doltdb" }
 harness = { path = "../harness" }
 hmac = "0.12"
+mimalloc = "0.1"
 pbkdf2 = "0.12"
 pgproto.workspace = true
 rand = "0.8"

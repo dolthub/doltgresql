@@ -18,3 +18,15 @@ pgproto = { path = "crates/pgproto" }
 # pg_query with `parse_with_cursor`, which reports the position of parse errors.
 [patch.crates-io]
 pg_query = { path = "third_party/pg_query" }
+
+# Whole-program optimization, which inlines across crates on the hot paths of query execution.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
+# The release profile without whole-program optimization, for building quickly while measuring changes.
+[profile.quick]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true

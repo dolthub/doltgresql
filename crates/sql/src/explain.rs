@@ -75,7 +75,7 @@ fn expr_text(e: &Expr, columns: &[String]) -> String {
 /// columns returns the names of a plan's columns, which conditions over its rows print.
 fn columns(plan: &Plan) -> Vec<String> {
     match plan {
-        Plan::Scan(table) => table.columns.iter().map(|c| c.name.clone()).collect(),
+        Plan::Scan(table, _) => table.columns.iter().map(|c| c.name.clone()).collect(),
         Plan::IndexScan(scan) => scan.table.columns.iter().map(|c| c.name.clone()).collect(),
         Plan::Filter { input, .. }
         | Plan::Sort { input, .. }
@@ -114,7 +114,7 @@ impl Printer {
                 return self.node(input, depth, filters);
             }
             Plan::Project { input, .. } | Plan::Once(input) => return self.node(input, depth, filters),
-            Plan::Scan(table) => {
+            Plan::Scan(table, _) => {
                 (format!("Seq Scan on {}", crate::engine::quote_identifier(&table.name)), vec![], vec![])
             }
             Plan::IndexScan(scan) => {

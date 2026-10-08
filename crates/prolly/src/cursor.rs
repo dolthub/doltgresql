@@ -104,6 +104,75 @@ pub fn scan_from(
     Ok(())
 }
 
+/// Items walks the leaf items of a tree in either direction, reading nodes as it reaches them.
+pub struct Items {
+    /// The cursor, or None for an empty tree.
+    cursor: Option<Cursor>,
+}
+
+impl Items {
+    /// first returns a walk at the first item of the tree at the root.
+    pub fn first(store: &mut dyn NodeStore, root: Arc<Node>) -> Result<Items> {
+        Items::at_edge(store, root, false)
+    }
+
+    /// last returns a walk at the last item of the tree at the root.
+    pub fn last(store: &mut dyn NodeStore, root: Arc<Node>) -> Result<Items> {
+        Items::at_edge(store, root, true)
+    }
+
+    /// at_key returns a walk at the first item whose key is not less than the key.
+    pub fn at_key(store: &mut dyn NodeStore, root: Arc<Node>, key: &[u8], compare: &Compare<'_>) -> Result<Items> {
+        if root.count() == 0 {
+            return Ok(Items { cursor: None });
+        }
+        Ok(Items { cursor: Some(Cursor::at_key(store, root, key, compare)?) })
+    }
+
+    /// at_edge returns a walk at the first or last item of the tree at the root.
+    fn at_edge(store: &mut dyn NodeStore, root: Arc<Node>, last: bool) -> Result<Items> {
+        if root.count() == 0 {
+            return Ok(Items { cursor: None });
+        }
+        let mut levels = Vec::new();
+        let mut node = root;
+        loop {
+            let idx = if last { node.count() as isize - 1 } else { 0 };
+            let leaf = node.is_leaf();
+            levels.push(Position { node: Some(node.clone()), idx });
+            if leaf {
+                break;
+            }
+            node = store.read(&node.child(idx as usize)?)?;
+        }
+        levels.reverse();
+        Ok(Items { cursor: Some(Cursor { levels }) })
+    }
+
+    /// current returns the key and value of the item the walk is at, or None once it has passed either end.
+    pub fn current(&self) -> Result<Option<(&[u8], &[u8])>> {
+        let Some(cursor) = self.cursor.as_ref().filter(|c| c.valid(0)) else { return Ok(None) };
+        let (node, idx) = (cursor.node(0), cursor.levels[0].idx as usize);
+        Ok(Some((node.key(idx)?, node.value(idx)?)))
+    }
+
+    /// advance moves the walk to the next item.
+    pub fn advance(&mut self, store: &mut dyn NodeStore) -> Result<()> {
+        match self.cursor.as_mut() {
+            Some(cursor) if cursor.valid(0) => cursor.advance(0, store),
+            _ => Ok(()),
+        }
+    }
+
+    /// retreat moves the walk to the previous item.
+    pub fn retreat(&mut self, store: &mut dyn NodeStore) -> Result<()> {
+        match self.cursor.as_mut() {
+            Some(cursor) if cursor.valid(0) => cursor.retreat(0, store),
+            _ => Ok(()),
+        }
+    }
+}
+
 impl Cursor {
     /// at_key returns a cursor at the first key not less than the key, as Dolt's newCursorAtKey does.
     pub(crate) fn at_key(
@@ -204,6 +273,29 @@ impl Cursor {
         let (parent, idx) = self.item(level + 1);
         self.levels[level].node = Some(store.read(&parent.child(idx)?)?);
         self.skip_to_node_start(level);
+        Ok(())
+    }
+
+    /// retreat moves the level to its previous item, moving into the previous node through the levels above, and
+    /// leaves the level before its node's first item at the start of the tree.
+    pub(crate) fn retreat(&mut self, level: usize, store: &mut dyn NodeStore) -> Result<()> {
+        if self.levels[level].idx > 0 {
+            self.levels[level].idx -= 1;
+            return Ok(());
+        }
+        if !self.has_parent(level) {
+            self.levels[level].idx = -1;
+            return Ok(());
+        }
+        self.retreat(level + 1, store)?;
+        if self.out_of_bounds(level + 1) {
+            self.levels[level].idx = -1;
+            return Ok(());
+        }
+        let (parent, idx) = self.item(level + 1);
+        let node = store.read(&parent.child(idx)?)?;
+        self.levels[level].idx = node.count() as isize - 1;
+        self.levels[level].node = Some(node);
         Ok(())
     }
 

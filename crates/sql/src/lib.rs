@@ -37,6 +37,7 @@ pub mod dolt;
 pub mod encodings;
 mod engine;
 pub mod error;
+pub mod exec;
 pub mod explain;
 pub mod expr;
 pub mod extensions;

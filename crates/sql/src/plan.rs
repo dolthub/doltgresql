@@ -29,8 +29,8 @@ use crate::error::{PgError, Result, code};
 use crate::expr::{
     Binder, CmpOp, Expr, Scope, ScopeColumn, coerce, common_type, compare_values, figure_name, node_name, position, typ,
 };
-use crate::functions::aggregate::{Accumulator, AggCall};
-use crate::query::{Ctx, column, scan};
+use crate::functions::aggregate::AggCall;
+use crate::query::{Ctx, column};
 use crate::types::Value;
 use crate::{Column, oid};
 
@@ -64,7 +64,8 @@ pub enum SetOp {
 pub enum Plan {
     /// One row without columns, the input of a SELECT without FROM.
     OneRow,
-    Scan(Box<TableDef>),
+    /// The rows of a table, with only the given columns read when they are known and the others left NULL.
+    Scan(Box<TableDef>, Option<Vec<usize>>),
     /// The rows of a table whose keys in an index lie in ranges.
     IndexScan(Box<crate::indexscan::IndexScan>),
     /// The rows of one of Dolt's system tables.
@@ -812,18 +813,16 @@ impl<'b, 'a> Planner<'b, 'a> {
         Ok(result.unwrap_or((Plan::OneRow, Scope::default())))
     }
 
-    /// use_indexes replaces each table scan under a filter with an index scan when an index answers the filter, as
-    /// go-mysql-server's costedIndexScans does.
+    /// use_indexes replaces each table scan under a filter with an index scan when an index answers the filter, and
+    /// drops the filter when the scan's ranges hold exactly its rows, as go-mysql-server's costedIndexScans does.
     fn use_indexes(&mut self, plan: Plan) -> Plan {
         match plan {
             Plan::Filter { input, predicate } => match *input {
-                Plan::Scan(table) => {
-                    let input = match crate::indexscan::choose(self.ctx, &table, &predicate) {
-                        Some(scan) => Plan::IndexScan(Box::new(scan)),
-                        None => Plan::Scan(table),
-                    };
-                    Plan::Filter { input: Box::new(input), predicate }
-                }
+                Plan::Scan(table, needed) => match crate::indexscan::choose_with_cover(self.ctx, &table, &predicate) {
+                    Some((scan, true)) => Plan::IndexScan(Box::new(scan)),
+                    Some((scan, false)) => Plan::Filter { input: Box::new(Plan::IndexScan(Box::new(scan))), predicate },
+                    None => Plan::Filter { input: Box::new(Plan::Scan(table, needed)), predicate },
+                },
                 other => Plan::Filter { input: Box::new(self.use_indexes(other)), predicate },
             },
             Plan::Join { left, right, kind, condition, lateral } => Plan::Join {
@@ -1109,7 +1108,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                         })
                         .collect(),
                 };
-                Ok((Plan::Scan(Box::new(table)), scope))
+                Ok((Plan::Scan(Box::new(table), None), scope))
             }
             Some(NodeEnum::JoinExpr(join)) => self.plan_join(join),
             Some(NodeEnum::RangeSubselect(subselect)) => self.plan_subselect(subselect),
@@ -1975,7 +1974,7 @@ fn output_ordinal_named(names: &[String], n: usize, location: i32) -> Result<()>
 }
 
 /// compare_sorted orders two rows by sort keys already evaluated into them.
-fn compare_sorted(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
+pub(crate) fn compare_sorted(keys: &[SortKey], a: &[Value], b: &[Value]) -> Ordering {
     for (i, key) in keys.iter().enumerate() {
         let ordering = match (&a[i], &b[i]) {
             (Value::Null, Value::Null) => Ordering::Equal,
@@ -2172,12 +2171,6 @@ fn rewrite_search_and_cycle(
         aliases.extend(added);
     }
     Ok(SelectStmt { larg: Some(Box::new(left)), rarg: Some(Box::new(right)), ..query.clone() })
-}
-
-/// dedupe drops rows that equal an earlier row or a row of the existing rows.
-fn dedupe(rows: Vec<Vec<Value>>, existing: &[Vec<Value>]) -> Vec<Vec<Value>> {
-    let mut seen: std::collections::HashSet<String> = existing.iter().map(|r| row_key(r)).collect();
-    rows.into_iter().filter(|r| seen.insert(row_key(r))).collect()
 }
 
 /// references reports whether a query refers to a relation by an unqualified name.
@@ -2452,43 +2445,14 @@ pub fn rows_equal(a: &[Value], b: &[Value]) -> bool {
         })
 }
 
-/// row_key returns a hashable key of a row for DISTINCT and set operations.
-fn row_key(row: &[Value]) -> String {
-    row.iter()
-        .map(|v| group_text(v).map_or("\u{0}N".to_string(), |s| format!("{}\u{1}{s}", type_tag(v))))
-        .collect::<Vec<_>>()
-        .join("\u{2}")
-}
-
-/// group_text returns the text that a value groups and deduplicates by, which values that compare equal share:
-/// numbers without trailing fractional zeroes and zero without its sign.
-fn group_text(value: &Value) -> Option<String> {
-    match value {
-        Value::Numeric(n) => Some(n.trimmed().to_string()),
-        Value::Float4(f) if *f == 0.0 => Some("0".into()),
-        Value::Float8(f) if *f == 0.0 => Some("0".into()),
-        Value::Jsonb(json) => Some(trimmed_json(json).to_text()),
-        other => other.output(),
-    }
-}
-
 /// trimmed_json returns a jsonb value with its numbers' trailing fractional zeroes removed.
-fn trimmed_json(json: &crate::json::Json) -> crate::json::Json {
+pub(crate) fn trimmed_json(json: &crate::json::Json) -> crate::json::Json {
     use crate::json::Json;
     match json {
         Json::Number(n) => Json::Number(n.trimmed()),
         Json::Array(items) => Json::Array(items.iter().map(trimmed_json).collect()),
         Json::Object(fields) => Json::Object(fields.iter().map(|(k, v)| (k.clone(), trimmed_json(v))).collect()),
         other => other.clone(),
-    }
-}
-
-/// type_tag distinguishes values whose text is the same but which differ.
-fn type_tag(value: &Value) -> &'static str {
-    match value {
-        Value::Float4(_) | Value::Float8(_) => "f",
-        Value::Numeric(_) => "n",
-        _ => "",
     }
 }
 
@@ -2512,7 +2476,7 @@ impl Plan {
     pub(crate) fn width(&self) -> usize {
         match self {
             Plan::OneRow => 0,
-            Plan::Scan(table) => table.columns.len(),
+            Plan::Scan(table, _) => table.columns.len(),
             Plan::IndexScan(scan) => scan.table.columns.len(),
             Plan::Recursive { anchor, .. } => anchor.width(),
             Plan::WorkTable(_, width) => *width,
@@ -2554,21 +2518,25 @@ impl Plan {
             return Ok(!self.subquery_rows(ctx, row)?.rows.is_empty());
         }
         ctx.outer.push(row.to_vec());
-        let rows = self.run_capped(ctx, Some(1));
+        let found = self.open(ctx).and_then(|mut rows| rows.next(ctx));
         ctx.outer.pop();
-        Ok(!rows?.is_empty())
+        Ok(found?.is_some())
     }
 
     /// shared_rows runs the plan, reusing the rows of a `Once` plan that the running plan has already evaluated.
-    fn shared_rows(&self, ctx: &mut Ctx<'_>) -> Result<std::sync::Arc<SubqueryRows>> {
+    pub(crate) fn shared_rows(&self, ctx: &mut Ctx<'_>) -> Result<std::sync::Arc<SubqueryRows>> {
         let key = self as *const Plan as usize;
         if let Plan::Once(_) = self
             && let Some(rows) = ctx.once.as_ref().and_then(|once| once.get(&key))
         {
             return Ok(rows.clone());
         }
+        let rows = match self {
+            Plan::Once(input) => input.run(ctx)?,
+            plan => plan.run(ctx)?,
+        };
         let rows = std::sync::Arc::new(SubqueryRows {
-            rows: self.run(ctx)?,
+            rows,
             keys: std::sync::OnceLock::new(),
             index: std::sync::OnceLock::new(),
         });
@@ -2582,78 +2550,20 @@ impl Plan {
 
     /// run runs the plan and returns its rows.
     pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
-        self.run_capped(ctx, None)
-    }
-
-    /// run_capped runs the plan when a LIMIT above it needs only some rows, which lets a recursive WITH query stop
-    /// once it has that many, as Postgres' lazy execution does.
-    fn run_capped(&self, ctx: &mut Ctx<'_>, cap: Option<usize>) -> Result<Vec<Vec<Value>>> {
         if ctx.once.is_some() {
-            return self.run_node(ctx, cap);
+            return self.open(ctx).and_then(|mut rows| crate::exec::drain(&mut *rows, ctx));
         }
         ctx.once = Some(std::collections::HashMap::new());
-        let rows = self.run_node(ctx, cap);
+        let rows = self.open(ctx).and_then(|mut rows| crate::exec::drain(&mut *rows, ctx));
         ctx.once = None;
         rows
     }
 
-    /// run_node runs the plan node itself, for `run_capped`.
-    fn run_node(&self, ctx: &mut Ctx<'_>, cap: Option<usize>) -> Result<Vec<Vec<Value>>> {
+    /// run_leaf computes the rows of a plan node that reads no other plan node, or of a window node.
+    pub(crate) fn run_leaf(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
         Ok(match self {
-            Plan::Once(input) => input.run_capped(ctx, cap)?,
             Plan::OneRow => vec![Vec::new()],
-            Plan::Scan(table) => scan(ctx.db, table)?,
-            Plan::IndexScan(index_scan) => index_scan.run(ctx)?,
             Plan::WorkTable(id, _) => ctx.work_tables.get(id).cloned().unwrap_or_default(),
-            Plan::ProjectSet { input, functions } => {
-                let mut out = Vec::new();
-                for row in input.run(ctx)? {
-                    let mut columns = Vec::with_capacity(functions.len());
-                    for function in functions {
-                        columns.push(set_rows(ctx, function, &row)?);
-                    }
-                    let count = columns.iter().map(Vec::len).max().unwrap_or(0);
-                    for i in 0..count {
-                        let mut new_row = row.clone();
-                        new_row.extend(columns.iter().map(|c| c.get(i).cloned().unwrap_or(Value::Null)));
-                        out.push(new_row);
-                    }
-                }
-                out
-            }
-            Plan::Window { input, calls } => {
-                let mut rows = input.run(ctx)?;
-                for call in calls {
-                    let values = call.compute(ctx, &rows)?;
-                    for (row, value) in rows.iter_mut().zip(values) {
-                        row.push(value);
-                    }
-                }
-                rows
-            }
-            Plan::Recursive { work_table, anchor, step, all } => {
-                let step_cap = cap.filter(|_| *all);
-                let mut result = anchor.run_capped(ctx, step_cap)?;
-                if !*all {
-                    result = dedupe(result, &[]);
-                }
-                let mut working = result.clone();
-                while !working.is_empty() && cap.is_none_or(|cap| result.len() < cap) {
-                    let previous = ctx.work_tables.insert(*work_table, working);
-                    let rows = step.run_capped(ctx, step_cap.map(|cap| cap - result.len()));
-                    match previous {
-                        Some(previous) => ctx.work_tables.insert(*work_table, previous),
-                        None => ctx.work_tables.remove(work_table),
-                    };
-                    let mut rows = rows?;
-                    if !*all {
-                        rows = dedupe(rows, &result);
-                    }
-                    result.extend(rows.iter().cloned());
-                    working = rows;
-                }
-                result
-            }
             Plan::System(system) => ctx.without_temp(|ctx| system.rows(ctx))?,
             Plan::Catalog(table) => ctx.catalog_rows(table)?,
             Plan::Values(rows) => {
@@ -2690,37 +2600,6 @@ impl Plan {
                     })
                     .collect()
             }
-            Plan::Filter { input, predicate } if matches!(**input, Plan::Once(_)) => {
-                once_filter(ctx, input, predicate, cap)?
-            }
-            Plan::Filter { input, predicate } => {
-                let folded;
-                let predicate = match predicate.foldable() {
-                    true => {
-                        folded = predicate.clone().fold(ctx);
-                        &folded
-                    }
-                    false => predicate,
-                };
-                let mut out = Vec::new();
-                for row in input.run(ctx)? {
-                    if cap.is_some_and(|cap| out.len() >= cap) {
-                        break;
-                    }
-                    if predicate.is_true(ctx, &row)? {
-                        out.push(row);
-                    }
-                }
-                out
-            }
-            Plan::Project { input, exprs } => {
-                let rows = input.run_capped(ctx, cap)?;
-                let mut out = Vec::with_capacity(rows.len());
-                for row in rows {
-                    out.push(exprs.iter().map(|e| e.eval(ctx, &row)).collect::<Result<Vec<_>>>()?);
-                }
-                out
-            }
             Plan::XmlTable(table) => crate::xml::table::rows(ctx, table)?,
             Plan::JsonTable(table) => crate::jsontable::rows(ctx, table)?,
             Plan::RowsFrom { calls, ordinality } => {
@@ -2737,228 +2616,66 @@ impl Plan {
                     })
                     .collect()
             }
-            Plan::Join { left, right, kind, condition, lateral: true } => {
-                let right_width = right.width();
-                let mut out = Vec::new();
-                for l in left.run(ctx)? {
-                    ctx.outer.push(l.clone());
-                    let right_rows = right.run(ctx);
-                    ctx.outer.pop();
-                    let mut matched = false;
-                    for r in right_rows? {
-                        let mut row = l.clone();
-                        row.extend(r);
-                        if condition.as_ref().map_or(Ok(true), |c| c.is_true(ctx, &row))? {
-                            matched = true;
-                            out.push(row);
-                        }
+            Plan::Window { input, calls } => {
+                let mut rows = input.run(ctx)?;
+                for call in calls {
+                    let values = call.compute(ctx, &rows)?;
+                    for (row, value) in rows.iter_mut().zip(values) {
+                        row.push(value);
                     }
-                    if !matched && *kind == JoinKind::Left {
-                        let mut row = l;
-                        row.extend(std::iter::repeat_n(Value::Null, right_width));
-                        out.push(row);
-                    }
-                }
-                out
-            }
-            Plan::Join { left, right, kind, condition, .. } => {
-                let (left_width, right_width) = (left.width(), right.width());
-                let left_rows = left.run(ctx)?;
-                let right_rows = right.run(ctx)?;
-                let mut out = Vec::new();
-                let mut right_matched = vec![false; right_rows.len()];
-                let candidates =
-                    condition.as_ref().and_then(|c| join_candidates(ctx, c, left_width, &left_rows, &right_rows));
-                for (i, l) in left_rows.iter().enumerate() {
-                    let mut matched = false;
-                    let all: Vec<usize>;
-                    let js = match &candidates {
-                        Some(candidates) => &candidates[i],
-                        None => {
-                            all = (0..right_rows.len()).collect();
-                            &all
-                        }
-                    };
-                    for &j in js {
-                        let r = &right_rows[j];
-                        let mut row = l.clone();
-                        row.extend(r.iter().cloned());
-                        if condition.as_ref().map_or(Ok(true), |c| c.is_true(ctx, &row))? {
-                            matched = true;
-                            right_matched[j] = true;
-                            out.push(row);
-                        }
-                    }
-                    if !matched && matches!(kind, JoinKind::Left | JoinKind::Full) {
-                        let mut row = l.clone();
-                        row.extend(std::iter::repeat_n(Value::Null, right_width));
-                        out.push(row);
-                    }
-                }
-                if matches!(kind, JoinKind::Right | JoinKind::Full) {
-                    for (j, r) in right_rows.iter().enumerate() {
-                        if !right_matched[j] {
-                            let mut row = vec![Value::Null; left_width];
-                            row.extend(r.iter().cloned());
-                            out.push(row);
-                        }
-                    }
-                }
-                out
-            }
-            Plan::Aggregate { input, groups, aggregates, sets } => {
-                let rows = input.run(ctx)?;
-                let all: Vec<usize> = (0..groups.len()).collect();
-                let mut out = Vec::new();
-                for set in sets.as_deref().unwrap_or(std::slice::from_ref(&all)) {
-                    let mut keys: Vec<Vec<Value>> = Vec::new();
-                    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-                    let mut states: Vec<Vec<Accumulator>> = Vec::new();
-                    for row in &rows {
-                        let mut key = vec![Value::Null; groups.len()];
-                        for &i in set {
-                            key[i] = groups[i].eval(ctx, row)?;
-                        }
-                        let k = row_key(&key);
-                        let slot = match index.get(&k) {
-                            Some(&slot) => slot,
-                            None => {
-                                index.insert(k, keys.len());
-                                keys.push(key);
-                                states.push(aggregates.iter().map(Accumulator::new).collect());
-                                keys.len() - 1
-                            }
-                        };
-                        for (agg, state) in aggregates.iter().zip(&mut states[slot]) {
-                            state.add(ctx, agg, row)?;
-                        }
-                    }
-                    // Without group keys, an aggregate over no rows still returns one row.
-                    if set.is_empty() && keys.is_empty() {
-                        keys.push(vec![Value::Null; groups.len()]);
-                        states.push(aggregates.iter().map(Accumulator::new).collect());
-                    }
-                    let outside = (0..groups.len()).filter(|i| !set.contains(i)).fold(0i64, |m, i| m | 1 << i);
-                    for (key, state) in keys.into_iter().zip(states) {
-                        let mut row = key;
-                        for (agg, s) in aggregates.iter().zip(state) {
-                            row.push(s.finish(ctx, agg)?);
-                        }
-                        if sets.is_some() {
-                            row.push(Value::Int8(outside));
-                        }
-                        out.push(row);
-                    }
-                }
-                out
-            }
-            Plan::Sort { input, keys } => {
-                let rows = input.run(ctx)?;
-                let mut keyed = Vec::with_capacity(rows.len());
-                for row in rows {
-                    let values = keys.iter().map(|k| k.expr.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
-                    keyed.push((values, row));
-                }
-                keyed.sort_by(|a, b| compare_sorted(keys, &a.0, &b.0));
-                keyed.into_iter().map(|(_, row)| row).collect()
-            }
-            Plan::Distinct { input, keys } => {
-                let rows = input.run(ctx)?;
-                let mut out: Vec<Vec<Value>> = Vec::new();
-                match keys {
-                    Some(keys) => {
-                        let mut previous: Option<Vec<Value>> = None;
-                        for row in rows {
-                            let key = keys.iter().map(|k| k.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
-                            if previous.as_ref().is_none_or(|p| !rows_equal(p, &key)) {
-                                out.push(row);
-                            }
-                            previous = Some(key);
-                        }
-                    }
-                    None => {
-                        let mut seen = HashSet::new();
-                        for row in rows {
-                            if seen.insert(row_key(&row)) {
-                                out.push(row);
-                            }
-                        }
-                    }
-                }
-                out
-            }
-            Plan::Limit { input, limit, offset } => {
-                let offset = limit_value(offset, ctx, "OFFSET", code::INVALID_ROW_COUNT_IN_RESULT_OFFSET_CLAUSE)?;
-                let limit = limit_value(limit, ctx, "LIMIT", code::INVALID_ROW_COUNT_IN_LIMIT_CLAUSE)?;
-                let needed = limit.map(|limit| (limit + offset.unwrap_or(0)) as usize);
-                let rows = input.run_capped(ctx, needed)?.into_iter().skip(offset.unwrap_or(0) as usize);
-                match limit {
-                    Some(limit) => rows.take(limit as usize).collect(),
-                    None => rows.collect(),
-                }
-            }
-            Plan::SetOp { op: SetOp::Union, all: true, left, right } if cap.is_some() => {
-                let mut rows = left.run_capped(ctx, cap)?;
-                let remaining = cap.unwrap_or_default().saturating_sub(rows.len());
-                if remaining > 0 {
-                    rows.extend(right.run_capped(ctx, Some(remaining))?);
                 }
                 rows
             }
-            Plan::SetOp { op, all, left, right } => {
-                let left_rows = left.run(ctx)?;
-                let right_rows = right.run(ctx)?;
-                set_operation(*op, *all, left_rows, right_rows)
-            }
+            _ => unreachable!("open runs the plan nodes that read other nodes"),
         })
     }
 }
 
 /// set_operation combines two inputs' rows as UNION, INTERSECT, or EXCEPT do, keeping duplicates with ALL.
-fn set_operation(op: SetOp, all: bool, left: Vec<Vec<Value>>, right: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
-    use std::collections::HashMap;
-    let mut right_counts: HashMap<String, usize> = HashMap::new();
+pub(crate) fn set_operation(op: SetOp, all: bool, left: Vec<Vec<Value>>, right: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
+    let mut right_groups = crate::exec::Groups::new();
+    let mut right_counts: Vec<usize> = Vec::new();
     for row in &right {
-        *right_counts.entry(row_key(row)).or_default() += 1;
+        let (group, added) = right_groups.insert(row);
+        if added {
+            right_counts.push(0);
+        }
+        right_counts[group] += 1;
     }
     let mut out = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = crate::exec::Groups::new();
     match op {
         SetOp::Union => {
             for row in left.into_iter().chain(right) {
-                if all || seen.insert(row_key(&row)) {
+                if all || seen.insert(&row).1 {
                     out.push(row);
                 }
             }
         }
         SetOp::Intersect => {
             for row in left {
-                let key = row_key(&row);
-                let count = right_counts.get_mut(&key);
-                match count {
-                    Some(n) if *n > 0 => {
-                        if all {
-                            *n -= 1;
-                            out.push(row);
-                        } else if seen.insert(key) {
-                            out.push(row);
-                        }
+                if let Some(group) = right_groups.find(&row)
+                    && right_counts[group] > 0
+                {
+                    if all {
+                        right_counts[group] -= 1;
+                        out.push(row);
+                    } else if seen.insert(&row).1 {
+                        out.push(row);
                     }
-                    _ => {}
                 }
             }
         }
         SetOp::Except => {
             for row in left {
-                let key = row_key(&row);
-                match right_counts.get_mut(&key) {
-                    Some(n) if *n > 0 => {
+                match right_groups.find(&row) {
+                    Some(group) if right_counts[group] > 0 => {
                         if all {
-                            *n -= 1;
+                            right_counts[group] -= 1;
                         }
                     }
                     _ => {
-                        if all || seen.insert(key) {
+                        if all || seen.insert(&row).1 {
                             out.push(row);
                         }
                     }
@@ -2971,7 +2688,7 @@ fn set_operation(op: SetOp, all: bool, left: Vec<Vec<Value>>, right: Vec<Vec<Val
 
 /// set_rows calls a function in FROM or a select list for its rows: each value a set-returning function returns, or
 /// the one value of any other function.
-fn set_rows(ctx: &mut Ctx<'_>, call: &Expr, row: &[Value]) -> Result<Vec<Value>> {
+pub(crate) fn set_rows(ctx: &mut Ctx<'_>, call: &Expr, row: &[Value]) -> Result<Vec<Value>> {
     match call {
         Expr::Func(index, args) => {
             let values = args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
@@ -3060,15 +2777,9 @@ fn push_down(plan: Plan, predicate: Expr) -> Plan {
     Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral }
 }
 
-/// join_candidates returns, for each left row, the right rows whose values equal it in the equality conditions between
-/// the two sides, as a hash join finds them, or None when the condition has none or a key is not one it can hash.
-fn join_candidates(
-    ctx: &mut Ctx<'_>,
-    condition: &Expr,
-    width: usize,
-    left_rows: &[Vec<Value>],
-    right_rows: &[Vec<Value>],
-) -> Option<Vec<Vec<usize>>> {
+/// join_keys returns the two sides of the equality conditions between a join's inputs, each side reading only its
+/// own input's row, as a hash join finds matches by them.
+pub(crate) fn join_keys(condition: &Expr, width: usize) -> (Vec<Expr>, Vec<Expr>) {
     let side = |e: &Expr| {
         let (mut left, mut right, mut other) = (false, false, false);
         e.visit(&mut |e| match e {
@@ -3099,37 +2810,12 @@ fn join_candidates(
             }
         }
     }
-    if left_keys.is_empty() {
-        return None;
-    }
-    let mut keys = |exprs: &[Expr], rows: &[Vec<Value>]| -> Option<Vec<Option<Vec<HashKey>>>> {
-        rows.iter()
-            .map(|row| {
-                let mut key = Vec::with_capacity(exprs.len());
-                for e in exprs {
-                    match e.eval(ctx, row).ok()? {
-                        Value::Null => return Some(None),
-                        value => key.push(HashKey::of(value)?),
-                    }
-                }
-                Some(Some(key))
-            })
-            .collect()
-    };
-    let right = keys(&right_keys, right_rows)?;
-    let left = keys(&left_keys, left_rows)?;
-    let mut table: std::collections::HashMap<Vec<HashKey>, Vec<usize>> = std::collections::HashMap::new();
-    for (j, key) in right.into_iter().enumerate() {
-        if let Some(key) = key {
-            table.entry(key).or_default().push(j);
-        }
-    }
-    Some(left.into_iter().map(|key| key.and_then(|k| table.get(&k).cloned()).unwrap_or_default()).collect())
+    (left_keys, right_keys)
 }
 
 /// once_filter runs a filter over a `Once` plan's rows, finding the rows that its equality conditions between their
 /// columns and the enclosing rows hold for through a hash index of the rows, as Postgres' hashed subplans do.
-fn once_filter(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr, cap: Option<usize>) -> Result<Vec<Vec<Value>>> {
+pub(crate) fn once_filter(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr) -> Result<Vec<Vec<Value>>> {
     let shared = input.shared_rows(ctx)?;
     let reads = |e: &Expr| {
         let (mut column, mut other) = (false, false);
@@ -3191,9 +2877,6 @@ fn once_filter(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr, cap: Option<us
     };
     let mut out = Vec::new();
     for j in candidates {
-        if cap.is_some_and(|cap| out.len() >= cap) {
-            break;
-        }
         if predicate.is_true(ctx, &shared.rows[j])? {
             out.push(shared.rows[j].clone());
         }
@@ -3206,7 +2889,7 @@ fn once_filter(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr, cap: Option<us
 pub(crate) fn share_scans(plan: Plan) -> Plan {
     match plan {
         Plan::Filter { input, predicate }
-            if matches!(*input, Plan::Scan(_) | Plan::IndexScan(_) | Plan::Catalog(_)) =>
+            if matches!(*input, Plan::Scan(..) | Plan::IndexScan(_) | Plan::Catalog(_)) =>
         {
             Plan::Filter { input: Box::new(Plan::Once(input)), predicate }
         }

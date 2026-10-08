@@ -16,6 +16,10 @@
 //!
 //!     doltgres [--config <file>] [--data-dir <dir>]
 
+/// The allocator, which allocates the many small values of query execution much faster than the system's.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() {
     let config = match server::Config::from_args(std::env::args().skip(1)) {
         Ok(server::config::Startup::Serve(config)) => config,

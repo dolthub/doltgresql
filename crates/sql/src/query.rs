@@ -14,12 +14,9 @@
 
 //! Queries: planning a SELECT into scans, filters, sorts, and projections, and running the plan.
 
-use std::sync::Arc;
-
 use doltdb::database::Database;
 use pg_query::Node;
 use pg_query::protobuf::RangeVar;
-use prolly::walk_leaves;
 
 use crate::catalog::builtin_type;
 use crate::catalog::table::TableDef;
@@ -265,26 +262,10 @@ fn undefined_table(relation: &RangeVar) -> PgError {
 
 /// scan returns every row of a table in key order, repeating each keyless row by its cardinality.
 pub fn scan(db: &mut Database, table: &TableDef) -> Result<Vec<Vec<Value>>> {
-    let node = Arc::new(prolly::Node::decode(table.table.primary_index.clone())?);
-    let mut items = Vec::new();
-    walk_leaves(db, &node, &mut |key, value| {
-        items.push((key.to_vec(), value.to_vec()));
-        Ok(())
-    })?;
+    let mut walk = crate::exec::TableWalk::new(db, table, None)?;
     let mut rows = Vec::new();
-    let mut failure = None;
-    for (key, value) in items {
-        match table.decode_row(db, &key, &value) {
-            Ok((row, cardinality)) => {
-                for _ in 0..cardinality {
-                    rows.push(row.clone());
-                }
-            }
-            Err(err) => failure = Some(err),
-        }
+    while let Some(row) = walk.next(db)? {
+        rows.push(row);
     }
-    match failure {
-        Some(err) => Err(err),
-        None => Ok(rows),
-    }
+    Ok(rows)
 }

@@ -18,6 +18,9 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use doltdb::database::Database;
+use prolly::NodeStore;
+
 use crate::catalog::table::{HIDDEN_BASE, TableDef};
 use crate::error::Result;
 use crate::expr::{CmpOp, Expr};
@@ -48,12 +51,15 @@ type Item = (Vec<u8>, Vec<u8>);
 struct Bounds {
     /// The key that the range's keys start at.
     start: Vec<u8>,
+    /// The number of fields of the start key: the single values, then the lower bound of the next column if it has one.
+    start_width: usize,
     /// The number of leading columns that the range holds at a single value, which every key of the range shares.
     points: usize,
-    /// Whether the column after those has a lower bound in the start key.
-    bounded: bool,
-    /// The key that the range's keys end at, with whether it is inclusive, when that column has an upper bound.
+    /// The key that the range's keys end at, with whether it is inclusive, when the column after the single values has
+    /// an upper bound.
     end: Option<(Vec<u8>, bool)>,
+    /// Whether every key between the bounds lies in the range.
+    exact: bool,
 }
 
 /// Nearest is a search of a vector index for the keys closest to a query vector, as many as a LIMIT and OFFSET keep.
@@ -235,6 +241,8 @@ struct Coster<'t> {
     /// The IDs of the leaves that are equalities and of those that test for NULL.
     equalities: BTreeSet<usize>,
     null_tests: BTreeSet<usize>,
+    /// Whether the filter tree holds every part of the predicate.
+    complete: bool,
 }
 
 /// swap returns the comparison with its operands exchanged.
@@ -317,6 +325,63 @@ impl Coster<'_> {
         Some(Leaf { id, column, op, value })
     }
 
+    /// covers reports whether the ranges that a filter tree builds with the included filters hold exactly the rows
+    /// that its predicate keeps: every node applies to the scan and every leaf compares the column with a value of
+    /// its own kind.
+    fn covers(&self, root: &Filter, include: &BTreeSet<usize>) -> bool {
+        match root {
+            Filter::Leaf(leaf) => include.contains(&leaf.id) && self.precise_leaf(leaf),
+            Filter::Or(or) => include.contains(&or.id) && or.children.iter().all(|c| self.precise(c)),
+            Filter::And(and) => {
+                and.ors.iter().all(|o| include.contains(&o.id) && o.children.iter().all(|c| self.precise(c)))
+                    && and.leaves.iter().flat_map(|(_, l)| l).all(|l| include.contains(&l.id) && self.precise_leaf(l))
+            }
+        }
+    }
+
+    /// precise reports whether every leaf under a filter node compares its column with a value of its own kind.
+    fn precise(&self, filter: &Filter) -> bool {
+        match filter {
+            Filter::Leaf(leaf) => self.precise_leaf(leaf),
+            Filter::Or(or) => or.children.iter().all(|c| self.precise(c)),
+            Filter::And(and) => {
+                and.ors.iter().all(|o| o.children.iter().all(|c| self.precise(c)))
+                    && and.leaves.iter().flat_map(|(_, l)| l).all(|l| self.precise_leaf(l))
+            }
+        }
+    }
+
+    /// precise_leaf reports whether a leaf tests NULL or compares its column with a value of the column's own kind,
+    /// so that the range it builds holds exactly the rows it keeps.
+    fn precise_leaf(&self, leaf: &Leaf) -> bool {
+        use crate::oid;
+        let op = match leaf.op {
+            Op::IsNull | Op::IsNotNull => return true,
+            Op::Compare(op) => op,
+        };
+        if !matches!(op, CmpOp::Eq | CmpOp::Lt | CmpOp::Le | CmpOp::Gt | CmpOp::Ge) {
+            return false;
+        }
+        let column = match self.hidden.iter().position(|(name, _)| *name == leaf.column) {
+            Some(k) => self.table.hidden.get(k),
+            None => self.table.columns.iter().find(|c| c.name.to_lowercase() == leaf.column),
+        };
+        let Some(column) = column else { return false };
+        matches!(
+            (column.ty.oid, &leaf.value),
+            (oid::INT2 | oid::INT4 | oid::INT8, Value::Int2(_) | Value::Int4(_) | Value::Int8(_))
+                | (oid::FLOAT4 | oid::FLOAT8, Value::Float4(_) | Value::Float8(_))
+                | (oid::NUMERIC, Value::Numeric(_))
+                | (oid::TEXT | oid::VARCHAR | oid::NAME, Value::Text(_))
+                | (oid::BOOL, Value::Bool(_))
+                | (oid::DATE, Value::Date(_))
+                | (oid::TIMESTAMP, Value::Timestamp(_))
+                | (oid::TIMESTAMPTZ, Value::TimestampTz(_))
+                | (oid::UUID, Value::Uuid(_))
+                | (oid::OID, Value::Oid(_))
+        )
+    }
+
     /// note records whether a leaf is an equality or a NULL test, which costing prefers.
     fn note(&mut self, leaf: &Leaf) {
         match leaf.op {
@@ -338,7 +403,7 @@ impl Coster<'_> {
         match e {
             Expr::And(..) => {
                 let mut and = And { id, ..And::default() };
-                self.build_and(ctx, e, &mut and);
+                self.complete = self.build_and(ctx, e, &mut and);
                 Some(Filter::And(and))
             }
             Expr::Or(..) => {
@@ -668,10 +733,17 @@ fn candidates(table: &TableDef, predicates: &[Option<Expr>], filters: &[&Expr]) 
 /// choose returns the index scan that answers a table's filter, as go-mysql-server's getCostedIndexScan chooses it, or
 /// None when a full scan serves as well.
 pub fn choose(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) -> Option<IndexScan> {
+    choose_with_cover(ctx, table, predicate).map(|(scan, _)| scan)
+}
+
+/// choose_with_cover returns the index scan that `choose` returns, with whether its ranges hold exactly the rows that
+/// the filter keeps, so that the filter need not run again, as go-mysql-server drops filters that leave nothing over.
+pub fn choose_with_cover(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) -> Option<(IndexScan, bool)> {
     let rules = ctx.index_rules(table).ok()?;
     let hidden = (0..table.hidden.len()).map(|k| index_column_name(table, HIDDEN_BASE + k));
     let hidden = hidden.zip(rules.hidden().iter().cloned()).collect();
-    let mut coster = Coster { table, hidden, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new() };
+    let mut coster =
+        Coster { table, hidden, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new(), complete: true };
     let root = coster.build_root(ctx, &with_like_bounds(table, predicate))?;
     let candidates = candidates(table, rules.predicates(), &conjuncts(predicate));
     let mut best = Best { candidate: None, cost: Cost::default() };
@@ -694,14 +766,16 @@ pub fn choose(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) -> Option<I
     if crate::ranges::is_all_range(&ranges) {
         return None;
     }
-    Some(IndexScan {
+    let covered = coster.complete && coster.covers(&root, &best.cost.filters);
+    let scan = IndexScan {
         table: Box::new(table.clone()),
         index: chosen.index,
         ranges,
         reverse: false,
         nearest: None,
         needed: None,
-    })
+    };
+    Some((scan, covered))
 }
 
 /// with_like_bounds returns a predicate with each LIKE that its ANDs reach bounded by the fixed prefix of its pattern,
@@ -795,45 +869,27 @@ impl IndexScan {
             && needed.iter().all(|c| index.columns.contains(c) || self.table.key_columns.contains(c))
     }
 
-    /// range_items returns the items of the index whose keys may lie in a range, seeking past the keys before the
-    /// range and stopping after the keys beyond it, as far as its bounds can be encoded as keys, with whether every
-    /// item lies in the range.
-    fn range_items(&self, ctx: &mut Ctx<'_>, root: &Arc<prolly::Node>, range: &Range) -> Result<(Vec<Item>, bool)> {
-        let bounds = self.bounds(range);
-        let (points, width) = (bounds.points, bounds.points + usize::from(bounds.bounded));
-        let unconstrained =
-            |r: &crate::ranges::ColumnRange| matches!((&r.lower, &r.upper), (Cut::BelowNull, Cut::AboveAll));
-        let exact = (!bounds.bounded || (bounds.end.is_some() && matches!(range[points].lower, Cut::Below(_))))
-            && range.iter().skip(width).all(unconstrained);
-        let mut items = Vec::new();
-        let compare = |a: &[u8], b: &[u8]| self.compare_prefix(width, a, b);
-        prolly::scan_from(ctx.db, root.clone(), &bounds.start, &compare, &mut |key, value| {
-            if points > 0 && self.compare_prefix(points, key, &bounds.start) != std::cmp::Ordering::Equal {
-                return Ok(false);
-            }
-            if let Some((end, inclusive)) = &bounds.end {
-                let order = self.compare_prefix(width, key, end);
-                if order == std::cmp::Ordering::Greater || (!inclusive && order == std::cmp::Ordering::Equal) {
-                    return Ok(false);
-                }
-            }
-            items.push((key.to_vec(), value.to_vec()));
-            Ok(true)
-        })?;
-        Ok((items, exact))
-    }
-
     /// bounds returns where the keys of a range lie in the index. Only columns of plain encodings in ascending order
     /// bound the keys, since other columns do not store values in the order that ranges compare them.
     fn bounds(&self, range: &Range) -> Bounds {
         let columns = self.index_columns();
         let mut fields: Vec<Option<Vec<u8>>> = Vec::new();
-        let mut bounded = false;
         let mut end = None;
+        let mut lower = false;
+        let mut exact = true;
+        let mut used = 0;
         for (i, column_range) in range.iter().enumerate() {
             let Some(column) = columns.get(i).and_then(|&c| self.table.index_column(c)) else { break };
-            let descending =
-                self.index.is_some_and(|x| self.table.indexes[x].descending.get(i).copied().unwrap_or(false));
+            let (descending, nulls_last) = match self.index {
+                Some(x) => {
+                    let index = &self.table.indexes[x];
+                    (
+                        index.descending.get(i).copied().unwrap_or(false),
+                        index.nulls_last.get(i).copied().unwrap_or(false),
+                    )
+                }
+                None => (false, false),
+            };
             if descending || crate::storage::is_adaptive(column.encoding) {
                 break;
             }
@@ -848,32 +904,78 @@ impl IndexScan {
                         None => break,
                     }
                 }
-                (lower, upper) => {
-                    let Some(low) = (match lower {
-                        Cut::Below(v) | Cut::Above(v) => encode(v),
+                (low, high) => {
+                    let start = match low {
+                        Cut::Below(v) | Cut::Above(v) => match encode(v) {
+                            Some(field) => Some(field),
+                            None => break,
+                        },
                         _ => None,
-                    }) else {
-                        break;
                     };
-                    let high = match upper {
+                    // NULLs sort before every value unless the index puts them last, which keeps them out of the run of
+                    // keys between the bounds.
+                    let nulls_inside = matches!(low, Cut::BelowNull);
+                    let high = match high {
+                        _ if nulls_inside && nulls_last => None,
                         Cut::Below(v) => encode(v).map(|high| (high, false)),
                         Cut::Above(v) => encode(v).map(|high| (high, true)),
                         _ => None,
                     };
+                    exact = match low {
+                        Cut::Below(_) => true,
+                        Cut::BelowNull => !nulls_last,
+                        Cut::AboveNull => nulls_last,
+                        _ => false,
+                    } && (high.is_some() || (matches!(column_range.upper, Cut::AboveAll) && !nulls_last));
                     end = high.map(|(high, inclusive)| {
                         let mut key: Vec<Option<&[u8]>> = fields.iter().map(Option::as_deref).collect();
                         key.push(high.as_deref());
                         (prolly::val::build_tuple(&key), inclusive)
                     });
-                    fields.push(low);
-                    bounded = true;
+                    if let Some(start) = start {
+                        fields.push(start);
+                        lower = true;
+                    }
+                    used = 1;
                     break;
                 }
             }
         }
-        let points = fields.len() - usize::from(bounded);
+        let points = fields.len() - usize::from(lower);
+        let unconstrained =
+            |r: &crate::ranges::ColumnRange| matches!((&r.lower, &r.upper), (Cut::BelowNull, Cut::AboveAll));
+        exact &= range.iter().skip(points + used).all(unconstrained);
         let key: Vec<Option<&[u8]>> = fields.iter().map(Option::as_deref).collect();
-        Bounds { start: prolly::val::build_tuple(&key), points, bounded, end }
+        Bounds { start: prolly::val::build_tuple(&key), start_width: fields.len(), points, end, exact }
+    }
+
+    /// separated reports whether every key of one range sorts before every key of the next, as ranges of ascending
+    /// columns that differ in their first column that is not the same single value in both do.
+    fn separated(&self, a: &Range, b: &Range) -> bool {
+        let columns = self.index_columns();
+        for (i, (x, y)) in a.iter().zip(b).enumerate() {
+            let plain = columns.get(i).and_then(|&c| self.table.index_column(c)).is_some_and(|column| {
+                !crate::storage::is_adaptive(column.encoding)
+                    && self.index.is_none_or(|x| {
+                        let index = &self.table.indexes[x];
+                        !index.descending.get(i).copied().unwrap_or(false)
+                            && !index.nulls_last.get(i).copied().unwrap_or(false)
+                    })
+            });
+            if !plain {
+                return false;
+            }
+            let point = |r: &crate::ranges::ColumnRange| match (&r.lower, &r.upper) {
+                (Cut::Below(l), Cut::Above(h)) => crate::expr::compare_values(l, h) == std::cmp::Ordering::Equal,
+                (Cut::BelowNull, Cut::AboveNull) => true,
+                _ => false,
+            };
+            if point(x) && point(y) && x.lower.compare(&y.lower) == std::cmp::Ordering::Equal {
+                continue;
+            }
+            return x.upper.compare(&y.lower) != std::cmp::Ordering::Greater;
+        }
+        false
     }
 
     /// compare_prefix orders the first fields of two keys of the index read, as the index stores them.
@@ -932,31 +1034,73 @@ impl IndexScan {
         })
     }
 
+    /// open starts reading the rows whose keys lie in the scan's ranges, a range at a time and seeking each range's
+    /// first key, or reads them all at once when the ranges overlap or interleave or a vector search finds them.
+    pub fn open<'p>(&'p self, ctx: &mut Ctx<'_>) -> Result<Box<dyn crate::exec::Rows + 'p>> {
+        let streamed = self.nearest.is_none() && self.ranges.windows(2).all(|pair| self.separated(&pair[0], &pair[1]));
+        if !streamed {
+            return Ok(crate::exec::collected(self.run(ctx)?));
+        }
+        let root = match self.index {
+            Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
+            None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
+        };
+        let mut bounds: Vec<Bounds> = self.ranges.iter().map(|r| self.bounds(r)).collect();
+        if self.reverse {
+            bounds.reverse();
+        }
+        let exact = bounds.iter().all(|b| b.exact);
+        Ok(Box::new(IndexRows { reader: self.reader()?, root, bounds, exact, current: 0, items: None, repeat: None }))
+    }
+
+    /// reader returns what decodes the scan's index entries into rows.
+    fn reader(&self) -> Result<Reader<'_>> {
+        let covering = self.covering();
+        let primary = match (self.index, covering) {
+            (Some(_), false) => Some(Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?)),
+            _ => None,
+        };
+        let needed = self.needed.as_ref().map(|columns| {
+            let mut mask = vec![false; self.table.columns.len()];
+            for &c in columns {
+                if let Some(m) = mask.get_mut(c) {
+                    *m = true;
+                }
+            }
+            mask
+        });
+        Ok(Reader { scan: self, columns: self.index_columns(), covering, primary, needed })
+    }
+
     /// run reads the rows whose keys lie in the scan's ranges, in index order or its reverse, or the rows a vector
     /// search finds, closest first.
     pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
-        let table = &self.table;
-        let columns = self.index_columns();
-        let primary = Arc::new(prolly::Node::decode(table.table.primary_index.clone())?);
         let root = match self.index {
-            Some(i) => Arc::new(prolly::Node::load(ctx.db, &table.indexes[i].root)?),
-            None => primary.clone(),
+            Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
+            None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
         };
-        let mut items = Vec::new();
+        let mut items: Vec<Item> = Vec::new();
         let mut exact = false;
         match &self.nearest {
             Some(nearest) => items = self.closest(ctx, &root, nearest)?,
             None => {
                 exact = true;
                 for range in &self.ranges {
-                    let (range_items, range_exact) = self.range_items(ctx, &root, range)?;
-                    items.extend(range_items);
-                    exact &= range_exact;
+                    let bounds = self.bounds(range);
+                    exact &= bounds.exact;
+                    let mut walk = bounds.walk(self, ctx.db, &root, false)?;
+                    while let Some((key, value)) = walk.current()? {
+                        if !bounds.holds(self, key, false) {
+                            break;
+                        }
+                        items.push((key.to_vec(), value.to_vec()));
+                        walk.advance(ctx.db)?;
+                    }
                 }
                 if self.ranges.len() > 1 {
                     let width = match self.index {
-                        Some(i) => table.index_key_columns(&table.indexes[i]).len(),
-                        None => table.key_columns.len(),
+                        Some(i) => self.table.index_key_columns(&self.table.indexes[i]).len(),
+                        None => self.table.key_columns.len(),
                     };
                     let ordered =
                         |a: &Item, b: &Item| self.compare_prefix(width, &a.0, &b.0) == std::cmp::Ordering::Less;
@@ -970,72 +1114,205 @@ impl IndexScan {
         if self.reverse {
             items.reverse();
         }
-        let covering = self.covering();
+        let reader = self.reader()?;
         let mut rows = Vec::new();
         for (key, value) in items {
-            let tuple = prolly::Tuple(&key);
-            let mut values: Vec<Value> = Vec::with_capacity(columns.len());
-            for (field, &c) in columns.iter().enumerate() {
-                let column = table.index_column(c).expect("an index column");
-                values.push(crate::storage::decode_field(ctx.db, tuple.field(field)?, column.encoding, column.ty)?);
-            }
-            if self.nearest.is_none() && !exact && !self.in_range(&values) {
+            let Some((row, cardinality)) = reader.row(ctx.db, &key, &value, exact || self.nearest.is_some())? else {
                 continue;
-            }
-            let (row, cardinality) = match self.index {
-                None => table.decode_row(ctx.db, &key, &value)?,
-                Some(i) if covering => {
-                    let mut row = vec![Value::Null; table.columns.len()];
-                    for (field, &c) in columns.iter().enumerate() {
-                        if c < row.len() {
-                            row[c] = std::mem::replace(&mut values[field], Value::Null);
-                        }
-                    }
-                    let index = &table.indexes[i];
-                    let width = index.columns.len();
-                    for (k, &c) in table.key_columns.iter().enumerate() {
-                        if !index.columns.contains(&c) {
-                            let column = &table.columns[c];
-                            let position =
-                                width + table.key_columns[..k].iter().filter(|kc| !index.columns.contains(kc)).count();
-                            row[c] = crate::storage::decode_field(
-                                ctx.db,
-                                tuple.field(position)?,
-                                column.encoding,
-                                column.ty,
-                            )?;
-                        }
-                    }
-                    (row, 1)
-                }
-                Some(i) => {
-                    let index = &table.indexes[i];
-                    let mut fields = Vec::with_capacity(table.key_columns.len());
-                    let mut extra = index.columns.len();
-                    if table.keyless() {
-                        fields.push(tuple.field(extra)?);
-                    }
-                    for c in &table.key_columns {
-                        let position = match index.columns.iter().position(|ic| ic == c) {
-                            Some(p) => p,
-                            None => {
-                                extra += 1;
-                                extra - 1
-                            }
-                        };
-                        fields.push(tuple.field(position)?);
-                    }
-                    let primary_key = prolly::val::build_tuple(&fields);
-                    let compare = |a: &[u8], b: &[u8]| table.compare_keys(a, b);
-                    let Some(stored) = prolly::get(ctx.db, primary.clone(), &primary_key, &compare)? else { continue };
-                    table.decode_row(ctx.db, &primary_key, &stored)?
-                }
             };
             for _ in 0..cardinality {
                 rows.push(row.clone());
             }
         }
         Ok(rows)
+    }
+}
+
+/// Reader decodes the entries of the index a scan reads into the table's rows.
+struct Reader<'s> {
+    scan: &'s IndexScan,
+    /// The table columns of the index's keys, in key order.
+    columns: Vec<usize>,
+    covering: bool,
+    /// The primary index, which a scan of a secondary index that does not cover the plan looks rows up in.
+    primary: Option<Arc<prolly::Node>>,
+    /// Which table columns the plan reads, or None for every column.
+    needed: Option<Vec<bool>>,
+}
+
+impl Reader<'_> {
+    /// row returns the row of an index entry with its cardinality, or None when the entry lies outside the scan's
+    /// ranges, which only an inexact scan checks, or its row is missing from the primary index.
+    fn row(&self, db: &mut Database, key: &[u8], value: &[u8], exact: bool) -> Result<Option<(Vec<Value>, u64)>> {
+        let (scan, table) = (self.scan, &*self.scan.table);
+        let tuple = prolly::Tuple(key);
+        let wanted = |c: usize| self.needed.as_ref().is_none_or(|n| n.get(c).copied().unwrap_or(false));
+        let mut values: Vec<Value> = Vec::new();
+        if !exact {
+            for (field, &c) in self.columns.iter().enumerate() {
+                let column = table.index_column(c).expect("an index column");
+                values.push(crate::storage::decode_field(db, tuple.field(field)?, column.encoding, column.ty)?);
+            }
+            if !scan.in_range(&values) {
+                return Ok(None);
+            }
+        }
+        let Some(i) = scan.index else { return table.decode_columns(db, key, value, self.needed.as_deref()).map(Some) };
+        let index = &table.indexes[i];
+        if self.covering {
+            let mut row = vec![Value::Null; table.columns.len()];
+            for (field, &c) in self.columns.iter().enumerate() {
+                if c < row.len() && wanted(c) {
+                    row[c] = match values.get_mut(field) {
+                        Some(value) => std::mem::replace(value, Value::Null),
+                        None => {
+                            let column = &table.columns[c];
+                            crate::storage::decode_field(db, tuple.field(field)?, column.encoding, column.ty)?
+                        }
+                    };
+                }
+            }
+            let width = index.columns.len();
+            let mut position = width;
+            for &c in &table.key_columns {
+                if index.columns.contains(&c) {
+                    continue;
+                }
+                if wanted(c) {
+                    let column = &table.columns[c];
+                    row[c] = crate::storage::decode_field(db, tuple.field(position)?, column.encoding, column.ty)?;
+                }
+                position += 1;
+            }
+            return Ok(Some((row, 1)));
+        }
+        let mut fields = Vec::with_capacity(table.key_columns.len() + 1);
+        let mut extra = index.columns.len();
+        if table.keyless() {
+            fields.push(tuple.field(extra)?);
+        }
+        for c in &table.key_columns {
+            let position = match index.columns.iter().position(|ic| ic == c) {
+                Some(p) => p,
+                None => {
+                    extra += 1;
+                    extra - 1
+                }
+            };
+            fields.push(tuple.field(position)?);
+        }
+        let primary_key = prolly::val::build_tuple(&fields);
+        let compare = |a: &[u8], b: &[u8]| table.compare_keys(a, b);
+        let primary = self.primary.clone().expect("a primary index");
+        let Some(stored) = prolly::get(db, primary, &primary_key, &compare)? else { return Ok(None) };
+        table.decode_columns(db, &primary_key, &stored, self.needed.as_deref()).map(Some)
+    }
+}
+
+impl Bounds {
+    /// walk returns a walk of the index at the range's first key, or at its last key in reverse.
+    fn walk(
+        &self,
+        scan: &IndexScan,
+        db: &mut Database,
+        root: &Arc<prolly::Node>,
+        reverse: bool,
+    ) -> Result<prolly::Items> {
+        if !reverse {
+            let compare = |a: &[u8], b: &[u8]| scan.compare_prefix(self.start_width, a, b);
+            return Ok(prolly::Items::at_key(db, root.clone(), &self.start, &compare)?);
+        }
+        // Seek the first key past the range, then step back to its last key.
+        let (target, width) = match &self.end {
+            Some((end, inclusive)) => (end, (self.points + 1, *inclusive)),
+            None if self.points > 0 => (&self.start, (self.points, true)),
+            None => return Ok(prolly::Items::last(db, root.clone())?),
+        };
+        let (width, past_equal) = width;
+        let compare = |a: &[u8], b: &[u8]| match scan.compare_prefix(width, a, b) {
+            std::cmp::Ordering::Equal if past_equal => std::cmp::Ordering::Greater,
+            order => order,
+        };
+        let mut items = prolly::Items::at_key(db, root.clone(), target, &compare)?;
+        if items.current()?.is_none() {
+            return Ok(prolly::Items::last(db, root.clone())?);
+        }
+        items.retreat(db)?;
+        Ok(items)
+    }
+
+    /// holds reports whether a key that a walk reached still lies within the range's bounds, given the direction.
+    fn holds(&self, scan: &IndexScan, key: &[u8], reverse: bool) -> bool {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        if self.points > 0 && scan.compare_prefix(self.points, key, &self.start) != Equal {
+            return false;
+        }
+        if reverse {
+            return self.start_width == self.points || scan.compare_prefix(self.start_width, key, &self.start) != Less;
+        }
+        match &self.end {
+            Some((end, inclusive)) => match scan.compare_prefix(self.points + 1, key, end) {
+                Greater => false,
+                Equal => *inclusive,
+                Less => true,
+            },
+            None => true,
+        }
+    }
+}
+
+/// IndexRows hands out the rows of an index scan whose ranges are in key order, walking one range at a time.
+struct IndexRows<'p> {
+    reader: Reader<'p>,
+    root: Arc<prolly::Node>,
+    /// The bounds of each range, in the order the scan reads them.
+    bounds: Vec<Bounds>,
+    exact: bool,
+    current: usize,
+    items: Option<prolly::Items>,
+    /// A row of a keyless table to hand out again, with how many more times.
+    repeat: Option<(Vec<Value>, u64)>,
+}
+
+impl crate::exec::Rows for IndexRows<'_> {
+    fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Vec<Value>>> {
+        if let Some((row, remaining)) = self.repeat.as_mut() {
+            if *remaining > 1 {
+                *remaining -= 1;
+                return Ok(Some(row.clone()));
+            }
+            return Ok(self.repeat.take().map(|(row, _)| row));
+        }
+        let (scan, reverse) = (self.reader.scan, self.reader.scan.reverse);
+        loop {
+            let Some(bounds) = self.bounds.get(self.current) else { return Ok(None) };
+            if self.items.is_none() {
+                self.items = Some(bounds.walk(scan, ctx.db, &self.root, reverse)?);
+            }
+            let items = self.items.as_mut().expect("a walk");
+            let Some((key, value)) = items.current()? else {
+                self.items = None;
+                self.current += 1;
+                continue;
+            };
+            if !bounds.holds(scan, key, reverse) {
+                self.items = None;
+                self.current += 1;
+                continue;
+            }
+            let row = self.reader.row(ctx.db, key, value, self.exact)?;
+            match reverse {
+                true => items.retreat(ctx.db)?,
+                false => items.advance(ctx.db)?,
+            }
+            let Some((row, cardinality)) = row else { continue };
+            if cardinality > 1 {
+                self.repeat = Some((row.clone(), cardinality - 1));
+            } else if cardinality == 0 {
+                continue;
+            }
+            return Ok(Some(row));
+        }
     }
 }
 
@@ -1179,7 +1456,7 @@ fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
                 lateral: false,
             })
         }
-        Plan::Scan(table) => {
+        Plan::Scan(table, _) => {
             let key_columns: Vec<usize> = keys
                 .iter()
                 .map(|k| if let Expr::Column(c) = k.expr { Some(c) } else { None })
@@ -1292,7 +1569,7 @@ fn is_query_vector(e: &Expr) -> bool {
 fn nearest_scan(sort: &Plan, limit: &Option<Expr>, offset: &Option<Expr>) -> Option<Plan> {
     let Plan::Sort { input, keys } = sort else { return None };
     let ([key], Plan::Project { input: scanned, exprs }) = (keys.as_slice(), input.as_ref()) else { return None };
-    let (Plan::Scan(table), Expr::Column(i), false) = (scanned.as_ref(), &key.expr, key.descending) else {
+    let (Plan::Scan(table, _), Expr::Column(i), false) = (scanned.as_ref(), &key.expr, key.descending) else {
         return None;
     };
     let Expr::Operator(_, routine, l, r) = exprs.get(*i)? else { return None };
@@ -1316,19 +1593,54 @@ fn nearest_scan(sort: &Plan, limit: &Option<Expr>, offset: &Option<Expr>) -> Opt
     Some(Plan::Project { input: Box::new(Plan::IndexScan(Box::new(scan))), exprs: exprs.clone() })
 }
 
-/// prune tells the index scans under a plan which columns the nodes above them read, as far as those nodes are
-/// projections, filters, sorts, limits, groupings, and DISTINCT, so that a scan of a secondary index that holds those
-/// columns skips the primary index.
+/// prune tells the scans under a plan which columns the nodes above them read, so that a table scan decodes only
+/// those columns and a scan of a secondary index that holds them skips the primary index.
 pub fn prune(plan: &mut Plan) {
     prune_to(plan, None);
 }
 
-/// prune_to tells the index scans under a plan which columns they need, given the columns of the plan's rows that
-/// the nodes above it read, or None for every column.
+/// prune_to tells the scans under a plan which columns they need, given the columns of the plan's rows that the
+/// nodes above it read, or None for every column.
 fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
     let union = |a: Option<BTreeSet<usize>>, b: Option<BTreeSet<usize>>| Some(a?.union(&b?).copied().collect());
     match plan {
         Plan::IndexScan(scan) => scan.needed = needed.map(|n| n.into_iter().collect()),
+        Plan::Scan(_, columns) => *columns = needed.map(|n| n.into_iter().collect()),
+        Plan::Join { left, right, condition, lateral, .. } => {
+            let width = left.width();
+            let needed: Option<BTreeSet<usize>> = union(needed, columns_read(condition.iter()));
+            let side = |right: bool| -> Option<BTreeSet<usize>> {
+                needed.as_ref().map(|n: &BTreeSet<usize>| {
+                    n.iter().filter(|&&c| (c >= width) == right).map(|&c| if right { c - width } else { c }).collect()
+                })
+            };
+            let (left_needed, right_needed) = (side(false), side(true));
+            prune_to(left, if *lateral { None } else { left_needed });
+            prune_to(right, right_needed);
+        }
+        Plan::Distinct { input, keys: None } => prune_to(input, None),
+        Plan::Window { input, calls } => {
+            let width = input.width();
+            let mut exprs: Vec<&Expr> = Vec::new();
+            for call in calls.iter() {
+                exprs.extend(&call.args);
+                exprs.extend(&call.filter);
+                exprs.extend(&call.partition);
+                exprs.extend(call.order.iter().map(|k| &k.expr));
+                if let Some(range) = &call.range {
+                    exprs.push(&range.key);
+                    exprs.extend(range.start.iter().chain(&range.end).map(|(e, _)| e));
+                }
+            }
+            let below = needed.map(|n| n.into_iter().filter(|&c| c < width).collect());
+            prune_to(input, union(below, columns_read(exprs)));
+        }
+        Plan::ProjectSet { input, functions } => {
+            let width = input.width();
+            let below = needed.map(|n| n.into_iter().filter(|&c| c < width).collect());
+            prune_to(input, union(below, columns_read(functions.iter())));
+        }
+        Plan::Once(input) => prune_to(input, needed),
         Plan::Filter { input, predicate } => prune_to(input, union(needed, columns_read([&*predicate]))),
         Plan::Project { input, exprs } => {
             let read = match &needed {

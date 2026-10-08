@@ -210,17 +210,50 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<(usize, Vec<u
     Ok((index, arg_types, ret))
 }
 
-/// Accumulator collects a group's argument rows for one aggregate call.
+/// Accumulator collects a group's input for one aggregate call: a running result for the common aggregates, and the
+/// argument rows for the others.
 pub struct Accumulator {
-    rows: Vec<Vec<Value>>,
-    /// The ORDER BY key values of each row.
-    keys: Vec<Vec<Value>>,
+    state: State,
+}
+
+/// State is what an accumulator keeps of the rows it has seen.
+enum State {
+    /// The argument rows and the ORDER BY key values of each row.
+    Rows { rows: Vec<Vec<Value>>, keys: Vec<Vec<Value>> },
+    /// The number of rows, or of non-NULL values for count of a value.
+    Count(i64),
+    /// The running sum of integers into a bigint, or None before the first value.
+    SumInt(Option<i64>),
+    /// The running sum and count of floats, or None before the first value.
+    SumFloat(Option<(f64, i64)>),
+    /// The running float4 sum, or None before the first value.
+    SumFloat4(Option<f32>),
+    /// The running numeric sum and count, or None before the first value.
+    SumNumeric(Option<(Numeric, i64)>),
+    /// The least or greatest value so far.
+    Extreme(Option<Value>),
+    /// Whether every or any value so far was true, or None before the first value.
+    Bool(Option<bool>),
 }
 
 impl Accumulator {
     /// new starts an empty accumulator for the call.
-    pub fn new(_: &AggCall) -> Accumulator {
-        Accumulator { rows: Vec::new(), keys: Vec::new() }
+    pub fn new(call: &AggCall) -> Accumulator {
+        let rows = || State::Rows { rows: Vec::new(), keys: Vec::new() };
+        if call.user.is_some() || call.distinct || !call.order.is_empty() {
+            return Accumulator { state: rows() };
+        }
+        let state = match (AGGREGATES[call.index].kind, call.ret) {
+            (Kind::CountStar | Kind::Count, _) => State::Count(0),
+            (Kind::Sum, INT8) => State::SumInt(None),
+            (Kind::Sum, FLOAT4) => State::SumFloat4(None),
+            (Kind::Sum | Kind::Avg, FLOAT8) => State::SumFloat(None),
+            (Kind::Sum | Kind::Avg, _) => State::SumNumeric(None),
+            (Kind::Min | Kind::Max, _) => State::Extreme(None),
+            (Kind::BoolAnd | Kind::BoolOr, _) => State::Bool(None),
+            _ => rows(),
+        };
+        Accumulator { state }
     }
 
     /// add adds an input row to the group.
@@ -230,17 +263,91 @@ impl Accumulator {
         {
             return Ok(());
         }
-        let args = call.args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
-        let keys = call.order.iter().map(|k| k.0.eval(ctx, row)).collect::<Result<Vec<_>>>()?;
-        self.rows.push(args);
-        self.keys.push(keys);
+        let kind = AGGREGATES[call.index].kind;
+        let value = match &mut self.state {
+            State::Rows { rows, keys } => {
+                rows.push(call.args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<_>>>()?);
+                keys.push(call.order.iter().map(|k| k.0.eval(ctx, row)).collect::<Result<Vec<_>>>()?);
+                return Ok(());
+            }
+            State::Count(n) if kind == Kind::CountStar => {
+                *n += 1;
+                return Ok(());
+            }
+            _ => match call.args.first() {
+                Some(arg) => arg.eval(ctx, row)?,
+                None => Value::Null,
+            },
+        };
+        if value.is_null() {
+            return Ok(());
+        }
+        match &mut self.state {
+            State::Count(n) => *n += 1,
+            State::SumInt(total) => {
+                let n = match value {
+                    Value::Int2(i) => i as i64,
+                    Value::Int4(i) => i as i64,
+                    Value::Int8(i) => i,
+                    _ => 0,
+                };
+                *total = Some(
+                    total
+                        .unwrap_or(0)
+                        .checked_add(n)
+                        .ok_or_else(|| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "bigint out of range"))?,
+                );
+            }
+            State::SumFloat(total) => {
+                let (sum, count) = total.get_or_insert((std::iter::empty::<f64>().sum(), 0));
+                *sum += float_of(&value);
+                *count += 1;
+            }
+            State::SumFloat4(total) => *total.get_or_insert(std::iter::empty::<f32>().sum()) += float_of(&value) as f32,
+            State::SumNumeric(total) => {
+                let (sum, count) = total.get_or_insert((Numeric::zero(0), 0));
+                *sum = sum.add(&numeric_of(&value));
+                *count += 1;
+            }
+            State::Extreme(extreme) => {
+                let wanted = if kind == Kind::Min { Ordering::Less } else { Ordering::Greater };
+                if extreme.as_ref().is_none_or(|e| compare_values(&value, e) == wanted) {
+                    *extreme = Some(value);
+                }
+            }
+            State::Bool(result) => {
+                let truth = value == Value::Bool(true);
+                *result = Some(match (kind, *result) {
+                    (Kind::BoolAnd, previous) => previous.unwrap_or(true) && truth,
+                    (_, previous) => previous.unwrap_or(false) || truth,
+                });
+            }
+            State::Rows { .. } => unreachable!("handled above"),
+        }
         Ok(())
     }
 
     /// finish computes the aggregate over the group.
     pub fn finish(self, ctx: &mut Ctx<'_>, call: &AggCall) -> Result<Value> {
         let aggregate = &AGGREGATES[call.index];
-        let mut rows: Vec<(Vec<Value>, Vec<Value>)> = self.keys.into_iter().zip(self.rows).collect();
+        let (rows, keys) = match self.state {
+            State::Rows { rows, keys } => (rows, keys),
+            State::Count(n) => return Ok(Value::Int8(n)),
+            State::SumInt(total) => return Ok(total.map_or(Value::Null, Value::Int8)),
+            State::SumFloat(None) | State::SumFloat4(None) | State::SumNumeric(None) => return Ok(Value::Null),
+            State::SumFloat(Some((sum, count))) if aggregate.kind == Kind::Avg => {
+                return Ok(Value::Float8(sum / count as f64));
+            }
+            State::SumFloat(Some((sum, _))) => return Ok(Value::Float8(sum)),
+            State::SumFloat4(Some(sum)) => return Ok(Value::Float4(sum)),
+            State::SumNumeric(Some((sum, count))) if aggregate.kind == Kind::Avg => {
+                return Ok(Value::Numeric(sum.div(&Numeric::from_i64(count))?));
+            }
+            State::SumNumeric(Some((sum, _))) => return Ok(Value::Numeric(sum)),
+            State::Extreme(extreme) => return Ok(extreme.unwrap_or(Value::Null)),
+            State::Bool(result) => return Ok(result.map_or(Value::Null, Value::Bool)),
+        };
+        let mut rows: Vec<(Vec<Value>, Vec<Value>)> = keys.into_iter().zip(rows).collect();
         if !call.order.is_empty() || call.distinct {
             rows.sort_by(|a, b| {
                 for (i, (_, descending, nulls_first)) in call.order.iter().enumerate() {
