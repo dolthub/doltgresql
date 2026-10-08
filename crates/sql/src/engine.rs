@@ -1595,7 +1595,7 @@ impl Session {
             aggregate_levels: Vec::new(),
             catalog: None,
         };
-        ctx.db.defer_syncs(true);
+        store::defer_syncs(true);
         let result = (|| {
             ctx.install_types()?;
             ctx.install_casts()?;
@@ -1604,10 +1604,10 @@ impl Session {
         })();
         let stored = ctx.txn.store_pending(ctx.db);
         let result = result.and_then(|value| stored.map(|_| value));
-        db.defer_syncs(false);
+        store::defer_syncs(false);
         self.state.engine.publish_gc_roots(self.state.id, &txn);
         self.state.gc_published = true;
-        let sync = db.take_sync();
+        let sync = store::take_sync();
         drop(db);
         match sync.map(store::PendingSync::wait) {
             Some(Err(err)) if result.is_ok() => (txn, Err(err.into())),

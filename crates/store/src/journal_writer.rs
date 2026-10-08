@@ -62,6 +62,22 @@ impl JournalView {
     }
 }
 
+thread_local! {
+    /// DEFERRED is whether this thread's commits leave syncing the journal to it, and the sync they left it.
+    static DEFERRED: std::cell::RefCell<(bool, Option<PendingSync>)> = const { std::cell::RefCell::new((false, None)) };
+}
+
+/// defer_syncs sets whether this thread's later commits leave syncing the journal to it, which takes each sync with
+/// `take_sync` and waits on it after letting other writers in.
+pub fn defer_syncs(defer: bool) {
+    DEFERRED.with(|deferred| deferred.borrow_mut().0 = defer);
+}
+
+/// take_sync returns the sync that this thread's commits since the last call left to it, if any.
+pub fn take_sync() -> Option<PendingSync> {
+    DEFERRED.with(|deferred| deferred.borrow_mut().1.take())
+}
+
 /// PAD_LEN is how far past its last record the journal is filled with zeros, so that a commit's sync never changes the
 /// file's size and fdatasync can skip its metadata, as Dolt pads it on Linux.
 const PAD_LEN: u64 = 4 << 20;
@@ -143,10 +159,6 @@ pub struct JournalWriter {
     uncompressed: u64,
     /// How much of the journal is written and synced, which deferred syncs share.
     durable: Arc<Durable>,
-    /// Whether commits leave syncing to their callers, which take the sync with `take_sync`.
-    defer_syncs: bool,
-    /// The end of the last root record that a deferred commit wrote and no caller has taken yet.
-    pending: Option<u64>,
     /// How far the journal file is filled with zeros past its records.
     padded: u64,
 }
@@ -177,8 +189,6 @@ impl JournalWriter {
             current_root: Hash::default(),
             uncompressed: 0,
             durable: Arc::new(durable),
-            defer_syncs: false,
-            pending: None,
             padded: 0,
         };
         let root = writer.bootstrap(&dir.join(JOURNAL_FILE))?;
@@ -398,9 +408,14 @@ impl JournalWriter {
         self.current_root = root;
         self.buf.extend_from_slice(&encoded);
         self.flush()?;
-        if self.defer_syncs {
-            self.pending = Some(self.off);
-        } else {
+        let deferred = DEFERRED.with(|deferred| {
+            let mut deferred = deferred.borrow_mut();
+            if deferred.0 {
+                deferred.1 = Some(PendingSync { durable: self.durable.clone(), end: self.off });
+            }
+            deferred.0
+        });
+        if !deferred {
             self.journal.sync_data()?;
         }
         self.unsynced = 0;
@@ -408,17 +423,6 @@ impl JournalWriter {
             self.flush_index_record(root, start)?;
         }
         Ok(())
-    }
-
-    /// defer_syncs sets whether later commits leave syncing the journal to their callers.
-    pub fn defer_syncs(&mut self, defer: bool) {
-        self.defer_syncs = defer;
-    }
-
-    /// take_sync returns the sync that the commits since the last call left to their caller, if any.
-    pub fn take_sync(&mut self) -> Option<PendingSync> {
-        let end = self.pending.take()?;
-        Some(PendingSync { durable: self.durable.clone(), end })
     }
 
     /// view writes out the buffered records and returns a view of the chunks the journal holds now.

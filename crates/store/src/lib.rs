@@ -41,7 +41,7 @@ pub use gc::{add_to_manifest, replace_files, write_files, write_table};
 pub use hash::Hash;
 pub use journal::{JOURNAL_FILE, JournalRecord, read_records};
 pub use journal_store::{JournalStore, Snapshot};
-pub use journal_writer::{JOURNAL_INDEX_FILE, JournalView, JournalWriter, PendingSync};
+pub use journal_writer::{JOURNAL_INDEX_FILE, JournalView, JournalWriter, PendingSync, defer_syncs, take_sync};
 pub use manifest::{MANIFEST_FILE, Manifest, TableSpec, lock_hash};
 pub use memory::MemoryStore;
 pub use store::{BlockStore, GenerationalStore};

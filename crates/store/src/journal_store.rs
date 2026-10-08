@@ -84,8 +84,6 @@ pub struct JournalStore {
     sources: Vec<Source>,
     journal: Option<JournalWriter>,
     memtable: MemTable,
-    /// Whether commits leave syncing the journal to their callers.
-    defer_syncs: bool,
 }
 
 impl JournalStore {
@@ -154,7 +152,6 @@ impl JournalStore {
             sources,
             journal,
             memtable: MemTable::default(),
-            defer_syncs: false,
         })
     }
 
@@ -279,7 +276,6 @@ impl JournalStore {
             if !self.upstream.lock.is_empty() {
                 writer.commit_root(self.upstream.root)?;
             }
-            writer.defer_syncs(self.defer_syncs);
             self.journal = Some(writer);
         }
         let novel: Vec<Hash> = memtable.order.iter().filter(|hash| !self.has_persisted(hash)).copied().collect();
@@ -401,20 +397,6 @@ impl JournalStore {
             .map(|spec| Source::open_file(&self.dir, &spec.name))
             .collect::<Result<_>>()?;
         Ok(Snapshot { sources, journal })
-    }
-
-    /// defer_syncs sets whether later commits leave syncing the journal to their callers, who take each sync with
-    /// `take_sync` and wait on it after letting other writers in.
-    pub fn defer_syncs(&mut self, defer: bool) {
-        self.defer_syncs = defer;
-        if let Some(journal) = self.journal.as_mut() {
-            journal.defer_syncs(defer);
-        }
-    }
-
-    /// take_sync returns the sync that the commits since the last call left to their caller, if any.
-    pub fn take_sync(&mut self) -> Option<crate::PendingSync> {
-        self.journal.as_mut()?.take_sync()
     }
 
     /// sync writes out the journal's buffered records and index, leaving the store open.

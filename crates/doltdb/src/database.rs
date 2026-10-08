@@ -15,11 +15,10 @@
 //! A database's datasets, the named heads in its store root (branches, tags, working sets), written as Dolt's datas
 //! package writes them, value by value in the same order.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
 use prolly::{AddressMapSerializer, CommitClosureSerializer, Node, NodeStore, apply_mutations};
 use serial::write::{CommitFields, WorkingSetFields, write_commit, write_store_root, write_working_set};
@@ -176,6 +175,44 @@ struct Cache<V> {
     young_size: usize,
 }
 
+/// SHARDS is how many separately locked parts each of a database's caches has, so that sessions rarely wait on each
+/// other for one.
+const SHARDS: usize = 16;
+
+/// Caches is a cache split into separately locked shards by address.
+struct Caches<V> {
+    shards: Vec<Mutex<Cache<V>>>,
+}
+
+impl<V: Clone> Caches<V> {
+    /// new returns empty caches.
+    fn new() -> Caches<V> {
+        Caches { shards: (0..SHARDS).map(|_| Mutex::new(Cache::new())).collect() }
+    }
+
+    /// shard returns the shard that caches the address.
+    fn shard(&self, hash: &Hash) -> std::sync::MutexGuard<'_, Cache<V>> {
+        self.shards[hash.0[0] as usize % SHARDS].lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// get returns the value cached at the address.
+    fn get(&self, hash: &Hash) -> Option<V> {
+        self.shard(hash).get(hash)
+    }
+
+    /// insert caches a value of a size at the address.
+    fn insert(&self, hash: Hash, value: V, size: usize) {
+        self.shard(&hash).insert(hash, value, size);
+    }
+
+    /// clear drops every cached value.
+    fn clear(&self) {
+        for shard in &self.shards {
+            shard.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
+        }
+    }
+}
+
 impl<V: Clone> Cache<V> {
     /// new returns an empty cache.
     fn new() -> Cache<V> {
@@ -196,7 +233,7 @@ impl<V: Clone> Cache<V> {
     fn insert(&mut self, hash: Hash, value: V, size: usize) {
         self.young_size += size;
         self.young.insert(hash, (value, size));
-        if self.young_size > CACHE_SIZE / 2 {
+        if self.young_size > CACHE_SIZE / SHARDS / 2 {
             self.old = std::mem::take(&mut self.young);
             self.young_size = 0;
         }
@@ -210,40 +247,49 @@ impl<V: Clone> Cache<V> {
     }
 }
 
-/// Database is a chunk store whose store root names its datasets.
+/// Database is a chunk store whose store root names its datasets. Its clones are handles on the same database, which
+/// sessions use at the same time.
+#[derive(Clone)]
 pub struct Database {
-    store: Box<dyn ChunkStore>,
-    old_gen: Option<BlockStore>,
-    nodes: Cache<Arc<Node>>,
+    shared: Arc<Shared>,
+}
+
+/// Shared is what the handles of one database share.
+struct Shared {
+    store: Mutex<Box<dyn ChunkStore>>,
+    old_gen: RwLock<Option<Arc<BlockStore>>>,
+    nodes: Caches<Arc<Node>>,
     /// The chunks most recently read, decompressed.
-    chunks: RefCell<Cache<Arc<Vec<u8>>>>,
+    chunks: Caches<Arc<Vec<u8>>>,
     /// Whether a garbage collection is running, which its `GcRun` clears when it ends.
     collecting: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl ChunkReader for Database {
     fn get(&self, hash: &Hash) -> store::Result<Option<Chunk>> {
-        if let Some(data) = self.chunks.borrow_mut().get(hash) {
+        if let Some(data) = self.shared.chunks.get(hash) {
             return Ok(Some(Chunk { hash: *hash, data: data.to_vec() }));
         }
-        let chunk = match self.store.get(hash)? {
+        let found = self.store().get(hash)?;
+        let chunk = match found {
             Some(chunk) => Some(chunk),
-            None => match &self.old_gen {
+            None => match self.old_gen() {
                 Some(old_gen) => old_gen.get(hash)?,
                 None => None,
             },
         };
         if let Some(chunk) = &chunk {
-            self.chunks.borrow_mut().insert(*hash, Arc::new(chunk.data.clone()), chunk.data.len());
+            self.shared.chunks.insert(*hash, Arc::new(chunk.data.clone()), chunk.data.len());
         }
         Ok(chunk)
     }
 
     fn get_many(&self, hashes: &[Hash]) -> store::Result<Vec<Option<Chunk>>> {
-        let mut chunks = self.store.get_many(hashes)?;
+        let mut chunks = self.store().get_many(hashes)?;
+        let old_gen = self.old_gen();
         for (hash, chunk) in hashes.iter().zip(chunks.iter_mut()) {
             if chunk.is_none()
-                && let Some(old_gen) = &self.old_gen
+                && let Some(old_gen) = &old_gen
             {
                 *chunk = old_gen.get(hash)?;
             }
@@ -254,18 +300,18 @@ impl ChunkReader for Database {
 
 impl NodeStore for Database {
     fn read(&mut self, hash: &Hash) -> store::Result<Arc<Node>> {
-        if let Some(node) = self.nodes.get(hash) {
+        if let Some(node) = self.shared.nodes.get(hash) {
             return Ok(node);
         }
         let node = Arc::new(Node::load(self, hash)?);
-        self.nodes.insert(*hash, node.clone(), node.bytes().len());
+        self.shared.nodes.insert(*hash, node.clone(), node.bytes().len());
         Ok(node)
     }
 
     fn write(&mut self, hash: Hash, bytes: Vec<u8>) -> store::Result<Arc<Node>> {
         let node = Arc::new(Node::decode(bytes.clone())?);
         self.put(Chunk { hash, data: bytes })?;
-        self.nodes.insert(hash, node.clone(), node.bytes().len());
+        self.shared.nodes.insert(hash, node.clone(), node.bytes().len());
         Ok(node)
     }
 }
@@ -277,13 +323,7 @@ impl Database {
         let old_gen_dir = noms.join("oldgen");
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
-        Ok(Database {
-            store,
-            old_gen,
-            nodes: Cache::new(),
-            chunks: RefCell::new(Cache::new()),
-            collecting: Arc::default(),
-        })
+        Ok(Database::new(store, old_gen))
     }
 
     /// open_remote opens a file remote or backup in a directory for writing, as Dolt's FileFactory does: each commit
@@ -294,44 +334,62 @@ impl Database {
         std::fs::create_dir_all(&old_gen_dir).map_err(store::Error::from)?;
         let old_gen =
             if old_gen_dir.join(store::MANIFEST_FILE).exists() { Some(BlockStore::open(&old_gen_dir)?) } else { None };
-        Ok(Database {
-            store,
-            old_gen,
-            nodes: Cache::new(),
-            chunks: RefCell::new(Cache::new()),
-            collecting: Arc::default(),
-        })
+        Ok(Database::new(store, old_gen))
     }
 
     /// with_store opens a database over another kind of chunk store, such as a remote, with no old generation.
     pub fn with_store(store: Box<dyn ChunkStore>) -> Database {
+        Database::new(store, None)
+    }
+
+    /// new returns a database over a chunk store and an old generation.
+    fn new(store: Box<dyn ChunkStore>, old_gen: Option<BlockStore>) -> Database {
         Database {
-            store,
-            old_gen: None,
-            nodes: Cache::new(),
-            chunks: RefCell::new(Cache::new()),
-            collecting: Arc::default(),
+            shared: Arc::new(Shared {
+                store: Mutex::new(store),
+                old_gen: RwLock::new(old_gen.map(Arc::new)),
+                nodes: Caches::new(),
+                chunks: Caches::new(),
+                collecting: Arc::default(),
+            }),
         }
     }
 
-    /// journal returns the database's local journaling store, failing for a database over another kind of store.
-    fn journal(&mut self) -> Result<&mut JournalStore> {
-        self.store.journal().ok_or_else(|| Error::Invalid("not a local database".into()))
+    /// store locks the database's chunk store.
+    fn store(&self) -> std::sync::MutexGuard<'_, Box<dyn ChunkStore>> {
+        self.shared.store.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// old_gen returns the database's old generation, if it has one.
+    fn old_gen(&self) -> Option<Arc<BlockStore>> {
+        self.shared.old_gen.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+    }
+
+    /// set_old_gen replaces the database's old generation.
+    fn set_old_gen(&self, old_gen: Option<BlockStore>) {
+        *self.shared.old_gen.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = old_gen.map(Arc::new);
+    }
+
+    /// with_journal runs a function on the database's local journaling store, failing for a database over another
+    /// kind of store.
+    fn with_journal<T>(&self, f: impl FnOnce(&mut JournalStore) -> Result<T>) -> Result<T> {
+        let mut store = self.store();
+        f(store.journal().ok_or_else(|| Error::Invalid("not a local database".into()))?)
     }
 
     /// noms_dir returns the directory of the database's local store.
     pub fn noms_dir(&mut self) -> Result<std::path::PathBuf> {
-        Ok(self.journal()?.dir().to_path_buf())
+        self.with_journal(|journal| Ok(journal.dir().to_path_buf()))
     }
 
     /// locate returns where a committed chunk is in the files of the local store, by its path relative to the store's
     /// directory, as Dolt's GetChunkLocationsWithPaths finds it.
     pub fn locate(&mut self, hash: &Hash) -> Result<Option<store::Location>> {
-        if let Some(location) = self.journal()?.locate(hash)? {
+        if let Some(location) = self.with_journal(|journal| Ok(journal.locate(hash)?))? {
             return Ok(Some(location));
         }
         Ok(self
-            .old_gen
+            .old_gen()
             .as_ref()
             .and_then(|old_gen| old_gen.locate(hash))
             .map(|location| store::Location { file: format!("oldgen/{}", location.file), ..location }))
@@ -346,8 +404,9 @@ impl Database {
             true => format!("{}.darc", spec.name),
             false => spec.name.to_string(),
         };
-        let mut files: Vec<(String, u32)> =
-            self.journal()?.table_files().iter().map(|spec| (name(&dir, spec), spec.chunk_count)).collect();
+        let mut files: Vec<(String, u32)> = self.with_journal(|journal| {
+            Ok(journal.table_files().iter().map(|spec| (name(&dir, spec), spec.chunk_count)).collect())
+        })?;
         let old_dir = dir.join("oldgen");
         for spec in store::Manifest::read(&old_dir)?.map(|m| m.specs).unwrap_or_default() {
             files.push((format!("oldgen/{}", name(&old_dir, &spec)), spec.chunk_count));
@@ -358,12 +417,13 @@ impl Database {
     /// add_table_files adds uploaded table files or archives in the local store's directory to the files the next
     /// commit names.
     pub fn add_table_files(&mut self, specs: &[store::TableSpec]) -> Result<()> {
-        Ok(self.journal()?.add_table_files(specs)?)
+        self.with_journal(|journal| Ok(journal.add_table_files(specs)?))
     }
 
     /// has reports whether the database holds the chunk.
     pub fn has(&self, hash: &Hash) -> bool {
-        self.store.has(hash) || self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(hash))
+        let held = self.store().has(hash);
+        held || self.old_gen().is_some_and(|old_gen| old_gen.has(hash))
     }
 
     /// pull copies the chunks reachable from an address that the database lacks from another database, children
@@ -398,18 +458,19 @@ impl Database {
 
     /// has_many reports whether the database holds each chunk, in the order asked for.
     pub fn has_many(&self, hashes: &[Hash]) -> Vec<bool> {
-        let held = self.store.has_many(hashes);
+        let held = self.store().has_many(hashes);
+        let old_gen = self.old_gen();
         hashes
             .iter()
             .zip(held)
-            .map(|(hash, held)| held || self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(hash)))
+            .map(|(hash, held)| held || old_gen.as_ref().is_some_and(|old_gen| old_gen.has(hash)))
             .collect()
     }
 
     /// commit_root moves the store root from the last root to the current one, reporting false when it moved first,
     /// as a remote's Commit request asks.
     pub fn commit_root(&mut self, current: Hash, last: Hash) -> Result<bool> {
-        Ok(self.store.commit(current, last)?)
+        Ok(self.store().commit(current, last)?)
     }
 
     /// gc keeps only the chunks reachable from the store root, as Dolt's garbage collection does, starting from the old
@@ -427,14 +488,14 @@ impl Database {
     /// gc_begin starts a garbage collection as `gc` describes, noting the roots it keeps and taking a snapshot of the
     /// store's files that `GcRun::copy` reads while the database goes on.
     pub fn gc_begin(&mut self, config: GcConfig) -> Result<GcRun> {
-        if self.collecting.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        if self.shared.collecting.swap(true, std::sync::atomic::Ordering::AcqRel) {
             return Err(Error::Invalid("a garbage collection is already running".into()));
         }
-        let collecting = Collecting(self.collecting.clone());
-        let dir = self.journal()?.dir().to_path_buf();
+        let collecting = Collecting(self.shared.collecting.clone());
+        let dir = self.noms_dir()?;
         let old_dir = dir.join("oldgen");
         if old_dir.join(store::MANIFEST_FILE).exists() {
-            self.old_gen = Some(BlockStore::open(&old_dir)?);
+            self.set_old_gen(Some(BlockStore::open(&old_dir)?));
         }
         let committed: Vec<Hash> = self
             .datasets()?
@@ -451,7 +512,7 @@ impl Database {
             config,
             root: self.root(),
             committed,
-            new_gen: self.journal()?.snapshot()?,
+            new_gen: self.with_journal(|journal| Ok(journal.snapshot()?))?,
             old_gen,
             dir,
             seen: std::collections::HashSet::new(),
@@ -480,13 +541,13 @@ impl Database {
         run.new_specs.extend(store::write_files(&run.dir, late, run.config.archive, 0, &mut |_| Ok(()))?);
         if let Some(specs) = run.old_specs {
             let old_dir = run.dir.join("oldgen");
-            self.old_gen = None;
+            self.set_old_gen(None);
             store::replace_files(&old_dir, self.root(), "__DOLT__", specs)?;
-            self.old_gen = Some(BlockStore::open(&old_dir)?);
+            self.set_old_gen(Some(BlockStore::open(&old_dir)?));
         }
-        self.journal()?.rewrite(run.new_specs)?;
-        self.nodes.clear();
-        self.chunks.borrow_mut().clear();
+        self.with_journal(|journal| Ok(journal.rewrite(run.new_specs)?))?;
+        self.shared.nodes.clear();
+        self.shared.chunks.clear();
         Ok(())
     }
 
@@ -519,8 +580,12 @@ impl Database {
     /// replace_root makes a store root already in the database current, whatever the root was, as Dolt's CommitRoot
     /// does when it syncs one database to another.
     pub fn replace_root(&mut self, root: Hash) -> Result<()> {
-        while !self.store.commit(root, self.root())? {}
-        Ok(())
+        loop {
+            let current = self.root();
+            if self.store().commit(root, current)? {
+                return Ok(());
+            }
+        }
     }
 
     /// set_heads points datasets at addresses already in the database, and deletes those without one, in one update
@@ -531,20 +596,20 @@ impl Database {
 
     /// root returns the address of the store root.
     pub fn root(&self) -> Hash {
-        self.store.root()
+        self.store().root()
     }
 
     /// put adds a chunk with the addresses its message refers to, leaving out the ones the old generation holds, which
     /// the store cannot see.
     fn put(&mut self, chunk: Chunk) -> store::Result<()> {
-        let mut refs = Vec::new();
+        let (mut refs, old_gen) = (Vec::new(), self.old_gen());
         serial::walk::walk_addrs(Message(&chunk.data), &mut |address| {
-            if !self.old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&address)) {
+            if !old_gen.as_ref().is_some_and(|old_gen| old_gen.has(&address)) {
                 refs.push(address);
             }
             Ok(())
         })?;
-        self.store.put(chunk, refs)
+        self.store().put(chunk, refs)
     }
 
     /// write_value writes a message, as Dolt's ValueStore.WriteValue does, and returns its address.
@@ -605,7 +670,7 @@ impl Database {
                 edits.into_iter().map(|(k, v)| (k.into_bytes(), v.map(|h| h.0.to_vec()))).collect();
             let (_, map) = apply_mutations(self, node, AddressMapSerializer, edits, &|a: &[u8], b: &[u8]| a.cmp(b))?;
             let store_root = self.write_value(write_store_root(map.bytes()))?;
-            if self.store.commit(store_root, root)? {
+            if self.store().commit(store_root, root)? {
                 return Ok(());
             }
         }
@@ -790,22 +855,9 @@ impl Database {
         Ok(commit)
     }
 
-    /// defer_syncs sets whether later commits leave syncing the journal to their callers, who take each sync with
-    /// `take_sync`.
-    pub fn defer_syncs(&mut self, defer: bool) {
-        if let Some(journal) = self.store.journal() {
-            journal.defer_syncs(defer);
-        }
-    }
-
-    /// take_sync returns the sync that the commits since the last call left to their caller, if any.
-    pub fn take_sync(&mut self) -> Option<store::PendingSync> {
-        self.store.journal()?.take_sync()
-    }
-
     /// sync writes out the store's buffered journal records, leaving the database open.
     pub fn sync(&mut self) -> Result<()> {
-        match self.store.journal() {
+        match self.store().journal() {
             Some(journal) => Ok(journal.sync()?),
             None => Ok(()),
         }
