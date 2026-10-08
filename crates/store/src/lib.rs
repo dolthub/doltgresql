@@ -17,6 +17,8 @@
 //! Dolt's chunk storage, which holds content-addressed chunks in table files, archives, and the chunk journal of a
 //! database's noms directory, with a manifest naming the files and the root.
 
+use std::sync::Arc;
+
 mod archive;
 mod blob;
 mod chunk;
@@ -100,6 +102,45 @@ pub trait ChunkStore: ChunkReader + Send {
     fn journal(&mut self) -> Option<&mut JournalStore> {
         None
     }
+
+    /// plan returns how to read a chunk once the store is let go, so that the reading itself doesn't hold the store.
+    fn plan(&self, hash: &Hash) -> Result<Plan> {
+        Ok(Plan::ready(self.get(hash)?))
+    }
+}
+
+/// Plan is how to read a chunk after letting go of the store that planned it: the chunk itself, when the store had
+/// it at hand, or where to read it.
+pub struct Plan(PlanKind);
+
+/// PlanKind is what a plan holds.
+enum PlanKind {
+    Ready(Option<Chunk>),
+    Journal(journal_writer::JournalChunk),
+    Files(Arc<Vec<Arc<store::Source>>>, Hash),
+}
+
+impl Plan {
+    /// ready returns a plan that already holds the chunk, or knows the store lacks it.
+    fn ready(chunk: Option<Chunk>) -> Plan {
+        Plan(PlanKind::Ready(chunk))
+    }
+
+    /// read reads the chunk the plan is for, if the store held it.
+    pub fn read(self) -> Result<Option<Chunk>> {
+        match self.0 {
+            PlanKind::Ready(chunk) => Ok(chunk),
+            PlanKind::Journal(unread) => unread.read().map(Some),
+            PlanKind::Files(sources, hash) => {
+                for source in sources.iter() {
+                    if let Some(chunk) = source.get(&hash)? {
+                        return Ok(Some(chunk));
+                    }
+                }
+                Ok(None)
+            }
+        }
+    }
 }
 
 impl ChunkReader for JournalStore {
@@ -127,6 +168,10 @@ impl ChunkStore for JournalStore {
 
     fn journal(&mut self) -> Option<&mut JournalStore> {
         Some(self)
+    }
+
+    fn plan(&self, hash: &Hash) -> Result<Plan> {
+        JournalStore::plan(self, hash)
     }
 }
 

@@ -270,8 +270,8 @@ impl ChunkReader for Database {
         if let Some(data) = self.shared.chunks.get(hash) {
             return Ok(Some(Chunk { hash: *hash, data: data.to_vec() }));
         }
-        let found = self.store().get(hash)?;
-        let chunk = match found {
+        let plan = self.store().plan(hash)?;
+        let chunk = match plan.read()? {
             Some(chunk) => Some(chunk),
             None => match self.old_gen() {
                 Some(old_gen) => old_gen.get(hash)?,

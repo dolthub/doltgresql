@@ -62,6 +62,20 @@ impl JournalView {
     }
 }
 
+/// JournalChunk is where a chunk is in a journal file, which a reader reads without the journal's writer.
+pub struct JournalChunk {
+    durable: Arc<Durable>,
+    hash: Hash,
+    range: Range,
+}
+
+impl JournalChunk {
+    /// read reads the chunk.
+    pub fn read(&self) -> Result<Chunk> {
+        Chunk::from_record(self.hash, &read_at(&self.durable.file, self.range.offset, self.range.len as usize)?)
+    }
+}
+
 thread_local! {
     /// DEFERRED is whether this thread's commits leave syncing the journal to it, and the sync they left it.
     static DEFERRED: std::cell::RefCell<(bool, Option<PendingSync>)> = const { std::cell::RefCell::new((false, None)) };
@@ -455,6 +469,17 @@ impl JournalWriter {
             length: range.len,
             dictionary: None,
         })
+    }
+
+    /// plan returns how to read a chunk that the journal holds once its writer is let go: the chunk itself when its
+    /// record is still buffered, or where it is in the file.
+    pub fn plan(&self, hash: &Hash) -> Result<Option<crate::Plan>> {
+        let Some(range) = self.range(hash) else { return Ok(None) };
+        if range.offset >= self.off {
+            return self.get(hash).map(|chunk| Some(crate::Plan::ready(chunk)));
+        }
+        let unread = JournalChunk { durable: self.durable.clone(), hash: *hash, range };
+        Ok(Some(crate::Plan(crate::PlanKind::Journal(unread))))
     }
 
     /// get returns the chunk when the journal holds it, reading buffered records from memory.

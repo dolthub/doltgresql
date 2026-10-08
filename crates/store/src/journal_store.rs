@@ -17,6 +17,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::chunk::Chunk;
 use crate::error::{Error, Result, corrupt};
@@ -45,9 +46,12 @@ struct MemTable {
     refs: Vec<Hash>,
 }
 
+/// Sources are the table files and archives that a store's manifest names, shared with the reads planned over them.
+type Sources = Arc<Vec<Arc<Source>>>;
+
 /// Snapshot is the chunks that a store's files held when it was taken.
 pub struct Snapshot {
-    sources: Vec<Source>,
+    sources: Sources,
     journal: Option<crate::JournalView>,
 }
 
@@ -58,7 +62,7 @@ impl crate::ChunkReader for Snapshot {
         {
             return Ok(Some(chunk));
         }
-        for source in &self.sources {
+        for source in self.sources.iter() {
             if let Some(chunk) = source.get(hash)? {
                 return Ok(Some(chunk));
             }
@@ -81,7 +85,7 @@ pub struct JournalStore {
     /// The manifest as of the last commit, whose root comes from the journal.
     upstream: Manifest,
     /// The table files and archives the manifest names.
-    sources: Vec<Source>,
+    sources: Sources,
     journal: Option<JournalWriter>,
     memtable: MemTable,
 }
@@ -141,8 +145,9 @@ impl JournalStore {
             .specs
             .iter()
             .filter(|spec| spec.name != journal_name)
-            .map(|spec| Source::open_file(dir, &spec.name))
-            .collect::<Result<_>>()?;
+            .map(|spec| Source::open_file(dir, &spec.name).map(Arc::new))
+            .collect::<Result<Vec<_>>>()?;
+        let sources = Arc::new(sources);
         Ok(JournalStore {
             dir: dir.to_path_buf(),
             _lock: lock,
@@ -173,12 +178,24 @@ impl JournalStore {
         self.get_persisted(hash)
     }
 
+    /// plan returns how to read a chunk once the store is let go: the chunk itself when it is in memory, where it is
+    /// in the journal, or the files to look in.
+    pub fn plan(&self, hash: &Hash) -> Result<crate::Plan> {
+        if let Some(data) = self.memtable.chunks.get(hash) {
+            return Ok(crate::Plan::ready(Some(Chunk { hash: *hash, data: data.clone() })));
+        }
+        if let Some(plan) = self.journal.as_ref().map(|j| j.plan(hash)).transpose()?.flatten() {
+            return Ok(plan);
+        }
+        Ok(crate::Plan(crate::PlanKind::Files(self.sources.clone(), *hash)))
+    }
+
     /// get_persisted returns the chunk when the journal or a file holds it.
     fn get_persisted(&self, hash: &Hash) -> Result<Option<Chunk>> {
         if let Some(chunk) = self.journal.as_ref().map(|j| j.get(hash)).transpose()?.flatten() {
             return Ok(Some(chunk));
         }
-        for source in &self.sources {
+        for source in self.sources.iter() {
             if let Some(chunk) = source.get(hash)? {
                 return Ok(Some(chunk));
             }
@@ -267,7 +284,7 @@ impl JournalStore {
             let path = self.dir.join(name.to_string());
             std::fs::write(&path, bytes)?;
             File::open(&path)?.sync_all()?;
-            self.sources.push(Source::open_file(&self.dir, &name)?);
+            Arc::make_mut(&mut self.sources).push(Arc::new(Source::open_file(&self.dir, &name)?));
             self.pending.push(TableSpec { name, chunk_count });
             return Ok(());
         }
@@ -303,7 +320,7 @@ impl JournalStore {
             if self.specs().iter().any(|existing| existing.name == spec.name) {
                 continue;
             }
-            self.sources.push(Source::open_file(&self.dir, &spec.name)?);
+            Arc::make_mut(&mut self.sources).push(Arc::new(Source::open_file(&self.dir, &spec.name)?));
             self.pending.push(*spec);
         }
         Ok(())
@@ -373,8 +390,8 @@ impl JournalStore {
             journal.close()?;
         }
         let manifest = crate::gc::replace_files(&self.dir, self.upstream.root, &self.upstream.format, specs)?;
-        self.sources =
-            manifest.specs.iter().map(|spec| Source::open_file(&self.dir, &spec.name)).collect::<Result<_>>()?;
+        let sources = manifest.specs.iter().map(|spec| Source::open_file(&self.dir, &spec.name).map(Arc::new));
+        self.sources = Arc::new(sources.collect::<Result<_>>()?);
         self.pending.clear();
         self.upstream = manifest;
         Ok(())
@@ -387,16 +404,7 @@ impl JournalStore {
             Some(journal) => Some(journal.view()?),
             None => None,
         };
-        let journal_name = Hash::parse(JOURNAL_FILE).unwrap();
-        let sources = self
-            .upstream
-            .specs
-            .iter()
-            .chain(&self.pending)
-            .filter(|spec| spec.name != journal_name)
-            .map(|spec| Source::open_file(&self.dir, &spec.name))
-            .collect::<Result<_>>()?;
-        Ok(Snapshot { sources, journal })
+        Ok(Snapshot { sources: self.sources.clone(), journal })
     }
 
     /// sync writes out the journal's buffered records and index, leaving the store open.
