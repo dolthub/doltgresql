@@ -510,3 +510,56 @@ fn test_planned_joins() {
         },
     ]);
 }
+
+#[test]
+fn test_limited_joins() {
+    run_scripts(&[
+        ScriptTest {
+            name: "a LIMIT over an unordered join looks rows up instead of hashing a whole input",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lim_a (id INT PRIMARY KEY, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lim_b (id INT PRIMARY KEY, a_id INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lim_a SELECT i, i % 10 FROM generate_series(1, 5000) i;",
+                    expected: Expected::Tag("INSERT 0 5000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lim_b SELECT i, 5001 - i FROM generate_series(1, 5000) i;",
+                    expected: Expected::Tag("INSERT 0 5000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXPLAIN SELECT a.id, a.v FROM lim_a a, lim_a b WHERE a.id = b.id LIMIT 50;",
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "LookupJoin", left: "lim_a", right: "lim_a" }]),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXPLAIN SELECT a.id, b.id FROM lim_a a, lim_b b WHERE a.id = b.a_id LIMIT 50;",
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "LookupJoin", left: "lim_b", right: "lim_a" }]),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*), count(DISTINCT a_id) FROM (SELECT a.id, b.a_id FROM lim_a a, lim_b b WHERE a.id = b.a_id LIMIT 50) s WHERE id = a_id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("50"), T("50")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

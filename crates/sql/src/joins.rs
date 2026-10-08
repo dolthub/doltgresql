@@ -309,7 +309,7 @@ fn plan_limited(ctx: &mut Ctx<'_>, plan: Plan, limit: Option<f64>) -> Plan {
                     };
                 }
             };
-            let streamed = (ordered && kind == JoinKind::Inner).then_some(limit).flatten();
+            let streamed = (kind == JoinKind::Inner).then_some(limit).flatten();
             let left = Box::new(plan_limited(ctx, *left, streamed));
             let right = whole(ctx, *right);
             match lateral || !matches!(kind, JoinKind::Inner | JoinKind::Left | JoinKind::Anti | JoinKind::Semi) {
@@ -348,8 +348,9 @@ fn whole(ctx: &mut Ctx<'_>, input: Plan) -> Box<Plan> {
 
 /// choose plans a join of two inputs: a lookup in the right input's table when that costs least, else a hash join
 /// when the condition has equalities, else a nested loop. An inner join may read its right input first, which puts
-/// the smaller input on the side it hashes or loops over, unless its left input's order replaced a sort, in which
-/// case a LIMIT above may read only `limit` of its left rows. On equal estimates, a table with a primary key is read
+/// the smaller input on the side it hashes or loops over, unless its left input's order replaced a sort. A LIMIT
+/// above an inner join reads only `limit` of its rows, so the input that the join reads first, and looks up or probes
+/// with, stops early, while a hashed input is read whole. On equal estimates, a table with a primary key is read
 /// first.
 fn choose(
     ctx: &mut Ctx<'_>,
@@ -361,10 +362,11 @@ fn choose(
     limit: Option<f64>,
 ) -> Plan {
     let swappable = kind == JoinKind::Inner && !ordered && !condition.as_ref().is_some_and(crate::plan::has_subquery);
-    let l = estimate(ctx, &left).min(limit.unwrap_or(f64::INFINITY));
-    let r = estimate(ctx, &right);
+    let (l_all, r_all) = (estimate(ctx, &left), estimate(ctx, &right));
+    let first = |rows: f64, matches: f64| rows.min(limit.map_or(f64::INFINITY, |n| n / matches.max(f64::MIN_POSITIVE)));
+    let (l, r) = (first(l_all, 1.0), first(r_all, 1.0));
     let Some(condition) = condition else {
-        let swap = swappable && reads_first(r, &right, l, &left);
+        let swap = swappable && reads_first(r_all, &right, l_all, &left);
         return join(left, right, kind, None, JoinMethod::NestedLoop, swap);
     };
     let width = left.width();
@@ -376,22 +378,22 @@ fn choose(
     };
     if !crate::plan::has_subquery(&condition) {
         if let Some(found) = lookup(ctx, &right, &condition, width) {
-            consider(l * (SEEK + found.matches), false, found.method);
+            consider(first(l_all, found.matches) * (SEEK + found.matches), false, found.method);
         }
         if swappable {
             let flipped = flip(&condition, width, right.width());
             if let Some(found) = lookup(ctx, &left, &flipped, right.width()) {
-                consider(r * (SEEK + found.matches), true, found.method);
+                consider(first(r_all, found.matches) * (SEEK + found.matches), true, found.method);
             }
         }
     }
     let keyed = !crate::plan::join_keys(&condition, width).0.is_empty();
-    let swap = swappable && reads_first(r, &right, l, &left);
+    let swap = swappable && reads_first(r_all, &right, l_all, &left);
+    let (probed, built) = if swap { (r, l_all) } else { (l, r_all) };
     if keyed {
-        let built = if swap { l } else { r };
-        consider(l + r + built * HASH_ROW + HASH_SETUP, swap, JoinMethod::Hash);
+        consider(probed + built + built * HASH_ROW + HASH_SETUP, swap, JoinMethod::Hash);
     }
-    consider(l * r * COMPARE + l + r, swap, JoinMethod::NestedLoop);
+    consider(probed * built * COMPARE + probed + built, swap, JoinMethod::NestedLoop);
     let (_, swap, method) = best.expect("a nested loop is always possible");
     join(left, right, kind, Some(condition), method, swap)
 }

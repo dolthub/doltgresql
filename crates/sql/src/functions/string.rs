@@ -16,7 +16,7 @@
 
 use super::{ANY, Function, text};
 use crate::error::{PgError, Result, code};
-use crate::oid::{BOOL, BPCHAR, CHAR, INT4, INT8, TEXT};
+use crate::oid::{BOOL, BPCHAR, CHAR, INT4, INT8, TEXT, TEXT_ARRAY};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -68,6 +68,8 @@ pub const FUNCTIONS: &[Function] = &[
     f("md5", &[TEXT], TEXT, md5),
     f("quote_ident", &[TEXT], TEXT, quote_ident),
     f("quote_literal", &[TEXT], TEXT, quote_literal),
+    f("parse_ident", &[TEXT], TEXT_ARRAY, parse_ident),
+    f("parse_ident", &[TEXT, BOOL], TEXT_ARRAY, parse_ident),
     Function { name: "concat", args: &[ANY], ret: TEXT, strict: false, variadic: true, implementation: concat },
     Function {
         name: "concat_ws",
@@ -382,4 +384,67 @@ fn to_hex(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 fn bpcharcmp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let ordering = text(&args[0]).trim_end_matches(' ').cmp(text(&args[1]).trim_end_matches(' '));
     Ok(Value::Int4(ordering as i32))
+}
+
+/// parse_ident splits a qualified identifier into its names, unquoting quoted ones and downcasing the rest, and fails
+/// on text after the names unless `strict` is false, as Postgres' parse_ident does.
+fn parse_ident(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let qualified = text(&args[0]);
+    let strict = !matches!(args.get(1), Some(Value::Bool(false)));
+    let invalid = |detail: Option<&str>| PgError {
+        detail: detail.map(str::to_string),
+        ..PgError::new(code::INVALID_PARAMETER_VALUE, format!("string is not a valid identifier: \"{qualified}\""))
+    };
+    let space = |c: &char| matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c' | '\x0b');
+    let start = |c: char| c.is_ascii_alphabetic() || c == '_' || !c.is_ascii();
+    let chars: Vec<char> = qualified.chars().collect();
+    let mut at = chars.iter().take_while(|c| space(c)).count();
+    let (mut names, mut after_dot) = (Vec::new(), false);
+    loop {
+        if chars.get(at) == Some(&'"') {
+            let mut name = String::new();
+            at += 1;
+            loop {
+                match (chars.get(at), chars.get(at + 1)) {
+                    (None, _) => return Err(invalid(Some("String has unclosed double quotes."))),
+                    (Some('"'), Some('"')) => {
+                        name.push('"');
+                        at += 2;
+                    }
+                    (Some('"'), _) => break,
+                    (Some(&c), _) => {
+                        name.push(c);
+                        at += 1;
+                    }
+                }
+            }
+            at += 1;
+            if name.is_empty() {
+                return Err(invalid(Some("Quoted identifier must not be empty.")));
+            }
+            names.push(Value::Text(name));
+        } else if chars.get(at).is_some_and(|&c| start(c)) {
+            let end = at + chars[at..].iter().take_while(|&&c| start(c) || c.is_ascii_digit() || c == '$').count();
+            names.push(Value::Text(chars[at..end].iter().map(|c| c.to_ascii_lowercase()).collect()));
+            at = end;
+        } else {
+            return Err(match chars.get(at) {
+                Some('.') => invalid(Some("No valid identifier before \".\".")),
+                _ if after_dot => invalid(Some("No valid identifier after \".\".")),
+                _ => invalid(None),
+            });
+        }
+        at += chars[at..].iter().take_while(|c| space(c)).count();
+        match chars.get(at) {
+            Some('.') => {
+                after_dot = true;
+                at += 1;
+                at += chars[at..].iter().take_while(|c| space(c)).count();
+            }
+            None => break,
+            Some(_) if strict => return Err(invalid(None)),
+            Some(_) => break,
+        }
+    }
+    Ok(Value::Array(Box::new(crate::array::Array::one_dimensional(TEXT, names))))
 }

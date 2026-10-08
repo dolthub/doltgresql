@@ -15560,3 +15560,128 @@ fn test_operator_implementation_functions() {
         },
     ]);
 }
+
+#[test]
+fn test_parse_ident() {
+    run_scripts(&[
+        ScriptTest {
+            name: "parse_ident splits qualified identifiers as Postgres does",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('Schema.TableName');",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{schema,tablename}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('"Schema"."Table Name"');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T(r#"{Schema,"Table Name"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident(' first . "Sec""ond" . third ');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T(r#"{first,"Sec\"ond",third}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('a$1.b_2');",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{a$1,b_2}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('naïve.Ünïcode');",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{naïve,Ünïcode}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('foo.bar()', false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{foo,bar}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('foo.bar()');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"string is not a valid identifier: "foo.bar()""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('"unclosed');"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"string is not a valid identifier: ""unclosed""#, detail: "String has unclosed double quotes.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('""');"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"string is not a valid identifier: """""#, detail: "Quoted identifier must not be empty.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('.foo');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"string is not a valid identifier: ".foo""#, detail: r#"No valid identifier before "."."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('foo.');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"string is not a valid identifier: "foo.""#, detail: r#"No valid identifier after "."."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('1abc');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"string is not a valid identifier: "1abc""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident(NULL);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
