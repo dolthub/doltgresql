@@ -174,10 +174,13 @@ pub struct SubqueryRows {
 }
 
 /// RowIndex is how the filter above a `Once` plan finds its rows: the sides of its equality conditions that read the
-/// enclosing rows, with the rows by the values of the sides that read them, or no table when a value has no hash key.
+/// enclosing rows, with the rows by the values of the sides that read them, or no table when a value has no hash key,
+/// and the filter with its constant parts computed, whole and without the equalities that the table answers.
 #[derive(Debug)]
 pub(crate) struct RowIndex {
     pub(crate) outer: Vec<Expr>,
+    pub(crate) predicate: Expr,
+    pub(crate) residual: Expr,
     pub(crate) table: Option<(KeyMap<usize>, Vec<Vec<usize>>)>,
 }
 
@@ -2835,22 +2838,28 @@ pub(crate) fn row_index(ctx: &mut Ctx<'_>, rows: &[Vec<Value>], predicate: &Expr
         });
         (column, other)
     };
-    let (mut inner, mut outer) = (Vec::new(), Vec::new());
+    let (mut inner, mut outer, mut rest) = (Vec::new(), Vec::new(), Vec::new());
     for c in crate::indexscan::conjuncts(predicate) {
         if let Expr::Compare(CmpOp::Eq, a, b) = c {
             match (reads(a), reads(b)) {
                 ((true, false), (false, _)) if !has_subquery(b) => {
                     inner.push((**a).clone());
                     outer.push((**b).clone());
+                    continue;
                 }
                 ((false, _), (true, false)) if !has_subquery(a) => {
                     inner.push((**b).clone());
                     outer.push((**a).clone());
+                    continue;
                 }
                 _ => {}
             }
         }
+        rest.push(c.clone());
     }
+    let residual = rest.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    let residual = residual.unwrap_or(Expr::Const(Value::Bool(true))).fold(ctx);
+    let predicate = predicate.clone().fold(ctx);
     let mut build = || {
         let mut table: KeyMap<usize> = KeyMap::default();
         let mut buckets: Vec<Vec<usize>> = Vec::new();
@@ -2871,7 +2880,7 @@ pub(crate) fn row_index(ctx: &mut Ctx<'_>, rows: &[Vec<Value>], predicate: &Expr
         Some((table, buckets))
     };
     let table = if inner.is_empty() { None } else { build() };
-    RowIndex { outer, table }
+    RowIndex { outer, predicate, residual, table }
 }
 
 /// share_scans wraps the table scan under the filter of a subquery that reads its enclosing rows in a `Once` plan, so

@@ -1173,7 +1173,7 @@ impl Reader<'_> {
         let Some(i) = scan.index else { return table.decode_columns(db, key, value, self.needed.as_deref()).map(Some) };
         let index = &table.indexes[i];
         if self.covering {
-            let mut row = vec![Value::Null; table.columns.len()];
+            let mut row = Value::nulls(table.columns.len());
             for (field, &c) in self.columns.iter().enumerate() {
                 if c < row.len() && wanted(c) {
                     row[c] = match values.get_mut(field) {

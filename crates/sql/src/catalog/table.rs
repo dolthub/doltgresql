@@ -565,7 +565,7 @@ impl TableDef {
         value: &[u8],
         needed: Option<&[bool]>,
     ) -> Result<(Vec<Value>, u64)> {
-        let mut row = vec![Value::Null; self.columns.len()];
+        let mut row = Value::nulls(self.columns.len());
         let (key, value) = (Tuple(key), Tuple(value));
         let wanted = |i: usize| needed.is_none_or(|n| n[i]);
         for (field, &i) in self.key_columns.iter().enumerate() {

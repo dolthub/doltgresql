@@ -282,17 +282,16 @@ impl Rows for SharedRows {
 
 /// OnceFilterRows hands out the rows of a `Once` plan that a filter keeps for the enclosing row, checking only the
 /// rows whose values match it in the filter's equality conditions when it has some.
-struct OnceFilterRows<'p> {
+struct OnceFilterRows {
     shared: Arc<SubqueryRows>,
-    predicate: &'p Expr,
     /// The bucket of rows that match the enclosing row, or None to check every row.
     bucket: Option<usize>,
     position: usize,
 }
 
-impl<'p> OnceFilterRows<'p> {
+impl OnceFilterRows {
     /// open finds the rows of the `Once` input that may match the enclosing row.
-    fn open(ctx: &mut Ctx<'_>, input: &'p Plan, predicate: &'p Expr) -> Result<OnceFilterRows<'p>> {
+    fn open(ctx: &mut Ctx<'_>, input: &Plan, predicate: &Expr) -> Result<OnceFilterRows> {
         let shared = input.shared_rows(ctx)?;
         let index = match shared.index.get() {
             Some(index) => index,
@@ -304,7 +303,7 @@ impl<'p> OnceFilterRows<'p> {
         };
         let mut bucket = None;
         if let Some((table, _)) = &index.table {
-            let empty = OnceFilterRows { shared: shared.clone(), predicate, bucket: None, position: usize::MAX };
+            let empty = OnceFilterRows { shared: shared.clone(), bucket: None, position: usize::MAX };
             let mut key = Vec::with_capacity(index.outer.len());
             for e in &index.outer {
                 match e.eval(ctx, &[])? {
@@ -319,27 +318,25 @@ impl<'p> OnceFilterRows<'p> {
                 }
             }
         }
-        Ok(OnceFilterRows { shared, predicate, bucket, position: 0 })
+        Ok(OnceFilterRows { shared, bucket, position: 0 })
     }
 }
 
-impl Rows for OnceFilterRows<'_> {
+impl Rows for OnceFilterRows {
     fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
+        let index = self.shared.index.get().expect("an index");
         loop {
-            let j = match self.bucket {
-                Some(b) => {
-                    let buckets = &self.shared.index.get().and_then(|i| i.table.as_ref()).expect("an index").1;
-                    match buckets[b].get(self.position) {
-                        Some(&j) => j,
-                        None => return Ok(None),
-                    }
-                }
-                None if self.position < self.shared.rows.len() => self.position,
+            let (j, predicate) = match self.bucket {
+                Some(b) => match index.table.as_ref().expect("a table").1[b].get(self.position) {
+                    Some(&j) => (j, &index.residual),
+                    None => return Ok(None),
+                },
+                None if self.position < self.shared.rows.len() => (self.position, &index.predicate),
                 None => return Ok(None),
             };
             self.position += 1;
             let row = &self.shared.rows[j];
-            if self.predicate.is_true(ctx, row)? {
+            if predicate.is_true(ctx, row)? {
                 return Ok(Some(row.clone()));
             }
         }

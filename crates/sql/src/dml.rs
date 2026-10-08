@@ -474,9 +474,22 @@ impl<'a> Edits<'a> {
     /// index_row adds a row's keys to the secondary indexes that hold it, or removes them, checking unique indexes as
     /// it adds.
     fn index_row(&mut self, ctx: &mut Ctx<'_>, row: &[Value], primary: &[u8], add: bool) -> Result<()> {
+        self.index_row_with_kept(ctx, row, primary, add, &[])
+    }
+
+    /// index_row_with_kept is `index_row` leaving alone the indexes marked kept, whose keys an update leaves as they
+    /// were.
+    fn index_row_with_kept(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        row: &[Value],
+        primary: &[u8],
+        add: bool,
+        kept: &[bool],
+    ) -> Result<()> {
         let (row, held) = self.rules.indexed(ctx, row)?;
         let db = &mut *ctx.db;
-        for i in (0..self.table.indexes.len()).filter(|&i| held[i]) {
+        for i in (0..self.table.indexes.len()).filter(|&i| held[i] && !kept.get(i).copied().unwrap_or(false)) {
             let index = &self.table.indexes[i];
             let key = self.table.index_key(db, index, &row, primary)?;
             let value = |c: usize| &row[self.table.row_position(c)];
@@ -566,6 +579,42 @@ impl<'a> Edits<'a> {
         }
         self.index_row(ctx, row, &key, false)?;
         self.push(key, None);
+        Ok(())
+    }
+
+    /// kept returns, for an update of a row that keeps its primary key, whether each secondary index keeps the row's
+    /// key, or None when the update changes the primary key or the table is keyless.
+    fn kept(&self, ctx: &mut Ctx<'_>, old: &[Value], new: &[Value]) -> Result<Option<Vec<bool>>> {
+        if self.table.keyless() || self.table.encode_row(ctx.db, old)?.0 != self.table.encode_row(ctx.db, new)?.0 {
+            return Ok(None);
+        }
+        let (old, old_held) = self.rules.indexed(ctx, old)?;
+        let (new, new_held) = self.rules.indexed(ctx, new)?;
+        let primary = self.table.encode_row(ctx.db, &old)?.0;
+        let mut kept = Vec::with_capacity(self.table.indexes.len());
+        for (i, index) in self.table.indexes.iter().enumerate() {
+            let same = old_held[i] == new_held[i]
+                && (!old_held[i]
+                    || self.table.index_key(ctx.db, index, &old, &primary)?
+                        == self.table.index_key(ctx.db, index, &new, &primary)?);
+            kept.push(same);
+        }
+        Ok(Some(kept))
+    }
+
+    /// retire removes the keys of a row that an update changes from the secondary indexes, where the update keeps the
+    /// row's primary key.
+    fn retire(&mut self, ctx: &mut Ctx<'_>, row: &[Value], kept: &[bool]) -> Result<()> {
+        let (key, _) = self.table.encode_row(ctx.db, row)?;
+        self.index_row_with_kept(ctx, row, &key, false, kept)
+    }
+
+    /// replace writes the new values of a row whose primary key an update keeps, adding its changed keys to the
+    /// secondary indexes.
+    fn replace(&mut self, ctx: &mut Ctx<'_>, row: &[Value], kept: &[bool]) -> Result<()> {
+        let (key, value) = self.table.encode_row(ctx.db, row)?;
+        self.index_row_with_kept(ctx, row, &key, true, kept)?;
+        self.push(key, Some(value));
         Ok(())
     }
 
@@ -1533,11 +1582,20 @@ impl UpdatePlan {
             changes.push((row, new_row, from_row));
         }
         let mut edits = Edits::deferring(ctx, &self.table)?;
-        for (row, _, _) in &changes {
-            edits.delete(ctx, row)?;
+        let mut kept = Vec::with_capacity(changes.len());
+        for (row, new_row, _) in &changes {
+            let same = edits.kept(ctx, row, new_row)?;
+            match &same {
+                Some(same) => edits.retire(ctx, row, same)?,
+                None => edits.delete(ctx, row)?,
+            }
+            kept.push(same);
         }
-        for (_, new_row, _) in &changes {
-            edits.insert(ctx, new_row)?;
+        for ((_, new_row, _), same) in changes.iter().zip(&kept) {
+            match same {
+                Some(same) => edits.replace(ctx, new_row, same)?,
+                None => edits.insert(ctx, new_row)?,
+            }
         }
         edits.owe(ctx);
         edits.apply(ctx.db, ctx.txn)?;

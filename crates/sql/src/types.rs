@@ -136,6 +136,11 @@ fn format_float(shortest_exponential: String, max_exponent: i32) -> String {
 }
 
 impl Value {
+    /// nulls returns a row of NULLs, built faster than cloning NULL into each place.
+    pub fn nulls(width: usize) -> Vec<Value> {
+        std::iter::repeat_with(|| Value::Null).take(width).collect()
+    }
+
     /// is_null reports whether the value is NULL.
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
