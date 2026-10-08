@@ -1,7 +1,7 @@
 # Doltgres Rust port — scope and plan
 
-Working document for the experimental Rust rewrite. It is removed when the port is finished, since the
-end state contains only Rust code.
+Working document for the experimental Rust rewrite. The Go code stays in the repository alongside the Rust code, so
+that GitHub shows the Rust changes on their own; continuous integration moves to the Rust server.
 
 - Worktree branch: `daylon/rust-port`
 - Pinned Go baseline: `96c7b6ba630cd0862c9e0a74714b5b12c04626f7` (local tag `rust-port-base`)
@@ -27,8 +27,7 @@ end state contains only Rust code.
 - Third-party crates are allowed, including C-linked ones (e.g. ICU), when we understand their impact.
   Popular, long-lived staples are preferred over young pure-Rust alternatives.
 - Internals need not resemble Doltgres, go-mysql-server, Vitess, or Dolt.
-- The Go code stays in the worktree as a reference and test oracle, and is deleted only once the port is
-  completely finished.
+- The Go code stays in the repository as a reference and test oracle, and is not deleted.
 - Targets macOS, Linux, and Windows, matching the Go CI.
 
 ## Tests
@@ -113,21 +112,30 @@ captured and re-verified.
 
 ## Phases
 
-0. Cargo workspace with the unsafe lint; wire codec (done, verified against pgproto3); pgx-equivalent
-   client and harness; Postgres expectation capture; port of every Go test.
-1. Storage read path: hashes, NBS table files, journal, archives, manifest, flatbuffers messages, prolly
+Status as of 2026-10-08. The untracked `HANDOFF.md` holds the exact position and the approved plan in detail.
+
+0. (Done) Cargo workspace with the unsafe lint; wire codec (verified against pgproto3); pgx-equivalent client and
+   harness; Postgres expectation capture; port of every Go test.
+1. (Done) Storage read path: hashes, NBS table files, journal, archives, manifest, flatbuffers messages, prolly
    trees, commit graph. Verified by dumping Go-written repositories identically.
-2. Storage write path, byte-identical: same chunks and hashes as Go for the same operations.
-3. Wire protocol, parser, catalog, and a minimal engine, enough for the smoke tests. The parser is `pg_query`
-   (libpg_query, Postgres' own grammar, currently 17.7), and the engine is our own row engine built for OLTP over
-   prolly trees. Syntax newer than Postgres 15 is accepted; a statement fails only when what it needs is unsupported.
-4. Breadth: types, functions, operators, DDL, DML, pg_catalog, PL/pgSQL, triggers, sequences, auth.
-5. Version control: branches, commits, merge, conflicts, diff, remotes, backups, GC, cluster replication.
-6. Operational features, logical replication, admin tool, and performance work.
+2. (Done) Storage write path: Go reads everything Rust writes and the reverse. Bytes and hashes matched Go's at
+   first, and now may differ wherever readers cannot tell.
+3. (Done) Wire protocol, parser, catalog, and a minimal engine. The parser is `pg_query` (libpg_query, Postgres' own
+   grammar, currently 17.7), and the engine is our own row engine built for OLTP over prolly trees. Syntax newer than
+   Postgres 15 is accepted; a statement fails only when what it needs is unsupported.
+4. (Done) Breadth: types, functions, operators, DDL, DML, pg_catalog, PL/pgSQL, triggers, sequences, auth.
+5. (Done) Version control: branches, commits, merge, conflicts, diff, remotes, backups, GC, archives, cluster
+   replication, apart from persisted statistics and column-level schema merges.
+6. (In progress) Operational features, logical replication, and the admin tool are done. Performance: faster than Go
+   on DoltHub's published sysbench tests, TPC-C, and a benchmark of 115 complex queries, at one thread and on small
+   data; at a gigabyte, faster at one thread, while several threads still need concurrent reads and merges that
+   read only what changed.
 7. The planner (rule-based choices with adaptive joins, catalog index scans, statistics-driven join order), the
-   remaining test failures, and the git and ssh remotes.
+   remaining test failures, fixes for Go bugs that tests encode, and the git and ssh remotes.
 8. Continuous integration against the Rust server, with comparisons between Go on `main` and Rust on this branch,
    and a rebase onto the latest `main` that ports what changed in Go since. The Go code stays in the repository.
+9. A long tail of quick compatibility improvements (missing functions, casts, and the like), and performance work
+   that moves toward Postgres 15's speed rather than Go's, without losing compatibility.
 
 ## Phase 0 status
 
@@ -155,7 +163,7 @@ Done:
   machine's local zone prints a numeric zone name, which only changes error text.
 - `logictest`: the sqllogictest runner, sending what pgx v4's database/sql driver sends and scanning values the way
   the Go harness does. On a test file covering every result path, its log matches the Go runner's record for record,
-  messages included. The full corpus has not been run yet.
+  messages included. The full corpus has since been run with both runners.
 - Dump imports (`crates/tests/tests/dumps.rs`, ignored by default like the Go test): the same 45 of 103 dumps pass as
   under the Go test. The proxy serves psql's connections concurrently, so the 12 dumps that hung the Go test by
   reconnecting now run and fail on real server errors.
@@ -170,11 +178,8 @@ Done:
   ported, one test per subtest. Against the Go binary, each passes where the Go run passes, and each Go skip is an
   ignored test with the same reason. TestStatsGCConcurrency's skip is stale: it passes in Go and Rust once unskipped.
 
-Remaining:
-
-- 36 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too; in 7 the Go
-  server panics), and 7 EXPLAIN assertions that expect Postgres plan text.
-- A full sqllogictest corpus run with both runners.
+Remaining: 36 assertions that neither Postgres nor the Go server can produce (the Go suite skips them too; in 7 the
+Go server panics), which stay skipped.
 
 ## Phase 1 status
 
@@ -197,8 +202,8 @@ Done (read path):
   version 1 and 2 archives written by Dolt. Doltgres 0.18 databases are out of scope, since the Go server cannot read
   them, and 0.52 to 0.56 lose chunks in their own GC.
 
-Remaining: decoding values by type (with Phase 4), statistics, auth and branch control files, vector index nodes, and
-a run against a large database.
+Since done with later phases: values by type, auth and branch control files, vector index nodes, and runs against
+gigabyte databases. Persisted statistics remain.
 
 ## Phase 2 status
 
@@ -240,8 +245,8 @@ Findings:
 - Dolt's journal iterator reports the chunks it found through the index file by the first 16 bytes of their
   addresses, padded with zeros. Comparisons with Go's iteration go by each chunk's data hash.
 
-Remaining, with the phases that use them: GC and the writable old generation, conjoining, and archive writing (chunk
-grouping and dictionary training) with Phase 5; statistics, and the auth and branch control files with Phase 4.
+Since done with later phases: GC and the writable old generation, conjoining, archive writing, and the auth and branch
+control files. Persisted statistics remain.
 
 ## Findings in Go
 
@@ -254,4 +259,4 @@ there, as evidence for the port beyond performance. Add to it as they are found.
 - `testing/go/regression/out/baseline-report.txt`: readable form of the above.
 - `testing/go/regression/out/dumps-status.txt` and `skipped-dumps.txt`: per-dump import results.
 
-These live under a gitignored directory and are moved into the Rust test tree once it exists.
+These live under a gitignored directory; the Rust suites keep their own results.
