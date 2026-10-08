@@ -182,3 +182,13 @@ conflict scripts, make the Go server panic, with a stack trace that differs betw
 
 Rust: returns Dolt's errors ("nothing to commit", the autocommit merge conflict error) and the summary's counts;
 the seven assertions now expect them.
+
+## Dolt function errors use MySQL's and go-mysql-server's words (confirmed)
+
+DOLT_PREVIEW_MERGE_CONFLICTS reports a sequence or function name as `table not found: public.f_default()`, and a
+missing column as `column "c" could not be found in any table in scope`; DOLT_QUERY_DIFF cannot read AS OF in its
+queries (`table not found: t1`, `TargetType not handled: DB_TABLE_IDENT`).
+
+Rust: reports `relation "f_default()" does not exist` and `column "c" does not exist` as Postgres words them, and
+parses DOLT_QUERY_DIFF's queries with Doltgres' grammar, where an unquoted revision after AS OF is a syntax error;
+the nine assertions now expect those.

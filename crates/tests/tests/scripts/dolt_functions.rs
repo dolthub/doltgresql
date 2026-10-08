@@ -3562,12 +3562,11 @@ fn test_dolt_function_smoke_tests() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM dolt_query_diff('select * from t1 as of main', 'select * from t1')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: t1", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "main""#, position: 24, ..E }),
                     flow: Flow::Query,
-                    skip: Some("Go's DOLT_QUERY_DIFF cannot parse AS OF in its queries; the Rust server parses the queries with Doltgres' grammar, where an unquoted revision is a syntax error"),
                     ..A
                 },
             ],
@@ -3820,20 +3819,18 @@ fn test_dolt_function_smoke_tests() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM dolt_query_diff('select * from t1 as of main', 'select * from t1')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: t1", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "main""#, position: 24, ..E }),
                     flow: Flow::Query,
-                    skip: Some("Go's DOLT_QUERY_DIFF cannot parse AS OF in its queries; the Rust server parses the queries with Doltgres' grammar, where an unquoted revision is a syntax error"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM dolt_query_diff('select * from t2 as of main', 'select * from t2')",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: t2", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "main""#, position: 24, ..E }),
                     flow: Flow::Query,
-                    skip: Some("Go's DOLT_QUERY_DIFF cannot parse AS OF in its queries; the Rust server parses the queries with Doltgres' grammar, where an unquoted revision is a syntax error"),
                     ..A
                 },
             ],
@@ -4152,11 +4149,10 @@ fn test_dolt_function_smoke_tests() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT base_c2 FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
-                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "base_c2" could not be found in any table in scope"#, ..E }),
-                    skip: Some("Go reports the missing column in go-mysql-server's words; the Rust server reports it as Postgres does"),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "base_c2" does not exist"#, position: 8, ..E }),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -4177,11 +4173,10 @@ fn test_dolt_function_smoke_tests() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT base_c1 FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
-                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "base_c1" could not be found in any table in scope"#, ..E }),
-                    skip: Some("Go reports the missing column in go-mysql-server's words; the Rust server reports it as Postgres does"),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "base_c1" does not exist"#, position: 8, ..E }),
                     ..A
                 },
             ],
@@ -4920,28 +4915,25 @@ fn test_dolt_preview_merge_conflicts() {
                     },
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT COUNT(*) FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'other', 'f_default()');",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: public.f_default()", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "f_default()" does not exist"#, ..E }),
                     flow: Flow::Query,
-                    skip: Some("Go reports a root object as a missing table in MySQL's words; the Rust server reports the missing relation as Postgres does"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT COUNT(*) FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'other', 'f_trigger()');",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: public.f_trigger()", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "f_trigger()" does not exist"#, ..E }),
                     flow: Flow::Query,
-                    skip: Some("Go reports a root object as a missing table in MySQL's words; the Rust server reports the missing relation as Postgres does"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT COUNT(*) FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'other', 't_serial_pk_seq');",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: "table not found: public.t_serial_pk_seq", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "t_serial_pk_seq" does not exist"#, ..E }),
                     flow: Flow::Query,
-                    skip: Some("Go reports a root object as a missing table in MySQL's words; the Rust server reports the missing relation as Postgres does"),
                     ..A
                 },
             ],
@@ -5032,12 +5024,11 @@ fn test_dolt_query_diff() {
                 "SELECT length(DOLT_COMMIT('-A', '-m', 'next')::text) = 32;",
             ],
             assertions: &[
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_QUERY_DIFF('SELECT * FROM t_simple AS OF main', 'SELECT * FROM t_simple AS OF other');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "TargetType not handled: `DB_TABLE_IDENT`", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "main""#, position: 30, ..E }),
                     flow: Flow::Query,
-                    skip: Some("Go's DOLT_QUERY_DIFF cannot parse AS OF in its queries; the Rust server parses the queries with Doltgres' grammar, where an unquoted revision is a syntax error"),
                     ..A
                 },
             ],
