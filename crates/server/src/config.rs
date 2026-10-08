@@ -56,6 +56,21 @@ pub struct Config {
     pub auto_gc_incremental_file_size: u64,
     /// The cluster replication that the server takes part in, from the `cluster` section.
     pub cluster: Option<sql::cluster::ClusterConfig>,
+    /// The Postgres primary that the server replicates from, from the `postgres_replication` section.
+    pub postgres_replication: Option<ReplicationConfig>,
+    /// The directory that holds the replication position file, from cfg_dir, relative to the working directory.
+    pub cfg_dir: PathBuf,
+}
+
+/// ReplicationConfig is the `postgres_replication` section, where missing values are empty.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ReplicationConfig {
+    pub server_address: String,
+    pub user: String,
+    pub password: String,
+    pub database: String,
+    pub port: i64,
+    pub slot_name: String,
 }
 
 /// Startup is what a command line asks for: serving with a configuration, or printing text and exiting.
@@ -189,6 +204,8 @@ impl Config {
             auto_gc_archive: true,
             auto_gc_incremental_file_size: 0,
             cluster: None,
+            postgres_replication: None,
+            cfg_dir: PathBuf::new(),
         };
         if let Some(path) = config_path {
             let text =
@@ -220,6 +237,21 @@ impl Config {
         }
         if !doc["cluster"].is_badvalue() {
             self.cluster = Some(cluster_config(&doc["cluster"])?);
+        }
+        let replication = &doc["postgres_replication"];
+        if !replication.is_badvalue() {
+            let text = |key: &str| replication[key].as_str().unwrap_or_default().to_string();
+            self.postgres_replication = Some(ReplicationConfig {
+                server_address: text("postgres_server_address"),
+                user: text("postgres_user"),
+                password: text("postgres_password"),
+                database: text("postgres_database"),
+                port: replication["postgres_port"].as_i64().unwrap_or(0),
+                slot_name: text("slot_name"),
+            });
+        }
+        if let Some(dir) = doc["cfg_dir"].as_str() {
+            self.cfg_dir = PathBuf::from(dir);
         }
         if let Some(read_only) = doc["behavior"]["read_only"].as_bool() {
             self.read_only = read_only;

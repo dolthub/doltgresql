@@ -18,6 +18,7 @@
 
 pub mod config;
 mod conn;
+pub mod logrepl;
 pub mod scram;
 
 use std::io::Write;
@@ -145,6 +146,34 @@ fn bind(host: &str, port: u16) -> Result<TcpListener, String> {
     }
 }
 
+/// start_replication starts the thread that replicates from a Postgres primary, after checking the configuration as
+/// the Go server does.
+fn start_replication(config: &Config, replication: &config::ReplicationConfig) -> Result<(), String> {
+    let missing = |what: &str| Err(format!("postgres replication {what} for replication"));
+    if replication.database.is_empty() {
+        return missing("database must be specified and not empty");
+    } else if replication.user.is_empty() {
+        return missing("user must be specified and not empty");
+    } else if replication.password.is_empty() {
+        return missing("password must be specified and not empty");
+    } else if replication.port == 0 {
+        return missing("port must be specified and non-zero");
+    } else if replication.slot_name.is_empty() {
+        return missing("slot name must be specified and not empty");
+    }
+    let primary = format!(
+        "postgres://{}:{}@{}:{}/{}",
+        replication.user, replication.password, replication.server_address, replication.port, replication.database
+    );
+    //TODO: the replica's database should come from the config
+    let replica = format!("postgres://{}:{}@localhost:{}/postgres", config.user, config.password, config.port);
+    let replicator = logrepl::LogicalReplicator::new(config.cfg_dir.join("pg_wal_location"), primary, replica);
+    let slot = replication.slot_name.clone();
+    println!("Starting replication");
+    std::thread::spawn(move || replicator.start_replication(&slot));
+    Ok(())
+}
+
 /// serve accepts connections on the configured address until the listener fails.
 pub fn serve(config: &Config) -> Result<(), String> {
     if let Some(path) = &config.log_file {
@@ -211,6 +240,9 @@ pub fn serve(config: &Config) -> Result<(), String> {
         });
     }
     let listener = bind(host, config.port)?;
+    if let Some(replication) = &config.postgres_replication {
+        start_replication(config, replication)?;
+    }
     log(&format!("Server ready. Accepting connections on {host}:{}.", config.port));
     for stream in listener.incoming() {
         let stream = stream.map_err(|err| err.to_string())?;

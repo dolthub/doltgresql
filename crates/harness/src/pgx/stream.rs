@@ -181,20 +181,26 @@ impl Stream {
     /// recv returns the next message from the server. Like pgx, it records ReadyForQuery and ParameterStatus state
     /// and collects notices and notifications before returning the message.
     pub(crate) fn recv(&mut self) -> Result<BackendMessage, Error> {
+        self.recv_until(self.deadline)?
+            .ok_or_else(|| Error::Other(format!("timed out after {READ_TIMEOUT:?} waiting for the server")))
+    }
+
+    /// recv_until returns the next message from the server as recv does, or None when none arrives by the deadline.
+    pub(crate) fn recv_until(&mut self, deadline: Instant) -> Result<Option<BackendMessage>, Error> {
         let frame = loop {
             if let Some(frame) = self.reader.next_frame()? {
                 break frame;
             }
-            let remaining = self.deadline.saturating_duration_since(Instant::now());
+            let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(Error::Other(format!("timed out after {READ_TIMEOUT:?} waiting for the server")));
+                return Ok(None);
             }
             self.socket.tcp().set_read_timeout(Some(remaining))?;
             let mut buffer = [0u8; 16384];
             let count = match self.socket.read(&mut buffer) {
                 Ok(count) => count,
                 Err(err) if matches!(err.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
-                    return Err(Error::Other(format!("timed out after {READ_TIMEOUT:?} waiting for the server")));
+                    return Ok(None);
                 }
                 Err(err) => return Err(err.into()),
             };
@@ -219,7 +225,7 @@ impl Stream {
             }
             _ => {}
         }
-        Ok(message)
+        Ok(Some(message))
     }
 
     /// shutdown closes the socket.

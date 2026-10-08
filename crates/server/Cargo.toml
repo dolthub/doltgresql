@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 base64 = "0.22"
 doltdb = { path = "../doltdb" }
+harness = { path = "../harness" }
 hmac = "0.12"
 pbkdf2 = "0.12"
 pgproto.workspace = true

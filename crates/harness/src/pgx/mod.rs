@@ -319,6 +319,18 @@ impl Conn {
         }
     }
 
+    /// send_message writes a protocol message to the server now, as pgconn's Frontend Send and Flush do.
+    pub fn send_message(&mut self, message: &FrontendMessage) -> Result<(), Error> {
+        self.stream.send(message);
+        self.stream.flush()
+    }
+
+    /// receive_message waits until the deadline for the next message from the server, as pgconn's ReceiveMessage
+    /// does, returning None when none arrives in time.
+    pub fn receive_message(&mut self, deadline: std::time::Instant) -> Result<Option<BackendMessage>, Error> {
+        self.stream.recv_until(deadline)
+    }
+
     /// config returns the configuration this connection was made with.
     pub fn config(&self) -> &ConnConfig {
         &self.config

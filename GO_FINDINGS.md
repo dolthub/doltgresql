@@ -127,3 +127,19 @@ constraint violations. Violations are still recorded, since the merge records th
 Small fix in Go, but in Dolt's shared procedure rather than Doltgres.
 
 Rust: checks the `public` tables and returns 1 when one has violations.
+
+## Logical replication drops large transactions and builds broken statements (confirmed by reading)
+
+The replicator asks pgoutput for `streaming 'true'`, so Postgres sends any transaction larger than
+logical_decoding_work_mem as stream segments before it commits. Those changes carry no Begin message, so
+`processMessages` is false and every one is logged as stale and dropped, and StreamCommit only logs. Values are spliced
+into SQL with no escaping (a quote in a string breaks the statement), key conditions for multi-column keys are joined
+without AND (and the separator goes into the SET list), an update that changes a key looks the row up by its new key,
+an unchanged TOAST column becomes `col = ` with no value, TRUNCATE is ignored, and the failure counter never resets,
+so ten errors over any span of time stop replication.
+
+Small fixes in Go, apart from streaming, which needs per-transaction buffering or dropping the option.
+
+Rust: requests no streaming (Postgres then sends large transactions whole at commit), quotes every value as an
+escaped literal that the replica casts, joins key conditions with AND, finds updated rows by the old key when
+Postgres sends it, leaves unchanged TOAST columns out, applies TRUNCATE, and resets the counter after each message.
