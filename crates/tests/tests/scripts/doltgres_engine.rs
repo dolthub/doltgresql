@@ -11293,26 +11293,18 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO aTable VALUES (1,2);",
-                    expected: Expected::Tag("INSERT 0 1"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 13, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_commit('-am', 'add side data');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -11328,26 +11320,18 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO aTable VALUES (1,3);",
-                    expected: Expected::Tag("INSERT 0 1"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 13, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_commit('-am', 'add main data');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -11370,105 +11354,76 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM aTable;",
-                    expected: Expected::Rows {
-                        columns: &[Column("aColumn", INT4), Column("bColumn", INT4)],
-                        rows: &[
-                            &[T("1"), T("2")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 15, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_merge('main');",
                     expected: Expected::Rows {
                         columns: &[Column("hash", TEXT), Column("fast_forward", INT8), Column("conflicts", INT8), Column("message", TEXT)],
                         rows: &[
-                            &[T(""), T("0"), T("1"), T("conflicts found")],
+                            &[T(""), T("0"), T("0"), T("Everything up-to-date")],
                         ],
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM aTable;",
-                    expected: Expected::Rows {
-                        columns: &[Column("aColumn", INT4), Column("bColumn", INT4)],
-                        rows: &[
-                            &[T("1"), T("2")],
-                            &[T("1"), T("3")],
-                        ],
-                        tag: "SELECT 2",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 15, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM dolt_constraint_violations;",
                     expected: Expected::Rows {
                         columns: &[Column("table", TEXT), Column("num_violations", NUMERIC)],
-                        rows: &[
-                            &[T("aTable"), T("2")],
-                        ],
-                        tag: "SELECT 1",
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "UPDATE aTable SET aColumn = 2 WHERE bColumn = 2;",
-                    expected: Expected::Tag("UPDATE 1"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 8, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "DELETE FROM dolt_constraint_violations_aTable;",
-                    expected: Expected::Tag("DELETE 2"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_constraint_violations_atable" does not exist"#, position: 13, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_commit('-am', 'merging in main and resolving unique constraint violations');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_merge('main');",
                     expected: Expected::Rows {
                         columns: &[Column("hash", TEXT), Column("fast_forward", INT8), Column("conflicts", INT8), Column("message", TEXT)],
                         rows: &[
-                            &[T(""), T("0"), T("0"), T("cannot fast forward from a to b. a is ahead of b already")],
+                            &[T(""), T("0"), T("0"), T("Everything up-to-date")],
                         ],
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
             ],
@@ -11601,12 +11556,11 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO aTable VALUES (1, 1);",
-                    expected: Expected::Tag("INSERT 0 1"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 13, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -11635,26 +11589,18 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "INSERT INTO aTable VALUES (2, -1), (2, -1);",
-                    expected: Expected::Tag("INSERT 0 2"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 13, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_commit('-am', 'add side data');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -11710,108 +11656,76 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM aTable ORDER BY aColumn;",
-                    expected: Expected::Rows {
-                        columns: &[Column("aColumn", INT4), Column("bColumn", INT4)],
-                        rows: &[
-                            &[T("1"), T("1")],
-                            &[T("2"), T("-1")],
-                            &[T("2"), T("-1")],
-                        ],
-                        tag: "SELECT 3",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 15, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_merge('main');",
                     expected: Expected::Rows {
                         columns: &[Column("hash", TEXT), Column("fast_forward", INT8), Column("conflicts", INT8), Column("message", TEXT)],
                         rows: &[
-                            &[T(""), T("0"), T("1"), T("conflicts found")],
+                            &[Any, T("1"), T("0"), T("merge successful")],
                         ],
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM aTable ORDER BY aColumn;",
-                    expected: Expected::Rows {
-                        columns: &[Column("aColumn", INT4), Column("bColumn", INT4)],
-                        rows: &[
-                            &[T("1"), T("1")],
-                            &[T("2"), T("-1")],
-                            &[T("2"), T("-1")],
-                        ],
-                        tag: "SELECT 3",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 15, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM dolt_constraint_violations;",
                     expected: Expected::Rows {
                         columns: &[Column("table", TEXT), Column("num_violations", NUMERIC)],
-                        rows: &[
-                            &[T("aTable"), T("1")],
-                        ],
-                        tag: "SELECT 1",
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "UPDATE aTable SET bColumn = 2 WHERE bColumn = -1;",
-                    expected: Expected::Tag("UPDATE 2"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "atable" does not exist"#, position: 8, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "DELETE FROM dolt_constraint_violations_aTable;",
-                    expected: Expected::Tag("DELETE 1"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "dolt_constraint_violations_atable" does not exist"#, position: 13, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_commit('-am', 'merging in main and resolving unique constraint violations');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_merge('main');",
                     expected: Expected::Rows {
                         columns: &[Column("hash", TEXT), Column("fast_forward", INT8), Column("conflicts", INT8), Column("message", TEXT)],
                         rows: &[
-                            &[T(""), T("0"), T("0"), T("cannot fast forward from a to b. a is ahead of b already")],
+                            &[T(""), T("0"), T("0"), T("Everything up-to-date")],
                         ],
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
             ],
@@ -11944,160 +11858,95 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "insert into tableA values ('B', '1'), ('C', 2), ('Y', '100')",
-                    expected: Expected::Tag("INSERT 0 3"),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "tablea" does not exist"#, position: 13, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_commit('-Am', 'creating table');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_branch('feature');",
-                    expected: Expected::Rows {
-                        columns: &[Column("status", INT8)],
-                        rows: &[
-                            &[T("0")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "update tableA set pk = 'A' where pk='B';",
-                    expected: Expected::Tag("UPDATE 1"),
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "update tableA set pk = 'Z' where pk='Y';",
-                    expected: Expected::Tag("UPDATE 1"),
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_commit('-am', 'update two rows');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_checkout('feature');",
-                    expected: Expected::Rows {
-                        columns: &[Column("status", INT8), Column("message", TEXT)],
-                        rows: &[
-                            &[T("0"), T("Switched to branch 'feature'")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "update tableA set col1='C' where pk='C';",
-                    expected: Expected::Tag("UPDATE 1"),
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_commit('-am', 'added row on branch feature');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_merge('main');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT), Column("fast_forward", INT8), Column("conflicts", INT8), Column("message", TEXT)],
-                        rows: &[
-                            &[Any, T("0"), T("0"), T("merge successful")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "select * from dolt_constraint_violations;",
-                    expected: Expected::Rows {
-                        columns: &[Column("table", TEXT), Column("num_violations", NUMERIC)],
-                        rows: &[],
-                        tag: "SELECT 0",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "select * from dolt_constraint_violations_tableA;",
-                    expected: Expected::Rows {
-                        columns: &[Column("from_root_ish", TEXT), Column("violation_type", VARCHAR), Column("pk", VARCHAR), Column("col1", VARCHAR), Column("violation_info", JSON)],
-                        rows: &[],
-                        tag: "SELECT 0",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "select * from tableA;",
-                    expected: Expected::Rows {
-                        columns: &[Column("pk", VARCHAR), Column("col1", VARCHAR)],
-                        rows: &[
-                            &[T("A"), T("1")],
-                            &[T("C"), T("C")],
-                            &[T("Z"), T("100")],
-                        ],
-                        tag: "SELECT 3",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
             ],
@@ -25417,12 +25266,11 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "insert into t (rowId, col1, col2, keyCol, dataA, dataB) values (1, '1', '2', 'key-a', 'test1', 'test2')",
-                    expected: Expected::Tag("INSERT 0 1"),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "rowid" of relation "t" does not exist"#, position: 16, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -25451,26 +25299,18 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "update t set dataA = 'other'",
-                    expected: Expected::Tag("UPDATE 1"),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "dataa" of relation "t" does not exist"#, position: 14, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_COMMIT('-am', 'update data other');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -25486,40 +25326,31 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "update t set dataB = 'main'",
-                    expected: Expected::Tag("UPDATE 1"),
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "datab" of relation "t" does not exist"#, position: 14, ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_COMMIT('-am', 'update on main');",
-                    expected: Expected::Rows {
-                        columns: &[Column("hash", TEXT)],
-                        rows: &[
-                            &[Any],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "nothing to commit", ..E }),
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * FROM DOLT_MERGE('other')",
                     expected: Expected::Rows {
                         columns: &[Column("hash", TEXT), Column("fast_forward", INT8), Column("conflicts", INT8), Column("message", TEXT)],
                         rows: &[
-                            &[Any, T("0"), T("0"), T("merge successful")],
+                            &[T(""), T("0"), T("0"), T("Everything up-to-date")],
                         ],
                         tag: "SELECT 1",
                     },
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
@@ -25533,18 +25364,15 @@ fn test_dolt_merge() {
                     flow: Flow::Simple,
                     ..A
                 },
-                // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
+                // Doltgres-specific: the Go server's output was wrong here, so the Rust server's output is expected.
                 ScriptTestAssertion {
                     query: "SELECT * from t",
                     expected: Expected::Rows {
                         columns: &[Column("rowId", INT4), Column("col1", VARCHAR), Column("col2", VARCHAR), Column("keyCol", VARCHAR), Column("dataA", VARCHAR), Column("dataB", VARCHAR)],
-                        rows: &[
-                            &[T("1"), T("1"), T("2"), T("key-a"), T("other"), T("main")],
-                        ],
-                        tag: "SELECT 1",
+                        rows: &[],
+                        tag: "SELECT 0",
                     },
                     flow: Flow::Simple,
-                    skip: Some("Postgres folds unquoted mixed-case names to lowercase, so this script's quoted mixed-case table and column names only match as Go matches them, without regard to case"),
                     ..A
                 },
             ],

@@ -166,3 +166,11 @@ The test recorded go-mysql-server's plan, and Go's catalog index ranges print in
 `{Table:["public","t2"]}` instead of OIDs.
 
 Rust: plans the join as PG15 does, and prints catalog index ranges as OIDs; the test's plan facts were rewritten.
+
+## Quoted mixed-case names match unquoted ones (confirmed)
+
+Go matches table and column names without regard to case, so after `CREATE TABLE "aTable" ("aColumn" INTEGER)`,
+`INSERT INTO aTable VALUES (1)` succeeds although Postgres folds the unquoted name to `atable` and reports that the
+relation does not exist. Four dolt_merge scripts (from Dolt's enginetests) relied on it.
+
+Rust: resolves names as Postgres does; the scripts' 43 assertions now expect Postgres' errors.
