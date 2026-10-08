@@ -1467,3 +1467,83 @@ fn test_joins_looking_up_primary_keys() {
         },
     ]);
 }
+
+#[test]
+fn test_alias_column_counts() {
+    run_scripts(&[
+        ScriptTest {
+            name: "aliases that name more columns than a FROM item has",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE alias_t (a INT, b TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO alias_t VALUES (1, 'x');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM alias_t v(p, q);",
+                    expected: Expected::Rows {
+                        columns: &[Column("p", INT4), Column("q", TEXT)],
+                        rows: &[
+                            &[T("1"), T("x")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT p FROM alias_t v(p);",
+                    expected: Expected::Rows {
+                        columns: &[Column("p", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM alias_t v(p, q, r);",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: r#"table "v" has 2 columns available but 3 columns specified"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM generate_series(1, 2) g(n);",
+                    expected: Expected::Rows {
+                        columns: &[Column("n", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM generate_series(1, 2) g(n, m);",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: r#"table "g" has 1 columns available but 2 columns specified"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (VALUES (1, 2)) v(a, b, c);",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: r#"table "v" has 2 columns available but 3 columns specified"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (SELECT 1) s(a, b);",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: r#"table "s" has 1 columns available but 2 columns specified"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -1059,8 +1059,30 @@ impl<'b, 'a> Planner<'b, 'a> {
         Ok((Plan::Values(vec![row]), Scope { columns }))
     }
 
-    /// plan_from_item plans one FROM item.
+    /// plan_from_item plans one FROM item, failing as Postgres does when its alias names more columns than it has.
     fn plan_from_item(&mut self, item: &Node) -> Result<(Plan, Scope)> {
+        let (plan, scope) = self.plan_item(item)?;
+        let alias = match item.node.as_ref() {
+            Some(NodeEnum::RangeVar(relation)) => relation.alias.as_ref(),
+            Some(NodeEnum::RangeFunction(function)) => function.alias.as_ref(),
+            _ => None,
+        };
+        let available = scope.columns.iter().filter(|c| !c.hidden).count();
+        if let Some(alias) = alias.filter(|a| a.colnames.len() > available) {
+            return Err(PgError::new(
+                code::INVALID_COLUMN_REFERENCE,
+                format!(
+                    "table \"{}\" has {available} columns available but {} columns specified",
+                    alias.aliasname,
+                    alias.colnames.len()
+                ),
+            ));
+        }
+        Ok((plan, scope))
+    }
+
+    /// plan_item plans one FROM item.
+    fn plan_item(&mut self, item: &Node) -> Result<(Plan, Scope)> {
         match item.node.as_ref() {
             Some(NodeEnum::RangeVar(relation)) => {
                 if relation.schemaname.is_empty()
