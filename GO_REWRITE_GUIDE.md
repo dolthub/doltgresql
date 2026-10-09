@@ -29,12 +29,12 @@ of that, Vitess, GMS, and Dolt included, with a single new implementation that:
 - For a fair comparison, a Go run should branch from the same commit (or record the commit it used), then rebase onto
   a later `main` and port what changed, as the Rust run did in its CI phase.
 
-### Results to compare against (as of 2026-10-08)
+### Results to compare against (as of 2026-10-09)
 
 | Measure | Go server on `main` | Rust rewrite |
 | --- | --- | --- |
 | Ported script tests (`testing/go`, PG15 expectations) | fails many by design | 597 of 597 test functions pass |
-| Postgres regression replay (42,090 statements) | 20,729 (49.25%) | 28,092 (66.74%) |
+| Postgres regression replay (42,090 statements) | 20,729 (49.25%) | 31,101 (73.89%) |
 | Dump imports (103 dumps) | 45 | 45 |
 | sqllogictest | 99.317% | above Go |
 | Bats, client-language, compatibility, driver suites | pass | pass |
@@ -294,6 +294,13 @@ Fixing one feature often exposes a general gap behind it. Ranges needed polymorp
 resolves `anyelement`, `anyarray`, and `anyrange` per call, rejects at CREATE a polymorphic result no input can
 decide, and skips body analysis for polymorphic SQL functions), which in turn exposed that PL/pgSQL's `$N`
 references never reached the Nth parameter.
+
+Large C modules are worth porting whole rather than piecemeal: `geo_ops.c` (every geometric function, operator, and
+cast, with its 1e-6 comparison tolerance and float overflow checks), `formatting.c`'s numeric part (`to_char` and
+`to_number`), the text search parser's state tables, and the Snowball stemmer each passed hundreds of statements at
+once, because the regression files test their corner cases exhaustively. Keep C's quirks, such as output that ends
+at the first NUL byte. Kept tests should avoid results whose last digits come from the platform's math library (sin,
+cos, and similar), since those differ between Linux, macOS, and Windows.
 
 ## 4. Habits and tooling worth copying
 
