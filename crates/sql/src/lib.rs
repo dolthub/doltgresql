@@ -28,6 +28,7 @@ pub mod cast;
 pub mod casts;
 pub mod catalog;
 pub mod cluster;
+pub mod colstats;
 pub mod copy;
 pub mod cursors;
 pub mod datetime;

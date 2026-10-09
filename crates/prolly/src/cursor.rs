@@ -104,6 +104,36 @@ pub fn scan_from(
     Ok(())
 }
 
+/// sample returns about a number of the items of the tree at the root, spread evenly over its order, or every item when
+/// the tree holds no more, finding each through the subtree counts of the internal nodes above it.
+pub fn sample(store: &mut dyn NodeStore, root: Arc<Node>, count: usize) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+    let total = root.tree_count();
+    let mut out = Vec::with_capacity(count.min(total as usize));
+    if total <= count as u64 {
+        let mut items = Items::first(store, root)?;
+        while let Some((key, value)) = items.current()? {
+            out.push((key.to_vec(), value.to_vec()));
+            items.advance(store)?;
+        }
+        return Ok(out);
+    }
+    for i in 0..count as u64 {
+        let mut ordinal = (2 * i + 1) * total / (2 * count as u64);
+        let mut node = root.clone();
+        while !node.is_leaf() {
+            let mut child = 0;
+            while child + 1 < node.count() && ordinal >= node.subtree_count(child)? {
+                ordinal -= node.subtree_count(child)?;
+                child += 1;
+            }
+            node = store.read(&node.child(child)?)?;
+        }
+        let index = (ordinal as usize).min(node.count().saturating_sub(1));
+        out.push((node.key(index)?.to_vec(), node.value(index)?.to_vec()));
+    }
+    Ok(out)
+}
+
 /// Items walks the leaf items of a tree in either direction, reading nodes as it reaches them.
 pub struct Items {
     /// The cursor, or None for an empty tree.

@@ -69,7 +69,15 @@ pub(crate) fn estimate(ctx: &mut Ctx<'_>, plan: &Plan) -> f64 {
             "pg_namespace" | "pg_database" | "pg_tablespace" | "pg_am" | "pg_authid" | "pg_roles" => SMALL_CATALOG_ROWS,
             _ => UNKNOWN_ROWS,
         },
-        Plan::Filter { input, predicate } => estimate(ctx, input) * selectivity(predicate),
+        Plan::Filter { input, predicate } => {
+            let rows = estimate(ctx, input);
+            match &**input {
+                Plan::Scan(table, _) if let Some(stats) = crate::colstats::table_stats(ctx, table) => {
+                    rows * crate::colstats::selectivity(&stats, predicate)
+                }
+                _ => rows * selectivity(predicate),
+            }
+        }
         Plan::Project { input, .. }
         | Plan::Sort { input, .. }
         | Plan::Window { input, .. }
@@ -132,7 +140,10 @@ fn key_distinct(ctx: &mut Ctx<'_>, plan: &Plan, keys: &[Expr], rows: f64) -> f64
             match (unique, index) {
                 (true, _) => total,
                 (false, Some(index)) => total / per_key(ctx, table, index, total),
-                (false, None) => DEFAULT_DISTINCT,
+                (false, None) => match columns.as_slice() {
+                    [column] => crate::colstats::column_distinct(ctx, table, *column).unwrap_or(DEFAULT_DISTINCT),
+                    _ => DEFAULT_DISTINCT,
+                },
             }
         }
         _ => DEFAULT_DISTINCT,
