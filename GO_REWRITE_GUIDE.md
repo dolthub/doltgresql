@@ -309,6 +309,14 @@ DecodeISO8601Interval were ported as they are (fields read right to left, overfl
 functions (`hashint4`, `hash_numeric`, `jsonb_hash`, `hash_array`, and the rest, with their seeded forms) are small
 once lookup3 is ported, and they let the regression's consistency checks pass with Postgres' exact values.
 
+Once the replay passed 75%, the work turned to sysbench against Postgres 15. Profile first: on macOS, 90% of a
+write was the commit's F_FULLFSYNC, which Go's `File.Sync` and Rust's `sync_data` both issue, while Postgres' default
+`wal_sync_method` there (`open_datasync`) never flushes the drive's cache. Commits now sync with a plain `fsync` on
+macOS, a deliberate choice to match Postgres' durability there (Linux uses fdatasync either way). After that the
+costs were CPU: binding a table's defaults re-parsed their stored text on every statement (now cached per thread),
+SHA-512 chunk addresses (the ARMv8 instructions need `sha2`'s `asm` feature), prolly tree edits, and pg_query's
+protobuf round trip for every statement.
+
 ## 4. Habits and tooling worth copying
 
 - **A handoff file** (untracked) with an "Exact position" section at the top: the last commit, what is in progress,

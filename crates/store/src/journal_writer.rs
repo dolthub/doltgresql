@@ -133,11 +133,25 @@ impl PendingSync {
         let mut synced = self.durable.synced.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         if *synced < self.end {
             let written = self.durable.written.load(Ordering::Acquire);
-            self.durable.file.sync_data()?;
+            sync_commit(&self.durable.file)?;
             *synced = written;
         }
         Ok(())
     }
+}
+
+/// sync_commit makes a commit's journal record durable with a plain fsync, as Postgres' default wal_sync_method does
+/// on macOS, rather than the F_FULLFSYNC of Rust's `sync_data`, which also flushes the drive's cache and costs
+/// milliseconds.
+#[cfg(target_os = "macos")]
+fn sync_commit(file: &File) -> std::io::Result<()> {
+    rustix::fs::fsync(file).map_err(std::io::Error::from)
+}
+
+/// sync_commit makes a commit's journal record durable with fdatasync, or its equivalent.
+#[cfg(not(target_os = "macos"))]
+fn sync_commit(file: &File) -> std::io::Result<()> {
+    file.sync_data()
 }
 
 /// addr16 returns the first 16 bytes of an address, which the index file keys chunks by.
@@ -430,7 +444,7 @@ impl JournalWriter {
             deferred.0
         });
         if !deferred {
-            self.journal.sync_data()?;
+            sync_commit(&self.journal)?;
         }
         self.unsynced = 0;
         if self.novel.len() > MAX_NOVEL {

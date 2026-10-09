@@ -15,5 +15,13 @@ zstd = "0.13"
 zstd-safe = "=7.2.1"
 zstd-sys = "=2.0.13"
 
+# Commits sync with a plain fsync on macOS, as Postgres does there (see journal_writer's sync_commit).
+[target.'cfg(target_os = "macos")'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
+# The asm feature turns on the ARMv8 SHA-512 instructions, which chunk addresses spend much of each write on.
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+sha2 = { version = "0.10", features = ["asm"] }
+
 [lints]
 workspace = true

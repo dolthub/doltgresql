@@ -254,8 +254,34 @@ pub fn parse_expression(text: &str) -> Result<pg_query::Node> {
     parse_expressions(text)?.into_iter().next().ok_or_else(|| PgError::internal("an empty expression"))
 }
 
-/// parse_expressions parses the SQL text of a comma-separated list of stored expressions.
+/// EXPRESSION_CACHE_SIZE is how many stored expressions each thread keeps parsed.
+const EXPRESSION_CACHE_SIZE: usize = 256;
+
+thread_local! {
+    /// EXPRESSIONS are the stored expressions this thread parsed lately, by their text.
+    static EXPRESSIONS: std::cell::RefCell<std::collections::HashMap<String, Vec<pg_query::Node>>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// parse_expressions parses the SQL text of a comma-separated list of stored expressions, reusing one parsed lately,
+/// since every statement that writes a table binds its defaults and checks.
 pub fn parse_expressions(text: &str) -> Result<Vec<pg_query::Node>> {
+    if let Some(nodes) = EXPRESSIONS.with(|e| e.borrow().get(text).cloned()) {
+        return Ok(nodes);
+    }
+    let nodes = parse_expressions_uncached(text)?;
+    EXPRESSIONS.with(|e| {
+        let mut expressions = e.borrow_mut();
+        if expressions.len() >= EXPRESSION_CACHE_SIZE {
+            expressions.clear();
+        }
+        expressions.insert(text.to_string(), nodes.clone());
+    });
+    Ok(nodes)
+}
+
+/// parse_expressions_uncached parses the SQL text of a comma-separated list of stored expressions.
+fn parse_expressions_uncached(text: &str) -> Result<Vec<pg_query::Node>> {
     let result = pg_query::parse(&format!("SELECT {text}")).map_err(PgError::internal)?;
     let statement = result.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node);
     let Some(NodeEnum::SelectStmt(select)) = statement else {
