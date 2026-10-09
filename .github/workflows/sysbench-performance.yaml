@@ -51,19 +51,20 @@ jobs:
           cargo build --release -p server
           cp target/release/doltgres "$RUNNER_TEMP/doltgres-pr"
         working-directory: ./pr
-      - name: Install sysbench and psql
+      - name: Install sysbench and Postgres 15
         run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends sysbench postgresql-client
+          sudo apt-get install --yes --no-install-recommends sysbench postgresql-15
           git clone --depth 1 https://github.com/dolthub/sysbench-lua-scripts.git "$RUNNER_TEMP/sysbench-lua-scripts"
       - name: Run sysbench
         run: |
           {
             echo "<!-- mini-sysbench -->"
-            echo "Mini sysbench, main ${{ github.event.pull_request.base.sha }} (Go) against ${{ github.event.pull_request.head.sha }} (Rust):"
+            echo "Mini sysbench, main ${{ github.event.pull_request.base.sha }} (Go) against ${{ github.event.pull_request.head.sha }} (Rust), with Postgres 15 for comparison:"
             echo
             ./pr/.github/scripts/performance-benchmarking/compare-sysbench.sh "$RUNNER_TEMP/doltgres-main" \
-              "$RUNNER_TEMP/doltgres-pr" "$RUNNER_TEMP/sysbench-lua-scripts" 20
+              "$RUNNER_TEMP/doltgres-pr" "$RUNNER_TEMP/sysbench-lua-scripts" 20 /usr/lib/postgresql/15/bin
           } > "$RUNNER_TEMP/sysbench-comment.md"
           cat "$RUNNER_TEMP/sysbench-comment.md"
       - name: Post comment
