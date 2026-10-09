@@ -81,6 +81,68 @@ func TestIntervalColumnDefaults(t *testing.T) {
 			},
 		},
 		{
+			Name: "stored timestamp defaults preserve values before and after index creation",
+			SetUpScript: []string{
+				`CREATE TABLE repro (
+					id int PRIMARY KEY DEFAULT 0,
+					inserted_at timestamptz NOT NULL DEFAULT now(),
+					expires_at timestamptz NOT NULL DEFAULT (now() + interval '3 minutes')
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO repro DEFAULT VALUES;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO repro (id) VALUES (1);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO repro (id, expires_at) VALUES (2, '2000-01-01 00:00:00+00');`,
+					Expected: []sql.Row{},
+				},
+				{
+					// Both defaults use the same statement time. Read the stored values in a later
+					// statement to verify the exact offset without depending on elapsed time.
+					Query: `SELECT id, CASE WHEN id = 2
+						THEN expires_at = '2000-01-01 00:00:00+00'::timestamptz
+						ELSE expires_at - inserted_at = interval '3 minutes' END
+						FROM repro ORDER BY id;`,
+					Expected: []sql.Row{{0, "t"}, {1, "t"}, {2, "t"}},
+				},
+				{
+					Query: `SELECT id, (expires_at - now()) <= interval '3 minutes'
+						FROM repro WHERE id <> 2 ORDER BY id;`,
+					Expected: []sql.Row{{0, "t"}, {1, "t"}},
+				},
+				{
+					Query:    `CREATE INDEX repro_expires_idx ON repro (expires_at);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE INDEX repro_expires_idx2 ON repro (expires_at);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO repro (id) VALUES (3);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT id, CASE WHEN id = 2
+						THEN expires_at = '2000-01-01 00:00:00+00'::timestamptz
+						ELSE expires_at - inserted_at = interval '3 minutes' END
+						FROM repro ORDER BY id;`,
+					Expected: []sql.Row{{0, "t"}, {1, "t"}, {2, "t"}, {3, "t"}},
+				},
+				{
+					Query: `SELECT id, (expires_at - now()) <= interval '3 minutes'
+						FROM repro WHERE id <> 2 ORDER BY id;`,
+					Expected: []sql.Row{{0, "t"}, {1, "t"}, {3, "t"}},
+				},
+			},
+		},
+		{
 			Name: "interval column defaults preserve duration values",
 			SetUpScript: []string{
 				`CREATE TABLE repro (
@@ -99,6 +161,16 @@ func TestIntervalColumnDefaults(t *testing.T) {
 						negative = '-3 minutes'::interval,
 						zero = '0 seconds'::interval,
 						precise = '00:00:01.123'::interval;`,
+					Expected: []sql.Row{{"t", "t", "t", "t", "t"}},
+				},
+				{
+					Query: `SELECT
+						minutes = '3 minutes'::interval,
+						calendar = '1 year 2 mons -3 days 04:05:06.123456'::interval,
+						negative = '-3 minutes'::interval,
+						zero = '0 seconds'::interval,
+						precise = '00:00:01.123'::interval
+						FROM repro;`,
 					Expected: []sql.Row{{"t", "t", "t", "t", "t"}},
 				},
 			},
