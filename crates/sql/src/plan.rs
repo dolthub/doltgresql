@@ -1742,6 +1742,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             for c in crate::indexscan::conjuncts(&predicate) {
                 match matches!(c, Expr::Exists(_))
                     || matches!(c, Expr::Not(inner) if matches!(**inner, Expr::Exists(_)))
+                    || crate::joins::any_input(c).is_some()
                 {
                     true => existences.push(c.clone()),
                     false => kept.push(c.clone()),

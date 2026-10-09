@@ -742,6 +742,10 @@ pub(crate) fn filter_existence(plan: Plan, condition: Expr) -> Plan {
 /// below its WHERE filters, which must read nothing of the rows outside the subquery, become the right input, and the
 /// filters' conditions that read the enclosing row, even from inside a nested subquery, become the join's condition.
 fn decorrelate(condition: &Expr, width: usize) -> Option<(Plan, JoinKind, Expr)> {
+    if let Some(right) = any_input(condition) {
+        let Expr::AnySubquery(comparison, ..) = condition else { return None };
+        return Some((right.clone(), JoinKind::Semi, with_subquery_value((**comparison).clone(), width)));
+    }
     let (subquery, kind) = match condition {
         Expr::Exists(subquery) => (subquery, JoinKind::Semi),
         Expr::Not(inner) => match &**inner {
@@ -780,6 +784,27 @@ fn decorrelate(condition: &Expr, width: usize) -> Option<(Plan, JoinKind, Expr)>
         None => input.clone(),
     };
     Some((right, kind, joined))
+}
+
+/// any_input returns the rows of an `= ANY` (IN) subquery that a semi join can read in its place, as Postgres'
+/// convert_ANY_sublink_to_join does: the one column of a subquery that reads nothing outside it, compared by a test
+/// without subqueries of its own.
+pub(crate) fn any_input(condition: &Expr) -> Option<&Plan> {
+    let Expr::AnySubquery(comparison, subquery, false) = condition else { return None };
+    let input = match &**subquery {
+        Plan::Once(inner) => &**inner,
+        other => other,
+    };
+    (input.width() == 1 && !crate::plan::has_subquery(comparison) && plan_lowest_level(input)? >= 0).then_some(input)
+}
+
+/// with_subquery_value rewrites the comparison of an `= ANY` test to read the subquery's value from the column of a
+/// join's row that follows the enclosing row's columns, which are this wide.
+fn with_subquery_value(e: Expr, width: usize) -> Expr {
+    match e {
+        Expr::SubqueryValue => Expr::Column(width),
+        other => other.map_children(&mut |c| with_subquery_value(c, width)),
+    }
 }
 
 /// lowest_level returns the outermost row that an expression of a subquery reads, counting the subquery's own row as

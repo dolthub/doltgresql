@@ -1284,3 +1284,149 @@ fn test_exists_pull_up() {
         },
     ]);
 }
+
+#[test]
+fn test_in_semi_joins() {
+    run_scripts(&[
+        ScriptTest {
+            name: "IN subqueries as semi joins",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE in_a (id INT PRIMARY KEY, k INT, b BIGINT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE in_b (id INT PRIMARY KEY, k INT, flag BOOL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO in_a SELECT g, g % 7, g * 10 FROM generate_series(1, 60) g;",
+                    expected: Expected::Tag("INSERT 0 60"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO in_a VALUES (100, NULL, NULL);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO in_b SELECT g, g % 5, g % 2 = 0 FROM generate_series(1, 30) g;",
+                    expected: Expected::Tag("INSERT 0 30"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO in_b VALUES (100, NULL, true);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM in_a WHERE k IN (SELECT k FROM in_b WHERE flag);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("44")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM in_a WHERE k IN (SELECT k FROM in_b WHERE id < 3) AND id < 20 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("8")],
+                            &[T("9")],
+                            &[T("15")],
+                            &[T("16")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM in_a WHERE b IN (SELECT k * 10 FROM in_b);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM in_a WHERE k::bigint IN (SELECT k FROM in_b);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("44")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM in_a WHERE k IN (SELECT NULL::int FROM in_b);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM in_a WHERE NOT (k IN (SELECT k FROM in_b WHERE k IS NOT NULL));",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("16")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM in_a a LEFT JOIN in_b b ON a.id = b.id WHERE a.k IN (SELECT k FROM in_b WHERE flag);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("44")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM in_a WHERE k IN (SELECT k FROM in_b) OR id = 100;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("45")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM in_a a WHERE a.k IN (SELECT k FROM in_b b WHERE b.id = a.id);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
