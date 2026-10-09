@@ -122,7 +122,9 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 		return nil, err
 	}
 	procID := id.NewProcedure(schemaName, c.ProcedureName, inputParamTypes...)
-	if c.Replace && procCollection.HasProcedure(ctx, procID) {
+	// A replaced routine keeps its existing privileges, so default privileges only apply to new routines
+	replaced := c.Replace && procCollection.HasProcedure(ctx, procID)
+	if replaced {
 		if err = procCollection.DropProcedure(ctx, procID); err != nil {
 			return nil, err
 		}
@@ -144,11 +146,13 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 	if err != nil {
 		return nil, err
 	}
-	err = applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
-		return auth.ApplyDefaultPrivilegesForNewRoutine(owner, schemaName, c.ProcedureName)
-	})
-	if err != nil {
-		return nil, err
+	if !replaced {
+		err = applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
+			return auth.ApplyDefaultPrivilegesForNewRoutine(owner, schemaName, c.ProcedureName)
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return sql.RowsToRowIter(), nil
 }

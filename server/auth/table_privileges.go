@@ -57,7 +57,8 @@ func AddTablePrivilege(key TablePrivilegeKey, privilege GrantedPrivilege, withGr
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		tablePrivilegeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 }
 
 // HasTablePrivilege checks whether the user has the given privilege on the associated table.

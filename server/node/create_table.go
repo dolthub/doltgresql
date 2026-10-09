@@ -84,9 +84,22 @@ func (c *CreateTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sq
 		return nil, fmt.Errorf("table name `%s` cannot contain a parenthesized portion", c.gmsCreateTable.Name())
 	}
 
+	// CREATE TABLE IF NOT EXISTS on an existing table is a no-op, so default privileges must not be applied to it
+	alreadyExists := false
+	if c.gmsCreateTable.IfNotExists() {
+		_, exists, err := c.gmsCreateTable.Db.GetTableInsensitive(ctx, c.gmsCreateTable.Name())
+		if err != nil {
+			return nil, err
+		}
+		alreadyExists = exists
+	}
+
 	createTableIter, err := b.Build(ctx, c.gmsCreateTable, r)
 	if err != nil {
 		return nil, err
+	}
+	if alreadyExists {
+		return createTableIter, nil
 	}
 
 	schemaName, err := core.GetSchemaName(ctx, c.gmsCreateTable.Db, "")

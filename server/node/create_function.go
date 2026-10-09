@@ -141,7 +141,9 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		return nil, err
 	}
 	funcID := id.NewFunction(schemaName, c.FunctionName, inputParamTypes...)
-	if c.Replace && funcCollection.HasFunction(ctx, funcID) {
+	// A replaced routine keeps its existing privileges, so default privileges only apply to new routines
+	replaced := c.Replace && funcCollection.HasFunction(ctx, funcID)
+	if replaced {
 		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
 			return nil, err
 		}
@@ -168,11 +170,13 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err != nil {
 		return nil, err
 	}
-	err = applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
-		return auth.ApplyDefaultPrivilegesForNewRoutine(owner, schemaName, c.FunctionName)
-	})
-	if err != nil {
-		return nil, err
+	if !replaced {
+		err = applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
+			return auth.ApplyDefaultPrivilegesForNewRoutine(owner, schemaName, c.FunctionName)
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return sql.RowsToRowIter(), nil
 }

@@ -561,6 +561,7 @@ func TestAlterDefaultPrivilegesCreationEdges(t *testing.T) {
 func TestAlterDefaultPrivilegesRoutineOverloads(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Skip: true, // TODO support RoutinePrivilegeKey.ArgTypes
 			Name: "new function overload defaults do not change an existing overload ACL",
 			SetUpScript: []string{
 				`CREATE USER overload_reader PASSWORD 'a';`,

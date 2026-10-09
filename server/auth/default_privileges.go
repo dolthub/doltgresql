@@ -71,7 +71,8 @@ func AddDefaultPrivilege(key DefaultPrivilegeKey, grantee RoleID, privilege Gran
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		granteeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 	dpv.Grantees[grantee] = granteeValue
 	storeDefaultPrivilegeValue(dpv)
 }

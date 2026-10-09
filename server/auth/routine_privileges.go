@@ -58,7 +58,8 @@ func AddRoutinePrivilege(key RoutinePrivilegeKey, privilege GrantedPrivilege, wi
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		routinePrivilegeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 }
 
 // HasRoutinePrivilege checks whether the user has the given privilege on the associated routine.
