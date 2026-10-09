@@ -29,6 +29,7 @@ pub mod casts;
 pub mod catalog;
 pub mod cluster;
 pub mod copy;
+pub mod cursors;
 pub mod datetime;
 mod ddl;
 pub mod deferred;

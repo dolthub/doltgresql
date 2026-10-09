@@ -812,3 +812,376 @@ fn test_discard_and_hidden_setting_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_sql_cursors() {
+    run_scripts(&[
+        ScriptTest {
+            name: "SQL cursors fetch, move, and close",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE cur_t (id INT PRIMARY KEY, v TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO cur_t SELECT i, 'v' || i FROM generate_series(1, 10) i;",
+                    expected: Expected::Tag("INSERT 0 10"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DECLARE c CURSOR FOR SELECT id FROM cur_t ORDER BY id;",
+                    expected: Expected::Error(Diagnostic { code: "25P01", message: "DECLARE CURSOR can only be used in transaction blocks", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DECLARE c SCROLL CURSOR FOR SELECT id, v FROM cur_t ORDER BY id;",
+                    expected: Expected::Tag("DECLARE CURSOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("1"), T("v1")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH NEXT FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("2"), T("v2")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH 3 c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("3"), T("v3")],
+                            &[T("4"), T("v4")],
+                            &[T("5"), T("v5")],
+                        ],
+                        tag: "FETCH 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH FORWARD 2 FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("6"), T("v6")],
+                            &[T("7"), T("v7")],
+                        ],
+                        tag: "FETCH 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH PRIOR FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("6"), T("v6")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH BACKWARD 2 FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("5"), T("v5")],
+                            &[T("4"), T("v4")],
+                        ],
+                        tag: "FETCH 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH ABSOLUTE 9 FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("9"), T("v9")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH RELATIVE -2 FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("7"), T("v7")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH RELATIVE 0 FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("7"), T("v7")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH LAST FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("10"), T("v10")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH NEXT FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[],
+                        tag: "FETCH 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH FIRST FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("1"), T("v1")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH ABSOLUTE -3 FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("8"), T("v8")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH ABSOLUTE 20 FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[],
+                        tag: "FETCH 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH BACKWARD ALL FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("10"), T("v10")],
+                            &[T("9"), T("v9")],
+                            &[T("8"), T("v8")],
+                            &[T("7"), T("v7")],
+                            &[T("6"), T("v6")],
+                            &[T("5"), T("v5")],
+                            &[T("4"), T("v4")],
+                            &[T("3"), T("v3")],
+                            &[T("2"), T("v2")],
+                            &[T("1"), T("v1")],
+                        ],
+                        tag: "FETCH 10",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MOVE 4 IN c;",
+                    expected: Expected::Tag("MOVE 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[
+                            &[T("5"), T("v5")],
+                        ],
+                        tag: "FETCH 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MOVE FORWARD ALL IN c;",
+                    expected: Expected::Tag("MOVE 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH ALL FROM c;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("v", TEXT)],
+                        rows: &[],
+                        tag: "FETCH 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DECLARE c CURSOR FOR SELECT 1;",
+                    expected: Expected::Error(Diagnostic { code: "42P03", message: r#"cursor "c" already exists"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH nosuch;",
+                    expected: Expected::Error(Diagnostic { code: "25P02", message: "current transaction is aborted, commands ignored until end of transaction block", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DECLARE d NO SCROLL CURSOR FOR SELECT id FROM cur_t ORDER BY id;",
+                    expected: Expected::Tag("DECLARE CURSOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH 2 FROM d;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "FETCH 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH PRIOR FROM d;",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: "cursor can only scan forward", hint: "Declare it with SCROLL option to enable backward scan.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DECLARE e CURSOR WITH HOLD FOR SELECT id FROM cur_t WHERE id > 7 ORDER BY id;",
+                    expected: Expected::Tag("DECLARE CURSOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DECLARE f CURSOR FOR SELECT 1 AS one;",
+                    expected: Expected::Tag("DECLARE CURSOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "COMMIT;",
+                    expected: Expected::Tag("COMMIT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH ALL FROM e;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("8")],
+                            &[T("9")],
+                            &[T("10")],
+                        ],
+                        tag: "FETCH 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH f;",
+                    expected: Expected::Error(Diagnostic { code: "34000", message: r#"cursor "f" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CLOSE e;",
+                    expected: Expected::Tag("CLOSE CURSOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CLOSE e;",
+                    expected: Expected::Error(Diagnostic { code: "34000", message: r#"cursor "e" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "BEGIN;",
+                    expected: Expected::Tag("BEGIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DECLARE g CURSOR FOR SELECT 1 AS one;",
+                    expected: Expected::Tag("DECLARE CURSOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DECLARE h CURSOR FOR SELECT 2 AS two;",
+                    expected: Expected::Tag("DECLARE CURSOR"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CLOSE ALL;",
+                    expected: Expected::Tag("CLOSE CURSOR ALL"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "FETCH g;",
+                    expected: Expected::Error(Diagnostic { code: "34000", message: r#"cursor "g" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ROLLBACK;",
+                    expected: Expected::Tag("ROLLBACK"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

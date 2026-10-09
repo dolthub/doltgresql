@@ -717,6 +717,7 @@ impl Engine {
                 user_types: None,
                 call_depth: 0,
                 trigger_depth: 0,
+                cursors: Vec::new(),
                 id: NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 advisory: self.shared.advisory.clone(),
                 pending_copy: None,
@@ -830,6 +831,8 @@ pub struct SessionState {
     pub call_depth: usize,
     /// How many trigger functions are running inside one another, which pg_trigger_depth returns.
     pub trigger_depth: i32,
+    /// The open SQL cursors, in the order they were declared.
+    pub cursors: Vec<crate::cursors::Cursor>,
     /// The session's number among the engine's sessions, which advisory locks record their holders by.
     pub id: u64,
     /// The engine's advisory locks.
@@ -903,13 +906,14 @@ impl Drop for Session {
 }
 
 impl SessionState {
-    /// end_transaction ends the transaction's settings, undoing every change when it rolled back, and releases the
-    /// advisory locks it took.
+    /// end_transaction ends the transaction's settings, undoing every change when it rolled back, releases the advisory
+    /// locks it took, and closes the cursors that end with it.
     pub fn end_transaction(&mut self, committed: bool) {
         self.temp_used = false;
         self.settings.end_transaction(committed);
         self.deferred = crate::deferred::Deferred::default();
         self.advisory.release_all(self.id, true, false);
+        crate::cursors::end_transaction(&mut self.cursors, committed);
     }
 
     /// checked_out_branch returns the branch the session last had checked out in a database it left, or the
@@ -1309,6 +1313,8 @@ impl Session {
             columns = Some(self.with_ctx(&mut parameters, &[], |ctx| ctx.plan_listing(kind, from))?.columns);
         } else if let Some(Statement::Postgres { node: NodeEnum::ExecuteStmt(execute), .. }) = &statement {
             columns = self.statement(&execute.name)?.columns.clone();
+        } else if let Some(Statement::Postgres { node: NodeEnum::FetchStmt(fetch), .. }) = &statement {
+            columns = crate::cursors::columns(&self.state.cursors, fetch);
         } else if let Some(Statement::Postgres { node, .. }) = &statement
             && describable(node)
         {
@@ -2630,6 +2636,9 @@ impl Ctx<'_> {
                 let text = pg_query::NodeRef::DoStmt(stmt).deparse().map_err(PgError::internal)?;
                 self.do_block(stmt, &text)
             }
+            NodeEnum::DeclareCursorStmt(stmt) => self.declare_cursor(stmt),
+            NodeEnum::FetchStmt(stmt) => self.fetch(stmt),
+            NodeEnum::ClosePortalStmt(stmt) => self.close_cursor(stmt),
             NodeEnum::AlterRoleStmt(stmt) => self.alter_role(stmt),
             NodeEnum::DropRoleStmt(stmt) => self.drop_role(stmt),
             NodeEnum::GrantStmt(stmt) => self.grant(stmt),
