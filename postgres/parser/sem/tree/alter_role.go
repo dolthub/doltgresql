@@ -41,6 +41,13 @@ type AlterRole struct {
 	IfExists  bool
 	IsRole    bool
 	KVOptions KVOptions
+	// AllRoles is set for ALTER ROLE ALL, which only applies to configuration parameters.
+	AllRoles bool
+	// InDatabase is the database given by IN DATABASE, which only applies to configuration parameters.
+	InDatabase string
+	// SetVar is used for both SET and RESET of a configuration parameter. RESET sets SetVar.Reset.
+	SetVar   *SetVar
+	ResetAll bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -54,10 +61,23 @@ func (node *AlterRole) Format(ctx *FmtCtx) {
 	if node.IfExists {
 		ctx.WriteString("IF EXISTS ")
 	}
-	ctx.WriteString(node.Name)
+	if node.AllRoles {
+		ctx.WriteString("ALL")
+	} else {
+		ctx.WriteString(node.Name)
+	}
+	if node.InDatabase != "" {
+		ctx.WriteString(" IN DATABASE ")
+		ctx.FormatNameP(&node.InDatabase)
+	}
 
 	if len(node.KVOptions) > 0 {
 		ctx.WriteString(" WITH")
 		node.KVOptions.formatAsRoleOptions(ctx)
+	} else if node.SetVar != nil {
+		ctx.WriteByte(' ')
+		node.SetVar.Format(ctx)
+	} else if node.ResetAll {
+		ctx.WriteString(" RESET ALL")
 	}
 }

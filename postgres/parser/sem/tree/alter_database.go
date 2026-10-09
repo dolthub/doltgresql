@@ -54,9 +54,9 @@ type AlterDatabase struct {
 	Owner                   string
 	Tablespace              string
 	RefreshCollationVersion bool
-	SetVar                  *SetVar
-	ResetVar                string
-	ResetAll                bool
+	// SetVar is used for both SET and RESET of a configuration parameter. RESET sets SetVar.Reset.
+	SetVar   *SetVar
+	ResetAll bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -80,9 +80,6 @@ func (node *AlterDatabase) Format(ctx *FmtCtx) {
 	} else if node.SetVar != nil {
 		ctx.WriteByte(' ')
 		node.SetVar.Format(ctx)
-	} else if node.ResetVar != "" {
-		ctx.WriteString(" RESET ")
-		ctx.FormatNameP(&node.ResetVar)
 	} else if node.ResetAll {
 		ctx.WriteString(" RESET ALL")
 	}

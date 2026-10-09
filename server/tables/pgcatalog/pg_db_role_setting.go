@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,10 +45,11 @@ func (p PgDbRoleSettingHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgDbRoleSettingHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// pg_db_role_setting is currently empty, since Doltgres does not yet support per-role or per-database
-	// configuration settings (ALTER ROLE ... SET / ALTER DATABASE ... SET).
-	// TODO: fill this in when per-role/per-database settings are supported
-	return emptyRowIter()
+	var entries []auth.RoleSettingsEntry
+	auth.LockRead(func() {
+		entries = auth.AllRoleSettings()
+	})
+	return &pgDbRoleSettingRowIter{entries: entries}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -66,16 +69,58 @@ var pgDbRoleSettingSchema = sql.Schema{
 
 // pgDbRoleSettingRowIter is the sql.RowIter for the pg_db_role_setting table.
 type pgDbRoleSettingRowIter struct {
+	entries []auth.RoleSettingsEntry
+	idx     int
 }
 
 var _ sql.RowIter = (*pgDbRoleSettingRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgDbRoleSettingRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.entries) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	entry := iter.entries[iter.idx-1]
+	// An invalid OID applies the settings to every database or role
+	databaseOid := id.Null
+	if len(entry.Key.Database) > 0 {
+		databaseOid = id.NewDatabase(entry.Key.Database).AsId()
+	}
+	roleOID := id.Null
+	if entry.Key.Role.IsValid() {
+		roleOID = roleOid(entry.RoleName)
+	}
+	return sql.Row{
+		databaseOid,                      // setdatabase
+		roleOID,                          // setrole
+		roleSettingsText(entry.Settings), // setconfig
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
 func (iter *pgDbRoleSettingRowIter) Close(ctx *sql.Context) error {
 	return nil
+}
+
+// roleConfig returns the settings that apply to the role in every database, for rolconfig and useconfig. Returns nil
+// if there are none. This handles locking internally.
+func roleConfig(role auth.Role) any {
+	var settings []auth.RoleSetting
+	auth.LockRead(func() {
+		settings = auth.RoleSettingsForKey(auth.RoleSettingKey{Role: role.ID()})
+	})
+	if len(settings) == 0 {
+		return nil
+	}
+	return roleSettingsText(settings)
+}
+
+// roleSettingsText renders the settings as the name=value text array used by the catalog tables.
+func roleSettingsText(settings []auth.RoleSetting) []any {
+	config := make([]any, len(settings))
+	for i, setting := range settings {
+		config[i] = setting.Name + "=" + setting.Value
+	}
+	return config
 }

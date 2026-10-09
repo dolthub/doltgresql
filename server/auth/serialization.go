@@ -40,7 +40,7 @@ func PersistChanges(ctx *sql.Context, rsc *doltdb.ReplicationStatusController) e
 func (db *Database) serialize() []byte {
 	writer := utils.NewWriter(16384)
 	// Write the version
-	writer.Uint32(1)
+	writer.Uint32(2)
 	// Write the roles
 	writer.Uint32(uint32(len(db.rolesByID)))
 	for _, role := range db.rolesByID {
@@ -58,6 +58,8 @@ func (db *Database) serialize() []byte {
 	db.routinePrivileges.serialize(writer)
 	// Write the role chain
 	db.roleMembership.serialize(writer)
+	// Write the role settings
+	db.roleSettings.serialize(writer)
 	return writer.Data()
 }
 
@@ -74,6 +76,8 @@ func (db *Database) deserialize(data []byte) error {
 		err = db.deserializeV0(reader)
 	case 1:
 		err = db.deserializeV1(reader)
+	case 2:
+		err = db.deserializeV2(reader)
 	default:
 		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
 	}
@@ -141,6 +145,11 @@ func (db *Database) removeInvalidRoleReferences() {
 			delete(db.roleMembership.Data, member)
 		}
 	}
+	for key := range db.roleSettings.Data {
+		if _, ok := db.rolesByID[key.Role]; key.Role.IsValid() && !ok {
+			delete(db.roleSettings.Data, key)
+		}
+	}
 }
 
 // removeInvalidPrivilegeGrants removes grants made by nonexistent roles and reports whether the map is empty.
@@ -182,6 +191,8 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 	db.routinePrivileges.deserialize(0, reader)
 	// Read the role membership
 	db.roleMembership.deserialize(0, reader)
+	// Role settings did not exist in this version
+	db.roleSettings.deserialize(0, reader)
 	return nil
 }
 
@@ -209,5 +220,18 @@ func (db *Database) deserializeV1(reader *utils.Reader) error {
 	db.routinePrivileges.deserialize(1, reader)
 	// Read the role membership
 	db.roleMembership.deserialize(1, reader)
+	// Role settings did not exist in this version
+	db.roleSettings.deserialize(1, reader)
+	return nil
+}
+
+// deserializeV2 creates a Database from a byte slice. Expects a reader that has already read the version. Version 2
+// appends the role settings to the version 1 format.
+func (db *Database) deserializeV2(reader *utils.Reader) error {
+	if err := db.deserializeV1(reader); err != nil {
+		return err
+	}
+	// Read the role settings
+	db.roleSettings.deserialize(2, reader)
 	return nil
 }

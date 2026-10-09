@@ -1600,6 +1600,47 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
+			Name: "Schema creator owns the schema",
+			SetUpScript: []string{
+				"CREATE ROLE schema_creator LOGIN PASSWORD 'password';",
+				"GRANT ALL PRIVILEGES ON DATABASE postgres TO schema_creator;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SCHEMA creator_schema;",
+					Username: "schema_creator",
+					Password: "password",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT r.rolname FROM pg_catalog.pg_namespace n JOIN pg_catalog.pg_roles r ON n.nspowner = r.oid WHERE n.nspname = 'creator_schema';",
+					Expected: []sql.Row{{"schema_creator"}},
+					Skip:     true,
+				},
+				{
+					Query:    "CREATE TABLE creator_schema.t (v INT);",
+					Username: "schema_creator",
+					Password: "password",
+					Expected: []sql.Row{},
+					Skip:     true, // permission denied for schema creator_schema
+				},
+				{
+					Query:    "INSERT INTO creator_schema.t VALUES (1);",
+					Username: "schema_creator",
+					Password: "password",
+					Expected: []sql.Row{},
+					Skip:     true,
+				},
+				{
+					Query:    "SELECT v FROM creator_schema.t;",
+					Username: "schema_creator",
+					Password: "password",
+					Expected: []sql.Row{{1}},
+					Skip:     true,
+				},
+			},
+		},
+		{
 			Name: "Views are read with the privileges of their owner",
 			SetUpScript: []string{
 				"CREATE SCHEMA reporting;",

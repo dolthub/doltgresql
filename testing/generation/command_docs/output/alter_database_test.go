@@ -50,13 +50,13 @@ func TestAlterDatabase(t *testing.T) {
 		Converts("ALTER DATABASE name OWNER TO SESSION_USER"),
 		Parses("ALTER DATABASE name SET TABLESPACE new_tablespace"),
 		Parses("ALTER DATABASE name REFRESH COLLATION VERSION"),
-		Parses("ALTER DATABASE name SET configuration_parameter TO value"),
-		Parses("ALTER DATABASE name SET configuration_parameter = value"),
-		Parses("ALTER DATABASE name SET configuration_parameter TO DEFAULT"),
-		Parses("ALTER DATABASE name SET configuration_parameter = DEFAULT"),
-		Parses("ALTER DATABASE name SET configuration_parameter FROM CURRENT"),
-		Parses("ALTER DATABASE name RESET configuration_parameter"),
-		Parses("ALTER DATABASE name RESET ALL"),
+		Converts("ALTER DATABASE name SET configuration_parameter TO value"),
+		Converts("ALTER DATABASE name SET configuration_parameter = value"),
+		Converts("ALTER DATABASE name SET configuration_parameter TO DEFAULT"),
+		Converts("ALTER DATABASE name SET configuration_parameter = DEFAULT"),
+		Converts("ALTER DATABASE name SET configuration_parameter FROM CURRENT"),
+		Converts("ALTER DATABASE name RESET configuration_parameter"),
+		Converts("ALTER DATABASE name RESET ALL"),
 	}
 
 	RunTests(t, tests)

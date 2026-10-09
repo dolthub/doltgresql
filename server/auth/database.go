@@ -48,6 +48,7 @@ type Database struct {
 	sequencePrivileges *SequencePrivileges
 	routinePrivileges  *RoutinePrivileges
 	roleMembership     *RoleMembership
+	roleSettings       *RoleSettings
 }
 
 // AllRoles returns every role in the database, sorted by the role's name. This does not handle locking, so callers
@@ -73,6 +74,7 @@ func ClearDatabase() {
 	clear(globalDatabase.sequencePrivileges.Data)
 	clear(globalDatabase.routinePrivileges.Data)
 	clear(globalDatabase.roleMembership.Data)
+	clear(globalDatabase.roleSettings.Data)
 	dbInitDefault()
 	publishRoleNames()
 }
@@ -105,6 +107,7 @@ func DropRole(name string) {
 		delete(globalDatabase.rolesByID, roleID)
 		globalDatabase.removeRolePrivileges(roleID)
 		globalDatabase.removeRoleMemberships(roleID)
+		globalDatabase.removeRoleSettings(roleID)
 		roleNamesDirty = true
 	}
 }
@@ -300,6 +303,7 @@ func newEmptyDatabase() Database {
 		sequencePrivileges: NewSequencePrivileges(),
 		routinePrivileges:  NewRoutinePrivileges(),
 		roleMembership:     NewRoleMembership(),
+		roleSettings:       NewRoleSettings(),
 	}
 }
 

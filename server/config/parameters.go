@@ -344,3 +344,18 @@ func TzOffsetToDuration(d string) (time.Duration, error) {
 		return -1, cerrors.Errorf("error: unable to process time")
 	}
 }
+
+// ValidatePostgresParameterValue validates that the built-in parameter may be set to the given value, without changing
+// the session's value. This is used by ALTER ROLE ... SET and ALTER DATABASE ... SET, which store the value to be
+// applied when later sessions start. Returns the canonical name of the parameter, and whether only superusers may set
+// it.
+func ValidatePostgresParameterValue(ctx *sql.Context, name string, value string) (string, bool, error) {
+	variable, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
+	if !ok {
+		return "", false, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, name)
+	}
+	if _, err := variable.SetValue(ctx, value, false); err != nil {
+		return "", false, err
+	}
+	return variable.Name, variable.Context == ParameterContextSuperUser, nil
+}
