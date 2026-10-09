@@ -59,9 +59,8 @@ pub fn add_paths_to_joinrel(
 }
 
 /// match_unsorted_outer adds the nested loops of each of the outer relation's paths over the inner relation's
-/// cheapest path kept in memory, or over a path that looks rows up, as Postgres' function of the same name does for
-/// joins that a nested loop can run. Doltgres' nested loop keeps every inner input in memory, so its unparameterized
-/// paths are only ever read that way.
+/// cheapest paths, kept in memory or looking rows up, as Postgres' function of the same name does for joins that a
+/// nested loop can run.
 fn match_unsorted_outer(
     root: &mut PlannerInfo<'_, '_>,
     joinrel: usize,
@@ -75,14 +74,14 @@ fn match_unsorted_outer(
     }
     let matpath = root.rels[innerrel].cheapest_total_path.clone().and_then(|inner| match inner.kind {
         PathKind::Material(_) => None,
-        _ => Some(create_material_path(&inner)),
+        _ => root.enables.material.then(|| create_material_path(&inner)),
     });
     let outer_relids = root.rels[outerrel].relids;
     let outer_paths: Vec<Rc<Path>> = root.rels[outerrel].pathlist.iter().filter(|p| p.param == 0).cloned().collect();
     let inner_paths: Vec<Rc<Path>> = root.rels[innerrel]
         .cheapest_parameterized_paths
         .iter()
-        .filter(|p| p.param != 0 && is_subset(p.param, outer_relids))
+        .filter(|p| is_subset(p.param, outer_relids))
         .cloned()
         .collect();
     for outerpath in outer_paths {
@@ -114,7 +113,7 @@ fn try_nestloop_path(
 ) {
     let has_indexed_join_quals = matches!(inner.kind, PathKind::Lookup(_))
         && extra.restrictlist.iter().all(|r| r.hashjoinable && clause_sides_match_join(r, outer.relids, inner.relids));
-    let cost = cost_nestloop(jointype, &outer, &inner, extra, has_indexed_join_quals);
+    let cost = cost_nestloop(jointype, &outer, &inner, extra, has_indexed_join_quals, root.enables);
     let join = JoinPath { jointype, outer, inner, joinrestrictinfo: extra.restrictlist.clone() };
     let path = create_join_path(&root.rels[joinrel], PathKind::NestLoop, join, cost);
     add_path(&mut root.rels[joinrel], path);

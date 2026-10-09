@@ -71,6 +71,7 @@ pub struct PlannerInfo<'r, 'a> {
     pub join_info_list: Vec<SpecialJoinInfo>,
     /// The pages of every table that the query reads, which Postgres' index_pages_fetched shares the cache among.
     pub total_table_pages: f64,
+    pub enables: costsize::Enables,
     /// The rows that the query reads of the join of every relation, or a fraction of them below one, or zero for all.
     pub tuple_fraction: f64,
     /// The aggregate calls of an aggregate without groups over the join's rows, which Doltgres' executor answers from
@@ -250,6 +251,7 @@ fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) 
     let output = output.collect();
     prepjointree::reduce_outer_joins(&mut jointree);
     let parse = Query { rtable, jointree, output };
+    let enables = costsize::Enables::read(&ctx.session.settings);
     let mut root = PlannerInfo {
         ctx,
         all_baserels: (1..=parse.rtable.len()).fold(0, |relids, varno| relids | nodes::singleton(varno)),
@@ -260,6 +262,7 @@ fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) 
         initial_rels: Vec::new(),
         join_info_list: Vec::new(),
         total_table_pages: 0.0,
+        enables,
         tuple_fraction,
         counting,
     };

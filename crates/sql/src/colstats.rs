@@ -26,12 +26,12 @@ use crate::expr::{CmpOp, Expr, compare_values};
 use crate::query::Ctx;
 use crate::types::Value;
 
-/// SAMPLE_ROWS is how many rows of a table the statistics read.
-const SAMPLE_ROWS: usize = 3000;
-
 /// STATISTICS_TARGET is the most common values and histogram bounds that a column keeps, as Postgres'
 /// default_statistics_target is.
 const STATISTICS_TARGET: usize = 100;
+
+/// SAMPLE_ROWS is how many rows of a table the statistics read, as Postgres' std_typanalyze asks of ANALYZE.
+const SAMPLE_ROWS: usize = 300 * STATISTICS_TARGET;
 
 /// DEFAULT_EQ_SEL, DEFAULT_INEQ_SEL, and DEFAULT_SEL are the shares of rows that Postgres assumes an equality, an
 /// inequality, and any other condition keeps without statistics.

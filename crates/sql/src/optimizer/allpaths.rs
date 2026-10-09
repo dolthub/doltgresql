@@ -44,7 +44,7 @@ pub fn make_one_rel(root: &mut PlannerInfo<'_, '_>, joinlist: Vec<JoinList>) -> 
 fn set_rel_pathlist(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     let parent = &root.rels[rel];
     let (startup_cost, total_cost) = match root.parse.rte(rel).table() {
-        Some(_) => cost_seqscan(parent),
+        Some(_) => cost_seqscan(parent, root.enables),
         None => cost_opaque_scan(parent),
     };
     let path = Path {

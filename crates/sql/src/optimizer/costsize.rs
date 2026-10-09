@@ -55,6 +55,38 @@ const HASH_MEM: f64 = 4.0 * 1024.0 * 1024.0 * 2.0;
 /// of a function written in SQL or PL/pgSQL.
 const ROUTINE_COST: f64 = 100.0;
 
+/// Enables are the enable_* settings that the planner reads, which add DISABLE_COST to a kind of path when off, as
+/// Postgres' do.
+#[derive(Clone, Copy, Debug)]
+pub struct Enables {
+    pub seqscan: bool,
+    pub indexscan: bool,
+    pub indexonlyscan: bool,
+    pub nestloop: bool,
+    pub hashjoin: bool,
+    pub material: bool,
+}
+
+impl Enables {
+    /// read returns the enable_* settings of a session.
+    pub fn read(settings: &crate::settings::Settings) -> Enables {
+        let on = |name: &str| settings.get(name).is_none_or(|value| value != "off");
+        Enables {
+            seqscan: on("enable_seqscan"),
+            indexscan: on("enable_indexscan"),
+            indexonlyscan: on("enable_indexonlyscan"),
+            nestloop: on("enable_nestloop"),
+            hashjoin: on("enable_hashjoin"),
+            material: on("enable_material"),
+        }
+    }
+}
+
+/// disabled returns DISABLE_COST for a kind of path that a setting turned off.
+fn disabled(enabled: bool) -> f64 {
+    if enabled { 0.0 } else { DISABLE_COST }
+}
+
 /// clamp_row_est rounds a row estimate to a whole number of at least one, as Postgres' function of the same name does.
 pub fn clamp_row_est(nrows: f64) -> f64 {
     if nrows.is_nan() || nrows > 1.0e100 {
@@ -157,11 +189,12 @@ fn page_size(tuples: f64, width: f64) -> f64 {
 
 /// cost_seqscan returns the startup and total costs of reading every row of a base relation and testing its
 /// restrictions, as Postgres' function of the same name does.
-pub fn cost_seqscan(rel: &RelOptInfo) -> (f64, f64) {
+pub fn cost_seqscan(rel: &RelOptInfo, enables: Enables) -> (f64, f64) {
     let qpqual_cost = cost_qual_eval(&rel.baserestrictinfo);
+    let startup_cost = disabled(enables.seqscan) + qpqual_cost.startup;
     let disk_run_cost = SEQ_PAGE_COST * rel.pages;
     let cpu_run_cost = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * rel.tuples;
-    (qpqual_cost.startup, qpqual_cost.startup + cpu_run_cost + disk_run_cost)
+    (startup_cost, startup_cost + cpu_run_cost + disk_run_cost)
 }
 
 /// cost_opaque_scan returns the startup and total costs of reading the rows of a relation that is not a table and
@@ -242,7 +275,8 @@ pub fn cost_index(
     };
     let csquared = index.correlation * index.correlation;
     let run_cost = index_total_cost - index_startup_cost + max_io_cost + csquared * (min_io_cost - max_io_cost);
-    let startup_cost = index_startup_cost + qpqual_cost.startup;
+    let enabled = if index.indexonly { root.enables.indexonlyscan } else { root.enables.indexscan };
+    let startup_cost = disabled(enabled) + index_startup_cost + qpqual_cost.startup;
     let cpu_run_cost = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * tuples_fetched;
     (startup_cost, startup_cost + run_cost + cpu_run_cost)
 }
@@ -269,16 +303,15 @@ fn index_pages_fetched(root: &PlannerInfo<'_, '_>, tuples_fetched: f64, pages: f
     fetched.ceil()
 }
 
-/// cost_material returns the startup and total costs of keeping a path's rows in memory, as Postgres' function of
-/// the same name does, except that Doltgres' joins read the rows they keep whole before they return a row, so the
-/// cost is all startup.
+/// cost_material returns the startup and total costs of keeping a path's rows in memory as they are read, as
+/// Postgres' function of the same name does.
 pub fn cost_material(input: &Path) -> (f64, f64) {
-    let mut cost = input.total_cost + 2.0 * CPU_OPERATOR_COST * input.rows;
+    let mut run_cost = input.total_cost - input.startup_cost + 2.0 * CPU_OPERATOR_COST * input.rows;
     let nbytes = relation_byte_size(input.rows, input.width);
     if nbytes > HASH_MEM / 2.0 {
-        cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
+        run_cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
     }
-    (cost, cost)
+    (input.startup_cost, input.startup_cost + run_cost)
 }
 
 /// cost_rescan returns the startup and total costs of reading a path's rows again, as Postgres' function of the same
@@ -315,9 +348,10 @@ pub fn cost_nestloop(
     inner: &Path,
     extra: &JoinPathExtraData,
     has_indexed_join_quals: bool,
+    enables: Enables,
 ) -> (f64, f64) {
     let (inner_rescan_start_cost, inner_rescan_total_cost) = cost_rescan(inner);
-    let mut startup_cost = outer.startup_cost + inner.startup_cost;
+    let mut startup_cost = disabled(enables.nestloop) + outer.startup_cost + inner.startup_cost;
     let mut run_cost = outer.total_cost - outer.startup_cost;
     if outer.rows > 1.0 {
         run_cost += (outer.rows - 1.0) * inner_rescan_start_cost;
@@ -393,7 +427,7 @@ pub fn cost_hashjoin(
     extra: &JoinPathExtraData,
 ) -> (f64, f64) {
     let num_hashclauses = hashclauses.len() as f64;
-    let mut startup_cost = outer.startup_cost + inner.total_cost;
+    let mut startup_cost = disabled(root.enables.hashjoin) + outer.startup_cost + inner.total_cost;
     let mut run_cost = outer.total_cost - outer.startup_cost;
     startup_cost += (CPU_OPERATOR_COST * num_hashclauses + CPU_TUPLE_COST) * inner.rows;
     run_cost += CPU_OPERATOR_COST * num_hashclauses * outer.rows;
