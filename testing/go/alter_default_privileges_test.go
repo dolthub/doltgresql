@@ -21,6 +21,441 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestAlterDefaultPrivileges(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "ALTER DEFAULT PRIVILEGES nonexistent role and grantee returns error",
+			SetUpScript: []string{
+				"CREATE ROLE ownerrole2;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER DEFAULT PRIVILEGES FOR ROLE no_such_role GRANT SELECT ON TABLES TO postgres;",
+					ExpectedErr: `role "no_such_role" does not exist`,
+				},
+				{
+					Query:       "ALTER DEFAULT PRIVILEGES FOR ROLE ownerrole2 GRANT SELECT ON TABLES TO no_such_grantee;",
+					ExpectedErr: `role "no_such_grantee" does not exist`,
+				},
+			},
+		},
+		{
+			Name: "ALTER DEFAULT PRIVILEGES for multiple target roles",
+			SetUpScript: []string{
+				`CREATE USER multi_owner1 PASSWORD 'a';`,
+				`CREATE USER multi_owner2 PASSWORD 'a';`,
+				`CREATE USER multi_reader PASSWORD 'a';`,
+				`GRANT USAGE, CREATE ON SCHEMA public TO multi_owner1, multi_owner2;`,
+				`GRANT USAGE ON SCHEMA public TO multi_reader;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `ALTER DEFAULT PRIVILEGES FOR ROLE multi_owner1, no_such_role GRANT SELECT ON TABLES TO multi_reader;`,
+					ExpectedErr: `role "no_such_role" does not exist`,
+				},
+				{
+					Query:       `ALTER DEFAULT PRIVILEGES FOR ROLE multi_owner1, multi_owner2 GRANT SELECT ON TABLES TO multi_reader;`,
+					Username:    `multi_owner1`,
+					Password:    `a`,
+					ExpectedErr: `permission denied for multi_owner2`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE multi_owner1, multi_owner2 GRANT SELECT ON TABLES TO multi_reader;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE multi_t1 (pk INT4 PRIMARY KEY);`,
+					Username: `multi_owner1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE multi_t2 (pk INT4 PRIMARY KEY);`,
+					Username: `multi_owner2`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM multi_t1;`,
+					Username: `multi_reader`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM multi_t2;`,
+					Username: `multi_reader`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: `ALTER DEFAULT PRIVILEGES`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER readonly_user PASSWORD 'a';`,
+				`GRANT USAGE ON SCHEMA public TO readonly_user;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE test (pk INT4 PRIMARY KEY);`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `readonly_user`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR USER auth_test_super IN SCHEMA public GRANT SELECT ON TABLES TO readonly_user;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `readonly_user`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE TABLE another_table (pk INT4 PRIMARY KEY);`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM another_table;`,
+					Username: `readonly_user`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `create table user_table (i int);`,
+					Username:    `readonly_user`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR USER auth_test_super IN SCHEMA public REVOKE SELECT ON TABLES FROM readonly_user;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `readonly_user`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+			},
+		},
+		{
+			Name: `ALTER DEFAULT PRIVILEGES applies to new sequences`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER seq_reader PASSWORD 'a';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE SEQUENCE old_seq START WITH 1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT nextval('old_seq');`,
+					Username:    `seq_reader`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR USER auth_test_super IN SCHEMA public GRANT USAGE ON SEQUENCES TO seq_reader;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT nextval('old_seq');`,
+					Username:    `seq_reader`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE SEQUENCE new_seq START WITH 10;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT nextval('new_seq');`,
+					Username: `seq_reader`,
+					Password: `a`,
+					Expected: []sql.Row{{10}},
+				},
+			},
+		},
+		{
+			Name: `ALTER DEFAULT PRIVILEGES applies to new functions`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER func_reader PASSWORD 'a';`,
+				`GRANT USAGE ON SCHEMA public TO func_reader;`,
+				// EXECUTE on functions is granted to PUBLIC by default, so it must be revoked for this test
+				`ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION old_func() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT old_func();`,
+					Username:    `func_reader`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR USER auth_test_super IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO func_reader;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT old_func();`,
+					Username:    `func_reader`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE FUNCTION new_func() RETURNS int AS $$ BEGIN RETURN 42; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT new_func();`,
+					Username: `func_reader`,
+					Password: `a`,
+					Expected: []sql.Row{{42}},
+				},
+			},
+		},
+		{
+			Name: `functions are executable by PUBLIC by default`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER func_caller PASSWORD 'a';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION public_func() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public_func();`,
+					Username: `func_caller`,
+					Password: `a`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE FUNCTION private_func() RETURNS int AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT private_func();`,
+					Username:    `func_caller`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `SELECT public_func();`,
+					Username: `func_caller`,
+					Password: `a`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super GRANT EXECUTE ON FUNCTIONS TO PUBLIC;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE FUNCTION public_again() RETURNS int AS $$ BEGIN RETURN 3; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public_again();`,
+					Username: `func_caller`,
+					Password: `a`,
+					Expected: []sql.Row{{3}},
+				},
+			},
+		},
+		{
+			Name: `DROP ROLE removes default privileges referencing the role`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER dp_owner PASSWORD 'a';`,
+				`CREATE USER dp_grantee PASSWORD 'a';`,
+				`CREATE USER dp_other PASSWORD 'a';`,
+				`GRANT CREATE ON SCHEMA public TO dp_owner;`,
+				`ALTER DEFAULT PRIVILEGES FOR ROLE dp_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
+				`ALTER DEFAULT PRIVILEGES FOR ROLE dp_owner GRANT EXECUTE ON FUNCTIONS TO dp_grantee;`,
+				`ALTER DEFAULT PRIVILEGES FOR ROLE dp_owner GRANT SELECT ON TABLES TO dp_grantee;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP ROLE dp_grantee;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE FUNCTION dp_func() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+					Username: `dp_owner`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					// Dropping the only grantee must not undo the revoke from PUBLIC
+					Query:       `SELECT dp_func();`,
+					Username:    `dp_other`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `DROP FUNCTION dp_func();`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP ROLE dp_owner;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: `ALTER DEFAULT PRIVILEGES FOR ROLE`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`create user another_super with superuser password 'another';`,
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE TABLE test (pk INT4 PRIMARY KEY);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					// It only applies to tables created after this command is executed.
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super IN SCHEMA public GRANT SELECT ON TABLES TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE TABLE new_table (pk INT4 PRIMARY KEY);`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM new_table;`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE by_another (pk INT4 PRIMARY KEY);`,
+					Username: `another_super`,
+					Password: `another`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM by_another;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					// cannot select from tables created by `another` user
+					Query:       `SELECT * FROM by_another;`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:       `INSERT INTO test VALUES (1), (5), (6);`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					// It only applies to tables created after this command is executed.
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super IN SCHEMA public GRANT INSERT ON TABLES TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO test VALUES (1), (5), (6);`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE TABLE different_test (pk INT4 PRIMARY KEY);`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO different_test VALUES (1), (5), (6);`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM different_test;`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}, {5}, {6}},
+				},
+			},
+		},
+	})
+}
+
 // TestAlterDefaultPrivilegesOverlappingGrantOptions checks both ways a grant option can be supplied by overlapping defaults.
 func TestAlterDefaultPrivilegesOverlappingGrantOptions(t *testing.T) {
 	var scripts []ScriptTest
