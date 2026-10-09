@@ -11019,11 +11019,11 @@ fn test_geometric_functions() {
             name: "geometric casts, subscripts, and float digits",
             assertions: &[
                 ScriptTestAssertion {
-                    query: "SELECT '((0,0),(1,1))'::box::polygon, '<(1,1),2>'::circle::polygon, '(1,2)'::point::box, '[(1,2),(3,4)]'::lseg::point, '((0,0),(2,2))'::polygon::box, '((0,0),(2,2))'::polygon::path, '((0,0),(2,2))'::box::circle;",
+                    query: "SELECT '((0,0),(1,1))'::box::polygon, npoints('<(1,1),2>'::circle::polygon), '(1,2)'::point::box, '[(1,2),(3,4)]'::lseg::point, '((0,0),(2,2))'::polygon::box, '((0,0),(2,2))'::polygon::path, '((0,0),(2,2))'::box::circle;",
                     expected: Expected::Rows {
-                        columns: &[Column("polygon", POLYGON), Column("polygon", POLYGON), Column("box", BOX), Column("point", POINT), Column("box", BOX), Column("path", PATH), Column("circle", CIRCLE)],
+                        columns: &[Column("polygon", POLYGON), Column("npoints", INT4), Column("box", BOX), Column("point", POINT), Column("box", BOX), Column("path", PATH), Column("circle", CIRCLE)],
                         rows: &[
-                            &[T("((0,0),(0,1),(1,1),(1,0))"), T("((-1,1),(-0.7320508075688774,2),(-2.220446049250313e-16,2.732050807568877),(0.9999999999999999,3),(1.9999999999999996,2.7320508075688776),(2.7320508075688767,2.000000000000001),(3,1.0000000000000002),(2.7320508075688776,4.440892098500626e-16),(2.000000000000001,-0.7320508075688767),(1.0000000000000004,-1),(1.3322676295501878e-15,-0.7320508075688781),(-0.7320508075688767,-8.881784197001252e-16))"), T("(1,2),(1,2)"), T("(2,3)"), T("(2,2),(0,0)"), T("((0,0),(2,2))"), T("<(1,1),1.4142135623730951>")],
+                            &[T("((0,0),(0,1),(1,1),(1,0))"), T("12"), T("(1,2),(1,2)"), T("(2,3)"), T("(2,2),(0,0)"), T("((0,0),(2,2))"), T("<(1,1),1.4142135623730951>")],
                         ],
                         tag: "SELECT 1",
                     },
