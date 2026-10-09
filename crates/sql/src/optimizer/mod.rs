@@ -365,7 +365,7 @@ pub(super) fn build_jointree(
         other => {
             let varno = rtable.len() + 1;
             output.extend((0..other.width()).map(|attno| Expr::Column(var(varno, attno))));
-            rtable.push(RangeTblEntry { plan: plan_subquery(ctx, other) });
+            rtable.push(RangeTblEntry::new(plan_subquery(ctx, other)));
             JoinTreeNode::Rel(varno)
         }
     }

@@ -875,7 +875,13 @@ impl IndexScan {
 
     /// covering reports whether the scan reads a secondary index that holds every column the plan above it reads.
     pub(crate) fn covering(&self) -> bool {
-        let (Some(i), Some(needed)) = (self.index, &self.needed) else { return false };
+        self.needed.as_ref().is_some_and(|needed| self.covers(needed))
+    }
+
+    /// covers reports whether a scan of a secondary index holds the given columns, with the primary key that its
+    /// entries end with.
+    pub(crate) fn covers(&self, needed: &[usize]) -> bool {
+        let Some(i) = self.index else { return false };
         let index = &self.table.indexes[i];
         !self.table.keyless()
             && self.nearest.is_none()

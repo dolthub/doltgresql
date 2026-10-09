@@ -49,6 +49,9 @@ pub struct ColumnStats {
     pub common: Vec<(Value, f64)>,
     pub histogram: Vec<Value>,
     pub correlation: f64,
+    /// The most common values in order, each with the shares of the values up to and including it, which find a
+    /// value's share and the share below or above a value by binary search.
+    common_by_value: Vec<(Value, f64)>,
 }
 
 /// TableStats are the statistics of a table's columns, with the row count that they were gathered at.
@@ -148,7 +151,8 @@ fn column_stats(values: Vec<Value>, rows: u64) -> ColumnStats {
             analyze_mcv_list(&counts, distinct, null_frac, sampled, rows as f64)
         };
     let common_runs: Vec<(usize, usize)> = candidates[..common_count].to_vec();
-    let common = common_runs.iter().map(|&(start, count)| (values[start].clone(), count as f64 / sampled)).collect();
+    let common: Vec<(Value, f64)> =
+        common_runs.iter().map(|&(start, count)| (values[start].clone(), count as f64 / sampled)).collect();
     let mut rest: Vec<Value> = Vec::new();
     let mut rest_distinct = 0;
     for &(start, count) in &runs {
@@ -162,7 +166,17 @@ fn column_stats(values: Vec<Value>, rows: u64) -> ColumnStats {
         true => (0..bounds).map(|i| rest[i * (rest.len() - 1) / (bounds - 1)].clone()).collect(),
         false => Vec::new(),
     };
-    ColumnStats { null_frac, distinct, common, histogram, correlation }
+    let mut sorted: Vec<&(Value, f64)> = common.iter().collect();
+    sorted.sort_by(|a, b| compare_values(&a.0, &b.0));
+    let mut cumulative = 0.0;
+    let common_by_value = sorted
+        .into_iter()
+        .map(|(value, share)| {
+            cumulative += share;
+            (value.clone(), cumulative)
+        })
+        .collect();
+    ColumnStats { null_frac, distinct, common, histogram, correlation, common_by_value }
 }
 
 /// analyze_mcv_list returns how many of the most common values of a sample, by their counts in descending order, are
@@ -269,10 +283,11 @@ fn compare_selectivity(column: &ColumnStats, op: CmpOp, value: &Value) -> f64 {
 /// when it is a most common value, and otherwise an even share of what the most common values leave over the other
 /// distinct values.
 fn equal_selectivity(column: &ColumnStats, value: &Value) -> f64 {
-    if let Some((_, share)) = column.common.iter().find(|(v, _)| compare_values(v, value) == Ordering::Equal) {
-        return *share;
+    let by_value = &column.common_by_value;
+    if let Ok(i) = by_value.binary_search_by(|(v, _)| compare_values(v, value)) {
+        return by_value[i].1 - if i == 0 { 0.0 } else { by_value[i - 1].1 };
     }
-    let common: f64 = column.common.iter().map(|(_, share)| share).sum();
+    let common = by_value.last().map_or(0.0, |(_, cumulative)| *cumulative);
     let others = column.distinct - column.common.len() as f64;
     match others >= 1.0 {
         true => ((1.0 - common - column.null_frac) / others).max(0.0),
@@ -284,9 +299,22 @@ fn equal_selectivity(column: &ColumnStats, value: &Value) -> f64 {
 /// scalarineqsel judges it: the shares of the most common values that pass, plus the part of the histogram below or
 /// above the value, interpolated within its bucket, of the share that the most common values leave.
 fn range_selectivity(column: &ColumnStats, op: CmpOp, value: &Value) -> f64 {
-    let passes = |v: &Value| op.test(compare_values(v, value));
-    let common_share: f64 = column.common.iter().map(|(_, share)| share).sum();
-    let common_passing: f64 = column.common.iter().filter(|(v, _)| passes(v)).map(|(_, share)| share).sum();
+    let by_value = &column.common_by_value;
+    let common_share = by_value.last().map_or(0.0, |(_, cumulative)| *cumulative);
+    let below = |inclusive: bool| {
+        let end = by_value.partition_point(|(v, _)| match compare_values(v, value) {
+            Ordering::Less => true,
+            Ordering::Equal => inclusive,
+            Ordering::Greater => false,
+        });
+        if end == 0 { 0.0 } else { by_value[end - 1].1 }
+    };
+    let common_passing = match op {
+        CmpOp::Lt => below(false),
+        CmpOp::Le => below(true),
+        CmpOp::Gt => common_share - below(true),
+        _ => common_share - below(false),
+    };
     let rest = 1.0 - common_share - column.null_frac;
     match below_fraction(&column.histogram, value) {
         Some(below) => {

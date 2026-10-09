@@ -80,18 +80,26 @@ impl JoinType {
 
 /// RangeTblEntry is a relation that the query reads, as the plan of its rows: a scan of a table, or any other input,
 /// already planned, which the planner treats as an opaque base relation, as Postgres treats a function or VALUES list.
+/// A table's entry also holds the table, which the planner's paths share.
 #[derive(Clone, Debug)]
 pub struct RangeTblEntry {
     pub plan: Plan,
+    pub table: Option<Rc<TableDef>>,
 }
 
 impl RangeTblEntry {
+    /// new returns the entry of a plan's rows.
+    pub fn new(plan: Plan) -> RangeTblEntry {
+        let table = match &plan {
+            Plan::Scan(table, _) => Some(Rc::new((**table).clone())),
+            _ => None,
+        };
+        RangeTblEntry { plan, table }
+    }
+
     /// table returns the table that a relation entry scans, or None for an opaque entry.
     pub fn table(&self) -> Option<&TableDef> {
-        match &self.plan {
-            Plan::Scan(table, _) => Some(table),
-            _ => None,
-        }
+        self.table.as_deref()
     }
 }
 

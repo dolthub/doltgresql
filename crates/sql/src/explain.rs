@@ -204,7 +204,8 @@ struct Printer {
 /// the index lookups that a join makes for each of its left rows.
 enum Child<'p> {
     Plan(&'p Plan),
-    Hash(&'p Plan),
+    /// A plan under a node of the given name that holds its rows, such as a Hash or a Materialize.
+    Held(&'static str, &'p Plan),
     Lookup(Lookup<'p>),
 }
 
@@ -330,7 +331,7 @@ impl Printer {
                         (
                             format!("Hash {}", if kind.is_empty() { "Join" } else { kind.trim_start() }),
                             properties,
-                            vec![Child::Plan(left), Child::Hash(right)],
+                            vec![Child::Plan(left), Child::Held("Hash", right)],
                         )
                     }
                     JoinMethod::Lookup { .. } | JoinMethod::CatalogLookup { .. } => {
@@ -349,6 +350,11 @@ impl Printer {
                         };
                         (format!("Nested Loop{kind}"), properties, vec![Child::Plan(left), Child::Lookup(lookup)])
                     }
+                    JoinMethod::MaterializedLoop => (
+                        format!("Nested Loop{kind}"),
+                        printed("Join Filter"),
+                        vec![Child::Plan(left), Child::Held("Materialize", right)],
+                    ),
                     _ => (
                         format!("Nested Loop{kind}"),
                         printed("Join Filter"),
@@ -429,8 +435,8 @@ impl Printer {
         for child in children {
             match child {
                 Child::Plan(plan) => self.node(plan, depth + 1, Vec::new(), Vec::new()),
-                Child::Hash(plan) => {
-                    self.lines.push(format!("{}->  Hash", " ".repeat(6 * depth + 2)));
+                Child::Held(name, plan) => {
+                    self.lines.push(format!("{}->  {name}", " ".repeat(6 * depth + 2)));
                     self.node(plan, depth + 2, Vec::new(), Vec::new());
                 }
                 Child::Lookup(lookup) => self.lookup(&lookup, depth + 1),

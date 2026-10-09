@@ -72,6 +72,9 @@ pub enum JoinMethod {
     Hash,
     /// Each left row is compared with every right row.
     NestedLoop,
+    /// Each left row is compared with every right row, as a nested loop over a Postgres Materialize node of the right
+    /// input, which Doltgres' joins keep in memory either way.
+    MaterializedLoop,
 }
 
 /// SortKey is an ORDER BY key over a plan's rows.

@@ -37,7 +37,7 @@ use crate::plan::{JoinMethod, Plan, SortKey};
 /// relations whose join equalities find its rows through an index, as Postgres' function of the same name adds plain,
 /// ordered, and parameterized index paths.
 pub fn create_index_paths(root: &mut PlannerInfo<'_, '_>, rel: usize) {
-    if let Some(table) = root.parse.rte(rel).table().cloned() {
+    if let Some(table) = root.parse.rte(rel).table.clone() {
         let restricted = create_restriction_index_path(root, rel, &table);
         create_ordered_index_path(root, rel, &table, restricted);
     }
@@ -218,7 +218,7 @@ fn create_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_relids: 
     };
     let loop_count = members(outer_relids).map(|r| root.rels[r].rows).fold(f64::INFINITY, f64::min);
     let loop_count = if loop_count.is_finite() { loop_count } else { 1.0 };
-    let index = match (&method, root.parse.rte(rel).table().cloned()) {
+    let index = match (&method, root.parse.rte(rel).table.clone()) {
         (JoinMethod::Lookup { scan, .. }, Some(table)) => index_info(root, rel, &table, scan.index, false, 1),
         _ => IndexOptInfo {
             pages: 1.0,
@@ -256,7 +256,7 @@ fn check_index_only(root: &PlannerInfo<'_, '_>, rel: usize, scan: &crate::indexs
     for rinfo in &parent.baserestrictinfo {
         needed.extend(attnos(&rinfo.clause));
     }
-    crate::indexscan::IndexScan { needed: Some(needed), ..scan.clone() }.covering()
+    scan.covers(&needed)
 }
 
 /// index_info returns what the planner knows of an index of a base relation's table: Dolt's primary index holds

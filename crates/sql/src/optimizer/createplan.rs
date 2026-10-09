@@ -87,6 +87,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                     index,
                     keys: keys.iter().map(|k| positional(k.clone(), &outer_layout)).collect(),
                 },
+                (_, PathKind::Material(_)) => JoinMethod::MaterializedLoop,
                 _ => JoinMethod::NestedLoop,
             };
             let kind = match join.jointype {
