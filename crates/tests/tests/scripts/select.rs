@@ -2010,3 +2010,71 @@ fn test_implied_equalities() {
         },
     ]);
 }
+
+#[test]
+fn test_lookup_join_placeholders() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Lookup joins whose inner relation computes a placeholder",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lp_a (id INT PRIMARY KEY, b_id INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE lp_b (id INT PRIMARY KEY, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lp_a VALUES (1, 10), (2, 20), (3, NULL);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO lp_b SELECT g, g * 2 FROM generate_series(1, 2000) g;",
+                    expected: Expected::Tag("INSERT 0 2000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET enable_hashjoin = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET enable_mergejoin = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a.id, ss.flag FROM lp_a a LEFT JOIN (SELECT b.id, (b.id IS NOT NULL) AS flag FROM lp_b b) ss ON ss.id = a.b_id ORDER BY a.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("flag", BOOL)],
+                        rows: &[
+                            &[T("1"), T("t")],
+                            &[T("2"), T("t")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a.id, ss.flag FROM lp_a a LEFT JOIN (SELECT b.id, (b.id IS NOT NULL) AS flag FROM lp_b b WHERE b.v > 30) ss ON ss.id = a.b_id ORDER BY a.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("flag", BOOL)],
+                        rows: &[
+                            &[T("1"), Null],
+                            &[T("2"), T("t")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -1941,12 +1941,19 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
             };
             let (left_needed, right_needed) = (side(false), side(true));
             if let crate::plan::JoinMethod::Lookup { scan, .. } = method {
-                let checked = match &**right {
+                let (read, input) = match &**right {
+                    Plan::Project { input, exprs } => match &right_needed {
+                        Some(needed) => (columns_read(needed.iter().filter_map(|&i| exprs.get(i))), &**input),
+                        None => (columns_read(exprs.iter()), &**input),
+                    },
+                    other => (right_needed.clone(), other),
+                };
+                let checked = match input {
                     Plan::Filter { predicate, .. } => columns_read([predicate]),
                     Plan::IndexScan(ranged) => Some(ranged.index_columns().into_iter().collect()),
                     _ => Some(BTreeSet::new()),
                 };
-                scan.needed = union(right_needed.clone(), checked).map(|n| n.into_iter().collect());
+                scan.needed = union(read, checked).map(|n| n.into_iter().collect());
             }
             prune_to(left, if *lateral { None } else { left_needed });
             prune_to(right, right_needed);

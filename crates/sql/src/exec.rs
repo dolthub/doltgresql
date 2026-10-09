@@ -1288,7 +1288,8 @@ impl Rows for LateralRows<'_> {
 }
 
 /// LookupRows joins each left row with the right rows that its key values find in an index of the right input's
-/// table, keeping those that the right input's filter, the ranges of its index scan, and the join condition keep.
+/// table, keeping those that the right input's filter, the ranges of its index scan, and the join condition keep, and
+/// computing the expressions of a projection above them.
 struct LookupRows<'p> {
     left: Box<dyn Rows + 'p>,
     right_plan: &'p Plan,
@@ -1300,6 +1301,7 @@ struct LookupRows<'p> {
     filter: Option<&'p Expr>,
     /// The right input's index scan, when it is one with no filter above it, whose ranges the rows must lie in.
     ranges: Option<&'p crate::indexscan::IndexScan>,
+    project: Option<&'p [Expr]>,
     kind: JoinKind,
     condition: Option<&'p Expr>,
     right_width: usize,
@@ -1319,7 +1321,11 @@ impl<'p> LookupRows<'p> {
         scan: &'p crate::indexscan::IndexScan,
         keys: &'p [Expr],
     ) -> Result<LookupRows<'p>> {
-        let (filter, ranges) = match right {
+        let (project, input) = match right {
+            Plan::Project { input, exprs } => (Some(exprs.as_slice()), &**input),
+            other => (None, other),
+        };
+        let (filter, ranges) = match input {
             Plan::Filter { predicate, .. } => (Some(predicate), None),
             Plan::IndexScan(scan) => (None, Some(&**scan)),
             _ => (None, None),
@@ -1333,6 +1339,7 @@ impl<'p> LookupRows<'p> {
             table: &scan.table,
             filter,
             ranges,
+            project,
             kind,
             condition,
             right_width: right.width(),
@@ -1370,8 +1377,12 @@ impl<'p> LookupRows<'p> {
                     continue;
                 }
             }
-            if self.filter.map_or(Ok(true), |f| f.is_true(ctx, &row))? {
-                rows.push(row);
+            if !self.filter.map_or(Ok(true), |f| f.is_true(ctx, &row))? {
+                continue;
+            }
+            match self.project {
+                Some(exprs) => rows.push(exprs.iter().map(|e| e.eval(ctx, &row)).collect::<Result<Row>>()?),
+                None => rows.push(row),
             }
         }
         Ok(rows)

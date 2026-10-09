@@ -462,7 +462,11 @@ impl Printer {
             .map(|(key, column)| format!("({column} = {})", expr_text(key, &lookup.left_columns)))
             .collect();
         self.lines.push(format!("{pad}Index Cond: {}", conditions.join(" AND ")));
-        if let Plan::Filter { input, predicate } = lookup.right {
+        let right = match lookup.right {
+            Plan::Project { input, .. } => &**input,
+            other => other,
+        };
+        if let Plan::Filter { input, predicate } = right {
             self.lines.push(format!("{pad}Filter: {}", expr_text(predicate, &own_columns(input))));
         }
     }
