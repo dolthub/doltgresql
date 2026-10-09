@@ -63,6 +63,56 @@ func TestAlterDefaultPrivileges(t *testing.T) {
 			},
 		},
 		{
+			Name: "ALTER DEFAULT PRIVILEGES for multiple target roles",
+			SetUpScript: []string{
+				`CREATE USER multi_owner1 PASSWORD 'a';`,
+				`CREATE USER multi_owner2 PASSWORD 'a';`,
+				`CREATE USER multi_reader PASSWORD 'a';`,
+				`GRANT USAGE, CREATE ON SCHEMA public TO multi_owner1, multi_owner2;`,
+				`GRANT USAGE ON SCHEMA public TO multi_reader;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `ALTER DEFAULT PRIVILEGES FOR ROLE multi_owner1, no_such_role GRANT SELECT ON TABLES TO multi_reader;`,
+					ExpectedErr: `role "no_such_role" does not exist`,
+				},
+				{
+					Query:       `ALTER DEFAULT PRIVILEGES FOR ROLE multi_owner1, multi_owner2 GRANT SELECT ON TABLES TO multi_reader;`,
+					Username:    `multi_owner1`,
+					Password:    `a`,
+					ExpectedErr: `permission denied for multi_owner2`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE multi_owner1, multi_owner2 GRANT SELECT ON TABLES TO multi_reader;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE multi_t1 (pk INT4 PRIMARY KEY);`,
+					Username: `multi_owner1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE multi_t2 (pk INT4 PRIMARY KEY);`,
+					Username: `multi_owner2`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM multi_t1;`,
+					Username: `multi_reader`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM multi_t2;`,
+					Username: `multi_reader`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: `ALTER DEFAULT PRIVILEGES`,
 			SetUpScript: []string{
 				authTestCreateSuperUser,

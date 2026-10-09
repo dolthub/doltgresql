@@ -265,17 +265,15 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	case AuthTargetType_TODO:
 		// This is similar to IGNORE, except we're meant to replace this at some point
 	case AuthTargetType_AlterDefaultPrivilegesIdentifiers:
-		nTargets := len(auth.TargetNames)
-		if nTargets > 1 {
-			return errors.Errorf("function identifiers has an unsupported count: %d", len(auth.TargetNames))
-		}
 		if state.role.IsSuperUser {
 			return nil
 		}
-		if nTargets == 1 && state.role.Name == auth.TargetNames[0] {
-			return nil
+		// An empty list targets the current role, otherwise every target role must be the current role
+		for _, targetName := range auth.TargetNames {
+			if state.role.Name != targetName {
+				return errors.Errorf("permission denied for %s", targetName)
+			}
 		}
-		return errors.Errorf("permission denied for %s", auth.TargetNames[0])
 	default:
 		if len(auth.TargetType) == 0 {
 			return errors.New("TargetType is unexpectedly empty")

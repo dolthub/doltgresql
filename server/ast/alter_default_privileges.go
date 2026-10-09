@@ -44,10 +44,10 @@ func nodeAlterDefaultPrivileges(ctx *Context, node *tree.AlterDefaultPrivileges)
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_CREATE,
 			TargetType:  auth.AuthTargetType_AlterDefaultPrivilegesIdentifiers,
-			TargetNames: []string{node.TargetRole},
+			TargetNames: node.TargetRoles,
 		},
 		Statement: &pgnodes.AlterDefaultPrivileges{
-			OwnerRole:   node.TargetRole,
+			OwnerRoles:  node.TargetRoles,
 			Schemas:     node.Target.InSchema,
 			ObjectType:  objType,
 			Privileges:  privileges,

@@ -28,7 +28,7 @@ import (
 
 // AlterDefaultPrivileges handles the ALTER DEFAULT PRIVILEGES statement.
 type AlterDefaultPrivileges struct {
-	OwnerRole   string
+	OwnerRoles  []string
 	Schemas     []string
 	ObjectType  auth.PrivilegeObject
 	Privileges  []auth.Privilege
@@ -102,7 +102,7 @@ func (n *AlterDefaultPrivileges) WithResolvedChildren(ctx context.Context, child
 
 // execute performs the actual default privilege changes.
 func (n *AlterDefaultPrivileges) execute(ctx *sql.Context) error {
-	ownerRole, err := n.resolveOwnerRole(ctx)
+	ownerRoles, err := n.resolveOwnerRoles(ctx)
 	if err != nil {
 		return err
 	}
@@ -122,22 +122,24 @@ func (n *AlterDefaultPrivileges) execute(ctx *sql.Context) error {
 		// TODO: get all schemas
 		schemas = []string{""}
 	}
-	for _, schema := range schemas {
-		key := auth.DefaultPrivilegeKey{
-			OwnerRole:  ownerRole.ID(),
-			Schema:     schema,
-			ObjectType: n.ObjectType,
-		}
-		for _, granteeRole := range granteeRoles {
-			for _, priv := range n.Privileges {
-				grantedPrivilege := auth.GrantedPrivilege{
-					Privilege: priv,
-					GrantedBy: ownerRole.ID(),
-				}
-				if n.Grant {
-					auth.AddDefaultPrivilege(key, granteeRole.ID(), grantedPrivilege, n.GrantOption)
-				} else {
-					auth.RemoveDefaultPrivilege(key, granteeRole.ID(), grantedPrivilege, n.GrantOption)
+	for _, ownerRole := range ownerRoles {
+		for _, schema := range schemas {
+			key := auth.DefaultPrivilegeKey{
+				OwnerRole:  ownerRole.ID(),
+				Schema:     schema,
+				ObjectType: n.ObjectType,
+			}
+			for _, granteeRole := range granteeRoles {
+				for _, priv := range n.Privileges {
+					grantedPrivilege := auth.GrantedPrivilege{
+						Privilege: priv,
+						GrantedBy: ownerRole.ID(),
+					}
+					if n.Grant {
+						auth.AddDefaultPrivilege(key, granteeRole.ID(), grantedPrivilege, n.GrantOption)
+					} else {
+						auth.RemoveDefaultPrivilege(key, granteeRole.ID(), grantedPrivilege, n.GrantOption)
+					}
 				}
 			}
 		}
@@ -147,17 +149,24 @@ func (n *AlterDefaultPrivileges) execute(ctx *sql.Context) error {
 
 // resolveOwnerRoles returns the roles that own the default privileges being modified.
 // When no roles are explicitly specified, the current session user is used.
-func (n *AlterDefaultPrivileges) resolveOwnerRole(ctx *sql.Context) (auth.Role, error) {
+func (n *AlterDefaultPrivileges) resolveOwnerRoles(ctx *sql.Context) ([]auth.Role, error) {
 	// empty means current user
-	if n.OwnerRole == "" {
-		return auth.CurrentRoleLocked(ctx)
-	} else {
-		role := auth.GetRole(n.OwnerRole)
-		if !role.IsValid() {
-			return auth.Role{}, errors.Errorf(`role "%s" does not exist`, n.OwnerRole)
+	if len(n.OwnerRoles) == 0 {
+		role, err := auth.CurrentRoleLocked(ctx)
+		if err != nil {
+			return nil, err
 		}
-		return role, nil
+		return []auth.Role{role}, nil
 	}
+	roles := make([]auth.Role, len(n.OwnerRoles))
+	for i, name := range n.OwnerRoles {
+		role := auth.GetRole(name)
+		if !role.IsValid() {
+			return nil, errors.Errorf(`role "%s" does not exist`, name)
+		}
+		roles[i] = role
+	}
+	return roles, nil
 }
 
 // applyDefaultPrivilegesForNewObject applies the default privileges for an object that the current role just created,

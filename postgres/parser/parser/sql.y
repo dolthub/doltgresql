@@ -1897,11 +1897,11 @@ alter_default_privileges_stmt:
   {
     $$.val = $4.alterDefaultPrivileges()
   }
-| ALTER DEFAULT PRIVILEGES FOR role_or_user opt_role adp_abbreviated_grant_or_revoke
+| ALTER DEFAULT PRIVILEGES FOR role_or_user opt_role_list adp_abbreviated_grant_or_revoke
   {
     adp := $7.alterDefaultPrivileges()
     adp.ForRole = $5.bool()
-    adp.TargetRole = $6
+    adp.TargetRoles = $6.strs()
     $$.val = adp
   }
 | ALTER DEFAULT PRIVILEGES IN SCHEMA schema_name_list adp_abbreviated_grant_or_revoke
@@ -1910,11 +1910,11 @@ alter_default_privileges_stmt:
     adp.Target.InSchema = $6.strs()
     $$.val = adp
   }
-| ALTER DEFAULT PRIVILEGES FOR role_or_user opt_role IN SCHEMA schema_name_list adp_abbreviated_grant_or_revoke
+| ALTER DEFAULT PRIVILEGES FOR role_or_user opt_role_list IN SCHEMA schema_name_list adp_abbreviated_grant_or_revoke
   {
     adp := $10.alterDefaultPrivileges()
     adp.ForRole = $5.bool()
-    adp.TargetRole = $6
+    adp.TargetRoles = $6.strs()
     adp.Target.InSchema = $9.strs()
     $$.val = adp
   }
