@@ -252,6 +252,8 @@ github.com/dolthub/dolt-mcp v0.3.4 h1:AyG5cw+fNWXDHXujtQnqUPZrpWtPg6FN6yYtjv1pP4
 github.com/dolthub/dolt-mcp v0.3.4/go.mod h1:bCZ7KHvDYs+M0e+ySgmGiNvLhcwsN7bbf5YCyillLrk=
 github.com/dolthub/dolt/go v0.40.5-0.20261008181946-0ffee1581546 h1:P4LESK07PlXhA4Ockpuoyg8s+xXjRN7nCOgFSthn0VQ=
 github.com/dolthub/dolt/go v0.40.5-0.20261008181946-0ffee1581546/go.mod h1:iARJrQymdzTNVrvsZ4RDaU6QNqxE74375QUvJogV2cI=
+github.com/dolthub/dolt/go v0.40.5-0.20261009190019-41dabe88a404 h1:an210v4PX/aj0fccuGQQmiwIfviMmIP7BWp8ZQ+hj/0=
+github.com/dolthub/dolt/go v0.40.5-0.20261009190019-41dabe88a404/go.mod h1:pi5l4vyK9pF5E0foVhCsQAnkGT729zrj4zAaA+JzZIQ=
 github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4 h1:0mg9QEFdkkBwJMxvz1tCjHYmfG2iIC6aShj1InDq9/M=
 github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4/go.mod h1:SSLraQS/jGLYFgff3vuZ+JbVUct6vyEeMzjLBqWqoyM=
 github.com/dolthub/file-locks v0.1.1 h1:8oKr20PflAVHkroB5Kq1BrtzesvKop9onekWEse1Qr8=
@@ -266,6 +268,8 @@ github.com/dolthub/go-mysql-server v0.20.1-0.20261008194352-1bbcb2c25bd8 h1:S760
 github.com/dolthub/go-mysql-server v0.20.1-0.20261008194352-1bbcb2c25bd8/go.mod h1:Cn3PBhNNM1cc0Gjkv1F+q1i4DXw6Cet8tmNcOFQvVD8=
 github.com/dolthub/go-mysql-server v0.20.1-0.20261008202032-be7eefb6fdd3 h1:0CNOG9uddDQ4JLwb25xD8h7yiK9OIrfjG9bBSUQBLVc=
 github.com/dolthub/go-mysql-server v0.20.1-0.20261008202032-be7eefb6fdd3/go.mod h1:Cn3PBhNNM1cc0Gjkv1F+q1i4DXw6Cet8tmNcOFQvVD8=
+github.com/dolthub/go-mysql-server v0.20.1-0.20261009185634-8cdd46e2aa74 h1:eAz1VyXMzmdrMi4au1Kvfpl6nIcRsmPIviDvHgiu3hM=
+github.com/dolthub/go-mysql-server v0.20.1-0.20261009185634-8cdd46e2aa74/go.mod h1:Cn3PBhNNM1cc0Gjkv1F+q1i4DXw6Cet8tmNcOFQvVD8=
 github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 h1:OAsXLAPL4du6tfbBgK0xXHZkOlos63RdKYS3Sgw/dfI=
 github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63/go.mod h1:lV7lUeuDhH5thVGDCKXbatwKy2KW80L4rMT46n+Y2/Q=
 github.com/dolthub/ishell v0.0.0-20260414231531-5f031e3e9037 h1:oIW9HwuWrhxv+4HZxA+QQSKHLqWFyXZ2FmNjUYwkdiM=

@@ -565,6 +565,32 @@ func newScriptTestHarness(t *testing.T) denginetest.DoltEnginetestHarness {
 	})
 }
 
+// testRelocatedScripts retains the TestScripts harness and skip policy for cases
+// moved into collections whose full Doltgres suites are not yet supported.
+func testRelocatedScripts(t *testing.T, scripts []queries.ScriptTest, names ...string) {
+	t.Helper()
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	h.Setup(setup.MydbData)
+
+	for _, name := range names {
+		found := false
+		for _, script := range scripts {
+			if script.Name == name {
+				if sh, ok := h.(enginetest.SkippingHarness); ok && sh.SkipQueryTest(script.Name) {
+					t.Run(script.Name, func(t *testing.T) { t.Skip(script.Name) })
+				} else {
+					enginetest.TestScript(t, h, script)
+				}
+
+				found = true
+			}
+		}
+
+		require.True(t, found, "relocated script %q not found", name)
+	}
+}
+
 func TestAggregationScripts(t *testing.T) {
 	h := newScriptTestHarness(t)
 	defer h.Close()
@@ -841,6 +867,13 @@ func TestPkOrdinalsDML(t *testing.T) {
 	enginetest.TestPkOrdinalsDML(t, h)
 }
 
+func TestDropTableWarning(t *testing.T) {
+	h := newScriptTestHarness(t)
+	defer h.Close()
+	h.Setup(setup.MydbData)
+	enginetest.TestDropTableWarnings(t, h, false)
+}
+
 func TestDropTable(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
@@ -1007,6 +1040,16 @@ func TestReadOnly(t *testing.T) {
 	enginetest.TestReadOnly(t, h, false /* testStoredProcedures */)
 }
 
+func TestRelocatedViewScripts(t *testing.T) {
+	testRelocatedScripts(t, queries.ViewScripts,
+		"can't create view with same name as existing table",
+		"can't create table with same name as existing view",
+		"renaming views with RENAME TABLE ... TO .. statement",
+		"renaming views with ALTER TABLE ... RENAME .. statement should fail",
+		"Querying existing view that references non-existing table",
+	)
+}
+
 func TestViews(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
@@ -1146,6 +1189,10 @@ func TestSelectIntoFile(t *testing.T) {
 	enginetest.TestSelectIntoFile(t, h)
 }
 
+func TestRelocatedJsonScripts(t *testing.T) {
+	testRelocatedScripts(t, queries.JsonScripts, "test json search")
+}
+
 func TestJsonScripts(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
@@ -1169,6 +1216,12 @@ func TestRollbackTriggers(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestRollbackTriggers(t, h)
+}
+
+func TestRelocatedProcedureScripts(t *testing.T) {
+	testRelocatedScripts(t, queries.ProcedureLogicTests, "Top-level DECLARE statements")
+	testRelocatedScripts(t, queries.ProcedureCallTests,
+		"Stored procedure containing a transaction does not return EOF")
 }
 
 func TestStoredProcedures(t *testing.T) {
