@@ -3111,6 +3111,8 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
     let width = left.width();
     let mut all = Vec::new();
     conjuncts(predicate, &mut all);
+    let implied = implied_equalities(all.iter().chain(condition.iter().flat_map(crate::indexscan::conjuncts)));
+    all.extend(implied);
     let (mut to_left, mut to_right, mut to_join) = (Vec::new(), Vec::new(), Vec::new());
     for c in all {
         let (mut reads_left, mut reads_right, mut subquery) = (false, false, false);
@@ -3151,6 +3153,48 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
     }
     let condition = and(condition.into_iter().chain(to_join).collect());
     Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral, method }
+}
+
+/// implied_equalities returns the equalities of columns with constants that a set of conditions imply without
+/// stating, as Postgres' equivalence classes derive them: a column that equals another equals the constants that the
+/// other equals. Only equalities that compare columns and constants directly, with no cast between differing types,
+/// take part, since only those compare their values the same way throughout.
+fn implied_equalities<'e>(conditions: impl Iterator<Item = &'e Expr>) -> Vec<Expr> {
+    let mut classes: Vec<BTreeSet<usize>> = Vec::new();
+    let mut constants: Vec<(usize, Expr)> = Vec::new();
+    for c in conditions {
+        let Expr::Compare(CmpOp::Eq, l, r) = c else { continue };
+        match (&**l, &**r) {
+            (Expr::Column(a), Expr::Column(b)) => {
+                let (a, b) = (*a, *b);
+                let found: Vec<usize> =
+                    (0..classes.len()).filter(|&i| classes[i].contains(&a) || classes[i].contains(&b)).collect();
+                let mut merged: BTreeSet<usize> = [a, b].into();
+                for &i in found.iter().rev() {
+                    merged.extend(classes.remove(i));
+                }
+                classes.push(merged);
+            }
+            (Expr::Column(a), constant @ Expr::Const(v)) | (constant @ Expr::Const(v), Expr::Column(a))
+                if !v.is_null() =>
+            {
+                constants.push((*a, constant.clone()));
+            }
+            _ => {}
+        }
+    }
+    let mut implied = Vec::new();
+    for class in &classes {
+        for (column, constant) in constants.iter().filter(|(c, _)| class.contains(c)) {
+            for &other in class.iter().filter(|&o| o != column) {
+                if !constants.iter().any(|(c, k)| *c == other && k == constant) {
+                    implied.push(Expr::Compare(CmpOp::Eq, Box::new(Expr::Column(other)), Box::new(constant.clone())));
+                }
+            }
+        }
+    }
+    implied.dedup();
+    implied
 }
 
 /// strict_columns adds the columns that a condition can only be true with when they are not NULL, as Postgres'

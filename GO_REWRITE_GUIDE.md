@@ -320,6 +320,15 @@ of it: protobuf-c sized and packed every `Node` (a oneof over several hundred no
 fields. A patch to the vendored protobuf-c finds a Node's one set field by id instead. pg_query_go parses through the
 same protobuf path, so a Go rewrite that uses it needs the same patch.
 
+The planner then moved toward Postgres' own (the user asked to port as much of Postgres' analyzer as is reasonable).
+Port its logic onto your own plan representation rather than its Query trees: subquery pull-up
+(convert_EXISTS_sublink_to_join over any join tree, with outer references renumbered by level), reduce_outer_joins,
+eqjoinsel's row estimate from the keys' distinct values, dynamic programming over join orders (join_collapse_limit
+8), and column statistics computed as analyze.c's compute_scalar_stats does (sampled evenly through the tree's
+subtree counts, so plans stay deterministic) with selfuncs.c's eqsel and scalarineqsel over them. Keep Postgres'
+structure but recalibrate its costs: prolly trees have no heap, and a secondary index lookup is a full search of the
+primary tree. In Go, this planner would sit in front of go-mysql-server rather than inside it.
+
 ## 4. Habits and tooling worth copying
 
 - **A handoff file** (untracked) with an "Exact position" section at the top: the last commit, what is in progress,

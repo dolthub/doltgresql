@@ -1857,3 +1857,156 @@ fn test_join_order_search() {
         },
     ]);
 }
+
+#[test]
+fn test_implied_equalities() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Equalities implied through joins",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE eq_a (id INT PRIMARY KEY, x INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE eq_b (id INT PRIMARY KEY, y INT, u TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX eq_a_x ON eq_a (x);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO eq_a SELECT g, g % 20, 'a' || g FROM generate_series(1, 200) g;",
+                    expected: Expected::Tag("INSERT 0 200"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO eq_b SELECT g, g % 25, 'b' || (g % 3) FROM generate_series(1, 100) g;",
+                    expected: Expected::Tag("INSERT 0 100"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a.id, b.id FROM eq_a a JOIN eq_b b ON a.x = b.y WHERE b.y = 5 ORDER BY a.id, b.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("5"), T("5")],
+                            &[T("5"), T("30")],
+                            &[T("5"), T("55")],
+                            &[T("5"), T("80")],
+                            &[T("25"), T("5")],
+                            &[T("25"), T("30")],
+                            &[T("25"), T("55")],
+                            &[T("25"), T("80")],
+                            &[T("45"), T("5")],
+                            &[T("45"), T("30")],
+                            &[T("45"), T("55")],
+                            &[T("45"), T("80")],
+                            &[T("65"), T("5")],
+                            &[T("65"), T("30")],
+                            &[T("65"), T("55")],
+                            &[T("65"), T("80")],
+                            &[T("85"), T("5")],
+                            &[T("85"), T("30")],
+                            &[T("85"), T("55")],
+                            &[T("85"), T("80")],
+                            &[T("105"), T("5")],
+                            &[T("105"), T("30")],
+                            &[T("105"), T("55")],
+                            &[T("105"), T("80")],
+                            &[T("125"), T("5")],
+                            &[T("125"), T("30")],
+                            &[T("125"), T("55")],
+                            &[T("125"), T("80")],
+                            &[T("145"), T("5")],
+                            &[T("145"), T("30")],
+                            &[T("145"), T("55")],
+                            &[T("145"), T("80")],
+                            &[T("165"), T("5")],
+                            &[T("165"), T("30")],
+                            &[T("165"), T("55")],
+                            &[T("165"), T("80")],
+                            &[T("185"), T("5")],
+                            &[T("185"), T("30")],
+                            &[T("185"), T("55")],
+                            &[T("185"), T("80")],
+                        ],
+                        tag: "SELECT 40",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM eq_a a, eq_b b WHERE a.x = b.y AND a.x = 7 AND b.y = 7;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("40")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM eq_a a, eq_b b WHERE a.x = b.y AND a.x = 7 AND b.y = 8;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM eq_a a JOIN eq_b b ON a.x = b.y AND b.y = 3 JOIN eq_a c ON c.x = a.x;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("400")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM eq_a a JOIN eq_b b ON a.x = b.y WHERE b.y = NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM eq_a a JOIN eq_b b ON a.t = b.u WHERE b.u = 'b1';",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM eq_a a JOIN eq_b b ON a.x = b.y WHERE b.y::bigint = 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("40")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
