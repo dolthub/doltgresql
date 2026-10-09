@@ -49,6 +49,10 @@ const RANGE_SELECTIVITY: f64 = 1.0 / 3.0;
 /// OTHER_SELECTIVITY is the share of rows that any other condition keeps.
 const OTHER_SELECTIVITY: f64 = 0.5;
 
+/// DEFAULT_DISTINCT is how many distinct values a join key takes without statistics, as Postgres'
+/// DEFAULT_NUM_DISTINCT assumes.
+const DEFAULT_DISTINCT: f64 = 200.0;
+
 /// estimate returns about how many rows a plan produces.
 pub(crate) fn estimate(ctx: &mut Ctx<'_>, plan: &Plan) -> f64 {
     match plan {
@@ -75,10 +79,14 @@ pub(crate) fn estimate(ctx: &mut Ctx<'_>, plan: &Plan) -> f64 {
         Plan::Aggregate { input, .. } | Plan::Distinct { input, .. } => (estimate(ctx, input) / 10.0).max(1.0),
         Plan::Join { left, right, kind, condition, .. } => {
             let (l, r) = (estimate(ctx, left), estimate(ctx, right));
-            let keyed = condition.as_ref().is_some_and(|c| !crate::plan::join_keys(c, left.width()).0.is_empty());
-            let joined = match keyed {
-                true => l.max(r),
-                false => l * r * condition.as_ref().map_or(1.0, selectivity),
+            let (left_keys, right_keys) =
+                condition.as_ref().map_or_else(Default::default, |c| crate::plan::join_keys(c, left.width()));
+            let joined = match left_keys.is_empty() {
+                false => {
+                    let distinct = key_distinct(ctx, left, &left_keys, l).max(key_distinct(ctx, right, &right_keys, r));
+                    l * r / distinct
+                }
+                true => l * r * condition.as_ref().map_or(1.0, selectivity),
             };
             match kind {
                 JoinKind::Inner => joined,
@@ -90,6 +98,42 @@ pub(crate) fn estimate(ctx: &mut Ctx<'_>, plan: &Plan) -> f64 {
         }
         _ => UNKNOWN_ROWS,
     }
+}
+
+/// key_distinct returns about how many distinct values a join's keys take in an input's rows, as Postgres'
+/// eqjoinsel judges them: every row of the input's table when the keys cover one of its unique indexes, the table's
+/// rows over what one key finds through an index that starts with a key, which ANALYZE's counts refine, and otherwise
+/// the default, never more than the input's rows.
+fn key_distinct(ctx: &mut Ctx<'_>, plan: &Plan, keys: &[Expr], rows: f64) -> f64 {
+    let column = |k: &Expr| match k {
+        Expr::Column(c) => Some(*c),
+        Expr::Cast(inner, ..) => match **inner {
+            Expr::Column(c) => Some(c),
+            _ => None,
+        },
+        _ => None,
+    };
+    let columns: Option<Vec<usize>> = keys.iter().map(column).collect();
+    let distinct = match (target(plan), columns) {
+        (Some(table), Some(columns)) => {
+            let total = table_rows(table);
+            let covers = |index: &[usize]| index.iter().all(|c| columns.contains(c));
+            let unique = (!table.keyless() && covers(&table.key_columns))
+                || table.indexes.iter().any(|i| i.unique && i.predicate.is_empty() && covers(&i.columns));
+            let leading = |index: &[usize]| index.first().is_some_and(|c| columns.contains(c));
+            let index = match leading(&table.key_columns) && !table.keyless() {
+                true => Some(None),
+                false => table.indexes.iter().position(|i| leading(&i.columns)).map(Some),
+            };
+            match (unique, index) {
+                (true, _) => total,
+                (false, Some(index)) => total / per_key(ctx, table, index, total),
+                (false, None) => DEFAULT_DISTINCT,
+            }
+        }
+        _ => DEFAULT_DISTINCT,
+    };
+    distinct.min(rows).max(1.0)
 }
 
 /// catalog_scan_rows returns about how many rows a scan of a system catalog relation's index reads, given the
