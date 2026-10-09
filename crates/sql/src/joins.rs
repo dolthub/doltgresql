@@ -22,7 +22,7 @@ use crate::plan::{JoinKind, JoinMethod, Plan};
 use crate::query::Ctx;
 
 /// SEEK is the cost of finding a key in an index, where reading one row in order costs one.
-const SEEK: f64 = 4.0;
+pub(crate) const SEEK: f64 = 4.0;
 
 /// HASH_ROW is the cost of adding a row to a hash join's table.
 const HASH_ROW: f64 = 1.5;
@@ -216,6 +216,7 @@ fn lookup(ctx: &mut Ctx<'_>, right: &Plan, condition: &Expr, left_width: usize) 
         reverse: false,
         nearest: None,
         needed: None,
+        lookup_heavy: None,
     };
     Some(Lookup { method: JoinMethod::Lookup { scan: Box::new(scan), keys }, matches })
 }

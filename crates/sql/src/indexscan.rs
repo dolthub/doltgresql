@@ -42,6 +42,10 @@ pub struct IndexScan {
     /// The table columns that the plan above the scan reads, or None for every column, which lets a scan of a
     /// secondary index that holds them all skip the primary index.
     pub needed: Option<Vec<usize>>,
+    /// Some when the scan reads so many of the table's rows that a full scan beats looking them up in the primary
+    /// index, which the plan does in its place unless the index holds every column the plan reads. It holds whether
+    /// the scan's ranges alone answer the filter above it, which goes when the scan stays.
+    pub lookup_heavy: Option<bool>,
 }
 
 /// Item is a key of an index and its value.
@@ -782,6 +786,7 @@ pub fn choose_with_cover(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) 
         reverse: false,
         nearest: None,
         needed: None,
+        lookup_heavy: None,
     };
     Some((scan, covered))
 }
@@ -869,7 +874,7 @@ impl IndexScan {
     }
 
     /// covering reports whether the scan reads a secondary index that holds every column the plan above it reads.
-    fn covering(&self) -> bool {
+    pub(crate) fn covering(&self) -> bool {
         let (Some(i), Some(needed)) = (self.index, &self.needed) else { return false };
         let index = &self.table.indexes[i];
         !self.table.keyless()
@@ -1101,6 +1106,11 @@ impl IndexScan {
     /// estimate returns about how many rows the scan reads: the index entries between the ends of its first ranges,
     /// scaled up to the rest of them, which counts every entry of a range whose keys need checking.
     pub(crate) fn estimate(&self, ctx: &mut Ctx<'_>) -> Result<f64> {
+        self.estimate_with_samples(ctx, ESTIMATED_RANGES)
+    }
+
+    /// estimate_with_samples estimates as `estimate` does from at most a number of the scan's first ranges.
+    pub(crate) fn estimate_with_samples(&self, ctx: &mut Ctx<'_>, samples: usize) -> Result<f64> {
         if self.nearest.is_some() {
             return Ok(ESTIMATED_NEAREST);
         }
@@ -1108,7 +1118,7 @@ impl IndexScan {
             Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
             None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
         };
-        let sampled = self.ranges.len().min(ESTIMATED_RANGES);
+        let sampled = self.ranges.len().min(samples);
         let mut total = 0;
         for range in &self.ranges[..sampled] {
             let bounds = self.bounds(range);
@@ -1745,6 +1755,7 @@ fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
                     reverse,
                     nearest: None,
                     needed: None,
+                    lookup_heavy: None,
                 })));
             }
             None
@@ -1846,6 +1857,7 @@ fn nearest_scan(sort: &Plan, limit: &Option<Expr>, offset: &Option<Expr>) -> Opt
         reverse: false,
         nearest: Some(nearest),
         needed: None,
+        lookup_heavy: None,
     };
     Some(Plan::Project { input: Box::new(Plan::IndexScan(Box::new(scan))), exprs: exprs.clone() })
 }
@@ -1909,7 +1921,18 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
             prune_to(input, union(below, columns_read(functions.iter())));
         }
         Plan::Once(input) => prune_to(input, needed),
-        Plan::Filter { input, predicate } => prune_to(input, union(needed, columns_read([&*predicate]))),
+        Plan::Filter { input, predicate } => {
+            prune_to(input, union(needed, columns_read([&*predicate])));
+            if let Plan::IndexScan(scan) = &mut **input
+                && let Some(exact) = scan.lookup_heavy.take()
+            {
+                if !scan.covering() {
+                    **input = Plan::Scan(scan.table.clone(), scan.needed.clone());
+                } else if exact {
+                    *plan = std::mem::replace(&mut **input, Plan::Values(Vec::new()));
+                }
+            }
+        }
         Plan::Project { input, exprs } => {
             let read = match &needed {
                 Some(needed) => columns_read(needed.iter().filter_map(|&i| exprs.get(i))),

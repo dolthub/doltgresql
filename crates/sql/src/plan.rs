@@ -880,6 +880,10 @@ impl<'b, 'a> Planner<'b, 'a> {
         match plan {
             Plan::Filter { input, predicate } => match *input {
                 Plan::Scan(table, needed) => match crate::indexscan::choose_with_cover(self.ctx, &table, &predicate) {
+                    Some((mut scan, exact)) if scan.index.is_some() && self.lookups_cost_more(&scan) => {
+                        scan.lookup_heavy = Some(exact);
+                        Plan::Filter { input: Box::new(Plan::IndexScan(Box::new(scan))), predicate }
+                    }
                     Some((scan, true)) => Plan::IndexScan(Box::new(scan)),
                     Some((scan, false)) => Plan::Filter { input: Box::new(Plan::IndexScan(Box::new(scan))), predicate },
                     None => Plan::Filter { input: Box::new(Plan::Scan(table, needed)), predicate },
@@ -903,6 +907,17 @@ impl<'b, 'a> Planner<'b, 'a> {
             },
             other => other,
         }
+    }
+
+    /// lookups_cost_more reports whether looking up the rows that a scan of a secondary index reads in the primary
+    /// index would cost more than reading the whole table in order, judging from the scan's first range alone so
+    /// that the check stays cheap for the many small scans. A table whose rows fit in one node is never worth it.
+    fn lookups_cost_more(&mut self, scan: &crate::indexscan::IndexScan) -> bool {
+        let Ok(root) = prolly::Node::decode(scan.table.table.primary_index.clone()) else { return false };
+        !root.is_leaf()
+            && scan
+                .estimate_with_samples(self.ctx, 1)
+                .is_ok_and(|estimate| estimate * crate::joins::SEEK >= root.tree_count() as f64)
     }
 
     /// plan_lateral_item plans a FROM item after others, which sees their columns when it is lateral and otherwise

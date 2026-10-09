@@ -365,6 +365,7 @@ impl KeyRows {
                 reverse: false,
                 nearest: None,
                 needed: None,
+                lookup_heavy: None,
             };
             (scan, order)
         });
