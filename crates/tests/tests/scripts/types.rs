@@ -10332,3 +10332,332 @@ fn test_text_search_functions() {
         },
     ]);
 }
+
+#[test]
+fn test_text_search_parsing() {
+    run_scripts(&[
+        ScriptTest {
+            name: "to_tsvector and its configurations",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT to_tsvector('simple', '1 2 3 1'), to_tsvector('english', 'The quick brown foxes jumped over the lazy dogs');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_tsvector", TSVECTOR), Column("to_tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T("'1':1,4 '2':2 '3':3"), T("'brown':3 'dog':9 'fox':4 'jump':5 'lazi':8 'quick':2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_tsvector('english', 'running runs ran easily fairly generously skies dying news only');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T("'die':8 'easili':4 'fair':5 'generous':6 'news':9 'ran':3 'run':1,2 'sky':7")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_tsvector('english', 'http://www.google.com/foo.bar.html?a=1 foo@bar.com 1.2.3 -1.5e3 www.example.com:8080/path qwe-rty <b>bold</b> &amp; /usr/local/file.txt 12abc ab12');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T("'-1.5e3':6 '/foo.bar.html?a=1':3 '/path':9 '/usr/local/file.txt':14 '1.2.3':5 '12abc':15 'ab12':16 'bold':13 'foo@bar.com':4 'qwe':11 'qwe-rti':10 'rti':12 'www.example.com:8080':8 'www.example.com:8080/path':7 'www.google.com':2 'www.google.com/foo.bar.html?a=1':1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <2> 3', to_tsvector('simple', 'q x q y') @@ 'q <-> (x & y)';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET default_text_search_config = 'pg_catalog.simple';",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_tsvector('The Cats'), get_current_ts_config();",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_tsvector", TSVECTOR), Column("get_current_ts_config", REGCONFIG)],
+                        rows: &[
+                            &[T("'cats':2 'the':1"), T("simple")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET default_text_search_config;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT get_current_ts_config(), 'english'::regconfig, 'pg_catalog.simple'::regconfig, 'english_stem'::regdictionary;",
+                    expected: Expected::Rows {
+                        columns: &[Column("get_current_ts_config", REGCONFIG), Column("regconfig", REGCONFIG), Column("regconfig", REGCONFIG), Column("regdictionary", REGDICTIONARY)],
+                        rows: &[
+                            &[T("english"), T("english"), T("simple"), T("english_stem")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'nonexistent'::regconfig;",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"text search configuration "nonexistent" does not exist"#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "to_tsquery and its variants",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT to_tsquery('english', 'qwe & sKies '), to_tsquery('simple', 'qwe & sKies '), to_tsquery('english', '''the wether'':dc & ''           sKies '':BC ');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_tsquery", TSQUERY), Column("to_tsquery", TSQUERY), Column("to_tsquery", TSQUERY)],
+                        rows: &[
+                            &[T("'qwe' & 'sky'"), T("'qwe' & 'skies'"), T("'wether':CD & 'sky':BC")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_tsquery('english', 'the');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_tsquery", TSQUERY)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    notices: &[Diagnostic { code: "00000", message: "text-search query contains only stop words or doesn't contain lexemes, ignored", ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT plainto_tsquery('english', 'the and z 1))& fghj'), phraseto_tsquery('english', 'PostgreSQL can be extended by the user in many ways');",
+                    expected: Expected::Rows {
+                        columns: &[Column("plainto_tsquery", TSQUERY), Column("phraseto_tsquery", TSQUERY)],
+                        rows: &[
+                            &[T("'z' & '1' & 'fghj'"), T("'postgresql' <3> 'extend' <3> 'user' <2> 'mani' <-> 'way'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_tsquery('english', '!(a & !b) & c'), to_tsquery('english', 'foo <-> (a <-> the)'), to_tsquery('english', 'pg_class:*');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_tsquery", TSQUERY), Column("to_tsquery", TSQUERY), Column("to_tsquery", TSQUERY)],
+                        rows: &[
+                            &[T("!!'b' & 'c'"), T("'foo'"), T("'pg':* <-> 'class':*")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT websearch_to_tsquery('simple', 'I have a fat:*ABCD cat'), websearch_to_tsquery('english', '"fat rat" or cat dog'), websearch_to_tsquery('english', 'cat -dog'), websearch_to_tsquery('english', 'or cat');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("websearch_to_tsquery", TSQUERY), Column("websearch_to_tsquery", TSQUERY), Column("websearch_to_tsquery", TSQUERY), Column("websearch_to_tsquery", TSQUERY)],
+                        rows: &[
+                            &[T("'i' & 'have' & 'a' & 'fat' & 'abcd' & 'cat'"), T("'fat' <-> 'rat' | 'cat' & 'dog'"), T("'cat' & !'dog'"), T("'cat'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_tsquery('english', 'a <99999> b');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "distance in phrase operator must be an integer value between zero and 16384 inclusive", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_tsquery('english', 'a & (b');",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error in tsquery: "a & (b""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "text search debugging functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ts_lexize('english_stem', 'skies'), ts_lexize('english_stem', 'the'), ts_lexize('simple', 'FoO');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_lexize", TEXT_ARRAY), Column("ts_lexize", TEXT_ARRAY), Column("ts_lexize", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{sky}"), T("{}"), T("{foo}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM ts_token_type('default');",
+                    expected: Expected::Rows {
+                        columns: &[Column("tokid", INT4), Column("alias", TEXT), Column("description", TEXT)],
+                        rows: &[
+                            &[T("1"), T("asciiword"), T("Word, all ASCII")],
+                            &[T("2"), T("word"), T("Word, all letters")],
+                            &[T("3"), T("numword"), T("Word, letters and digits")],
+                            &[T("4"), T("email"), T("Email address")],
+                            &[T("5"), T("url"), T("URL")],
+                            &[T("6"), T("host"), T("Host")],
+                            &[T("7"), T("sfloat"), T("Scientific notation")],
+                            &[T("8"), T("version"), T("Version number")],
+                            &[T("9"), T("hword_numpart"), T("Hyphenated word part, letters and digits")],
+                            &[T("10"), T("hword_part"), T("Hyphenated word part, all letters")],
+                            &[T("11"), T("hword_asciipart"), T("Hyphenated word part, all ASCII")],
+                            &[T("12"), T("blank"), T("Space symbols")],
+                            &[T("13"), T("tag"), T("XML tag")],
+                            &[T("14"), T("protocol"), T("Protocol head")],
+                            &[T("15"), T("numhword"), T("Hyphenated word, letters and digits")],
+                            &[T("16"), T("asciihword"), T("Hyphenated word, all ASCII")],
+                            &[T("17"), T("hword"), T("Hyphenated word, all letters")],
+                            &[T("18"), T("url_path"), T("URL path")],
+                            &[T("19"), T("file"), T("File or path name")],
+                            &[T("20"), T("float"), T("Decimal notation")],
+                            &[T("21"), T("int"), T("Signed integer")],
+                            &[T("22"), T("uint"), T("Unsigned integer")],
+                            &[T("23"), T("entity"), T("XML entity")],
+                        ],
+                        tag: "SELECT 23",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM ts_parse('default', '345 qwe@efd.r http://aew.werc.ewr/?ad=qwe&dw +4.0e-10 234.435 5.005 qwe-wer <fr>qwer 1.2.3 readline-4.2');",
+                    expected: Expected::Rows {
+                        columns: &[Column("tokid", INT4), Column("token", TEXT)],
+                        rows: &[
+                            &[T("22"), T("345")],
+                            &[T("12"), T(" ")],
+                            &[T("1"), T("qwe")],
+                            &[T("12"), T("@")],
+                            &[T("19"), T("efd.r")],
+                            &[T("12"), T(" ")],
+                            &[T("14"), T("http://")],
+                            &[T("5"), T("aew.werc.ewr/?ad=qwe&dw")],
+                            &[T("6"), T("aew.werc.ewr")],
+                            &[T("18"), T("/?ad=qwe&dw")],
+                            &[T("12"), T(" ")],
+                            &[T("7"), T("+4.0e-10")],
+                            &[T("12"), T(" ")],
+                            &[T("20"), T("234.435")],
+                            &[T("12"), T(" ")],
+                            &[T("20"), T("5.005")],
+                            &[T("12"), T(" ")],
+                            &[T("16"), T("qwe-wer")],
+                            &[T("11"), T("qwe")],
+                            &[T("12"), T("-")],
+                            &[T("11"), T("wer")],
+                            &[T("12"), T(" ")],
+                            &[T("13"), T("<fr>")],
+                            &[T("1"), T("qwer")],
+                            &[T("12"), T(" ")],
+                            &[T("8"), T("1.2.3")],
+                            &[T("12"), T(" ")],
+                            &[T("1"), T("readline")],
+                            &[T("20"), T("-4.2")],
+                        ],
+                        tag: "SELECT 29",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM ts_debug('english', '<myns:foo-bar_baz.blurfl>abc&nm1;def&#xa9;ghi&#245;jkl</myns:foo-bar_baz.blurfl>');",
+                    expected: Expected::Rows {
+                        columns: &[Column("alias", TEXT), Column("description", TEXT), Column("token", TEXT), Column("dictionaries", REGDICTIONARY_ARRAY), Column("dictionary", REGDICTIONARY), Column("lexemes", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("tag"), T("XML tag"), T("<myns:foo-bar_baz.blurfl>"), T("{}"), Null, Null],
+                            &[T("asciiword"), T("Word, all ASCII"), T("abc"), T("{english_stem}"), T("english_stem"), T("{abc}")],
+                            &[T("entity"), T("XML entity"), T("&nm1;"), T("{}"), Null, Null],
+                            &[T("asciiword"), T("Word, all ASCII"), T("def"), T("{english_stem}"), T("english_stem"), T("{def}")],
+                            &[T("entity"), T("XML entity"), T("&#xa9;"), T("{}"), Null, Null],
+                            &[T("asciiword"), T("Word, all ASCII"), T("ghi"), T("{english_stem}"), T("english_stem"), T("{ghi}")],
+                            &[T("entity"), T("XML entity"), T("&#245;"), T("{}"), Null, Null],
+                            &[T("asciiword"), T("Word, all ASCII"), T("jkl"), T("{english_stem}"), T("english_stem"), T("{jkl}")],
+                            &[T("tag"), T("XML tag"), T("</myns:foo-bar_baz.blurfl>"), T("{}"), Null, Null],
+                        ],
+                        tag: "SELECT 9",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT alias, token, dictionaries, dictionary, lexemes FROM ts_debug('the cats');",
+                    expected: Expected::Rows {
+                        columns: &[Column("alias", TEXT), Column("token", TEXT), Column("dictionaries", REGDICTIONARY_ARRAY), Column("dictionary", REGDICTIONARY), Column("lexemes", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("asciiword"), T("the"), T("{english_stem}"), T("english_stem"), T("{}")],
+                            &[T("blank"), T(" "), T("{}"), Null, Null],
+                            &[T("asciiword"), T("cats"), T("{english_stem}"), T("english_stem"), T("{cat}")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "json to_tsvector",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::json), to_tsvector('{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("to_tsvector", TSVECTOR), Column("to_tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T("'aaa':1 'bbb':3"), T("'aaa':1 'bbb':2 'ccc':4 'ddd':3 'eee':6 'fff':7 'ggg':8 'hhh':10 'iii':11")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT json_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::json, '["string", "numeric", "boolean", "key"]'), jsonb_to_tsvector('{"a": "aaa in bbb", "b": 1.50, "d": true}'::jsonb, '"all"');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("json_to_tsvector", TSVECTOR), Column("jsonb_to_tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T("'123':8 '456':12 'aaa':2 'b':6 'bbb':4 'c':10 'd':14 'f':18 'fals':20 'g':22 'true':16"), T("'1.50':8 'aaa':2 'b':6 'bbb':4 'd':10 'true':12")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_to_tsvector('english', '{"a": "aaa in bbb"}'::jsonb, '{"a": "all"}');"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "wrong flag type, only arrays and scalars are allowed", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_to_tsvector('english', '{"a": "aaa in bbb"}'::jsonb, '["foo"]');"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"wrong flag in flag array: "foo""#, hint: r#"Possible values are: "string", "numeric", "boolean", "key", and "all"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -99,6 +99,14 @@ pub(crate) fn builtin_column(catalog: &str, column: &str) -> Vec<(u32, Value)> {
         .collect()
 }
 
+/// text_search_objects returns the OIDs and names of the built-in text search configurations, for regconfig, or
+/// dictionaries, for regdictionary.
+fn text_search_objects(type_oid: u32) -> Vec<(u32, String)> {
+    let (catalog, column) =
+        if type_oid == types::REGCONFIG { ("pg_ts_config", "cfgname") } else { ("pg_ts_dict", "dictname") };
+    builtin_column(catalog, column).into_iter().map(|(oid, name)| (oid, text_of(&name))).collect()
+}
+
 /// text_of returns the text of a value.
 fn text_of(value: &Value) -> String {
     value.output().unwrap_or_default()
@@ -154,6 +162,9 @@ impl Ctx<'_> {
             types::REGNAMESPACE => self.namespaces().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n),
             types::REGROLE => self.roles().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| n),
             types::REGPROC | types::REGPROCEDURE => self.proc_name(oid, type_oid)?,
+            types::REGCONFIG | types::REGDICTIONARY => {
+                text_search_objects(type_oid).into_iter().find(|(o, _)| *o == oid).map(|(_, n)| n)
+            }
             _ => {
                 builtin_column("pg_operator", "oprname").into_iter().find(|(o, _)| *o == oid).map(|(_, n)| text_of(&n))
             }
@@ -277,6 +288,17 @@ impl Ctx<'_> {
                     }
                 };
                 let name = self.proc_name(oid, type_oid)?.unwrap_or_else(|| oid.to_string());
+                Ok(Reg { type_oid, oid, name })
+            }
+            types::REGCONFIG | types::REGDICTIONARY => {
+                let kind = if type_oid == types::REGCONFIG { "configuration" } else { "dictionary" };
+                let mut names = crate::sequences::parse_qualified_name(text)?;
+                let name = names.pop().unwrap_or_default();
+                let in_catalog = names.pop().is_none_or(|schema| schema == "pg_catalog");
+                let found = text_search_objects(type_oid).into_iter().find(|(_, n)| *n == name).filter(|_| in_catalog);
+                let (oid, name) = found.ok_or_else(|| {
+                    PgError::new(code::UNDEFINED_OBJECT, format!("text search {kind} \"{text}\" does not exist"))
+                })?;
                 Ok(Reg { type_oid, oid, name })
             }
             _ => Err(PgError::unsupported(format!("reading values of type {}", crate::cast::type_display(type_oid)))),

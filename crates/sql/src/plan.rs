@@ -319,7 +319,8 @@ pub(crate) fn out_columns(call: &Expr) -> Option<Vec<(String, ColumnType)>> {
             let lists = crate::dolt::procedures::OUT_COLUMNS
                 .iter()
                 .chain(crate::functions::JSON_OUT_COLUMNS)
-                .chain(crate::functions::CATALOG_OUT_COLUMNS);
+                .chain(crate::functions::CATALOG_OUT_COLUMNS)
+                .chain(crate::functions::textsearch::OUT_COLUMNS);
             let (_, columns) = lists.into_iter().find(|(n, _)| *n == name)?;
             Some(columns.iter().map(|(n, t)| (n.to_string(), typ(*t))).collect())
         }

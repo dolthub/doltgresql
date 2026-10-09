@@ -249,6 +249,8 @@ pub fn is_reg_type(type_oid: u32) -> bool {
             | oid::REGTYPE
             | oid::REGNAMESPACE
             | oid::REGROLE
+            | oid::REGCONFIG
+            | oid::REGDICTIONARY
     )
 }
 

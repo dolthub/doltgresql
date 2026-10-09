@@ -70,6 +70,7 @@ pub mod settings;
 pub mod stats;
 pub mod storage;
 mod triggers;
+mod tsearch;
 pub mod txn;
 pub mod types;
 pub mod updatable;
@@ -133,6 +134,8 @@ pub mod oid {
     pub const REGTYPE: u32 = 2206;
     pub const REGNAMESPACE: u32 = 4089;
     pub const REGROLE: u32 = 4096;
+    pub const REGCONFIG: u32 = 3734;
+    pub const REGDICTIONARY: u32 = 3769;
     pub const BYTEA: u32 = 17;
     pub const UUID: u32 = 2950;
     pub const BIT: u32 = 1560;

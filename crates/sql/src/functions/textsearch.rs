@@ -17,12 +17,15 @@
 
 use super::Function;
 use crate::basetypes::textsearch::{
-    Lexeme, MAX_POSITION, Operator, Query, node_count, normalized, query_bytes, query_out, query_tree, vector_bytes,
-    vector_lexemes,
+    Lexeme, MAX_POSITION, Mode, Operator, Query, node_count, normalized, query_bytes, query_out, query_tree,
+    vector_bytes, vector_lexemes,
 };
+use crate::dolt::procedures::RECORD;
 use crate::error::{PgError, Result, code};
-use crate::oid::{BOOL, CHAR, FLOAT4, INT2, INT4, TEXT, TEXT_ARRAY};
+use crate::json::{Json, Raw, RawKind};
+use crate::oid::{BOOL, CHAR, FLOAT4, INT2, INT4, JSON, JSONB, OID, REGCONFIG, REGDICTIONARY, TEXT, TEXT_ARRAY};
 use crate::query::Ctx;
+use crate::tsearch;
 use crate::types::{BaseValue, Value};
 
 /// TSVECTOR and TSQUERY are the text search types' OIDs.
@@ -74,7 +77,7 @@ pub const FUNCTIONS: &[Function] = &[
     f("ts_filter", &[TSVECTOR, CHAR_ARRAY], TSVECTOR, filter),
     f("tsvector_to_array", &[TSVECTOR], TEXT_ARRAY, to_array),
     f("array_to_tsvector", &[TEXT_ARRAY], TSVECTOR, from_array),
-    f("unnest", &[TSVECTOR], crate::dolt::procedures::RECORD, unnest),
+    f("unnest", &[TSVECTOR], RECORD, unnest),
     f("ts_rank", &[TSVECTOR, TSQUERY], FLOAT4, |_, args| rank(args, false)),
     f("ts_rank", &[TSVECTOR, TSQUERY, INT4], FLOAT4, |_, args| rank(args, false)),
     f("ts_rank", &[FLOAT4_ARRAY, TSVECTOR, TSQUERY], FLOAT4, |_, args| rank(args, false)),
@@ -83,7 +86,71 @@ pub const FUNCTIONS: &[Function] = &[
     f("ts_rank_cd", &[TSVECTOR, TSQUERY, INT4], FLOAT4, |_, args| rank(args, true)),
     f("ts_rank_cd", &[FLOAT4_ARRAY, TSVECTOR, TSQUERY], FLOAT4, |_, args| rank(args, true)),
     f("ts_rank_cd", &[FLOAT4_ARRAY, TSVECTOR, TSQUERY, INT4], FLOAT4, |_, args| rank(args, true)),
+    f("to_tsvector", &[REGCONFIG, TEXT], TSVECTOR, |ctx, args| to_tsvector(ctx, Some(&args[0]), &args[1])),
+    f("to_tsvector", &[TEXT], TSVECTOR, |ctx, args| to_tsvector(ctx, None, &args[0])),
+    f("to_tsvector", &[REGCONFIG, JSON], TSVECTOR, |ctx, args| json_vector(ctx, Some(&args[0]), &args[1], None)),
+    f("to_tsvector", &[JSON], TSVECTOR, |ctx, args| json_vector(ctx, None, &args[0], None)),
+    f("to_tsvector", &[REGCONFIG, JSONB], TSVECTOR, |ctx, args| json_vector(ctx, Some(&args[0]), &args[1], None)),
+    f("to_tsvector", &[JSONB], TSVECTOR, |ctx, args| json_vector(ctx, None, &args[0], None)),
+    f("json_to_tsvector", &[REGCONFIG, JSON, JSONB], TSVECTOR, |ctx, args| {
+        json_vector(ctx, Some(&args[0]), &args[1], Some(&args[2]))
+    }),
+    f("json_to_tsvector", &[JSON, JSONB], TSVECTOR, |ctx, args| json_vector(ctx, None, &args[0], Some(&args[1]))),
+    f("jsonb_to_tsvector", &[REGCONFIG, JSONB, JSONB], TSVECTOR, |ctx, args| {
+        json_vector(ctx, Some(&args[0]), &args[1], Some(&args[2]))
+    }),
+    f("jsonb_to_tsvector", &[JSONB, JSONB], TSVECTOR, |ctx, args| json_vector(ctx, None, &args[0], Some(&args[1]))),
+    f("to_tsquery", &[REGCONFIG, TEXT], TSQUERY, |ctx, args| {
+        to_query(ctx, Some(&args[0]), &args[1], Mode::Standard, Operator::Phrase)
+    }),
+    f("to_tsquery", &[TEXT], TSQUERY, |ctx, args| to_query(ctx, None, &args[0], Mode::Standard, Operator::Phrase)),
+    f("plainto_tsquery", &[REGCONFIG, TEXT], TSQUERY, |ctx, args| {
+        to_query(ctx, Some(&args[0]), &args[1], Mode::Plain, Operator::And)
+    }),
+    f("plainto_tsquery", &[TEXT], TSQUERY, |ctx, args| to_query(ctx, None, &args[0], Mode::Plain, Operator::And)),
+    f("phraseto_tsquery", &[REGCONFIG, TEXT], TSQUERY, |ctx, args| {
+        to_query(ctx, Some(&args[0]), &args[1], Mode::Plain, Operator::Phrase)
+    }),
+    f("phraseto_tsquery", &[TEXT], TSQUERY, |ctx, args| to_query(ctx, None, &args[0], Mode::Plain, Operator::Phrase)),
+    f("websearch_to_tsquery", &[REGCONFIG, TEXT], TSQUERY, |ctx, args| {
+        to_query(ctx, Some(&args[0]), &args[1], Mode::Web, Operator::Phrase)
+    }),
+    f("websearch_to_tsquery", &[TEXT], TSQUERY, |ctx, args| to_query(ctx, None, &args[0], Mode::Web, Operator::Phrase)),
+    f("ts_lexize", &[REGDICTIONARY, TEXT], TEXT_ARRAY, lexize),
+    f("ts_token_type", &[TEXT], RECORD, |_, args| token_types(&args[0])),
+    f("ts_token_type", &[OID], RECORD, |_, args| token_types(&args[0])),
+    f("ts_parse", &[TEXT, TEXT], RECORD, |_, args| parse(&args[0], &args[1])),
+    f("ts_parse", &[OID, TEXT], RECORD, |_, args| parse(&args[0], &args[1])),
+    f("ts_debug", &[REGCONFIG, TEXT], RECORD, |ctx, args| debug(ctx, Some(&args[0]), &args[1])),
+    f("ts_debug", &[TEXT], RECORD, |ctx, args| debug(ctx, None, &args[0])),
+    f("get_current_ts_config", &[], REGCONFIG, |ctx, _| {
+        let name = ctx.session.settings.get("default_text_search_config").unwrap_or_default();
+        ctx.reg_value(Value::Text(name), REGCONFIG)
+    }),
 ];
+
+/// OUT_COLUMNS are the columns of the text search functions that return rows of several columns.
+pub const OUT_COLUMNS: &[(&str, &[(&str, u32)])] = &[
+    ("ts_token_type", &[("tokid", INT4), ("alias", TEXT), ("description", TEXT)]),
+    ("ts_parse", &[("tokid", INT4), ("token", TEXT)]),
+    (
+        "ts_debug",
+        &[
+            ("alias", TEXT),
+            ("description", TEXT),
+            ("token", TEXT),
+            ("dictionaries", REGDICTIONARY_ARRAY),
+            ("dictionary", REGDICTIONARY),
+            ("lexemes", TEXT_ARRAY),
+        ],
+    ),
+];
+
+/// DEFAULT_PARSER is the OID of the default text search parser.
+const DEFAULT_PARSER: u32 = 3722;
+
+/// REGDICTIONARY_ARRAY is the OID of the regdictionary array type.
+const REGDICTIONARY_ARRAY: u32 = 3770;
 
 /// UNNEST_COLUMNS are the columns of unnest over a tsvector.
 pub const UNNEST_COLUMNS: &[(&str, u32)] = &[("lexeme", TEXT), ("positions", 1005), ("weights", TEXT_ARRAY)];
@@ -863,4 +930,247 @@ fn rank_cover(weights: &[f32; 4], lexemes: &[Lexeme], query: &Query, method: i32
         wdoc /= wdoc + 1.0;
     }
     wdoc as f32
+}
+
+/// text_argument returns the text of a text argument.
+fn text_argument(value: &Value) -> String {
+    value.output().unwrap_or_default()
+}
+
+/// config returns the configuration that a regconfig argument names, or the default_text_search_config setting's
+/// without one.
+fn config(ctx: &Ctx<'_>, value: Option<&Value>) -> Result<tsearch::Config> {
+    match value {
+        Some(Value::Reg(reg)) => tsearch::Config::named(&reg.name),
+        _ => tsearch::Config::named(&ctx.session.settings.get("default_text_search_config").unwrap_or_default()),
+    }
+}
+
+/// to_tsvector parses text into a vector of its lexemes, as Postgres' to_tsvector_byid does.
+fn to_tsvector(ctx: &mut Ctx<'_>, config_value: Option<&Value>, text: &Value) -> Result<Value> {
+    let config = config(ctx, config_value)?;
+    let mut notices = Vec::new();
+    let words = tsearch::parse_text(config, &text_argument(text), &mut 0, &mut notices);
+    for notice in notices {
+        ctx.session.notice(notice);
+    }
+    Ok(vector(&tsearch::vector_lexemes(words)))
+}
+
+/// to_query parses text into a query in a mode, joining the lexemes of each operand with an operator, as Postgres'
+/// to_tsquery, plainto_tsquery, phraseto_tsquery, and websearch_to_tsquery do.
+fn to_query(
+    ctx: &mut Ctx<'_>,
+    config_value: Option<&Value>,
+    text: &Value,
+    mode: Mode,
+    join: Operator,
+) -> Result<Value> {
+    let config = config(ctx, config_value)?;
+    let (query, notices) = tsearch::to_tsquery(config, &text_argument(text), mode, join)?;
+    for notice in notices {
+        ctx.session.notice(notice);
+    }
+    Ok(query_value(query.as_ref()))
+}
+
+/// lexize returns the lexemes that a dictionary makes of a token, as Postgres' ts_lexize does.
+fn lexize(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let Value::Reg(reg) = &args[0] else { return Err(PgError::internal("a regdictionary that is not one")) };
+    let lexemes = tsearch::Dictionary::named(&reg.name)?.lexize(&text_argument(&args[1]));
+    let values = lexemes.into_iter().map(Value::Text).collect();
+    Ok(Value::Array(Box::new(crate::array::Array::one_dimensional(TEXT, values))))
+}
+
+/// The kinds of JSON parts that json_to_tsvector can take text from, as Postgres' JsonToIndex flags name them.
+const JSON_KEYS: u8 = 0x01;
+const JSON_STRINGS: u8 = 0x02;
+const JSON_NUMBERS: u8 = 0x04;
+const JSON_BOOLEANS: u8 = 0x08;
+
+/// json_flags reads the kinds of JSON parts that a jsonb array of their names asks for, as Postgres'
+/// parse_jsonb_index_flags does.
+fn json_flags(value: &Value) -> Result<u8> {
+    let hint = "Possible values are: \"string\", \"numeric\", \"boolean\", \"key\", and \"all\".";
+    let json = match value {
+        Value::Jsonb(json) => json.as_ref(),
+        _ => return Err(PgError::internal("flags that are not jsonb")),
+    };
+    let names = match json {
+        Json::Array(names) => names.as_slice(),
+        Json::Object(_) => {
+            return Err(PgError::new(
+                code::INVALID_PARAMETER_VALUE,
+                "wrong flag type, only arrays and scalars are allowed",
+            ));
+        }
+        scalar => std::slice::from_ref(scalar),
+    };
+    let mut flags = 0;
+    for name in names {
+        let Json::String(name) = name else {
+            return Err(PgError {
+                hint: Some(hint.into()),
+                ..PgError::new(code::INVALID_PARAMETER_VALUE, "flag array element is not a string")
+            });
+        };
+        flags |= match name.to_ascii_lowercase().as_str() {
+            "all" => JSON_KEYS | JSON_STRINGS | JSON_NUMBERS | JSON_BOOLEANS,
+            "key" => JSON_KEYS,
+            "string" => JSON_STRINGS,
+            "numeric" => JSON_NUMBERS,
+            "boolean" => JSON_BOOLEANS,
+            _ => {
+                return Err(PgError {
+                    hint: Some(hint.into()),
+                    ..PgError::new(code::INVALID_PARAMETER_VALUE, format!("wrong flag in flag array: \"{name}\""))
+                });
+            }
+        };
+    }
+    Ok(flags)
+}
+
+/// jsonb_texts collects the texts of a jsonb value's parts of the kinds that flags ask for, in the order Postgres'
+/// iterate_jsonb_values visits them.
+fn jsonb_texts(json: &Json, flags: u8, out: &mut Vec<String>) {
+    match json {
+        Json::Object(pairs) => {
+            for (key, value) in pairs {
+                if flags & JSON_KEYS != 0 {
+                    out.push(key.clone());
+                }
+                jsonb_texts(value, flags, out);
+            }
+        }
+        Json::Array(items) => items.iter().for_each(|item| jsonb_texts(item, flags, out)),
+        Json::String(text) if flags & JSON_STRINGS != 0 => out.push(text.clone()),
+        Json::Number(number) if flags & JSON_NUMBERS != 0 => out.push(number.to_string()),
+        Json::Bool(b) if flags & JSON_BOOLEANS != 0 => out.push(b.to_string()),
+        _ => {}
+    }
+}
+
+/// json_texts collects the texts of a json value's parts of the kinds that flags ask for, in the order Postgres'
+/// iterate_json_values visits them, keeping numbers as written.
+fn json_texts(raw: &Raw<'_>, flags: u8, out: &mut Vec<String>) {
+    match &raw.kind {
+        RawKind::Object(pairs) => {
+            for (key, value) in pairs {
+                if flags & JSON_KEYS != 0 {
+                    out.push(key.clone());
+                }
+                json_texts(value, flags, out);
+            }
+        }
+        RawKind::Array(items) => items.iter().for_each(|item| json_texts(item, flags, out)),
+        RawKind::Scalar(Json::String(text)) if flags & JSON_STRINGS != 0 => out.push(text.clone()),
+        RawKind::Scalar(Json::Number(_)) if flags & JSON_NUMBERS != 0 => out.push(raw.text.to_string()),
+        RawKind::Scalar(Json::Bool(b)) if flags & JSON_BOOLEANS != 0 => out.push(b.to_string()),
+        _ => {}
+    }
+}
+
+/// json_vector parses the parts of a json or jsonb value that flags ask for, or its strings without flags, into one
+/// vector, leaving a position free between the parts as Postgres' add_to_tsvector does.
+fn json_vector(ctx: &mut Ctx<'_>, config_value: Option<&Value>, value: &Value, flags: Option<&Value>) -> Result<Value> {
+    let config = config(ctx, config_value)?;
+    let flags = match flags {
+        Some(flags) => json_flags(flags)?,
+        None => JSON_STRINGS,
+    };
+    let mut texts = Vec::new();
+    match value {
+        Value::Jsonb(json) => jsonb_texts(json, flags, &mut texts),
+        Value::Json(text) => json_texts(&crate::json::parse_raw(text)?, flags, &mut texts),
+        _ => return Err(PgError::internal("a json value that is not one")),
+    }
+    let (mut words, mut position, mut notices) = (Vec::new(), 0, Vec::new());
+    for text in texts {
+        let parsed = tsearch::parse_text(config, &text, &mut position, &mut notices);
+        if !parsed.is_empty() {
+            position += 1;
+        }
+        words.extend(parsed);
+    }
+    for notice in notices {
+        ctx.session.notice(notice);
+    }
+    Ok(vector(&tsearch::vector_lexemes(words)))
+}
+
+/// check_parser fails as Postgres does unless a parser name or OID names the default parser, the only one there is.
+fn check_parser(value: &Value) -> Result<()> {
+    let found = match value {
+        Value::Oid(oid) => *oid == DEFAULT_PARSER,
+        other => {
+            let name = text_argument(other);
+            name.strip_prefix("pg_catalog.").unwrap_or(&name) == "default"
+        }
+    };
+    match found {
+        true => Ok(()),
+        false => Err(PgError::new(
+            code::UNDEFINED_OBJECT,
+            format!("text search parser \"{}\" does not exist", text_argument(value)),
+        )),
+    }
+}
+
+/// token_types returns the default parser's token types, as Postgres' ts_token_type does.
+fn token_types(parser_value: &Value) -> Result<Value> {
+    check_parser(parser_value)?;
+    let rows = tsearch::parser::TOKEN_TYPES
+        .iter()
+        .zip(1..)
+        .map(|((alias, description), id)| {
+            Value::Record(vec![Value::Int4(id), Value::Text(alias.to_string()), Value::Text(description.to_string())])
+        })
+        .collect();
+    Ok(Value::Set(rows))
+}
+
+/// parse returns the default parser's tokens of text, as Postgres' ts_parse does.
+fn parse(parser_value: &Value, text: &Value) -> Result<Value> {
+    check_parser(parser_value)?;
+    let text = text_argument(text);
+    let mut parser = tsearch::parser::Parser::new(&text);
+    let mut rows = Vec::new();
+    while let Some((token_type, token)) = parser.next_token() {
+        rows.push(Value::Record(vec![Value::Int4(i32::from(token_type)), Value::Text(token.to_string())]));
+    }
+    Ok(Value::Set(rows))
+}
+
+/// debug returns each token of text with its type, the dictionaries its type goes to, and the lexemes the first of
+/// them makes of it, as Postgres' ts_debug does.
+fn debug(ctx: &mut Ctx<'_>, config_value: Option<&Value>, text: &Value) -> Result<Value> {
+    let config = config(ctx, config_value)?;
+    let text = text_argument(text);
+    let mut parser = tsearch::parser::Parser::new(&text);
+    let mut rows = Vec::new();
+    while let Some((token_type, token)) = parser.next_token() {
+        let (alias, description) = tsearch::parser::TOKEN_TYPES[usize::from(token_type) - 1];
+        let dictionaries = config.dictionaries(token_type);
+        let mut names = Vec::new();
+        for dictionary in dictionaries {
+            names.push(ctx.reg_value(Value::Text(dictionary.name().to_string()), REGDICTIONARY)?);
+        }
+        let (dictionary, lexemes) = match (names.first(), dictionaries.first()) {
+            (Some(name), Some(dictionary)) => {
+                let lexemes = dictionary.lexize(token).into_iter().map(Value::Text).collect();
+                (name.clone(), Value::Array(Box::new(crate::array::Array::one_dimensional(TEXT, lexemes))))
+            }
+            _ => (Value::Null, Value::Null),
+        };
+        rows.push(Value::Record(vec![
+            Value::Text(alias.to_string()),
+            Value::Text(description.to_string()),
+            Value::Text(token.to_string()),
+            Value::Array(Box::new(crate::array::Array::one_dimensional(REGDICTIONARY, names))),
+            dictionary,
+            lexemes,
+        ]));
+    }
+    Ok(Value::Set(rows))
 }

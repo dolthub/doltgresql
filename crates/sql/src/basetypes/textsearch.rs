@@ -295,145 +295,499 @@ pub(crate) enum Query {
     Binary { operator: Operator, distance: u16, left: Box<Query>, right: Box<Query> },
 }
 
-/// Token is a token of a tsquery's text.
+/// MAX_DISTANCE is the largest distance a phrase operator can have.
+const MAX_DISTANCE: u16 = 1 << 14;
+
+/// Mode is how a query's text is read, as the flags of Postgres' parse_tsquery choose: as tsquery syntax, as one
+/// operand, or as a web search.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Mode {
+    Standard,
+    Plain,
+    Web,
+}
+
+/// Push turns an operand of a query's text, with its weights and whether it is a prefix, into operands on a builder.
+pub(crate) type Push<'p> = &'p mut dyn FnMut(&mut Builder, &[u8], u8, bool) -> Result<()>;
+
+/// Builder is the operand stack of a query being parsed, standing in for Postgres' list of query items. Each operand
+/// is already cleaned of stop words as Postgres' clean_stopword_intree would clean it: a tree, or None when it held
+/// only stop words, with the phrase distance that removed stop words add on its left and on its right.
+pub(crate) struct Builder<'t> {
+    text: &'t str,
+    operands: Vec<(Option<Query>, u16, u16)>,
+    pushed: bool,
+}
+
+impl Builder<'_> {
+    /// value pushes a lexeme, failing as Postgres' pushValue does for one that is too long.
+    pub(crate) fn value(&mut self, word: &[u8], weights: u8, prefix: bool) -> Result<()> {
+        if word.len() > MAX_LEXEME {
+            return Err(PgError::new(
+                code::PROGRAM_LIMIT_EXCEEDED,
+                format!("word is too long in tsquery: \"{}\"", self.text),
+            ));
+        }
+        self.pushed = true;
+        self.operands.push((Some(Query::Lexeme { word: word.to_vec(), weights, prefix }), 0, 0));
+        Ok(())
+    }
+
+    /// stop pushes a placeholder for a stop word.
+    pub(crate) fn stop(&mut self) {
+        self.pushed = true;
+        self.operands.push((None, 0, 0));
+    }
+
+    /// operator joins the operands on top of the stack, dropping stop words as Postgres' clean_stopword_intree does and
+    /// moving their phrase distances to the nearest phrase operators that remain.
+    pub(crate) fn operator(&mut self, operator: Operator, distance: u16) -> Result<()> {
+        self.pushed = true;
+        let missing = || PgError::internal("malformed tsquery: operand not found");
+        let (right, right_ladd, right_radd) = self.operands.pop().ok_or_else(missing)?;
+        if operator == Operator::Not {
+            self.operands.push((right.map(|r| Query::Not(Box::new(r))), right_ladd, right_radd));
+            return Ok(());
+        }
+        let (left, left_ladd, left_radd) = self.operands.pop().ok_or_else(missing)?;
+        let phrase = operator == Operator::Phrase;
+        let distance = if phrase { distance } else { 0 };
+        let joined = match (left, right) {
+            (None, None) if phrase => {
+                let add = left_ladd.wrapping_add(distance).wrapping_add(right_ladd);
+                (None, add, add)
+            }
+            (None, None) => (None, left_ladd.max(right_ladd), left_ladd.max(right_ladd)),
+            (None, Some(right)) if phrase => {
+                (Some(right), left_ladd.wrapping_add(distance).wrapping_add(right_ladd), right_radd)
+            }
+            (None, Some(right)) => (Some(right), right_ladd, right_radd),
+            (Some(left), None) if phrase => {
+                (Some(left), left_ladd, left_radd.wrapping_add(distance).wrapping_add(right_radd))
+            }
+            (Some(left), None) => (Some(left), left_ladd, left_radd),
+            (Some(left), Some(right)) => {
+                let distance = distance.wrapping_add(left_radd).wrapping_add(right_ladd);
+                let node = Query::Binary { operator, distance, left: Box::new(left), right: Box::new(right) };
+                match phrase {
+                    true => (Some(node), left_ladd, right_radd),
+                    false => (Some(node), 0, 0),
+                }
+            }
+        };
+        self.operands.push(joined);
+        Ok(())
+    }
+}
+
+/// Parsed is a parsed query: its tree, which is None without lexemes, and the notice that Postgres raises when it
+/// finds none.
+pub(crate) struct Parsed {
+    pub query: Option<Query>,
+    pub notice: Option<String>,
+}
+
+/// Token is a token of a query's text, as Postgres' ts_tokentype names them, where StopEnd ends a web search that
+/// leaves an operator without its operand.
 enum Token {
-    Operand(Query),
+    End,
+    StopEnd,
+    Value(Vec<u8>, u8, bool),
     Operator(Operator, u16),
     Open,
     Close,
 }
 
-/// query_tokens reads a tsquery's text as tokens, as Postgres' gettoken_query_standard does.
-fn query_tokens(text: &str) -> Result<Vec<Token>> {
-    let mut reader = Reader { text, bytes: text.as_bytes(), at: 0 };
-    let mut tokens = Vec::new();
-    let mut operand = true;
-    loop {
-        reader.skip_space();
-        let Some(&byte) = reader.bytes.get(reader.at) else { break };
-        match (operand, byte) {
-            (true, b'!') => {
-                reader.at += 1;
-                tokens.push(Token::Operator(Operator::Not, 0));
-            }
-            (true, b'(') => {
-                reader.at += 1;
-                tokens.push(Token::Open);
-            }
-            (true, b':' | b'&' | b'|' | b')') => return Err(syntax_error("tsquery", text)),
-            (true, _) => {
-                let word = reader.word("tsquery", b":&|!()<")?;
-                let (mut weights, mut prefix) = (0u8, false);
-                if reader.bytes.get(reader.at) == Some(&b':') {
-                    reader.at += 1;
-                    while let Some(&b) = reader.bytes.get(reader.at) {
-                        match (b, weight_bits(b)) {
-                            (b'*', _) => prefix = true,
-                            (_, Some(bits)) => weights |= 1 << bits,
-                            _ => break,
-                        }
-                        reader.at += 1;
-                    }
-                }
-                tokens.push(Token::Operand(Query::Lexeme { word, weights, prefix }));
-                operand = false;
-            }
-            (false, b'&') => {
-                reader.at += 1;
-                tokens.push(Token::Operator(Operator::And, 0));
-                operand = true;
-            }
-            (false, b'|') => {
-                reader.at += 1;
-                tokens.push(Token::Operator(Operator::Or, 0));
-                operand = true;
-            }
-            (false, b'<') => {
-                let rest = &text[reader.at + 1..];
-                let close = rest.find('>').ok_or_else(|| syntax_error("tsquery", text))?;
-                let distance = match &rest[..close] {
-                    "-" => 1,
-                    digits => digits.parse::<u16>().map_err(|_| syntax_error("tsquery", text))?,
-                };
-                if distance > MAX_POSITION {
-                    return Err(PgError::new(
-                        code::INVALID_PARAMETER_VALUE,
-                        format!(
-                            "distance in phrase operator must be an integer value between zero and {MAX_POSITION} inclusive"
-                        ),
-                    ));
-                }
-                reader.at += close + 2;
-                tokens.push(Token::Operator(Operator::Phrase, distance));
-                operand = true;
-            }
-            (false, b')') => {
-                reader.at += 1;
-                tokens.push(Token::Close);
-            }
-            (false, _) => return Err(syntax_error("tsquery", text)),
-        }
-    }
-    if operand && !tokens.is_empty() {
-        return Err(PgError::new(code::SYNTAX_ERROR, format!("no operand in tsquery: \"{text}\"")));
-    }
-    Ok(tokens)
+/// Wait is what a query's tokenizer waits for next, as Postgres' ts_parserstate names it.
+#[derive(Clone, Copy, PartialEq)]
+enum Wait {
+    FirstOperand,
+    Operand,
+    Operator,
 }
 
-/// query_in reads a tsquery's text into its tree, or None for a query without lexemes, building it by operator
-/// priority as Postgres' makepol and cleanOpStack do.
-fn query_in(text: &str) -> Result<Option<Query>> {
-    let tokens = query_tokens(text)?;
-    let mut operands: Vec<Query> = Vec::new();
-    let mut operators: Vec<Option<(Operator, u16)>> = Vec::new();
-    let apply = |operands: &mut Vec<Query>, (operator, distance): (Operator, u16)| -> Result<()> {
-        let right = operands.pop().ok_or_else(|| syntax_error("tsquery", text))?;
-        let node = match operator {
-            Operator::Not => Query::Not(Box::new(right)),
-            _ => {
-                let left = operands.pop().ok_or_else(|| syntax_error("tsquery", text))?;
-                Query::Binary { operator, distance, left: Box::new(left), right: Box::new(right) }
-            }
-        };
-        operands.push(node);
-        Ok(())
-    };
-    let clean =
-        |operands: &mut Vec<Query>, operators: &mut Vec<Option<(Operator, u16)>>, next: Operator| -> Result<()> {
-            while let Some(&Some((top, distance))) = operators.last() {
-                let stops = match next {
-                    Operator::Not => next.priority() >= top.priority(),
-                    _ => next.priority() > top.priority(),
-                };
-                if stops {
-                    break;
+/// QueryReader is the state of Postgres' TSQueryParserState: the text, where the reader is, what it waits for, and how
+/// deeply it is nested in parentheses.
+struct QueryReader<'t> {
+    text: &'t str,
+    at: usize,
+    wait: Wait,
+    depth: i32,
+    mode: Mode,
+}
+
+/// is_operator_char reports whether a byte begins a tsquery operator, as Postgres' ISOPERATOR does.
+fn is_operator_char(byte: u8) -> bool {
+    matches!(byte, b'!' | b'&' | b'|' | b'(' | b')' | b'<')
+}
+
+/// operand reads a query operand from a position as Postgres' gettoken_tsvector does when operators are delimiters,
+/// returning its text and where it ends, or None at the end of the text. In a web search, apostrophes and backslashes
+/// are plain characters and a double quote ends the operand.
+fn operand(text: &str, at: usize, web: bool) -> Result<Option<(Vec<u8>, usize)>> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum State {
+        Word,
+        EndWord,
+        NextChar(bool),
+        EndQuoted,
+        QuoteInQuoted,
+    }
+    let error = || syntax_error("tsquery", text);
+    let mut word = Vec::new();
+    let mut state = State::Word;
+    let mut chars = text[at..].char_indices().map(|(i, c)| (at + i, c)).peekable();
+    loop {
+        let (i, c) = chars.peek().copied().unwrap_or((text.len(), '\0'));
+        let end = i == text.len();
+        let byte = if c.is_ascii() { c as u8 } else { 0x80 };
+        let mut buf = [0; 4];
+        let char_bytes = c.encode_utf8(&mut buf).as_bytes();
+        match state {
+            State::Word => {
+                if end {
+                    return Ok(None);
+                } else if !web && byte == b'\'' {
+                    state = State::EndQuoted;
+                } else if !web && byte == b'\\' {
+                    state = State::NextChar(false);
+                } else if is_operator_char(byte) || (web && byte == b'"') {
+                    return Err(error());
+                } else if !byte.is_ascii_whitespace() {
+                    word.extend_from_slice(char_bytes);
+                    state = State::EndWord;
                 }
-                operators.pop();
-                apply(operands, (top, distance))?;
             }
-            Ok(())
-        };
-    for token in tokens {
-        match token {
-            Token::Operand(operand) => operands.push(operand),
-            Token::Operator(operator, distance) => {
-                clean(&mut operands, &mut operators, operator)?;
-                operators.push(Some((operator, distance)));
+            State::NextChar(quoted) => {
+                if end {
+                    return Err(PgError::new(code::SYNTAX_ERROR, format!("there is no escaped character: \"{text}\"")));
+                }
+                word.extend_from_slice(char_bytes);
+                state = if quoted { State::EndQuoted } else { State::EndWord };
             }
-            Token::Open => operators.push(None),
-            Token::Close => {
-                clean(&mut operands, &mut operators, Operator::Or)?;
-                if operators.pop() != Some(None) {
-                    return Err(syntax_error("tsquery", text));
+            State::EndWord => {
+                if !web && byte == b'\\' {
+                    state = State::NextChar(false);
+                } else if end
+                    || byte.is_ascii_whitespace()
+                    || is_operator_char(byte)
+                    || (web && byte == b'"')
+                    || byte == b':'
+                {
+                    if word.is_empty() {
+                        return Err(error());
+                    }
+                    return Ok(Some((word, i)));
+                } else {
+                    word.extend_from_slice(char_bytes);
+                }
+            }
+            State::EndQuoted => {
+                if byte == b'\'' {
+                    state = State::QuoteInQuoted;
+                } else if byte == b'\\' {
+                    state = State::NextChar(true);
+                } else if end {
+                    return Err(error());
+                } else {
+                    word.extend_from_slice(char_bytes);
+                }
+            }
+            State::QuoteInQuoted => {
+                if byte == b'\'' {
+                    word.push(b'\'');
+                    state = State::EndQuoted;
+                } else {
+                    if word.is_empty() {
+                        return Err(error());
+                    }
+                    return Ok(Some((word, i)));
                 }
             }
         }
+        chars.next();
     }
-    clean(&mut operands, &mut operators, Operator::Or)?;
-    if !operators.is_empty() || operands.len() > 1 {
-        return Err(syntax_error("tsquery", text));
+}
+
+impl QueryReader<'_> {
+    /// byte returns the byte at the reader, or 0 at the end.
+    fn byte(&self) -> u8 {
+        self.text.as_bytes().get(self.at).copied().unwrap_or(0)
     }
-    Ok(operands.pop())
+
+    /// advance moves past the character at the reader.
+    fn advance(&mut self) {
+        self.at += self.text[self.at..].chars().next().map_or(1, char::len_utf8);
+    }
+
+    /// modifiers reads the weights and prefix mark after an operand, as Postgres' get_modifiers does.
+    fn modifiers(&mut self) -> (u8, bool) {
+        let (mut weights, mut prefix) = (0u8, false);
+        if self.byte() != b':' {
+            return (weights, prefix);
+        }
+        self.at += 1;
+        loop {
+            match self.byte() {
+                b'*' => prefix = true,
+                b => match weight_bits(b) {
+                    Some(bits) => weights |= 1 << bits,
+                    None => return (weights, prefix),
+                },
+            }
+            self.at += 1;
+        }
+    }
+
+    /// phrase_operator reads a phrase operator, as Postgres' parse_phrase_operator does, returning its distance.
+    fn phrase_operator(&mut self) -> Result<Option<u16>> {
+        let rest = &self.text.as_bytes()[self.at..];
+        if rest.first() != Some(&b'<') {
+            return Ok(None);
+        }
+        let (distance, after) = match rest.get(1) {
+            Some(b'-') => (1u64, 2),
+            Some(b) if b.is_ascii_digit() => {
+                let digits = rest[1..].iter().take_while(|b| b.is_ascii_digit()).count();
+                let distance = std::str::from_utf8(&rest[1..1 + digits]).ok().and_then(|d| d.parse().ok());
+                match distance {
+                    Some(d) if d <= u64::from(MAX_DISTANCE) => (d, 1 + digits),
+                    _ => {
+                        return Err(PgError::new(
+                            code::INVALID_PARAMETER_VALUE,
+                            format!(
+                                "distance in phrase operator must be an integer value between zero and {MAX_DISTANCE} inclusive"
+                            ),
+                        ));
+                    }
+                }
+            }
+            _ => return Ok(None),
+        };
+        if rest.get(after) != Some(&b'>') || rest.len() == after + 1 {
+            return Ok(None);
+        }
+        self.at += after + 1;
+        Ok(Some(distance as u16))
+    }
+
+    /// next returns the next token, as Postgres' gettoken_query_standard, gettoken_query_plain, and
+    /// gettoken_query_websearch do.
+    fn next(&mut self) -> Result<Token> {
+        match self.mode {
+            Mode::Plain => {
+                if self.at >= self.text.len() {
+                    return Ok(Token::End);
+                }
+                let value = self.text.as_bytes()[self.at..].to_vec();
+                self.at = self.text.len();
+                Ok(Token::Value(value, 0, false))
+            }
+            Mode::Standard => self.next_standard(),
+            Mode::Web => self.next_web(),
+        }
+    }
+
+    /// next_standard reads the next token of tsquery syntax.
+    fn next_standard(&mut self) -> Result<Token> {
+        let error = || syntax_error("tsquery", self.text);
+        loop {
+            let byte = self.byte();
+            match self.wait {
+                Wait::FirstOperand | Wait::Operand => match byte {
+                    b'!' => {
+                        self.at += 1;
+                        self.wait = Wait::Operand;
+                        return Ok(Token::Operator(Operator::Not, 0));
+                    }
+                    b'(' => {
+                        self.at += 1;
+                        self.wait = Wait::Operand;
+                        self.depth += 1;
+                        return Ok(Token::Open);
+                    }
+                    b':' => return Err(error()),
+                    _ if !byte.is_ascii_whitespace() => match operand(self.text, self.at, false)? {
+                        Some((word, end)) => {
+                            self.at = end;
+                            let (weights, prefix) = self.modifiers();
+                            self.wait = Wait::Operator;
+                            return Ok(Token::Value(word, weights, prefix));
+                        }
+                        None if self.wait == Wait::FirstOperand => return Ok(Token::End),
+                        None => {
+                            return Err(PgError::new(
+                                code::SYNTAX_ERROR,
+                                format!("no operand in tsquery: \"{}\"", self.text),
+                            ));
+                        }
+                    },
+                    _ => {}
+                },
+                Wait::Operator => {
+                    if byte == b'&' || byte == b'|' {
+                        self.at += 1;
+                        self.wait = Wait::Operand;
+                        return Ok(Token::Operator(if byte == b'&' { Operator::And } else { Operator::Or }, 0));
+                    }
+                    if let Some(distance) = self.phrase_operator()? {
+                        self.wait = Wait::Operand;
+                        return Ok(Token::Operator(Operator::Phrase, distance));
+                    }
+                    match byte {
+                        b')' => {
+                            self.at += 1;
+                            self.depth -= 1;
+                            return if self.depth < 0 { Err(error()) } else { Ok(Token::Close) };
+                        }
+                        0 if self.at >= self.text.len() => {
+                            return if self.depth != 0 { Err(error()) } else { Ok(Token::End) };
+                        }
+                        _ if !byte.is_ascii_whitespace() => return Err(error()),
+                        _ => {}
+                    }
+                }
+            }
+            self.advance();
+        }
+    }
+
+    /// next_web reads the next token of a web search.
+    fn next_web(&mut self) -> Result<Token> {
+        loop {
+            let byte = self.byte();
+            let end = self.at >= self.text.len();
+            match self.wait {
+                Wait::FirstOperand | Wait::Operand => {
+                    if byte == b'-' {
+                        self.at += 1;
+                        self.wait = Wait::Operand;
+                        return Ok(Token::Operator(Operator::Not, 0));
+                    } else if byte == b'"' {
+                        self.at += 1;
+                        let start = self.at;
+                        while self.at < self.text.len() && self.byte() != b'"' {
+                            self.at += 1;
+                        }
+                        let value = self.text.as_bytes()[start..self.at].to_vec();
+                        if self.at < self.text.len() {
+                            self.at += 1;
+                        }
+                        self.wait = Wait::Operator;
+                        return Ok(Token::Value(value, 0, false));
+                    } else if is_operator_char(byte) {
+                        self.at += 1;
+                        self.wait = Wait::Operand;
+                        continue;
+                    } else if !byte.is_ascii_whitespace() {
+                        match operand(self.text, self.at, true)? {
+                            Some((word, end)) => {
+                                self.at = end;
+                                self.wait = Wait::Operator;
+                                return Ok(Token::Value(word, 0, false));
+                            }
+                            None if self.wait == Wait::FirstOperand => return Ok(Token::End),
+                            None => return Ok(Token::StopEnd),
+                        }
+                    }
+                }
+                Wait::Operator => {
+                    if end {
+                        return Ok(Token::End);
+                    }
+                    let rest = &self.text.as_bytes()[self.at..];
+                    if rest.len() > 2 && rest[..2].eq_ignore_ascii_case(b"or") && self.or_operator() {
+                        self.at += 2;
+                        self.wait = Wait::Operand;
+                        return Ok(Token::Operator(Operator::Or, 0));
+                    } else if is_operator_char(byte) {
+                        self.at += 1;
+                        continue;
+                    } else if !byte.is_ascii_whitespace() {
+                        self.wait = Wait::Operand;
+                        return Ok(Token::Operator(Operator::And, 0));
+                    }
+                }
+            }
+            self.advance();
+        }
+    }
+
+    /// or_operator reports whether the "or" at the reader is a web search's OR operator, as Postgres'
+    /// parse_or_operator decides: one followed by something other than a word character and then an operand.
+    fn or_operator(&self) -> bool {
+        let rest = &self.text[self.at + 2..];
+        let Some(next) = rest.chars().next() else { return false };
+        if next == '-' || next == '_' || next.is_ascii_alphanumeric() {
+            return false;
+        }
+        rest.chars().skip(1).any(|c| !c.is_ascii_whitespace())
+    }
+}
+
+/// parse_query reads a query's text in a mode, as Postgres' parse_tsquery does, passing each operand to `push`.
+pub(crate) fn parse_query(text: &str, mode: Mode, push: Push<'_>) -> Result<Parsed> {
+    let mut reader = QueryReader { text, at: 0, wait: Wait::FirstOperand, depth: 0, mode };
+    let mut builder = Builder { text, operands: Vec::new(), pushed: false };
+    make_tree(&mut reader, &mut builder, push)?;
+    if !builder.pushed {
+        let notice = format!("text-search query doesn't contain lexemes: \"{text}\"");
+        return Ok(Parsed { query: None, notice: Some(notice) });
+    }
+    if builder.operands.len() != 1 {
+        return Err(PgError::internal("malformed tsquery: extra nodes"));
+    }
+    match builder.operands.pop().and_then(|(query, _, _)| query) {
+        Some(query) => Ok(Parsed { query: Some(query), notice: None }),
+        None => {
+            let notice = "text-search query contains only stop words or doesn't contain lexemes, ignored".to_string();
+            Ok(Parsed { query: None, notice: Some(notice) })
+        }
+    }
+}
+
+/// make_tree reads tokens up to the end or a closing parenthesis, applying operators by priority as Postgres' makepol
+/// and cleanOpStack do.
+fn make_tree(reader: &mut QueryReader<'_>, builder: &mut Builder<'_>, push: Push<'_>) -> Result<()> {
+    let mut operators: Vec<(Operator, u16)> = Vec::new();
+    let clean = |builder: &mut Builder<'_>, operators: &mut Vec<(Operator, u16)>, next: Operator| -> Result<()> {
+        while let Some(&(top, distance)) = operators.last() {
+            let stops = match next {
+                Operator::Not => next.priority() >= top.priority(),
+                _ => next.priority() > top.priority(),
+            };
+            if stops {
+                break;
+            }
+            operators.pop();
+            builder.operator(top, distance)?;
+        }
+        Ok(())
+    };
+    loop {
+        match reader.next()? {
+            Token::End => break,
+            Token::StopEnd => {
+                builder.stop();
+                break;
+            }
+            Token::Value(word, weights, prefix) => push(builder, &word, weights, prefix)?,
+            Token::Operator(operator, distance) => {
+                clean(builder, &mut operators, operator)?;
+                operators.push((operator, distance));
+            }
+            Token::Open => make_tree(reader, builder, push)?,
+            Token::Close => break,
+        }
+    }
+    clean(builder, &mut operators, Operator::Or)
+}
+
+/// query_in reads a tsquery's text into its tree, or None for a query without lexemes.
+fn query_in(text: &str) -> Result<Option<Query>> {
+    let mut as_is =
+        |builder: &mut Builder, word: &[u8], weights: u8, prefix: bool| builder.value(word, weights, prefix);
+    Ok(parse_query(text, Mode::Standard, &mut as_is)?.query)
 }
 
 /// query_bytes writes a tsquery in its binary format: the count of its nodes, then each node with an operator before

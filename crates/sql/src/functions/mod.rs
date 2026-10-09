@@ -143,6 +143,9 @@ const SET_RETURNING: &[&str] = &[
     "jsonb_each_text",
     "json_each_text",
     "pg_partition_ancestors",
+    "ts_token_type",
+    "ts_parse",
+    "ts_debug",
 ];
 
 /// returns_set reports whether a function returns rows.
