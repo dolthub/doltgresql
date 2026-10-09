@@ -28,6 +28,7 @@ mod hash;
 pub mod json;
 mod jsonpath;
 mod math;
+pub(crate) mod money;
 pub(crate) mod pattern;
 mod populate;
 mod range;
@@ -99,6 +100,7 @@ fn registry() -> &'static Registry {
             textsearch::FUNCTIONS,
             geometry::FUNCTIONS,
             hash::FUNCTIONS,
+            money::FUNCTIONS,
             catalog::FUNCTIONS,
             advisory::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,

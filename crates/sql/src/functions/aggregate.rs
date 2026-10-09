@@ -16,6 +16,7 @@
 
 use std::cmp::Ordering;
 
+use super::money::MONEY;
 use crate::cast::type_display;
 use crate::error::{PgError, Result, code};
 use crate::expr::{Expr, compare_values, position};
@@ -78,6 +79,7 @@ pub const AGGREGATES: &[Aggregate] = &[
     a("sum", &[FLOAT4], FLOAT4, Kind::Sum),
     a("sum", &[FLOAT8], FLOAT8, Kind::Sum),
     a("sum", &[INTERVAL], INTERVAL, Kind::Sum),
+    a("sum", &[MONEY], MONEY, Kind::Sum),
     a("avg", &[INT2], NUMERIC, Kind::Avg),
     a("avg", &[INT4], NUMERIC, Kind::Avg),
     a("avg", &[INT8], NUMERIC, Kind::Avg),
@@ -285,7 +287,7 @@ impl Accumulator {
             (Kind::Sum, INT8) => State::SumInt(None),
             (Kind::Sum, FLOAT4) => State::SumFloat4(None),
             (Kind::Sum | Kind::Avg, FLOAT8) => State::SumFloat(None),
-            (Kind::Sum | Kind::Avg, INTERVAL) => rows(),
+            (Kind::Sum | Kind::Avg, INTERVAL | MONEY) => rows(),
             (Kind::Sum | Kind::Avg, _) => State::SumNumeric(None),
             (Kind::Min | Kind::Max, _) => State::Extreme(None),
             (Kind::BoolAnd | Kind::BoolOr, _) => State::Bool(None),
@@ -735,6 +737,11 @@ fn sum(values: &[Value], ret: u32) -> Result<Value> {
         FLOAT4 => Value::Float4(values.iter().map(|v| float_of(v) as f32).sum()),
         FLOAT8 => Value::Float8(values.iter().map(float_of).sum()),
         INTERVAL => Value::Interval(interval_sum(values)?),
+        MONEY => values
+            .iter()
+            .try_fold(0i64, |total, v| total.checked_add(super::money::cents(v)))
+            .map(super::money::money_value)
+            .ok_or_else(super::money::out_of_range)?,
         _ => Value::Numeric(values.iter().fold(Numeric::zero(0), |total, v| total.add(&numeric_of(v)))),
     })
 }

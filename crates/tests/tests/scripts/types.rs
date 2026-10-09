@@ -11608,3 +11608,261 @@ fn test_interval_input() {
         },
     ]);
 }
+
+#[test]
+fn test_money_operators() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Money arithmetic",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE money_ops (m MONEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO money_ops VALUES ('$123.45'), ('-$7.10'), (0);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT m + '123.45', m - '0.05', m * 2, 3 * m, m * 2::int2, 2::int8 * m, m * 1.5::float8, 0.5::float4 * m FROM money_ops ORDER BY m;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY)],
+                        rows: &[
+                            &[T("$116.35"), T("-$7.15"), T("-$14.20"), T("-$21.30"), T("-$14.20"), T("-$14.20"), T("-$10.65"), T("-$3.55")],
+                            &[T("$123.45"), T("-$0.05"), T("$0.00"), T("$0.00"), T("$0.00"), T("$0.00"), T("$0.00"), T("$0.00")],
+                            &[T("$246.90"), T("$123.40"), T("$246.90"), T("$370.35"), T("$246.90"), T("$246.90"), T("$185.18"), T("$61.72")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT m / 2, m / 3::int2, m / 7::int8, m / 2.5::float8, m / 4::float4, m / '$2.00'::money FROM money_ops ORDER BY m;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", FLOAT8)],
+                        rows: &[
+                            &[T("-$3.55"), T("-$2.36"), T("-$1.01"), T("-$2.84"), T("-$1.78"), T("-3.55")],
+                            &[T("$0.00"), T("$0.00"), T("$0.00"), T("$0.00"), T("$0.00"), T("0")],
+                            &[T("$61.72"), T("$41.15"), T("$17.63"), T("$49.38"), T("$30.86"), T("61.725")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(m), min(m), max(m) FROM money_ops;",
+                    expected: Expected::Rows {
+                        columns: &[Column("sum", MONEY), Column("min", MONEY), Column("max", MONEY)],
+                        rows: &[
+                            &[T("$116.35"), T("-$7.10"), T("$123.45")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT cashlarger(m, '$1.00'), cashsmaller(m, '$1.00'), cash_pl(m, m), cash_mi(m, m), cash_mul_int4(m, 3), cash_div_flt8(m, 3) FROM money_ops ORDER BY m;",
+                    expected: Expected::Rows {
+                        columns: &[Column("cashlarger", MONEY), Column("cashsmaller", MONEY), Column("cash_pl", MONEY), Column("cash_mi", MONEY), Column("cash_mul_int4", MONEY), Column("cash_div_flt8", MONEY)],
+                        rows: &[
+                            &[T("$1.00"), T("-$7.10"), T("-$14.20"), T("$0.00"), T("-$21.30"), T("-$2.37")],
+                            &[T("$1.00"), T("$0.00"), T("$0.00"), T("$0.00"), T("$0.00"), T("$0.00")],
+                            &[T("$123.45"), T("$1.00"), T("$246.90"), T("$0.00"), T("$370.35"), T("$41.15")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '878.08'::money / 11::float8, '878.08'::money / 11::float4, '878.08'::money / 11::bigint, '878.08'::money / 11::int, '878.08'::money / 11::smallint;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY), Column("?column?", MONEY)],
+                        rows: &[
+                            &[T("$79.83"), T("$79.83"), T("$79.82"), T("$79.82"), T("$79.82")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '90000000000000099.00'::money / 10::bigint, '-92233720368547758.08'::money / -1::int2;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "money out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Money errors",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '92233720368547758.07'::money + '0.01'::money;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "money out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '-92233720368547758.08'::money - '0.01'::money;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "money out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '92233720368547758.07'::money * 2;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "money out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1.00'::money / 0;",
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1.00'::money / 0::float8;",
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1.00'::money / '0'::money;",
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '92233720368547758.07'::money * 2::float8;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "money out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '-92233720368547758.08'::money / -1;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "money out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(m) FROM (VALUES ('92233720368547758.07'::money), ('0.01')) v(m);",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "money out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Money casts",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 12345678901234567::int8::money, 1234567890::int4::money, 12345678901234567.5::numeric::money, '-1.005'::numeric::money;",
+                    expected: Expected::Rows {
+                        columns: &[Column("money", MONEY), Column("money", MONEY), Column("money", MONEY), Column("money", MONEY)],
+                        rows: &[
+                            &[T("$12,345,678,901,234,567.00"), T("$1,234,567,890.00"), T("$12,345,678,901,234,567.50"), T("-$1.01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '$12,345.67'::money::numeric, '-92233720368547758.08'::money::numeric, (-0.01)::money::numeric;",
+                    expected: Expected::Rows {
+                        columns: &[Column("numeric", NUMERIC), Column("numeric", NUMERIC), Column("numeric", NUMERIC)],
+                        rows: &[
+                            &[T("12345.67"), T("-92233720368547758.08"), T("-0.01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 92233720368547758::int8::money;",
+                    expected: Expected::Rows {
+                        columns: &[Column("money", MONEY)],
+                        rows: &[
+                            &[T("$92,233,720,368,547,758.00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'NaN'::numeric::money;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot convert NaN to bigint", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'Infinity'::numeric::money;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "cannot convert infinity to bigint", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 92233720368547758.08::numeric::money;",
+                    expected: Expected::Error(Diagnostic { code: "22003", message: "bigint out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE money_assign (m MONEY);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO money_assign VALUES (12), (12::int8), (1.555);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM money_assign;",
+                    expected: Expected::Rows {
+                        columns: &[Column("m", MONEY)],
+                        rows: &[
+                            &[T("$12.00")],
+                            &[T("$12.00")],
+                            &[T("$1.56")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Money words",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT cash_words(m) FROM (VALUES ('$0.00'::money), ('$0.01'), ('$1.00'), ('$1.01'), ('$12.34'), ('$100.00'), ('$110.10'), ('$115.20'), ('$120.30'), ('$999.99'), ('$1,000,000.00'), ('-$123,456,789.01'), ('92233720368547758.07')) v(m);",
+                    expected: Expected::Rows {
+                        columns: &[Column("cash_words", TEXT)],
+                        rows: &[
+                            &[T("Zero dollars and zero cents")],
+                            &[T("Zero dollars and one cent")],
+                            &[T("One dollar and zero cents")],
+                            &[T("One dollar and one cent")],
+                            &[T("Twelve dollars and thirty four cents")],
+                            &[T("One hundred dollars and zero cents")],
+                            &[T("One hundred and ten dollars and ten cents")],
+                            &[T("One hundred and fifteen dollars and twenty cents")],
+                            &[T("One hundred twenty dollars and thirty cents")],
+                            &[T("Nine hundred ninety nine dollars and ninety nine cents")],
+                            &[T("One million  dollars and zero cents")],
+                            &[T("Minus one hundred twenty three million four hundred fifty six thousand seven hundred eighty nine dollars and one cent")],
+                            &[T("Ninety two quadrillion two hundred thirty three trillion seven hundred twenty billion three hundred sixty eight million five hundred forty seven thousand seven hundred fifty eight dollars and seven cents")],
+                        ],
+                        tag: "SELECT 13",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

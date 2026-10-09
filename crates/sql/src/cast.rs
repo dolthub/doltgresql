@@ -727,6 +727,9 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
     if value.is_null() {
         return Ok(Value::Null);
     }
+    if let Some(converted) = crate::functions::money::cast(&value, to.oid) {
+        return converted;
+    }
     if !crate::array::is_array_type(to.oid)
         && builtin_type(to.oid).is_none()
         && let Some(user_type) = crate::usertypes::get(to.oid)

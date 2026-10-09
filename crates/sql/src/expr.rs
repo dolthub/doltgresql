@@ -2807,7 +2807,8 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         && !oid_without_cast(from.oid, to.oid)
         && !boolean
         || implicitly_converts(from.oid, to.oid)
-        || functions::geometry::castable(from.oid, to.oid, explicit))
+        || functions::geometry::castable(from.oid, to.oid, explicit)
+        || functions::money::castable(from.oid, to.oid))
         && !(crate::array::is_vector_type(to.oid) && is_array_type(from.oid));
     if !allowed {
         return Err(PgError {
@@ -2940,6 +2941,7 @@ pub(crate) fn assignable(from: u32, to: u32) -> bool {
         || matches!((from, to), (oid::JSON, oid::JSONB) | (oid::JSONB, oid::JSON))
         || crate::casts::context(from, to).is_some_and(|c| c >= crate::casts::ASSIGNMENT)
         || functions::geometry::castable(from, to, false)
+        || functions::money::castable(from, to)
 }
 
 /// element_type returns the element type of an array type.
