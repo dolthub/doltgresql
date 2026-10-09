@@ -26,6 +26,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - uses: actions/setup-node@v4
         with:
           node-version: ^16

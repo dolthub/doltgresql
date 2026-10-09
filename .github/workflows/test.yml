@@ -44,8 +44,10 @@ jobs:
       shell: bash
       run: |
         bin="$(pwd)/target/release/doltgres"
-        if [ -f "$bin.exe" ]; then bin="$(cygpath -w "$bin.exe")"; fi
-        DOLTGRES_BIN_PATH="$bin" cargo test --profile quick --workspace --exclude doltgres-tests --exclude driver --no-fail-fast
+        exclude="--exclude doltgres-tests --exclude driver"
+        # The admin tests start servers through the driver, which stops them with Unix signals.
+        if [ -f "$bin.exe" ]; then bin="$(cygpath -w "$bin.exe")"; exclude="$exclude --exclude admin"; fi
+        DOLTGRES_BIN_PATH="$bin" cargo test --profile quick --workspace $exclude --no-fail-fast
     - name: Test scripts
       shell: bash
       run: |
