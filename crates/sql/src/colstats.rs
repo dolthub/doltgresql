@@ -40,13 +40,15 @@ const DEFAULT_INEQ_SEL: f64 = 1.0 / 3.0;
 const DEFAULT_SEL: f64 = 0.5;
 
 /// ColumnStats are a column's statistics: the share of NULLs, about how many distinct values it holds, its most common
-/// values with their shares of all rows, and the bounds that split its other values into equally full buckets.
+/// values with their shares of all rows, the bounds that split its other values into equally full buckets, and how
+/// closely the order of its values follows the order of the table's rows.
 #[derive(Debug, Default)]
 pub struct ColumnStats {
     pub null_frac: f64,
     pub distinct: f64,
     pub common: Vec<(Value, f64)>,
     pub histogram: Vec<Value>,
+    pub correlation: f64,
 }
 
 /// TableStats are the statistics of a table's columns, with the row count that they were gathered at.
@@ -98,17 +100,27 @@ fn gather(ctx: &mut Ctx<'_>, table: &TableDef, rows: u64) -> crate::error::Resul
     Ok(TableStats { rows, columns })
 }
 
-/// column_stats computes a column's statistics from a sample of its values in a table of this many rows, as
-/// compute_scalar_stats does: the distinct count by the Haas-Stokes estimator, the values common enough to stand out
-/// as most common values, and a histogram of the rest.
+/// column_stats computes a column's statistics from a sample of its values, in the order of the table's rows, in a
+/// table of this many rows, as compute_scalar_stats does: the distinct count by the Haas-Stokes estimator, the values
+/// common enough to stand out as most common values, a histogram of the rest, and the correlation between the
+/// values' order and the rows' order.
 fn column_stats(values: Vec<Value>, rows: u64) -> ColumnStats {
     let sampled = values.len() as f64;
-    let mut values: Vec<Value> = values.into_iter().filter(|v| !v.is_null()).collect();
+    let mut values: Vec<(usize, Value)> = values.into_iter().filter(|v| !v.is_null()).enumerate().collect();
     if sampled == 0.0 {
         return ColumnStats::default();
     }
     let null_frac = 1.0 - values.len() as f64 / sampled;
-    values.sort_by(compare_values);
+    values.sort_by(|(a_tupno, a), (b_tupno, b)| compare_values(a, b).then(a_tupno.cmp(b_tupno)));
+    let values_cnt = values.len() as f64;
+    let corr_xysum: f64 = values.iter().enumerate().map(|(i, (tupno, _))| i as f64 * *tupno as f64).sum();
+    let corr_xsum = (values_cnt - 1.0) * values_cnt / 2.0;
+    let corr_x2sum = (values_cnt - 1.0) * values_cnt * (2.0 * values_cnt - 1.0) / 6.0;
+    let correlation = match values_cnt > 1.0 {
+        true => (values_cnt * corr_xysum - corr_xsum * corr_xsum) / (values_cnt * corr_x2sum - corr_xsum * corr_xsum),
+        false => 0.0,
+    };
+    let values: Vec<Value> = values.into_iter().map(|(_, v)| v).collect();
     let mut runs: Vec<(usize, usize)> = Vec::new();
     for (i, value) in values.iter().enumerate() {
         match runs.last_mut() {
@@ -150,7 +162,7 @@ fn column_stats(values: Vec<Value>, rows: u64) -> ColumnStats {
         true => (0..bounds).map(|i| rest[i * (rest.len() - 1) / (bounds - 1)].clone()).collect(),
         false => Vec::new(),
     };
-    ColumnStats { null_frac, distinct, common, histogram }
+    ColumnStats { null_frac, distinct, common, histogram, correlation }
 }
 
 /// selectivity returns about what share of a table's rows a condition over its columns keeps, as Postgres'

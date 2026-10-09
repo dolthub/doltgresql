@@ -258,7 +258,7 @@ struct Coster<'t> {
 }
 
 /// swap returns the comparison with its operands exchanged.
-fn swap(op: CmpOp) -> CmpOp {
+pub(crate) fn swap(op: CmpOp) -> CmpOp {
     match op {
         CmpOp::Lt => CmpOp::Gt,
         CmpOp::Le => CmpOp::Ge,

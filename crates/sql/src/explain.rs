@@ -312,11 +312,27 @@ impl Printer {
                 let printed =
                     |key: &str| condition.iter().map(|c| format!("{key}: {}", expr_text(c, &names))).collect();
                 match method {
-                    JoinMethod::Hash => (
-                        format!("Hash {}", if kind.is_empty() { "Join" } else { kind.trim_start() }),
-                        printed("Hash Cond"),
-                        vec![Child::Plan(left), Child::Hash(right)],
-                    ),
+                    JoinMethod::Hash => {
+                        let width = left.width();
+                        let (hashed, rest): (Vec<&Expr>, Vec<&Expr>) = condition
+                            .iter()
+                            .flat_map(crate::indexscan::conjuncts)
+                            .partition(|c| !crate::plan::join_keys(c, width).0.is_empty());
+                        let mut properties = Vec::new();
+                        for (key, clauses) in [("Hash Cond", hashed), ("Join Filter", rest)] {
+                            let texts: Vec<String> = clauses.into_iter().map(|c| expr_text(c, &names)).collect();
+                            match texts.as_slice() {
+                                [] => {}
+                                [one] => properties.push(format!("{key}: {one}")),
+                                many => properties.push(format!("{key}: ({})", many.join(" AND "))),
+                            }
+                        }
+                        (
+                            format!("Hash {}", if kind.is_empty() { "Join" } else { kind.trim_start() }),
+                            properties,
+                            vec![Child::Plan(left), Child::Hash(right)],
+                        )
+                    }
                     JoinMethod::Lookup { .. } | JoinMethod::CatalogLookup { .. } => {
                         let lookup = Lookup::of(method, columns(left), right);
                         let keys = lookup.keys;

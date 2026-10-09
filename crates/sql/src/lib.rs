@@ -57,6 +57,7 @@ pub mod numeric;
 pub mod numeric_math;
 mod numformat;
 pub mod operators;
+mod optimizer;
 pub mod parse;
 mod pgcatalog;
 pub mod plan;

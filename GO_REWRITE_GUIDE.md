@@ -321,13 +321,22 @@ fields. A patch to the vendored protobuf-c finds a Node's one set field by id in
 same protobuf path, so a Go rewrite that uses it needs the same patch.
 
 The planner then moved toward Postgres' own (the user asked to port as much of Postgres' analyzer as is reasonable).
-Port its logic onto your own plan representation rather than its Query trees: subquery pull-up
-(convert_EXISTS_sublink_to_join over any join tree, with outer references renumbered by level), reduce_outer_joins,
-eqjoinsel's row estimate from the keys' distinct values, dynamic programming over join orders (join_collapse_limit
-8), and column statistics computed as analyze.c's compute_scalar_stats does (sampled evenly through the tree's
-subtree counts, so plans stay deterministic) with selfuncs.c's eqsel and scalarineqsel over them. Keep Postgres'
-structure but recalibrate its costs: prolly trees have no heap, and a secondary index lookup is a full search of the
-primary tree. In Go, this planner would sit in front of go-mysql-server rather than inside it.
+A first round hand-wrote Postgres' rules onto the existing planner: subquery pull-up, reduce_outer_joins, eqjoinsel,
+dynamic programming over join orders, and column statistics computed as analyze.c's compute_scalar_stats does
+(sampled evenly through the tree's subtree counts, so plans stay deterministic). The user rejected that approach:
+"If you're finding gaps, then that sounds like you didn't port Postgres' analyzer over, as they would have already
+identified any gaps in their analyzer." Port the optimizer itself, file by file (`crates/sql/src/optimizer/`, one
+module per C file, keeping Postgres' function names): build Postgres' Query (range table, join tree, Vars) from the
+binder's unplanned FROM plan, then run prepjointree.c, initsplan.c, allpaths.c, indxpath.c, joinrels.c, joinpath.c,
+pathnode.c, costsize.c, clausesel.c and selfuncs.c over it, and createplan.c back into the executor's plan. Keep
+Postgres' cost formulas and default settings; only the inputs change: a table's pages are those its rows would fill
+in Postgres' heap, Dolt's primary index is a clustered index whose scans fetch nothing else, a covering secondary
+index scan is an index-only scan, and an index's correlation comes from the statistics sample read in primary key
+order. Doltgres' existing index scan chooser and lookup joins supply the index paths, which take Postgres' costs.
+Stand the port beside the old planner behind a switch (`DOLTGRES_PG_PLANNER`) and grow it until it plans everything
+the old one does, measuring it against Postgres' own EXPLAIN output on the regression files. Expect plan-shape tests
+written for go-mysql-server's choices to disagree: Postgres reads tiny tables in full rather than through an index.
+In Go, this planner would sit in front of go-mysql-server rather than inside it.
 
 ## 4. Habits and tooling worth copying
 

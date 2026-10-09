@@ -1749,13 +1749,19 @@ impl<'b, 'a> Planner<'b, 'a> {
                     false => kept.push(c.clone()),
                 }
             }
-            if let Some(kept) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
-                plan = push_down(plan, kept);
+            if crate::optimizer::enabled() && crate::optimizer::plannable(&plan) {
+                plan = crate::optimizer::query_planner(self.ctx, plan, kept);
+            } else {
+                if let Some(kept) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
+                    plan = push_down(plan, kept);
+                }
+                plan = self.use_indexes(plan);
             }
-            plan = self.use_indexes(plan);
             for existence in existences {
                 plan = crate::joins::filter_existence(plan, existence);
             }
+        } else if crate::optimizer::enabled() && crate::optimizer::plannable(&plan) {
+            plan = crate::optimizer::query_planner(self.ctx, plan, Vec::new());
         }
         let hints = crate::joins::hints(&self.ctx.session.source);
         if !hints.is_empty() {

@@ -3,8 +3,7 @@
 # prepared statements off, one thread) on a fresh server for each test, once with the main branch's server and once
 # with the pull request's, and prints markdown tables of their average latencies and transactions per second, one for
 # the read tests and one for the write tests. Given the bin directory of a Postgres 15 install, it also runs each test
-# on a fresh Postgres database for comparison, and ends with the pull request's tps as a percentage of Postgres',
-# averaged (geometrically, so that one far faster test doesn't swamp the rest) across the reads and across the writes.
+# on a fresh Postgres database for comparison.
 #   compare-sysbench.sh <main binary> <pull request binary> <lua scripts dir> <seconds per test> [postgres bin dir]
 set -uo pipefail
 
@@ -72,10 +71,8 @@ if [ -n "$pg_bin" ]; then
   trap '"$pg_bin/pg_ctl" -D "$work/pg" -m fast stop > /dev/null' EXIT
 fi
 
-# run_table prints the table of a group of tests, then the geometric mean across them of the pull request's tps as a
-# percentage of Postgres', or n/a, on its own last line.
+# run_table prints the table of a group of tests.
 run_table() {
-  local total=0 count=0
   echo "| Test | main latency (ms) | PR latency (ms) | Change | main tps | PR tps | Postgres tps | PR / Postgres |"
   echo "| --- | --- | --- | --- | --- | --- | --- | --- |"
   for test in $1; do
@@ -87,18 +84,11 @@ run_table() {
     fi
     change=$(awk -v a="$main_avg" -v b="$pr_avg" 'BEGIN { if (a + 0 > 0 && b + 0 > 0) printf "%+.1f%%", 100 * (b - a) / a; else print "n/a" }')
     ratio=$(awk -v a="$pg_tps" -v b="$pr_tps" 'BEGIN { if (a + 0 > 0 && b + 0 > 0) printf "%.1f%%", 100 * b / a; else print "n/a" }')
-    if awk -v a="$pg_tps" -v b="$pr_tps" 'BEGIN { exit !(a + 0 > 0 && b + 0 > 0) }'; then
-      total=$(awk -v t="$total" -v a="$pg_tps" -v b="$pr_tps" 'BEGIN { print t + log(100 * b / a) }')
-      count=$((count + 1))
-    fi
     echo "| $test | $main_avg | $pr_avg | $change | $main_tps | $pr_tps | $pg_tps | $ratio |"
   done
-  awk -v t="$total" -v c="$count" 'BEGIN { if (c > 0) printf "%.1f%%\n", exp(t / c); else print "n/a" }'
 }
 
-reads=$(run_table "$read_tests")
-writes=$(run_table "$write_tests")
-printf '**Reads**\n\n%s\n\n**Writes**\n\n%s\n' "$(echo "$reads" | sed '$d')" "$(echo "$writes" | sed '$d')"
-if [ -n "$pg_bin" ]; then
-  printf '\n%s reads, %s writes vs Postgres\n' "$(echo "$reads" | tail -1)" "$(echo "$writes" | tail -1)"
-fi
+printf '**Reads**\n\n'
+run_table "$read_tests"
+printf '\n**Writes**\n\n'
+run_table "$write_tests"

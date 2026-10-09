@@ -212,15 +212,15 @@ fn target(right: &Plan) -> Option<&TableDef> {
 }
 
 /// Lookup is how a join can look a left row's matches up in an index of the right input's table or catalog.
-struct Lookup {
-    method: JoinMethod,
+pub(crate) struct Lookup {
+    pub(crate) method: JoinMethod,
     /// About how many right rows each lookup finds.
-    matches: f64,
+    pub(crate) matches: f64,
 }
 
 /// lookup returns the index of the right input's table or catalog that a join's equalities let it look rows up in
 /// most cheaply, with the left expressions that give its first columns, when the right input allows lookups at all.
-fn lookup(ctx: &mut Ctx<'_>, right: &Plan, condition: &Expr, left_width: usize) -> Option<Lookup> {
+pub(crate) fn lookup(ctx: &mut Ctx<'_>, right: &Plan, condition: &Expr, left_width: usize) -> Option<Lookup> {
     let (left_keys, right_keys) = crate::plan::join_keys(condition, left_width);
     if let Some(catalog) = catalog_target(right) {
         return catalog_lookup(catalog, &left_keys, &right_keys);
