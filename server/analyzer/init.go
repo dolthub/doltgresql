@@ -62,12 +62,6 @@ const (
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
 func Init() {
-	// GMS must not substitute a set-returning projection into a scalar filter below that projection.
-	for i, rule := range analyzer.DefaultRules {
-		if rule.Id.String() == "pushdownSubqueryAliasFilters" {
-			analyzer.DefaultRules[i].Apply = preserveSetReturningFilters(rule.Apply)
-		}
-	}
 	// OnceBeforeDefault runs before AlwaysBeforeDefault in GMS
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
 		{Id: ruleId_ResolveType, Apply: ResolveType}, // ResolveType rule must run before simplifyFilters rule in GMS
