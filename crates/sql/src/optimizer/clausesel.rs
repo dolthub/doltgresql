@@ -14,11 +14,10 @@
 
 //! Postgres' optimizer/path/clausesel.c: the share of rows that a list of clauses keeps.
 
-use std::rc::Rc;
-
 use super::PlannerInfo;
-use super::clauses::{contain_volatile_functions, pull_varnos};
-use super::nodes::{JoinType, RestrictInfo, SpecialJoinInfo, var_parts};
+use super::clauses::contain_volatile_functions;
+use super::nodes::{JoinType, RestrictInfo, RinfoId, SpecialJoinInfo, VarNode};
+use super::var::pull_varnos;
 use crate::colstats::TableStats;
 use crate::expr::{CmpOp, Expr};
 use crate::types::Value;
@@ -41,20 +40,21 @@ struct RangeQueryClause<'e> {
 /// clauselist_selectivity estimates it, for the relation at a range table index or, when it is zero, for the join
 /// that a SpecialJoinInfo describes.
 pub fn clauselist_selectivity(
-    root: &mut PlannerInfo<'_, '_>,
-    clauses: &[Rc<RestrictInfo>],
+    root: &PlannerInfo<'_, '_>,
+    clauses: &[RinfoId],
     varrelid: usize,
     jointype: JoinType,
     sjinfo: Option<&SpecialJoinInfo>,
 ) -> f64 {
-    let clauses: Vec<(&Expr, Option<&RestrictInfo>)> = clauses.iter().map(|r| (&r.clause, Some(&**r))).collect();
+    let clauses: Vec<(&Expr, Option<&RestrictInfo>)> =
+        clauses.iter().map(|&r| (&root.rinfos[r].clause, Some(&root.rinfos[r]))).collect();
     list_selectivity(root, &clauses, varrelid, jointype, sjinfo)
 }
 
 /// list_selectivity is clauselist_selectivity for clauses that may lack a RestrictInfo, such as an AND's arguments.
 /// A pair of bounds on one expression keeps the rows between them rather than the product of their shares.
 fn list_selectivity(
-    root: &mut PlannerInfo<'_, '_>,
+    root: &PlannerInfo<'_, '_>,
     clauses: &[(&Expr, Option<&RestrictInfo>)],
     varrelid: usize,
     jointype: JoinType,
@@ -76,10 +76,10 @@ fn list_selectivity(
             continue;
         };
         let single = match rinfo {
-            Some(rinfo) => rinfo.clause_relids.count_ones() == 1,
-            None => pull_varnos(clause).count_ones() == 1,
+            Some(rinfo) => rinfo.clause_relids.num_members() == 1,
+            None => pull_varnos(root, clause).num_members() == 1,
         };
-        let varonleft = match (is_pseudo_constant(r), is_pseudo_constant(l)) {
+        let varonleft = match (is_pseudo_constant(root, r), is_pseudo_constant(root, l)) {
             (true, _) => true,
             (false, true) => false,
             (false, false) => {
@@ -133,14 +133,14 @@ fn add_range_clause<'e>(rqlist: &mut Vec<RangeQueryClause<'e>>, var: &'e Expr, i
 
 /// is_pseudo_constant reports whether an expression reads no Var of the query and calls no volatile function, so it
 /// is constant for one run of the plan, as Postgres' is_pseudo_constant_clause does.
-fn is_pseudo_constant(e: &Expr) -> bool {
-    pull_varnos(e) == 0 && !contain_volatile_functions(e)
+fn is_pseudo_constant(root: &PlannerInfo<'_, '_>, e: &Expr) -> bool {
+    pull_varnos(root, e).is_empty() && !contain_volatile_functions(root.glob, e)
 }
 
 /// clause_selectivity returns the share of rows that one clause keeps, as Postgres' clause_selectivity estimates it:
 /// as a join clause when it reads several relations and a join is given, and otherwise as a restriction of one.
 pub fn clause_selectivity(
-    root: &mut PlannerInfo<'_, '_>,
+    root: &PlannerInfo<'_, '_>,
     clause: &Expr,
     rinfo: Option<&RestrictInfo>,
     varrelid: usize,
@@ -154,12 +154,12 @@ pub fn clause_selectivity(
         return 1.0;
     }
     let cache =
-        rinfo.filter(|r| varrelid == 0 || r.clause_relids == super::nodes::singleton(varrelid)).map(
-            |r| match jointype {
+        rinfo.filter(|r| varrelid == 0 || r.clause_relids == super::nodes::Relids::singleton(varrelid)).map(|r| {
+            match jointype {
                 JoinType::Inner => &r.norm_selec,
                 _ => &r.outer_selec,
-            },
-        );
+            }
+        });
     if let Some(cached) = cache
         && cached.get() >= 0.0
     {
@@ -174,7 +174,7 @@ pub fn clause_selectivity(
 
 /// clause_selectivity_uncached is clause_selectivity for a clause whose selectivity is not cached.
 fn clause_selectivity_uncached(
-    root: &mut PlannerInfo<'_, '_>,
+    root: &PlannerInfo<'_, '_>,
     clause: &Expr,
     rinfo: Option<&RestrictInfo>,
     varrelid: usize,
@@ -182,8 +182,8 @@ fn clause_selectivity_uncached(
     sjinfo: Option<&SpecialJoinInfo>,
 ) -> f64 {
     let treat_as_join_clause = || {
-        let relids = rinfo.map_or_else(|| pull_varnos(clause), |r| r.clause_relids);
-        varrelid == 0 && sjinfo.is_some() && relids.count_ones() > 1
+        let relids = rinfo.map_or_else(|| pull_varnos(root, clause), |r| r.clause_relids.clone());
+        varrelid == 0 && sjinfo.is_some() && relids.num_members() > 1
     };
     match clause {
         Expr::Const(Value::Bool(b)) => f64::from(u8::from(*b)),
@@ -214,14 +214,14 @@ fn clause_selectivity_uncached(
 /// restriction_selectivity returns the share of a relation's rows that a clause keeps, from the statistics of the
 /// relation at the range table index, or of the one relation that the clause reads when it is zero, as Postgres'
 /// restriction estimators find them, where the Vars of other relations are unknown values.
-fn restriction_selectivity(root: &mut PlannerInfo<'_, '_>, clause: &Expr, varrelid: usize) -> f64 {
-    let relids = pull_varnos(clause);
+fn restriction_selectivity(root: &PlannerInfo<'_, '_>, clause: &Expr, varrelid: usize) -> f64 {
+    let relids = pull_varnos(root, clause).difference(&root.outer_join_rels);
     let varno = match varrelid {
-        0 if relids.count_ones() == 1 => relids.trailing_zeros() as usize,
+        0 => relids.singleton_member().unwrap_or(0),
         varrelid => varrelid,
     };
     let stats = (varno != 0).then(|| root.rels[varno].stats.clone()).flatten();
-    let local = to_attnos(clause.clone(), varno);
+    let local = to_attnos(root, clause.clone(), varno);
     match stats {
         Some(stats) => crate::colstats::selectivity(&stats, &local),
         None => crate::colstats::selectivity(&TableStats::default(), &local),
@@ -230,12 +230,12 @@ fn restriction_selectivity(root: &mut PlannerInfo<'_, '_>, clause: &Expr, varrel
 
 /// to_attnos rewrites a clause's Vars of the relation at a range table index into columns of its rows, and the
 /// Vars of other relations into parameters, whose values are unknown.
-fn to_attnos(e: Expr, varno: usize) -> Expr {
+fn to_attnos(root: &PlannerInfo<'_, '_>, e: Expr, varno: usize) -> Expr {
     match e {
-        Expr::Column(c) => match var_parts(c) {
-            (v, attno) if v == varno => Expr::Column(attno),
+        Expr::Column(id) => match root.glob.node(id) {
+            VarNode::Var(var) if var.varno == varno => Expr::Column(var.varattno),
             _ => Expr::Param(usize::MAX),
         },
-        other => other.map_children(&mut |c| to_attnos(c, varno)),
+        other => other.map_children(&mut |c| to_attnos(root, c, varno)),
     }
 }

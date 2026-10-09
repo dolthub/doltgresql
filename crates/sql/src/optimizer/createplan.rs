@@ -13,79 +13,104 @@
 // limitations under the License.
 
 //! Postgres' optimizer/plan/createplan.c and the parts of setrefs.c that it needs: turning the cheapest path into
-//! Doltgres' plan, whose expressions read columns of their input rows by position rather than Vars.
-
-use std::rc::Rc;
+//! Doltgres' plan, whose expressions read columns of their input rows by position rather than Vars. A Var reads its
+//! relation's column wherever an outer join has made it NULL, as the executor pads the rows that outer joins add, and
+//! a PlaceHolderVar is computed where it is evaluated and read from there above.
 
 use super::PlannerInfo;
 use super::costsize::cost_qual_eval_node;
-use super::indxpath::{base_vars, to_attnos};
+use super::indxpath::to_attnos;
 use super::joinpath::clause_sides_match_join;
-use super::nodes::{JoinType, Path, PathKind, Relids, RestrictInfo, is_subset};
-use super::restrictinfo::is_pushed_down;
+use super::nodes::{JoinType, Path, PathKind, RinfoId, RteKind, VarNode};
+use super::restrictinfo::rinfo_is_pushed_down;
 use crate::expr::Expr;
 use crate::plan::{JoinKind, JoinMethod, Plan};
+use crate::types::Value;
+
+/// Slot is what a column of a plan's rows holds: a relation's attribute, or a PlaceHolderVar by its ID.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Slot {
+    Var(usize, usize),
+    PlaceHolder(usize),
+}
 
 /// create_plan makes the plan of a path of the relation that joins every base relation, whose columns are the
-/// query's output expressions, where those that nothing reads are NULL or whatever the path's rows hold there.
+/// query's target list, where those that nothing reads are NULL or whatever the path's rows hold there.
 pub fn create_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> Plan {
     let (plan, layout) = create_plan_recurse(root, path);
     let exprs: Vec<Option<Expr>> =
-        root.parse.output.iter().map(|e| e.as_ref().map(|e| positional(e.clone(), &layout))).collect();
+        root.parse.target_list.iter().map(|e| e.as_ref().map(|e| positional(root, e.clone(), &layout))).collect();
     if exprs.len() == layout.len()
         && exprs.iter().enumerate().all(|(i, e)| e.as_ref().is_none_or(|e| *e == Expr::Column(i)))
     {
         return plan;
     }
-    let exprs = exprs.into_iter().map(|e| e.unwrap_or(Expr::Const(crate::types::Value::Null))).collect();
+    let exprs = exprs.into_iter().map(|e| e.unwrap_or(Expr::Const(Value::Null))).collect();
     Plan::Project { input: Box::new(plan), exprs }
 }
 
-/// create_plan_recurse makes the plan of a path, returning it with the Var of each column of its rows.
-fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<usize>) {
-    match &path.kind {
-        PathKind::SeqScan | PathKind::Lookup(_) => create_scan_plan(root, path.relids.trailing_zeros() as usize),
-        PathKind::IndexScan(scan, exact) => {
-            let rel = path.relids.trailing_zeros() as usize;
-            let layout = base_vars(rel, scan.table.columns.len());
-            let plan = Plan::IndexScan(scan.clone());
-            match *exact {
-                true => (plan, layout),
-                false => {
-                    (filtered(plan, &order_qual_clauses(root.rels[rel].baserestrictinfo.clone()), &layout), layout)
-                }
+/// create_plan_recurse makes the plan of a path, returning it with what each column of its rows holds.
+fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<Slot>) {
+    let (plan, layout) = match &path.kind {
+        PathKind::SeqScan | PathKind::Lookup(_) => create_scan_plan(root, path.parent),
+        PathKind::Result(quals) => {
+            let quals = quals.iter().map(|q| positional(root, q.clone(), &[]));
+            let predicate = quals.reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+            match predicate {
+                Some(predicate) => (Plan::Filter { input: Box::new(Plan::OneRow), predicate }, Vec::new()),
+                None => (Plan::OneRow, Vec::new()),
             }
         }
-        PathKind::Material(subpath) | PathKind::Sort(subpath) => create_plan_recurse(root, subpath),
+        PathKind::IndexScan(scan, exact) => {
+            let rel = path.parent;
+            let layout = base_slots(rel, scan.table.columns.len());
+            let plan = Plan::IndexScan(scan.clone());
+            let quals = root.rels[rel].baserestrictinfo.iter().copied();
+            let quals: Vec<RinfoId> = quals.filter(|&r| !*exact || root.rinfos[r].pseudoconstant).collect();
+            let quals = order_qual_clauses(root, quals);
+            (filtered(root, plan, &quals, &layout), layout)
+        }
+        PathKind::Append(_) => {
+            let layout: Vec<Slot> = root.rels[path.parent].reltarget.exprs.iter().map(|e| slot(root, e)).collect();
+            let nulls =
+                Plan::Project { input: Box::new(Plan::OneRow), exprs: vec![Expr::Const(Value::Null); layout.len()] };
+            (Plan::Filter { input: Box::new(nulls), predicate: Expr::Const(Value::Bool(false)) }, layout)
+        }
+        PathKind::Material(subpath) | PathKind::Sort(subpath) => return create_plan_recurse(root, subpath),
         PathKind::NestLoop(join) | PathKind::HashJoin(join) => {
             let (outer_plan, outer_layout) = create_plan_recurse(root, &join.outer);
             let (inner_plan, inner_layout) = create_plan_recurse(root, &join.inner);
             let layout = [outer_layout.as_slice(), inner_layout.as_slice()].concat();
-            let (joinquals, otherquals): (Vec<Rc<RestrictInfo>>, Vec<Rc<RestrictInfo>>) = match join.jointype.is_outer()
-            {
-                true => join.joinrestrictinfo.iter().cloned().partition(|r| !is_pushed_down(r, path.relids)),
+            let (joinquals, otherquals): (Vec<RinfoId>, Vec<RinfoId>) = match join.jointype.is_outer() {
+                true => join
+                    .joinrestrictinfo
+                    .iter()
+                    .copied()
+                    .partition(|&r| !rinfo_is_pushed_down(&root.rinfos[r], &path.relids)),
                 false => (join.joinrestrictinfo.clone(), Vec::new()),
             };
-            let joinquals = match &path.kind {
+            let joinquals: Vec<Expr> = match &path.kind {
                 PathKind::HashJoin(_) => {
-                    let (hashclauses, rest): (Vec<Rc<RestrictInfo>>, Vec<Rc<RestrictInfo>>) =
-                        joinquals.into_iter().partition(|r| {
-                            r.hashjoinable && clause_sides_match_join(r, join.outer.relids, join.inner.relids)
-                        });
-                    [get_switched_clauses(&hashclauses, join.outer.relids), order_qual_clauses(rest)].concat()
+                    let (hashclauses, rest): (Vec<RinfoId>, Vec<RinfoId>) = joinquals.into_iter().partition(|&r| {
+                        let r = &root.rinfos[r];
+                        r.hashjoinable && clause_sides_match_join(r, &join.outer.relids, &join.inner.relids)
+                    });
+                    let mut quals = get_switched_clauses(root, &hashclauses, &join.outer.relids);
+                    quals.extend(order_qual_clauses(root, rest).into_iter().map(|r| root.rinfos[r].clause.clone()));
+                    quals
                 }
-                _ => order_qual_clauses(joinquals),
+                _ => order_qual_clauses(root, joinquals).into_iter().map(|r| root.rinfos[r].clause.clone()).collect(),
             };
-            let otherquals = order_qual_clauses(otherquals);
+            let otherquals = order_qual_clauses(root, otherquals);
             let method = match (&path.kind, &join.inner.kind) {
                 (PathKind::HashJoin(_), _) => JoinMethod::Hash,
                 (_, PathKind::Lookup(JoinMethod::Lookup { scan, keys })) => JoinMethod::Lookup {
                     scan: scan.clone(),
-                    keys: keys.iter().map(|k| positional(k.clone(), &outer_layout)).collect(),
+                    keys: keys.iter().map(|k| positional(root, k.clone(), &outer_layout)).collect(),
                 },
                 (_, PathKind::Lookup(JoinMethod::CatalogLookup { index, keys })) => JoinMethod::CatalogLookup {
                     index,
-                    keys: keys.iter().map(|k| positional(k.clone(), &outer_layout)).collect(),
+                    keys: keys.iter().map(|k| positional(root, k.clone(), &outer_layout)).collect(),
                 },
                 (_, PathKind::Material(_)) => JoinMethod::MaterializedLoop,
                 _ => JoinMethod::NestedLoop,
@@ -98,93 +123,146 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 JoinType::Semi => JoinKind::Semi,
                 JoinType::Anti => JoinKind::Anti,
             };
+            let condition = joinquals
+                .into_iter()
+                .map(|c| positional(root, c, &layout))
+                .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
             let plan = Plan::Join {
                 left: Box::new(outer_plan),
                 right: Box::new(inner_plan),
                 kind,
-                condition: and(&joinquals, &layout),
+                condition,
                 lateral: false,
                 method,
             };
-            (filtered(plan, &otherquals, &layout), layout)
+            (filtered(root, plan, &otherquals, &layout), layout)
         }
+    };
+    add_placeholders(root, path.parent, plan, layout)
+}
+
+/// add_placeholders computes the PlaceHolderVars of a relation's target that its plan's rows do not hold yet, after
+/// its columns, as Postgres evaluates them in the target list of the plan where they are evaluated.
+fn add_placeholders(root: &PlannerInfo<'_, '_>, rel: usize, plan: Plan, mut layout: Vec<Slot>) -> (Plan, Vec<Slot>) {
+    let width = layout.len();
+    let mut exprs: Vec<Expr> = (0..width).map(Expr::Column).collect();
+    for e in &root.rels[rel].reltarget.exprs {
+        let Expr::Column(id) = e else { continue };
+        let VarNode::PlaceHolderVar(phv) = root.glob.node(*id) else { continue };
+        if layout.contains(&Slot::PlaceHolder(phv.phid)) {
+            continue;
+        }
+        exprs.push(positional(root, root.glob.placeholder(phv.phid).phexpr.clone(), &layout));
+        layout.push(Slot::PlaceHolder(phv.phid));
+    }
+    match exprs.len() == width {
+        true => (plan, layout),
+        false => (Plan::Project { input: Box::new(plan), exprs }, layout),
     }
 }
 
 /// create_scan_plan makes the plan that reads a base relation's rows and tests its restrictions: a scan of its table
-/// under a filter, or its own plan with the restrictions pushed into it, where an index of a system catalog may
-/// answer them.
-fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<usize>) {
-    let rte = root.parse.rte(rel);
-    let plan = rte.plan.clone();
-    let layout = base_vars(rel, plan.width());
-    let restrictinfo = order_qual_clauses(root.rels[rel].baserestrictinfo.clone());
-    if rte.table().is_some() {
-        return (filtered(plan, &restrictinfo, &layout), layout);
+/// under a filter, the one row of a RESULT relation, or its own plan with the restrictions pushed into it, where an
+/// index of a system catalog may answer them.
+fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Slot>) {
+    let restrictinfo = order_qual_clauses(root, root.rels[rel].baserestrictinfo.clone());
+    match root.parse.rte(rel).kind.clone() {
+        RteKind::Relation(plan, _) => {
+            let layout = base_slots(rel, plan.width());
+            (filtered(root, plan, &restrictinfo, &layout), layout)
+        }
+        RteKind::Result => (filtered(root, Plan::OneRow, &restrictinfo, &[]), Vec::new()),
+        RteKind::Plan(plan) => {
+            let layout = base_slots(rel, plan.width());
+            let predicate = restrictinfo
+                .iter()
+                .map(|&r| to_attnos(root, root.rinfos[r].clause.clone(), rel))
+                .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+            let plan = match predicate {
+                Some(predicate) => crate::plan::Planner { ctx: root.ctx, outer: Vec::new() }
+                    .use_indexes(crate::plan::push_down(plan, predicate)),
+                None => plan,
+            };
+            (plan, layout)
+        }
+        RteKind::Subquery(..) | RteKind::Join(_) => unreachable!("only base relations are scanned"),
     }
-    let plan = match restrictinfo
-        .iter()
-        .map(|r| to_attnos(r.clause.clone(), rel))
-        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
-    {
-        Some(predicate) => crate::plan::Planner { ctx: root.ctx, outer: Vec::new() }
-            .use_indexes(crate::plan::push_down(plan, predicate)),
-        None => plan,
-    };
-    (plan, layout)
 }
 
 /// order_qual_clauses sorts clauses by the cost of evaluating them, cheapest first and otherwise in their order, as
 /// Postgres' function of the same name does.
-fn order_qual_clauses(mut clauses: Vec<Rc<RestrictInfo>>) -> Vec<Rc<RestrictInfo>> {
-    clauses
-        .sort_by(|a, b| cost_qual_eval_node(&a.clause).per_tuple.total_cmp(&cost_qual_eval_node(&b.clause).per_tuple));
+fn order_qual_clauses(root: &PlannerInfo<'_, '_>, mut clauses: Vec<RinfoId>) -> Vec<RinfoId> {
+    clauses.sort_by(|&a, &b| {
+        let cost = |r: RinfoId| cost_qual_eval_node(&root.rinfos[r].clause).per_tuple;
+        cost(a).total_cmp(&cost(b))
+    });
     clauses
 }
 
-/// get_switched_clauses returns hash clauses with each one's outer side first, as Postgres' function of the same name
-/// does.
-fn get_switched_clauses(clauses: &[Rc<RestrictInfo>], outer_relids: Relids) -> Vec<Rc<RestrictInfo>> {
+/// get_switched_clauses returns the clauses of hash clauses with each one's outer side first, as Postgres' function
+/// of the same name does.
+fn get_switched_clauses(
+    root: &PlannerInfo<'_, '_>,
+    clauses: &[RinfoId],
+    outer_relids: &super::nodes::Relids,
+) -> Vec<Expr> {
     clauses
         .iter()
-        .map(|r| match &r.clause {
-            Expr::Compare(op, left, right) if r.can_join && is_subset(r.right_relids, outer_relids) => {
-                let clause = Expr::Compare(crate::indexscan::swap(*op), right.clone(), left.clone());
-                Rc::new(RestrictInfo {
-                    clause,
-                    left_relids: r.right_relids,
-                    right_relids: r.left_relids,
-                    ..(**r).clone()
-                })
+        .map(|&r| {
+            let r = &root.rinfos[r];
+            match &r.clause {
+                Expr::Compare(op, left, right) if r.can_join && r.right_relids.is_subset(outer_relids) => {
+                    Expr::Compare(crate::indexscan::swap(*op), right.clone(), left.clone())
+                }
+                other => other.clone(),
             }
-            _ => r.clone(),
         })
         .collect()
 }
 
 /// filtered returns a plan under a filter of clauses over its rows, or the plan itself without clauses.
-fn filtered(plan: Plan, clauses: &[Rc<RestrictInfo>], layout: &[usize]) -> Plan {
-    match and(clauses, layout) {
+fn filtered(root: &PlannerInfo<'_, '_>, plan: Plan, clauses: &[RinfoId], layout: &[Slot]) -> Plan {
+    let predicate = clauses
+        .iter()
+        .map(|&r| positional(root, root.rinfos[r].clause.clone(), layout))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    match predicate {
         Some(predicate) => Plan::Filter { input: Box::new(plan), predicate },
         None => plan,
     }
 }
 
-/// and returns the conjunction of clauses over rows of the Vars of a layout, or None without clauses.
-fn and(clauses: &[Rc<RestrictInfo>], layout: &[usize]) -> Option<Expr> {
-    clauses.iter().map(|r| positional(r.clause.clone(), layout)).reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
+/// base_slots returns the slots of a base relation's columns in order.
+fn base_slots(rel: usize, width: usize) -> Vec<Slot> {
+    (0..width).map(|attno| Slot::Var(rel, attno)).collect()
 }
 
-/// positional rewrites an expression over Vars into one over rows of the Vars of a layout, as Postgres' setrefs.c
-/// rewrites a plan's Vars to refer to its inputs' columns.
-fn positional(e: Expr, layout: &[usize]) -> Expr {
-    match e {
-        Expr::Column(v) => Expr::Column(position(layout, v)),
-        other => other.map_children(&mut |c| positional(c, layout)),
+/// slot returns the slot of a Var or PlaceHolderVar.
+fn slot(root: &PlannerInfo<'_, '_>, e: &Expr) -> Slot {
+    let Expr::Column(id) = e else { unreachable!("a relation's target holds Vars") };
+    match root.glob.node(*id) {
+        VarNode::Var(var) => Slot::Var(var.varno, var.varattno),
+        VarNode::PlaceHolderVar(phv) => Slot::PlaceHolder(phv.phid),
     }
 }
 
-/// position returns the column of a layout's rows that holds a Var.
-fn position(layout: &[usize], var: usize) -> usize {
-    layout.iter().position(|v| *v == var).expect("every Var has a column")
+/// positional rewrites an expression over Vars and PlaceHolderVars into one over rows of a layout's slots, as
+/// Postgres' setrefs.c rewrites a plan's Vars to refer to its inputs' columns. A PlaceHolderVar that the rows do not
+/// hold is computed from its expression.
+fn positional(root: &PlannerInfo<'_, '_>, e: Expr, layout: &[Slot]) -> Expr {
+    match e {
+        Expr::Column(id) => {
+            let target = slot(root, &Expr::Column(id));
+            match layout.iter().position(|s| *s == target) {
+                Some(i) => Expr::Column(i),
+                None => match root.glob.node(id) {
+                    VarNode::PlaceHolderVar(phv) => {
+                        positional(root, root.glob.placeholder(phv.phid).phexpr.clone(), layout)
+                    }
+                    VarNode::Var(_) => unreachable!("every Var has a column"),
+                },
+            }
+        }
+        other => other.map_children(&mut |c| positional(root, c, layout)),
+    }
 }

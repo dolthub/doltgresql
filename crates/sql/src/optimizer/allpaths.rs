@@ -18,68 +18,127 @@
 use std::rc::Rc;
 
 use super::PlannerInfo;
-use super::costsize::{cost_opaque_scan, cost_seqscan, set_baserel_size_estimates};
+use super::costsize::{Costs, cost_opaque_scan, cost_resultscan, cost_seqscan, set_baserel_size_estimates};
 use super::indxpath::create_index_paths;
 use super::initsplan::JoinList;
-use super::joinrels::join_search_one_level;
-use super::nodes::{Path, PathKind, members};
+use super::joinrels::{is_dummy_rel, join_search_one_level};
+use super::nodes::{JoinType, Path, PathKind, RelOptKind, RteKind};
 use super::pathnode::{add_path, set_cheapest};
+use crate::plan::Plan;
 
 /// make_one_rel finds the paths of every base relation and then of the join of them all, returning that relation,
 /// as Postgres' function of the same name does.
-pub fn make_one_rel(root: &mut PlannerInfo<'_, '_>, joinlist: Vec<JoinList>) -> usize {
-    let baserels: Vec<usize> = members(root.all_baserels).collect();
-    root.total_table_pages = baserels.iter().map(|&rel| root.rels[rel].pages).sum();
-    for &rel in &baserels {
-        set_baserel_size_estimates(root, rel);
-    }
-    for &rel in &baserels {
-        set_rel_pathlist(root, rel);
-    }
-    make_rel_from_joinlist(root, &joinlist)
+pub fn make_one_rel(root: &mut PlannerInfo<'_, '_>, joinlist: &[JoinList]) -> usize {
+    set_base_rel_consider_startup(root);
+    set_base_rel_sizes(root);
+    root.total_table_pages = (1..=root.parse.rtable.len())
+        .filter(|&rti| root.rels[rti].reloptkind == RelOptKind::BaseRel && !is_dummy_rel(root, rti))
+        .map(|rti| root.rels[rti].pages)
+        .sum();
+    set_base_rel_pathlists(root);
+    make_rel_from_joinlist(root, joinlist).expect("the join tree has a relation")
 }
 
-/// set_rel_pathlist finds the paths of a base relation: reading every row, and its index paths, as Postgres'
-/// set_plain_rel_pathlist does.
-fn set_rel_pathlist(root: &mut PlannerInfo<'_, '_>, rel: usize) {
-    let parent = &root.rels[rel];
-    let (startup_cost, total_cost) = match root.parse.rte(rel).table() {
-        Some(_) => cost_seqscan(parent, root.enables),
-        None => {
-            let catalog = matches!(root.parse.rte(rel).plan, crate::plan::Plan::Catalog(_));
-            cost_opaque_scan(parent, catalog, root.enables)
+/// set_base_rel_consider_startup marks the one inner relation of each semi or anti join as worth paths that start
+/// cheaply when parameterized, as Postgres' function of the same name does.
+fn set_base_rel_consider_startup(root: &mut PlannerInfo<'_, '_>) {
+    for sj in root.join_info_list.clone() {
+        let sjinfo = &root.sjinfos[sj];
+        if matches!(sjinfo.jointype, JoinType::Semi | JoinType::Anti)
+            && let Some(varno) = sjinfo.syn_righthand.singleton_member()
+        {
+            root.rels[varno].consider_param_startup = true;
         }
-    };
+    }
+}
+
+/// set_base_rel_sizes estimates the size of each base relation, as Postgres' function of the same name does.
+fn set_base_rel_sizes(root: &mut PlannerInfo<'_, '_>) {
+    for rti in 1..=root.parse.rtable.len() {
+        if root.rels[rti].reloptkind == RelOptKind::BaseRel {
+            set_baserel_size_estimates(root, rti);
+        }
+    }
+}
+
+/// set_base_rel_pathlists finds the paths of each base relation, as Postgres' function of the same name does.
+fn set_base_rel_pathlists(root: &mut PlannerInfo<'_, '_>) {
+    for rti in 1..=root.parse.rtable.len() {
+        if root.rels[rti].reloptkind == RelOptKind::BaseRel {
+            set_rel_pathlist(root, rti);
+        }
+    }
+}
+
+/// set_rel_pathlist finds the paths of a base relation by its range table entry's kind, as Postgres' function of the
+/// same name does: a table's sequential and index paths, the one row of a RESULT relation, or the scan of any other
+/// input's plan.
+fn set_rel_pathlist(root: &mut PlannerInfo<'_, '_>, rel: usize) {
+    if !is_dummy_rel(root, rel) {
+        match &root.parse.rte(rel).kind {
+            RteKind::Relation(..) => {
+                let costs = cost_seqscan(root, rel);
+                add_scan_path(root, rel, PathKind::SeqScan, costs);
+                create_index_paths(root, rel);
+            }
+            RteKind::Result => {
+                let costs = cost_resultscan(root, rel);
+                add_scan_path(root, rel, PathKind::SeqScan, costs);
+            }
+            RteKind::Plan(plan) => {
+                let catalog = matches!(plan, Plan::Catalog(_));
+                let costs = cost_opaque_scan(root, rel, catalog);
+                add_scan_path(root, rel, PathKind::SeqScan, costs);
+                create_index_paths(root, rel);
+            }
+            RteKind::Subquery(..) | RteKind::Join(_) => unreachable!("only base relations have paths"),
+        }
+    }
+    set_cheapest(&mut root.rels[rel]);
+}
+
+/// add_scan_path adds a path of a base relation that reads its rows, as Postgres' create_seqscan_path,
+/// create_resultscan_path, and create_functionscan_path make.
+fn add_scan_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    kind: PathKind,
+    (disabled_nodes, startup_cost, total_cost): Costs,
+) {
+    let parent = &root.rels[rel];
     let path = Path {
-        kind: PathKind::SeqScan,
-        relids: parent.relids,
-        param: 0,
+        kind,
+        parent: rel,
+        relids: parent.relids.clone(),
+        param: parent.lateral_relids.clone(),
         pathkeys: Vec::new(),
         rows: parent.rows,
-        width: parent.width,
+        width: parent.reltarget.width,
+        disabled_nodes,
         startup_cost,
         total_cost,
     };
     add_path(&mut root.rels[rel], Rc::new(path));
-    create_index_paths(root, rel);
-    set_cheapest(&mut root.rels[rel]);
 }
 
 /// make_rel_from_joinlist returns the relation that joins a joinlist's members, searching for its cheapest paths
 /// when it has several, as Postgres' function of the same name does.
-fn make_rel_from_joinlist(root: &mut PlannerInfo<'_, '_>, joinlist: &[JoinList]) -> usize {
-    let initial_rels: Vec<usize> = joinlist
-        .iter()
-        .map(|item| match item {
+fn make_rel_from_joinlist(root: &mut PlannerInfo<'_, '_>, joinlist: &[JoinList]) -> Option<usize> {
+    let mut initial_rels = Vec::new();
+    for item in joinlist {
+        initial_rels.push(match item {
             JoinList::Rel(varno) => *varno,
-            JoinList::List(list) => make_rel_from_joinlist(root, list),
-        })
-        .collect();
-    if let [rel] = initial_rels.as_slice() {
-        return *rel;
+            JoinList::List(list) => make_rel_from_joinlist(root, list)?,
+        });
     }
-    root.initial_rels = initial_rels.clone();
-    standard_join_search(root, initial_rels)
+    match initial_rels.as_slice() {
+        [] => None,
+        [rel] => Some(*rel),
+        _ => {
+            root.initial_rels = initial_rels.clone();
+            Some(standard_join_search(root, initial_rels))
+        }
+    }
 }
 
 /// standard_join_search finds the join relations of each number of relations in turn, from pairs to all of them,

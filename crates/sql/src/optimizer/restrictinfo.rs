@@ -12,47 +12,147 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Postgres' optimizer/util/restrictinfo.c: building the RestrictInfo of a clause.
+//! Postgres' optimizer/util/restrictinfo.c: building the RestrictInfo of a clause, and the tests of where a clause
+//! may be evaluated.
 
-use super::clauses::{contain_volatile_functions, pull_varnos};
-use super::nodes::{Relids, RestrictInfo, is_subset, overlap};
-use crate::expr::{CmpOp, Expr};
+use std::cell::Cell;
 
-/// make_restrictinfo builds a RestrictInfo of a clause, as Postgres' make_restrictinfo does, finding the relations
-/// of each side of a binary operator clause, which a join can test, and whether it is an equality that a hash join
-/// can use.
-pub fn make_restrictinfo(
-    clause: Expr,
-    is_pushed_down: bool,
-    pseudoconstant: bool,
-    required_relids: Relids,
-) -> RestrictInfo {
-    let clause_relids = pull_varnos(&clause);
-    let (mut left_relids, mut right_relids, mut can_join, mut hashjoinable) = (0, 0, false, false);
-    if let Expr::Compare(op, l, r) = &clause {
-        let (left, right) = (pull_varnos(l), pull_varnos(r));
-        if left != 0 && right != 0 && !overlap(left, right) && !contain_volatile_functions(&clause) {
-            (left_relids, right_relids, can_join) = (left, right, true);
-            hashjoinable = *op == CmpOp::Eq && !crate::plan::has_subquery(&clause);
-        }
-    }
-    RestrictInfo {
-        clause,
-        is_pushed_down,
-        pseudoconstant,
-        clause_relids,
-        required_relids,
-        left_relids,
-        right_relids,
-        can_join,
-        hashjoinable,
-        norm_selec: std::cell::Cell::new(-1.0),
-        outer_selec: std::cell::Cell::new(-1.0),
+use super::PlannerInfo;
+use super::nodes::{Relids, RestrictInfo, RinfoId};
+use super::var::pull_varnos;
+use crate::expr::Expr;
+
+/// RestrictInfoArgs is what make_restrictinfo takes besides the clause, as Postgres' function of the same name
+/// takes it.
+#[derive(Clone, Default)]
+pub struct RestrictInfoArgs {
+    pub is_pushed_down: bool,
+    pub has_clone: bool,
+    pub is_clone: bool,
+    pub pseudoconstant: bool,
+    pub security_level: usize,
+    /// The relations the clause needs, or None for those it reads.
+    pub required_relids: Option<Relids>,
+    pub incompatible_relids: Relids,
+    pub outer_relids: Relids,
+}
+
+/// binary_op_args returns the arguments of an operator of two arguments, as Postgres' is_opclause and get_leftop and
+/// get_rightop find them.
+pub fn binary_op_args(e: &Expr) -> Option<(&Expr, &Expr)> {
+    match e {
+        Expr::Compare(_, l, r)
+        | Expr::Operator(_, _, l, r)
+        | Expr::Arith(_, l, r, _)
+        | Expr::Concat(l, r)
+        | Expr::DateTime(_, l, r)
+        | Expr::ArrayOp(_, l, r) => Some((l, r)),
+        _ => None,
     }
 }
 
-/// is_pushed_down reports whether a clause is evaluated as a filter on a join's result rather than as the join's own
-/// condition, as Postgres' RINFO_IS_PUSHED_DOWN does.
-pub fn is_pushed_down(rinfo: &RestrictInfo, joinrelids: Relids) -> bool {
-    rinfo.is_pushed_down || !is_subset(rinfo.required_relids, joinrelids)
+/// or_args returns the arguments of an OR, flattened.
+pub fn or_args(e: &Expr) -> Vec<&Expr> {
+    match e {
+        Expr::Or(a, b) => [or_args(a), or_args(b)].concat(),
+        other => vec![other],
+    }
+}
+
+/// and_args returns the arguments of an AND, flattened.
+pub fn and_args(e: &Expr) -> Vec<&Expr> {
+    match e {
+        Expr::And(a, b) => [and_args(a), and_args(b)].concat(),
+        other => vec![other],
+    }
+}
+
+/// make_restrictinfo builds the RestrictInfo of a clause and returns its ID, giving an OR clause the RestrictInfos of
+/// its arguments, as Postgres' function of the same name does.
+pub fn make_restrictinfo(root: &mut PlannerInfo<'_, '_>, clause: Expr, args: RestrictInfoArgs) -> RinfoId {
+    if matches!(clause, Expr::Or(..)) {
+        return make_sub_restrictinfos(root, clause, args);
+    }
+    make_plain_restrictinfo(root, clause, None, args)
+}
+
+/// make_plain_restrictinfo builds the RestrictInfo of a clause that is not an OR, or of an OR with its arguments'
+/// RestrictInfos, as Postgres' function of the same name does.
+pub fn make_plain_restrictinfo(
+    root: &mut PlannerInfo<'_, '_>,
+    clause: Expr,
+    orclause: Option<Vec<Vec<RinfoId>>>,
+    args: RestrictInfoArgs,
+) -> RinfoId {
+    let (left_relids, right_relids, clause_relids, can_join) = match binary_op_args(&clause) {
+        Some((l, r)) => {
+            let (left, right) = (pull_varnos(root, l), pull_varnos(root, r));
+            let clause_relids = left.union(&right);
+            let can_join = !left.is_empty() && !right.is_empty() && !left.overlap(&right);
+            (left, right, clause_relids, can_join)
+        }
+        None => (Relids::new(), Relids::new(), pull_varnos(root, &clause), false),
+    };
+    let required_relids = args.required_relids.unwrap_or_else(|| clause_relids.clone());
+    root.last_rinfo_serial += 1;
+    let rinfo = RestrictInfo {
+        clause,
+        is_pushed_down: args.is_pushed_down,
+        can_join,
+        pseudoconstant: args.pseudoconstant,
+        has_clone: args.has_clone,
+        is_clone: args.is_clone,
+        security_level: args.security_level,
+        clause_relids,
+        required_relids,
+        incompatible_relids: args.incompatible_relids,
+        outer_relids: args.outer_relids,
+        left_relids,
+        right_relids,
+        orclause,
+        rinfo_serial: root.last_rinfo_serial,
+        parent_ec: None,
+        norm_selec: Cell::new(-1.0),
+        outer_selec: Cell::new(-1.0),
+        mergeopfamilies: Vec::new(),
+        left_ec: None,
+        right_ec: None,
+        left_em: None,
+        right_em: None,
+        outer_is_left: Cell::new(false),
+        hashjoinable: false,
+    };
+    root.rinfos.push(rinfo);
+    root.rinfos.len() - 1
+}
+
+/// make_sub_restrictinfos builds the RestrictInfo of an OR clause, with RestrictInfos of the conjuncts of each of
+/// its arguments, as Postgres' function of the same name does.
+fn make_sub_restrictinfos(root: &mut PlannerInfo<'_, '_>, clause: Expr, args: RestrictInfoArgs) -> RinfoId {
+    let sub_args = RestrictInfoArgs { required_relids: None, ..args.clone() };
+    let orlist = or_args(&clause)
+        .into_iter()
+        .map(|arm| {
+            and_args(arm)
+                .into_iter()
+                .map(|c| match c {
+                    Expr::Or(..) => make_sub_restrictinfos(root, c.clone(), sub_args.clone()),
+                    other => make_plain_restrictinfo(root, other.clone(), None, sub_args.clone()),
+                })
+                .collect()
+        })
+        .collect();
+    make_plain_restrictinfo(root, clause, Some(orlist), args)
+}
+
+/// restriction_is_or_clause reports whether a RestrictInfo is of an OR clause, as Postgres' function of the same name
+/// does.
+pub fn restriction_is_or_clause(rinfo: &RestrictInfo) -> bool {
+    rinfo.orclause.is_some()
+}
+
+/// rinfo_is_pushed_down reports whether a clause is evaluated as a filter on a join's result rather than as the
+/// join's own condition, as Postgres' RINFO_IS_PUSHED_DOWN does.
+pub fn rinfo_is_pushed_down(rinfo: &RestrictInfo, joinrelids: &Relids) -> bool {
+    rinfo.is_pushed_down || !rinfo.required_relids.is_subset(joinrelids)
 }

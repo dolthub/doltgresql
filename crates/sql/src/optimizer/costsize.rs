@@ -16,13 +16,10 @@
 //! its default cost settings. Dolt has no pages, so a table's pages are those its rows would fill in Postgres' heap,
 //! and its primary index holds its rows in key order, so a scan of that index fetches nothing else.
 
-use std::rc::Rc;
-
 use super::PlannerInfo;
 use super::clausesel::{clause_selectivity, clauselist_selectivity};
-use super::nodes::{JoinType, Path, PathKind, RelOptInfo, Relids, RestrictInfo, SpecialJoinInfo};
-use super::restrictinfo::is_pushed_down;
-use crate::catalog::ColumnType;
+use super::nodes::{JoinType, Path, PathKind, RinfoId, SpecialJoinInfo};
+use super::restrictinfo::rinfo_is_pushed_down;
 use crate::expr::Expr;
 
 /// SEQ_PAGE_COST, RANDOM_PAGE_COST, CPU_TUPLE_COST, CPU_INDEX_TUPLE_COST, and CPU_OPERATOR_COST are Postgres' default
@@ -37,7 +34,8 @@ const CPU_OPERATOR_COST: f64 = 0.0025;
 /// EFFECTIVE_CACHE_SIZE is the pages that Postgres assumes the cache holds, as its default effective_cache_size.
 const EFFECTIVE_CACHE_SIZE: f64 = 524288.0;
 
-/// DISABLE_COST is the cost that Postgres adds to a path it should only take when nothing else works.
+/// DISABLE_COST is the cost that Postgres adds to a hash join whose most common value's rows would overflow the
+/// hash table's memory.
 const DISABLE_COST: f64 = 1.0e10;
 
 /// BLCKSZ is the size of a Postgres page, and PAGE_HEADER and TUPLE_HEADER the sizes of a page's and a heap row's
@@ -55,8 +53,8 @@ const HASH_MEM: f64 = 4.0 * 1024.0 * 1024.0 * 2.0;
 /// of a function written in SQL or PL/pgSQL.
 const ROUTINE_COST: f64 = 100.0;
 
-/// Enables are the enable_* settings that the planner reads, which add DISABLE_COST to a kind of path when off, as
-/// Postgres' do.
+/// Enables are the enable_* settings that the planner reads, which count a disabled plan node for a kind of path
+/// when off, as Postgres 18's do.
 #[derive(Clone, Copy, Debug)]
 pub struct Enables {
     pub seqscan: bool,
@@ -65,6 +63,9 @@ pub struct Enables {
     pub nestloop: bool,
     pub hashjoin: bool,
     pub material: bool,
+    pub sort: bool,
+    pub hashagg: bool,
+    pub self_join_elimination: bool,
 }
 
 impl Enables {
@@ -78,14 +79,20 @@ impl Enables {
             nestloop: on("enable_nestloop"),
             hashjoin: on("enable_hashjoin"),
             material: on("enable_material"),
+            sort: on("enable_sort"),
+            hashagg: on("enable_hashagg"),
+            self_join_elimination: on("enable_self_join_elimination"),
         }
     }
 }
 
-/// disabled returns DISABLE_COST for a kind of path that a setting turned off.
-fn disabled(enabled: bool) -> f64 {
-    if enabled { 0.0 } else { DISABLE_COST }
+/// disabled counts the plan node of a kind of path that a setting turned off.
+fn disabled(enabled: bool) -> usize {
+    usize::from(!enabled)
 }
+
+/// Costs are the disabled plan nodes, startup cost, and total cost of a path.
+pub type Costs = (usize, f64, f64);
 
 /// clamp_row_est rounds a row estimate to a whole number of at least one, as Postgres' function of the same name does.
 pub fn clamp_row_est(nrows: f64) -> f64 {
@@ -106,9 +113,9 @@ pub struct QualCost {
 }
 
 /// cost_qual_eval returns the cost of evaluating a list of clauses, as Postgres' function of the same name does.
-pub fn cost_qual_eval(quals: &[Rc<RestrictInfo>]) -> QualCost {
-    quals.iter().fold(QualCost::default(), |cost, q| {
-        let one = cost_qual_eval_node(&q.clause);
+pub fn cost_qual_eval(root: &PlannerInfo<'_, '_>, quals: &[RinfoId]) -> QualCost {
+    quals.iter().fold(QualCost::default(), |cost, &q| {
+        let one = cost_qual_eval_node(&root.rinfos[q].clause);
         QualCost { startup: cost.startup + one.startup, per_tuple: cost.per_tuple + one.per_tuple }
     })
 }
@@ -142,19 +149,21 @@ pub fn cost_qual_eval_node(e: &Expr) -> QualCost {
     QualCost { startup: 0.0, per_tuple }
 }
 
-/// get_typavgwidth returns the average width of a type's values, as Postgres' function of the same name estimates
-/// it: a fixed-length type's length, and otherwise a guess from its type modifier's maximum.
-pub fn get_typavgwidth(ty: ColumnType) -> f64 {
-    let typlen = crate::catalog::builtin_type(ty.oid).map_or(-1, |t| t.definition.typ_length);
+/// get_typavgwidth returns the average width of the values of a type and modifier, as Postgres' function of the same
+/// name estimates it: a fixed-length type's length, and otherwise a guess from its type modifier's maximum, where an
+/// unknown type is variable-length.
+pub fn get_typavgwidth(oid: Option<u32>, modifier: i32) -> f64 {
+    let oid = oid.unwrap_or(0);
+    let typlen = crate::catalog::builtin_type(oid).map_or(-1, |t| t.definition.typ_length);
     if typlen > 0 {
         return f64::from(typlen);
     }
-    let maxwidth = match ty.oid {
-        crate::oid::VARCHAR | crate::oid::BPCHAR if ty.modifier > 4 => (ty.modifier - 4) * 4 + 4,
+    let maxwidth = match oid {
+        crate::oid::VARCHAR | crate::oid::BPCHAR if modifier > 4 => (modifier - 4) * 4 + 4,
         _ => -1,
     };
     match maxwidth {
-        w if w > 0 && ty.oid == crate::oid::BPCHAR => f64::from(w),
+        w if w > 0 && oid == crate::oid::BPCHAR => f64::from(w),
         w if w > 0 && w <= 32 => f64::from(w),
         w if w > 0 && w < 1000 => f64::from(32 + (w - 32) / 2),
         w if w > 0 => f64::from(32 + (1000 - 32) / 2),
@@ -200,29 +209,40 @@ fn page_size(tuples: f64, width: f64) -> f64 {
     (relation_byte_size(tuples, width) / BLCKSZ).ceil()
 }
 
-/// cost_seqscan returns the startup and total costs of reading every row of a base relation and testing its
-/// restrictions, as Postgres' function of the same name does.
-pub fn cost_seqscan(rel: &RelOptInfo, enables: Enables) -> (f64, f64) {
-    let qpqual_cost = cost_qual_eval(&rel.baserestrictinfo);
-    let startup_cost = disabled(enables.seqscan) + qpqual_cost.startup;
+/// cost_seqscan returns the costs of reading every row of a base relation and testing its restrictions, as Postgres'
+/// function of the same name does.
+pub fn cost_seqscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
+    let rel = &root.rels[rel];
+    let qpqual_cost = cost_qual_eval(root, &rel.baserestrictinfo);
+    let startup_cost = qpqual_cost.startup;
     let disk_run_cost = SEQ_PAGE_COST * rel.pages;
     let cpu_run_cost = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * rel.tuples;
-    (startup_cost, startup_cost + cpu_run_cost + disk_run_cost)
+    (disabled(root.enables.seqscan), startup_cost, startup_cost + cpu_run_cost + disk_run_cost)
 }
 
-/// cost_opaque_scan returns the startup and total costs of reading the rows of a relation that is not a table and
-/// testing its restrictions, as Postgres' cost_functionscan does for a function's rows, where reading a system
-/// catalog in full is a sequential scan, which enable_seqscan may turn off.
-pub fn cost_opaque_scan(rel: &RelOptInfo, catalog: bool, enables: Enables) -> (f64, f64) {
-    let qpqual_cost = cost_qual_eval(&rel.baserestrictinfo);
-    let startup = disabled(enables.seqscan || !catalog) + qpqual_cost.startup + CPU_OPERATOR_COST;
-    (startup, startup + (CPU_TUPLE_COST + qpqual_cost.per_tuple) * rel.tuples)
+/// cost_opaque_scan returns the costs of reading the rows of a relation that is not a table and testing its
+/// restrictions, as Postgres' cost_functionscan does for a function's rows, where reading a system catalog in full is
+/// a sequential scan, which enable_seqscan may turn off.
+pub fn cost_opaque_scan(root: &PlannerInfo<'_, '_>, rel: usize, catalog: bool) -> Costs {
+    let rel = &root.rels[rel];
+    let qpqual_cost = cost_qual_eval(root, &rel.baserestrictinfo);
+    let startup = qpqual_cost.startup + CPU_OPERATOR_COST;
+    let total = startup + (CPU_TUPLE_COST + qpqual_cost.per_tuple) * rel.tuples;
+    (disabled(root.enables.seqscan || !catalog), startup, total)
 }
 
-/// IndexOptInfo is what the planner knows of an index: its size, whether a scan of it reads nothing else, as one of
-/// Dolt's primary index, which holds the table's rows, or of a secondary index holding every column the scan needs,
+/// cost_resultscan returns the costs of the one row of a RESULT relation under its restrictions, as Postgres'
+/// function of the same name does.
+pub fn cost_resultscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
+    let qpqual_cost = cost_qual_eval(root, &root.rels[rel].baserestrictinfo);
+    let startup = qpqual_cost.startup;
+    (0, startup, startup + CPU_TUPLE_COST + qpqual_cost.per_tuple)
+}
+
+/// IndexCost is what the planner's costs know of an index: its size, whether a scan of it reads nothing else, as one
+/// of Dolt's primary index, which holds the table's rows, or of a secondary index holding every column the scan needs,
 /// how closely its order follows the table's, and how many clauses it searches by.
-pub struct IndexOptInfo {
+pub struct IndexCost {
     pub pages: f64,
     pub tuples: f64,
     pub tree_height: f64,
@@ -234,17 +254,18 @@ pub struct IndexOptInfo {
     pub nquals: usize,
 }
 
-/// cost_index returns the startup and total costs of an index scan that reads about `num_index_tuples` of the
+/// cost_index returns the costs of an index scan that reads about `num_index_tuples` of the
 /// index's entries for each of `loop_count` runs, and tests the clauses it does not search by, as Postgres'
 /// cost_index does with btcostestimate's costs of the index itself.
 pub fn cost_index(
     root: &PlannerInfo<'_, '_>,
-    rel: &RelOptInfo,
-    index: &IndexOptInfo,
+    rel: usize,
+    index: &IndexCost,
     num_index_tuples: f64,
     qpqual_cost: QualCost,
     loop_count: f64,
-) -> (f64, f64) {
+) -> Costs {
+    let rel = &root.rels[rel];
     let num_index_tuples = num_index_tuples.min(index.tuples).max(1.0);
     let index_selectivity = (num_index_tuples / rel.tuples.max(1.0)).min(1.0);
     let num_index_pages = match index.pages > 1.0 && index.tuples > 1.0 {
@@ -290,9 +311,9 @@ pub fn cost_index(
     let csquared = index.correlation * index.correlation;
     let run_cost = index_total_cost - index_startup_cost + max_io_cost + csquared * (min_io_cost - max_io_cost);
     let enabled = if index.indexonly { root.enables.indexonlyscan } else { root.enables.indexscan };
-    let startup_cost = disabled(enabled) + index_startup_cost + qpqual_cost.startup;
+    let startup_cost = index_startup_cost + qpqual_cost.startup;
     let cpu_run_cost = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * tuples_fetched;
-    (startup_cost, startup_cost + run_cost + cpu_run_cost)
+    (disabled(enabled), startup_cost, startup_cost + run_cost + cpu_run_cost)
 }
 
 /// index_pages_fetched returns how many pages a scan that fetches a number of rows from a table of a number of pages
@@ -317,24 +338,24 @@ fn index_pages_fetched(root: &PlannerInfo<'_, '_>, tuples_fetched: f64, pages: f
     fetched.ceil()
 }
 
-/// cost_material returns the startup and total costs of keeping a path's rows in memory as they are read, as
-/// Postgres' function of the same name does.
-pub fn cost_material(input: &Path) -> (f64, f64) {
+/// cost_material returns the costs of keeping a path's rows in memory as they are read, as Postgres' function of the
+/// same name does.
+pub fn cost_material(root: &PlannerInfo<'_, '_>, input: &Path) -> Costs {
     let mut run_cost = input.total_cost - input.startup_cost + 2.0 * CPU_OPERATOR_COST * input.rows;
     let nbytes = relation_byte_size(input.rows, input.width);
     if nbytes > HASH_MEM / 2.0 {
         run_cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
     }
-    (input.startup_cost, input.startup_cost + run_cost)
+    (input.disabled_nodes + disabled(root.enables.material), input.startup_cost, input.startup_cost + run_cost)
 }
 
 /// SORT_MEM is the memory that a sort may take, as Postgres' default work_mem.
 const SORT_MEM: f64 = 4.0 * 1024.0 * 1024.0;
 
-/// cost_sort returns the startup and total costs of sorting a path's rows, of which a LIMIT may read only some, as
+/// cost_sort returns the costs of sorting a path's rows, of which a LIMIT may read only some, as
 /// Postgres' cost_sort and cost_tuplesort estimate them for an in-memory quicksort, a bounded heap sort, or an
 /// external merge sort.
-pub fn cost_sort(input: &Path, limit_tuples: f64) -> (f64, f64) {
+pub fn cost_sort(root: &PlannerInfo<'_, '_>, input: &Path, limit_tuples: f64) -> Costs {
     let tuples = input.rows.max(2.0);
     let comparison_cost = 2.0 * CPU_OPERATOR_COST;
     let input_bytes = relation_byte_size(tuples, input.width);
@@ -355,7 +376,7 @@ pub fn cost_sort(input: &Path, limit_tuples: f64) -> (f64, f64) {
         comparison_cost * tuples * tuples.log2()
     };
     startup_cost += input.total_cost;
-    (startup_cost, startup_cost + CPU_OPERATOR_COST * tuples)
+    (input.disabled_nodes + disabled(root.enables.sort), startup_cost, startup_cost + CPU_OPERATOR_COST * tuples)
 }
 
 /// cost_rescan returns the startup and total costs of reading a path's rows again, as Postgres' function of the same
@@ -378,24 +399,25 @@ pub struct SemiAntiJoinFactors {
 
 /// JoinPathExtraData is what every path of a join of two relations shares, as Postgres' JoinPathExtraData holds it.
 pub struct JoinPathExtraData {
-    pub restrictlist: Vec<Rc<RestrictInfo>>,
+    pub restrictlist: Vec<RinfoId>,
     pub inner_unique: bool,
     pub semifactors: SemiAntiJoinFactors,
 }
 
-/// cost_nestloop returns the startup and total costs of a nested loop of an inner path over an outer one, as
+/// cost_nestloop returns the costs of a nested loop of an inner path over an outer one, as
 /// Postgres' initial_cost_nestloop and final_cost_nestloop do, given whether the inner path looks its rows up by
 /// the join's clauses.
 pub fn cost_nestloop(
+    root: &PlannerInfo<'_, '_>,
     jointype: JoinType,
     outer: &Path,
     inner: &Path,
     extra: &JoinPathExtraData,
     has_indexed_join_quals: bool,
-    enables: Enables,
-) -> (f64, f64) {
+) -> Costs {
     let (inner_rescan_start_cost, inner_rescan_total_cost) = cost_rescan(inner);
-    let mut startup_cost = disabled(enables.nestloop) + outer.startup_cost + inner.startup_cost;
+    let disabled_nodes = disabled(root.enables.nestloop) + inner.disabled_nodes + outer.disabled_nodes;
+    let mut startup_cost = outer.startup_cost + inner.startup_cost;
     let mut run_cost = outer.total_cost - outer.startup_cost;
     if outer.rows > 1.0 {
         run_cost += (outer.rows - 1.0) * inner_rescan_start_cost;
@@ -437,10 +459,10 @@ pub fn cost_nestloop(
         }
         outer.rows.max(1.0) * inner_rows
     };
-    let restrict_qual_cost = cost_qual_eval(&extra.restrictlist);
+    let restrict_qual_cost = cost_qual_eval(root, &extra.restrictlist);
     startup_cost += restrict_qual_cost.startup;
     run_cost += (CPU_TUPLE_COST + restrict_qual_cost.per_tuple) * ntuples;
-    (startup_cost, startup_cost + run_cost)
+    (disabled_nodes, startup_cost, startup_cost + run_cost)
 }
 
 /// exec_choose_hash_table_size returns the buckets and batches of a hash table of a number of rows of a width, as
@@ -460,18 +482,19 @@ fn exec_choose_hash_table_size(ntuples: f64, width: f64) -> (f64, f64) {
     (nbuckets, dbatch.max(1.0).log2().ceil().exp2())
 }
 
-/// cost_hashjoin returns the startup and total costs of a hash join that hashes the inner path's rows by the hash
+/// cost_hashjoin returns the costs of a hash join that hashes the inner path's rows by the hash
 /// clauses and probes them with the outer path's, as Postgres' initial_cost_hashjoin and final_cost_hashjoin do.
 pub fn cost_hashjoin(
-    root: &mut PlannerInfo<'_, '_>,
+    root: &PlannerInfo<'_, '_>,
     jointype: JoinType,
-    hashclauses: &[Rc<RestrictInfo>],
+    hashclauses: &[RinfoId],
     outer: &Path,
     inner: &Path,
     extra: &JoinPathExtraData,
-) -> (f64, f64) {
+) -> Costs {
     let num_hashclauses = hashclauses.len() as f64;
-    let mut startup_cost = disabled(root.enables.hashjoin) + outer.startup_cost + inner.total_cost;
+    let disabled_nodes = disabled(root.enables.hashjoin) + inner.disabled_nodes + outer.disabled_nodes;
+    let mut startup_cost = outer.startup_cost + inner.total_cost;
     let mut run_cost = outer.total_cost - outer.startup_cost;
     startup_cost += (CPU_OPERATOR_COST * num_hashclauses + CPU_TUPLE_COST) * inner.rows;
     run_cost += CPU_OPERATOR_COST * num_hashclauses * outer.rows;
@@ -483,9 +506,10 @@ pub fn cost_hashjoin(
     }
     let virtualbuckets = numbuckets * numbatches;
     let (mut innerbucketsize, mut innermcvfreq) = (1.0f64, 1.0f64);
-    for rinfo in hashclauses {
+    for &rinfo in hashclauses {
+        let rinfo = &root.rinfos[rinfo];
         let Expr::Compare(_, l, r) = &rinfo.clause else { continue };
-        let key = if super::nodes::is_subset(rinfo.right_relids, inner.relids) { r } else { l };
+        let key = if rinfo.right_relids.is_subset(&inner.relids) { r } else { l };
         let (mcvfreq, bucketsize) = super::selfuncs::estimate_hash_bucket_stats(root, key, virtualbuckets);
         innerbucketsize = innerbucketsize.min(bucketsize);
         innermcvfreq = innermcvfreq.min(mcvfreq);
@@ -493,8 +517,8 @@ pub fn cost_hashjoin(
     if relation_byte_size(clamp_row_est(inner.rows * innermcvfreq), inner.width) > HASH_MEM {
         startup_cost += DISABLE_COST;
     }
-    let hash_qual_cost = cost_qual_eval(hashclauses);
-    let mut qp_qual_cost = cost_qual_eval(&extra.restrictlist);
+    let hash_qual_cost = cost_qual_eval(root, hashclauses);
+    let mut qp_qual_cost = cost_qual_eval(root, &extra.restrictlist);
     qp_qual_cost.startup -= hash_qual_cost.startup;
     qp_qual_cost.per_tuple -= hash_qual_cost.per_tuple;
     startup_cost += hash_qual_cost.startup;
@@ -519,77 +543,110 @@ pub fn cost_hashjoin(
     };
     startup_cost += qp_qual_cost.startup;
     run_cost += (CPU_TUPLE_COST + qp_qual_cost.per_tuple) * hashjointuples;
-    (startup_cost, startup_cost + run_cost)
-}
-
-/// inner_sjinfo returns the SpecialJoinInfo of an inner join of two sets of relations.
-pub fn inner_sjinfo(left: Relids, right: Relids) -> SpecialJoinInfo {
-    SpecialJoinInfo {
-        min_lefthand: left,
-        min_righthand: right,
-        syn_lefthand: left,
-        syn_righthand: right,
-        jointype: JoinType::Inner,
-        lhs_strict: false,
-        delay_upper_joins: false,
-    }
+    (disabled_nodes, startup_cost, startup_cost + run_cost)
 }
 
 /// compute_semi_anti_join_factors returns the share of outer rows that find a match in a join and how many they find
 /// on average, as Postgres' function of the same name estimates them.
 pub fn compute_semi_anti_join_factors(
-    root: &mut PlannerInfo<'_, '_>,
-    joinrelids: Relids,
-    outerrel: &RelOptInfo,
-    innerrel: &RelOptInfo,
+    root: &PlannerInfo<'_, '_>,
+    joinrel: usize,
+    outerrel: usize,
+    innerrel: usize,
     jointype: JoinType,
     sjinfo: &SpecialJoinInfo,
-    restrictlist: &[Rc<RestrictInfo>],
+    restrictlist: &[RinfoId],
 ) -> SemiAntiJoinFactors {
-    let joinquals: Vec<Rc<RestrictInfo>> = match jointype.is_outer() {
-        true => restrictlist.iter().filter(|r| !is_pushed_down(r, joinrelids)).cloned().collect(),
+    let joinrelids = &root.rels[joinrel].relids;
+    let joinquals: Vec<RinfoId> = match jointype.is_outer() {
+        true => restrictlist.iter().copied().filter(|&r| !rinfo_is_pushed_down(&root.rinfos[r], joinrelids)).collect(),
         false => restrictlist.to_vec(),
     };
     let selec_type = if jointype == JoinType::Anti { JoinType::Anti } else { JoinType::Semi };
     let jselec = clauselist_selectivity(root, &joinquals, 0, selec_type, Some(sjinfo));
-    let norm_sjinfo = inner_sjinfo(outerrel.relids, innerrel.relids);
+    let norm_sjinfo = super::joinrels::init_dummy_sjinfo(&root.rels[outerrel].relids, &root.rels[innerrel].relids);
     let nselec = clauselist_selectivity(root, &joinquals, 0, JoinType::Inner, Some(&norm_sjinfo));
-    let match_count = if jselec > 0.0 { (nselec * innerrel.rows / jselec).max(1.0) } else { 1.0 };
+    let inner_rows = root.rels[innerrel].rows;
+    let match_count = if jselec > 0.0 { (nselec * inner_rows / jselec).max(1.0) } else { 1.0 };
     SemiAntiJoinFactors { outer_match_frac: jselec, match_count }
 }
 
 /// approx_tuple_count returns about how many pairs of the two paths' rows pass a list of clauses, as an inner join
 /// would, as Postgres' function of the same name estimates it.
-fn approx_tuple_count(root: &mut PlannerInfo<'_, '_>, outer: &Path, inner: &Path, quals: &[Rc<RestrictInfo>]) -> f64 {
-    let sjinfo = inner_sjinfo(outer.relids, inner.relids);
-    let selec: f64 =
-        quals.iter().map(|q| clause_selectivity(root, &q.clause, Some(q), 0, JoinType::Inner, Some(&sjinfo))).product();
+fn approx_tuple_count(root: &PlannerInfo<'_, '_>, outer: &Path, inner: &Path, quals: &[RinfoId]) -> f64 {
+    let sjinfo = super::joinrels::init_dummy_sjinfo(&outer.relids, &inner.relids);
+    let selec: f64 = quals
+        .iter()
+        .map(|&q| {
+            let q = &root.rinfos[q];
+            clause_selectivity(root, &q.clause, Some(q), 0, JoinType::Inner, Some(&sjinfo))
+        })
+        .product();
     clamp_row_est(selec * outer.rows * inner.rows)
 }
 
-/// set_baserel_size_estimates estimates the rows of a base relation that its restrictions keep, as Postgres'
-/// function of the same name does.
+/// set_baserel_size_estimates estimates the rows of a base relation that its restrictions keep and the width of its
+/// rows, as Postgres' function of the same name does.
 pub fn set_baserel_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize) {
-    let restrictinfo = root.rels[rel].baserestrictinfo.clone();
-    let selectivity = clauselist_selectivity(root, &restrictinfo, 0, JoinType::Inner, None);
+    let selectivity = clauselist_selectivity(root, &root.rels[rel].baserestrictinfo, 0, JoinType::Inner, None);
     root.rels[rel].rows = clamp_row_est(root.rels[rel].tuples * selectivity);
+    set_rel_width(root, rel);
+}
+
+/// set_rel_width estimates the width of a base relation's rows from the columns and PlaceHolderVars of its target,
+/// as Postgres' function of the same name does.
+pub fn set_rel_width(root: &mut PlannerInfo<'_, '_>, rel: usize) {
+    let mut tuple_width = 0.0;
+    for e in root.rels[rel].reltarget.exprs.clone() {
+        let Expr::Column(id) = e else { continue };
+        tuple_width += match root.glob.node(id) {
+            super::nodes::VarNode::Var(var) => {
+                let (oid, modifier) = match root.parse.rte(var.varno).table() {
+                    Some(table) => (Some(table.columns[var.varattno].ty.oid), table.columns[var.varattno].ty.modifier),
+                    None => (root.parse.rte(var.varno).coltypes[var.varattno], -1),
+                };
+                let width = get_typavgwidth(oid, modifier);
+                root.rels[rel].attr_widths[var.varattno] = width;
+                width
+            }
+            super::nodes::VarNode::PlaceHolderVar(phv) => {
+                let i = root.placeholder_array[&phv.phid];
+                root.placeholder_list[i].ph_width
+            }
+        };
+    }
+    root.rels[rel].reltarget.width = tuple_width;
+}
+
+/// set_joinrel_size_estimates estimates the rows of a join relation, as Postgres' function of the same name does.
+pub fn set_joinrel_size_estimates(
+    root: &mut PlannerInfo<'_, '_>,
+    joinrel: usize,
+    outer_rel: usize,
+    inner_rel: usize,
+    sjinfo: &SpecialJoinInfo,
+    restrictlist: &[RinfoId],
+) {
+    let (outer_rows, inner_rows) = (root.rels[outer_rel].rows, root.rels[inner_rel].rows);
+    root.rels[joinrel].rows = calc_joinrel_size_estimate(root, joinrel, outer_rows, inner_rows, sjinfo, restrictlist);
 }
 
 /// calc_joinrel_size_estimate returns about how many rows a join of two relations produces, given the rows of each
 /// and the join's clauses, as Postgres' function of the same name estimates it.
-pub fn calc_joinrel_size_estimate(
-    root: &mut PlannerInfo<'_, '_>,
-    joinrelids: Relids,
+fn calc_joinrel_size_estimate(
+    root: &PlannerInfo<'_, '_>,
+    joinrel: usize,
     outer_rows: f64,
     inner_rows: f64,
     sjinfo: &SpecialJoinInfo,
-    restrictlist: &[Rc<RestrictInfo>],
+    restrictlist: &[RinfoId],
 ) -> f64 {
+    let joinrelids = &root.rels[joinrel].relids;
     let jointype = sjinfo.jointype;
     let (jselec, pselec) = match jointype.is_outer() {
         true => {
-            let (pushedquals, joinquals): (Vec<Rc<RestrictInfo>>, Vec<Rc<RestrictInfo>>) =
-                restrictlist.iter().cloned().partition(|r| is_pushed_down(r, joinrelids));
+            let (pushedquals, joinquals): (Vec<RinfoId>, Vec<RinfoId>) =
+                restrictlist.iter().copied().partition(|&r| rinfo_is_pushed_down(&root.rinfos[r], joinrelids));
             (
                 clauselist_selectivity(root, &joinquals, 0, jointype, Some(sjinfo)),
                 clauselist_selectivity(root, &pushedquals, 0, jointype, Some(sjinfo)),

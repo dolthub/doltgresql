@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A port of Postgres 15's optimizer, file by file: each module ports the Postgres source file it names, keeping
+//! A port of Postgres 18's optimizer, file by file: each module ports the Postgres source file it names, keeping
 //! its functions' names and logic, over Doltgres' bound expressions and plans. Planning starts from a SELECT's FROM
-//! clause, as the binder planned it without choosing join orders or methods, and its WHERE clause, and produces the
-//! plan that Postgres' query_planner would find cheapest.
+//! clause, as the binder built it without choosing join orders or methods, and its WHERE clause, which it turns back
+//! into Postgres' Query, and produces the plan that Postgres' query_planner would find cheapest.
 
 mod allpaths;
 mod analyzejoins;
@@ -23,26 +23,34 @@ mod clauses;
 mod clausesel;
 mod costsize;
 mod createplan;
+mod equivclass;
 mod indxpath;
 mod initsplan;
+mod joininfo;
 mod joinpath;
 mod joinrels;
+mod nodefuncs;
 pub mod nodes;
 mod pathkeys;
 mod pathnode;
+mod placeholder;
 mod planner;
 mod prepjointree;
 mod relnode;
 mod restrictinfo;
 mod selfuncs;
 mod subselect;
+mod var;
 
 use std::collections::{BTreeSet, HashMap};
+use std::rc::Rc;
 
 pub(crate) use subselect::{plan_sublink, sublink_convertible};
 
 use nodes::{
-    FromExpr, JoinExpr, JoinTreeNode, JoinType, Query, RangeTblEntry, RelOptInfo, Relids, SpecialJoinInfo, var,
+    EquivalenceClass, EquivalenceMember, FromExpr, JoinDomain, JoinExpr, JoinTreeNode, JoinType, OuterJoinClauseInfo,
+    PathKey, PkId, PlaceHolderInfo, PlannerGlobal, Query, RangeTblEntry, RelOptInfo, Relids, RestrictInfo, RteKind,
+    SjId, SpecialJoinInfo,
 };
 
 use crate::expr::Expr;
@@ -51,35 +59,66 @@ use crate::indexscan::columns_read;
 use crate::plan::{JoinKind, JoinMethod, Plan, SortKey};
 use crate::query::Ctx;
 
-/// MAX_RELATIONS is how many range table entries a query may have for Relids to hold them, as range table indexes
-/// start at 1.
-const MAX_RELATIONS: usize = 63;
-
-/// PlannerInfo is the state of planning one query, as Postgres' PlannerInfo holds it.
+/// PlannerInfo is the state of planning one query, as Postgres' PlannerInfo holds it. Relations, RestrictInfos,
+/// SpecialJoinInfos, equivalence classes and members, and canonical pathkeys live in vectors here and are referred
+/// to by index.
 pub struct PlannerInfo<'r, 'a> {
     pub ctx: &'r mut Ctx<'a>,
+    pub glob: &'r mut PlannerGlobal,
     pub parse: Query,
-    /// The relations, by index: the base relations at their range table indexes, then the join relations.
+    /// The relations, by index: the simple relations at their range table indexes, then the join relations.
     pub rels: Vec<RelOptInfo>,
     /// The join relations' indexes by their relations.
     pub join_rel_hash: HashMap<Relids, usize>,
-    /// The relations of each level of the join search running now, from level 1.
+    /// The relations of each level of the join search running now, from level 1, and the level being built.
     pub join_rel_level: Vec<Vec<usize>>,
+    pub join_cur_level: usize,
     /// The relations that the join search running now joins.
     pub initial_rels: Vec<usize>,
     pub all_baserels: Relids,
+    pub outer_join_rels: Relids,
+    pub all_query_rels: Relids,
+    pub join_domains: Vec<JoinDomain>,
+    pub eq_classes: Vec<EquivalenceClass>,
+    pub eq_members: Vec<EquivalenceMember>,
+    pub ec_merging_done: bool,
+    pub canon_pathkeys: Vec<PathKey>,
+    /// The mergejoinable clauses of outer joins, by which side the join can make NULL.
+    pub left_join_clauses: Vec<OuterJoinClauseInfo>,
+    pub right_join_clauses: Vec<OuterJoinClauseInfo>,
+    pub full_join_clauses: Vec<OuterJoinClauseInfo>,
+    pub sjinfos: Vec<SpecialJoinInfo>,
     /// The outer, semi, and anti joins of the query.
-    pub join_info_list: Vec<SpecialJoinInfo>,
+    pub join_info_list: Vec<SjId>,
+    pub last_rinfo_serial: usize,
+    pub rinfos: Vec<RestrictInfo>,
+    pub placeholder_list: Vec<PlaceHolderInfo>,
+    /// The index in `placeholder_list` of each PlaceHolderVar's PlaceHolderInfo, by its ID.
+    pub placeholder_array: HashMap<usize, usize>,
+    pub placeholders_frozen: bool,
+    pub has_pseudo_constant_quals: bool,
+    pub has_lateral_rtes: bool,
     /// The pages of every table that the query reads, which Postgres' index_pages_fetched shares the cache among.
     pub total_table_pages: f64,
     pub enables: costsize::Enables,
     /// The rows that the query reads of the join of every relation, or a fraction of them below one, or zero for all.
     pub tuple_fraction: f64,
-    /// The order of the rows that the query's ORDER BY asks for, over Vars, as Postgres' query_pathkeys.
-    pub query_pathkeys: Vec<SortKey>,
+    /// The order of the rows that the query's ORDER BY asks for, as Postgres' query_pathkeys, and its sort keys.
+    pub query_pathkeys: Vec<PkId>,
+    pub query_sortkeys: Vec<SortKey>,
     /// The aggregate calls of an aggregate without groups over the join's rows, which Doltgres' executor answers from
     /// an index's entry counts when they only count rows.
     pub counting: Option<Vec<AggCall>>,
+}
+
+impl PlannerInfo<'_, '_> {
+    /// find_rel returns the index of the base or join relation of a set of relations, when it was built.
+    pub fn find_rel(&self, relids: &Relids) -> Option<usize> {
+        match relids.singleton_member() {
+            Some(relid) => Some(relid),
+            None => self.join_rel_hash.get(relids).copied(),
+        }
+    }
 }
 
 /// LIMIT_FRACTION is the share of a query's rows that Postgres assumes a LIMIT that is not a constant reads.
@@ -93,17 +132,9 @@ pub(crate) fn enabled() -> bool {
 }
 
 /// plannable reports whether query_planner can plan a FROM clause's plan: anything but the empty FROM clause's one
-/// row, of at most MAX_RELATIONS inputs.
+/// row.
 fn plannable(from: &Plan) -> bool {
-    /// inputs counts the plans that a FROM clause's plan may turn into range table entries.
-    fn inputs(plan: &Plan) -> usize {
-        match plan {
-            Plan::Join { left, right, .. } => inputs(left) + inputs(right),
-            Plan::Project { input, .. } | Plan::Filter { input, .. } => inputs(input),
-            _ => 1,
-        }
-    }
-    !matches!(from, Plan::OneRow) && inputs(from) <= MAX_RELATIONS
+    !matches!(from, Plan::OneRow)
 }
 
 /// Upper is what the nodes above a query's FROM and WHERE clauses ask of them: the columns of their rows that the
@@ -258,51 +289,79 @@ fn decomposable(join: &Plan) -> bool {
         if !condition.as_ref().is_some_and(crate::plan::has_subquery))
 }
 
-/// query_planner plans a FROM clause's plan under the conjuncts of the WHERE clause, as Postgres' query_planner
-/// plans a query's join tree: it reduces outer joins, distributes the clauses to the relations they restrict, finds
-/// each relation's cheapest paths, searches for the cheapest join order and methods, and makes a plan of the
-/// cheapest path, whose columns are in the FROM clause's order, given the columns that the query reads above it, or
-/// None for every column, also reporting whether the plan's rows come in the order that `upper` asks for.
-/// Conditions with subqueries filter the plan's rows afterwards.
+/// query_planner plans a FROM clause's plan under the conjuncts of the WHERE clause, as Postgres' subquery_planner
+/// prepares a query's join tree and query_planner plans it: it turns the plan back into a Query, pulls up its
+/// sublinks and subqueries, reduces outer joins, finds the cheapest path of the join of every relation, and makes a
+/// plan of it, whose columns are in the FROM clause's order, given what the query reads above it, also reporting
+/// whether the plan's rows come in the order that `upper` asks for. Conditions with subqueries filter the plan's
+/// rows afterwards.
 fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) -> (Plan, bool) {
     let Upper { needed, tuple_fraction, limit_tuples, order, counting } = upper;
-    let (mut rtable, mut output) = (Vec::new(), Vec::new());
-    let node = build_jointree(ctx, from, &mut rtable, &mut output, false);
-    let (node, quals) = subselect::pull_up_sublinks(ctx, node, quals, &mut rtable, &output);
+    let mut glob = PlannerGlobal::default();
+    let (mut rtable, mut columns) = (Vec::new(), Vec::new());
+    let node = build_jointree(&mut glob, ctx, from, &mut rtable, &mut columns);
+    let (node, quals) = subselect::pull_up_sublinks(&mut glob, ctx, node, quals, &mut rtable, &columns);
     let (kept, later): (Vec<Expr>, Vec<Expr>) = quals.into_iter().partition(|q| !crate::plan::has_subquery(q));
-    let mut jointree =
-        FromExpr { fromlist: vec![node], quals: kept.into_iter().map(|q| to_vars(q, &output)).collect() };
+    let jointree = FromExpr { fromlist: vec![node], quals: kept.into_iter().map(|q| to_vars(q, &columns)).collect() };
     let usable = |keys: &Vec<SortKey>| keys.iter().all(|k| !crate::plan::has_subquery(&k.expr));
-    let query_pathkeys: Vec<SortKey> = order.filter(usable).map_or_else(Vec::new, |keys| {
-        keys.into_iter().map(|k| SortKey { expr: to_vars(k.expr, &output), ..k }).collect()
-    });
-    let needed = needed.and_then(|n| Some(n.union(&columns_read(&later)?).copied().collect::<BTreeSet<usize>>()));
-    let output =
-        output.into_iter().enumerate().map(|(i, e)| needed.as_ref().is_none_or(|n| n.contains(&i)).then_some(e));
-    let output = output.collect();
-    prepjointree::reduce_outer_joins(&mut jointree);
-    let parse = Query { rtable, jointree, output };
+    let order = order.filter(usable).unwrap_or_default();
+    let mut needed = needed.and_then(|n| Some(n.union(&columns_read(&later)?).copied().collect::<BTreeSet<usize>>()));
+    if let Some(needed) = &mut needed {
+        needed.extend(columns_read(order.iter().map(|k| &k.expr)).unwrap_or_default());
+    }
+    let target_list =
+        columns.into_iter().enumerate().map(|(i, e)| needed.as_ref().is_none_or(|n| n.contains(&i)).then_some(e));
+    let mut parse = Query { rtable, jointree, target_list: target_list.collect() };
+    prepjointree::pull_up_subqueries(&mut glob, &mut parse);
+    for rte in parse.rtable.iter_mut() {
+        if let RteKind::Subquery(_, plan) = &rte.kind {
+            rte.kind = RteKind::Plan(plan_subquery(ctx, plan.clone()));
+        }
+    }
+    if prepjointree::has_outer_joins(&parse) {
+        prepjointree::reduce_outer_joins(&mut glob, &mut parse);
+    }
+    prepjointree::remove_useless_result_rtes(&mut glob, &mut parse);
+    let query_sortkeys: Vec<SortKey> =
+        order.into_iter().map(|k| SortKey { expr: to_target(k.expr, &parse.target_list), ..k }).collect();
     let enables = costsize::Enables::read(&ctx.session.settings);
     let mut root = PlannerInfo {
         ctx,
-        all_baserels: (1..=parse.rtable.len()).fold(0, |relids, varno| relids | nodes::singleton(varno)),
+        glob: &mut glob,
         parse,
         rels: Vec::new(),
         join_rel_hash: HashMap::new(),
         join_rel_level: Vec::new(),
+        join_cur_level: 0,
         initial_rels: Vec::new(),
+        all_baserels: Relids::new(),
+        outer_join_rels: Relids::new(),
+        all_query_rels: Relids::new(),
+        join_domains: vec![JoinDomain { jd_relids: Relids::new() }],
+        eq_classes: Vec::new(),
+        eq_members: Vec::new(),
+        ec_merging_done: false,
+        canon_pathkeys: Vec::new(),
+        left_join_clauses: Vec::new(),
+        right_join_clauses: Vec::new(),
+        full_join_clauses: Vec::new(),
+        sjinfos: Vec::new(),
         join_info_list: Vec::new(),
+        last_rinfo_serial: 0,
+        rinfos: Vec::new(),
+        placeholder_list: Vec::new(),
+        placeholder_array: HashMap::new(),
+        placeholders_frozen: false,
+        has_pseudo_constant_quals: false,
+        has_lateral_rtes: false,
         total_table_pages: 0.0,
         enables,
         tuple_fraction,
-        query_pathkeys,
+        query_pathkeys: Vec::new(),
+        query_sortkeys,
         counting,
     };
-    relnode::add_base_rels_to_query(&mut root);
-    let jointree = root.parse.jointree.clone();
-    let joinlist = initsplan::deconstruct_jointree(&mut root, &jointree);
-    let joinlist = analyzejoins::remove_useless_joins(&mut root, joinlist);
-    let final_rel = allpaths::make_one_rel(&mut root, joinlist);
+    let final_rel = query_planner_body(&mut root);
     let path = planner::create_ordered_paths(&mut root, final_rel, limit_tuples);
     let ordered = !root.query_pathkeys.is_empty() && !matches!(path.kind, nodes::PathKind::Sort(_));
     let plan = createplan::create_plan(&mut root, &path);
@@ -313,69 +372,207 @@ fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) 
     (plan, ordered)
 }
 
-/// build_jointree adds the inputs of a FROM clause's joins to a range table and returns its join tree, adding the
-/// expression of each column of the plan's rows to `output`, given whether an outer join can make the plan's rows
-/// NULL. A right join becomes a left join of its inputs swapped. A projection or filter over any input is pulled up
-/// into the join tree, as Postgres' pull_up_subqueries pulls up a simple subquery, unless one of its expressions
-/// would need a PlaceHolderVar, which is not ported yet. Any other input, or any join that is lateral, already
-/// planned, or has a subquery in its condition, becomes a relation of its own.
+/// query_planner_body is Postgres' query_planner: it builds the base relations, distributes the join tree's
+/// clauses, and finds the cheapest paths of the join of every relation, starting over whenever it removes a join,
+/// and returns that relation. A join tree of one RESULT relation is that relation's one row.
+fn query_planner_body(root: &mut PlannerInfo<'_, '_>) -> usize {
+    loop {
+        root.rels.clear();
+        root.join_rel_hash.clear();
+        root.join_rel_level.clear();
+        root.join_cur_level = 0;
+        root.all_baserels = Relids::new();
+        root.outer_join_rels = Relids::new();
+        root.all_query_rels = Relids::new();
+        root.eq_classes.clear();
+        root.eq_members.clear();
+        root.ec_merging_done = false;
+        root.canon_pathkeys.clear();
+        root.left_join_clauses.clear();
+        root.right_join_clauses.clear();
+        root.full_join_clauses.clear();
+        root.sjinfos.clear();
+        root.join_info_list.clear();
+        root.last_rinfo_serial = 0;
+        root.rinfos.clear();
+        root.placeholder_list.clear();
+        root.placeholder_array.clear();
+        root.placeholders_frozen = false;
+        root.initial_rels.clear();
+        root.has_pseudo_constant_quals = false;
+        root.join_domains.truncate(1);
+        relnode::setup_simple_rel_arrays(root);
+        if let [JoinTreeNode::Rel(varno)] = root.parse.jointree.fromlist.as_slice()
+            && matches!(root.parse.rte(*varno).kind, RteKind::Result)
+        {
+            let varno = *varno;
+            relnode::build_simple_rel(root, varno);
+            let quals = root.parse.jointree.quals.clone();
+            let rel = &root.rels[varno];
+            let path = nodes::Path {
+                kind: nodes::PathKind::Result(quals),
+                parent: varno,
+                relids: rel.relids.clone(),
+                param: Relids::new(),
+                pathkeys: Vec::new(),
+                rows: 1.0,
+                width: 0.0,
+                disabled_nodes: 0,
+                startup_cost: 0.0,
+                total_cost: 0.01,
+            };
+            pathnode::add_path(&mut root.rels[varno], Rc::new(path));
+            pathnode::set_cheapest(&mut root.rels[varno]);
+            root.ec_merging_done = true;
+            return varno;
+        }
+        let jointree = JoinTreeNode::From(Box::new(root.parse.jointree.clone()));
+        initsplan::add_base_rels_to_query(root, &jointree);
+        let final_tlist: Vec<Expr> = root.parse.target_list.iter().flatten().cloned().collect();
+        initsplan::build_base_rel_tlists(root, &final_tlist);
+        placeholder::find_placeholders_in_jointree(root);
+        let joinlist = initsplan::deconstruct_jointree(root);
+        equivclass::reconsider_outer_join_clauses(root);
+        equivclass::generate_base_implied_equalities(root);
+        let sortkeys = root.query_sortkeys.clone();
+        match pathkeys::make_pathkeys_for_sortclauses(root, &sortkeys) {
+            Some(query_pathkeys) => root.query_pathkeys = query_pathkeys,
+            None => root.query_sortkeys.clear(),
+        }
+        placeholder::fix_placeholder_input_needed_levels(root);
+        if analyzejoins::remove_useless_outer_joins(root)
+            || analyzejoins::reduce_unique_semijoins(root)
+            || analyzejoins::remove_useless_self_joins(root, &joinlist)
+        {
+            continue;
+        }
+        placeholder::add_placeholders_to_base_rels(root);
+        return allpaths::make_one_rel(root, &joinlist);
+    }
+}
+
+/// build_jointree turns a FROM clause's plan into a join tree, as Postgres' parser builds one, adding its inputs to a
+/// range table and the expression of each column of the plan's rows to `output`: a decomposable join becomes a JOIN
+/// with a range table index of its own, whose nullable sides' columns are Vars that the join can make NULL, a
+/// projection becomes a subquery, a filter becomes a FROM list with quals, the one row of an empty FROM clause becomes
+/// a RESULT relation, a scan of a table becomes a relation, and any other input becomes a relation of its own plan,
+/// planned already, as is any join that is lateral, already planned, or has a subquery in its condition.
 pub(super) fn build_jointree(
+    glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
     plan: Plan,
     rtable: &mut Vec<RangeTblEntry>,
     output: &mut Vec<Expr>,
-    nullable: bool,
 ) -> JoinTreeNode {
     match plan {
-        Plan::Join { left, right, kind, condition, .. } if decomposable(&plan) => {
-            let start = output.len();
-            let (left_nullable, right_nullable) = match kind {
-                JoinKind::Inner => (nullable, nullable),
-                JoinKind::Left | JoinKind::Semi | JoinKind::Anti => (nullable, true),
-                JoinKind::Right => (true, nullable),
-                JoinKind::Full => (true, true),
+        Plan::Join { left, right, kind, condition, .. } if decomposable(&plan) && !kind.tests_matches() => {
+            let jointype = match kind {
+                JoinKind::Inner => JoinType::Inner,
+                JoinKind::Left => JoinType::Left,
+                JoinKind::Right => JoinType::Right,
+                JoinKind::Full => JoinType::Full,
+                JoinKind::Semi | JoinKind::Anti => unreachable!("semi and anti joins stay planned"),
             };
-            let larg = build_jointree(ctx, *left, rtable, output, left_nullable);
-            let rarg = build_jointree(ctx, *right, rtable, output, right_nullable);
+            rtable.push(RangeTblEntry { kind: RteKind::Join(jointype), coltypes: Vec::new() });
+            let rtindex = rtable.len();
+            let (mut left_columns, mut right_columns) = (Vec::new(), Vec::new());
+            let larg = build_jointree(glob, ctx, *left, rtable, &mut left_columns);
+            let rarg = build_jointree(glob, ctx, *right, rtable, &mut right_columns);
+            let both = [left_columns.as_slice(), right_columns.as_slice()].concat();
             let conjuncts = condition.as_ref().map(crate::indexscan::conjuncts).unwrap_or_default();
-            let quals = conjuncts.into_iter().map(|c| to_vars(c.clone(), &output[start..])).collect();
-            let (jointype, larg, rarg) = match kind {
-                JoinKind::Inner => (JoinType::Inner, larg, rarg),
-                JoinKind::Left => (JoinType::Left, larg, rarg),
-                JoinKind::Right => (JoinType::Left, rarg, larg),
-                JoinKind::Full => (JoinType::Full, larg, rarg),
-                JoinKind::Semi => (JoinType::Semi, larg, rarg),
-                JoinKind::Anti => (JoinType::Anti, larg, rarg),
+            let quals = conjuncts.into_iter().map(|c| to_vars(c.clone(), &both)).collect();
+            let nulled = Relids::singleton(rtindex);
+            let (left_nulled, right_nulled) = match jointype {
+                JoinType::Inner => (false, false),
+                JoinType::Left => (false, true),
+                JoinType::Right => (true, false),
+                _ => (true, true),
             };
-            JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg, rarg, quals }))
+            for (columns, is_nulled) in [(left_columns, left_nulled), (right_columns, right_nulled)] {
+                output.extend(columns.into_iter().map(|e| match is_nulled {
+                    true => var::add_nulling_relids(glob, e, None, &nulled),
+                    false => e,
+                }));
+            }
+            JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg, rarg, quals, rtindex }))
         }
-        Plan::Project { input, exprs } if exprs.iter().all(|e| pullable(e, nullable)) => {
-            let mut columns = Vec::new();
-            let node = build_jointree(ctx, *input, rtable, &mut columns, nullable);
-            output.extend(exprs.into_iter().map(|e| to_vars(e, &columns)));
-            node
+        Plan::Project { input, exprs } if exprs.iter().all(pullable) => {
+            let original = Plan::Project { input: input.clone(), exprs: exprs.clone() };
+            let (mut sub_rtable, mut sub_columns) = (Vec::new(), Vec::new());
+            let node = build_jointree(glob, ctx, *input, &mut sub_rtable, &mut sub_columns);
+            let jointree = match node {
+                JoinTreeNode::From(from) => *from,
+                other => FromExpr { fromlist: vec![other], quals: Vec::new() },
+            };
+            let target_list = exprs.into_iter().map(|e| Some(to_vars(e, &sub_columns))).collect();
+            let subquery = Query { rtable: sub_rtable, jointree, target_list };
+            let coltypes =
+                subquery.target_list.iter().flatten().map(|e| nodefuncs::query_expr_type(glob, &subquery, e)).collect();
+            push_relation(glob, rtable, output, RteKind::Subquery(Box::new(subquery), original), coltypes)
         }
         Plan::Filter { input, predicate } if !crate::plan::has_subquery(&predicate) => {
-            let start = output.len();
-            let node = build_jointree(ctx, *input, rtable, output, nullable);
+            let mut columns = Vec::new();
+            let node = build_jointree(glob, ctx, *input, rtable, &mut columns);
             let conjuncts = crate::indexscan::conjuncts(&predicate);
-            let quals = conjuncts.into_iter().map(|c| to_vars(c.clone(), &output[start..])).collect();
+            let quals = conjuncts.into_iter().map(|c| to_vars(c.clone(), &columns)).collect();
+            output.extend(columns);
             JoinTreeNode::From(Box::new(FromExpr { fromlist: vec![node], quals }))
         }
+        Plan::OneRow => push_relation(glob, rtable, output, RteKind::Result, Vec::new()),
+        Plan::Scan(table, None) => {
+            let coltypes = table.columns.iter().map(|c| Some(c.ty.oid)).collect();
+            let shared = Rc::new((*table).clone());
+            push_relation(glob, rtable, output, RteKind::Relation(Plan::Scan(table, None), shared), coltypes)
+        }
         other => {
-            let varno = rtable.len() + 1;
-            output.extend((0..other.width()).map(|attno| Expr::Column(var(varno, attno))));
-            rtable.push(RangeTblEntry::new(plan_subquery(ctx, other)));
-            JoinTreeNode::Rel(varno)
+            let coltypes = plan_coltypes(&other);
+            push_relation(glob, rtable, output, RteKind::Plan(plan_subquery(ctx, other)), coltypes)
         }
     }
 }
 
-/// pullable reports whether a projection's expression can replace references to its column in the join tree above
-/// it: one that runs no volatile function or subquery and reads only the projection's input, and, where an outer join
-/// can make the input's rows NULL, one that is NULL then too, as a Var is and a strict expression of Vars is, which
-/// Postgres would otherwise wrap in a PlaceHolderVar.
-fn pullable(e: &Expr, nullable: bool) -> bool {
+/// push_relation adds a relation to a range table, adding a Var of each of its columns to `output`, and returns its
+/// reference.
+fn push_relation(
+    glob: &mut PlannerGlobal,
+    rtable: &mut Vec<RangeTblEntry>,
+    output: &mut Vec<Expr>,
+    kind: RteKind,
+    coltypes: Vec<Option<u32>>,
+) -> JoinTreeNode {
+    let varno = rtable.len() + 1;
+    output.extend((0..coltypes.len()).map(|attno| glob.var(varno, attno, Relids::new())));
+    rtable.push(RangeTblEntry { kind, coltypes });
+    JoinTreeNode::Rel(varno)
+}
+
+/// plan_coltypes returns the types of the columns of a plan's rows that the planner knows: a VALUES list's constants
+/// and casts, and the declared columns of a function.
+fn plan_coltypes(plan: &Plan) -> Vec<Option<u32>> {
+    let width = plan.width();
+    match plan {
+        Plan::Values(rows) if !rows.is_empty() => rows[0]
+            .iter()
+            .map(|e| match e {
+                Expr::Const(value) => nodefuncs::value_type(value),
+                Expr::Cast(_, ty, _) => Some(ty.oid),
+                _ => None,
+            })
+            .collect(),
+        Plan::Function { defined: Some(columns), ordinality, .. } => {
+            let mut types: Vec<Option<u32>> = columns.iter().map(|(_, ty)| Some(ty.oid)).collect();
+            if *ordinality {
+                types.push(Some(20));
+            }
+            types
+        }
+        _ => vec![None; width],
+    }
+}
+
+/// pullable reports whether a projection's expression can be a subquery's output, which pull_up_subqueries may pull
+/// up: one that reads only the projection's input, not a grouped query's aggregates or a window's results.
+fn pullable(e: &Expr) -> bool {
     let mut reads_only_columns = true;
     e.visit(&mut |x| {
         reads_only_columns &= !matches!(
@@ -389,10 +586,7 @@ fn pullable(e: &Expr, nullable: bool) -> bool {
                 | Expr::Default(_)
         )
     });
-    if !reads_only_columns || crate::plan::has_subquery(e) || clauses::contain_volatile_functions(e) {
-        return false;
-    }
-    !nullable || matches!(e, Expr::Column(_)) || (clauses::contain_vars(e) && !clauses::contain_nonstrict_functions(e))
+    reads_only_columns
 }
 
 /// to_vars rewrites an expression over a row of columns into one over their expressions.
@@ -400,5 +594,13 @@ fn to_vars(e: Expr, columns: &[Expr]) -> Expr {
     match e {
         Expr::Column(c) => columns[c].clone(),
         other => other.map_children(&mut |c| to_vars(c, columns)),
+    }
+}
+
+/// to_target rewrites an expression over the columns of a query's output into one over its target list.
+fn to_target(e: Expr, target_list: &[Option<Expr>]) -> Expr {
+    match e {
+        Expr::Column(c) => target_list[c].clone().expect("a sort key reads a column of the output"),
+        other => other.map_children(&mut |c| to_target(c, target_list)),
     }
 }

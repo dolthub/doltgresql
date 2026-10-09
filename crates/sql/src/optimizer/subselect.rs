@@ -16,8 +16,8 @@
 //! turning `EXISTS`, `NOT EXISTS`, and `IN` subqueries of the WHERE clause into semi and anti joins. A subquery's
 //! columns are its own row's, and the enclosing query's row is one level out, as `Expr::Outer` reads it.
 
-use super::clauses::contain_volatile_functions;
-use super::nodes::{JoinExpr, JoinTreeNode, JoinType, RangeTblEntry};
+use super::clauses::is_volatile_node;
+use super::nodes::{JoinExpr, JoinTreeNode, JoinType, PlannerGlobal, RangeTblEntry};
 use crate::expr::Expr;
 use crate::plan::Plan;
 use crate::query::Ctx;
@@ -47,6 +47,7 @@ pub(crate) fn plan_sublink(ctx: &mut Ctx<'_>, e: Expr, uncorrelated: bool) -> Ex
 /// the join tree with the subquery's rows, returning the new join tree and the other conditions, as Postgres'
 /// function of the same name does for the WHERE clause's top-level conditions.
 pub fn pull_up_sublinks(
+    glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
     mut jointree: JoinTreeNode,
     quals: Vec<Expr>,
@@ -56,17 +57,17 @@ pub fn pull_up_sublinks(
     let mut remaining = Vec::new();
     for qual in quals {
         let converted = match &qual {
-            Expr::Exists(plan) => convert_exists_sublink_to_join(ctx, plan, false, rtable, output),
+            Expr::Exists(plan) => convert_exists_sublink_to_join(glob, ctx, plan, false, rtable, output),
             Expr::Not(inner) => match &**inner {
-                Expr::Exists(plan) => convert_exists_sublink_to_join(ctx, plan, true, rtable, output),
+                Expr::Exists(plan) => convert_exists_sublink_to_join(glob, ctx, plan, true, rtable, output),
                 _ => None,
             },
-            Expr::AnySubquery(test, plan, false) => convert_any_sublink_to_join(ctx, test, plan, rtable, output),
+            Expr::AnySubquery(test, plan, false) => convert_any_sublink_to_join(glob, ctx, test, plan, rtable, output),
             _ => None,
         };
         match converted {
             Some((jointype, rarg, quals)) => {
-                jointree = JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg: jointree, rarg, quals }))
+                jointree = JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg: jointree, rarg, quals, rtindex: 0 }))
             }
             None => remaining.push(qual),
         }
@@ -87,13 +88,14 @@ fn any_convertible(test: &Expr, plan: &Plan) -> bool {
     plan.width() == 1
         && reads_row
         && !crate::plan::has_subquery(test)
-        && !contain_volatile_functions(test)
+        && !volatile(test)
         && crate::joins::plan_lowest_level(plan).is_some_and(|level| level >= 0)
 }
 
 /// convert_any_sublink_to_join returns the semi join that an `IN` test of a subquery becomes, with the subquery as
 /// its inner side, as Postgres' convert_ANY_sublink_to_join does.
 fn convert_any_sublink_to_join(
+    glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
     test: &Expr,
     plan: &Plan,
@@ -108,7 +110,7 @@ fn convert_any_sublink_to_join(
         other => other,
     };
     let mut subquery_vars = Vec::new();
-    let rarg = super::build_jointree(ctx, plan.clone(), rtable, &mut subquery_vars, true);
+    let rarg = super::build_jointree(glob, ctx, plan.clone(), rtable, &mut subquery_vars);
     let quals = vec![convert_testexpr(test.clone(), &subquery_vars[0], output)];
     Some((JoinType::Semi, rarg, quals))
 }
@@ -148,7 +150,7 @@ fn exists_parts(plan: &Plan) -> Option<(&Plan, Vec<&Expr>)> {
     }
     let mut reads_enclosing = false;
     for c in &where_clause {
-        if crate::plan::has_subquery(c) || contain_volatile_functions(c) {
+        if crate::plan::has_subquery(c) || volatile(c) {
             return None;
         }
         c.visit(&mut |e| reads_enclosing |= matches!(e, Expr::Outer(1, _)));
@@ -167,6 +169,7 @@ fn positive_or_null(limit: &Expr) -> bool {
 /// with the rows below its WHERE clause as its inner side and that clause as its condition, as Postgres'
 /// convert_EXISTS_sublink_to_join does.
 fn convert_exists_sublink_to_join(
+    glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
     plan: &Plan,
     under_not: bool,
@@ -175,7 +178,7 @@ fn convert_exists_sublink_to_join(
 ) -> Option<(JoinType, JoinTreeNode, Vec<Expr>)> {
     let (input, where_clause) = exists_parts(plan)?;
     let mut subquery_vars = Vec::new();
-    let rarg = super::build_jointree(ctx, input.clone(), rtable, &mut subquery_vars, true);
+    let rarg = super::build_jointree(glob, ctx, input.clone(), rtable, &mut subquery_vars);
     let quals = where_clause.into_iter().map(|c| pull_up_level(c.clone(), &subquery_vars, output)).collect();
     Some((if under_not { JoinType::Anti } else { JoinType::Semi }, rarg, quals))
 }
@@ -190,4 +193,11 @@ fn pull_up_level(e: Expr, subquery_vars: &[Expr], output: &[Expr]) -> Expr {
         Expr::Outer(depth, c) => Expr::Outer(depth - 1, c),
         other => other.map_children(&mut |c| pull_up_level(c, subquery_vars, output)),
     }
+}
+
+/// volatile reports whether an expression of a subquery, before its Vars are built, calls a volatile function.
+fn volatile(e: &Expr) -> bool {
+    let mut found = false;
+    e.visit(&mut |x| found |= is_volatile_node(x));
+    found
 }

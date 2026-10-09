@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Postgres' optimizer/path/joinpath.c: the nested loop and hash join paths of a join of two relations. Merge joins are not ported yet. A path that needs another relation's current
-//! row is only the inner side of a nested loop whose outer side supplies it, as Doltgres' executor runs lookups.
+//! Postgres' optimizer/path/joinpath.c: the nested loop and hash join paths of a join of two relations. A path that
+//! needs another relation's current row is only the inner side of a nested loop whose outer side supplies it, as
+//! Doltgres' executor runs lookups.
 
 use std::rc::Rc;
 
@@ -21,9 +22,10 @@ use super::PlannerInfo;
 use super::costsize::{
     JoinPathExtraData, SemiAntiJoinFactors, compute_semi_anti_join_factors, cost_hashjoin, cost_material, cost_nestloop,
 };
-use super::nodes::{JoinPath, JoinType, Path, PathKind, RestrictInfo, SpecialJoinInfo, is_subset};
+use super::nodes::{JoinPath, JoinType, Path, PathKind, Relids, RestrictInfo, RinfoId, SpecialJoinInfo};
+use super::pathkeys::build_join_pathkeys;
 use super::pathnode::{add_path, create_join_path};
-use super::restrictinfo::is_pushed_down;
+use super::restrictinfo::rinfo_is_pushed_down;
 
 /// add_paths_to_joinrel adds the paths of a join of an outer relation to an inner one to their join relation, as
 /// Postgres' function of the same name does.
@@ -34,18 +36,24 @@ pub fn add_paths_to_joinrel(
     innerrel: usize,
     jointype: JoinType,
     sjinfo: &SpecialJoinInfo,
-    restrictlist: &[Rc<RestrictInfo>],
+    restrictlist: &[RinfoId],
 ) {
-    let joinrelids = root.rels[joinrel].relids;
+    let joinrelids = root.rels[joinrel].relids.clone();
+    let outerrelids = root.rels[outerrel].relids.clone();
     let inner_unique = match jointype {
         JoinType::Semi | JoinType::Anti => false,
-        _ => super::analyzejoins::innerrel_is_unique(root, joinrelids, outerrel, innerrel, jointype, restrictlist),
+        _ => super::analyzejoins::innerrel_is_unique(
+            root,
+            &joinrelids,
+            &outerrelids,
+            innerrel,
+            jointype,
+            restrictlist,
+            false,
+        ),
     };
     let semifactors = match matches!(jointype, JoinType::Semi | JoinType::Anti) || inner_unique {
-        true => {
-            let (outer, inner) = (root.rels[outerrel].clone(), root.rels[innerrel].clone());
-            compute_semi_anti_join_factors(root, joinrelids, &outer, &inner, jointype, sjinfo, restrictlist)
-        }
+        true => compute_semi_anti_join_factors(root, joinrel, outerrel, innerrel, jointype, sjinfo, restrictlist),
         false => SemiAntiJoinFactors::default(),
     };
     let extra = JoinPathExtraData { restrictlist: restrictlist.to_vec(), inner_unique, semifactors };
@@ -74,14 +82,15 @@ fn match_unsorted_outer(
     }
     let matpath = root.rels[innerrel].cheapest_total_path.clone().and_then(|inner| match inner.kind {
         PathKind::Material(_) => None,
-        _ => root.enables.material.then(|| create_material_path(&inner)),
+        _ => root.enables.material.then(|| create_material_path(root, &inner)),
     });
-    let outer_relids = root.rels[outerrel].relids;
-    let outer_paths: Vec<Rc<Path>> = root.rels[outerrel].pathlist.iter().filter(|p| p.param == 0).cloned().collect();
+    let outer_relids = root.rels[outerrel].relids.clone();
+    let outer_paths: Vec<Rc<Path>> =
+        root.rels[outerrel].pathlist.iter().filter(|p| p.param.is_empty()).cloned().collect();
     let inner_paths: Vec<Rc<Path>> = root.rels[innerrel]
         .cheapest_parameterized_paths
         .iter()
-        .filter(|p| is_subset(p.param, outer_relids))
+        .filter(|p| p.param.is_subset(&outer_relids))
         .cloned()
         .collect();
     for outerpath in outer_paths {
@@ -96,9 +105,15 @@ fn match_unsorted_outer(
 
 /// create_material_path makes a path that keeps another path's rows in memory, as Postgres' function of the same
 /// name does.
-fn create_material_path(subpath: &Rc<Path>) -> Rc<Path> {
-    let (startup_cost, total_cost) = cost_material(subpath);
-    Rc::new(Path { kind: PathKind::Material(subpath.clone()), startup_cost, total_cost, ..(**subpath).clone() })
+fn create_material_path(root: &PlannerInfo<'_, '_>, subpath: &Rc<Path>) -> Rc<Path> {
+    let (disabled_nodes, startup_cost, total_cost) = cost_material(root, subpath);
+    Rc::new(Path {
+        kind: PathKind::Material(subpath.clone()),
+        disabled_nodes,
+        startup_cost,
+        total_cost,
+        ..(**subpath).clone()
+    })
 }
 
 /// try_nestloop_path adds a nested loop of two paths to the join relation, whose rows keep the outer path's order,
@@ -112,14 +127,14 @@ fn try_nestloop_path(
     extra: &JoinPathExtraData,
 ) {
     let has_indexed_join_quals = matches!(inner.kind, PathKind::Lookup(_))
-        && extra.restrictlist.iter().all(|r| r.hashjoinable && clause_sides_match_join(r, outer.relids, inner.relids));
-    let cost = cost_nestloop(jointype, &outer, &inner, extra, has_indexed_join_quals, root.enables);
-    let pathkeys = match jointype {
-        JoinType::Inner | JoinType::Left | JoinType::Semi | JoinType::Anti => outer.pathkeys.clone(),
-        _ => Vec::new(),
-    };
+        && extra.restrictlist.iter().all(|&r| {
+            let r = &root.rinfos[r];
+            r.hashjoinable && clause_sides_match_join(r, &outer.relids, &inner.relids)
+        });
+    let cost = cost_nestloop(root, jointype, &outer, &inner, extra, has_indexed_join_quals);
+    let pathkeys = build_join_pathkeys(root, joinrel, jointype, &outer.pathkeys);
     let join = JoinPath { jointype, outer, inner, joinrestrictinfo: extra.restrictlist.clone() };
-    let path = create_join_path(&root.rels[joinrel], PathKind::NestLoop, join, cost, pathkeys);
+    let path = create_join_path(joinrel, &root.rels[joinrel], PathKind::NestLoop, join, cost, pathkeys);
     add_path(&mut root.rels[joinrel], path);
 }
 
@@ -133,14 +148,19 @@ fn hash_inner_and_outer(
     jointype: JoinType,
     extra: &JoinPathExtraData,
 ) {
-    let joinrelids = root.rels[joinrel].relids;
-    let (outer_relids, inner_relids) = (root.rels[outerrel].relids, root.rels[innerrel].relids);
-    let hashclauses: Vec<Rc<RestrictInfo>> = extra
+    let joinrelids = &root.rels[joinrel].relids;
+    let (outer_relids, inner_relids) = (&root.rels[outerrel].relids, &root.rels[innerrel].relids);
+    let hashclauses: Vec<RinfoId> = extra
         .restrictlist
         .iter()
-        .filter(|r| !(jointype.is_outer() && is_pushed_down(r, joinrelids)))
-        .filter(|r| r.can_join && r.hashjoinable && clause_sides_match_join(r, outer_relids, inner_relids))
-        .cloned()
+        .copied()
+        .filter(|&r| {
+            let r = &root.rinfos[r];
+            !(jointype.is_outer() && rinfo_is_pushed_down(r, joinrelids))
+                && r.can_join
+                && r.hashjoinable
+                && clause_sides_match_join(r, outer_relids, inner_relids)
+        })
         .collect();
     if hashclauses.is_empty() {
         return;
@@ -173,19 +193,26 @@ fn try_hashjoin_path(
     joinrel: usize,
     outer: Rc<Path>,
     inner: Rc<Path>,
-    hashclauses: &[Rc<RestrictInfo>],
+    hashclauses: &[RinfoId],
     jointype: JoinType,
     extra: &JoinPathExtraData,
 ) {
     let cost = cost_hashjoin(root, jointype, hashclauses, &outer, &inner, extra);
     let join = JoinPath { jointype, outer, inner, joinrestrictinfo: extra.restrictlist.clone() };
-    let path = create_join_path(&root.rels[joinrel], PathKind::HashJoin, join, cost, Vec::new());
+    let path = create_join_path(joinrel, &root.rels[joinrel], PathKind::HashJoin, join, cost, Vec::new());
     add_path(&mut root.rels[joinrel], path);
 }
 
 /// clause_sides_match_join reports whether a join clause compares an expression of the outer relations with one of
-/// the inner relations, as Postgres' function of the same name does.
-pub fn clause_sides_match_join(rinfo: &RestrictInfo, outer_relids: u64, inner_relids: u64) -> bool {
-    (is_subset(rinfo.left_relids, outer_relids) && is_subset(rinfo.right_relids, inner_relids))
-        || (is_subset(rinfo.left_relids, inner_relids) && is_subset(rinfo.right_relids, outer_relids))
+/// the inner relations, recording which side is the outer one, as Postgres' function of the same name does.
+pub fn clause_sides_match_join(rinfo: &RestrictInfo, outer_relids: &Relids, inner_relids: &Relids) -> bool {
+    if rinfo.left_relids.is_subset(outer_relids) && rinfo.right_relids.is_subset(inner_relids) {
+        rinfo.outer_is_left.set(true);
+        return true;
+    }
+    if rinfo.left_relids.is_subset(inner_relids) && rinfo.right_relids.is_subset(outer_relids) {
+        rinfo.outer_is_left.set(false);
+        return true;
+    }
+    false
 }

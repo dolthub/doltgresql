@@ -33,14 +33,15 @@ pub fn create_ordered_paths(root: &mut PlannerInfo<'_, '_>, final_rel: usize, li
     }
     let cheapest = rel.cheapest_total_path.clone().expect("every relation has a path");
     let mut ordered_rel = RelOptInfo { consider_startup: root.tuple_fraction > 0.0, ..RelOptInfo::default() };
-    for path in rel.pathlist.iter().filter(|p| p.param == 0) {
+    for path in rel.pathlist.iter().filter(|p| p.param.is_empty()) {
         if pathkeys_contained_in(&root.query_pathkeys, &path.pathkeys) {
             add_path(&mut ordered_rel, path.clone());
         } else if Rc::ptr_eq(path, &cheapest) {
-            let (startup_cost, total_cost) = cost_sort(path, limit_tuples);
+            let (disabled_nodes, startup_cost, total_cost) = cost_sort(root, path, limit_tuples);
             let sorted = Path {
                 kind: PathKind::Sort(path.clone()),
                 pathkeys: root.query_pathkeys.clone(),
+                disabled_nodes,
                 startup_cost,
                 total_cost,
                 ..(**path).clone()
@@ -64,7 +65,7 @@ pub fn get_cheapest_fractional_path(rel: &RelOptInfo, tuple_fraction: f64) -> Rc
         true => tuple_fraction / best_path.rows,
         false => tuple_fraction,
     };
-    for path in rel.pathlist.iter().filter(|p| p.param == 0) {
+    for path in rel.pathlist.iter().filter(|p| p.param.is_empty()) {
         if !Rc::ptr_eq(path, &best_path) && compare_fractional_path_costs(&best_path, path, fraction).is_gt() {
             best_path = path.clone();
         }

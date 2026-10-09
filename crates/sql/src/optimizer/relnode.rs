@@ -12,150 +12,246 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Postgres' optimizer/util/relnode.c, with the parts of plancat.c that size a table: building the base relations
-//! and the join relations.
-
-use std::rc::Rc;
+//! Postgres' optimizer/util/relnode.c, with the parts of plancat.c that describe a table: building the base
+//! relations and the join relations.
 
 use super::PlannerInfo;
-use super::costsize::{calc_joinrel_size_estimate, estimate_rel_size, get_typavgwidth};
-use super::nodes::{RelOptInfo, Relids, RestrictInfo, SpecialJoinInfo, is_subset, singleton};
+use super::costsize::{estimate_rel_size, get_typavgwidth, set_joinrel_size_estimates};
+use super::equivclass::{generate_join_implied_equalities, has_relevant_eclass_joinclause};
+use super::nodes::{RelOptInfo, RelOptKind, Relids, RinfoId, RteKind, SpecialJoinInfo, VarNode};
+use super::placeholder::{add_placeholders_to_joinrel, find_placeholder_info};
 
 /// AUTOVACUUM_ANALYZE_THRESHOLD is how many rows a table must hold for Postgres' autovacuum to have analyzed it, at
 /// its default autovacuum_analyze_threshold.
 const AUTOVACUUM_ANALYZE_THRESHOLD: f64 = 50.0;
 
-/// OPAQUE_COLUMN_WIDTH is the width that Postgres assumes for a value of a variable-length type, which is every
-/// column of a relation whose types the planner does not look up.
-const OPAQUE_COLUMN_WIDTH: f64 = 32.0;
-
-impl PlannerInfo<'_, '_> {
-    /// find_rel returns the index of the base or join relation of a set of relations, when it was built.
-    pub fn find_rel(&self, relids: Relids) -> Option<usize> {
-        match relids.count_ones() {
-            1 => Some(relids.trailing_zeros() as usize),
-            _ => self.join_rel_hash.get(&relids).copied(),
-        }
-    }
+/// setup_simple_rel_arrays makes a slot for the base relation of each range table entry, as Postgres' function of the
+/// same name does, after a slot at index 0 so that each lies at its range table index.
+pub fn setup_simple_rel_arrays(root: &mut PlannerInfo<'_, '_>) {
+    root.rels = vec![RelOptInfo::default(); root.parse.rtable.len() + 1];
 }
 
-/// add_base_rels_to_query builds the base relation of each range table entry, as Postgres' function of the same name
-/// does, after a placeholder at index 0 so that each lies at its range table index, and marks the columns that the
-/// query's output reads as needed there, as Postgres' build_base_rel_tlists does.
-pub fn add_base_rels_to_query(root: &mut PlannerInfo<'_, '_>) {
-    root.rels.push(RelOptInfo::default());
-    for varno in 1..=root.parse.rtable.len() {
-        let rel = build_simple_rel(root, varno);
-        root.rels.push(rel);
-    }
-    for e in root.parse.output.clone().into_iter().flatten() {
-        add_vars_to_targetlist(root, &e, singleton(0));
-    }
-}
-
-/// add_vars_to_targetlist marks the columns that an expression reads as needed by a set of relations, as Postgres'
-/// function of the same name does.
-pub fn add_vars_to_targetlist(root: &mut PlannerInfo<'_, '_>, e: &crate::expr::Expr, where_needed: Relids) {
-    e.visit(&mut |x| {
-        if let crate::expr::Expr::Column(c) = x {
-            let (varno, attno) = super::nodes::var_parts(*c);
-            root.rels[varno].attr_needed[attno] |= where_needed;
-        }
-    });
-}
-
-/// build_simple_rel builds the base relation of a range table entry, sized as Postgres' get_relation_info and
-/// estimate_rel_size size a table, with the statistics of a table that was analyzed, where autovacuum analyzes a table
-/// that holds enough rows. Any other entry's rows are the older planner's estimate.
-fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, varno: usize) -> RelOptInfo {
-    let rte = root.parse.rte(varno);
-    let (tuples, width, pages, stats) = match rte.table() {
-        Some(table) => {
+/// build_simple_rel builds the base relation of a range table entry, as Postgres' function of the same name does,
+/// sized as get_relation_info and estimate_rel_size size a table, with the statistics of a table that was analyzed,
+/// where autovacuum analyzes a table that holds enough rows. Any other entry's rows are the older planner's estimate.
+pub fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, relid: usize) {
+    let rte = root.parse.rte(relid).clone();
+    let width = rte.coltypes.len();
+    let mut rel = RelOptInfo {
+        reloptkind: RelOptKind::BaseRel,
+        relids: Relids::singleton(relid),
+        consider_startup: root.tuple_fraction > 0.0,
+        relid,
+        baserestrict_min_security: usize::MAX,
+        attr_needed: vec![Relids::new(); width],
+        attr_widths: vec![0.0; width],
+        ..RelOptInfo::default()
+    };
+    match &rte.kind {
+        RteKind::Relation(_, table) => {
             let rows = prolly::Node::decode(table.table.primary_index.clone()).map_or(0.0, |r| r.tree_count() as f64);
-            let width = table.columns.iter().map(|c| get_typavgwidth(c.ty)).sum();
+            let data_width = table.columns.iter().map(|c| get_typavgwidth(Some(c.ty.oid), c.ty.modifier)).sum();
             let session = &root.ctx.session;
             let vacuumed = session.engine.vacuumed(&session.database, &table.schema, &table.name);
             let autovacuumed = rows > AUTOVACUUM_ANALYZE_THRESHOLD;
-            let (pages, tuples) = estimate_rel_size(rows, width, autovacuumed || vacuumed.is_some());
+            (rel.pages, rel.tuples) = estimate_rel_size(rows, data_width, autovacuumed || vacuumed.is_some());
             let analyzed = autovacuumed || vacuumed == Some(true);
-            let stats = analyzed.then(|| crate::colstats::table_stats(root.ctx, table)).flatten();
-            (tuples, width, pages, stats)
+            rel.stats = analyzed.then(|| crate::colstats::table_stats(root.ctx, table)).flatten();
+            rel.notnullattnums = (0..table.columns.len()).filter(|&c| !table.columns[c].nullable).collect();
+            rel.indexlist = super::indxpath::get_relation_indexes(table);
         }
-        None => {
-            let width = rte.plan.width() as f64 * OPAQUE_COLUMN_WIDTH;
-            (crate::joins::estimate(root.ctx, &rte.plan), width, 0.0, None)
-        }
-    };
-    let attr_needed = vec![0; rte.plan.width()];
-    let consider_startup = root.tuple_fraction > 0.0;
-    RelOptInfo {
-        relids: singleton(varno),
-        relid: varno,
-        tuples,
-        width,
-        pages,
-        stats,
-        attr_needed,
-        consider_startup,
-        ..RelOptInfo::default()
+        RteKind::Plan(plan) => rel.tuples = crate::joins::estimate(root.ctx, plan),
+        RteKind::Result => rel.tuples = 1.0,
+        RteKind::Subquery(..) | RteKind::Join(_) => unreachable!("only base relations are built"),
     }
+    root.rels[relid] = rel;
 }
 
-/// build_join_rel returns the join relation of two relations, building it with its clauses and size when it is new,
-/// with the clauses that the join evaluates, as Postgres' build_join_rel does.
+/// find_join_rel returns the index of the join relation of a set of relations, when it was built, as Postgres'
+/// function of the same name does.
+pub fn find_join_rel(root: &PlannerInfo<'_, '_>, relids: &Relids) -> Option<usize> {
+    root.join_rel_hash.get(relids).copied()
+}
+
+/// build_join_rel returns the join relation of two relations, building it with its target, clauses, and size when
+/// it is new, with the clauses that the join evaluates, as Postgres' function of the same name does.
 pub fn build_join_rel(
     root: &mut PlannerInfo<'_, '_>,
     joinrelids: Relids,
     outer_rel: usize,
     inner_rel: usize,
     sjinfo: &SpecialJoinInfo,
-) -> (usize, Vec<Rc<RestrictInfo>>) {
-    if let Some(joinrel) = root.join_rel_hash.get(&joinrelids).copied() {
-        return (joinrel, build_joinrel_restrictlist(root, joinrelids, outer_rel, inner_rel));
+    pushed_down_joins: &[SpecialJoinInfo],
+) -> (usize, Vec<RinfoId>) {
+    if let Some(joinrel) = find_join_rel(root, &joinrelids) {
+        return (joinrel, build_joinrel_restrictlist(root, joinrel, outer_rel, inner_rel, sjinfo));
     }
-    let mut joininfo = Vec::new();
-    for rel in [outer_rel, inner_rel] {
-        for rinfo in &root.rels[rel].joininfo {
-            if !is_subset(rinfo.required_relids, joinrelids) && !joininfo.iter().any(|r| Rc::ptr_eq(r, rinfo)) {
-                joininfo.push(rinfo.clone());
-            }
-        }
-    }
-    let restrictlist = build_joinrel_restrictlist(root, joinrelids, outer_rel, inner_rel);
-    let (outer_rows, inner_rows) = (root.rels[outer_rel].rows, root.rels[inner_rel].rows);
-    let rows = calc_joinrel_size_estimate(root, joinrelids, outer_rows, inner_rows, sjinfo, &restrictlist);
+    let lateral_relids = min_join_parameterization(root, &joinrelids, outer_rel, inner_rel);
     let joinrel = RelOptInfo {
-        relids: joinrelids,
-        rows,
-        width: root.rels[outer_rel].width + root.rels[inner_rel].width,
-        joininfo,
+        reloptkind: RelOptKind::JoinRel,
+        relids: joinrelids.clone(),
         consider_startup: root.tuple_fraction > 0.0,
+        direct_lateral_relids: root.rels[outer_rel]
+            .direct_lateral_relids
+            .union(&root.rels[inner_rel].direct_lateral_relids),
+        lateral_relids,
+        baserestrict_min_security: usize::MAX,
         ..RelOptInfo::default()
     };
-    let index = root.rels.len();
     root.rels.push(joinrel);
-    root.join_rel_hash.insert(joinrelids, index);
-    if let Some(level) = root.join_rel_level.last_mut() {
-        level.push(index);
+    let joinrel = root.rels.len() - 1;
+    build_joinrel_tlist(
+        root,
+        joinrel,
+        outer_rel,
+        sjinfo,
+        pushed_down_joins,
+        sjinfo.jointype == super::nodes::JoinType::Full,
+    );
+    build_joinrel_tlist(
+        root,
+        joinrel,
+        inner_rel,
+        sjinfo,
+        pushed_down_joins,
+        sjinfo.jointype != super::nodes::JoinType::Inner,
+    );
+    add_placeholders_to_joinrel(root, joinrel, outer_rel, inner_rel);
+    root.rels[joinrel].direct_lateral_relids.del_members(&joinrelids);
+    let restrictlist = build_joinrel_restrictlist(root, joinrel, outer_rel, inner_rel, sjinfo);
+    build_joinrel_joinlist(root, joinrel, outer_rel, inner_rel);
+    root.rels[joinrel].has_eclass_joins = has_relevant_eclass_joinclause(root, joinrel);
+    set_joinrel_size_estimates(root, joinrel, outer_rel, inner_rel, sjinfo, &restrictlist);
+    root.join_rel_hash.insert(joinrelids, joinrel);
+    if let Some(level) = root.join_rel_level.get_mut(root.join_cur_level) {
+        level.push(joinrel);
     }
-    (index, restrictlist)
+    (joinrel, restrictlist)
 }
 
-/// build_joinrel_restrictlist returns the join clauses of two relations that a join of them can evaluate, as
-/// Postgres' function of the same name does.
-fn build_joinrel_restrictlist(
+/// min_join_parameterization returns the relations that a join of two relations must read laterally, as Postgres'
+/// function of the same name does.
+pub fn min_join_parameterization(
     root: &PlannerInfo<'_, '_>,
-    joinrelids: Relids,
+    joinrelids: &Relids,
     outer_rel: usize,
     inner_rel: usize,
-) -> Vec<Rc<RestrictInfo>> {
-    let mut restrictlist: Vec<Rc<RestrictInfo>> = Vec::new();
+) -> Relids {
+    root.rels[outer_rel].lateral_relids.union(&root.rels[inner_rel].lateral_relids).difference(joinrelids)
+}
+
+/// build_joinrel_tlist adds the Vars and PlaceHolderVars of an input relation's target that joins above or the query's
+/// output read to a join relation's target, adding the outer joins that the join completes to their nulling relations
+/// on the side that the join can make NULL, as Postgres' function of the same name does.
+fn build_joinrel_tlist(
+    root: &mut PlannerInfo<'_, '_>,
+    joinrel: usize,
+    input_rel: usize,
+    sjinfo: &SpecialJoinInfo,
+    pushed_down_joins: &[SpecialJoinInfo],
+    can_null: bool,
+) {
+    let relids = root.rels[joinrel].relids.clone();
+    let mut tuple_width = root.rels[joinrel].reltarget.width;
+    for e in root.rels[input_rel].reltarget.exprs.clone() {
+        let crate::expr::Expr::Column(id) = e else { unreachable!("a relation's target holds Vars") };
+        let mut node = root.glob.node(id).clone();
+        let (nullingrels, rels) = match &mut node {
+            VarNode::PlaceHolderVar(phv) => {
+                let i = find_placeholder_info(root, phv.phid);
+                let phinfo = &root.placeholder_list[i];
+                if !phinfo.ph_needed.nonempty_difference(&relids) {
+                    continue;
+                }
+                tuple_width += phinfo.ph_width;
+                (&mut phv.phnullingrels, root.glob.placeholder(phv.phid).phrels.clone())
+            }
+            VarNode::Var(var) => {
+                let baserel = &root.rels[var.varno];
+                if !baserel.attr_needed[var.varattno].nonempty_difference(&relids) {
+                    continue;
+                }
+                tuple_width += baserel.attr_widths[var.varattno];
+                (&mut var.varnullingrels, Relids::singleton(var.varno))
+            }
+        };
+        if can_null {
+            if sjinfo.ojrelid != 0
+                && relids.is_member(sjinfo.ojrelid)
+                && (rels.is_subset(&sjinfo.syn_righthand)
+                    || (sjinfo.jointype == super::nodes::JoinType::Full && rels.is_subset(&sjinfo.syn_lefthand)))
+            {
+                nullingrels.add_member(sjinfo.ojrelid);
+            }
+            for othersj in pushed_down_joins {
+                if rels.is_subset(&othersj.syn_righthand) {
+                    nullingrels.add_member(othersj.ojrelid);
+                }
+            }
+            nullingrels.add_members(&sjinfo.commute_above_r.intersect(&relids));
+        }
+        let e = root.glob.intern(node);
+        root.rels[joinrel].reltarget.exprs.push(e);
+    }
+    root.rels[joinrel].reltarget.width = tuple_width;
+}
+
+/// build_joinrel_restrictlist returns the join clauses of the two relations that a join of them evaluates, with the
+/// equalities that equivalence classes imply between them, as Postgres' function of the same name does.
+fn build_joinrel_restrictlist(
+    root: &mut PlannerInfo<'_, '_>,
+    joinrel: usize,
+    outer_rel: usize,
+    inner_rel: usize,
+    sjinfo: &SpecialJoinInfo,
+) -> Vec<RinfoId> {
+    let both_input_relids = root.rels[outer_rel].relids.union(&root.rels[inner_rel].relids);
+    let mut result = subbuild_joinrel_restrictlist(root, joinrel, outer_rel, &both_input_relids, Vec::new());
+    result = subbuild_joinrel_restrictlist(root, joinrel, inner_rel, &both_input_relids, result);
+    let (joinrelids, outer_relids) = (root.rels[joinrel].relids.clone(), root.rels[outer_rel].relids.clone());
+    result.extend(generate_join_implied_equalities(root, &joinrelids, &outer_relids, inner_rel, sjinfo.ojrelid));
+    result
+}
+
+/// build_joinrel_joinlist gives a join relation the join clauses of its inputs that it cannot evaluate, as Postgres'
+/// function of the same name does.
+fn build_joinrel_joinlist(root: &mut PlannerInfo<'_, '_>, joinrel: usize, outer_rel: usize, inner_rel: usize) {
+    let joinrelids = root.rels[joinrel].relids.clone();
+    let mut result: Vec<RinfoId> = Vec::new();
     for rel in [outer_rel, inner_rel] {
-        for rinfo in &root.rels[rel].joininfo {
-            if is_subset(rinfo.required_relids, joinrelids) && !restrictlist.iter().any(|r| Rc::ptr_eq(r, rinfo)) {
-                restrictlist.push(rinfo.clone());
+        for &rinfo in &root.rels[rel].joininfo {
+            if !root.rinfos[rinfo].required_relids.is_subset(&joinrelids) && !result.contains(&rinfo) {
+                result.push(rinfo);
             }
         }
     }
-    restrictlist
+    root.rels[joinrel].joininfo = result;
+}
+
+/// subbuild_joinrel_restrictlist adds the join clauses of an input relation that a join evaluates to a list, where a
+/// clone of an outer join clause is evaluated only at a join of exactly its relations that it is compatible with, as
+/// Postgres' function of the same name does.
+fn subbuild_joinrel_restrictlist(
+    root: &PlannerInfo<'_, '_>,
+    joinrel: usize,
+    input_rel: usize,
+    both_input_relids: &Relids,
+    mut new_restrictlist: Vec<RinfoId>,
+) -> Vec<RinfoId> {
+    let joinrelids = &root.rels[joinrel].relids;
+    for &rinfo in &root.rels[input_rel].joininfo {
+        let r = &root.rinfos[rinfo];
+        if !r.required_relids.is_subset(joinrelids) {
+            continue;
+        }
+        if (r.has_clone || r.is_clone)
+            && (!r.required_relids.is_subset(both_input_relids) || r.incompatible_relids.overlap(both_input_relids))
+        {
+            continue;
+        }
+        if !new_restrictlist.contains(&rinfo) {
+            new_restrictlist.push(rinfo);
+        }
+    }
+    new_restrictlist
 }

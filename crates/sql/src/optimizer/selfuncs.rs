@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use super::PlannerInfo;
 use super::costsize::clamp_row_est;
-use super::nodes::{JoinType, SpecialJoinInfo, is_subset, singleton, var_parts};
+use super::nodes::{JoinType, Relids, SpecialJoinInfo, VarNode};
 use crate::colstats::{ColumnStats, TableStats};
 use crate::expr::Expr;
 use crate::types::Value;
@@ -46,15 +46,18 @@ impl VariableStatData {
 
 /// examine_variable finds what the planner knows of an expression's values, as Postgres' examine_variable does: the
 /// statistics of a Var of a table, maybe under a cast, and nothing of any other expression.
-pub fn examine_variable(root: &mut PlannerInfo<'_, '_>, e: &Expr) -> VariableStatData {
+pub fn examine_variable(root: &PlannerInfo<'_, '_>, e: &Expr) -> VariableStatData {
     let inner = match e {
         Expr::Cast(inner, ..) => inner,
         other => other,
     };
-    let Expr::Column(var) = *inner else {
+    let Expr::Column(id) = *inner else {
         return VariableStatData { rel: None, stats: None, isunique: false, isbool: false };
     };
-    let (varno, attno) = var_parts(var);
+    let VarNode::Var(var) = root.glob.node(id) else {
+        return VariableStatData { rel: None, stats: None, isunique: false, isbool: false };
+    };
+    let (varno, attno) = (var.varno, var.varattno);
     let Some(table) = root.parse.rte(varno).table() else {
         return VariableStatData { rel: Some(varno), stats: None, isunique: false, isbool: false };
     };
@@ -108,16 +111,16 @@ fn values_equal(a: &Value, b: &Value) -> bool {
 
 /// eqjoinsel returns the selectivity of an equality join clause between two expressions, as Postgres' eqjoinsel
 /// estimates it for the join it is part of.
-pub fn eqjoinsel(root: &mut PlannerInfo<'_, '_>, left: &Expr, right: &Expr, sjinfo: &SpecialJoinInfo) -> f64 {
+pub fn eqjoinsel(root: &PlannerInfo<'_, '_>, left: &Expr, right: &Expr, sjinfo: &SpecialJoinInfo) -> f64 {
     let (vardata1, vardata2) = (examine_variable(root, left), examine_variable(root, right));
-    let within = |v: &VariableStatData, relids| v.rel.is_some_and(|r| is_subset(singleton(r), relids));
-    let join_is_reversed = within(&vardata1, sjinfo.syn_righthand) || within(&vardata2, sjinfo.syn_lefthand);
+    let within = |v: &VariableStatData, relids: &Relids| v.rel.is_some_and(|r| relids.is_member(r));
+    let join_is_reversed = within(&vardata1, &sjinfo.syn_righthand) || within(&vardata2, &sjinfo.syn_lefthand);
     let (nd1, isdefault1) = get_variable_numdistinct(root, &vardata1);
     let (nd2, isdefault2) = get_variable_numdistinct(root, &vardata2);
     let selec_inner = eqjoinsel_inner(&vardata1, &vardata2, nd1, nd2);
     let selec = match sjinfo.jointype {
         JoinType::Semi | JoinType::Anti => {
-            let inner_rows = root.find_rel(sjinfo.min_righthand).map_or(nd2, |r| root.rels[r].rows);
+            let inner_rows = root.find_rel(&sjinfo.min_righthand).map_or(nd2, |r| root.rels[r].rows);
             let semi = match join_is_reversed {
                 false => eqjoinsel_semi(root, &vardata1, &vardata2, nd1, nd2, isdefault1, isdefault2, inner_rows),
                 true => eqjoinsel_semi(root, &vardata2, &vardata1, nd2, nd1, isdefault2, isdefault1, inner_rows),
@@ -236,7 +239,7 @@ fn eqjoinsel_semi(
 /// estimate_hash_bucket_stats returns the frequency of the most common value of a hash key and the share of the
 /// hashed rows that one bucket of a hash table of a number of buckets holds, as Postgres' function of the same name
 /// estimates them.
-pub fn estimate_hash_bucket_stats(root: &mut PlannerInfo<'_, '_>, hashkey: &Expr, nbuckets: f64) -> (f64, f64) {
+pub fn estimate_hash_bucket_stats(root: &PlannerInfo<'_, '_>, hashkey: &Expr, nbuckets: f64) -> (f64, f64) {
     let vardata = examine_variable(root, hashkey);
     let mcv_freq = vardata.column().and_then(|c| c.common.first()).map_or(0.0, |(_, f)| *f);
     let (mut ndistinct, isdefault) = get_variable_numdistinct(root, &vardata);

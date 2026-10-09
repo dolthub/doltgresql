@@ -338,6 +338,21 @@ the old one does, measuring it against Postgres' own EXPLAIN output on the regre
 written for go-mysql-server's choices to disagree: Postgres reads tiny tables in full rather than through an index.
 In Go, this planner would sit in front of go-mysql-server rather than inside it.
 
+The first port followed Postgres 15; the user then asked for the latest released optimizer (PG 18), since later
+releases fixed what earlier ones got wrong, and for everything that fits to be ported. Keep an inventory of every
+function of src/backend/optimizer (with geqo, selfuncs.c, and analyze.c's statistics), each marked done, not
+applicable with the reason, or pending, and never call the port finished while any is pending. PG 16 and later
+change the core shapes, so port those first and together: Vars carry the outer joins that can make them NULL
+(`varnullingrels`), outer joins get range table indexes that appear in relation sets, PlaceHolderVars keep a pulled-up
+subquery's expressions below the outer joins that NULL them, equivalence classes absorb mergejoinable equalities (so
+index lookups must ask them for join clauses), outer-join clauses are cloned for each order in which the joins
+commute, and query_planner starts over after each join it removes (useless left joins, unique semijoins, PG 18's self
+joins on a unique key). Doltgres has no operator families, so a btree family is the default one of the compared type,
+and an expression whose type the planner cannot see simply takes no part in equivalence classes. In Rust the planner's
+shared, mutable nodes (RestrictInfos, SpecialJoinInfos, classes and members, pathkeys) live in vectors on the
+PlannerInfo and are referred to by index, and Vars are ids into a per-statement table, interned so that Postgres'
+`equal()` becomes id equality.
+
 ## 4. Habits and tooling worth copying
 
 - **A handoff file** (untracked) with an "Exact position" section at the top: the last commit, what is in progress,
