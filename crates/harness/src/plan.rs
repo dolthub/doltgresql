@@ -163,7 +163,25 @@ pub fn parse_pg(lines: &[String]) -> Vec<Node> {
         }
     }
     roots.iter_mut().for_each(label_lookups);
+    roots.iter_mut().for_each(|root| label_bitmaps(root, None));
     roots
+}
+
+/// label_bitmaps relabels each bitmap index scan under a bitmap heap scan of a table as the access of the table by the
+/// index's ranges that go-mysql-server calls it.
+fn label_bitmaps(node: &mut Node, table: Option<&str>) {
+    let heap =
+        node.label.strip_prefix("Bitmap Heap Scan on ").map(|t| t.split(' ').next().unwrap_or_default().to_string());
+    if let Some(table) = table.filter(|_| node.label.starts_with("Bitmap Index Scan")) {
+        let columns = property(node, "Index Columns").unwrap_or_default();
+        let columns: Vec<String> = columns.split(", ").map(|c| format!("{table}.{c}")).collect();
+        let ranges = property(node, "Index Ranges").unwrap_or_default().to_string();
+        node.properties.push(("index".into(), format!("[{}]", columns.join(","))));
+        node.properties.push(("filters".into(), ranges));
+        node.label = format!("IndexedTableAccess({table})");
+    }
+    let table = heap.as_deref().or(table);
+    node.children.iter_mut().for_each(|child| label_bitmaps(child, table));
 }
 
 /// label_lookups relabels each nested loop whose inner input is an index scan by a condition on the outer row as the

@@ -18,8 +18,9 @@
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use super::costsize::Costs;
-use super::nodes::{JoinPath, Path, PathKind, PkId, RelOptInfo, SubsetCompare};
+use super::PlannerInfo;
+use super::costsize::{Costs, cost_bitmap_and_node, cost_bitmap_heap_scan, cost_bitmap_or_node};
+use super::nodes::{BitmapPath, JoinPath, Path, PathKind, PkId, RelOptInfo, Relids, SubsetCompare};
 use super::pathkeys::{PathKeysComparison, compare_pathkeys};
 
 /// STD_FUZZ_FACTOR is how much cheaper one path must be than another to count as cheaper, as Postgres' constant of
@@ -255,6 +256,70 @@ pub fn create_join_path(
         width: rel.reltarget.width,
         disabled_nodes,
         startup_cost,
+        total_cost,
+    })
+}
+
+/// create_bitmap_heap_path makes the path of a scan of a base relation's rows whose keys a tree of index scans finds,
+/// parameterized by the given outer relations, as Postgres' function of the same name does.
+pub fn create_bitmap_heap_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    bitmapqual: Rc<Path>,
+    required_outer: &Relids,
+    loop_count: f64,
+) -> Rc<Path> {
+    let ppi = super::relnode::get_baserel_parampathinfo(root, rel, required_outer);
+    let ((disabled_nodes, startup_cost, total_cost), rows) =
+        cost_bitmap_heap_scan(root, rel, ppi.as_ref(), &bitmapqual, loop_count);
+    let parent = &root.rels[rel];
+    Rc::new(Path {
+        kind: PathKind::BitmapHeapScan(bitmapqual),
+        parent: rel,
+        relids: parent.relids.clone(),
+        param: required_outer.clone(),
+        pathkeys: Vec::new(),
+        rows,
+        width: parent.reltarget.width,
+        disabled_nodes,
+        startup_cost,
+        total_cost,
+    })
+}
+
+/// create_bitmap_and_path makes the path of a BitmapAnd of index scans, as Postgres' function of the same name does.
+pub fn create_bitmap_and_path(root: &PlannerInfo<'_, '_>, rel: usize, bitmapquals: Vec<Rc<Path>>) -> Rc<Path> {
+    let (total_cost, bitmapselectivity) = cost_bitmap_and_node(&bitmapquals);
+    create_bitmap_tree_path(root, rel, PathKind::BitmapAnd, BitmapPath { bitmapquals, bitmapselectivity }, total_cost)
+}
+
+/// create_bitmap_or_path makes the path of a BitmapOr of index scans, as Postgres' function of the same name does.
+pub fn create_bitmap_or_path(root: &PlannerInfo<'_, '_>, rel: usize, bitmapquals: Vec<Rc<Path>>) -> Rc<Path> {
+    let (total_cost, bitmapselectivity) = cost_bitmap_or_node(&bitmapquals);
+    create_bitmap_tree_path(root, rel, PathKind::BitmapOr, BitmapPath { bitmapquals, bitmapselectivity }, total_cost)
+}
+
+/// create_bitmap_tree_path makes the path of a BitmapAnd or BitmapOr, parameterized by every outer relation that its
+/// index scans are, which returns no rows of its own.
+fn create_bitmap_tree_path(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    kind: fn(BitmapPath) -> PathKind,
+    bitmap: BitmapPath,
+    total_cost: f64,
+) -> Rc<Path> {
+    let param = bitmap.bitmapquals.iter().fold(Relids::new(), |outer, p| outer.union(&p.param));
+    let parent = &root.rels[rel];
+    Rc::new(Path {
+        kind: kind(bitmap),
+        parent: rel,
+        relids: parent.relids.clone(),
+        param,
+        pathkeys: Vec::new(),
+        rows: 0.0,
+        width: parent.reltarget.width,
+        disabled_nodes: 0,
+        startup_cost: total_cost,
         total_cost,
     })
 }

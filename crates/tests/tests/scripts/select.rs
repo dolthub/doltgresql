@@ -2078,3 +2078,147 @@ fn test_lookup_join_placeholders() {
         },
     ]);
 }
+
+#[test]
+fn test_bitmap_scans() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Bitmap scans of OR and AND clauses",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE bm (id INT PRIMARY KEY, k INT, c INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX bm_k ON bm (k);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX bm_c ON bm (c);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO bm SELECT g, g % 1000, g % 97, 'x' || g FROM generate_series(1, 20000) g;",
+                    expected: Expected::Tag("INSERT 0 20000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ANALYZE bm;",
+                    expected: Expected::Tag("ANALYZE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM bm WHERE k BETWEEN 1 AND 3 OR k BETWEEN 500 AND 502;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("120")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM bm WHERE k = 5 OR c = 7;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("226")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM bm WHERE k = 5 AND c = 7 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("13005")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM bm WHERE k < 3 OR id < 3 ORDER BY id LIMIT 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("1000")],
+                            &[T("1001")],
+                            &[T("1002")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE bo (id INT PRIMARY KEY, x INT, y INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO bo VALUES (1, 5, 7), (2, 900, 13), (3, NULL, 96);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT bo.id, count(*) FROM bo JOIN bm ON bm.k = bo.x OR bm.c = bo.y GROUP BY bo.id ORDER BY bo.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("226")],
+                            &[T("2"), T("226")],
+                            &[T("3"), T("206")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT bo.id, count(bm.id) FROM bo LEFT JOIN bm ON (bm.k = bo.x OR bm.c = bo.y) AND bm.id < 50 GROUP BY bo.id ORDER BY bo.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("2"), T("1")],
+                            &[T("3"), T("0")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT bo.id FROM bo WHERE EXISTS (SELECT 1 FROM bm WHERE (bm.k = bo.x OR bm.c = bo.y) AND bm.id < 10) ORDER BY bo.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT bo.id FROM bo WHERE NOT EXISTS (SELECT 1 FROM bm WHERE (bm.k = bo.x OR bm.c = bo.y) AND bm.id < 10) ORDER BY bo.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("2")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

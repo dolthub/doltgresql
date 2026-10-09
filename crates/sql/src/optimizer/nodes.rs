@@ -555,6 +555,13 @@ pub enum PathKind {
     /// A scan of an index of a base relation, which a nested loop runs again for each outer row when the path is
     /// parameterized.
     IndexScan(Box<IndexPath>),
+    /// A scan of the rows of a base relation whose primary keys a tree of index scans finds, as Postgres'
+    /// BitmapHeapPath is, by the path of the tree's root.
+    BitmapHeapScan(Rc<Path>),
+    /// The keys that every one of several index scans finds, as Postgres' BitmapAndPath is.
+    BitmapAnd(BitmapPath),
+    /// The keys that any one of several index scans finds, as Postgres' BitmapOrPath is.
+    BitmapOr(BitmapPath),
     /// A base relation's rows that one index lookup finds for each row of the relations it is parameterized by, the
     /// inner side of a nested loop, whose lookup keys read those relations' Vars.
     Lookup(crate::plan::JoinMethod),
@@ -567,6 +574,14 @@ pub enum PathKind {
     NestLoop(JoinPath),
     /// A hash join probing a hash table of the inner path with the outer path's rows.
     HashJoin(JoinPath),
+}
+
+/// BitmapPath is the index scans that a BitmapAnd or BitmapOr combines, with the share of the table's rows whose keys
+/// it finds.
+#[derive(Clone, Debug)]
+pub struct BitmapPath {
+    pub bitmapquals: Vec<Rc<Path>>,
+    pub bitmapselectivity: f64,
 }
 
 /// JoinPath is the inputs and clauses of a join path.
@@ -638,13 +653,14 @@ pub struct IndexClause {
 
 /// IndexPath is the index scan of a path, as Postgres' IndexPath holds it: the index by its position in the
 /// relation's index list, the clauses it searches by, whether it reads backward, whether it reads nothing but the
-/// index, and the share of the index's entries that it reads.
+/// index, the cost of reading the index itself, and the share of the index's entries that it reads.
 #[derive(Clone, Debug)]
 pub struct IndexPath {
     pub index: usize,
     pub indexclauses: Vec<IndexClause>,
     pub backward: bool,
     pub indexonly: bool,
+    pub indextotalcost: f64,
     pub indexselectivity: f64,
 }
 

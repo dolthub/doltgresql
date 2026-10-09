@@ -102,6 +102,8 @@ pub enum Plan {
     Scan(Box<TableDef>, Option<Vec<usize>>),
     /// The rows of a table whose keys in an index lie in ranges.
     IndexScan(Box<crate::indexscan::IndexScan>),
+    /// The rows of a table whose primary keys a tree of index scans finds.
+    BitmapHeapScan(Box<crate::indexscan::BitmapHeapScan>),
     /// The rows of one of Dolt's system tables.
     System(crate::dolt::tables::SystemTable),
     /// The rows of a system catalog relation.
@@ -2825,6 +2827,10 @@ impl Plan {
                     }
                 }
             }
+            Plan::BitmapHeapScan(scan) => {
+                map(&mut scan.recheck, depth);
+                scan.bitmap.conditions_mut().into_iter().for_each(|e| map(e, depth));
+            }
             Plan::Values(rows) => rows.iter_mut().flatten().for_each(|e| map(e, depth)),
             Plan::Function { call, .. } => map(call, depth),
             Plan::RowsFrom { calls, .. } => calls.iter_mut().for_each(|e| map(e, depth)),
@@ -2905,6 +2911,7 @@ impl Plan {
             Plan::OneRow => 0,
             Plan::Scan(table, _) => table.columns.len(),
             Plan::IndexScan(scan) => scan.table.columns.len(),
+            Plan::BitmapHeapScan(scan) => scan.table.columns.len(),
             Plan::Recursive { anchor, .. } => anchor.width(),
             Plan::WorkTable(_, width) => *width,
             Plan::Window { input, calls } => input.width() + calls.len(),
@@ -3401,6 +3408,7 @@ fn never_null(plan: &Plan, column: usize) -> bool {
     match plan {
         Plan::Scan(table, _) => table.columns.get(column).is_some_and(|c| !c.nullable),
         Plan::IndexScan(scan) => scan.table.columns.get(column).is_some_and(|c| !c.nullable),
+        Plan::BitmapHeapScan(scan) => scan.table.columns.get(column).is_some_and(|c| !c.nullable),
         Plan::Filter { input, .. } => never_null(input, column),
         _ => false,
     }
@@ -3535,7 +3543,14 @@ pub(crate) fn share_subquery(plan: Plan, uncorrelated: bool) -> Plan {
 pub(crate) fn share_scans(plan: Plan) -> Plan {
     match plan {
         Plan::Filter { input, predicate }
-            if matches!(*input, Plan::Scan(..) | Plan::IndexScan(_) | Plan::Catalog(_) | Plan::CatalogIndexScan(_)) =>
+            if matches!(
+                *input,
+                Plan::Scan(..)
+                    | Plan::IndexScan(_)
+                    | Plan::BitmapHeapScan(_)
+                    | Plan::Catalog(_)
+                    | Plan::CatalogIndexScan(_)
+            ) =>
         {
             Plan::Filter { input: Box::new(Plan::Once(input)), predicate }
         }

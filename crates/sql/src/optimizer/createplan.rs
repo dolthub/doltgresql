@@ -63,6 +63,8 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
         }
         PathKind::IndexScan(_) if !path.param.is_empty() => create_scan_plan(root, path.parent),
         PathKind::IndexScan(best_path) => create_indexscan_plan(root, path.parent, best_path),
+        PathKind::BitmapHeapScan(_) => create_bitmap_scan_plan(root, path, &[]),
+        PathKind::BitmapAnd(_) | PathKind::BitmapOr(_) => unreachable!("a bitmap tree is planned by its heap scan"),
         PathKind::Append(_) => {
             let layout: Vec<Slot> = root.rels[path.parent].reltarget.exprs.iter().map(|e| slot(root, e)).collect();
             let nulls =
@@ -72,7 +74,16 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
         PathKind::Material(subpath) | PathKind::Sort(subpath) => return create_plan_recurse(root, subpath),
         PathKind::NestLoop(join) | PathKind::HashJoin(join) => {
             let (outer_plan, outer_layout) = create_plan_recurse(root, &join.outer);
-            let (inner_plan, inner_layout) = create_plan_recurse(root, &join.inner);
+            let lateral = matches!(join.inner.kind, PathKind::BitmapHeapScan(_)) && !join.inner.param.is_empty();
+            let (inner_plan, inner_layout) = match lateral {
+                true => {
+                    let (plan, layout) = create_bitmap_scan_plan(root, &join.inner, &outer_layout);
+                    let (mut plan, layout) = add_placeholders(root, join.inner.parent, plan, layout);
+                    plan.map_exprs(0, &mut |e, depth| read_lateral_row(e, depth));
+                    (plan, layout)
+                }
+                false => create_plan_recurse(root, &join.inner),
+            };
             let layout = [outer_layout.as_slice(), inner_layout.as_slice()].concat();
             let (joinquals, otherquals): (Vec<RinfoId>, Vec<RinfoId>) = match join.jointype.is_outer() {
                 true => join
@@ -138,7 +149,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 right: Box::new(inner_plan),
                 kind,
                 condition,
-                lateral: false,
+                lateral,
                 method,
             };
             (filtered(root, plan, &otherquals, &layout), layout)
@@ -223,6 +234,177 @@ fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: 
     let qpqual = order_qual_clauses(root, qpqual);
     let layout = base_slots(rel, table.columns.len());
     (filtered(root, Plan::IndexScan(Box::new(scan)), &qpqual, &layout), layout)
+}
+
+/// create_bitmap_scan_plan makes the plan of a scan of a base relation's rows whose keys a tree of index scans finds,
+/// as Postgres' function of the same name does: a bitmap heap scan that tests the conditions of the tree's index scans
+/// on each row when their ranges keep more keys than the conditions do, under the restrictions and parameterizing
+/// join clauses that the tree does not answer. A parameterized scan reads the columns of the outer rows of the given
+/// layout as `Expr::Outer(0, _)`, which `read_lateral_row` turns into reads of the enclosing row.
+fn create_bitmap_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &[Slot]) -> (Plan, Vec<Slot>) {
+    let PathKind::BitmapHeapScan(bitmapqual) = &path.kind else { unreachable!("a bitmap heap scan path") };
+    let rel = path.parent;
+    let table = root.parse.rte(rel).table().expect("a bitmap scan reads a table").clone();
+    let mut exact = true;
+    let (bitmap, bitmapqualorig) = create_bitmap_subplan(root, rel, &table, bitmapqual, outer, &mut exact);
+    let mut scan_clauses = root.rels[rel].baserestrictinfo.clone();
+    if let Some(ppi) = super::relnode::get_baserel_parampathinfo(root, rel, &path.param) {
+        scan_clauses.extend(ppi.ppi_clauses);
+    }
+    let qpqual: Vec<RinfoId> = scan_clauses
+        .into_iter()
+        .filter(|&r| {
+            let rinfo = &root.rinfos[r];
+            !rinfo.pseudoconstant && !bitmapqualorig.iter().any(|q| same_clause(q, &rinfo.clause))
+        })
+        .collect();
+    let qpqual = order_qual_clauses(root, qpqual);
+    let layout = base_slots(rel, table.columns.len());
+    let to_row = |root: &PlannerInfo<'_, '_>, e: Expr| param_positional(root, e, &layout, outer);
+    let recheck = bitmapqualorig
+        .into_iter()
+        .map(|e| to_row(root, e))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
+        .unwrap_or(Expr::Const(Value::Bool(true)));
+    let scan =
+        crate::indexscan::BitmapHeapScan { table: Box::new(table), bitmap, recheck, lossy: !exact, needed: None };
+    let predicate = qpqual
+        .iter()
+        .map(|&r| to_row(root, root.rinfos[r].clause.clone()))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    let plan = Plan::BitmapHeapScan(Box::new(scan));
+    match predicate {
+        Some(predicate) => (Plan::Filter { input: Box::new(plan), predicate }, layout),
+        None => (plan, layout),
+    }
+}
+
+/// create_bitmap_subplan makes the tree of index scans of a bitmap path, returning it with the clauses it answers, and
+/// clearing `exact` when an index scan's ranges keep keys that its clauses do not, as Postgres' function of the same
+/// name does. An index scan whose clauses read outer rows keeps them, over the outer rows of the given layout, to build
+/// its ranges each time it runs.
+fn create_bitmap_subplan(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    table: &crate::catalog::table::TableDef,
+    bitmapqual: &Path,
+    outer: &[Slot],
+    exact: &mut bool,
+) -> (crate::indexscan::Bitmap, Vec<Expr>) {
+    use crate::indexscan::Bitmap;
+    match &bitmapqual.kind {
+        PathKind::BitmapAnd(bpath) => {
+            let mut children = Vec::new();
+            let mut quals = Vec::new();
+            for subpath in &bpath.bitmapquals {
+                let (child, subqual) = create_bitmap_subplan(root, rel, table, subpath, outer, exact);
+                children.push(child);
+                quals.extend(subqual);
+            }
+            (Bitmap::And(children), quals)
+        }
+        PathKind::BitmapOr(bpath) => {
+            let mut children = Vec::new();
+            let mut subquals = Vec::new();
+            for subpath in &bpath.bitmapquals {
+                let (child, subqual) = create_bitmap_subplan(root, rel, table, subpath, outer, exact);
+                children.push(child);
+                subquals.push(subqual.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))));
+            }
+            let qual = subquals
+                .into_iter()
+                .collect::<Option<Vec<Expr>>>()
+                .and_then(|quals| quals.into_iter().reduce(|a, b| Expr::Or(Box::new(a), Box::new(b))));
+            (Bitmap::Or(children), qual.into_iter().collect())
+        }
+        PathKind::IndexScan(ipath) => {
+            let info = &root.rels[rel].indexlist[ipath.index];
+            let index = info.index;
+            let mut quals: Vec<Expr> =
+                ipath.indexclauses.iter().map(|iclause| root.rinfos[iclause.rinfo].clause.clone()).collect();
+            for pred in info.indpred.clone() {
+                if !quals.contains(&pred) {
+                    quals.push(pred);
+                }
+            }
+            *exact &= ipath.indexclauses.iter().all(|iclause| !iclause.lossy);
+            let indexquals: Vec<Expr> = ipath
+                .indexclauses
+                .iter()
+                .flat_map(|iclause| &iclause.indexquals)
+                .map(|&r| root.rinfos[r].clause.clone())
+                .collect();
+            let every = |root: &mut PlannerInfo<'_, '_>| {
+                crate::indexscan::scan_of_index(root.ctx, table, index, None, false).expect("a scan of every entry").0
+            };
+            if !bitmapqual.param.is_empty() {
+                let layout = base_slots(rel, table.columns.len());
+                let cond = indexquals
+                    .into_iter()
+                    .map(|e| param_positional(root, e, &layout, outer))
+                    .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+                return (Bitmap::Index(Box::new(every(root)), cond), quals);
+            }
+            let predicate = indexquals
+                .into_iter()
+                .map(|e| to_attnos(root, e, rel))
+                .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+            let scan = match crate::indexscan::scan_of_index(root.ctx, table, index, predicate.as_ref(), false) {
+                Some((scan, covered)) => {
+                    *exact &= covered;
+                    scan
+                }
+                None => {
+                    *exact = false;
+                    every(root)
+                }
+            };
+            (Bitmap::Index(Box::new(scan), None), quals)
+        }
+        _ => unreachable!("a bitmap tree holds index scans, BitmapAnds, and BitmapOrs"),
+    }
+}
+
+/// same_clause reports whether two clauses are the same, as ANDs and ORs of the same arguments in any order are.
+fn same_clause(a: &Expr, b: &Expr) -> bool {
+    use super::restrictinfo::{and_args, or_args};
+    let same_args =
+        |x: Vec<&Expr>, y: Vec<&Expr>| x.len() == y.len() && x.iter().all(|e| y.iter().any(|f| same_clause(e, f)));
+    match (a, b) {
+        (Expr::Or(..), Expr::Or(..)) => same_args(or_args(a), or_args(b)),
+        (Expr::And(..), Expr::And(..)) => same_args(and_args(a), and_args(b)),
+        _ => a == b,
+    }
+}
+
+/// param_positional rewrites an expression over Vars and PlaceHolderVars into one over rows of a layout's slots, as
+/// `positional` does, where the slots of the outer rows of another layout are read as `Expr::Outer(0, _)`.
+fn param_positional(root: &PlannerInfo<'_, '_>, e: Expr, layout: &[Slot], outer: &[Slot]) -> Expr {
+    match e {
+        Expr::Column(id) => {
+            let target = slot(root, &Expr::Column(id));
+            match outer.iter().position(|s| *s == target) {
+                Some(i) if !layout.contains(&target) => Expr::Outer(0, i),
+                _ => positional(root, Expr::Column(id), layout),
+            }
+        }
+        other => other.map_children(&mut |c| param_positional(root, c, layout, outer)),
+    }
+}
+
+/// read_lateral_row rewrites an expression of the inner plan of a lateral join, at a depth of subqueries within it,
+/// for the outer row that the join pushes as the enclosing row: a read of the outer row as `Expr::Outer(0, _)` reads
+/// that enclosing row, and a read of an enclosing row reads it one row further out.
+fn read_lateral_row(e: Expr, depth: usize) -> Expr {
+    let mut e = match e {
+        Expr::Outer(0, i) if depth == 0 => return Expr::Outer(1, i),
+        Expr::Outer(d, i) if d > depth => return Expr::Outer(d + 1, i),
+        other => other.map_children(&mut |c| read_lateral_row(c, depth)),
+    };
+    if let Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) = &mut e {
+        p.map_exprs(0, &mut |x, d| read_lateral_row(x, depth + 1 + d));
+    }
+    e
 }
 
 /// order_qual_clauses sorts clauses by the cost of evaluating them, cheapest first and otherwise in their order, as

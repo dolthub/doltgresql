@@ -22,14 +22,20 @@ use std::rc::Rc;
 use prolly::NodeStore;
 
 use super::PlannerInfo;
-use super::costsize::{IndexCost, QualCost, clamp_row_est, cost_catalog_lookup, cost_index, cost_qual_eval};
+use super::costsize::{
+    IndexCost, QualCost, clamp_row_est, cost_bitmap_heap_scan, cost_bitmap_tree_node, cost_catalog_lookup, cost_index,
+    cost_qual_eval,
+};
 use super::equivclass::generate_implied_equalities_for_column;
 use super::nodes::{
     EcId, EmId, IndexClause, IndexOptInfo, IndexPath, Path, PathKind, RelOptKind, Relids, RinfoId, RteKind, VarNode,
 };
 use super::pathkeys::{build_index_pathkeys, truncate_useless_pathkeys};
-use super::pathnode::add_path;
-use super::restrictinfo::{RestrictInfoArgs, binary_op_args, join_clause_is_movable_to, make_restrictinfo};
+use super::pathnode::{add_path, create_bitmap_and_path, create_bitmap_heap_path, create_bitmap_or_path};
+use super::restrictinfo::{
+    RestrictInfoArgs, binary_op_args, join_clause_is_movable_to, make_plain_restrictinfo, make_restrictinfo,
+    restriction_is_or_clause,
+};
 use super::var::pull_varnos;
 use crate::catalog::table::TableDef;
 use crate::expr::{CmpOp, Expr};
@@ -127,28 +133,62 @@ pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &
     indexlist
 }
 
+/// ScanTypeControl is which kinds of scan build_index_paths makes paths for, as Postgres' ScanTypeControl is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScanTypeControl {
+    BitmapScan,
+    AnyScan,
+}
+
 /// create_index_paths adds the paths of a base relation's index scans: for each index, a scan by the restrictions
 /// that its columns can search by, and scans parameterized by each set of other relations whose join clauses it can
-/// search by, as Postgres' function of the same name does. Bitmap scans are not built yet. A system catalog's
-/// lookups come from Doltgres' lookup joins.
+/// search by, and then the bitmap heap scans of the most promising combination of those scans and of the bitmap scans
+/// of OR clauses, unparameterized and for each parameterization, as Postgres' function of the same name does. A
+/// system catalog's lookups come from Doltgres' lookup joins.
 pub fn create_index_paths(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     if !matches!(root.parse.rte(rel).kind, RteKind::Relation(..)) {
         create_catalog_lookup_paths(root, rel);
         return;
     }
+    let (mut bitindexpaths, mut bitjoinpaths, mut joinorclauses) = (Vec::new(), Vec::new(), Vec::new());
     for index in 0..root.rels[rel].indexlist.len() {
         let info = &root.rels[rel].indexlist[index];
         if !info.indpred.is_empty() && !info.pred_ok {
             continue;
         }
         let rclauseset = match_restriction_clauses_to_index(root, rel, index);
-        get_index_paths(root, rel, index, &rclauseset);
-        let jclauseset = match_join_clauses_to_index(root, rel, index);
+        get_index_paths(root, rel, index, &rclauseset, &mut bitindexpaths);
+        let jclauseset = match_join_clauses_to_index(root, rel, index, &mut joinorclauses);
         let eclauseset = match_eclass_clauses_to_index(root, rel, index);
         let nonempty = |set: &IndexClauseSet| set.iter().any(|c| !c.is_empty());
         if nonempty(&jclauseset) || nonempty(&eclauseset) {
-            consider_index_join_clauses(root, rel, index, &rclauseset, &jclauseset, &eclauseset);
+            consider_index_join_clauses(root, rel, index, &rclauseset, &jclauseset, &eclauseset, &mut bitjoinpaths);
         }
+    }
+    let baserestrictinfo = root.rels[rel].baserestrictinfo.clone();
+    bitindexpaths.extend(generate_bitmap_or_paths(root, rel, &baserestrictinfo, &[]));
+    bitjoinpaths.extend(generate_bitmap_or_paths(root, rel, &joinorclauses, &baserestrictinfo));
+    if !bitindexpaths.is_empty() {
+        let bitmapqual = choose_bitmap_and(root, rel, bitindexpaths.clone());
+        let lateral_relids = root.rels[rel].lateral_relids.clone();
+        let bpath = create_bitmap_heap_path(root, rel, bitmapqual, &lateral_relids, 1.0);
+        add_path(&mut root.rels[rel], bpath);
+    }
+    let mut all_path_outers: Vec<Relids> = Vec::new();
+    for path in &bitjoinpaths {
+        if !all_path_outers.contains(&path.param) {
+            all_path_outers.push(path.param.clone());
+        }
+    }
+    for max_outers in all_path_outers {
+        let mut this_path_set: Vec<Rc<Path>> =
+            bitjoinpaths.iter().filter(|p| p.param.is_subset(&max_outers)).cloned().collect();
+        this_path_set.extend(bitindexpaths.iter().cloned());
+        let bitmapqual = choose_bitmap_and(root, rel, this_path_set);
+        let required_outer = bitmapqual.param.clone();
+        let loop_count = get_loop_count(root, &required_outer);
+        let bpath = create_bitmap_heap_path(root, rel, bitmapqual, &required_outer, loop_count);
+        add_path(&mut root.rels[rel], bpath);
     }
 }
 
@@ -161,6 +201,7 @@ fn consider_index_join_clauses(
     rclauseset: &IndexClauseSet,
     jclauseset: &IndexClauseSet,
     eclauseset: &IndexClauseSet,
+    bitindexpaths: &mut Vec<Rc<Path>>,
 ) {
     let mut considered_clauses = 0;
     let mut considered_relids: Vec<Relids> = Vec::new();
@@ -172,6 +213,7 @@ fn consider_index_join_clauses(
                 rel,
                 index,
                 [rclauseset, jclauseset, eclauseset],
+                bitindexpaths,
                 &set[indexcol],
                 considered_clauses,
                 &mut considered_relids,
@@ -182,11 +224,13 @@ fn consider_index_join_clauses(
 
 /// consider_index_join_outer_rels builds the parameterized paths of an index for the outer relations of each of a
 /// column's join clauses, alone and with each set considered before, as Postgres' function of the same name does.
+#[allow(clippy::too_many_arguments)]
 fn consider_index_join_outer_rels(
     root: &mut PlannerInfo<'_, '_>,
     rel: usize,
     index: usize,
     clausesets: [&IndexClauseSet; 3],
+    bitindexpaths: &mut Vec<Rc<Path>>,
     indexjoinclauses: &[IndexClause],
     considered_clauses: usize,
     considered_relids: &mut Vec<Relids>,
@@ -209,9 +253,10 @@ fn consider_index_join_outer_rels(
             if considered_relids.len() >= 10 * considered_clauses {
                 break;
             }
-            get_join_index_paths(root, rel, index, clausesets, &clause_relids.union(&oldrelids), considered_relids);
+            let relids = clause_relids.union(&oldrelids);
+            get_join_index_paths(root, rel, index, clausesets, bitindexpaths, &relids, considered_relids);
         }
-        get_join_index_paths(root, rel, index, clausesets, &clause_relids, considered_relids);
+        get_join_index_paths(root, rel, index, clausesets, bitindexpaths, &clause_relids, considered_relids);
     }
 }
 
@@ -222,6 +267,7 @@ fn get_join_index_paths(
     rel: usize,
     index: usize,
     [rclauseset, jclauseset, eclauseset]: [&IndexClauseSet; 3],
+    bitindexpaths: &mut Vec<Rc<Path>>,
     relids: &Relids,
     considered_relids: &mut Vec<Relids>,
 ) {
@@ -242,7 +288,7 @@ fn get_join_index_paths(
         }
         clauseset[indexcol].extend(rclauseset[indexcol].iter().cloned());
     }
-    get_index_paths(root, rel, index, &clauseset);
+    get_index_paths(root, rel, index, &clauseset, bitindexpaths);
     considered_relids.push(relids.clone());
 }
 
@@ -260,24 +306,39 @@ fn eclass_already_used(
     })
 }
 
-/// get_index_paths adds the index paths that build_index_paths makes of an index and its clauses, as Postgres'
-/// function of the same name does.
-fn get_index_paths(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize, clauses: &IndexClauseSet) {
+/// get_index_paths adds the index paths that build_index_paths makes of an index and its clauses, and collects those
+/// that a bitmap scan may use, the ones that do not read the whole index for its order, as Postgres' function of the
+/// same name does. A parameterized index scan is added only when its join clauses give equalities of the index's
+/// leading columns that Doltgres' lookups can search by.
+fn get_index_paths(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    index: usize,
+    clauses: &IndexClauseSet,
+    bitindexpaths: &mut Vec<Rc<Path>>,
+) {
     let useful_predicate = root.rels[rel].indexlist[index].pred_ok;
-    for path in build_index_paths(root, rel, index, clauses, useful_predicate) {
-        add_path(&mut root.rels[rel], path);
+    for path in build_index_paths(root, rel, index, clauses, useful_predicate, ScanTypeControl::AnyScan) {
+        let PathKind::IndexScan(ipath) = &path.kind else { unreachable!("build_index_paths makes index scans") };
+        if path.param.is_empty() || lookup_keys(root, rel, index, &ipath.indexclauses).is_some() {
+            add_path(&mut root.rels[rel], path.clone());
+        }
+        if path.pathkeys.is_empty() || ipath.indexselectivity < 1.0 {
+            bitindexpaths.push(path);
+        }
     }
 }
 
 /// build_index_paths makes the paths of a scan of an index by its clauses: a forward scan whose order may be useful,
-/// and a backward one when its order is, as Postgres' function of the same name does. A parameterized path is made
-/// only when its join clauses give equalities of the index's leading columns that Doltgres' lookups can search by.
+/// and a backward one when its order is, or only a scan for a bitmap, which reads in no order, as Postgres' function
+/// of the same name does.
 fn build_index_paths(
     root: &mut PlannerInfo<'_, '_>,
     rel: usize,
     index: usize,
     clauses: &IndexClauseSet,
     useful_predicate: bool,
+    scantype: ScanTypeControl,
 ) -> Vec<Rc<Path>> {
     let mut index_clauses: Vec<IndexClause> = Vec::new();
     let mut outer_relids = root.rels[rel].lateral_relids.clone();
@@ -288,13 +349,12 @@ fn build_index_paths(
         }
     }
     outer_relids.del_member(rel);
-    if !outer_relids.is_empty() && lookup_keys(root, rel, index, &index_clauses).is_none() {
-        return Vec::new();
-    }
     let loop_count = get_loop_count(root, &outer_relids);
-    let pathkeys_possibly_useful = outer_relids.is_empty() && super::pathkeys::has_useful_pathkeys(root, rel);
+    let pathkeys_possibly_useful = scantype != ScanTypeControl::BitmapScan
+        && outer_relids.is_empty()
+        && super::pathkeys::has_useful_pathkeys(root, rel);
     let index_is_ordered = root.rels[rel].indexlist[index].sortable;
-    let index_only_scan = check_index_only(root, rel, index);
+    let index_only_scan = scantype != ScanTypeControl::BitmapScan && check_index_only(root, rel, index);
     let mut result = Vec::new();
     let useful_pathkeys = match index_is_ordered && pathkeys_possibly_useful {
         true => {
@@ -309,6 +369,7 @@ fn build_index_paths(
             indexclauses: index_clauses.clone(),
             backward: false,
             indexonly: index_only_scan,
+            indextotalcost: 0.0,
             indexselectivity: 1.0,
         };
         result.push(create_index_path(root, rel, path, useful_pathkeys, &outer_relids, loop_count));
@@ -322,6 +383,7 @@ fn build_index_paths(
                 indexclauses: index_clauses,
                 backward: true,
                 indexonly: index_only_scan,
+                indextotalcost: 0.0,
                 indexselectivity: 1.0,
             };
             result.push(create_index_path(root, rel, path, useful_pathkeys, &outer_relids, loop_count));
@@ -347,9 +409,10 @@ fn create_index_path(
         Some(ppi) => (ppi.ppi_rows, ppi.ppi_clauses.clone()),
         None => (root.rels[rel].rows, Vec::new()),
     };
-    let ((disabled_nodes, startup_cost, mut total_cost), selectivity) =
+    let ((disabled_nodes, startup_cost, mut total_cost), selectivity, indextotalcost) =
         cost_index(root, rel, &path, &ppi_clauses, rows, loop_count);
     path.indexselectivity = selectivity;
+    path.indextotalcost = indextotalcost;
     let table = root.parse.rte(rel).table();
     let counted = root.counting.as_ref().is_some_and(|calls| {
         !calls.is_empty()
@@ -421,6 +484,394 @@ fn get_loop_count(root: &PlannerInfo<'_, '_>, outer_relids: &Relids) -> f64 {
     if result > 0.0 { result } else { 1.0 }
 }
 
+/// build_paths_for_OR returns the bitmap scans of each index that can search by some of a list of clauses, also using
+/// other clauses, where a partial index's predicate must follow from them, as Postgres' function of the same name
+/// does.
+#[allow(non_snake_case)]
+fn build_paths_for_OR(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    clauses: &[RinfoId],
+    other_clauses: &[RinfoId],
+) -> Vec<Rc<Path>> {
+    let mut result = Vec::new();
+    for index in 0..root.rels[rel].indexlist.len() {
+        let info = &root.rels[rel].indexlist[index];
+        let mut useful_predicate = false;
+        if !info.indpred.is_empty() && !info.pred_ok {
+            let all_clauses: Vec<RinfoId> = clauses.iter().chain(other_clauses).copied().collect();
+            if !predicate_implied_by(root, &info.indpred, &all_clauses) {
+                continue;
+            }
+            useful_predicate = !predicate_implied_by(root, &info.indpred, other_clauses);
+        }
+        let mut clauseset = vec![Vec::new(); info.nkeycolumns];
+        match_clauses_to_index(root, rel, clauses, index, &mut clauseset);
+        if clauseset.iter().all(Vec::is_empty) && !useful_predicate {
+            continue;
+        }
+        match_clauses_to_index(root, rel, other_clauses, index, &mut clauseset);
+        result.extend(build_index_paths(root, rel, index, &clauseset, useful_predicate, ScanTypeControl::BitmapScan));
+    }
+    result
+}
+
+/// predicate_implied_by reports whether clauses imply every conjunct of an index's predicate, which Doltgres proves
+/// only when a clause equals the conjunct, the first of the proofs of Postgres' function of the same name.
+fn predicate_implied_by(root: &PlannerInfo<'_, '_>, predicate: &[Expr], clauses: &[RinfoId]) -> bool {
+    predicate.iter().all(|pred| clauses.iter().any(|&r| root.rinfos[r].clause == *pred))
+}
+
+/// OrArgIndexMatch is the index column that an argument of an OR clause compares, by the index's position, the
+/// column's, the comparison's operator, and the other side's type, with the argument's position and its group's, as
+/// Postgres' structure of the same name holds them.
+#[derive(Clone, Copy)]
+struct OrArgIndexMatch {
+    indexnum: Option<usize>,
+    colnum: usize,
+    opno: Option<(CmpOp, Option<u32>)>,
+    argindex: usize,
+    groupindex: usize,
+}
+
+/// OrArgKey is what the arguments of an OR clause that one group gathers share: the index, the column, and the
+/// comparison's operator and other side's type.
+type OrArgKey = (Option<usize>, usize, Option<(u8, Option<u32>)>);
+
+impl OrArgIndexMatch {
+    /// key returns what arguments of one group share.
+    fn key(&self) -> OrArgKey {
+        (self.indexnum, self.colnum, self.opno.map(|(op, ty)| (op as u8, ty)))
+    }
+}
+
+/// group_similar_or_args returns the arguments of an OR clause with those that compare the same index column by the
+/// same operator gathered into one OR clause of them, which an index can search by as an array, or None when no
+/// argument compares an index column, as Postgres' function of the same name does.
+fn group_similar_or_args(root: &mut PlannerInfo<'_, '_>, rel: usize, rinfo: RinfoId) -> Option<Vec<Vec<RinfoId>>> {
+    let orargs = root.rinfos[rinfo].orclause.clone().expect("an OR clause");
+    let n = orargs.len();
+    let mut matches: Vec<OrArgIndexMatch> = Vec::with_capacity(n);
+    let mut matched = false;
+    for (i, arg) in orargs.iter().enumerate() {
+        let mut m = OrArgIndexMatch { indexnum: None, colnum: 0, opno: None, argindex: i, groupindex: i };
+        if let [argrinfo] = arg.as_slice() {
+            let r = &root.rinfos[*argrinfo];
+            if let Expr::Compare(op, leftop, rightop) = &r.clause {
+                let side = match (r.left_relids.is_member(rel), r.right_relids.is_member(rel)) {
+                    (false, true) if !super::clauses::contain_volatile_functions(root.glob, leftop) => {
+                        Some((crate::indexscan::swap(*op), &**rightop, &**leftop))
+                    }
+                    (true, false) if !super::clauses::contain_volatile_functions(root.glob, rightop) => {
+                        Some((*op, &**leftop, &**rightop))
+                    }
+                    _ => None,
+                };
+                if let Some((op, non_const, other)) = side {
+                    'indexes: for (indexnum, index) in root.rels[rel].indexlist.iter().enumerate() {
+                        for colnum in 0..index.nkeycolumns {
+                            if match_index_to_operand(root, non_const, colnum, index, rel) {
+                                let ty = super::nodefuncs::expr_type(root, other);
+                                m = OrArgIndexMatch { indexnum: Some(indexnum), colnum, opno: Some((op, ty)), ..m };
+                                matched = true;
+                                break 'indexes;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        matches.push(m);
+    }
+    if !matched {
+        return None;
+    }
+    matches.sort_by(|a, b| a.key().cmp(&b.key()).then(a.argindex.cmp(&b.argindex)));
+    for i in 1..n {
+        if matches[i].indexnum.is_some() && matches[i].key() == matches[i - 1].key() {
+            matches[i].groupindex = matches[i - 1].groupindex;
+        }
+    }
+    matches.sort_by_key(|m| (m.groupindex, m.argindex));
+    let mut result = Vec::new();
+    let mut group_start = 0;
+    for i in 1..=n {
+        if i < n && matches[i].indexnum.is_some() && matches[i].key() == matches[group_start].key() {
+            continue;
+        }
+        if i - group_start == 1 {
+            result.push(orargs[matches[group_start].argindex].clone());
+        } else {
+            let rargs: Vec<Vec<RinfoId>> = (group_start..i).map(|j| orargs[matches[j].argindex].clone()).collect();
+            let clause = rargs
+                .iter()
+                .map(|arg| root.rinfos[arg[0]].clause.clone())
+                .reduce(|a, b| Expr::Or(Box::new(a), Box::new(b)))
+                .expect("a group of at least two arguments");
+            let r = root.rinfos[rinfo].clone();
+            let args = RestrictInfoArgs {
+                is_pushed_down: r.is_pushed_down,
+                has_clone: r.has_clone,
+                is_clone: r.is_clone,
+                pseudoconstant: r.pseudoconstant,
+                security_level: r.security_level,
+                required_relids: Some(r.required_relids),
+                incompatible_relids: r.incompatible_relids,
+                outer_relids: r.outer_relids,
+            };
+            result.push(vec![make_plain_restrictinfo(root, clause, Some(rargs), args)]);
+        }
+        group_start = i;
+    }
+    Some(result)
+}
+
+/// make_bitmap_paths_for_or_group returns the bitmap scans of a group of an OR clause's arguments that compare one
+/// index column: one scan of the whole group, or one for each argument, whichever costs less, as Postgres' function of
+/// the same name does.
+fn make_bitmap_paths_for_or_group(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    ri: RinfoId,
+    other_clauses: &[RinfoId],
+) -> Vec<Rc<Path>> {
+    let mut jointlist = Vec::new();
+    let mut jointcost = 0.0;
+    let indlist = build_paths_for_OR(root, rel, &[ri], other_clauses);
+    if !indlist.is_empty() {
+        let bitmapqual = choose_bitmap_and(root, rel, indlist);
+        jointcost = bitmapqual.total_cost;
+        jointlist.push(bitmapqual);
+    }
+    if !jointlist.is_empty() && other_clauses.is_empty() {
+        return jointlist;
+    }
+    let mut splitlist = Vec::new();
+    let mut splitcost = 0.0;
+    for arg in root.rinfos[ri].orclause.clone().expect("an OR clause") {
+        let indlist = build_paths_for_OR(root, rel, &arg, other_clauses);
+        if indlist.is_empty() {
+            splitlist.clear();
+            break;
+        }
+        let bitmapqual = choose_bitmap_and(root, rel, indlist);
+        splitcost += bitmapqual.total_cost;
+        splitlist.push(bitmapqual);
+    }
+    match (jointlist.is_empty(), splitlist.is_empty()) {
+        (_, true) => jointlist,
+        (true, false) => splitlist,
+        (false, false) if jointcost < splitcost => jointlist,
+        (false, false) => splitlist,
+    }
+}
+
+/// generate_bitmap_or_paths returns a BitmapOr for each OR clause of a list whose every argument some index can search
+/// by, also using other clauses, as Postgres' function of the same name does.
+fn generate_bitmap_or_paths(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    clauses: &[RinfoId],
+    other_clauses: &[RinfoId],
+) -> Vec<Rc<Path>> {
+    let mut result = Vec::new();
+    let all_clauses: Vec<RinfoId> = clauses.iter().chain(other_clauses).copied().collect();
+    for &rinfo in clauses {
+        if !restriction_is_or_clause(&root.rinfos[rinfo]) {
+            continue;
+        }
+        let mut pathlist: Vec<Rc<Path>> = Vec::new();
+        let grouped = group_similar_or_args(root, rel, rinfo);
+        let inner_other_clauses: Vec<RinfoId> = match grouped {
+            Some(_) => all_clauses.iter().copied().filter(|&r| r != rinfo).collect(),
+            None => Vec::new(),
+        };
+        let orargs = grouped.unwrap_or_else(|| root.rinfos[rinfo].orclause.clone().expect("an OR clause"));
+        for orarg in orargs {
+            let indlist = match orarg.as_slice() {
+                [ri] if restriction_is_or_clause(&root.rinfos[*ri]) => {
+                    let indlist = make_bitmap_paths_for_or_group(root, rel, *ri, &inner_other_clauses);
+                    if indlist.is_empty() {
+                        pathlist.clear();
+                        break;
+                    }
+                    pathlist.extend(indlist);
+                    continue;
+                }
+                [ri] => build_paths_for_OR(root, rel, &[*ri], &all_clauses),
+                andargs => {
+                    let mut indlist = build_paths_for_OR(root, rel, andargs, &all_clauses);
+                    indlist.extend(generate_bitmap_or_paths(root, rel, andargs, &all_clauses));
+                    indlist
+                }
+            };
+            if indlist.is_empty() {
+                pathlist.clear();
+                break;
+            }
+            pathlist.push(choose_bitmap_and(root, rel, indlist));
+        }
+        if !pathlist.is_empty() {
+            result.push(create_bitmap_or_path(root, rel, pathlist));
+        }
+    }
+    result
+}
+
+/// PathClauseUsage is the clauses and index predicates that a bitmap scan uses, by their positions among those of all
+/// the scans compared, as Postgres' structure of the same name holds them.
+struct PathClauseUsage {
+    path: Rc<Path>,
+    quals: Vec<Expr>,
+    preds: Vec<Expr>,
+    clauseids: Relids,
+    unclassifiable: bool,
+}
+
+/// choose_bitmap_and returns the cheapest combination of bitmap scans to AND together, among those that each use
+/// clauses that the others do not, trying each scan first in order of cost, as Postgres' function of the same name
+/// does.
+fn choose_bitmap_and(root: &mut PlannerInfo<'_, '_>, rel: usize, paths: Vec<Rc<Path>>) -> Rc<Path> {
+    if paths.len() == 1 {
+        return paths.into_iter().next().expect("a path");
+    }
+    let mut clauselist: Vec<Expr> = Vec::new();
+    let mut pathinfoarray: Vec<PathClauseUsage> = Vec::new();
+    for ipath in paths {
+        let pathinfo = classify_index_clause_usage(root, ipath, &mut clauselist);
+        if pathinfo.unclassifiable {
+            pathinfoarray.push(pathinfo);
+            continue;
+        }
+        let same = pathinfoarray.iter().position(|p| !p.unclassifiable && p.clauseids == pathinfo.clauseids);
+        match same {
+            Some(i) => {
+                let (ncost, _) = cost_bitmap_tree_node(&pathinfo.path);
+                let (ocost, _) = cost_bitmap_tree_node(&pathinfoarray[i].path);
+                if ncost < ocost {
+                    pathinfoarray[i] = pathinfo;
+                }
+            }
+            None => pathinfoarray.push(pathinfo),
+        }
+    }
+    if pathinfoarray.len() == 1 {
+        return pathinfoarray.pop().expect("a path").path;
+    }
+    pathinfoarray.sort_by(path_usage_comparator);
+    let mut bestpaths: Vec<Rc<Path>> = Vec::new();
+    let mut bestcost = 0.0;
+    for i in 0..pathinfoarray.len() {
+        let first = &pathinfoarray[i];
+        let mut paths = vec![first.path.clone()];
+        let mut costsofar = bitmap_scan_cost_est(root, rel, &first.path);
+        let mut qualsofar: Vec<Expr> = first.quals.iter().chain(&first.preds).cloned().collect();
+        let mut clauseidsofar = first.clauseids.clone();
+        for pathinfo in &pathinfoarray[i + 1..] {
+            if pathinfo.clauseids.overlap(&clauseidsofar) {
+                continue;
+            }
+            if pathinfo.preds.iter().any(|np| qualsofar.contains(np)) {
+                continue;
+            }
+            paths.push(pathinfo.path.clone());
+            let newcost = bitmap_and_cost_est(root, rel, paths.clone());
+            if newcost < costsofar {
+                costsofar = newcost;
+                qualsofar.extend(pathinfo.quals.iter().chain(&pathinfo.preds).cloned());
+                clauseidsofar.add_members(&pathinfo.clauseids);
+            } else {
+                paths.pop();
+            }
+        }
+        if i == 0 || costsofar < bestcost {
+            bestpaths = paths;
+            bestcost = costsofar;
+        }
+    }
+    match bestpaths.len() {
+        1 => bestpaths.pop().expect("a path"),
+        _ => create_bitmap_and_path(root, rel, bestpaths),
+    }
+}
+
+/// path_usage_comparator orders bitmap scans by their cost, then by the share of the rows they find, as Postgres'
+/// function of the same name does.
+fn path_usage_comparator(a: &PathClauseUsage, b: &PathClauseUsage) -> std::cmp::Ordering {
+    let (acost, aselec) = cost_bitmap_tree_node(&a.path);
+    let (bcost, bselec) = cost_bitmap_tree_node(&b.path);
+    acost.total_cmp(&bcost).then(aselec.total_cmp(&bselec))
+}
+
+/// bitmap_scan_cost_est returns the total cost of a bitmap heap scan of a tree of bitmap scans, as Postgres' function
+/// of the same name estimates it.
+fn bitmap_scan_cost_est(root: &mut PlannerInfo<'_, '_>, rel: usize, ipath: &Path) -> f64 {
+    let ppi = super::relnode::get_baserel_parampathinfo(root, rel, &ipath.param);
+    let loop_count = get_loop_count(root, &ipath.param);
+    let ((_, _, total_cost), _) = cost_bitmap_heap_scan(root, rel, ppi.as_ref(), ipath, loop_count);
+    total_cost
+}
+
+/// bitmap_and_cost_est returns the total cost of a bitmap heap scan of a BitmapAnd of bitmap scans, as Postgres'
+/// function of the same name estimates it.
+fn bitmap_and_cost_est(root: &mut PlannerInfo<'_, '_>, rel: usize, paths: Vec<Rc<Path>>) -> f64 {
+    let apath = create_bitmap_and_path(root, rel, paths);
+    bitmap_scan_cost_est(root, rel, &apath)
+}
+
+/// classify_index_clause_usage returns the clauses and index predicates that a tree of bitmap scans uses, by their
+/// positions in a list of all of them, which it adds the new ones to, as Postgres' function of the same name does.
+fn classify_index_clause_usage(
+    root: &PlannerInfo<'_, '_>,
+    path: Rc<Path>,
+    clauselist: &mut Vec<Expr>,
+) -> PathClauseUsage {
+    let (mut quals, mut preds) = (Vec::new(), Vec::new());
+    find_indexpath_quals(root, &path, &mut quals, &mut preds);
+    if quals.len() + preds.len() > 100 {
+        return PathClauseUsage { path, quals, preds, clauseids: Relids::new(), unclassifiable: true };
+    }
+    let mut clauseids = Relids::new();
+    for node in quals.iter().chain(&preds) {
+        clauseids.add_member(find_list_position(node, clauselist));
+    }
+    PathClauseUsage { path, quals, preds, clauseids, unclassifiable: false }
+}
+
+/// find_indexpath_quals adds the clauses that the index scans of a tree of bitmap scans search by, and the predicates
+/// of their indexes, as Postgres' function of the same name does.
+pub fn find_indexpath_quals(
+    root: &PlannerInfo<'_, '_>,
+    bitmapqual: &Path,
+    quals: &mut Vec<Expr>,
+    preds: &mut Vec<Expr>,
+) {
+    match &bitmapqual.kind {
+        PathKind::BitmapAnd(bpath) | PathKind::BitmapOr(bpath) => {
+            for subpath in &bpath.bitmapquals {
+                find_indexpath_quals(root, subpath, quals, preds);
+            }
+        }
+        PathKind::IndexScan(ipath) => {
+            quals.extend(ipath.indexclauses.iter().map(|iclause| root.rinfos[iclause.rinfo].clause.clone()));
+            preds.extend(root.rels[bitmapqual.parent].indexlist[ipath.index].indpred.iter().cloned());
+        }
+        _ => unreachable!("a bitmap tree holds index scans, BitmapAnds, and BitmapOrs"),
+    }
+}
+
+/// find_list_position returns the position of an expression in a list, adding it at the end when it is not there, as
+/// Postgres' function of the same name does.
+fn find_list_position(node: &Expr, nodelist: &mut Vec<Expr>) -> usize {
+    match nodelist.iter().position(|old| old == node) {
+        Some(i) => i,
+        None => {
+            nodelist.push(node.clone());
+            nodelist.len() - 1
+        }
+    }
+}
+
 /// match_restriction_clauses_to_index returns the restrictions that each column of an index can search by, as
 /// Postgres' function of the same name does.
 fn match_restriction_clauses_to_index(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize) -> IndexClauseSet {
@@ -431,15 +882,25 @@ fn match_restriction_clauses_to_index(root: &mut PlannerInfo<'_, '_>, rel: usize
 }
 
 /// match_join_clauses_to_index returns the join clauses movable to a relation that each column of an index can search
-/// by, as Postgres' function of the same name does. OR clauses, which only bitmap scans use, are left out.
-fn match_join_clauses_to_index(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize) -> IndexClauseSet {
+/// by, collecting the OR clauses among them for bitmap scans, as Postgres' function of the same name does.
+fn match_join_clauses_to_index(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    index: usize,
+    joinorclauses: &mut Vec<RinfoId>,
+) -> IndexClauseSet {
     let mut clauseset = vec![Vec::new(); root.rels[rel].indexlist[index].nkeycolumns];
     let clauses: Vec<RinfoId> = root.rels[rel]
         .joininfo
         .iter()
         .copied()
-        .filter(|&r| join_clause_is_movable_to(&root.rinfos[r], &root.rels[rel]) && root.rinfos[r].orclause.is_none())
+        .filter(|&r| join_clause_is_movable_to(&root.rinfos[r], &root.rels[rel]))
         .collect();
+    for &rinfo in &clauses {
+        if restriction_is_or_clause(&root.rinfos[rinfo]) && !joinorclauses.contains(&rinfo) {
+            joinorclauses.push(rinfo);
+        }
+    }
     match_clauses_to_index(root, rel, &clauses, index, &mut clauseset);
     clauseset
 }

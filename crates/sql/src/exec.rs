@@ -1124,6 +1124,7 @@ fn table_rows(plan: &Plan) -> Result<Option<u64>> {
     let table = match plan {
         Plan::Scan(table, _) => table,
         Plan::IndexScan(scan) => &scan.table,
+        Plan::BitmapHeapScan(scan) => &scan.table,
         Plan::Filter { input, .. } => return table_rows(input),
         _ => return Ok(None),
     };
@@ -1277,10 +1278,17 @@ impl Rows for LateralRows<'_> {
                     out.push(row);
                 }
             }
-            if out.is_empty() && self.kind == JoinKind::Left {
+            let padded = match self.kind {
+                JoinKind::Semi => !out.is_empty(),
+                JoinKind::Left | JoinKind::Anti => out.is_empty(),
+                _ => false,
+            };
+            if padded {
                 let mut row = l;
                 row.extend(std::iter::repeat_n(Value::Null, self.right_width));
-                out.push(row);
+                out = vec![row];
+            } else if self.kind.tests_matches() {
+                out.clear();
             }
             self.pending = out.into_iter();
         }
@@ -1684,6 +1692,7 @@ impl Plan {
         Ok(match self {
             Plan::Scan(table, needed) => Box::new(TableWalk::new(ctx.db, table, needed.as_deref())?),
             Plan::IndexScan(scan) => scan.open(ctx)?,
+            Plan::BitmapHeapScan(scan) => collected(scan.run(ctx)?),
             Plan::Filter { input, predicate } if matches!(**input, Plan::Once(_)) => {
                 Box::new(OnceFilterRows::open(ctx, input, predicate)?)
             }

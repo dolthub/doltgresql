@@ -73,11 +73,20 @@ fn expr_text(e: &Expr, columns: &[String]) -> String {
             let args: Vec<String> = args.iter().map(text).collect();
             format!("{}({})", crate::functions::function(*index).name, args.join(", "))
         }
+        Expr::Outer(depth, i) => ENCLOSING.with(|e| {
+            let enclosing = e.borrow();
+            let row = enclosing.len().checked_sub(*depth).and_then(|level| enclosing.get(level));
+            row.and_then(|names| names.get(*i)).cloned().unwrap_or_else(|| "?".into())
+        }),
         _ => "?".into(),
     }
 }
 
 thread_local! {
+    /// ENCLOSING are the names of the columns of the rows that the lateral joins around the node being printed push
+    /// as its enclosing rows, innermost last.
+    static ENCLOSING: RefCell<Vec<Vec<String>>> = const { RefCell::new(Vec::new()) };
+
     /// RELATIONS are the names that the plan being printed gives the tables it scans, by the addresses of their
     /// definitions, and whether the conditions of the nodes above its scans qualify column names with them, as
     /// Postgres does once a query reads more than one relation.
@@ -117,6 +126,7 @@ fn name_relations(plan: &Plan, names: &mut HashMap<usize, String>, taken: &mut H
     match plan {
         Plan::Scan(table, _) => name(table),
         Plan::IndexScan(scan) => name(&scan.table),
+        Plan::BitmapHeapScan(scan) => name(&scan.table),
         Plan::Join { left, right, .. } | Plan::SetOp { left, right, .. } => {
             name_relations(left, names, taken);
             name_relations(right, names, taken);
@@ -152,6 +162,7 @@ fn own_columns(plan: &Plan) -> Vec<String> {
     match plan {
         Plan::Scan(table, _) => table.columns.iter().map(|c| c.name.clone()).collect(),
         Plan::IndexScan(scan) => scan.table.columns.iter().map(|c| c.name.clone()).collect(),
+        Plan::BitmapHeapScan(scan) => scan.table.columns.iter().map(|c| c.name.clone()).collect(),
         Plan::Catalog(table) => table.columns.iter().map(|c| c.name.to_string()).collect(),
         Plan::CatalogIndexScan(scan) => scan.table.columns.iter().map(|c| c.name.to_string()).collect(),
         other => columns(other),
@@ -166,6 +177,10 @@ fn columns(plan: &Plan) -> Vec<String> {
             table.columns.iter().map(|c| qualify(&relation, &c.name)).collect()
         }
         Plan::IndexScan(scan) => {
+            let relation = relation_name(&scan.table);
+            scan.table.columns.iter().map(|c| qualify(&relation, &c.name)).collect()
+        }
+        Plan::BitmapHeapScan(scan) => {
             let relation = relation_name(&scan.table);
             scan.table.columns.iter().map(|c| qualify(&relation, &c.name)).collect()
         }
@@ -207,6 +222,10 @@ enum Child<'p> {
     /// A plan under a node of the given name that holds its rows, such as a Hash or a Materialize.
     Held(&'static str, &'p Plan),
     Lookup(Lookup<'p>),
+    /// A node of the tree of index scans that a bitmap heap scan reads the keys of.
+    Bitmap(&'p crate::indexscan::Bitmap),
+    /// The right input of a lateral join, which reads a left row of the given columns as its enclosing row.
+    Lateral(&'p Plan, Vec<String>),
 }
 
 /// Lookup is the index lookups that a join makes for each of its left rows: the index and the relation it belongs
@@ -238,23 +257,7 @@ impl Printer {
             Plan::Once(input) => return self.node(input, depth, filters, evaluated),
             Plan::Scan(table, _) => (format!("Seq Scan on {}", scan_target(table)), vec![], vec![]),
             Plan::IndexScan(scan) => {
-                let descending: Vec<bool> = match scan.index {
-                    Some(i) => scan.table.indexes[i].descending.clone(),
-                    None => Vec::new(),
-                };
-                let mut names: Vec<String> = scan
-                    .index_columns()
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &c)| {
-                        let desc = if descending.get(i).copied().unwrap_or(false) { " DESC" } else { "" };
-                        format!("{}{desc}", scan.table.index_column(c).map_or("", |c| c.name.as_str()))
-                    })
-                    .collect();
-                if let Some(index) = scan.index.map(|i| &scan.table.indexes[i]).filter(|i| !i.predicate.is_empty()) {
-                    names.push(index.predicate.clone());
-                }
-                let mut properties = vec![format!("Index Columns: {}", names.join(", "))];
+                let mut properties = vec![index_columns(scan)];
                 match &scan.nearest {
                     Some(nearest) => {
                         properties.push(format!("Order By: {}", expr_text(&nearest.order, &own_columns(plan))))
@@ -272,6 +275,11 @@ impl Printer {
                     vec![],
                 )
             }
+            Plan::BitmapHeapScan(scan) => (
+                format!("Bitmap Heap Scan on {}", scan_target(&scan.table)),
+                vec![format!("Recheck Cond: {}", expr_text(&scan.recheck, &own_columns(plan)))],
+                vec![Child::Bitmap(&scan.bitmap)],
+            ),
             Plan::Sort { input, keys } => {
                 let names = columns(input);
                 let keys: Vec<String> = keys
@@ -298,7 +306,7 @@ impl Printer {
                     ("HashAggregate".into(), vec![format!("Group Key: {}", keys.join(", "))], vec![Child::Plan(input)])
                 }
             }
-            Plan::Join { left, right, kind, condition, method, .. } => {
+            Plan::Join { left, right, kind, condition, method, lateral, .. } => {
                 evaluated.extend(condition);
                 let kind = match kind {
                     JoinKind::Inner => "",
@@ -355,11 +363,13 @@ impl Printer {
                         printed("Join Filter"),
                         vec![Child::Plan(left), Child::Held("Materialize", right)],
                     ),
-                    _ => (
-                        format!("Nested Loop{kind}"),
-                        printed("Join Filter"),
-                        vec![Child::Plan(left), Child::Plan(right)],
-                    ),
+                    _ => {
+                        let right = match lateral {
+                            true => Child::Lateral(right, columns(left)),
+                            false => Child::Plan(right),
+                        };
+                        (format!("Nested Loop{kind}"), printed("Join Filter"), vec![Child::Plan(left), right])
+                    }
                 }
             }
             Plan::SetOp { op, all, left, right } => {
@@ -429,7 +439,9 @@ impl Printer {
                 };
                 self.subplans += 1;
                 self.lines.push(format!("{pad}SubPlan {}", self.subplans));
+                ENCLOSING.with(|e| e.borrow_mut().push(Vec::new()));
                 self.node(subquery, depth + 1, Vec::new(), Vec::new());
+                ENCLOSING.with(|e| e.borrow_mut().pop());
             });
         }
         for child in children {
@@ -440,7 +452,41 @@ impl Printer {
                     self.node(plan, depth + 2, Vec::new(), Vec::new());
                 }
                 Child::Lookup(lookup) => self.lookup(&lookup, depth + 1),
+                Child::Bitmap(bitmap) => self.bitmap(bitmap, depth + 1),
+                Child::Lateral(plan, names) => {
+                    ENCLOSING.with(|e| e.borrow_mut().push(names));
+                    self.node(plan, depth + 1, Vec::new(), Vec::new());
+                    ENCLOSING.with(|e| e.borrow_mut().pop());
+                }
             }
+        }
+    }
+
+    /// bitmap prints a node of the tree of index scans that a bitmap heap scan reads the keys of, as Postgres prints
+    /// its bitmap index scans, BitmapAnds, and BitmapOrs.
+    fn bitmap(&mut self, bitmap: &crate::indexscan::Bitmap, depth: usize) {
+        let (name, properties, children) = match bitmap {
+            crate::indexscan::Bitmap::Index(scan, cond) => {
+                let ranges = match cond {
+                    Some(cond) => {
+                        let names: Vec<String> = scan.table.columns.iter().map(|c| c.name.clone()).collect();
+                        format!("Index Cond: {}", expr_text(cond, &names))
+                    }
+                    None => format!("Index Ranges: {}", crate::ranges::ranges_text(&scan.ranges)),
+                };
+                let name = format!("Bitmap Index Scan on {}", crate::engine::quote_identifier(&scan.index_name()));
+                (name, vec![index_columns(scan), ranges], &[][..])
+            }
+            crate::indexscan::Bitmap::And(children) => ("BitmapAnd".to_string(), Vec::new(), &children[..]),
+            crate::indexscan::Bitmap::Or(children) => ("BitmapOr".to_string(), Vec::new(), &children[..]),
+        };
+        self.lines.push(format!("{}->  {name}", " ".repeat(6 * (depth - 1) + 2)));
+        let pad = " ".repeat(6 * depth + 2);
+        for property in properties {
+            self.lines.push(format!("{pad}{property}"));
+        }
+        for child in children {
+            self.bitmap(child, depth + 1);
         }
     }
 
@@ -470,6 +516,28 @@ impl Printer {
             self.lines.push(format!("{pad}Filter: {}", expr_text(predicate, &own_columns(input))));
         }
     }
+}
+
+/// index_columns returns the `Index Columns` line of a scan of an index: its columns, each marked DESC when the index
+/// orders it descending, then the predicate of a partial index.
+fn index_columns(scan: &crate::indexscan::IndexScan) -> String {
+    let descending: Vec<bool> = match scan.index {
+        Some(i) => scan.table.indexes[i].descending.clone(),
+        None => Vec::new(),
+    };
+    let mut names: Vec<String> = scan
+        .index_columns()
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| {
+            let desc = if descending.get(i).copied().unwrap_or(false) { " DESC" } else { "" };
+            format!("{}{desc}", scan.table.index_column(c).map_or("", |c| c.name.as_str()))
+        })
+        .collect();
+    if let Some(index) = scan.index.map(|i| &scan.table.indexes[i]).filter(|i| !i.predicate.is_empty()) {
+        names.push(index.predicate.clone());
+    }
+    format!("Index Columns: {}", names.join(", "))
 }
 
 impl<'p> Lookup<'p> {

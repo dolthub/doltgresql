@@ -1284,6 +1284,222 @@ impl IndexScan {
         }
         Ok(rows)
     }
+
+    /// index_values decodes the index columns of an entry of the scan's index.
+    fn index_values(&self, db: &mut Database, columns: &[usize], key: &[u8]) -> Result<Vec<Value>> {
+        let tuple = prolly::Tuple(key);
+        let mut values = Vec::with_capacity(columns.len());
+        for (field, &c) in columns.iter().enumerate() {
+            let column = self.table.index_column(c).expect("an index column");
+            values.push(crate::storage::decode_field(db, tuple.field(field)?, column.encoding, column.ty)?);
+        }
+        Ok(values)
+    }
+
+    /// primary_keys returns the primary keys of the rows whose index entries lie in the scan's ranges, in the table's
+    /// key order and without duplicates, as a bitmap index scan marks them.
+    fn primary_keys(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<u8>>> {
+        let root = match self.index {
+            Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
+            None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
+        };
+        let columns = self.index_columns();
+        let mut keys = Vec::new();
+        for range in &self.ranges {
+            let bounds = self.bounds(range);
+            let mut walk = bounds.walk(self, ctx.db, &root, false)?;
+            while let Some((key, _)) = walk.current()? {
+                if !bounds.holds(self, key, false) {
+                    break;
+                }
+                let key = key.to_vec();
+                walk.advance(ctx.db)?;
+                if !bounds.exact && !crate::ranges::range_contains(range, &self.index_values(ctx.db, &columns, &key)?) {
+                    continue;
+                }
+                keys.push(match self.index {
+                    Some(i) => primary_key_of(&self.table, &self.table.indexes[i], &key)?,
+                    None => key,
+                });
+            }
+        }
+        keys.sort_by(|a, b| self.table.compare_keys(a, b));
+        keys.dedup();
+        Ok(keys)
+    }
+}
+
+/// primary_key_of returns the primary key that an entry of a secondary index holds after its own columns, or the
+/// content hash of a keyless table's row.
+fn primary_key_of(table: &TableDef, index: &crate::catalog::table::IndexDef, key: &[u8]) -> Result<Vec<u8>> {
+    let tuple = prolly::Tuple(key);
+    let mut fields = Vec::with_capacity(table.key_columns.len() + 1);
+    let mut extra = index.columns.len();
+    if table.keyless() {
+        fields.push(tuple.field(extra)?);
+    }
+    for c in &table.key_columns {
+        let position = match index.columns.iter().position(|ic| ic == c) {
+            Some(p) => p,
+            None => {
+                extra += 1;
+                extra - 1
+            }
+        };
+        fields.push(tuple.field(position)?);
+    }
+    Ok(prolly::val::build_tuple(&fields))
+}
+
+/// BitmapHeapScan reads the rows of a table whose primary keys a tree of index scans finds, in primary key order, as
+/// Postgres' bitmap heap scan reads the table pages that its bitmap marks.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BitmapHeapScan {
+    pub table: Box<TableDef>,
+    pub bitmap: Bitmap,
+    /// The conditions of the bitmap's index scans, which EXPLAIN shows, and which the scan tests on each row when it
+    /// is lossy, as the ranges of some index scan keep keys that its conditions do not.
+    pub recheck: Expr,
+    pub lossy: bool,
+    /// The table columns that the plan above the scan reads, or None for every column.
+    pub needed: Option<Vec<usize>>,
+}
+
+/// Bitmap is a tree of index scans whose primary keys a bitmap heap scan reads, as Postgres' bitmap index scans,
+/// BitmapAnd, and BitmapOr make bitmaps.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Bitmap {
+    /// The keys that a scan of one index finds. A parameterized scan holds its index conditions, which read the
+    /// enclosing row and build the scan's ranges each time it runs.
+    Index(Box<IndexScan>, Option<Expr>),
+    And(Vec<Bitmap>),
+    Or(Vec<Bitmap>),
+}
+
+impl Bitmap {
+    /// conditions returns the index conditions of the tree's parameterized scans.
+    pub(crate) fn conditions(&self) -> Vec<&Expr> {
+        match self {
+            Bitmap::Index(_, cond) => cond.iter().collect(),
+            Bitmap::And(children) | Bitmap::Or(children) => children.iter().flat_map(Bitmap::conditions).collect(),
+        }
+    }
+
+    /// conditions_mut returns the index conditions of the tree's parameterized scans to change.
+    pub(crate) fn conditions_mut(&mut self) -> Vec<&mut Expr> {
+        match self {
+            Bitmap::Index(_, cond) => cond.iter_mut().collect(),
+            Bitmap::And(children) | Bitmap::Or(children) => {
+                children.iter_mut().flat_map(Bitmap::conditions_mut).collect()
+            }
+        }
+    }
+
+    /// keys returns the primary keys that the tree finds, in the table's key order, setting `lossy` when the ranges of
+    /// a parameterized scan keep keys that its conditions do not.
+    fn keys(&self, ctx: &mut Ctx<'_>, table: &TableDef, lossy: &mut bool) -> Result<Vec<Vec<u8>>> {
+        let order = |a: &Vec<u8>, b: &Vec<u8>| table.compare_keys(a, b);
+        match self {
+            Bitmap::Index(scan, None) => scan.primary_keys(ctx),
+            Bitmap::Index(scan, Some(cond)) => {
+                let cond = bind_outer(ctx, cond.clone())?;
+                let (built, covered) = match scan_of_index(ctx, table, scan.index, Some(&cond), false) {
+                    Some(found) => found,
+                    None => ((**scan).clone(), false),
+                };
+                *lossy |= !covered;
+                built.primary_keys(ctx)
+            }
+            Bitmap::And(children) => {
+                let mut keys = children[0].keys(ctx, table, lossy)?;
+                for child in &children[1..] {
+                    let other = child.keys(ctx, table, lossy)?;
+                    let mut j = 0;
+                    keys.retain(|key| {
+                        while j < other.len() && order(&other[j], key) == std::cmp::Ordering::Less {
+                            j += 1;
+                        }
+                        j < other.len() && order(&other[j], key) == std::cmp::Ordering::Equal
+                    });
+                }
+                Ok(keys)
+            }
+            Bitmap::Or(children) => {
+                let mut keys = Vec::new();
+                for child in children {
+                    keys.extend(child.keys(ctx, table, lossy)?);
+                }
+                keys.sort_by(order);
+                keys.dedup();
+                Ok(keys)
+            }
+        }
+    }
+}
+
+/// bind_outer replaces the enclosing row's columns that an expression reads with their values.
+fn bind_outer(ctx: &mut Ctx<'_>, e: Expr) -> Result<Expr> {
+    match e {
+        Expr::Outer(..) => Ok(Expr::Const(e.eval(ctx, &[])?)),
+        other => {
+            let mut failed = None;
+            let bound = other.map_children(&mut |c| {
+                bind_outer(ctx, c).unwrap_or_else(|err| {
+                    failed = Some(err);
+                    Expr::Const(Value::Null)
+                })
+            });
+            failed.map_or(Ok(bound), Err)
+        }
+    }
+}
+
+impl BitmapHeapScan {
+    /// run reads the rows whose primary keys the scan's bitmap finds, testing the recheck conditions on each when the
+    /// scan is lossy.
+    pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+        let table = &*self.table;
+        let mut lossy = self.lossy;
+        let keys = self.bitmap.keys(ctx, table, &mut lossy)?;
+        let needed = self.needed.as_ref().filter(|_| !lossy).map(|columns| {
+            let mut mask = vec![false; table.columns.len()];
+            for &c in columns {
+                if let Some(m) = mask.get_mut(c) {
+                    *m = true;
+                }
+            }
+            mask
+        });
+        let primary = Arc::new(prolly::Node::decode(table.table.primary_index.clone())?);
+        let compare = |a: &[u8], b: &[u8]| table.compare_keys(a, b);
+        let mut walk: Option<prolly::Items> = None;
+        let mut rows = Vec::new();
+        for key in &keys {
+            let items = match &mut walk {
+                Some(items) => {
+                    items.seek(ctx.db, key, &compare)?;
+                    items
+                }
+                None => walk.insert(prolly::Items::at_key(ctx.db, primary.clone(), key, &compare)?),
+            };
+            let Some((found, stored)) = items.current()? else { break };
+            if compare(found, key) != std::cmp::Ordering::Equal {
+                continue;
+            }
+            let mut row = Vec::new();
+            let cardinality = table.decode_columns_into(ctx.db, key, stored, needed.as_deref(), &mut row)?;
+            if lossy && !self.recheck.is_true(ctx, &row)? {
+                continue;
+            }
+            for _ in 1..cardinality {
+                rows.push(row.clone());
+            }
+            if cardinality > 0 {
+                rows.push(row);
+            }
+        }
+        Ok(rows)
+    }
 }
 
 /// Reader decodes the entries of the index a scan reads into the table's rows.
@@ -1329,10 +1545,7 @@ impl Reader<'_> {
         let wanted = |c: usize| self.needed.as_ref().is_none_or(|n| n.get(c).copied().unwrap_or(false));
         let mut values: Vec<Value> = Vec::new();
         if let Some(ranges) = check {
-            for (field, &c) in self.columns.iter().enumerate() {
-                let column = table.index_column(c).expect("an index column");
-                values.push(crate::storage::decode_field(db, tuple.field(field)?, column.encoding, column.ty)?);
-            }
+            values = scan.index_values(db, &self.columns, key)?;
             if !ranges.iter().any(|r| crate::ranges::range_contains(r, &values)) {
                 return Ok(None);
             }
@@ -1370,22 +1583,7 @@ impl Reader<'_> {
             }
             return Ok(Some(1));
         }
-        let mut fields = Vec::with_capacity(table.key_columns.len() + 1);
-        let mut extra = index.columns.len();
-        if table.keyless() {
-            fields.push(tuple.field(extra)?);
-        }
-        for c in &table.key_columns {
-            let position = match index.columns.iter().position(|ic| ic == c) {
-                Some(p) => p,
-                None => {
-                    extra += 1;
-                    extra - 1
-                }
-            };
-            fields.push(tuple.field(position)?);
-        }
-        let primary_key = prolly::val::build_tuple(&fields);
+        let primary_key = primary_key_of(table, index, key)?;
         let compare = |a: &[u8], b: &[u8]| table.compare_keys(a, b);
         let lookup = match &mut self.lookup {
             Some(lookup) => {
@@ -1930,6 +2128,7 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
     let union = |a: Option<BTreeSet<usize>>, b: Option<BTreeSet<usize>>| Some(a?.union(&b?).copied().collect());
     match plan {
         Plan::IndexScan(scan) => scan.needed = needed.map(|n| n.into_iter().collect()),
+        Plan::BitmapHeapScan(scan) => scan.needed = needed.map(|n| n.into_iter().collect()),
         Plan::Scan(_, columns) => *columns = needed.map(|n| n.into_iter().collect()),
         Plan::Join { left, right, condition, lateral, method, .. } => {
             let width = left.width();
@@ -2065,6 +2264,10 @@ fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
             if let Some(n) = &scan.nearest {
                 read(&mut [&n.order, &n.query].into_iter().chain(&n.limit).chain(&n.offset));
             }
+            Vec::new()
+        }
+        Plan::BitmapHeapScan(scan) => {
+            read(&mut std::iter::once(&scan.recheck).chain(scan.bitmap.conditions()));
             Vec::new()
         }
         Plan::Values(rows) => {

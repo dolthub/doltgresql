@@ -16,6 +16,8 @@
 //! its default cost settings. Dolt has no pages, so a table's pages are those its rows would fill in Postgres' heap,
 //! and its primary index holds its rows in key order, so a scan of that index fetches nothing else.
 
+use std::rc::Rc;
+
 use super::PlannerInfo;
 use super::clausesel::{clause_selectivity, clauselist_selectivity};
 use super::nodes::{JoinType, Path, PathKind, Relids, RinfoId, SpecialJoinInfo};
@@ -60,6 +62,7 @@ pub struct Enables {
     pub seqscan: bool,
     pub indexscan: bool,
     pub indexonlyscan: bool,
+    pub bitmapscan: bool,
     pub nestloop: bool,
     pub hashjoin: bool,
     pub material: bool,
@@ -76,6 +79,7 @@ impl Enables {
             seqscan: on("enable_seqscan"),
             indexscan: on("enable_indexscan"),
             indexonlyscan: on("enable_indexonlyscan"),
+            bitmapscan: on("enable_bitmapscan"),
             nestloop: on("enable_nestloop"),
             hashjoin: on("enable_hashjoin"),
             material: on("enable_material"),
@@ -315,10 +319,11 @@ pub fn cost_catalog_lookup(
     (disabled(enabled), startup_cost, startup_cost + run_cost + cpu_run_cost)
 }
 
-/// cost_index returns the costs of an index path and the share of the index's entries that it reads, given the join
-/// clauses that its parameterization adds, the rows it returns, and how many times a nested loop runs it, as
-/// Postgres' function of the same name does with btcostestimate's costs of the index itself. Dolt has no visibility
-/// map, as though every page were all-visible, so an index-only scan reads no table pages.
+/// cost_index returns the costs of an index path, the share of the index's entries that it reads, and the cost of
+/// reading the index itself, given the join clauses that its parameterization adds, the rows it returns, and how many
+/// times a nested loop runs it, as Postgres' function of the same name does with btcostestimate's costs of the index
+/// itself. Dolt has no visibility map, as though every page were all-visible, so an index-only scan reads no table
+/// pages.
 pub fn cost_index(
     root: &PlannerInfo<'_, '_>,
     rel: usize,
@@ -326,7 +331,7 @@ pub fn cost_index(
     ppi_clauses: &[RinfoId],
     rows: f64,
     loop_count: f64,
-) -> (Costs, f64) {
+) -> (Costs, f64, f64) {
     let baserel = &root.rels[rel];
     let index = &baserel.indexlist[path.index];
     let mut qpquals = extract_nonindex_conditions(root, &index.indrestrictinfo, &path.indexclauses);
@@ -364,7 +369,145 @@ pub fn cost_index(
     startup_cost += baserel.reltarget.cost.startup;
     cpu_run_cost += baserel.reltarget.cost.per_tuple * rows;
     run_cost += cpu_run_cost;
-    ((disabled_nodes, startup_cost, startup_cost + run_cost), estimate.selectivity)
+    ((disabled_nodes, startup_cost, startup_cost + run_cost), estimate.selectivity, estimate.total_cost)
+}
+
+/// cost_bitmap_heap_scan returns the costs and rows of a scan of a base relation's rows whose keys a tree of index
+/// scans finds, given its parameterization and how many times a nested loop runs it, as Postgres' function of the
+/// same name does. Dolt's rows lie in its primary index's pages in key order, which the scan reads in that order.
+pub fn cost_bitmap_heap_scan(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    ppi: Option<&super::nodes::ParamPathInfo>,
+    bitmapqual: &Path,
+    loop_count: f64,
+) -> (Costs, f64) {
+    let baserel = &root.rels[rel];
+    let rows = ppi.map_or(baserel.rows, |ppi| ppi.ppi_rows);
+    let (pages_fetched, index_total_cost, tuples_fetched) = compute_bitmap_pages(root, rel, bitmapqual, loop_count);
+    let mut startup_cost = index_total_cost;
+    let t = if baserel.pages > 1.0 { baserel.pages } else { 1.0 };
+    let cost_per_page = match pages_fetched >= 2.0 {
+        true => RANDOM_PAGE_COST - (RANDOM_PAGE_COST - SEQ_PAGE_COST) * (pages_fetched / t).sqrt(),
+        false => RANDOM_PAGE_COST,
+    };
+    let mut run_cost = pages_fetched * cost_per_page;
+    let qpqual_cost = get_restriction_qual_cost(root, rel, ppi);
+    startup_cost += qpqual_cost.startup;
+    run_cost += (CPU_TUPLE_COST + qpqual_cost.per_tuple) * tuples_fetched;
+    startup_cost += baserel.reltarget.cost.startup;
+    run_cost += baserel.reltarget.cost.per_tuple * rows;
+    ((disabled(root.enables.bitmapscan), startup_cost, startup_cost + run_cost), rows)
+}
+
+/// get_restriction_qual_cost returns the cost of testing a base relation's restrictions and the join clauses that a
+/// parameterization adds, as Postgres' function of the same name does.
+fn get_restriction_qual_cost(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    ppi: Option<&super::nodes::ParamPathInfo>,
+) -> QualCost {
+    let mut cost = cost_qual_eval(root, &root.rels[rel].baserestrictinfo);
+    if let Some(ppi) = ppi {
+        let more = cost_qual_eval(root, &ppi.ppi_clauses);
+        cost.startup += more.startup;
+        cost.per_tuple += more.per_tuple;
+    }
+    cost
+}
+
+/// cost_bitmap_tree_node returns the cost of a node of a tree of index scans and the share of the table's rows whose
+/// keys it finds, as Postgres' function of the same name does.
+pub fn cost_bitmap_tree_node(path: &Path) -> (f64, f64) {
+    match &path.kind {
+        PathKind::IndexScan(ipath) => {
+            (ipath.indextotalcost + 0.1 * CPU_OPERATOR_COST * path.rows, ipath.indexselectivity)
+        }
+        PathKind::BitmapAnd(bpath) | PathKind::BitmapOr(bpath) => (path.total_cost, bpath.bitmapselectivity),
+        _ => unreachable!("a bitmap tree holds index scans, BitmapAnds, and BitmapOrs"),
+    }
+}
+
+/// cost_bitmap_and_node returns the cost of a BitmapAnd of index scans and the share of the table's rows whose keys
+/// it finds, as Postgres' function of the same name does.
+pub fn cost_bitmap_and_node(bitmapquals: &[Rc<Path>]) -> (f64, f64) {
+    let (mut total_cost, mut selec) = (0.0, 1.0);
+    for (i, subpath) in bitmapquals.iter().enumerate() {
+        let (sub_cost, subselec) = cost_bitmap_tree_node(subpath);
+        selec *= subselec;
+        total_cost += sub_cost;
+        if i > 0 {
+            total_cost += 100.0 * CPU_OPERATOR_COST;
+        }
+    }
+    (total_cost, selec)
+}
+
+/// cost_bitmap_or_node returns the cost of a BitmapOr of index scans and the share of the table's rows whose keys it
+/// finds, as Postgres' function of the same name does.
+pub fn cost_bitmap_or_node(bitmapquals: &[Rc<Path>]) -> (f64, f64) {
+    let (mut total_cost, mut selec) = (0.0, 0.0);
+    for (i, subpath) in bitmapquals.iter().enumerate() {
+        let (sub_cost, subselec) = cost_bitmap_tree_node(subpath);
+        selec += subselec;
+        total_cost += sub_cost;
+        if i > 0 && !matches!(subpath.kind, PathKind::IndexScan(_)) {
+            total_cost += 100.0 * CPU_OPERATOR_COST;
+        }
+    }
+    (total_cost, f64::min(selec, 1.0))
+}
+
+/// tbm_calculate_entries returns how many pages a bitmap of the given size holds before it marks whole pages lossy,
+/// as Postgres' function of the same name estimates it with its page table entries of 64 bytes.
+fn tbm_calculate_entries(maxbytes: f64) -> f64 {
+    (maxbytes / 64.0).floor().clamp(16.0, f64::from(i32::MAX - 1))
+}
+
+/// get_indexpath_pages returns the pages of the indexes that a tree of index scans reads, as Postgres' function of
+/// the same name counts them.
+fn get_indexpath_pages(root: &PlannerInfo<'_, '_>, bitmapqual: &Path) -> f64 {
+    match &bitmapqual.kind {
+        PathKind::IndexScan(ipath) => root.rels[bitmapqual.parent].indexlist[ipath.index].pages,
+        PathKind::BitmapAnd(bpath) | PathKind::BitmapOr(bpath) => {
+            bpath.bitmapquals.iter().map(|p| get_indexpath_pages(root, p)).sum()
+        }
+        _ => 0.0,
+    }
+}
+
+/// compute_bitmap_pages returns how many of a base relation's pages a scan by a tree of index scans reads, the cost
+/// of the tree, and how many rows the scan fetches, as Postgres' function of the same name estimates them.
+pub fn compute_bitmap_pages(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    bitmapqual: &Path,
+    loop_count: f64,
+) -> (f64, f64, f64) {
+    let baserel = &root.rels[rel];
+    let (index_total_cost, index_selectivity) = cost_bitmap_tree_node(bitmapqual);
+    let mut tuples_fetched = clamp_row_est(index_selectivity * baserel.tuples);
+    let t = if baserel.pages > 1.0 { baserel.pages } else { 1.0 };
+    let mut pages_fetched = (2.0 * t * tuples_fetched) / (2.0 * t + tuples_fetched);
+    let heap_pages = pages_fetched.min(baserel.pages);
+    let maxentries = tbm_calculate_entries(SORT_MEM);
+    if loop_count > 1.0 {
+        let index_pages = get_indexpath_pages(root, bitmapqual);
+        pages_fetched = index_pages_fetched(root, tuples_fetched * loop_count, baserel.pages, index_pages);
+        pages_fetched /= loop_count;
+    }
+    pages_fetched = if pages_fetched >= t { t } else { pages_fetched.ceil() };
+    if maxentries < heap_pages {
+        let lossy_pages = (heap_pages - maxentries / 2.0).max(0.0);
+        let exact_pages = heap_pages - lossy_pages;
+        if lossy_pages > 0.0 {
+            tuples_fetched = clamp_row_est(
+                index_selectivity * (exact_pages / heap_pages) * baserel.tuples
+                    + (lossy_pages / heap_pages) * baserel.tuples,
+            );
+        }
+    }
+    (pages_fetched, index_total_cost, tuples_fetched)
 }
 
 /// extract_nonindex_conditions returns the clauses of a list that an index scan must test on each row because its
