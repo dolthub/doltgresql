@@ -73,25 +73,47 @@ pub(crate) fn enabled() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("DOLTGRES_PG_PLANNER").is_some())
 }
 
-/// plannable reports whether query_planner can plan a FROM clause's plan: joins that are not lateral, whose
-/// conditions have no subqueries, of at most MAX_RELATIONS inputs.
+/// plannable reports whether query_planner can plan a FROM clause's plan: anything but the empty FROM clause's one
+/// row, of at most MAX_RELATIONS inputs.
 pub(crate) fn plannable(from: &Plan) -> bool {
-    /// inputs counts the inputs of plannable joins, or returns None when a join is not plannable.
-    fn inputs(plan: &Plan) -> Option<usize> {
+    /// inputs counts the plans that a FROM clause's plan may turn into range table entries.
+    fn inputs(plan: &Plan) -> usize {
         match plan {
-            Plan::Join { left, right, condition, lateral, method, .. } => {
-                if *lateral
-                    || *method != JoinMethod::Unplanned
-                    || condition.as_ref().is_some_and(crate::plan::has_subquery)
-                {
-                    return None;
-                }
-                Some(inputs(left)? + inputs(right)?)
-            }
-            _ => Some(1),
+            Plan::Join { left, right, .. } => inputs(left) + inputs(right),
+            Plan::Project { input, .. } | Plan::Filter { input, .. } => inputs(input),
+            _ => 1,
         }
     }
-    !matches!(from, Plan::OneRow) && inputs(from).is_some_and(|n| n <= MAX_RELATIONS)
+    !matches!(from, Plan::OneRow) && inputs(from) <= MAX_RELATIONS
+}
+
+/// plan_subquery plans the FROM and WHERE clauses of a simple subquery that its query left unplanned for pulling up,
+/// when it stays a relation of its own, as Postgres' subquery_planner plans a subquery that it could not pull up.
+pub(crate) fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
+    match plan {
+        Plan::Project { input, exprs } => Plan::Project { input: Box::new(plan_subquery(ctx, *input)), exprs },
+        Plan::Filter { input, predicate } if plannable(&input) => {
+            let quals = crate::indexscan::conjuncts(&predicate).into_iter().cloned().collect();
+            query_planner(ctx, *input, quals)
+        }
+        join @ Plan::Join { .. } if decomposable(&join) => query_planner(ctx, join, Vec::new()),
+        Plan::Join { left, right, kind, condition, lateral, method } => Plan::Join {
+            left: Box::new(plan_subquery(ctx, *left)),
+            right: Box::new(plan_subquery(ctx, *right)),
+            kind,
+            condition,
+            lateral,
+            method,
+        },
+        other => other,
+    }
+}
+
+/// decomposable reports whether a join's inputs can join in any order the planner finds: it is not lateral, not
+/// already planned, and has no subquery in its condition.
+fn decomposable(join: &Plan) -> bool {
+    matches!(join, Plan::Join { condition, lateral: false, method: JoinMethod::Unplanned, .. }
+        if !condition.as_ref().is_some_and(crate::plan::has_subquery))
 }
 
 /// query_planner plans a FROM clause's plan under the conjuncts of the WHERE clause, as Postgres' query_planner
@@ -101,7 +123,7 @@ pub(crate) fn plannable(from: &Plan) -> bool {
 /// afterwards.
 pub(crate) fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>) -> Plan {
     let (mut rtable, mut output) = (Vec::new(), Vec::new());
-    let node = build_jointree(from, &mut rtable, &mut output);
+    let node = build_jointree(ctx, from, &mut rtable, &mut output, false);
     let (kept, later): (Vec<Expr>, Vec<Expr>) = quals.into_iter().partition(|q| !crate::plan::has_subquery(q));
     let mut jointree =
         FromExpr { fromlist: vec![node], quals: kept.into_iter().map(|q| to_vars(q, &output)).collect() };
@@ -131,13 +153,29 @@ pub(crate) fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>) -> 
 }
 
 /// build_jointree adds the inputs of a FROM clause's joins to a range table and returns its join tree, adding the
-/// Var of each column of the plan's rows to `output`. A right join becomes a left join of its inputs swapped.
-fn build_jointree(plan: Plan, rtable: &mut Vec<RangeTblEntry>, output: &mut Vec<usize>) -> JoinTreeNode {
+/// expression of each column of the plan's rows to `output`, given whether an outer join can make the plan's rows
+/// NULL. A right join becomes a left join of its inputs swapped. A projection or filter over any input is pulled up
+/// into the join tree, as Postgres' pull_up_subqueries pulls up a simple subquery, unless one of its expressions
+/// would need a PlaceHolderVar, which is not ported yet. Any other input, or any join that is lateral, already
+/// planned, or has a subquery in its condition, becomes a relation of its own.
+fn build_jointree(
+    ctx: &mut Ctx<'_>,
+    plan: Plan,
+    rtable: &mut Vec<RangeTblEntry>,
+    output: &mut Vec<Expr>,
+    nullable: bool,
+) -> JoinTreeNode {
     match plan {
-        Plan::Join { left, right, kind, condition, .. } => {
+        Plan::Join { left, right, kind, condition, .. } if decomposable(&plan) => {
             let start = output.len();
-            let larg = build_jointree(*left, rtable, output);
-            let rarg = build_jointree(*right, rtable, output);
+            let (left_nullable, right_nullable) = match kind {
+                JoinKind::Inner => (nullable, nullable),
+                JoinKind::Left | JoinKind::Semi | JoinKind::Anti => (nullable, true),
+                JoinKind::Right => (true, nullable),
+                JoinKind::Full => (true, true),
+            };
+            let larg = build_jointree(ctx, *left, rtable, output, left_nullable);
+            let rarg = build_jointree(ctx, *right, rtable, output, right_nullable);
             let conjuncts = condition.as_ref().map(crate::indexscan::conjuncts).unwrap_or_default();
             let quals = conjuncts.into_iter().map(|c| to_vars(c.clone(), &output[start..])).collect();
             let (jointype, larg, rarg) = match kind {
@@ -150,19 +188,56 @@ fn build_jointree(plan: Plan, rtable: &mut Vec<RangeTblEntry>, output: &mut Vec<
             };
             JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg, rarg, quals }))
         }
+        Plan::Project { input, exprs } if exprs.iter().all(|e| pullable(e, nullable)) => {
+            let mut columns = Vec::new();
+            let node = build_jointree(ctx, *input, rtable, &mut columns, nullable);
+            output.extend(exprs.into_iter().map(|e| to_vars(e, &columns)));
+            node
+        }
+        Plan::Filter { input, predicate } if !crate::plan::has_subquery(&predicate) => {
+            let start = output.len();
+            let node = build_jointree(ctx, *input, rtable, output, nullable);
+            let conjuncts = crate::indexscan::conjuncts(&predicate);
+            let quals = conjuncts.into_iter().map(|c| to_vars(c.clone(), &output[start..])).collect();
+            JoinTreeNode::From(Box::new(FromExpr { fromlist: vec![node], quals }))
+        }
         other => {
             let varno = rtable.len() + 1;
-            output.extend((0..other.width()).map(|attno| var(varno, attno)));
-            rtable.push(RangeTblEntry { plan: other });
+            output.extend((0..other.width()).map(|attno| Expr::Column(var(varno, attno))));
+            rtable.push(RangeTblEntry { plan: plan_subquery(ctx, other) });
             JoinTreeNode::Rel(varno)
         }
     }
 }
 
-/// to_vars rewrites an expression over a row of columns into one over their Vars.
-fn to_vars(e: Expr, vars: &[usize]) -> Expr {
+/// pullable reports whether a projection's expression can replace references to its column in the join tree above
+/// it: one that runs no volatile function or subquery and reads only the projection's input, and, where an outer join
+/// can make the input's rows NULL, one that is NULL then too, as a Var is and a strict expression of Vars is, which
+/// Postgres would otherwise wrap in a PlaceHolderVar.
+fn pullable(e: &Expr, nullable: bool) -> bool {
+    let mut reads_only_columns = true;
+    e.visit(&mut |x| {
+        reads_only_columns &= !matches!(
+            x,
+            Expr::InputColumn(_)
+                | Expr::AggRef(_)
+                | Expr::WindowRef(_)
+                | Expr::SetRef(_)
+                | Expr::Grouping(..)
+                | Expr::SubqueryValue
+                | Expr::Default(_)
+        )
+    });
+    if !reads_only_columns || crate::plan::has_subquery(e) || clauses::contain_volatile_functions(e) {
+        return false;
+    }
+    !nullable || matches!(e, Expr::Column(_)) || (clauses::contain_vars(e) && !clauses::contain_nonstrict_functions(e))
+}
+
+/// to_vars rewrites an expression over a row of columns into one over their expressions.
+fn to_vars(e: Expr, columns: &[Expr]) -> Expr {
     match e {
-        Expr::Column(c) => Expr::Column(vars[c]),
-        other => other.map_children(&mut |c| to_vars(c, vars)),
+        Expr::Column(c) => columns[c].clone(),
+        other => other.map_children(&mut |c| to_vars(c, columns)),
     }
 }

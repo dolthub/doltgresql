@@ -95,11 +95,12 @@ impl RangeTblEntry {
     }
 }
 
-/// JoinTreeNode is a node of the query's join tree: a reference to a range table entry, or a JOIN.
+/// JoinTreeNode is a node of the query's join tree: a reference to a range table entry, a JOIN, or a FROM list.
 #[derive(Clone, Debug)]
 pub enum JoinTreeNode {
     Rel(usize),
     Join(Box<JoinExpr>),
+    From(Box<FromExpr>),
 }
 
 /// JoinExpr is a JOIN of two join tree nodes with its ON conditions.
@@ -119,12 +120,12 @@ pub struct FromExpr {
 }
 
 /// Query is the part of a query that the planner's query_planner plans: its range table, indexed from 1, its join
-/// tree, and the Vars of the columns that the plan above the join tree reads, in the order it reads them.
+/// tree, and the expressions of the columns that the plan above the join tree reads, in the order it reads them.
 #[derive(Clone, Debug)]
 pub struct Query {
     pub rtable: Vec<RangeTblEntry>,
     pub jointree: FromExpr,
-    pub output: Vec<usize>,
+    pub output: Vec<Expr>,
 }
 
 impl Query {

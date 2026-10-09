@@ -51,6 +51,7 @@ fn pass1(node: &JoinTreeNode) -> ReduceState {
         JoinTreeNode::Rel(varno) => {
             ReduceState { relids: singleton(*varno), contains_outer: false, sub_states: Vec::new() }
         }
+        JoinTreeNode::From(f) => pass1_from(f),
         JoinTreeNode::Join(j) => {
             let sub_states = vec![pass1(&j.larg), pass1(&j.rarg)];
             ReduceState {
@@ -92,6 +93,7 @@ fn pass2(
     forced_null_vars: &[usize],
 ) {
     let j = match node {
+        JoinTreeNode::From(f) => return pass2_from(f, state, nonnullable_rels, nonnullable_vars, forced_null_vars),
         JoinTreeNode::Rel(_) => return,
         JoinTreeNode::Join(j) => j,
     };

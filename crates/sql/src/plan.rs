@@ -683,7 +683,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             SetOperation::SetopNone | SetOperation::Undefined if !select.values_lists.is_empty() => {
                 self.plan_values(select)?
             }
-            SetOperation::SetopNone | SetOperation::Undefined => return self.plan_select(select),
+            SetOperation::SetopNone | SetOperation::Undefined => return self.plan_select(select, false),
             _ => self.plan_set_operation(select, op)?,
         };
         // ORDER BY and LIMIT of VALUES and set operations apply to the result's columns.
@@ -1366,7 +1366,11 @@ impl<'b, 'a> Planner<'b, 'a> {
                 ..PgError::new(code::SYNTAX_ERROR, format!("{what} in FROM must have an alias"))
             });
         };
-        let query = Planner { ctx: self.ctx, outer: self.outer.clone() }.plan_query(select)?;
+        let mut planner = Planner { ctx: self.ctx, outer: self.outer.clone() };
+        let query = match crate::optimizer::enabled() && is_simple_subquery(select) {
+            true => planner.plan_select(select, true)?,
+            false => planner.plan_query(select)?,
+        };
         let renames: Vec<&str> = alias.colnames.iter().filter_map(node_name).collect();
         if renames.len() > query.columns.len() {
             return Err(PgError::new(
@@ -1725,8 +1729,9 @@ impl<'b, 'a> Planner<'b, 'a> {
         Ok((plan, scope))
     }
 
-    /// plan_select plans a simple SELECT.
-    fn plan_select(&mut self, select: &SelectStmt) -> Result<Query> {
+    /// plan_select plans a simple SELECT, leaving its FROM and WHERE clauses unplanned when `defer` asks for a subquery
+    /// that the query around it may pull up.
+    fn plan_select(&mut self, select: &SelectStmt, defer: bool) -> Result<Query> {
         let (mut plan, scope) = self.plan_from(&select.from_clause)?;
         if let Some(node) = select.where_clause.as_deref() {
             if has_aggregate(node) {
@@ -1749,7 +1754,11 @@ impl<'b, 'a> Planner<'b, 'a> {
                     false => kept.push(c.clone()),
                 }
             }
-            if crate::optimizer::enabled() && crate::optimizer::plannable(&plan) {
+            if defer {
+                if let Some(predicate) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
+                    plan = Plan::Filter { input: Box::new(plan), predicate };
+                }
+            } else if crate::optimizer::enabled() && crate::optimizer::plannable(&plan) {
                 plan = crate::optimizer::query_planner(self.ctx, plan, kept);
             } else {
                 if let Some(kept) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
@@ -1760,7 +1769,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             for existence in existences {
                 plan = crate::joins::filter_existence(plan, existence);
             }
-        } else if crate::optimizer::enabled() && crate::optimizer::plannable(&plan) {
+        } else if !defer && crate::optimizer::enabled() && crate::optimizer::plannable(&plan) {
             plan = crate::optimizer::query_planner(self.ctx, plan, Vec::new());
         }
         let hints = crate::joins::hints(&self.ctx.session.source);
@@ -2109,10 +2118,32 @@ impl<'b, 'a> Planner<'b, 'a> {
             let visible = (0..width).map(Expr::Column).collect();
             plan = Plan::Project { input: Box::new(plan), exprs: visible };
         }
-        plan = crate::joins::plan_joins(self.ctx, plan);
-        crate::indexscan::prune(&mut plan);
+        if !defer {
+            plan = crate::joins::plan_joins(self.ctx, plan);
+            crate::indexscan::prune(&mut plan);
+        }
         Ok(Query { plan, columns, types })
     }
+}
+
+/// is_simple_subquery reports whether a subquery in FROM is a plain SELECT that a query around it may pull up into
+/// its own join tree, as Postgres' is_simple_subquery requires: no WITH, set operation, VALUES, grouping, aggregate,
+/// window function, DISTINCT, ORDER BY, LIMIT, or locking.
+fn is_simple_subquery(select: &SelectStmt) -> bool {
+    let op = SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone);
+    matches!(op, SetOperation::SetopNone | SetOperation::Undefined)
+        && select.with_clause.is_none()
+        && select.into_clause.is_none()
+        && select.values_lists.is_empty()
+        && select.group_clause.is_empty()
+        && select.having_clause.is_none()
+        && select.window_clause.is_empty()
+        && select.distinct_clause.is_empty()
+        && select.sort_clause.is_empty()
+        && select.limit_count.is_none()
+        && select.limit_offset.is_none()
+        && select.locking_clause.is_empty()
+        && !select.target_list.iter().any(|t| has_aggregate(t) || crate::window::has_window(t))
 }
 
 /// first_location returns the location of a SELECT's first value or target, or -1 without one.

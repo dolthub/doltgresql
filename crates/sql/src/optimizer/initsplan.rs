@@ -91,6 +91,7 @@ fn deconstruct_recurse(
             *inner_join_rels = 0;
             return vec![JoinList::Rel(*varno)];
         }
+        JoinTreeNode::From(f) => return deconstruct_from(root, f, below_outer_join, qualscope, inner_join_rels),
         JoinTreeNode::Join(j) => j,
     };
     let (mut leftids, mut rightids, mut left_inners, mut right_inners) = (0, 0, 0, 0);

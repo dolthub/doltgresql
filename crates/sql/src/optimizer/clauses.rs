@@ -42,6 +42,35 @@ pub fn contain_volatile_functions(e: &Expr) -> bool {
     volatile
 }
 
+/// contain_vars reports whether an expression reads a Var of the query, as Postgres' contain_vars_of_level does for
+/// the current level.
+pub fn contain_vars(e: &Expr) -> bool {
+    pull_varnos(e) != 0
+}
+
+/// contain_nonstrict_functions reports whether an expression can be non-NULL when an input is NULL, because one of
+/// its parts is not a value, a Var, or a strict operator, cast, or function, as Postgres' function of the same name
+/// does.
+pub fn contain_nonstrict_functions(e: &Expr) -> bool {
+    let mut nonstrict = false;
+    e.visit(&mut |x| {
+        nonstrict |= match x {
+            Expr::Column(_)
+            | Expr::Const(_)
+            | Expr::Param(_)
+            | Expr::Outer(..)
+            | Expr::Cast(..)
+            | Expr::Arith(..)
+            | Expr::Neg(..)
+            | Expr::Compare(..)
+            | Expr::DateTime(..) => false,
+            Expr::Func(f, _) => !crate::functions::function(*f).strict,
+            _ => true,
+        }
+    });
+    nonstrict
+}
+
 /// strict_args returns the arguments of a strict operator or function, which is NULL when any of them is, or None
 /// for any other expression.
 fn strict_args(e: &Expr) -> Option<Vec<&Expr>> {

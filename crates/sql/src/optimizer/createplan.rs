@@ -26,14 +26,14 @@ use super::restrictinfo::is_pushed_down;
 use crate::expr::Expr;
 use crate::plan::{JoinKind, JoinMethod, Plan};
 
-/// create_plan makes the plan of a path of the relation that joins every base relation, whose columns are in the
-/// order of the query's output Vars.
+/// create_plan makes the plan of a path of the relation that joins every base relation, whose columns are the
+/// query's output expressions.
 pub fn create_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> Plan {
     let (plan, layout) = create_plan_recurse(root, path);
-    if layout == root.parse.output {
+    let exprs: Vec<Expr> = root.parse.output.iter().map(|e| positional(e, &layout)).collect();
+    if exprs.iter().enumerate().all(|(i, e)| *e == Expr::Column(i)) && exprs.len() == layout.len() {
         return plan;
     }
-    let exprs = root.parse.output.iter().map(|v| Expr::Column(position(&layout, *v))).collect();
     Plan::Project { input: Box::new(plan), exprs }
 }
 
