@@ -25,10 +25,16 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// resolveScalarFunctionAliases makes a bare alias of a scalar function in FROM denote its value,
-// even when its named OUT parameter has a different name. Resolve this before operators and casts
-// consume its type, and refresh references to the value through enclosing subqueries.
-func resolveScalarFunctionAliases(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
+// rewriteScalarFunctionAliasReferences replaces a single-field TableToComposite expression with
+// its GetField child when the referenced table alias wraps a function returning scalar values.
+// This includes set-returning functions: in SELECT e FROM json_array_elements(...) AS e, the
+// GetField reads the output column "value" and is renamed to "e". Its type is json rather than
+// a composite row containing json.
+//
+// It also updates composite-typed GetField references in enclosing subqueries to match the
+// rewritten child schema, including expressions in SubqueryAlias.ScopeMapping. These changes
+// run before operator and cast type resolution.
+func rewriteScalarFunctionAliasReferences(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	return pgtransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		rewrite := func(ctx *sql.Context, _ sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if row, ok := expr.(*pgexpression.TableToComposite); ok && len(row.Children()) == 1 {
@@ -69,6 +75,8 @@ func resolveScalarFunctionAliases(ctx *sql.Context, node sql.Node) (sql.Node, tr
 	})
 }
 
+// isScalarTableFunction checks whether tableID identifies a TableAlias wrapping a TableFunction
+// with one output column and one expression whose type is neither record nor composite.
 func isScalarTableFunction(ctx *sql.Context, node sql.Node, tableID sql.TableId) bool {
 	return transform.InspectUp(ctx, node, func(ctx *sql.Context, n sql.Node) bool {
 		alias, ok := n.(*plan.TableAlias)
@@ -87,8 +95,9 @@ func isScalarTableFunction(ctx *sql.Context, node sql.Node, tableID sql.TableId)
 	})
 }
 
-// scalarSubqueryColumnType obtains the updated type when a function alias projected by a
-// subquery was initially treated as a record. Ordinary table records retain their composite type.
+// scalarSubqueryColumnType looks up field's TableId and column Id in a SubqueryAlias and returns
+// the corresponding schema column's type if it is neither record nor composite. It returns nil
+// if no matching column has a scalar type.
 func scalarSubqueryColumnType(ctx *sql.Context, node sql.Node, field *expression.GetField) sql.Type {
 	var typ sql.Type
 	transform.InspectUp(ctx, node, func(ctx *sql.Context, n sql.Node) bool {
