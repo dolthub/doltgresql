@@ -32,6 +32,8 @@ type connectionState struct {
 	mode                 connectionMode
 	extendedQueryObjects extendedQueryObjects
 	activeCopyFrom       *copyFromState
+	// transactionCursors holds the names of the cursors declared in the current transaction.
+	transactionCursors []string
 }
 
 // newConnectionState returns the initial state for a newly authenticated connection.

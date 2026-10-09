@@ -60,6 +60,7 @@ type contextValues struct {
 
 	transactionEndCallbacks   []func()
 	sessionAdvisoryLockCounts map[string]int
+	cursors                   map[string]*Cursor
 }
 
 // InitializeIdentityOnSession installs the authenticated principal once on a
