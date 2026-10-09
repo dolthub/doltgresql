@@ -1784,7 +1784,7 @@ fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
             } else {
                 provides(&scan.table, &columns, &index_orders(&scan.table, scan.index), &paired)?
             };
-            Some(Plan::IndexScan(Box::new(IndexScan { reverse, ..(**scan).clone() })))
+            Some(Plan::IndexScan(Box::new(IndexScan { reverse, lookup_heavy: None, ..(**scan).clone() })))
         }
         _ => None,
     }

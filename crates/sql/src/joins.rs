@@ -509,7 +509,9 @@ pub(crate) fn filter_existence(plan: Plan, condition: Expr) -> Plan {
 }
 
 /// decorrelate returns the right input, kind, and condition of the join that `filter_existence` makes of a condition
-/// over rows this wide, when it can make one.
+/// over rows this wide, when it can make one, as Postgres' convert_EXISTS_sublink_to_join does: the subquery's rows
+/// below its WHERE filters, which must read nothing of the rows outside the subquery, become the right input, and the
+/// filters' conditions that read the enclosing row, even from inside a nested subquery, become the join's condition.
 fn decorrelate(condition: &Expr, width: usize) -> Option<(Plan, JoinKind, Expr)> {
     let (subquery, kind) = match condition {
         Expr::Exists(subquery) => (subquery, JoinKind::Semi),
@@ -519,32 +521,27 @@ fn decorrelate(condition: &Expr, width: usize) -> Option<(Plan, JoinKind, Expr)>
         },
         _ => return None,
     };
-    let mut filtered = &**subquery;
-    while let Plan::Project { input, .. } = filtered {
-        filtered = input;
+    let mut input = &**subquery;
+    while let Plan::Project { input: inner, .. } | Plan::Once(inner) = input {
+        input = inner;
     }
-    let Plan::Filter { input, predicate } = filtered else { return None };
-    let input = match &**input {
-        Plan::Once(inner) => &**inner,
-        other => other,
-    };
-    if !matches!(input, Plan::Scan(..) | Plan::IndexScan(_) | Plan::Catalog(_) | Plan::CatalogIndexScan(_)) {
+    let mut predicates = Vec::new();
+    while let Plan::Filter { input: inner, predicate } = input {
+        predicates.push(predicate);
+        input = match &**inner {
+            Plan::Once(inner) => inner,
+            other => other,
+        };
+    }
+    if predicates.is_empty() || plan_lowest_level(input)? < 0 {
         return None;
     }
     let (mut own, mut correlated) = (Vec::new(), Vec::new());
-    for c in crate::indexscan::conjuncts(predicate) {
-        let (mut outer, mut other) = (false, false);
-        c.visit(&mut |e| match e {
-            Expr::Outer(1, _) => outer = true,
-            Expr::Outer(..) | Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => {
-                other = true
-            }
-            _ => {}
-        });
-        match (outer, other) {
-            (_, true) => return None,
-            (true, false) => correlated.push(rebase(c, width)),
-            (false, false) => own.push(c.clone()),
+    for c in predicates.into_iter().flat_map(crate::indexscan::conjuncts) {
+        match lowest_level(c, 0)? {
+            ..-1 => return None,
+            -1 => correlated.push(rebase(c.clone(), width, 0)),
+            _ => own.push(c.clone()),
         }
     }
     let and = |conditions: Vec<Expr>| conditions.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
@@ -556,12 +553,60 @@ fn decorrelate(condition: &Expr, width: usize) -> Option<(Plan, JoinKind, Expr)>
     Some((right, kind, joined))
 }
 
-/// rebase rewrites a condition of a subquery over its own row and its enclosing row to read a join's row, where the
-/// enclosing row's columns come first and are this wide.
-fn rebase(condition: &Expr, width: usize) -> Expr {
-    match condition {
-        Expr::Outer(1, i) => Expr::Column(*i),
-        Expr::Column(i) => Expr::Column(i + width),
-        other => other.clone().map_children(&mut |e| rebase(&e, width)),
+/// lowest_level returns the outermost row that an expression of a subquery reads, counting the subquery's own row as
+/// level 0 and its enclosing row as -1, where the expression sits `nesting` subqueries deep within the subquery and
+/// reads its own row as that level. It is i64::MAX for an expression that reads no row, and None when the expression
+/// holds a plan whose expressions it cannot see.
+fn lowest_level(e: &Expr, nesting: i64) -> Option<i64> {
+    let mut lowest = i64::MAX;
+    let mut known = true;
+    e.visit(&mut |x| match x {
+        Expr::Column(_) => lowest = lowest.min(nesting),
+        Expr::Outer(d, _) => lowest = lowest.min(nesting - *d as i64),
+        Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) => {
+            let mut plan = (**p).clone();
+            let reachable = plan.map_exprs(0, &mut |e, depth| {
+                match lowest_level(&e, nesting + 1 + depth as i64) {
+                    Some(level) => lowest = lowest.min(level),
+                    None => known = false,
+                }
+                e
+            });
+            known &= reachable;
+        }
+        _ => {}
+    });
+    known.then_some(lowest)
+}
+
+/// plan_lowest_level returns the outermost row that a subquery's plan reads, as `lowest_level` counts rows.
+fn plan_lowest_level(plan: &Plan) -> Option<i64> {
+    let (mut lowest, mut known) = (i64::MAX, true);
+    let reachable = plan.clone().map_exprs(0, &mut |e, depth| {
+        match lowest_level(&e, depth as i64) {
+            Some(level) => lowest = lowest.min(level),
+            None => known = false,
+        }
+        e
+    });
+    (known && reachable).then_some(lowest)
+}
+
+/// rebase rewrites an expression of a subquery, `nesting` subqueries deep within it, to read the row of the join that
+/// its pulled-up rows make with the enclosing rows, which come first in the join's row and are this wide.
+fn rebase(e: Expr, width: usize, nesting: usize) -> Expr {
+    let level = |d: usize| nesting as i64 - d as i64;
+    let e = match e {
+        Expr::Column(i) if nesting == 0 => return Expr::Column(i + width),
+        Expr::Outer(d, i) if level(d) == 0 => return Expr::Outer(d, i + width),
+        Expr::Outer(d, i) if level(d) == -1 && nesting == 0 => return Expr::Column(i),
+        Expr::Outer(d, i) if level(d) == -1 => return Expr::Outer(nesting, i),
+        Expr::Outer(d, i) if level(d) < -1 => return Expr::Outer(d - 1, i),
+        other => other,
+    };
+    let mut e = e.map_children(&mut |c| rebase(c, width, nesting));
+    if let Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) = &mut e {
+        p.map_exprs(0, &mut |x, depth| rebase(x, width, nesting + 1 + depth));
     }
+    e
 }

@@ -2698,6 +2698,99 @@ pub(crate) fn limit_value(
 }
 
 impl Plan {
+    /// map_exprs replaces each expression that the plan's nodes hold with what a function makes of it, given how many
+    /// rows out from the plan's own rows the expression sits, as a lateral join's right input sees its left row one
+    /// row out. It reports false when the plan holds a node whose expressions it cannot reach, which it leaves alone.
+    pub(crate) fn map_exprs(&mut self, depth: usize, f: &mut dyn FnMut(Expr, usize) -> Expr) -> bool {
+        let mut map = |e: &mut Expr, depth: usize| {
+            let old = std::mem::replace(e, Expr::Const(Value::Null));
+            *e = f(old, depth);
+        };
+        let mut inputs: Vec<(&mut Plan, usize)> = Vec::new();
+        match self {
+            Plan::OneRow | Plan::Scan(..) | Plan::Catalog(_) | Plan::CatalogIndexScan(_) | Plan::WorkTable(..) => {}
+            Plan::System(_) | Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
+            Plan::IndexScan(scan) => {
+                if let Some(n) = &mut scan.nearest {
+                    for e in [&mut n.order, &mut n.query].into_iter().chain(&mut n.limit).chain(&mut n.offset) {
+                        map(e, depth);
+                    }
+                }
+            }
+            Plan::Values(rows) => rows.iter_mut().flatten().for_each(|e| map(e, depth)),
+            Plan::Function { call, .. } => map(call, depth),
+            Plan::RowsFrom { calls, .. } => calls.iter_mut().for_each(|e| map(e, depth)),
+            Plan::Filter { input, predicate } => {
+                map(predicate, depth);
+                inputs.push((input, depth));
+            }
+            Plan::Project { input, exprs } => {
+                exprs.iter_mut().for_each(|e| map(e, depth));
+                inputs.push((input, depth));
+            }
+            Plan::Join { left, right, condition, lateral, method, .. } => {
+                condition.iter_mut().for_each(|e| map(e, depth));
+                if let JoinMethod::Lookup { keys, .. } | JoinMethod::CatalogLookup { keys, .. } = method {
+                    keys.iter_mut().for_each(|e| map(e, depth));
+                }
+                let right_depth = depth + usize::from(*lateral);
+                inputs.push((left, depth));
+                inputs.push((right, right_depth));
+            }
+            Plan::Aggregate { input, groups, aggregates, .. } => {
+                groups.iter_mut().for_each(|e| map(e, depth));
+                for call in aggregates {
+                    let order = call.order.iter_mut().map(|(e, _, _)| e);
+                    call.args.iter_mut().chain(&mut call.filter).chain(order).for_each(|e| map(e, depth));
+                }
+                inputs.push((input, depth));
+            }
+            Plan::Sort { input, keys } => {
+                keys.iter_mut().for_each(|k| map(&mut k.expr, depth));
+                inputs.push((input, depth));
+            }
+            Plan::Distinct { input, keys } => {
+                keys.iter_mut().flatten().for_each(|e| map(e, depth));
+                inputs.push((input, depth));
+            }
+            Plan::Limit { input, limit, offset } => {
+                limit.iter_mut().chain(offset).for_each(|e| map(e, depth));
+                inputs.push((input, depth));
+            }
+            Plan::SetOp { left, right, .. } => {
+                inputs.push((left, depth));
+                inputs.push((right, depth));
+            }
+            Plan::Recursive { anchor, step, .. } => {
+                inputs.push((anchor, depth));
+                inputs.push((step, depth));
+            }
+            Plan::ProjectSet { input, functions, .. } => {
+                functions.iter_mut().for_each(|e| map(e, depth));
+                inputs.push((input, depth));
+            }
+            Plan::Window { input, calls } => {
+                for call in calls {
+                    let order = call.order.iter_mut().map(|k| &mut k.expr);
+                    let args = call.args.iter_mut().chain(&mut call.filter).chain(&mut call.partition).chain(order);
+                    args.for_each(|e| map(e, depth));
+                    for bound in [&mut call.start, &mut call.end] {
+                        if let crate::window::Bound::Preceding(e) | crate::window::Bound::Following(e) = bound {
+                            map(e, depth);
+                        }
+                    }
+                    if let Some(range) = &mut call.range {
+                        map(&mut range.key, depth);
+                        range.start.iter_mut().chain(&mut range.end).for_each(|(e, _)| map(e, depth));
+                    }
+                }
+                inputs.push((input, depth));
+            }
+            Plan::Once(input) => inputs.push((input, depth)),
+        }
+        inputs.into_iter().fold(true, |known, (input, depth)| input.map_exprs(depth, f) && known)
+    }
+
     /// width returns the number of columns of the plan's rows.
     pub(crate) fn width(&self) -> usize {
         match self {
