@@ -24,22 +24,46 @@ use super::nodes::{JoinPath, Path, RelOptInfo, Relids, is_subset};
 /// the same name is.
 const STD_FUZZ_FACTOR: f64 = 1.01;
 
-/// compare_path_costs_fuzzily compares two paths' costs, where costs within a factor count as equal, and startup
-/// costs only break ties, as they do in Postgres when no LIMIT asks for the first rows.
-fn compare_path_costs_fuzzily(path1: &Path, path2: &Path, fuzz_factor: f64) -> Ordering {
+/// compare_fractional_path_costs compares the costs of two paths reading a fraction of their rows, as Postgres'
+/// function of the same name does.
+pub fn compare_fractional_path_costs(path1: &Path, path2: &Path, fraction: f64) -> Ordering {
+    if fraction <= 0.0 || fraction >= 1.0 {
+        return path1.total_cost.total_cmp(&path2.total_cost);
+    }
+    let cost1 = path1.startup_cost + fraction * (path1.total_cost - path1.startup_cost);
+    let cost2 = path2.startup_cost + fraction * (path2.total_cost - path2.startup_cost);
+    cost1.total_cmp(&cost2)
+}
+
+/// compare_path_costs_fuzzily compares two paths' costs, where costs within a factor count as equal, as Postgres'
+/// function of the same name does: startup costs only break ties unless the paths' relation considers them, as it
+/// does when a LIMIT asks for the first rows, and then a path cheaper only to start is neither better nor worse,
+/// which is None.
+fn compare_path_costs_fuzzily(
+    path1: &Path,
+    path2: &Path,
+    fuzz_factor: f64,
+    consider_startup: bool,
+) -> Option<Ordering> {
     if path1.total_cost > path2.total_cost * fuzz_factor {
-        return Ordering::Greater;
+        if consider_startup && path2.startup_cost > path1.startup_cost * fuzz_factor {
+            return None;
+        }
+        return Some(Ordering::Greater);
     }
     if path2.total_cost > path1.total_cost * fuzz_factor {
-        return Ordering::Less;
+        if consider_startup && path1.startup_cost > path2.startup_cost * fuzz_factor {
+            return None;
+        }
+        return Some(Ordering::Less);
     }
     if path1.startup_cost > path2.startup_cost * fuzz_factor {
-        return Ordering::Greater;
+        return Some(Ordering::Greater);
     }
     if path2.startup_cost > path1.startup_cost * fuzz_factor {
-        return Ordering::Less;
+        return Some(Ordering::Less);
     }
-    Ordering::Equal
+    Some(Ordering::Equal)
 }
 
 /// SubsetCompare is how two sets of relations compare, as Postgres' BMS_Comparison is.
@@ -72,14 +96,17 @@ pub fn add_path(parent: &mut RelOptInfo, new_path: Rc<Path>) {
         let old_path = &parent.pathlist[i];
         let mut remove_old = false;
         let outercmp = bms_subset_compare(new_path.param, old_path.param);
-        match compare_path_costs_fuzzily(&new_path, old_path, STD_FUZZ_FACTOR) {
-            Ordering::Equal => match outercmp {
+        let consider_startup = parent.consider_startup;
+        match compare_path_costs_fuzzily(&new_path, old_path, STD_FUZZ_FACTOR, consider_startup) {
+            Some(Ordering::Equal) => match outercmp {
                 SubsetCompare::Equal => {
                     if new_path.rows < old_path.rows {
                         remove_old = true;
                     } else if new_path.rows > old_path.rows {
                         accept_new = false;
-                    } else if compare_path_costs_fuzzily(&new_path, old_path, 1.0000000001) == Ordering::Less {
+                    } else if compare_path_costs_fuzzily(&new_path, old_path, 1.0000000001, consider_startup)
+                        == Some(Ordering::Less)
+                    {
                         remove_old = true;
                     } else {
                         accept_new = false;
@@ -89,16 +116,19 @@ pub fn add_path(parent: &mut RelOptInfo, new_path: Rc<Path>) {
                 SubsetCompare::Subset2 if new_path.rows >= old_path.rows => accept_new = false,
                 _ => {}
             },
-            Ordering::Less => {
-                if matches!(outercmp, SubsetCompare::Equal | SubsetCompare::Subset1) && new_path.rows <= old_path.rows {
-                    remove_old = true;
-                }
+            Some(Ordering::Less)
+                if matches!(outercmp, SubsetCompare::Equal | SubsetCompare::Subset1)
+                    && new_path.rows <= old_path.rows =>
+            {
+                remove_old = true
             }
-            Ordering::Greater => {
-                if matches!(outercmp, SubsetCompare::Equal | SubsetCompare::Subset2) && new_path.rows >= old_path.rows {
-                    accept_new = false;
-                }
+            Some(Ordering::Greater)
+                if matches!(outercmp, SubsetCompare::Equal | SubsetCompare::Subset2)
+                    && new_path.rows >= old_path.rows =>
+            {
+                accept_new = false
             }
+            _ => {}
         }
         if remove_old {
             parent.pathlist.remove(i);

@@ -59,8 +59,9 @@ pub fn add_paths_to_joinrel(
 }
 
 /// match_unsorted_outer adds the nested loops of each of the outer relation's paths over the inner relation's
-/// cheapest paths, kept in memory or looking rows up, as Postgres' function of the same name does for joins that a
-/// nested loop can run.
+/// cheapest path kept in memory, or over a path that looks rows up, as Postgres' function of the same name does for
+/// joins that a nested loop can run. Doltgres' nested loop keeps every inner input in memory, so its unparameterized
+/// paths are only ever read that way.
 fn match_unsorted_outer(
     root: &mut PlannerInfo<'_, '_>,
     joinrel: usize,
@@ -81,7 +82,7 @@ fn match_unsorted_outer(
     let inner_paths: Vec<Rc<Path>> = root.rels[innerrel]
         .cheapest_parameterized_paths
         .iter()
-        .filter(|p| is_subset(p.param, outer_relids))
+        .filter(|p| p.param != 0 && is_subset(p.param, outer_relids))
         .cloned()
         .collect();
     for outerpath in outer_paths {

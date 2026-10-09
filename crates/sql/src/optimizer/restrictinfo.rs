@@ -46,6 +46,8 @@ pub fn make_restrictinfo(
         right_relids,
         can_join,
         hashjoinable,
+        norm_selec: std::cell::Cell::new(-1.0),
+        outer_selec: std::cell::Cell::new(-1.0),
     }
 }
 

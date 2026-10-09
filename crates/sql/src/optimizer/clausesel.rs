@@ -153,6 +153,34 @@ pub fn clause_selectivity(
     {
         return 1.0;
     }
+    let cache =
+        rinfo.filter(|r| varrelid == 0 || r.clause_relids == super::nodes::singleton(varrelid)).map(
+            |r| match jointype {
+                JoinType::Inner => &r.norm_selec,
+                _ => &r.outer_selec,
+            },
+        );
+    if let Some(cached) = cache
+        && cached.get() >= 0.0
+    {
+        return cached.get();
+    }
+    let s1 = clause_selectivity_uncached(root, clause, rinfo, varrelid, jointype, sjinfo);
+    if let Some(cached) = cache {
+        cached.set(s1);
+    }
+    s1
+}
+
+/// clause_selectivity_uncached is clause_selectivity for a clause whose selectivity is not cached.
+fn clause_selectivity_uncached(
+    root: &mut PlannerInfo<'_, '_>,
+    clause: &Expr,
+    rinfo: Option<&RestrictInfo>,
+    varrelid: usize,
+    jointype: JoinType,
+    sjinfo: Option<&SpecialJoinInfo>,
+) -> f64 {
     let treat_as_join_clause = || {
         let relids = rinfo.map_or_else(|| pull_varnos(clause), |r| r.clause_relids);
         varrelid == 0 && sjinfo.is_some() && relids.count_ones() > 1
@@ -192,9 +220,8 @@ fn restriction_selectivity(root: &mut PlannerInfo<'_, '_>, clause: &Expr, varrel
         0 if relids.count_ones() == 1 => relids.trailing_zeros() as usize,
         varrelid => varrelid,
     };
-    let table = (varno != 0).then(|| root.parse.rte(varno).table().cloned()).flatten();
-    let stats = table.and_then(|table| crate::colstats::table_stats(root.ctx, &table));
-    let local = to_attnos(clause, varno);
+    let stats = (varno != 0).then(|| root.rels[varno].stats.clone()).flatten();
+    let local = to_attnos(clause.clone(), varno);
     match stats {
         Some(stats) => crate::colstats::selectivity(&stats, &local),
         None => crate::colstats::selectivity(&TableStats::default(), &local),
@@ -203,12 +230,12 @@ fn restriction_selectivity(root: &mut PlannerInfo<'_, '_>, clause: &Expr, varrel
 
 /// to_attnos rewrites a clause's Vars of the relation at a range table index into columns of its rows, and the
 /// Vars of other relations into parameters, whose values are unknown.
-fn to_attnos(e: &Expr, varno: usize) -> Expr {
+fn to_attnos(e: Expr, varno: usize) -> Expr {
     match e {
-        Expr::Column(c) => match var_parts(*c) {
+        Expr::Column(c) => match var_parts(c) {
             (v, attno) if v == varno => Expr::Column(attno),
             _ => Expr::Param(usize::MAX),
         },
-        other => other.clone().map_children(&mut |c| to_attnos(&c, varno)),
+        other => other.map_children(&mut |c| to_attnos(c, varno)),
     }
 }

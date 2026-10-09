@@ -55,14 +55,13 @@ pub fn examine_variable(root: &mut PlannerInfo<'_, '_>, e: &Expr) -> VariableSta
         return VariableStatData { rel: None, stats: None, isunique: false, isbool: false };
     };
     let (varno, attno) = var_parts(var);
-    let rte = root.parse.rte(varno);
-    let Some(table) = rte.table().cloned() else {
+    let Some(table) = root.parse.rte(varno).table() else {
         return VariableStatData { rel: Some(varno), stats: None, isunique: false, isbool: false };
     };
     let isunique = (table.key_columns == [attno] && !table.keyless())
         || table.indexes.iter().any(|i| i.unique && i.predicate.is_empty() && i.columns == [attno]);
     let isbool = table.columns.get(attno).is_some_and(|c| c.ty.oid == crate::oid::BOOL);
-    let stats = crate::colstats::table_stats(root.ctx, &table).map(|stats| (stats, attno));
+    let stats = root.rels[varno].stats.clone().map(|stats| (stats, attno));
     VariableStatData { rel: Some(varno), stats, isunique, isbool }
 }
 

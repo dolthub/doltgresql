@@ -27,13 +27,17 @@ use crate::expr::Expr;
 use crate::plan::{JoinKind, JoinMethod, Plan};
 
 /// create_plan makes the plan of a path of the relation that joins every base relation, whose columns are the
-/// query's output expressions.
+/// query's output expressions, where those that nothing reads are NULL or whatever the path's rows hold there.
 pub fn create_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> Plan {
     let (plan, layout) = create_plan_recurse(root, path);
-    let exprs: Vec<Expr> = root.parse.output.iter().map(|e| positional(e, &layout)).collect();
-    if exprs.iter().enumerate().all(|(i, e)| *e == Expr::Column(i)) && exprs.len() == layout.len() {
+    let exprs: Vec<Option<Expr>> =
+        root.parse.output.iter().map(|e| e.as_ref().map(|e| positional(e.clone(), &layout))).collect();
+    if exprs.len() == layout.len()
+        && exprs.iter().enumerate().all(|(i, e)| e.as_ref().is_none_or(|e| *e == Expr::Column(i)))
+    {
         return plan;
     }
+    let exprs = exprs.into_iter().map(|e| e.unwrap_or(Expr::Const(crate::types::Value::Null))).collect();
     Plan::Project { input: Box::new(plan), exprs }
 }
 
@@ -77,11 +81,11 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 (PathKind::HashJoin(_), _) => JoinMethod::Hash,
                 (_, PathKind::Lookup(JoinMethod::Lookup { scan, keys })) => JoinMethod::Lookup {
                     scan: scan.clone(),
-                    keys: keys.iter().map(|k| positional(k, &outer_layout)).collect(),
+                    keys: keys.iter().map(|k| positional(k.clone(), &outer_layout)).collect(),
                 },
                 (_, PathKind::Lookup(JoinMethod::CatalogLookup { index, keys })) => JoinMethod::CatalogLookup {
                     index,
-                    keys: keys.iter().map(|k| positional(k, &outer_layout)).collect(),
+                    keys: keys.iter().map(|k| positional(k.clone(), &outer_layout)).collect(),
                 },
                 _ => JoinMethod::NestedLoop,
             };
@@ -117,13 +121,15 @@ fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<us
     if rte.table().is_some() {
         return (filtered(plan, &restrictinfo, &layout), layout);
     }
-    let plan =
-        match restrictinfo.iter().map(|r| to_attnos(&r.clause, rel)).reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
-        {
-            Some(predicate) => crate::plan::Planner { ctx: root.ctx, outer: Vec::new() }
-                .use_indexes(crate::plan::push_down(plan, predicate)),
-            None => plan,
-        };
+    let plan = match restrictinfo
+        .iter()
+        .map(|r| to_attnos(r.clause.clone(), rel))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
+    {
+        Some(predicate) => crate::plan::Planner { ctx: root.ctx, outer: Vec::new() }
+            .use_indexes(crate::plan::push_down(plan, predicate)),
+        None => plan,
+    };
     (plan, layout)
 }
 
@@ -165,15 +171,15 @@ fn filtered(plan: Plan, clauses: &[Rc<RestrictInfo>], layout: &[usize]) -> Plan 
 
 /// and returns the conjunction of clauses over rows of the Vars of a layout, or None without clauses.
 fn and(clauses: &[Rc<RestrictInfo>], layout: &[usize]) -> Option<Expr> {
-    clauses.iter().map(|r| positional(&r.clause, layout)).reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
+    clauses.iter().map(|r| positional(r.clause.clone(), layout)).reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
 }
 
 /// positional rewrites an expression over Vars into one over rows of the Vars of a layout, as Postgres' setrefs.c
 /// rewrites a plan's Vars to refer to its inputs' columns.
-fn positional(e: &Expr, layout: &[usize]) -> Expr {
+fn positional(e: Expr, layout: &[usize]) -> Expr {
     match e {
-        Expr::Column(v) => Expr::Column(position(layout, *v)),
-        other => other.clone().map_children(&mut |c| positional(&c, layout)),
+        Expr::Column(v) => Expr::Column(position(layout, v)),
+        other => other.map_children(&mut |c| positional(c, layout)),
     }
 }
 

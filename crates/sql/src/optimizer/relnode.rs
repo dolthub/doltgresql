@@ -44,7 +44,7 @@ pub fn add_base_rels_to_query(root: &mut PlannerInfo<'_, '_>) {
         let rel = build_simple_rel(root, varno);
         root.rels.push(rel);
     }
-    for e in root.parse.output.clone() {
+    for e in root.parse.output.clone().into_iter().flatten() {
         add_vars_to_targetlist(root, &e, singleton(0));
     }
 }
@@ -65,20 +65,30 @@ pub fn add_vars_to_targetlist(root: &mut PlannerInfo<'_, '_>, e: &crate::expr::E
 /// rows are the older planner's estimate.
 fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, varno: usize) -> RelOptInfo {
     let rte = root.parse.rte(varno);
-    let (tuples, width, pages) = match rte.table() {
+    let (tuples, width, pages, stats) = match rte.table() {
         Some(table) => {
             let tuples = prolly::Node::decode(table.table.primary_index.clone()).map_or(0.0, |r| r.tree_count() as f64);
             let width = table.columns.iter().map(|c| get_typavgwidth(c.ty)).sum();
-            (tuples, width, estimate_rel_pages(tuples, width))
+            (tuples, width, estimate_rel_pages(tuples, width), crate::colstats::table_stats(root.ctx, table))
         }
         None => {
-            let plan = rte.plan.clone();
-            let width = plan.width() as f64 * OPAQUE_COLUMN_WIDTH;
-            (crate::joins::estimate(root.ctx, &plan), width, 0.0)
+            let width = rte.plan.width() as f64 * OPAQUE_COLUMN_WIDTH;
+            (crate::joins::estimate(root.ctx, &rte.plan), width, 0.0, None)
         }
     };
     let attr_needed = vec![0; rte.plan.width()];
-    RelOptInfo { relids: singleton(varno), relid: varno, tuples, width, pages, attr_needed, ..RelOptInfo::default() }
+    let consider_startup = root.tuple_fraction > 0.0;
+    RelOptInfo {
+        relids: singleton(varno),
+        relid: varno,
+        tuples,
+        width,
+        pages,
+        stats,
+        attr_needed,
+        consider_startup,
+        ..RelOptInfo::default()
+    }
 }
 
 /// build_join_rel returns the join relation of two relations, building it with its clauses and size when it is new,
@@ -109,6 +119,7 @@ pub fn build_join_rel(
         rows,
         width: root.rels[outer_rel].width + root.rels[inner_rel].width,
         joininfo,
+        consider_startup: root.tuple_fraction > 0.0,
         ..RelOptInfo::default()
     };
     let index = root.rels.len();

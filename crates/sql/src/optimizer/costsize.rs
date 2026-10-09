@@ -269,15 +269,16 @@ fn index_pages_fetched(root: &PlannerInfo<'_, '_>, tuples_fetched: f64, pages: f
     fetched.ceil()
 }
 
-/// cost_material returns the startup and total costs of keeping a path's rows in memory as they are read, as
-/// Postgres' function of the same name does.
+/// cost_material returns the startup and total costs of keeping a path's rows in memory, as Postgres' function of
+/// the same name does, except that Doltgres' joins read the rows they keep whole before they return a row, so the
+/// cost is all startup.
 pub fn cost_material(input: &Path) -> (f64, f64) {
-    let mut run_cost = input.total_cost - input.startup_cost + 2.0 * CPU_OPERATOR_COST * input.rows;
+    let mut cost = input.total_cost + 2.0 * CPU_OPERATOR_COST * input.rows;
     let nbytes = relation_byte_size(input.rows, input.width);
     if nbytes > HASH_MEM / 2.0 {
-        run_cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
+        cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
     }
-    (input.startup_cost, input.startup_cost + run_cost)
+    (cost, cost)
 }
 
 /// cost_rescan returns the startup and total costs of reading a path's rows again, as Postgres' function of the same

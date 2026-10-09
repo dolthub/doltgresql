@@ -120,12 +120,13 @@ pub struct FromExpr {
 }
 
 /// Query is the part of a query that the planner's query_planner plans: its range table, indexed from 1, its join
-/// tree, and the expressions of the columns that the plan above the join tree reads, in the order it reads them.
+/// tree, and the expression of each column of the rows that the plan above the join tree reads, or None for a column
+/// that it does not read.
 #[derive(Clone, Debug)]
 pub struct Query {
     pub rtable: Vec<RangeTblEntry>,
     pub jointree: FromExpr,
-    pub output: Vec<Expr>,
+    pub output: Vec<Option<Expr>>,
 }
 
 impl Query {
@@ -155,6 +156,10 @@ pub struct RestrictInfo {
     pub can_join: bool,
     /// Whether the clause is an equality that a hash join can use.
     pub hashjoinable: bool,
+    /// The share of rows that the clause keeps, once estimated for an inner join or a restriction, and for an outer
+    /// join, or -1 before then, as Postgres caches them.
+    pub norm_selec: std::cell::Cell<f64>,
+    pub outer_selec: std::cell::Cell<f64>,
 }
 
 /// SpecialJoinInfo describes an outer, semi, or anti join, which restricts the orders in which the planner can join
@@ -226,6 +231,8 @@ pub struct RelOptInfo {
     /// The estimated average width of a row, in bytes.
     pub width: f64,
     pub pathlist: Vec<Rc<Path>>,
+    /// Whether paths that start more cheaply are worth keeping, as they are when a LIMIT asks for the first rows.
+    pub consider_startup: bool,
     pub cheapest_total_path: Option<Rc<Path>>,
     pub cheapest_startup_path: Option<Rc<Path>>,
     /// The cheapest unparameterized path and the cheapest path of each parameterization.
@@ -234,6 +241,8 @@ pub struct RelOptInfo {
     pub relid: usize,
     pub pages: f64,
     pub tuples: f64,
+    /// The statistics of a base relation's table.
+    pub stats: Option<std::sync::Arc<crate::colstats::TableStats>>,
     /// For a base relation, the relations of the joins above it that read each of its columns, where relation 0 is
     /// the query's output, as Postgres' attr_needed holds them.
     pub attr_needed: Vec<Relids>,

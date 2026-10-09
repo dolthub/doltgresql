@@ -22,10 +22,11 @@ use prolly::NodeStore;
 
 use super::PlannerInfo;
 use super::clauses::pull_varnos;
+use super::clausesel::clauselist_selectivity;
 use super::costsize::{
     IndexOptInfo, QualCost, clamp_row_est, cost_index, cost_qual_eval, estimate_rel_pages, get_typavgwidth,
 };
-use super::nodes::{Path, PathKind, Relids, RestrictInfo, is_subset, members, singleton, var, var_parts};
+use super::nodes::{JoinType, Path, PathKind, Relids, RestrictInfo, is_subset, members, singleton, var, var_parts};
 use super::pathnode::add_path;
 use crate::catalog::table::TableDef;
 use crate::expr::{CmpOp, Expr};
@@ -67,29 +68,39 @@ fn join_equality(rinfo: &RestrictInfo, rel: usize) -> Option<(&Expr, &Expr)> {
 }
 
 /// create_restriction_index_path adds the path of the index scan that Doltgres chooses for a table's restrictions.
+/// When the query only counts the rows of that one table that the scan's ranges hold exactly, Doltgres' executor
+/// counts them from the index's entry counts, so the scan costs only its descent.
 fn create_restriction_index_path(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &TableDef) {
     let restrictinfo = root.rels[rel].baserestrictinfo.clone();
     let predicate = restrictinfo
         .iter()
         .filter(|r| !r.pseudoconstant)
-        .map(|r| to_attnos(&r.clause, rel))
+        .map(|r| to_attnos(r.clause.clone(), rel))
         .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
     let Some(predicate) = predicate else { return };
     let Some((scan, exact)) = crate::indexscan::choose_with_cover(root.ctx, table, &predicate) else { return };
-    let index_tuples = scan.estimate(root.ctx).unwrap_or(root.rels[rel].rows);
     let columns = scan.index_columns();
     let on_index = |r: &&Rc<RestrictInfo>| {
         super::nodes::members(pull_varnos(&r.clause)).count() == 1
             && attnos(&r.clause).iter().all(|a| columns.contains(a))
     };
-    let index_quals = restrictinfo.iter().filter(on_index).count();
+    let index_quals: Vec<Rc<RestrictInfo>> = restrictinfo.iter().filter(on_index).cloned().collect();
+    let selectivity = clauselist_selectivity(root, &index_quals, rel, JoinType::Inner, None);
+    let index_tuples = clamp_row_est(selectivity * root.rels[rel].tuples);
+    let index_quals = index_quals.len();
     let qpquals: Vec<Rc<RestrictInfo>> = match exact {
         true => Vec::new(),
         false => restrictinfo.iter().filter(|r| !on_index(r)).cloned().collect(),
     };
     let index = index_info(root, rel, table, scan.index, scan.covering(), index_quals);
-    let (startup_cost, total_cost) =
+    let (startup_cost, mut total_cost) =
         cost_index(root, &root.rels[rel], &index, index_tuples, cost_qual_eval(&qpquals), 1.0);
+    let counted = root.counting.as_ref().is_some_and(|calls| {
+        !calls.is_empty() && calls.iter().all(|call| call.counts_rows() || call.counts_set_column(table))
+    });
+    if exact && counted && root.all_baserels == singleton(rel) {
+        total_cost = startup_cost;
+    }
     let parent = &mut root.rels[rel];
     let path = Path {
         kind: PathKind::IndexScan(Box::new(scan), exact),
@@ -124,7 +135,7 @@ fn create_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_relids: 
         equalities.push((inner.clone(), outer.clone()));
     }
     let left_width = outer_vars.len();
-    let position = |e: &Expr| -> Expr { positional(e, &outer_vars, rel, left_width) };
+    let position = |e: &Expr| -> Expr { positional(e.clone(), &outer_vars, rel, left_width) };
     let condition = equalities
         .iter()
         .map(|(inner, outer)| Expr::Compare(CmpOp::Eq, Box::new(position(outer)), Box::new(position(inner))))
@@ -134,11 +145,12 @@ fn create_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_relids: 
     let Some(found) = crate::joins::lookup(root.ctx, &plan, &condition, left_width) else { return };
     let method = match found.method {
         JoinMethod::Lookup { scan, keys } => {
-            JoinMethod::Lookup { scan, keys: keys.iter().map(|k| from_positional(k, &outer_vars)).collect() }
+            JoinMethod::Lookup { scan, keys: keys.iter().map(|k| from_positional(k.clone(), &outer_vars)).collect() }
         }
-        JoinMethod::CatalogLookup { index, keys } => {
-            JoinMethod::CatalogLookup { index, keys: keys.iter().map(|k| from_positional(k, &outer_vars)).collect() }
-        }
+        JoinMethod::CatalogLookup { index, keys } => JoinMethod::CatalogLookup {
+            index,
+            keys: keys.iter().map(|k| from_positional(k.clone(), &outer_vars)).collect(),
+        },
         other => other,
     };
     let loop_count = members(outer_relids).map(|r| root.rels[r].rows).fold(f64::INFINITY, f64::min);
@@ -201,17 +213,17 @@ fn index_info(
     let (tuples, pages) = (parent.tuples, estimate_rel_pages(parent.tuples, index_width));
     let height = root.ctx.db.read(&table.indexes[i].root).map_or(0, |r| r.level());
     let columns = &table.indexes[i].columns;
-    let stats = crate::colstats::table_stats(root.ctx, table);
-    let first = columns.first().and_then(|&c| stats.as_ref()?.columns.get(c)).map_or(0.0, |c| c.correlation);
+    let stats = root.rels[rel].stats.as_ref();
+    let first = columns.first().and_then(|&c| stats?.columns.get(c)).map_or(0.0, |c| c.correlation);
     let correlation = if columns.len() > 1 { first * 0.75 } else { first };
     IndexOptInfo { pages, tuples, tree_height: f64::from(height), indexonly: covering, correlation, nquals }
 }
 
 /// to_attnos rewrites a restriction of a base relation over its Vars into one over the columns of its rows.
-pub fn to_attnos(e: &Expr, rel: usize) -> Expr {
+pub fn to_attnos(e: Expr, rel: usize) -> Expr {
     match e {
-        Expr::Column(c) if var_parts(*c).0 == rel => Expr::Column(var_parts(*c).1),
-        other => other.clone().map_children(&mut |c| to_attnos(&c, rel)),
+        Expr::Column(c) if var_parts(c).0 == rel => Expr::Column(var_parts(c).1),
+        other => other.map_children(&mut |c| to_attnos(c, rel)),
     }
 }
 
@@ -228,21 +240,21 @@ fn attnos(e: &Expr) -> Vec<usize> {
 
 /// positional rewrites an expression over Vars into one over a row of the outer Vars followed by the relation's
 /// columns.
-fn positional(e: &Expr, outer_vars: &[usize], rel: usize, left_width: usize) -> Expr {
+fn positional(e: Expr, outer_vars: &[usize], rel: usize, left_width: usize) -> Expr {
     match e {
-        Expr::Column(c) => match var_parts(*c) {
+        Expr::Column(c) => match var_parts(c) {
             (r, attno) if r == rel => Expr::Column(left_width + attno),
-            _ => Expr::Column(outer_vars.iter().position(|v| v == c).expect("every outer Var has a position")),
+            _ => Expr::Column(outer_vars.iter().position(|&v| v == c).expect("every outer Var has a position")),
         },
-        other => other.clone().map_children(&mut |c| positional(&c, outer_vars, rel, left_width)),
+        other => other.map_children(&mut |c| positional(c, outer_vars, rel, left_width)),
     }
 }
 
 /// from_positional rewrites an expression over a row of the outer Vars into one over the Vars.
-fn from_positional(e: &Expr, outer_vars: &[usize]) -> Expr {
+fn from_positional(e: Expr, outer_vars: &[usize]) -> Expr {
     match e {
-        Expr::Column(c) => Expr::Column(outer_vars[*c]),
-        other => other.clone().map_children(&mut |c| from_positional(&c, outer_vars)),
+        Expr::Column(c) => Expr::Column(outer_vars[c]),
+        other => other.map_children(&mut |c| from_positional(c, outer_vars)),
     }
 }
 

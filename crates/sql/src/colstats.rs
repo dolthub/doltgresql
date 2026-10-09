@@ -140,13 +140,13 @@ fn column_stats(values: Vec<Value>, rows: u64) -> ColumnStats {
     };
     let mut candidates: Vec<(usize, usize)> = runs.iter().copied().filter(|(_, count)| *count > 1).collect();
     candidates.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    let common_count = if d <= STATISTICS_TARGET as f64 && distinct <= d && singles == 0.0 {
-        candidates.len()
-    } else {
-        let average = n / distinct.max(1.0);
-        let least = (1.25 * average).min(n / STATISTICS_TARGET as f64).max(2.0);
-        candidates.iter().take(STATISTICS_TARGET).take_while(|(_, count)| *count as f64 >= least).count()
-    };
+    let common_count =
+        if candidates.len() as f64 == d && distinct <= 0.1 * rows as f64 && candidates.len() <= STATISTICS_TARGET {
+            candidates.len()
+        } else {
+            let counts: Vec<usize> = candidates.iter().take(STATISTICS_TARGET).map(|(_, count)| *count).collect();
+            analyze_mcv_list(&counts, distinct, null_frac, sampled, rows as f64)
+        };
     let common_runs: Vec<(usize, usize)> = candidates[..common_count].to_vec();
     let common = common_runs.iter().map(|&(start, count)| (values[start].clone(), count as f64 / sampled)).collect();
     let mut rest: Vec<Value> = Vec::new();
@@ -163,6 +163,43 @@ fn column_stats(values: Vec<Value>, rows: u64) -> ColumnStats {
         false => Vec::new(),
     };
     ColumnStats { null_frac, distinct, common, histogram, correlation }
+}
+
+/// analyze_mcv_list returns how many of the most common values of a sample, by their counts in descending order, are
+/// significantly more common than the values left out would suggest, as Postgres' function of the same name decides:
+/// a value is kept when its count lies more than two standard errors of the hypergeometric distribution above what
+/// an even share of the rest would give it.
+fn analyze_mcv_list(
+    mcv_counts: &[usize],
+    ndistinct_table: f64,
+    stanullfrac: f64,
+    samplerows: f64,
+    totalrows: f64,
+) -> usize {
+    let mut num_mcv = mcv_counts.len();
+    if samplerows == totalrows || totalrows <= 1.0 {
+        return num_mcv;
+    }
+    let mut sumcount: f64 = mcv_counts[..num_mcv.saturating_sub(1)].iter().map(|&c| c as f64).sum();
+    while num_mcv > 0 {
+        let mut selec = (1.0 - sumcount / samplerows - stanullfrac).clamp(0.0, 1.0);
+        let otherdistinct = ndistinct_table - (num_mcv - 1) as f64;
+        if otherdistinct > 1.0 {
+            selec /= otherdistinct;
+        }
+        let (big_n, n) = (totalrows, samplerows);
+        let k = big_n * mcv_counts[num_mcv - 1] as f64 / n;
+        let variance = n * k * (big_n - k) * (big_n - n) / (big_n * big_n * (big_n - 1.0));
+        if mcv_counts[num_mcv - 1] as f64 > selec * samplerows + 2.0 * variance.sqrt() + 0.5 {
+            break;
+        }
+        num_mcv -= 1;
+        if num_mcv == 0 {
+            break;
+        }
+        sumcount -= mcv_counts[num_mcv - 1] as f64;
+    }
+    num_mcv
 }
 
 /// selectivity returns about what share of a table's rows a condition over its columns keeps, as Postgres'
