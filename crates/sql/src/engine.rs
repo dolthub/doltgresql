@@ -750,6 +750,7 @@ impl Engine {
             failed: false,
             savepoints: Vec::new(),
             reported: HashMap::new(),
+            reported_from: (0, String::new()),
             prepared: HashMap::new(),
             replication: None,
         };
@@ -774,8 +775,10 @@ pub struct Session {
     /// The savepoints of the explicit transaction, each with the transaction's state and the settings when it was
     /// made.
     savepoints: Vec<(String, Vec<Txn>, crate::settings::Settings)>,
-    /// The reported parameters as the client last heard them.
+    /// The reported parameters as the client last heard them, with the generation of the settings and the session
+    /// user they came from.
     reported: HashMap<String, String>,
+    reported_from: (u64, String),
     /// The statements of a simple query that wait for its COPY FROM STDIN to finish, or None when the extended
     /// protocol began the copy.
     pending: Option<Vec<Statement>>,
@@ -1065,6 +1068,10 @@ impl SessionState {
 
     /// install_format installs the session's DateStyle, IntervalStyle, time zone, and bytea_output for printing values.
     pub fn install_format(&self) {
+        let generation = self.settings.generation();
+        if INSTALLED_SETTINGS.with(|installed| installed.replace(generation)) == generation {
+            return;
+        }
         let get = |name: &str| self.settings.get(name).unwrap_or_default();
         crate::datetime::install_format(crate::datetime::Format::from_settings(
             &get("DateStyle"),
@@ -1079,6 +1086,11 @@ impl SessionState {
     pub fn notice(&mut self, notice: PgError) {
         self.notices.push(notice);
     }
+}
+
+thread_local! {
+    /// INSTALLED_SETTINGS is the generation of the settings whose formats this thread installed last.
+    static INSTALLED_SETTINGS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// REPORTED_PARAMETERS are the parameters whose values the server reports to the client with ParameterStatus.
@@ -1141,6 +1153,11 @@ impl Session {
     /// parameter_changes returns the reported parameters whose values changed since the client last heard them, all
     /// of them the first time.
     pub fn parameter_changes(&mut self) -> Vec<(String, String)> {
+        let from = (self.state.settings.generation(), self.state.user.clone());
+        if self.reported_from == from {
+            return Vec::new();
+        }
+        self.reported_from = from;
         let mut changes = Vec::new();
         for name in REPORTED_PARAMETERS {
             let value = match name {

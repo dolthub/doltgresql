@@ -73,6 +73,31 @@ pub struct Txn {
     pub pending_sequences: HashMap<Vec<u8>, objects::Sequence>,
 }
 
+/// ROOT_CACHE_SIZE is how many decoded root values each thread keeps.
+const ROOT_CACHE_SIZE: usize = 16;
+
+thread_local! {
+    /// ROOTS are the root values this thread decoded lately, by their addresses, which name their contents.
+    static ROOTS: std::cell::RefCell<HashMap<Hash, Root>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// decode_root decodes the root value at an address from its bytes, reusing one decoded lately, since every
+/// transaction begins by decoding its working and staged roots.
+fn decode_root(address: &Hash, bytes: &[u8]) -> Result<Root> {
+    if let Some(root) = ROOTS.with(|roots| roots.borrow().get(address).cloned()) {
+        return Ok(root);
+    }
+    let root = Root::decode(bytes)?;
+    ROOTS.with(|roots| {
+        let mut roots = roots.borrow_mut();
+        if roots.len() >= ROOT_CACHE_SIZE {
+            roots.clear();
+        }
+        roots.insert(*address, root.clone());
+    });
+    Ok(root)
+}
+
 /// read returns the message at the address, failing when the database lacks it.
 pub fn read(db: &Database, address: &Hash) -> Result<Vec<u8>> {
     db.read_value(address)?.ok_or_else(|| PgError::internal(format!("missing chunk {address}")))
@@ -167,8 +192,8 @@ impl Txn {
         };
         let original = read(db, &working)?;
         let original_staged = read(db, &staged)?;
-        let root = Root::decode(&original)?;
-        let staged = Root::decode(&original_staged)?;
+        let root = decode_root(&working, &original)?;
+        let staged = decode_root(&staged, &original_staged)?;
         Ok(Txn {
             database: database.to_string(),
             branch: branch.to_string(),

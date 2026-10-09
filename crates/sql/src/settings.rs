@@ -529,7 +529,13 @@ pub struct Settings {
     transaction_undo: Vec<(String, Option<String>)>,
     /// The values to restore when the transaction ends, for SET LOCAL.
     local_undo: Vec<(String, Option<String>)>,
+    /// A number that each change of the values replaces with one that no settings had before, so that what is
+    /// computed from the values can be kept until it changes.
+    generation: u64,
 }
+
+/// GENERATIONS hands out the numbers that settings take when their values change.
+static GENERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 impl Settings {
     /// new returns the settings a connection starts with, given the startup parameters it sent and the port the
@@ -545,7 +551,18 @@ impl Settings {
             settings.values.insert(definition.name.to_ascii_lowercase(), value.clone());
             settings.startup.insert(definition.name.to_ascii_lowercase(), value);
         }
+        settings.changed();
         Ok(settings)
+    }
+
+    /// generation returns the number that identifies the current values.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// changed gives the settings a new generation after their values change.
+    fn changed(&mut self) {
+        self.generation = GENERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// get returns a parameter's value as stored, or None for an unknown one.
@@ -673,6 +690,7 @@ impl Settings {
             Some(value) => self.values.insert(key, value),
             None => self.values.remove(&key),
         };
+        self.changed();
     }
 
     /// reset_all resets every parameter the session can change, leaving placeholder parameters empty.
@@ -690,6 +708,7 @@ impl Settings {
         }
         self.values.insert("timezone".into(), local_timezone());
         self.values.extend(self.startup.clone());
+        self.changed();
     }
 
     /// end_transaction ends the transaction, undoing SET LOCAL, and undoing every change when it rolled back.
@@ -706,6 +725,7 @@ impl Settings {
                 None => self.values.remove(&key),
             };
         }
+        self.changed();
     }
 }
 
