@@ -797,6 +797,17 @@ impl Ctx<'_> {
         Ok(RowRules { defaults, checks, generated })
     }
 
+    /// check_rules binds a table's check constraints, as conditions over its rows.
+    pub(crate) fn check_rules(&mut self, table: &TableDef) -> Result<Vec<Expr>> {
+        let mut checks = Vec::with_capacity(table.checks.len());
+        for check in &table.checks {
+            let node = parse_expression(&check.expression)?;
+            let bound = Binder::new(self, table_scope(table, None)).bind(&node)?;
+            checks.push(coerce(bound, typ(oid::BOOL), false, -1)?.0);
+        }
+        Ok(checks)
+    }
+
     /// index_rules binds a table's hidden expression columns and index predicates.
     pub(crate) fn index_rules(&mut self, table: &TableDef) -> Result<IndexRules> {
         let mut rules = IndexRules::default();

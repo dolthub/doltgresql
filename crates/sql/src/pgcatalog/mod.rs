@@ -172,6 +172,25 @@ pub fn is_volatile(function: &str) -> bool {
         .contains(function)
 }
 
+/// is_mutable reports whether a built-in function has a form that is not immutable, as pg_proc's provolatile shows
+/// them.
+pub fn is_mutable(function: &str) -> bool {
+    static MUTABLE: std::sync::OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    MUTABLE
+        .get_or_init(|| {
+            let Some(proc) = lookup("pg_catalog", "pg_proc") else { return Default::default() };
+            let (Some(name), Some(volatility)) = (proc.column("proname"), proc.column("provolatile")) else {
+                return Default::default();
+            };
+            builtin::rows(proc)
+                .iter()
+                .filter(|r| r[volatility] != Value::Text("i".into()))
+                .map(|r| r[name].output().unwrap_or_default())
+                .collect()
+        })
+        .contains(function)
+}
+
 /// OperatorClass is a built-in operator class: its OID, name, input type, and whether it is its type's default.
 #[derive(Clone, Debug)]
 pub struct OperatorClass {

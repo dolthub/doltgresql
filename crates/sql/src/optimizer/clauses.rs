@@ -50,6 +50,17 @@ pub fn contain_volatile_functions(glob: &PlannerGlobal, e: &Expr) -> bool {
     any_node(glob, e, &mut is_volatile_node)
 }
 
+/// contain_mutable_functions reports whether an expression calls a function that is not immutable, whose result may
+/// change within a statement or between statements, as Postgres' function of the same name does. Stored routines
+/// count as mutable, since Doltgres does not record their volatility.
+pub fn contain_mutable_functions(glob: &PlannerGlobal, e: &Expr) -> bool {
+    any_node(glob, e, &mut |x| match x {
+        Expr::Func(f, _) => crate::pgcatalog::is_mutable(crate::functions::function(*f).name),
+        Expr::Routine(..) | Expr::Operator(..) => true,
+        _ => false,
+    })
+}
+
 /// is_volatile_node reports whether an expression node calls a volatile function, not counting its arguments.
 pub fn is_volatile_node(e: &Expr) -> bool {
     match e {

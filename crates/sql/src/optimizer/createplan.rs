@@ -286,7 +286,7 @@ fn create_param_indexscan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, oute
             let rinfo = &root.rinfos[r];
             !rinfo.pseudoconstant
                 && !super::equivclass::is_redundant_with_indexclauses(root, r, &best_path.indexclauses)
-                && !indexquals.iter().any(|q| same_clause(q, &rinfo.clause))
+                && !implied_by_indexquals(root, &rinfo.clause, &indexquals)
         })
         .collect();
     let qpqual = order_qual_clauses(root, qpqual);
@@ -323,7 +323,7 @@ fn create_bitmap_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &
         .filter(|&r| {
             let rinfo = &root.rinfos[r];
             !rinfo.pseudoconstant
-                && !indexquals.iter().any(|q| same_clause(q, &rinfo.clause))
+                && !implied_by_indexquals(root, &rinfo.clause, &indexquals)
                 && !rinfo.parent_ec.is_some_and(|ec| index_ecs.contains(&ec))
         })
         .collect();
@@ -446,6 +446,14 @@ fn create_bitmap_subplan(
         }
         _ => unreachable!("a bitmap tree holds index scans, BitmapAnds, and BitmapOrs"),
     }
+}
+
+/// implied_by_indexquals reports whether index conditions answer a clause: it is one of them, or it calls only
+/// immutable functions and they imply it, as Postgres' create_indexscan_plan and create_bitmap_scan_plan test.
+fn implied_by_indexquals(root: &PlannerInfo<'_, '_>, clause: &Expr, indexquals: &[Expr]) -> bool {
+    indexquals.iter().any(|q| same_clause(q, clause))
+        || !super::clauses::contain_mutable_functions(root.glob, clause)
+            && super::predtest::predicate_implied_by(root, std::slice::from_ref(clause), indexquals, false)
 }
 
 /// same_clause reports whether two clauses are the same, as ANDs and ORs of the same arguments in any order are.

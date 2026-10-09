@@ -56,12 +56,28 @@ fn set_base_rel_consider_startup(root: &mut PlannerInfo<'_, '_>) {
 fn set_base_rel_sizes(root: &mut PlannerInfo<'_, '_>) {
     for rti in 1..=root.parse.rtable.len() {
         if root.rels[rti].reloptkind == RelOptKind::BaseRel {
-            if matches!(root.parse.rte(rti).kind, RteKind::Relation(..)) {
-                check_index_predicates(root, rti);
-            }
-            set_baserel_size_estimates(root, rti);
+            set_rel_size(root, rti);
         }
     }
+}
+
+/// set_rel_size estimates the size of a base relation, or marks it empty when its restrictions refute it, as
+/// Postgres' function of the same name does.
+fn set_rel_size(root: &mut PlannerInfo<'_, '_>, rti: usize) {
+    if super::plancat::relation_excluded_by_constraints(root, rti) {
+        set_dummy_rel_pathlist(root, rti);
+        return;
+    }
+    if matches!(root.parse.rte(rti).kind, RteKind::Relation(..)) {
+        check_index_predicates(root, rti);
+    }
+    set_baserel_size_estimates(root, rti);
+}
+
+/// set_dummy_rel_pathlist marks a base relation as returning no rows, as Postgres' function of the same name does.
+fn set_dummy_rel_pathlist(root: &mut PlannerInfo<'_, '_>, rti: usize) {
+    root.rels[rti].reltarget.width = 0.0;
+    super::joinrels::mark_dummy_rel(root, rti);
 }
 
 /// set_base_rel_pathlists finds the paths of each base relation, as Postgres' function of the same name does.

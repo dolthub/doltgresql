@@ -32,6 +32,7 @@ use super::nodes::{
 };
 use super::pathkeys::{build_index_pathkeys, truncate_useless_pathkeys};
 use super::pathnode::{add_path, create_bitmap_and_path, create_bitmap_heap_path, create_bitmap_or_path};
+use super::predtest;
 use super::restrictinfo::{
     RestrictInfoArgs, binary_op_args, join_clause_is_movable_to, make_plain_restrictinfo, make_restrictinfo,
     restriction_is_or_clause,
@@ -513,10 +514,11 @@ fn build_paths_for_OR(
     result
 }
 
-/// predicate_implied_by reports whether clauses imply every conjunct of an index's predicate, which Doltgres proves
-/// only when a clause equals the conjunct, the first of the proofs of Postgres' function of the same name.
+/// predicate_implied_by reports whether restrictions imply an index's predicate, as Postgres' function of the same
+/// name does with a list of RestrictInfos.
 fn predicate_implied_by(root: &PlannerInfo<'_, '_>, predicate: &[Expr], clauses: &[RinfoId]) -> bool {
-    predicate.iter().all(|pred| clauses.iter().any(|&r| root.rinfos[r].clause == *pred))
+    let clauses: Vec<Expr> = clauses.iter().map(|&r| root.rinfos[r].clause.clone()).collect();
+    predtest::predicate_implied_by(root, predicate, &clauses, false)
 }
 
 /// OrArgIndexMatch is the index column that an argument of an OR clause compares, by the index's position, the
@@ -768,7 +770,11 @@ fn choose_bitmap_and(root: &mut PlannerInfo<'_, '_>, rel: usize, paths: Vec<Rc<P
             if pathinfo.clauseids.overlap(&clauseidsofar) {
                 continue;
             }
-            if pathinfo.preds.iter().any(|np| qualsofar.contains(np)) {
+            if pathinfo
+                .preds
+                .iter()
+                .any(|np| predtest::predicate_implied_by(root, std::slice::from_ref(np), &qualsofar, false))
+            {
                 continue;
             }
             paths.push(pathinfo.path.clone());
@@ -1262,26 +1268,47 @@ fn ec_member_matches_indexcol(
         && match_index_to_operand(root, &root.eq_members[em].em_expr, indexcol, index, rel)
 }
 
-/// check_index_predicates records which partial indexes the query's clauses imply the predicates of, and the
-/// restrictions that each must still test, as Postgres' function of the same name does, where a clause implies a
-/// conjunct of a predicate equal to it.
+/// check_index_predicates records which partial indexes the query's restrictions, join clauses movable to the
+/// relation, and equalities that classes imply with other relations prove the predicates of, and the restrictions
+/// that each must still test, those its predicate does not imply, as Postgres' function of the same name does.
 pub fn check_index_predicates(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     let restrictinfo = root.rels[rel].baserestrictinfo.clone();
-    let mut clauselist: Vec<Expr> = restrictinfo.iter().map(|&r| root.rinfos[r].clause.clone()).collect();
-    for &r in &root.rels[rel].joininfo {
-        if join_clause_is_movable_to(&root.rinfos[r], &root.rels[rel]) {
-            clauselist.push(root.rinfos[r].clause.clone());
-        }
-    }
-    let rinfos = &root.rinfos;
     for index in root.rels[rel].indexlist.iter_mut().map(Rc::make_mut) {
         index.indrestrictinfo = restrictinfo.clone();
-        if index.indpred.is_empty() {
+    }
+    if root.rels[rel].indexlist.iter().all(|index| index.indpred.is_empty()) {
+        return;
+    }
+    let mut clauselist: Vec<RinfoId> = restrictinfo.clone();
+    for &r in &root.rels[rel].joininfo {
+        if join_clause_is_movable_to(&root.rinfos[r], &root.rels[rel]) {
+            clauselist.push(r);
+        }
+    }
+    let otherrels = root.all_query_rels.difference(&root.rels[rel].relids);
+    if !otherrels.is_empty() {
+        let joinrelids = root.rels[rel].relids.union(&otherrels);
+        clauselist.extend(super::equivclass::generate_join_implied_equalities(root, &joinrelids, &otherrels, rel, 0));
+    }
+    let clauses: Vec<Expr> = clauselist.iter().map(|&r| root.rinfos[r].clause.clone()).collect();
+    for index in 0..root.rels[rel].indexlist.len() {
+        let info = root.rels[rel].indexlist[index].clone();
+        if info.indpred.is_empty() {
             continue;
         }
-        index.pred_ok = index.indpred.iter().all(|pred| clauselist.contains(pred));
-        let indpred = &index.indpred;
-        index.indrestrictinfo.retain(|&r| !indpred.contains(&rinfos[r].clause));
+        let pred_ok = info.pred_ok || predtest::predicate_implied_by(root, &info.indpred, &clauses, false);
+        let indrestrictinfo: Vec<RinfoId> = restrictinfo
+            .iter()
+            .copied()
+            .filter(|&r| {
+                let clause = &root.rinfos[r].clause;
+                super::clauses::contain_mutable_functions(root.glob, clause)
+                    || !predtest::predicate_implied_by(root, std::slice::from_ref(clause), &info.indpred, false)
+            })
+            .collect();
+        let info = Rc::make_mut(&mut root.rels[rel].indexlist[index]);
+        info.pred_ok = pred_ok;
+        info.indrestrictinfo = indrestrictinfo;
     }
 }
 

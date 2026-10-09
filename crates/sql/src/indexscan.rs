@@ -797,7 +797,8 @@ pub fn choose_with_cover(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) 
 
 /// scan_of_index returns the scan of one index of a table, in its order or the reverse, whose ranges the conjuncts of
 /// a predicate narrow, with whether those ranges hold exactly the rows that the predicate keeps, as the planner's
-/// index paths read an index that they chose. Without a predicate the scan reads every entry.
+/// index paths read an index that they chose, having proved a partial index's predicate. Without a predicate the
+/// scan reads every entry.
 pub(crate) fn scan_of_index(
     ctx: &mut Ctx<'_>,
     table: &Arc<TableDef>,
@@ -830,8 +831,8 @@ pub(crate) fn scan_of_index(
     let mut coster =
         Coster { table, hidden, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new(), complete: true };
     let root = coster.build_root(ctx, &with_like_bounds(table, &predicate.clone().expand_row_compares()))?;
-    let candidate =
-        candidates(table, rules.predicates(), &conjuncts(predicate)).into_iter().find(|c| c.index == index)?;
+    let unrestricted = vec![None; table.indexes.len()];
+    let candidate = candidates(table, &unrestricted, &[]).into_iter().find(|c| c.index == index)?;
     let cost = coster.cost(&root, &candidate);
     let ranges = coster.build_ranges(&root, &columns, &cost.filters);
     let covered = coster.complete && coster.covers(&root, &cost.filters);
