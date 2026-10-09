@@ -1693,6 +1693,7 @@ impl<'b, 'a> Binder<'b, 'a> {
     fn case(&mut self, c: &pg_query::protobuf::CaseExpr) -> Result<Bound> {
         let mut conditions = Vec::new();
         let mut results = Vec::new();
+        let mut decided = false;
         for when in &c.args {
             let Some(NodeEnum::CaseWhen(when)) = when.node.as_ref() else { continue };
             let condition = when.expr.as_deref().ok_or_else(|| PgError::internal("WHEN without a condition"))?;
@@ -1704,11 +1705,18 @@ impl<'b, 'a> Binder<'b, 'a> {
                 }
                 None => coerce(self.bind(condition)?, typ(oid::BOOL), false, arg_location(condition))?.0,
             };
-            conditions.push(test);
+            let constant = self.constant_condition(&test)?;
             let result = when.result.as_deref().ok_or_else(|| PgError::internal("WHEN without a result"))?;
-            results.push((self.bind(result)?, arg_location(result)));
+            let bound = match decided || matches!(constant, Some(Some(false) | None)) {
+                true => self.bind_unfolded(result)?,
+                false => self.bind(result)?,
+            };
+            decided |= constant == Some(Some(true));
+            conditions.push(test);
+            results.push((bound, arg_location(result)));
         }
         let default = match c.defresult.as_deref() {
+            Some(node) if decided => Some((self.bind_unfolded(node)?, arg_location(node))),
             Some(node) => Some((self.bind(node)?, arg_location(node))),
             None => None,
         };
@@ -1726,6 +1734,34 @@ impl<'b, 'a> Binder<'b, 'a> {
             None => Expr::Const(Value::Null),
         };
         Ok((Expr::Case(whens, Box::new(otherwise)), ty))
+    }
+
+    /// constant_condition returns the value of a CASE condition that is a constant or a comparison of constants, or None
+    /// for one that depends on rows.
+    fn constant_condition(&mut self, test: &Expr) -> Result<Option<Option<bool>>> {
+        let value = match test {
+            Expr::Const(value) => value.clone(),
+            Expr::Compare(_, left, right)
+                if matches!((left.as_ref(), right.as_ref()), (Expr::Const(_), Expr::Const(_))) =>
+            {
+                test.eval(self.ctx, &[])?
+            }
+            _ => return Ok(None),
+        };
+        Ok(Some(match value {
+            Value::Bool(b) => Some(b),
+            _ => None,
+        }))
+    }
+
+    /// bind_unfolded binds a CASE result that Postgres drops before folding its constants, because an earlier condition
+    /// is always true or its own is never true, leaving its constant arithmetic for when it runs, which it never does.
+    fn bind_unfolded(&mut self, node: &Node) -> Result<Bound> {
+        let saved = self.ctx.session.unfolded.replace(false);
+        let bound = self.bind(node);
+        let unfolded = self.ctx.session.unfolded.take().unwrap_or(false);
+        self.ctx.session.unfolded = saved.map(|s| s || unfolded);
+        bound
     }
 
     /// sublink binds a subquery expression.

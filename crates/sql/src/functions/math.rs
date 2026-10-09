@@ -17,7 +17,7 @@
 use super::Function;
 use crate::error::{PgError, Result, code};
 use crate::numeric::Numeric;
-use crate::oid::{FLOAT4, FLOAT8, INT2, INT4, INT8, NUMERIC};
+use crate::oid::{FLOAT4, FLOAT8, INT2, INT4, INT8, NUMERIC, TEXT};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -52,6 +52,26 @@ pub const FUNCTIONS: &[Function] = &[
     f("abs", &[FLOAT4], FLOAT4, abs),
     f("abs", &[FLOAT8], FLOAT8, abs),
     f("abs", &[NUMERIC], NUMERIC, abs),
+    f("to_char", &[NUMERIC, TEXT], TEXT, |_, a| {
+        text(crate::numformat::numeric_to_char(&numeric(&a[0]), &template(&a[1])))
+    }),
+    f("to_char", &[INT4, TEXT], TEXT, |_, a| {
+        let Value::Int4(v) = a[0] else { return Err(PgError::internal("an int4 that is not one")) };
+        text(crate::numformat::integer_to_char(i64::from(v), false, &template(&a[1])))
+    }),
+    f("to_char", &[INT8, TEXT], TEXT, |_, a| {
+        let Value::Int8(v) = a[0] else { return Err(PgError::internal("an int8 that is not one")) };
+        text(crate::numformat::integer_to_char(v, true, &template(&a[1])))
+    }),
+    f("to_char", &[FLOAT4, TEXT], TEXT, |_, a| {
+        text(crate::numformat::float_to_char(float(&a[0]), 6, &template(&a[1])))
+    }),
+    f("to_char", &[FLOAT8, TEXT], TEXT, |_, a| {
+        text(crate::numformat::float_to_char(float(&a[0]), 15, &template(&a[1])))
+    }),
+    f("to_number", &[TEXT, TEXT], NUMERIC, |_, a| {
+        Ok(crate::numformat::to_number(&template(&a[0]), &template(&a[1]))?.map_or(Value::Null, Value::Numeric))
+    }),
     f("round", &[FLOAT8], FLOAT8, round_float),
     f("round", &[NUMERIC], NUMERIC, round_numeric),
     f("round", &[NUMERIC, INT4], NUMERIC, round_numeric_to),
@@ -82,6 +102,16 @@ pub const FUNCTIONS: &[Function] = &[
     f("power", &[NUMERIC, NUMERIC], NUMERIC, power_numeric),
     f("pow", &[FLOAT8, FLOAT8], FLOAT8, power),
     f("pow", &[NUMERIC, NUMERIC], NUMERIC, power_numeric),
+    f("^", &[FLOAT8, FLOAT8], FLOAT8, power),
+    f("^", &[NUMERIC, NUMERIC], NUMERIC, power_numeric),
+    f("|/", &[FLOAT8], FLOAT8, sqrt),
+    f("||/", &[FLOAT8], FLOAT8, cbrt),
+    f("@", &[INT2], INT2, abs),
+    f("@", &[INT4], INT4, abs),
+    f("@", &[INT8], INT8, abs),
+    f("@", &[FLOAT4], FLOAT4, abs),
+    f("@", &[FLOAT8], FLOAT8, abs),
+    f("@", &[NUMERIC], NUMERIC, abs),
     f("pi", &[], FLOAT8, pi),
     f("degrees", &[FLOAT8], FLOAT8, degrees),
     f("radians", &[FLOAT8], FLOAT8, radians),
@@ -854,4 +884,14 @@ fn width_bucket_numeric(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// random returns a uniformly random value from 0 up to 1.
 fn random(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     Ok(Value::Float8(rand::random::<f64>()))
+}
+
+/// template returns the text of a text argument.
+fn template(value: &Value) -> String {
+    value.output().unwrap_or_default()
+}
+
+/// text wraps a formatted number as a text value.
+fn text(formatted: Result<String>) -> Result<Value> {
+    formatted.map(Value::Text)
 }

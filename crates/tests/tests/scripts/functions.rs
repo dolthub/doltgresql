@@ -16409,3 +16409,132 @@ next"#)],
         },
     ]);
 }
+
+#[test]
+fn test_numeric_formatting_and_math_operators() {
+    run_scripts(&[
+        ScriptTest {
+            name: "numeric to_char and to_number",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT to_char(1234.5::numeric, '9,999.99'), to_char(-0.5::numeric, '0.99'), to_char(12::numeric, 'FM999.90'), to_char(-12.3::numeric, 'S999.9'), to_char(-12.3::numeric, '999.9PR');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT)],
+                        rows: &[
+                            &[T(" 1,234.50"), T("-0.50"), T("12.00"), T(" -12.3"), T(" <12.3>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(-7::numeric, 'MI99'), to_char(7::numeric, 'PL99'), to_char(-7::numeric, 'SG99'), to_char(1994::numeric, 'RN'), to_char(3::int4, 'FM9th'), to_char(21::int8, '99TH');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("- 7"), T("+  7"), T("- 7"), T("        MCMXCIV"), T("3rd"), T(" 21ST")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(12345.678::numeric, '9.99EEEE'), to_char(12.4::numeric, '99V9'), to_char(1234567.891::float8, '9G999G999D99'), to_char(0.1::float4, '0.9999999'), to_char('inf'::float8, '9.99');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT)],
+                        rows: &[
+                            &[T(" 1.23e+04"), T(" 124"), T(" 1,234,567.89"), T(" 0.10000"), T(" #.##")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT to_char(100::numeric, 'f"ool"999'), to_char(100::numeric, 'foo999'), to_char(12345678901::float8, 'FM9999999999D9999900000000000000000');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("to_char", TEXT), Column("to_char", TEXT), Column("to_char", TEXT)],
+                        rows: &[
+                            &[T("fool 100"), T("foo 100"), T("##########.####")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_number('-34,338,492', '99G999G999'), to_number('-34,338,492.654,878', '99G999G999D999G999'), to_number('<564646.654564>', '999999.999999PR'), to_number('0.00001-', '9.999999S');",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_number", NUMERIC), Column("to_number", NUMERIC), Column("to_number", NUMERIC), Column("to_number", NUMERIC)],
+                        rows: &[
+                            &[T("-34338492"), T("-34338492.654878"), T("-564646.654564"), T("-0.00001")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_number('$1234.56', 'L9999.99'), to_number('CXLVIII', 'RN'), to_number('1.2e3', '9.9EEEE'), to_number('12th', '99th');",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#""RN" not supported for input"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "power, root, and absolute value operators",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 2 ^ 10, 2.0 ^ 3, 10.0 ^ -2147483647 AS rounds_to_zero, 0 ^ 0 + 0 ^ 1 + 0 ^ 0.0 + 0 ^ 0.5, |/ float8 '64', ||/ float8 '27', @ -5, @ -2.5, 2 ^ 3 ^ 2, -2 ^ 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", FLOAT8), Column("?column?", NUMERIC), Column("rounds_to_zero", NUMERIC), Column("?column?", FLOAT8), Column("?column?", FLOAT8), Column("?column?", FLOAT8), Column("?column?", INT4), Column("?column?", NUMERIC), Column("?column?", FLOAT8), Column("?column?", FLOAT8)],
+                        rows: &[
+                            &[T("1024"), T("8.0000000000000000"), T("0.0000000000000000"), T("2"), T("8"), T("3"), T("5"), T("2.5"), T("64"), T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "CASE arms that are never reached",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT CASE WHEN 1 = 0 THEN 1 / 0 WHEN 1 = 1 THEN 1 ELSE 2 / 0 END;",
+                    expected: Expected::Rows {
+                        columns: &[Column("case", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT CASE 1 WHEN 0 THEN 1 / 0 WHEN 1 THEN 1 ELSE 2 / 0 END;",
+                    expected: Expected::Rows {
+                        columns: &[Column("case", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT CASE WHEN NULL THEN 1 / 0 ELSE 3 END, CASE WHEN true THEN 5 ELSE 1 / 0 END;",
+                    expected: Expected::Rows {
+                        columns: &[Column("case", INT4), Column("case", INT4)],
+                        rows: &[
+                            &[T("3"), T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

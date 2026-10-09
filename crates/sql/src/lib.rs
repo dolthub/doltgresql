@@ -54,6 +54,7 @@ pub mod jsontable;
 mod listing;
 pub mod numeric;
 pub mod numeric_math;
+mod numformat;
 pub mod operators;
 pub mod parse;
 mod pgcatalog;
