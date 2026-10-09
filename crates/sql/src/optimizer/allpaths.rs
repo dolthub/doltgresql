@@ -22,18 +22,18 @@ use super::costsize::{cost_opaque_scan, cost_seqscan, set_baserel_size_estimates
 use super::indxpath::create_index_paths;
 use super::initsplan::JoinList;
 use super::joinrels::join_search_one_level;
-use super::nodes::{Path, PathKind};
+use super::nodes::{Path, PathKind, members};
 use super::pathnode::{add_path, set_cheapest};
 
 /// make_one_rel finds the paths of every base relation and then of the join of them all, returning that relation,
 /// as Postgres' function of the same name does.
 pub fn make_one_rel(root: &mut PlannerInfo<'_, '_>, joinlist: Vec<JoinList>) -> usize {
-    let baserels = 1..=root.parse.rtable.len();
-    root.total_table_pages = baserels.clone().map(|rel| root.rels[rel].pages).sum();
-    for rel in baserels.clone() {
+    let baserels: Vec<usize> = members(root.all_baserels).collect();
+    root.total_table_pages = baserels.iter().map(|&rel| root.rels[rel].pages).sum();
+    for &rel in &baserels {
         set_baserel_size_estimates(root, rel);
     }
-    for rel in baserels {
+    for &rel in &baserels {
         set_rel_pathlist(root, rel);
     }
     make_rel_from_joinlist(root, &joinlist)

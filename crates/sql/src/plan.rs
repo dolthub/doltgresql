@@ -1730,7 +1730,8 @@ impl<'b, 'a> Planner<'b, 'a> {
     }
 
     /// plan_select plans a simple SELECT, leaving its FROM and WHERE clauses unplanned when `defer` asks for a subquery
-    /// that the query around it may pull up.
+    /// that the query around it may pull up. The ported optimizer, when it is on, plans them last, once it knows what
+    /// the rest of the query reads.
     fn plan_select(&mut self, select: &SelectStmt, defer: bool) -> Result<Query> {
         let (mut plan, scope) = self.plan_from(&select.from_clause)?;
         if let Some(node) = select.where_clause.as_deref() {
@@ -1754,12 +1755,10 @@ impl<'b, 'a> Planner<'b, 'a> {
                     false => kept.push(c.clone()),
                 }
             }
-            if defer {
+            if crate::optimizer::enabled() {
                 if let Some(predicate) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
                     plan = Plan::Filter { input: Box::new(plan), predicate };
                 }
-            } else if crate::optimizer::enabled() && crate::optimizer::plannable(&plan) {
-                plan = crate::optimizer::query_planner(self.ctx, plan, kept);
             } else {
                 if let Some(kept) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
                     plan = push_down(plan, kept);
@@ -1769,8 +1768,6 @@ impl<'b, 'a> Planner<'b, 'a> {
             for existence in existences {
                 plan = crate::joins::filter_existence(plan, existence);
             }
-        } else if !defer && crate::optimizer::enabled() && crate::optimizer::plannable(&plan) {
-            plan = crate::optimizer::query_planner(self.ctx, plan, Vec::new());
         }
         let hints = crate::joins::hints(&self.ctx.session.source);
         if !hints.is_empty() {
@@ -2119,6 +2116,9 @@ impl<'b, 'a> Planner<'b, 'a> {
             plan = Plan::Project { input: Box::new(plan), exprs: visible };
         }
         if !defer {
+            if crate::optimizer::enabled() {
+                plan = crate::optimizer::planner(self.ctx, plan);
+            }
             plan = crate::joins::plan_joins(self.ctx, plan);
             crate::indexscan::prune(&mut plan);
         }

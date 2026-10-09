@@ -1958,7 +1958,7 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
 
 /// columns_read returns the columns of the input row that expressions read, counting those that their subqueries read
 /// as their enclosing row, or None when one reads the row in a way that the set cannot tell.
-fn columns_read<'e>(exprs: impl IntoIterator<Item = &'e Expr>) -> Option<BTreeSet<usize>> {
+pub(crate) fn columns_read<'e>(exprs: impl IntoIterator<Item = &'e Expr>) -> Option<BTreeSet<usize>> {
     let mut columns = BTreeSet::new();
     let mut known = true;
     for expr in exprs {

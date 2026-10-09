@@ -18,6 +18,7 @@
 //! plan that Postgres' query_planner would find cheapest.
 
 mod allpaths;
+mod analyzejoins;
 mod clauses;
 mod clausesel;
 mod costsize;
@@ -33,13 +34,14 @@ mod relnode;
 mod restrictinfo;
 mod selfuncs;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use nodes::{
     FromExpr, JoinExpr, JoinTreeNode, JoinType, Query, RangeTblEntry, RelOptInfo, Relids, SpecialJoinInfo, var,
 };
 
 use crate::expr::Expr;
+use crate::indexscan::columns_read;
 use crate::plan::{JoinKind, JoinMethod, Plan};
 use crate::query::Ctx;
 
@@ -75,7 +77,7 @@ pub(crate) fn enabled() -> bool {
 
 /// plannable reports whether query_planner can plan a FROM clause's plan: anything but the empty FROM clause's one
 /// row, of at most MAX_RELATIONS inputs.
-pub(crate) fn plannable(from: &Plan) -> bool {
+fn plannable(from: &Plan) -> bool {
     /// inputs counts the plans that a FROM clause's plan may turn into range table entries.
     fn inputs(plan: &Plan) -> usize {
         match plan {
@@ -87,25 +89,98 @@ pub(crate) fn plannable(from: &Plan) -> bool {
     !matches!(from, Plan::OneRow) && inputs(from) <= MAX_RELATIONS
 }
 
-/// plan_subquery plans the FROM and WHERE clauses of a simple subquery that its query left unplanned for pulling up,
-/// when it stays a relation of its own, as Postgres' subquery_planner plans a subquery that it could not pull up.
-pub(crate) fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
+/// planner plans the FROM and WHERE clauses of a query whose upper parts are already built over them, given the
+/// columns of their rows that the upper parts read, as Postgres' grouping_planner calls query_planner.
+pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
+    plan_upper(ctx, plan, None)
+}
+
+/// plan_upper is planner for a plan of which the nodes above read the given columns, or every column for None.
+fn plan_upper(ctx: &mut Ctx<'_>, plan: Plan, needed: Option<BTreeSet<usize>>) -> Plan {
+    let union = |a: Option<BTreeSet<usize>>, b: Option<BTreeSet<usize>>| Some(a?.union(&b?).copied().collect());
+    let below =
+        |needed: Option<BTreeSet<usize>>, width: usize| needed.map(|n| n.into_iter().filter(|&c| c < width).collect());
     match plan {
-        Plan::Project { input, exprs } => Plan::Project { input: Box::new(plan_subquery(ctx, *input)), exprs },
+        Plan::Project { input, exprs } => {
+            let read = match &needed {
+                Some(needed) => columns_read(needed.iter().filter_map(|&i| exprs.get(i))),
+                None => columns_read(exprs.iter()),
+            };
+            Plan::Project { input: Box::new(plan_upper(ctx, *input, read)), exprs }
+        }
+        Plan::Sort { input, keys } => {
+            let read = union(needed, columns_read(keys.iter().map(|k| &k.expr)));
+            Plan::Sort { input: Box::new(plan_upper(ctx, *input, read)), keys }
+        }
+        Plan::Limit { input, limit, offset } => {
+            Plan::Limit { input: Box::new(plan_upper(ctx, *input, needed)), limit, offset }
+        }
+        Plan::Distinct { input, keys } => {
+            let read = match &keys {
+                Some(keys) => union(needed, columns_read(keys.iter())),
+                None => None,
+            };
+            Plan::Distinct { input: Box::new(plan_upper(ctx, *input, read)), keys }
+        }
+        Plan::Aggregate { input, groups, aggregates, sets } => {
+            let mut exprs: Vec<&Expr> = groups.iter().collect();
+            for call in &aggregates {
+                exprs.extend(&call.args);
+                exprs.extend(&call.filter);
+                exprs.extend(call.order.iter().map(|(e, _, _)| e));
+            }
+            let read = columns_read(exprs);
+            Plan::Aggregate { input: Box::new(plan_upper(ctx, *input, read)), groups, aggregates, sets }
+        }
+        Plan::Window { input, calls } => {
+            let width = input.width();
+            let mut exprs: Vec<&Expr> = Vec::new();
+            for call in &calls {
+                exprs.extend(&call.args);
+                exprs.extend(&call.filter);
+                exprs.extend(&call.partition);
+                exprs.extend(call.order.iter().map(|k| &k.expr));
+                if let Some(range) = &call.range {
+                    exprs.push(&range.key);
+                    exprs.extend(range.start.iter().chain(&range.end).map(|(e, _)| e));
+                }
+            }
+            let read = union(below(needed, width), columns_read(exprs));
+            Plan::Window { input: Box::new(plan_upper(ctx, *input, read)), calls }
+        }
+        Plan::ProjectSet { input, functions, dropped } => {
+            let read = union(below(needed, input.width()), columns_read(functions.iter()));
+            Plan::ProjectSet { input: Box::new(plan_upper(ctx, *input, read)), functions, dropped }
+        }
+        Plan::Filter { input, predicate } if matches!(*input, Plan::Aggregate { .. } | Plan::Window { .. }) => {
+            let read = union(needed, columns_read([&predicate]));
+            Plan::Filter { input: Box::new(plan_upper(ctx, *input, read)), predicate }
+        }
         Plan::Filter { input, predicate } if plannable(&input) => {
             let quals = crate::indexscan::conjuncts(&predicate).into_iter().cloned().collect();
-            query_planner(ctx, *input, quals)
+            query_planner(ctx, *input, quals, needed)
         }
-        join @ Plan::Join { .. } if decomposable(&join) => query_planner(ctx, join, Vec::new()),
-        Plan::Join { left, right, kind, condition, lateral, method } => Plan::Join {
-            left: Box::new(plan_subquery(ctx, *left)),
-            right: Box::new(plan_subquery(ctx, *right)),
-            kind,
-            condition,
-            lateral,
-            method,
-        },
+        join @ Plan::Join { .. } if plannable(&join) => query_planner(ctx, join, Vec::new(), needed),
         other => other,
+    }
+}
+
+/// plan_subquery plans a subquery that its query left unplanned for pulling up, when it stays a relation of its
+/// own, as Postgres' subquery_planner plans a subquery that it could not pull up.
+fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
+    match plan {
+        join @ Plan::Join { .. } if !decomposable(&join) => match join {
+            Plan::Join { left, right, kind, condition, lateral, method } => Plan::Join {
+                left: Box::new(plan_subquery(ctx, *left)),
+                right: Box::new(plan_subquery(ctx, *right)),
+                kind,
+                condition,
+                lateral,
+                method,
+            },
+            other => other,
+        },
+        other => planner(ctx, other),
     }
 }
 
@@ -119,14 +194,23 @@ fn decomposable(join: &Plan) -> bool {
 /// query_planner plans a FROM clause's plan under the conjuncts of the WHERE clause, as Postgres' query_planner
 /// plans a query's join tree: it reduces outer joins, distributes the clauses to the relations they restrict, finds
 /// each relation's cheapest paths, searches for the cheapest join order and methods, and makes a plan of the
-/// cheapest path, whose columns are in the FROM clause's order. Conditions with subqueries filter the plan's rows
+/// cheapest path, whose columns are in the FROM clause's order, given the columns that the query reads above it, or
+/// None for every column. Those it does not read are NULL. Conditions with subqueries filter the plan's rows
 /// afterwards.
-pub(crate) fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>) -> Plan {
+fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, needed: Option<BTreeSet<usize>>) -> Plan {
     let (mut rtable, mut output) = (Vec::new(), Vec::new());
     let node = build_jointree(ctx, from, &mut rtable, &mut output, false);
     let (kept, later): (Vec<Expr>, Vec<Expr>) = quals.into_iter().partition(|q| !crate::plan::has_subquery(q));
     let mut jointree =
         FromExpr { fromlist: vec![node], quals: kept.into_iter().map(|q| to_vars(q, &output)).collect() };
+    let needed = needed.and_then(|n| Some(n.union(&columns_read(&later)?).copied().collect::<BTreeSet<usize>>()));
+    if let Some(needed) = needed {
+        for (i, e) in output.iter_mut().enumerate() {
+            if !needed.contains(&i) {
+                *e = Expr::Const(crate::types::Value::Null);
+            }
+        }
+    }
     prepjointree::reduce_outer_joins(&mut jointree);
     let parse = Query { rtable, jointree, output };
     let mut root = PlannerInfo {
@@ -143,6 +227,7 @@ pub(crate) fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>) -> 
     relnode::add_base_rels_to_query(&mut root);
     let jointree = root.parse.jointree.clone();
     let joinlist = initsplan::deconstruct_jointree(&mut root, &jointree);
+    let joinlist = analyzejoins::remove_useless_joins(&mut root, joinlist);
     let final_rel = allpaths::make_one_rel(&mut root, joinlist);
     let path = root.rels[final_rel].cheapest_total_path.clone().expect("every relation has a path");
     let plan = createplan::create_plan(&mut root, &path);

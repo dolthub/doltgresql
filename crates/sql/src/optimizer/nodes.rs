@@ -234,6 +234,9 @@ pub struct RelOptInfo {
     pub relid: usize,
     pub pages: f64,
     pub tuples: f64,
+    /// For a base relation, the relations of the joins above it that read each of its columns, where relation 0 is
+    /// the query's output, as Postgres' attr_needed holds them.
+    pub attr_needed: Vec<Relids>,
     /// The restriction clauses of a base relation.
     pub baserestrictinfo: Vec<Rc<RestrictInfo>>,
     /// The join clauses that read this relation and others.

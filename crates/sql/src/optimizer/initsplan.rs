@@ -236,6 +236,9 @@ fn distribute_qual_to_rels(
         relids = ojscope;
     }
     let restrictinfo = make_restrictinfo(clause.clone(), is_pushed_down, pseudoconstant, relids);
+    if relids.count_ones() > 1 {
+        super::relnode::add_vars_to_targetlist(root, clause, relids);
+    }
     distribute_restrictinfo_to_rels(root, Rc::new(restrictinfo));
 }
 
@@ -283,7 +286,7 @@ fn check_outerjoin_delay(root: &mut PlannerInfo<'_, '_>, relids: &mut Relids) ->
 
 /// distribute_restrictinfo_to_rels attaches a clause to the base relation it restricts, or as a join clause to each
 /// relation it reads, as Postgres' distribute_restrictinfo_to_rels does.
-fn distribute_restrictinfo_to_rels(root: &mut PlannerInfo<'_, '_>, restrictinfo: Rc<RestrictInfo>) {
+pub fn distribute_restrictinfo_to_rels(root: &mut PlannerInfo<'_, '_>, restrictinfo: Rc<RestrictInfo>) {
     let relids = restrictinfo.required_relids;
     if relids.count_ones() == 1 {
         root.rels[relids.trailing_zeros() as usize].baserestrictinfo.push(restrictinfo);

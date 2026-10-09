@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Postgres' optimizer/path/joinpath.c, with innerrel_is_unique from analyzejoins.c: the nested loop and hash join
-//! paths of a join of two relations. Merge joins are not ported yet. A path that needs another relation's current
+//! Postgres' optimizer/path/joinpath.c: the nested loop and hash join paths of a join of two relations. Merge joins are not ported yet. A path that needs another relation's current
 //! row is only the inner side of a nested loop whose outer side supplies it, as Doltgres' executor runs lookups.
 
 use std::rc::Rc;
@@ -22,10 +21,9 @@ use super::PlannerInfo;
 use super::costsize::{
     JoinPathExtraData, SemiAntiJoinFactors, compute_semi_anti_join_factors, cost_hashjoin, cost_material, cost_nestloop,
 };
-use super::nodes::{JoinPath, JoinType, Path, PathKind, RestrictInfo, SpecialJoinInfo, is_subset, var};
+use super::nodes::{JoinPath, JoinType, Path, PathKind, RestrictInfo, SpecialJoinInfo, is_subset};
 use super::pathnode::{add_path, create_join_path};
 use super::restrictinfo::is_pushed_down;
-use crate::expr::{CmpOp, Expr};
 
 /// add_paths_to_joinrel adds the paths of a join of an outer relation to an inner one to their join relation, as
 /// Postgres' function of the same name does.
@@ -41,7 +39,7 @@ pub fn add_paths_to_joinrel(
     let joinrelids = root.rels[joinrel].relids;
     let inner_unique = match jointype {
         JoinType::Semi | JoinType::Anti => false,
-        _ => innerrel_is_unique(root, joinrelids, outerrel, innerrel, jointype, restrictlist),
+        _ => super::analyzejoins::innerrel_is_unique(root, joinrelids, outerrel, innerrel, jointype, restrictlist),
     };
     let semifactors = match matches!(jointype, JoinType::Semi | JoinType::Anti) || inner_unique {
         true => {
@@ -186,43 +184,4 @@ fn try_hashjoin_path(
 pub fn clause_sides_match_join(rinfo: &RestrictInfo, outer_relids: u64, inner_relids: u64) -> bool {
     (is_subset(rinfo.left_relids, outer_relids) && is_subset(rinfo.right_relids, inner_relids))
         || (is_subset(rinfo.left_relids, inner_relids) && is_subset(rinfo.right_relids, outer_relids))
-}
-
-/// innerrel_is_unique reports whether each outer row matches at most one inner row, because the join's equalities
-/// and the inner table's restrictions fix every column of one of its unique indexes, as Postgres' function of the
-/// same name proves it for a base relation.
-fn innerrel_is_unique(
-    root: &PlannerInfo<'_, '_>,
-    joinrelids: u64,
-    outerrel: usize,
-    innerrel: usize,
-    jointype: JoinType,
-    restrictlist: &[Rc<RestrictInfo>],
-) -> bool {
-    let inner = &root.rels[innerrel];
-    let Some(table) = (inner.relid != 0).then(|| root.parse.rte(inner.relid).table()).flatten() else { return false };
-    let outer_relids = root.rels[outerrel].relids;
-    let inner_side = |r: &RestrictInfo| match &r.clause {
-        Expr::Compare(_, l, _) if is_subset(r.left_relids, inner.relids) => Some((**l).clone()),
-        Expr::Compare(_, _, rhs) => Some((**rhs).clone()),
-        _ => None,
-    };
-    let mut fixed: Vec<Expr> = restrictlist
-        .iter()
-        .filter(|r| !(jointype.is_outer() && is_pushed_down(r, joinrelids)))
-        .filter(|r| r.can_join && r.hashjoinable && clause_sides_match_join(r, outer_relids, inner.relids))
-        .filter_map(|r| inner_side(r))
-        .collect();
-    for r in &inner.baserestrictinfo {
-        if let Expr::Compare(CmpOp::Eq, l, rhs) = &r.clause {
-            match (super::clauses::pull_varnos(l) == 0, super::clauses::pull_varnos(rhs) == 0) {
-                (false, true) => fixed.push((**l).clone()),
-                (true, false) => fixed.push((**rhs).clone()),
-                _ => {}
-            }
-        }
-    }
-    let covers = |columns: &[usize]| columns.iter().all(|&c| fixed.contains(&Expr::Column(var(inner.relid, c))));
-    (!table.keyless() && covers(&table.key_columns))
-        || table.indexes.iter().any(|i| i.unique && i.predicate.is_empty() && covers(&i.columns))
 }

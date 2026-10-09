@@ -36,13 +36,28 @@ impl PlannerInfo<'_, '_> {
 }
 
 /// add_base_rels_to_query builds the base relation of each range table entry, as Postgres' function of the same name
-/// does, after a placeholder at index 0 so that each lies at its range table index.
+/// does, after a placeholder at index 0 so that each lies at its range table index, and marks the columns that the
+/// query's output reads as needed there, as Postgres' build_base_rel_tlists does.
 pub fn add_base_rels_to_query(root: &mut PlannerInfo<'_, '_>) {
     root.rels.push(RelOptInfo::default());
     for varno in 1..=root.parse.rtable.len() {
         let rel = build_simple_rel(root, varno);
         root.rels.push(rel);
     }
+    for e in root.parse.output.clone() {
+        add_vars_to_targetlist(root, &e, singleton(0));
+    }
+}
+
+/// add_vars_to_targetlist marks the columns that an expression reads as needed by a set of relations, as Postgres'
+/// function of the same name does.
+pub fn add_vars_to_targetlist(root: &mut PlannerInfo<'_, '_>, e: &crate::expr::Expr, where_needed: Relids) {
+    e.visit(&mut |x| {
+        if let crate::expr::Expr::Column(c) = x {
+            let (varno, attno) = super::nodes::var_parts(*c);
+            root.rels[varno].attr_needed[attno] |= where_needed;
+        }
+    });
 }
 
 /// build_simple_rel builds the base relation of a range table entry, sized as Postgres' get_relation_info and
@@ -62,7 +77,8 @@ fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, varno: usize) -> RelOptInfo 
             (crate::joins::estimate(root.ctx, &plan), width, 0.0)
         }
     };
-    RelOptInfo { relids: singleton(varno), relid: varno, tuples, width, pages, ..RelOptInfo::default() }
+    let attr_needed = vec![0; rte.plan.width()];
+    RelOptInfo { relids: singleton(varno), relid: varno, tuples, width, pages, attr_needed, ..RelOptInfo::default() }
 }
 
 /// build_join_rel returns the join relation of two relations, building it with its clauses and size when it is new,
