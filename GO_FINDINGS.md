@@ -223,9 +223,11 @@ Rust: matches Postgres 15 in each case (and reports 15.17 from both), and the ba
 
 ## Client tests that encode Go-only wire and DESCRIBE behavior (confirmed)
 
-The node client test expected every RowDescription field to carry table OID 0, which is what the Go server sends.
-Postgres sends the OID of the table a column comes from (the test's own TODO notes 16859 from Postgres). The
+The node client test expected every RowDescription field to carry table OID 0, and a column number even for columns
+that come from no table, which is what the Go server sends. Postgres sends the OID of the table a column comes from
+(the test's own TODO notes 16859 from Postgres), and column number 0 for a column that comes from no table. The
 sqlalchemy client test expected `describe test` to return Go's MySQL-style rows (`NO`, `PRI`, and so on).
 
-Rust: sends the table OIDs as Postgres does, so the node helper now leaves table OIDs out of its comparison, and
+Rust: sends the table OIDs and column numbers as Postgres does, so the node helper now leaves them out of its
+comparison, and
 `describe` returns psql's `\d` columns, which the sqlalchemy test now expects.

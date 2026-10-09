@@ -52,8 +52,9 @@ export function assertQueryResult(q, expected, data, matcher) {
     expected.rows[0].dolt_commit = data.rows[0].dolt_commit;
   }
 
-  // Does partial matching of actual and expected results, leaving out the table OIDs that Postgres gives fields.
-  const withoutTableIDs = (fields) => fields?.map(({ tableID, ...field }) => field);
+  // Does partial matching of actual and expected results, leaving out the table OIDs and column numbers that Postgres
+  // gives fields from tables.
+  const withoutTableIDs = (fields) => fields?.map(({ tableID, columnID, ...field }) => field);
   const partialRes = {
     command: data.command,
     rowCount: data.rowCount,
