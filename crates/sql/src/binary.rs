@@ -93,7 +93,13 @@ pub fn decode_escape(text: &str) -> Option<Vec<u8>> {
 
 /// encode_hex writes bytes as lowercase hexadecimal digits.
 pub fn encode_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        out.push(DIGITS[(b >> 4) as usize] as char);
+        out.push(DIGITS[(b & 0xf) as usize] as char);
+    }
+    out
 }
 
 /// encode_escape writes bytes in the escape format, with octal escapes for bytes that are not printable ASCII.

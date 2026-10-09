@@ -79,16 +79,28 @@ impl KeySplitter {
 /// weibull_check reports whether a node ends at an item, with the probability that a Weibull distribution of node
 /// sizes ends between the sizes before and after it.
 fn weibull_check(size: u32, this_size: u32, hash: u32) -> bool {
-    let pow = (size - this_size) as f64 / TARGET_SIZE;
-    let start = -expm1(-(pow * pow * pow * pow));
-    let pow = size as f64 / TARGET_SIZE;
-    let end = -expm1(-(pow * pow * pow * pow));
+    let cdf = weibull_cdf();
+    let (start, end) = (cdf[(size - this_size) as usize], cdf[size as usize]);
     let p = hash as f64 / u32::MAX as f64;
     let d = 1.0 - start;
     if d <= 0.0 {
         return true;
     }
     p < (end - start) / d
+}
+
+/// weibull_cdf returns the Weibull distribution's probability that a node ends by each size up to the largest, which
+/// every item of every chunked node looks up twice.
+fn weibull_cdf() -> &'static [f64] {
+    static CDF: std::sync::OnceLock<Vec<f64>> = std::sync::OnceLock::new();
+    CDF.get_or_init(|| {
+        (0..=MAX_CHUNK_SIZE)
+            .map(|size| {
+                let pow = size as f64 / TARGET_SIZE;
+                -expm1(-(pow * pow * pow * pow))
+            })
+            .collect()
+    })
 }
 
 /// mul_add returns `a * b + c` with two roundings, as Go computes it on amd64, which is where Go fuses on arm64.

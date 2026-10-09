@@ -223,6 +223,16 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
             | oid::TIMESTAMP
             | oid::TIMESTAMPTZ
             | oid::UUID
+            | oid::BPCHAR
+            | oid::NAME
+            | oid::CHAR
+            | oid::TIME
+            | oid::TIMETZ
+            | oid::INTERVAL
+            | oid::JSON
+            | oid::JSONB
+            | oid::BYTEA
+            | oid::OID
     );
     if !scalar && crate::array::is_array_type(ty.oid) {
         let element = crate::expr::element_type(ty.oid);
@@ -239,12 +249,12 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
     {
         return deserialize_user_value(field, &user_type);
     }
-    if let Some(range) = crate::rangetypes::range_type(ty.oid) {
+    if !scalar && let Some(range) = crate::rangetypes::range_type(ty.oid) {
         let subtype = crate::expr::typ(range.subtype);
         let range = crate::rangetypes::receive(ty.oid, field, &|bytes| deserialize_value(bytes, subtype))?;
         return Ok(Value::Range(Box::new(range)));
     }
-    if let Some(range) = crate::rangetypes::multirange_type(ty.oid) {
+    if !scalar && let Some(range) = crate::rangetypes::multirange_type(ty.oid) {
         let subtype = crate::expr::typ(range.subtype);
         let multirange =
             crate::rangetypes::receive_multirange(ty.oid, field, &|bytes| deserialize_value(bytes, subtype))?;
