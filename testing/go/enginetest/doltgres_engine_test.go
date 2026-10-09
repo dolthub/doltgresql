@@ -592,14 +592,6 @@ func TestIndexKeyTypesScripts(t *testing.T) {
 	enginetest.TestIndexKeyTypesScripts(t, h)
 }
 
-func TestIndexRegressionScripts(t *testing.T) {
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"show create table with duplicate primary key", // auto-generated constraint names differ
-	})
-	defer h.Close()
-	enginetest.TestIndexRegressionScripts(t, h)
-}
-
 func TestInsertIgnoreRegressionScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"INSERT IGNORE throws an error when json is badly formatted", // error messages don't match
@@ -900,10 +892,33 @@ func TestBlobs(t *testing.T) {
 }
 
 func TestIndexes(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	defer harness.Close()
-	enginetest.TestIndexes(t, harness)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"show create table with duplicate primary key", // auto-generated constraint names differ
+	})
+	defer h.Close()
+
+	// The legacy suite is unsupported; retain the relocated self-contained cases.
+	t.Run("legacy scripts", func(t *testing.T) { t.Skip("legacy TestIndexes suite is not supported") })
+	testRelocatedScripts(t, h, queries.IndexQueries,
+		"keyless unique index bug",
+		"show create table with duplicate primary key",
+		"case insensitive index handling",
+		"test index naming",
+		"decimal unique key",
+		"Keyless Table with Unique Index",
+		"keyless reverse index",
+		"missing indexes",
+		"correctness test indexes",
+		"sqllogictest index/commute/10/slt_good_1.test",
+		"Partial indexes are used and return the expected result",
+		"Multiple indexes on the same columns in a different order",
+		"Point lookups with dropped filters",
+		"Complex Filter Index Scan",
+		"Complex Filter Index Scan #2",
+		"Complex Filter Index Scan #3",
+		"complicated range tree",
+		"not null not unique index works on server engine",
+	)
 }
 
 func TestIndexedExpressions(t *testing.T) {

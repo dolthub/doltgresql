@@ -262,6 +262,8 @@ github.com/dolthub/dolt/go v0.40.5-0.20261009231614-30e4390152e6 h1:zha3/gjPav3G
 github.com/dolthub/dolt/go v0.40.5-0.20261009231614-30e4390152e6/go.mod h1:PmX8Zl3a0gWZdD8FBOcS3c89hYJimvo8Tyo2utTB0Io=
 github.com/dolthub/dolt/go v0.40.5-0.20261009232338-9ef1549c2e6b h1:TEWU8//af7RNAMSf5pI8s5+abRgWoCSQUmj5CZNeHHw=
 github.com/dolthub/dolt/go v0.40.5-0.20261009232338-9ef1549c2e6b/go.mod h1:s4fB9+soCipM5oKGk4ZAFNcvqjzvafH/4eCdwPP467U=
+github.com/dolthub/dolt/go v0.40.5-0.20261009233448-14db4b98b3f9 h1:zqILVCUpZixnIHGm3HXbv+8xvMkIFx79R5bwgd2nduI=
+github.com/dolthub/dolt/go v0.40.5-0.20261009233448-14db4b98b3f9/go.mod h1:0mHF5Vd+szx9AzmqXg3UAsjSQ5z/K9XC91Jkcp2ZfIs=
 github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4 h1:0mg9QEFdkkBwJMxvz1tCjHYmfG2iIC6aShj1InDq9/M=
 github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4/go.mod h1:SSLraQS/jGLYFgff3vuZ+JbVUct6vyEeMzjLBqWqoyM=
 github.com/dolthub/file-locks v0.1.1 h1:8oKr20PflAVHkroB5Kq1BrtzesvKop9onekWEse1Qr8=
@@ -286,6 +288,8 @@ github.com/dolthub/go-mysql-server v0.20.1-0.20261009231343-7207045adf1e h1:ugpi
 github.com/dolthub/go-mysql-server v0.20.1-0.20261009231343-7207045adf1e/go.mod h1:Cn3PBhNNM1cc0Gjkv1F+q1i4DXw6Cet8tmNcOFQvVD8=
 github.com/dolthub/go-mysql-server v0.20.1-0.20261009232159-eaae3251ec9c h1:TRDN2gzGIzZ9QErCwaQnQas7X2O8c4YvgQrJXMoMO4Q=
 github.com/dolthub/go-mysql-server v0.20.1-0.20261009232159-eaae3251ec9c/go.mod h1:Cn3PBhNNM1cc0Gjkv1F+q1i4DXw6Cet8tmNcOFQvVD8=
+github.com/dolthub/go-mysql-server v0.20.1-0.20261009233302-de3b61e664d2 h1:K8tkSFOSacXS+zOX/XsRvpyiZ08/YK1npQUQMk+7xAQ=
+github.com/dolthub/go-mysql-server v0.20.1-0.20261009233302-de3b61e664d2/go.mod h1:Cn3PBhNNM1cc0Gjkv1F+q1i4DXw6Cet8tmNcOFQvVD8=
 github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 h1:OAsXLAPL4du6tfbBgK0xXHZkOlos63RdKYS3Sgw/dfI=
 github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63/go.mod h1:lV7lUeuDhH5thVGDCKXbatwKy2KW80L4rMT46n+Y2/Q=
 github.com/dolthub/ishell v0.0.0-20260414231531-5f031e3e9037 h1:oIW9HwuWrhxv+4HZxA+QQSKHLqWFyXZ2FmNjUYwkdiM=
