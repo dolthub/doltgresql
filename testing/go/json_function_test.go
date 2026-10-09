@@ -1320,6 +1320,55 @@ func TestJsonArrayElements(t *testing.T) {
 	})
 }
 
+// TestJsonArrayElementsAliasFilters covers nested filters and repeated scalar function alias references.
+func TestJsonArrayElementsAliasFilters(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "scalar aliases in filters and nested queries",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT e->>'name' FROM json_array_elements('[{"name":"first"},{"name":"second"}]'::json) AS e
+						WHERE e->>'name' = 'second';`,
+					Expected: []sql.Row{{"second"}},
+				},
+				{
+					Query: `SELECT elem->>'name' FROM
+						(SELECT e AS elem FROM json_array_elements('[{"name":"first"},{"name":"second"}]'::json) AS e) AS expanded
+						WHERE elem->>'name' = 'second';`,
+					Expected: []sql.Row{{"second"}},
+				},
+				{
+					Query: `SELECT val->>'name' FROM
+						(SELECT elem AS val FROM
+							(SELECT e AS elem FROM json_array_elements('[{"name":"first"},{"name":"second"}]'::json) AS e) AS expanded) AS nested
+						WHERE val->>'name' = 'second';`,
+					Expected: []sql.Row{{"second"}},
+				},
+				{
+					Query: `SELECT e, e IS NULL, json_typeof(e)
+						FROM json_array_elements('[null,{"name":"second"}]'::json) AS e;`,
+					Expected: []sql.Row{{nil, "f", "null"}, {`{"name":"second"}`, "f", "object"}},
+				},
+				{
+					Query: `SELECT e::text, e IS NULL, json_typeof(e)
+						FROM json_array_elements('[null,{"name":"second"}]'::json) AS e;`,
+					Expected: []sql.Row{{"null", "f", "null"}, {`{"name": "second"}`, "f", "object"}},
+				},
+				{
+					Query: `SELECT e::text FROM json_array_elements('[null,{"name":"second"}]'::json) AS e
+						WHERE e IS NOT NULL;`,
+					Expected: []sql.Row{{"null"}, {`{"name": "second"}`}},
+				},
+				{
+					Query: `SELECT e->>'name' FROM json_array_elements('[{"name":"first"},{"name":"second"}]'::json) AS e(elem)
+						WHERE e->>'name' = 'second';`,
+					Expected: []sql.Row{{"second"}},
+				},
+			},
+		},
+	})
+}
+
 func TestJsonArrayElementsErrors(t *testing.T) {
 	var scripts []ScriptTest
 	for _, input := range []struct {

@@ -36,7 +36,7 @@ import (
 // run before operator and cast type resolution.
 func rewriteScalarFunctionAliasReferences(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	return pgtransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
-		rewrite := func(ctx *sql.Context, _ sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		rewrite := func(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			// SELECT e FROM json_array_elements('[1]'::json) AS e:
 			// The reference to e is a TableToComposite containing a GetField for "value".
 			// Replace the wrapper with that GetField, named "e", to give it the json type.
@@ -52,7 +52,7 @@ func rewriteScalarFunctionAliasReferences(ctx *sql.Context, node sql.Node) (sql.
 			// updated SubqueryAlias schema before resolving the ->> operator.
 			if field, ok := expr.(*expression.GetField); ok {
 				if typ, ok := field.Type(ctx).(*pgtypes.DoltgresType); ok && typ.IsCompositeType() {
-					if scalar := scalarSubqueryColumnType(ctx, n, field); scalar != nil {
+					if scalar := scalarProjectedColumnType(ctx, n, field); scalar != nil {
 						return expression.NewGetFieldWithTable(field.Index(), int(field.TableId()), scalar,
 							field.Database(), field.Table(), field.Name(), field.IsNullable(ctx)).WithId(field.Id()), transform.NewTree, nil
 					}
@@ -70,7 +70,8 @@ func rewriteScalarFunctionAliasReferences(ctx *sql.Context, node sql.Node) (sql.
 		if alias, ok := rewritten.(*plan.SubqueryAlias); ok && alias.ScopeMapping != nil {
 			mappings := make(map[sql.ColumnId]sql.Expression, len(alias.ScopeMapping))
 			for id, expr := range alias.ScopeMapping {
-				expr, unchanged, err := transform.ExprWithNode(ctx, alias, expr, rewrite)
+				// Mapped expressions reference the child's column IDs, not the alias's output IDs.
+				expr, unchanged, err := transform.ExprWithNode(ctx, alias.Child, expr, rewrite)
 				if err != nil {
 					return nil, transform.SameTree, err
 				}
@@ -105,12 +106,23 @@ func isScalarTableFunction(ctx *sql.Context, node sql.Node, tableID sql.TableId)
 	})
 }
 
-// scalarSubqueryColumnType looks up field's TableId and column Id in a SubqueryAlias and returns
-// the corresponding schema column's type if it is neither record nor composite. It returns nil
-// if no matching column has a scalar type.
-func scalarSubqueryColumnType(ctx *sql.Context, node sql.Node, field *expression.GetField) sql.Type {
+// scalarProjectedColumnType looks up field's column Id in a Project or SubqueryAlias and returns
+// its updated type if it is neither record nor composite. Project column references have no
+// TableId; SubqueryAlias references also need to match the alias's TableId. It returns nil if no
+// matching column has a scalar type.
+func scalarProjectedColumnType(ctx *sql.Context, node sql.Node, field *expression.GetField) sql.Type {
 	var typ sql.Type
 	transform.InspectUp(ctx, node, func(ctx *sql.Context, n sql.Node) bool {
+		if project, ok := n.(*plan.Project); ok && field.TableId() == 0 {
+			for _, projection := range project.Projections {
+				if identified, ok := projection.(sql.IdExpression); ok && identified.Id() == field.Id() {
+					if scalar, ok := projection.Type(ctx).(*pgtypes.DoltgresType); ok && !scalar.IsCompositeType() && !scalar.IsRecordType() {
+						typ = scalar
+						return true
+					}
+				}
+			}
+		}
 		alias, ok := n.(*plan.SubqueryAlias)
 		if !ok || alias.Id() != field.TableId() || !alias.Columns().Contains(field.Id()) {
 			return false
