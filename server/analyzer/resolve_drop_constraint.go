@@ -22,6 +22,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // resolveDropConstraint resolves PostgreSQL constraint names to concrete DDL operations before GMS's resolver.
@@ -53,9 +55,7 @@ func resolveDropConstraint(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, _
 			}
 			for _, fk := range foreignKeys {
 				if strings.EqualFold(fk.Name, dropConstraint.Name) {
-					newNode, err := plan.NewAlterDropForeignKey(rt.Database().Name(), rt.Name(), fk.Name).
-						WithDatabaseProvider(a.Catalog.DbProvider)
-					return newNode, transform.NewTree, err
+					return pgnodes.NewDropForeignKey(rt, fk.Name), transform.NewTree, nil
 				}
 			}
 		}

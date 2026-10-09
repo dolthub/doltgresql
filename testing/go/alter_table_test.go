@@ -2167,8 +2167,144 @@ END $$;`,
 	RunScripts(t, scripts)
 }
 
+// TestDropForeignKeyConstraintSchemaQualified covers the schema loss reported by Ito on PR #3569.
+func TestDropForeignKeyConstraintSchemaQualified(t *testing.T) {
+	var scripts []ScriptTest
+	for _, drop := range []string{
+		"ALTER TABLE ONLY billing.child DROP CONSTRAINT child_parent_id_fkey;",
+		"ALTER TABLE billing.child DROP CONSTRAINT child_parent_id_fkey;",
+		"ALTER TABLE ONLY billing.child DROP CONSTRAINT IF EXISTS child_parent_id_fkey;",
+		"ALTER TABLE billing.child DROP CONSTRAINT IF EXISTS child_parent_id_fkey;",
+	} {
+		for _, scenario := range []struct {
+			name            string
+			expressionIndex bool
+			publicChild     bool
+		}{
+			{name: "without expression index"},
+			{name: "with expression index", expressionIndex: true},
+			{name: "with expression index and public table", expressionIndex: true, publicChild: true},
+		} {
+			setup := []string{
+				"SET search_path TO public;",
+				"CREATE SCHEMA billing;",
+				"CREATE SCHEMA archive;",
+				"CREATE TABLE billing.parent (id int PRIMARY KEY);",
+				"CREATE TABLE archive.parent (id int PRIMARY KEY);",
+				"CREATE TABLE billing.child (id int PRIMARY KEY, parent_id int, email text, CONSTRAINT child_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES billing.parent(id));",
+				"CREATE TABLE archive.child (id int PRIMARY KEY, parent_id int, email text, CONSTRAINT child_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES archive.parent(id));",
+				"INSERT INTO billing.parent VALUES (1);",
+				"INSERT INTO archive.parent VALUES (1);",
+				"INSERT INTO billing.child VALUES (1, 1, 'Alice@example.com');",
+				"INSERT INTO archive.child VALUES (1, 1, 'archive@example.com');",
+			}
+			if scenario.publicChild {
+				setup = append(setup,
+					"CREATE TABLE public.parent (id int PRIMARY KEY);",
+					"CREATE TABLE public.child (id int PRIMARY KEY, parent_id int, email text, CONSTRAINT child_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.parent(id));",
+					"INSERT INTO public.parent VALUES (1);",
+					"INSERT INTO public.child VALUES (1, 1, 'public@example.com');",
+				)
+			}
+			var indexRows []sql.Row
+			if scenario.expressionIndex {
+				setup = append(setup, "CREATE INDEX child_lower_email_idx ON billing.child (lower(email));")
+				indexRows = []sql.Row{{"child_lower_email_idx"}}
+			}
+			script := ScriptTest{
+				Name:        drop + " " + scenario.name,
+				SetUpScript: setup,
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:       "INSERT INTO billing.child VALUES (2, 999, 'Bob@example.com');",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    drop,
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'billing.child'::regclass AND conname = 'child_parent_id_fkey';",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'archive.child'::regclass AND conname = 'child_parent_id_fkey';",
+						Expected: []sql.Row{{"child_parent_id_fkey"}},
+					},
+					{
+						Query:    "INSERT INTO billing.child VALUES (2, 999, 'Bob@example.com');",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       "INSERT INTO archive.child VALUES (2, 999, 'Bob@example.com');",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'billing' AND tablename = 'child' AND indexname = 'child_lower_email_idx';",
+						Expected: indexRows,
+					},
+					{
+						Query:    "SELECT id, parent_id, email FROM billing.child WHERE lower(email) = 'bob@example.com';",
+						Expected: []sql.Row{{2, 999, "Bob@example.com"}},
+					},
+				},
+			}
+			if scenario.publicChild {
+				script.Assertions = append(script.Assertions,
+					ScriptTestAssertion{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'public.child'::regclass AND conname = 'child_parent_id_fkey';",
+						Expected: []sql.Row{{"child_parent_id_fkey"}},
+					},
+					ScriptTestAssertion{
+						Query:       "INSERT INTO public.child VALUES (2, 999, 'Bob@example.com');",
+						ExpectedErr: "Foreign key violation",
+					},
+				)
+			}
+			scripts = append(scripts, script)
+		}
+	}
+	RunScripts(t, scripts)
+}
+
 func TestDropUniqueConstraintIfExists(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name: "missing constraint with a regular index is a no-op",
+			SetUpScript: []string{
+				"CREATE TABLE users (email text CONSTRAINT boundary_email_key UNIQUE, note text);",
+				"CREATE INDEX boundary_note_idx ON users (note);",
+				"INSERT INTO users VALUES ('dup@example.com', 'original');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT IF EXISTS missing_boundary;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' ORDER BY indexname;",
+					Expected: []sql.Row{{"boundary_email_key"}, {"boundary_note_idx"}},
+				},
+				{
+					Query:           "ALTER TABLE users DROP CONSTRAINT missing_boundary;",
+					ExpectedErr:     "does not exist",
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:           "INSERT INTO users (email) VALUES ('dup@example.com');",
+					ExpectedErr:     "duplicate unique key",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT boundary_email_key;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT IF EXISTS boundary_email_key;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 		{
 			Name: "existing unique constraint is removed without an expression index",
 			SetUpScript: []string{
