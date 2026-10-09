@@ -546,8 +546,8 @@ fn test_dolt_backup_10() {
             assertions: &[
                 // Doltgres-specific: Postgres cannot run this, so the Go server's output is expected.
                 ScriptTestAssertion {
-                    query: "select dolt_backup('restore', 'file:///nonexistent/doltgres/backup/path', 'new_db');",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "failed to create directory '/nonexistent/doltgres/backup/path': mkdir /nonexistent: ", message_contains: true, ..E }),
+                    query: "select dolt_backup('restore', 'file://{TESTDATA}/csv-load-basic-cases.sql/backup', 'new_db');",
+                    expected: Expected::Error(Diagnostic { code: "XX000", message: "failed to create directory '", message_contains: true, ..E }),
                     ..A
                 },
             ],

@@ -225,8 +225,9 @@ fn clean_path(path: &Path) -> PathBuf {
     out
 }
 
-/// absolute_url returns a remote's URL with a file path made absolute against a directory, creating the directory
-/// it names when missing, as Dolt's GetAbsRemoteUrl does. URLs without a scheme name DoltHub databases.
+/// absolute_url returns a remote's URL with a file path made absolute against a directory and written with forward
+/// slashes, creating the directory it names when missing, as Dolt's GetAbsRemoteUrl does. URLs without a scheme name
+/// DoltHub databases.
 fn absolute_url(base: &Path, url: &str) -> Result<String> {
     let Some((scheme, rest)) = url.split_once("://") else {
         return Ok(format!("https://doltremoteapi.dolthub.com/{}", url.trim_start_matches('/')));
@@ -240,7 +241,7 @@ fn absolute_url(base: &Path, url: &str) -> Result<String> {
     } else if !path.is_dir() {
         return Err(error("path is a file"));
     }
-    Ok(format!("file://{}", path.display()))
+    Ok(format!("file://{}", path.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")))
 }
 
 /// file_path returns the directory that a file remote's URL names.

@@ -730,7 +730,7 @@ pub fn expand(text: &str) -> std::borrow::Cow<'_, str> {
         return std::borrow::Cow::Borrowed(text);
     }
     let dir = std::fs::canonicalize(testdata_dir()).unwrap_or_else(|_| testdata_dir());
-    let mut out = text.replace(TESTDATA_TOKEN, &dir.to_string_lossy());
+    let mut out = text.replace(TESTDATA_TOKEN, &portable(&dir));
     if out.contains(TEMPDIR_TOKEN) || out.contains(NEWDIR_PREFIX) {
         let temp_dir =
             SCRIPT_TEMP_DIR.with(|dir| dir.borrow().clone()).expect("a temporary directory outside a script");
@@ -738,11 +738,18 @@ pub fn expand(text: &str) -> std::borrow::Cow<'_, str> {
             let Some(length) = out[start..].find('}') else { break };
             let path = temp_dir.join(&out[start + NEWDIR_PREFIX.len()..start + length]);
             let _ = std::fs::create_dir_all(&path);
-            out.replace_range(start..start + length + 1, &path.to_string_lossy());
+            out.replace_range(start..start + length + 1, &portable(&path));
         }
-        out = out.replace(TEMPDIR_TOKEN, &temp_dir.to_string_lossy());
+        out = out.replace(TEMPDIR_TOKEN, &portable(&temp_dir));
     }
     std::borrow::Cow::Owned(out)
+}
+
+/// portable returns a path with forward slashes and without the `\\?\` prefix that canonicalizing adds on Windows,
+/// so that expanded paths open there and match the file URLs that Dolt prints.
+fn portable(path: &std::path::Path) -> String {
+    let text = path.to_string_lossy();
+    text.strip_prefix(r"\\?\").unwrap_or(&text).replace('\\', "/")
 }
 
 /// render renders a result value as text.

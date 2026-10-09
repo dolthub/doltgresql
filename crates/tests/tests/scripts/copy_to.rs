@@ -523,7 +523,7 @@ fn test_copy_to() {
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY tbl1 TO '/tmp/copy-to-out.csv' (FORMAT CSV);",
+                    query: "COPY tbl1 TO '{TEMPDIR}/copy-to-out.csv' (FORMAT CSV);",
                     expected: Expected::Tag("COPY 7"),
                     flow: Flow::Exec,
                     ..A

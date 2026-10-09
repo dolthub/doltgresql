@@ -2251,6 +2251,7 @@ dependencies = [
  "foldhash",
  "hashbrown",
  "hmac",
+ "iana-time-zone",
  "itoa",
  "md-5",
  "num-bigint",

@@ -468,17 +468,14 @@ pub fn offset_zone_name(seconds_east: i64) -> String {
     format!("<{}>{}", format(seconds_east), format(-seconds_east))
 }
 
-/// local_timezone returns the IANA name of the machine's time zone, from TZ or the /etc/localtime link, or UTC.
+/// local_timezone returns the IANA name of the machine's time zone, from TZ or the system's setting, or UTC.
 pub fn local_timezone() -> String {
     if let Ok(zone) = std::env::var("TZ")
         && !zone.is_empty()
     {
         return zone.trim_start_matches(':').to_string();
     }
-    std::fs::read_link("/etc/localtime")
-        .ok()
-        .and_then(|path| path.to_str().and_then(|p| p.split_once("zoneinfo/").map(|(_, zone)| zone.to_string())))
-        .unwrap_or_else(|| "UTC".to_string())
+    iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string())
 }
 
 /// date_style returns the canonical DateStyle for a value: an output style and a field order.

@@ -284,9 +284,23 @@ fn sqrt(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Float8(f.sqrt()))
 }
 
-/// cbrt returns the cube root.
+/// cbrt returns the cube root, choosing the neighbor of the platform's result whose cube is nearest, so that every
+/// platform gives the correctly rounded root.
 fn cbrt(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Float8(float(&args[0]).cbrt()))
+    let f = float(&args[0]);
+    let root = f.cbrt();
+    if !root.is_finite() || root == 0.0 {
+        return Ok(Value::Float8(root));
+    }
+    let miss = |c: f64| {
+        let (square, square_error) = (c * c, c.mul_add(c, -(c * c)));
+        let cube = square * c;
+        ((cube - f) + square.mul_add(c, -cube) + square_error * c).abs()
+    };
+    let nearest = [root.next_down(), root.next_up()]
+        .into_iter()
+        .fold(root, |best, c| if miss(c) < miss(best) { c } else { best });
+    Ok(Value::Float8(nearest))
 }
 
 /// exp returns e to the power.

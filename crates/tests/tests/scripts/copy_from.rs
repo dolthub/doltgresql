@@ -976,7 +976,7 @@ fn test_copy_rules() {
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: r#"COPY src TO '/tmp/doltgres-kept-copy.csv' (FORMAT CSV, HEADER, FORCE_QUOTE (c2), ESCAPE '\');"#,
+                    query: r#"COPY src TO '{TEMPDIR}/doltgres-kept-copy.csv' (FORMAT CSV, HEADER, FORCE_QUOTE (c2), ESCAPE '\');"#,
                     expected: Expected::Tag("COPY 4"),
                     ..A
                 },
@@ -986,7 +986,7 @@ fn test_copy_rules() {
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: r#"COPY dst1 FROM '/tmp/doltgres-kept-copy.csv' (FORMAT CSV, HEADER, ESCAPE '\');"#,
+                    query: r#"COPY dst1 FROM '{TEMPDIR}/doltgres-kept-copy.csv' (FORMAT CSV, HEADER, ESCAPE '\');"#,
                     expected: Expected::Tag("COPY 4"),
                     ..A
                 },
@@ -1006,7 +1006,7 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY src TO '/tmp/doltgres-kept-copy.txt' (DELIMITER '|', NULL 'NULL');",
+                    query: "COPY src TO '{TEMPDIR}/doltgres-kept-copy.txt' (DELIMITER '|', NULL 'NULL');",
                     expected: Expected::Tag("COPY 4"),
                     ..A
                 },
@@ -1016,7 +1016,7 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY dst2 FROM '/tmp/doltgres-kept-copy.txt' (DELIMITER '|', NULL 'NULL');",
+                    query: "COPY dst2 FROM '{TEMPDIR}/doltgres-kept-copy.txt' (DELIMITER '|', NULL 'NULL');",
                     expected: Expected::Tag("COPY 4"),
                     ..A
                 },
@@ -1036,7 +1036,7 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY (SELECT pk, c1 FROM src WHERE pk > 1 ORDER BY pk) TO '/tmp/doltgres-kept-copy.bin' (FORMAT BINARY);",
+                    query: "COPY (SELECT pk, c1 FROM src WHERE pk > 1 ORDER BY pk) TO '{TEMPDIR}/doltgres-kept-copy.bin' (FORMAT BINARY);",
                     expected: Expected::Tag("COPY 3"),
                     ..A
                 },
@@ -1046,7 +1046,7 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY dst3 FROM '/tmp/doltgres-kept-copy.bin' (FORMAT BINARY);",
+                    query: "COPY dst3 FROM '{TEMPDIR}/doltgres-kept-copy.bin' (FORMAT BINARY);",
                     expected: Expected::Tag("COPY 3"),
                     ..A
                 },
@@ -1064,13 +1064,13 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY dst3 FROM '/tmp/doltgres-kept-copy.csv' (FORMAT BINARY);",
+                    query: "COPY dst3 FROM '{TEMPDIR}/doltgres-kept-copy.csv' (FORMAT BINARY);",
                     expected: Expected::Error(Diagnostic { code: "22P04", message: "COPY file signature not recognized", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY dst1 FROM '/tmp/doltgres-kept-copy.bin' (FORMAT BINARY);",
+                    query: "COPY dst1 FROM '{TEMPDIR}/doltgres-kept-copy.bin' (FORMAT BINARY);",
                     expected: Expected::Error(Diagnostic { code: "22P04", message: "row field count is 2, expected 3", ..E }),
                     flow: Flow::Query,
                     ..A
@@ -1087,12 +1087,12 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY (SELECT 1, '', NULL::TEXT, 'x' UNION ALL SELECT 2, NULL, '', 'y') TO '/tmp/doltgres-kept-nulls.csv' (FORMAT CSV);",
+                    query: "COPY (SELECT 1, '', NULL::TEXT, 'x' UNION ALL SELECT 2, NULL, '', 'y') TO '{TEMPDIR}/doltgres-kept-nulls.csv' (FORMAT CSV);",
                     expected: Expected::Tag("COPY 2"),
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY n FROM '/tmp/doltgres-kept-nulls.csv' (FORMAT CSV);",
+                    query: "COPY n FROM '{TEMPDIR}/doltgres-kept-nulls.csv' (FORMAT CSV);",
                     expected: Expected::Tag("COPY 2"),
                     ..A
                 },
@@ -1114,7 +1114,7 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY n FROM '/tmp/doltgres-kept-nulls.csv' (FORMAT CSV, FORCE_NOT_NULL (b), FORCE_NULL (a));",
+                    query: "COPY n FROM '{TEMPDIR}/doltgres-kept-nulls.csv' (FORMAT CSV, FORCE_NOT_NULL (b), FORCE_NULL (a));",
                     expected: Expected::Tag("COPY 2"),
                     ..A
                 },
@@ -1153,7 +1153,7 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY g TO '/tmp/doltgres-kept-generated.txt';",
+                    query: "COPY g TO '{TEMPDIR}/doltgres-kept-generated.txt';",
                     expected: Expected::Tag("COPY 2"),
                     ..A
                 },
@@ -1163,7 +1163,7 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY g FROM '/tmp/doltgres-kept-generated.txt';",
+                    query: "COPY g FROM '{TEMPDIR}/doltgres-kept-generated.txt';",
                     expected: Expected::Tag("COPY 2"),
                     ..A
                 },
@@ -1208,56 +1208,56 @@ x"#)],
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY (SELECT 'abc', 'x') TO '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY (SELECT 'abc', 'x') TO '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Tag("COPY 1"),
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY e FROM '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type integer: "abc""#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY (SELECT 1, 'x', 'y') TO '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY (SELECT 1, 'x', 'y') TO '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Tag("COPY 1"),
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY e FROM '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Error(Diagnostic { code: "22P04", message: "extra data after last expected column", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY (SELECT 1) TO '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY (SELECT 1) TO '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Tag("COPY 1"),
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY e FROM '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Error(Diagnostic { code: "22P04", message: r#"missing data for column "c""#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY (SELECT 1, NULL) TO '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY (SELECT 1, NULL) TO '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Tag("COPY 1"),
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY e FROM '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Error(Diagnostic { code: "23502", message: r#"null value in column "c" of relation "e" violates not-null constraint"#, detail: "Failing row contains (1, null).", schema: "public", table: "e", column: "c", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY (SELECT 1, 'x' UNION ALL SELECT 1, 'y') TO '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY (SELECT 1, 'x' UNION ALL SELECT 1, 'y') TO '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Tag("COPY 2"),
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "COPY e FROM '/tmp/doltgres-kept-bad.txt';",
+                    query: "COPY e FROM '{TEMPDIR}/doltgres-kept-bad.txt';",
                     expected: Expected::Error(Diagnostic { code: "23505", message: r#"duplicate key value violates unique constraint "e_pkey""#, detail: "Key (pk)=(1) already exists.", schema: "public", table: "e", constraint: "e_pkey", ..E }),
                     flow: Flow::Query,
                     ..A
