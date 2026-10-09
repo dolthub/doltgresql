@@ -134,8 +134,10 @@ Status as of 2026-10-08. The untracked `HANDOFF.md` holds the exact position and
    remaining test failures, fixes for Go bugs that tests encode, and the git and ssh remotes.
 8. Continuous integration against the Rust server, with comparisons between Go on `main` and Rust on this branch,
    and a rebase onto the latest `main` that ports what changed in Go since. The Go code stays in the repository.
-9. A long tail of quick compatibility improvements (missing functions, casts, and the like), and performance work
-   that moves toward Postgres 15's speed rather than Go's, without losing compatibility.
+After Phase 8 the work is continuous rather than phased: keep CI green, raise the Postgres regression replay to at
+least 75%, close quick compatibility gaps (missing functions, casts, and the like), and move performance toward
+Postgres 15's speed rather than Go's, without losing compatibility. `GO_REWRITE_GUIDE.md` records how this rewrite was
+done, for a possible Go rewrite to compare against.
 
 ## Phase 0 status
 
