@@ -15,7 +15,7 @@
 //! Planning queries into trees of scans, joins, filters, aggregates, sorts, and projections, and running them.
 
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use pg_query::protobuf::{
     CoercionForm, GroupingSetKind, JoinExpr, JoinType, RangeFunction, RangeSubselect, SelectStmt, SetOperation,
@@ -3065,6 +3065,26 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
         };
     }
     let plan = match plan {
+        Plan::Join { left, right, kind, condition, lateral: false, method }
+            if matches!(kind, JoinKind::Left | JoinKind::Right | JoinKind::Full) =>
+        {
+            let width = left.width();
+            let mut strict = BTreeSet::new();
+            strict_columns(&predicate, &mut strict);
+            let (on_left, on_right) = (strict.iter().any(|&c| c < width), strict.iter().any(|&c| c >= width));
+            let kind = match kind {
+                JoinKind::Left if on_right => JoinKind::Inner,
+                JoinKind::Right if on_left => JoinKind::Inner,
+                JoinKind::Full if on_left && on_right => JoinKind::Inner,
+                JoinKind::Full if on_left => JoinKind::Left,
+                JoinKind::Full if on_right => JoinKind::Right,
+                kind => kind,
+            };
+            Plan::Join { left, right, kind, condition, lateral: false, method }
+        }
+        plan => plan,
+    };
+    let plan = match plan {
         Plan::Join { left, right, kind: JoinKind::Left, condition, lateral: false, method } => {
             let width = left.width();
             let (_, keys) = condition.as_ref().map_or_else(Default::default, |c| join_keys(c, width));
@@ -3131,6 +3151,47 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
     }
     let condition = and(condition.into_iter().chain(to_join).collect());
     Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral, method }
+}
+
+/// strict_columns adds the columns that a condition can only be true with when they are not NULL, as Postgres'
+/// find_nonnullable_vars finds them for reduce_outer_joins: the columns that comparisons and strict functions read
+/// through casts and arithmetic, those of every condition an AND joins, and those of every arm of an OR.
+fn strict_columns(condition: &Expr, out: &mut BTreeSet<usize>) {
+    match condition {
+        Expr::And(a, b) => {
+            strict_columns(a, out);
+            strict_columns(b, out);
+        }
+        Expr::Or(a, b) => {
+            let (mut left, mut right) = (BTreeSet::new(), BTreeSet::new());
+            strict_columns(a, &mut left);
+            strict_columns(b, &mut right);
+            out.extend(left.intersection(&right));
+        }
+        Expr::Compare(_, l, r) => {
+            strict_reads(l, out);
+            strict_reads(r, out);
+        }
+        Expr::IsNull(e, true) | Expr::BoolTest(e, Some(_), false) => strict_reads(e, out),
+        Expr::Func(f, args) if crate::functions::function(*f).strict => args.iter().for_each(|a| strict_reads(a, out)),
+        _ => {}
+    }
+}
+
+/// strict_reads adds the columns whose NULL makes an expression NULL: a column itself, and those that casts,
+/// arithmetic, and negation read.
+fn strict_reads(e: &Expr, out: &mut BTreeSet<usize>) {
+    match e {
+        Expr::Column(i) => {
+            out.insert(*i);
+        }
+        Expr::Cast(inner, ..) | Expr::Neg(inner, _) => strict_reads(inner, out),
+        Expr::Arith(_, l, r, _) => {
+            strict_reads(l, out);
+            strict_reads(r, out);
+        }
+        _ => {}
+    }
 }
 
 /// never_null reports whether a plan's rows never have NULL in the column, as a table's NOT NULL columns don't.

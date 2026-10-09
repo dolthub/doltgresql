@@ -1547,3 +1547,165 @@ fn test_alias_column_counts() {
         },
     ]);
 }
+
+#[test]
+fn test_outer_join_reduction() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Outer joins that WHERE conditions reduce",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE oj_l (id INT PRIMARY KEY, k INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE oj_r (id INT PRIMARY KEY, k INT, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO oj_l VALUES (1, 1, 'a'), (2, 2, 'b'), (3, NULL, 'c'), (4, 4, NULL);",
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO oj_r VALUES (10, 1, 100), (11, 2, NULL), (12, 5, 50);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l LEFT JOIN oj_r r ON l.k = r.k WHERE r.v > 10 ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l LEFT JOIN oj_r r ON l.k = r.k WHERE r.v IS NULL ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("2"), T("11")],
+                            &[T("3"), Null],
+                            &[T("4"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l LEFT JOIN oj_r r ON l.k = r.k WHERE r.v + 1 > 10 OR r.id = 11 ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("2"), T("11")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l LEFT JOIN oj_r r ON l.k = r.k WHERE r.v > 10 OR l.id = 3 ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l LEFT JOIN oj_r r ON l.k = r.k WHERE coalesce(r.v, 0) = 0 ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("2"), T("11")],
+                            &[T("3"), Null],
+                            &[T("4"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l RIGHT JOIN oj_r r ON l.k = r.k WHERE l.t <> 'z' ORDER BY r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("2"), T("11")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l FULL JOIN oj_r r ON l.k = r.k WHERE l.t IS NOT NULL ORDER BY l.id, r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("2"), T("11")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l FULL JOIN oj_r r ON l.k = r.k WHERE r.v::text LIKE '1%' ORDER BY l.id, r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l FULL JOIN oj_r r ON l.k = r.k WHERE l.id < 4 AND r.v >= 0 ORDER BY l.id, r.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l LEFT JOIN oj_r r ON l.k = r.k WHERE (r.v > 10) IS NOT TRUE ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("2"), T("11")],
+                            &[T("3"), Null],
+                            &[T("4"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT l.id, r.id FROM oj_l l LEFT JOIN oj_r r ON l.k = r.k WHERE NOT (r.v > 10) ORDER BY l.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
