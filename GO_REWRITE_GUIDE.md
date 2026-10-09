@@ -33,15 +33,17 @@ of that, Vitess, GMS, and Dolt included, with a single new implementation that:
 
 | Measure | Go server on `main` | Rust rewrite |
 | --- | --- | --- |
-| Ported script tests (`testing/go`, PG15 expectations) | fails many by design | 597 of 597 test functions pass |
-| Postgres regression replay (42,090 statements) | 20,729 (49.25%) | 31,101 (73.89%) |
+| Ported script tests (`testing/go`, PG15 expectations) | fails many by design | 616 of 616 test functions pass |
+| Postgres regression replay (42,090 statements) | 20,729 (49.25%) | 31,585 (75.04%) |
 | Dump imports (103 dumps) | 45 | 45 |
 | sqllogictest | 99.317% | above Go |
 | Bats, client-language, compatibility, driver suites | pass | pass |
 | sysbench (one thread, tps) point_select / read_only | 10,522 / 504 | 20,603 / 1,284 |
 | 119-query complex benchmark, geometric mean time | 1.00 | about 0.28 |
 
-The current goal for the Rust run is at least 75% on the regression replay.
+The Rust run reached its goal of 75% on the regression replay on 2026-10-09. The next goal is sysbench throughput
+within 20% of Postgres 15's: on Linux CI, one thread, the Rust server reaches 48-82% of Postgres' tps on reads and
+24-38% on writes.
 
 ## 2. Ground rules that shaped every step
 
