@@ -4755,3 +4755,346 @@ fn test_positional_parameters() {
         },
     ]);
 }
+
+#[test]
+fn test_return_next_and_dynamic_loops() {
+    run_scripts(&[
+        ScriptTest {
+            name: "RETURN NEXT and FOR over EXECUTE",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE rn (id INT, name TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO rn VALUES (1, 'a'), (2, 'b');",
+                    expected: Expected::Tag("INSERT 0 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE FUNCTION f(t text) RETURNS SETOF int LANGUAGE plpgsql AS $$
+DECLARE r record;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$
+DECLARE r record;""#, position: 65, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"BEGIN
+  FOR r IN EXECUTE 'SELECT x * $1 AS y FROM generate_series(1, 3) x' USING 2 LOOP
+    RETURN NEXT r.y;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "FOR""#, position: 9, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "  END LOOP;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "LOOP""#, position: 7, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"  FOR r IN EXECUTE format('SELECT %L::text AS v', t) LOOP
+    RAISE NOTICE 'got %', r.v;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "FOR""#, position: 3, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "  END LOOP;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "LOOP""#, position: 7, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$;""#, position: 5, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM f('hi');",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function f(unknown) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE FUNCTION g(n int, OUT a int, OUT b text) RETURNS SETOF record LANGUAGE plpgsql AS $$
+BEGIN
+  FOR i IN 1..n LOOP
+    a := i; b := 'x' || i;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$
+BEGIN
+  FOR i IN 1..n LOOP
+    a := i; b := 'x' || i;""#, position: 90, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "    RETURN NEXT;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "RETURN""#, position: 5, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "  END LOOP;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "LOOP""#, position: 7, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$;""#, position: 5, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM g(3);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function g(integer) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE FUNCTION h() RETURNS SETOF rn LANGUAGE plpgsql AS $$
+DECLARE r rn;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$
+DECLARE r rn;""#, position: 58, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"BEGIN
+  FOR r IN SELECT * FROM rn ORDER BY id LOOP
+    RETURN NEXT r;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "FOR""#, position: 9, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "  END LOOP;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "LOOP""#, position: 7, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "  RETURN;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "RETURN""#, position: 3, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$;""#, position: 5, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM h();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function h() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE FUNCTION k() RETURNS TABLE (x int, y text) LANGUAGE plpgsql AS $$
+BEGIN
+  x := 1; y := 'one'; RETURN NEXT;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$
+BEGIN
+  x := 1; y := 'one'; RETURN NEXT;""#, position: 71, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "  RETURN QUERY SELECT 2, 'two';",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "RETURN""#, position: 3, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "  x := 3; y := 'three'; RETURN NEXT;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "x""#, position: 3, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$;""#, position: 5, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM k();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function k() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE FUNCTION fl() RETURNS SETOF text LANGUAGE plpgsql AS $$
+DECLARE j json; a int; b text;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$
+DECLARE j json; a int; b text;""#, position: 61, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"BEGIN
+  FOR j IN EXECUTE 'SELECT ''{"x":1}''::json' LOOP RETURN NEXT j->>'x'; END LOOP;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "FOR""#, position: 9, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "  FOR a, b IN SELECT 1, 'one' UNION ALL SELECT 2, 'two' LOOP RETURN NEXT a || b; END LOOP;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "FOR""#, position: 3, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$;""#, position: 5, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM fl();",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function fl() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE FUNCTION h5() RETURNS SETOF record LANGUAGE plpgsql AS $$
+DECLARE r record;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$
+DECLARE r record;""#, position: 63, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"BEGIN
+  FOR r IN SELECT * FROM rn ORDER BY id LOOP RETURN NEXT r; END LOOP;"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "FOR""#, position: 9, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "END $$;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"unterminated dollar-quoted string at or near "$$;""#, position: 5, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM h5() AS t(a int, b text);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function h5() does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "column definition lists",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION q() RETURNS SETOF record LANGUAGE plpgsql AS $$ BEGIN RETURN QUERY SELECT 1, 'a'::text; END $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM q() AS t(a int, b text);",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("1"), T("a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION q2() RETURNS SETOF record LANGUAGE sql AS $$ SELECT 1, 'a'::text $$;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT b FROM q2() AS (a int, b text);",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", TEXT)],
+                        rows: &[
+                            &[T("a")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM generate_series(1, 2) AS g(x int);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"a column definition list is only allowed for functions returning "record""#, position: 42, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "storage parameters and planner statistics",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ro (a INT) WITH (fillfactor = 50, autovacuum_enabled = false, toast.autovacuum_enabled = false);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ro2 (a INT) WITH (bogus = 1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized parameter "bogus""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ro4 (a INT) WITH (toast.fillfactor = 1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized parameter "fillfactor""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ro5 (a INT) WITH (oids = false);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE ro6 (a INT) WITH (oids = true);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "tables declared WITH OIDS are not supported", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE ro SET (parallel_workers = 2);",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE ro RESET (fillfactor);",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE ro SET (nope = 1);",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized parameter "nope""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE pg_class SET reltuples = 1000 WHERE relname = 'ro';",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE pg_class SET reltuples = 2, relpages = 5 WHERE relname = 'nothing';",
+                    expected: Expected::Tag("UPDATE 0"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

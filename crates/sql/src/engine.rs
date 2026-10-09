@@ -2459,6 +2459,7 @@ impl Ctx<'_> {
             }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.returning.map(|r| r.columns),
             NodeEnum::UpdateStmt(update) if self.is_conflicts_table(update.relation.as_ref())? => None,
+            NodeEnum::UpdateStmt(update) if crate::dml::sets_catalog_statistics(update) => None,
             NodeEnum::DeleteStmt(delete) if self.is_conflicts_table(delete.relation.as_ref())? => None,
             NodeEnum::UpdateStmt(update) => self.plan_update(update)?.returning.map(|r| r.columns),
             NodeEnum::DeleteStmt(delete) => self.plan_delete(delete)?.returning.map(|r| r.columns),
@@ -2631,6 +2632,7 @@ impl Ctx<'_> {
                 self.run_view_change(rewritten)
             }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self),
+            NodeEnum::UpdateStmt(update) if let Some(outcome) = self.update_catalog_statistics(update)? => Ok(outcome),
             NodeEnum::UpdateStmt(update) => match self.update_object_conflicts(update)? {
                 Some(outcome) => Ok(outcome),
                 None => match self.update_table_conflicts(update)? {

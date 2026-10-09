@@ -2044,3 +2044,43 @@ fn first_clause<'c>(
     }
     Ok(None)
 }
+
+impl Ctx<'_> {
+    /// update_catalog_statistics runs an UPDATE of pg_class that only sets planner statistics as one that changes
+    /// nothing, reporting the rows it matches.
+    pub fn update_catalog_statistics(&mut self, update: &UpdateStmt) -> Result<Option<Outcome>> {
+        let Some(relation) = update.relation.as_ref().filter(|_| sets_catalog_statistics(update)) else {
+            return Ok(None);
+        };
+        let one = pg_query::protobuf::AConst {
+            val: Some(pg_query::protobuf::a_const::Val::Ival(pg_query::protobuf::Integer { ival: 1 })),
+            ..Default::default()
+        };
+        let target = pg_query::protobuf::ResTarget {
+            val: Some(Box::new(pg_query::Node { node: Some(NodeEnum::AConst(one)) })),
+            ..Default::default()
+        };
+        let select = pg_query::protobuf::SelectStmt {
+            target_list: vec![pg_query::Node { node: Some(NodeEnum::ResTarget(Box::new(target))) }],
+            from_clause: vec![pg_query::Node { node: Some(NodeEnum::RangeVar(relation.clone())) }],
+            where_clause: update.where_clause.clone(),
+            ..Default::default()
+        };
+        let matched = match self.run(&NodeEnum::SelectStmt(Box::new(select)))? {
+            Outcome::Rows { rows, .. } => rows.len(),
+            _ => 0,
+        };
+        Ok(Some(Outcome::command(format!("UPDATE {matched}"))))
+    }
+}
+
+/// sets_catalog_statistics reports whether an UPDATE only sets pg_class's planner statistics, which Doltgres does not
+/// keep.
+pub fn sets_catalog_statistics(update: &UpdateStmt) -> bool {
+    let Some(relation) = &update.relation else { return false };
+    relation.relname == "pg_class"
+        && matches!(relation.schemaname.as_str(), "" | "pg_catalog")
+        && update.target_list.iter().all(|target| {
+            matches!(target.node.as_ref(), Some(NodeEnum::ResTarget(r)) if matches!(r.name.as_str(), "reltuples" | "relpages" | "relallvisible"))
+        })
+}

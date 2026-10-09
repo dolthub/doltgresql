@@ -1514,6 +1514,35 @@ impl<'b, 'a> Planner<'b, 'a> {
                 .collect(),
             _ => vec![ScopeColumn { table: table.clone(), name: column_name, ty, hidden: false, origin: (0, 0) }],
         };
+        if !function.coldeflist.is_empty() {
+            if ty.oid != oid::RECORD {
+                let location = match function.coldeflist[0].node.as_ref() {
+                    Some(NodeEnum::ColumnDef(definition)) => definition.location,
+                    _ => -1,
+                };
+                return Err(PgError {
+                    position: crate::expr::position(location),
+                    ..PgError::new(
+                        code::SYNTAX_ERROR,
+                        "a column definition list is only allowed for functions returning \"record\"",
+                    )
+                });
+            }
+            columns = Vec::with_capacity(function.coldeflist.len());
+            for node in &function.coldeflist {
+                let Some(NodeEnum::ColumnDef(definition)) = node.node.as_ref() else { continue };
+                let type_name =
+                    definition.type_name.as_ref().ok_or_else(|| PgError::internal("a column without a type"))?;
+                let ty = crate::expr::resolve_type_name(type_name)?;
+                columns.push(ScopeColumn {
+                    table: table.clone(),
+                    name: definition.colname.clone(),
+                    ty,
+                    hidden: false,
+                    origin: (0, 0),
+                });
+            }
+        }
         let width = columns.len();
         if function.ordinality {
             let name = renames.get(1).map_or("ordinality".to_string(), |r| r.to_string());
@@ -2765,7 +2794,7 @@ impl Plan {
                     .enumerate()
                     .map(|(i, v)| {
                         let mut row = match v {
-                            Value::Record(fields) if *width > 1 => fields,
+                            Value::Record(fields) if *width > 1 || fields.len() == *width => fields,
                             Value::Composite(c) if *width > 1 || c.fields.len() == *width => c.fields,
                             v => vec![v],
                         };

@@ -355,7 +355,7 @@ const TABLE_PREFIX: &str = "table(";
 
 /// table_columns returns the columns of the anonymous type of a function returning a table, which Go names
 /// `table(name:TYPE,...)` with each type spelled as its SQL syntax, or None for any other type.
-fn table_columns(type_id: &[u8]) -> Result<Option<Vec<(String, ColumnType)>>> {
+pub(crate) fn table_columns(type_id: &[u8]) -> Result<Option<Vec<(String, ColumnType)>>> {
     let segments = id::segments(type_id);
     let [schema, name] = segments.as_slice() else { return Ok(None) };
     let Some(list) = name.strip_prefix(TABLE_PREFIX).and_then(|l| l.strip_suffix(')')) else { return Ok(None) };

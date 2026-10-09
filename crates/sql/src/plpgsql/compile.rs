@@ -54,6 +54,13 @@ enum Statement {
     },
     ForQueryInit {
         query: String,
+        dynamic: Option<Vec<String>>,
+    },
+    Unsupported {
+        name: String,
+    },
+    ReturnNext {
+        expression: String,
     },
     ForQueryNext {
         record: String,
@@ -144,6 +151,31 @@ impl Statement {
             _ => 1,
         }
     }
+}
+
+/// dynamic_operation returns an operation that runs the query text an expression evaluates to with the values of the
+/// USING expressions, as EXECUTE and FOR ... IN EXECUTE do.
+fn dynamic_operation(code: OpCode, query: &str, params: &[String], names: &Names) -> Result<Operation> {
+    let (query, bindings) = substitute(query, names)?;
+    let mut items = vec![
+        (OPTION_DYNAMIC_EXPRESSION.to_string(), "true".to_string()),
+        (OPTION_DYNAMIC_BINDING_COUNT.to_string(), bindings.len().to_string()),
+    ];
+    for (i, binding) in bindings.into_iter().enumerate() {
+        items.push((format!("{OPTION_DYNAMIC_BINDING}{i}"), binding));
+    }
+    items.push((OPTION_DYNAMIC_USING_COUNT.to_string(), params.len().to_string()));
+    for (i, param) in params.iter().enumerate() {
+        let (expression, bindings) = substitute(param, names)?;
+        items.push((format!("{OPTION_DYNAMIC_USING_EXPRESSION}{i}"), expression));
+        items.push((format!("{OPTION_DYNAMIC_USING_BINDING_COUNT}{i}"), bindings.len().to_string()));
+        for (j, binding) in bindings.into_iter().enumerate() {
+            items.push((format!("{OPTION_DYNAMIC_USING_BINDING}{i}_{j}"), binding));
+        }
+    }
+    let mut operation = op(code, query);
+    operation.options = items.into_iter().map(|(k, v)| (k.into_bytes(), v.into_bytes())).collect();
+    Ok(operation)
 }
 
 /// size returns how many operations the statements become.
@@ -288,34 +320,25 @@ impl Statement {
                 ops.push(operation);
             }
             Statement::DynamicExecute { query, params, target, record } => {
-                let (query, bindings) = substitute(query, names)?;
-                let mut items = vec![
-                    (OPTION_DYNAMIC_EXPRESSION.to_string(), "true".to_string()),
-                    (OPTION_DYNAMIC_BINDING_COUNT.to_string(), bindings.len().to_string()),
-                ];
-                for (i, binding) in bindings.into_iter().enumerate() {
-                    items.push((format!("{OPTION_DYNAMIC_BINDING}{i}"), binding));
-                }
-                items.push((OPTION_DYNAMIC_USING_COUNT.to_string(), params.len().to_string()));
-                for (i, param) in params.iter().enumerate() {
-                    let (expression, bindings) = substitute(param, names)?;
-                    items.push((format!("{OPTION_DYNAMIC_USING_EXPRESSION}{i}"), expression));
-                    items.push((format!("{OPTION_DYNAMIC_USING_BINDING_COUNT}{i}"), bindings.len().to_string()));
-                    for (j, binding) in bindings.into_iter().enumerate() {
-                        items.push((format!("{OPTION_DYNAMIC_USING_BINDING}{i}_{j}"), binding));
-                    }
-                }
-                let mut operation = op(if *record { OpCode::ExecuteInto } else { OpCode::Execute }, query);
+                let mut operation = dynamic_operation(
+                    if *record { OpCode::ExecuteInto } else { OpCode::Execute },
+                    query,
+                    params,
+                    names,
+                )?;
                 operation.target = target.clone().into_bytes();
-                operation.options = items.into_iter().map(|(k, v)| (k.into_bytes(), v.into_bytes())).collect();
                 ops.push(operation);
             }
-            Statement::ForQueryInit { query } => {
+            Statement::ForQueryInit { query, dynamic: Some(params) } => {
+                ops.push(dynamic_operation(OpCode::ForQueryInit, query, params, names)?);
+            }
+            Statement::ForQueryInit { query, dynamic: None } => {
                 let (query, bindings) = substitute(query, names)?;
                 let mut operation = op(OpCode::ForQueryInit, query);
                 operation.secondary_data = strings(bindings);
                 ops.push(operation);
             }
+            Statement::Unsupported { name } => ops.push(op(OpCode::Unsupported, name)),
             Statement::ForQueryNext { record, offset } => {
                 let mut operation = op(OpCode::ForQueryNext, "");
                 operation.target = record.clone().into_bytes();
@@ -375,10 +398,11 @@ impl Statement {
                 operation.secondary_data = strings(bindings);
                 ops.push(operation);
             }
-            Statement::Return { expression } => {
+            Statement::Return { expression } | Statement::ReturnNext { expression } => {
                 let (expression, bindings) = substitute(expression, names)?;
                 let expression = if expression.is_empty() { expression } else { format!("SELECT {expression};") };
-                let mut operation = op(OpCode::Return, expression);
+                let code = if matches!(self, Statement::Return { .. }) { OpCode::Return } else { OpCode::ReturnNext };
+                let mut operation = op(code, expression);
                 operation.secondary_data = strings(bindings);
                 ops.push(operation);
             }
@@ -575,8 +599,8 @@ fn variant(json: &Json) -> Option<(&str, &Json)> {
     json.as_object().and_then(|o| o.iter().next()).map(|(k, v)| (k.as_str(), v))
 }
 
-/// Datums names each of a function's datums by its number, and knows the body's aliases.
-struct Datums(Vec<String>, Aliases);
+/// Datums names each of a function's datums by its number, and knows the body's aliases and lines.
+struct Datums(Vec<String>, Aliases, Vec<String>);
 
 impl Datums {
     /// name returns the name of a datum by its number.
@@ -700,6 +724,7 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
             })
             .collect(),
         Aliases::with_parameters(body, &block.variables),
+        body.split('\n').map(str::to_string).collect(),
     );
     block.body = convert_statements(list(&action, "body"), &names)?;
     Ok(block)
@@ -877,16 +902,18 @@ fn convert_statement(statement: &Json, datums: &Datums) -> Result<Statement> {
         }
         "PLpgSQL_stmt_foreach_a" => convert_foreach(s, datums)?,
         "PLpgSQL_stmt_fori" => convert_fori(s, datums)?,
-        "PLpgSQL_stmt_fors" => {
+        "PLpgSQL_stmt_fors" | "PLpgSQL_stmt_dynfors" => {
             let var = get(s, "var").unwrap_or(&Json::Null);
             let name = match variant(var) {
-                Some(("PLpgSQL_rec" | "PLpgSQL_var" | "PLpgSQL_row", v)) => text(v, "refname"),
+                Some(("PLpgSQL_rec" | "PLpgSQL_var", v)) => text(v, "refname"),
+                Some(("PLpgSQL_row", _)) => into_target(var)?.0,
                 _ => return Err(PgError::internal("FOR..IN..SELECT loop variable must be a record, row, or variable")),
             };
             let body = convert_statements(list(s, "body"), datums)?;
             let n = size(&body);
+            let dynamic = (kind == "PLpgSQL_stmt_dynfors").then(|| normalized_params(list(s, "params")));
             let mut statements = vec![
-                Statement::ForQueryInit { query: query(s, "query") },
+                Statement::ForQueryInit { query: query(s, "query"), dynamic },
                 Statement::ForQueryNext { record: name, offset: n + 2 },
             ];
             statements.extend(body);
@@ -921,8 +948,9 @@ fn convert_statement(statement: &Json, datums: &Datums) -> Result<Statement> {
                 options,
             }
         }
-        "PLpgSQL_stmt_return" => Statement::Return { expression: query(s, "expr") },
+        "PLpgSQL_stmt_return" => Statement::Return { expression: returned_expression(s, datums)? },
         "PLpgSQL_stmt_return_query" => Statement::ReturnQuery { query: query(s, "query") },
+        "PLpgSQL_stmt_return_next" => Statement::ReturnNext { expression: returned_expression(s, datums)? },
         "PLpgSQL_stmt_while" => {
             let body = convert_statements(list(s, "body"), datums)?;
             let n = size(&body);
@@ -936,9 +964,25 @@ fn convert_statement(statement: &Json, datums: &Datums) -> Result<Statement> {
         }
         other => {
             let name = other.strip_prefix("PLpgSQL_stmt_").unwrap_or(other).replace('_', " ").to_uppercase();
-            return Err(PgError::unsupported(format!("the PL/pgSQL statement {name}")));
+            Statement::Unsupported { name }
         }
     })
+}
+
+/// returned_expression returns what RETURN or RETURN NEXT returns: its expression, or the whole row or record
+/// variable that the parser gives by number, or only by the statement's line, which holds it after the keywords.
+fn returned_expression(s: &Json, datums: &Datums) -> Result<String> {
+    if get(s, "expr").is_some() {
+        return Ok(query(s, "expr"));
+    }
+    if let Some(number) = get(s, "retvarno").and_then(Json::as_i64).filter(|n| *n >= 0) {
+        return datums.name(number as i32);
+    }
+    let line = datums.2.get((int(s, "lineno") - 1).max(0) as usize).map(|l| l.to_lowercase()).unwrap_or_default();
+    let Some(after) = line.find("return next").map(|at| &line[at + "return next".len()..]) else {
+        return Ok(String::new());
+    };
+    Ok(after.split(';').next().unwrap_or_default().trim().to_string())
 }
 
 /// convert_case converts CASE into an assignment of its expression, when it has one, and a chain of conditions that
@@ -1094,7 +1138,7 @@ fn convert_foreach(s: &Json, datums: &Datums) -> Result<Statement> {
         raise("FOREACH expression must not be null", Vec::new(), code::NULL_VALUE_NOT_ALLOWED),
         Statement::If { condition: format!("{type_ref} LIKE '%[]'"), offset: 2, loop_condition: false },
         raise("FOREACH expression must yield an array, not type %", vec![type_ref.clone()], code::DATATYPE_MISMATCH),
-        Statement::ForQueryInit { query: iterate },
+        Statement::ForQueryInit { query: iterate, dynamic: None },
         Statement::ForQueryNext { record: row.clone(), offset: n + 3 },
         Statement::Assignment { variable: name.clone(), expression: format!("{row}.{FOREACH_ELEMENT}"), retype: false },
     ];

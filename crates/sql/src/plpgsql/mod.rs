@@ -50,6 +50,8 @@ pub enum OpCode {
     ForQueryNext = 20,
     DeclareRecord = 21,
     ExecuteInto = 22,
+    Unsupported = 100,
+    ReturnNext = 101,
 }
 
 impl OpCode {
@@ -72,6 +74,8 @@ impl OpCode {
             20 => OpCode::ForQueryNext,
             21 => OpCode::DeclareRecord,
             22 => OpCode::ExecuteInto,
+            100 => OpCode::Unsupported,
+            101 => OpCode::ReturnNext,
             _ => return None,
         })
     }
@@ -452,6 +456,14 @@ pub fn call(ctx: &mut Ctx<'_>, routine: &Routine, ops: &[Operation], args: Vec<V
     for param in routine.params.iter().filter(|p| p.mode.is_output()) {
         frame.declare(&param.name, Variable::scalar(param.ty, Value::Null));
         frame.outputs.push(param.name.clone());
+    }
+    if frame.outputs.is_empty()
+        && let Some(columns) = crate::routines::table_columns(&routine.object.return_type)?
+    {
+        for (name, ty) in columns {
+            frame.declare(&name, Variable::scalar(ty, Value::Null));
+            frame.outputs.push(name);
+        }
     }
     for (i, (param, value)) in routine.inputs().zip(args).enumerate() {
         let variable = match crate::usertypes::get(param.ty.oid).map(|t| t.kind.clone()) {
@@ -1090,6 +1102,7 @@ impl<'r> Frame<'r> {
                 }
                 Some(OpCode::Raise) => self.raise(ctx, op, &primary, &secondary)?,
                 Some(OpCode::Return) => return self.return_value(ctx, &primary, secondary),
+                Some(OpCode::ReturnNext) => self.return_next(ctx, &primary, secondary)?,
                 Some(OpCode::ReturnQuery) => {
                     let result = self.query(ctx, &primary, &secondary)?;
                     self.check_structure(&result.columns)?;
@@ -1107,7 +1120,10 @@ impl<'r> Frame<'r> {
                     self.returned.get_or_insert_with(Vec::new).extend(rows);
                 }
                 Some(OpCode::ForQueryInit) => {
-                    let result = self.query(ctx, &primary, &secondary)?;
+                    let result = match option(op, OPTION_DYNAMIC_EXPRESSION).as_deref() {
+                        Some("true") => self.dynamic(ctx, op, &primary)?,
+                        _ => self.query(ctx, &primary, &secondary)?,
+                    };
                     if let Some(scope) = self.scopes.last_mut() {
                         scope.cursor = Some(Cursor { columns: result.columns, rows: result.rows.into_iter() });
                     }
@@ -1128,6 +1144,9 @@ impl<'r> Frame<'r> {
                 }
                 Some(OpCode::ScopeBegin) => self.scopes.push(Scope::default()),
                 Some(OpCode::ScopeEnd) => self.leave_scope(),
+                Some(OpCode::Unsupported) => {
+                    return Err(PgError::unsupported(format!("the PL/pgSQL statement {primary}")));
+                }
                 None => {}
             }
             pc = next;
@@ -1203,6 +1222,34 @@ impl<'r> Frame<'r> {
         Ok(())
     }
 
+    /// dynamic runs the query text that an EXECUTE expression evaluates to, with the values of its USING expressions.
+    fn dynamic(&mut self, ctx: &mut Ctx<'_>, op: &Operation, primary: &str) -> Result<QueryResult> {
+        let count: usize = option(op, OPTION_DYNAMIC_BINDING_COUNT).and_then(|c| c.parse().ok()).unwrap_or(0);
+        let bindings: Vec<String> =
+            (0..count).filter_map(|i| option(op, &format!("{OPTION_DYNAMIC_BINDING}{i}"))).collect();
+        let (query, _) = self.single(ctx, &format!("SELECT ({primary})::text"), &bindings)?;
+        let Value::Text(query) = query else {
+            return Err(PgError::new(code::NULL_VALUE_NOT_ALLOWED, "query string argument of EXECUTE is null"));
+        };
+        let using: usize = option(op, OPTION_DYNAMIC_USING_COUNT).and_then(|c| c.parse().ok()).unwrap_or(0);
+        let mut values = Vec::with_capacity(using);
+        let mut types = Vec::with_capacity(using);
+        for i in 0..using {
+            let expression = option(op, &format!("{OPTION_DYNAMIC_USING_EXPRESSION}{i}")).unwrap_or_default();
+            let count: usize = option(op, &format!("{OPTION_DYNAMIC_USING_BINDING_COUNT}{i}"))
+                .and_then(|c| c.parse().ok())
+                .unwrap_or(0);
+            let bindings: Vec<String> =
+                (0..count).filter_map(|j| option(op, &format!("{OPTION_DYNAMIC_USING_BINDING}{i}_{j}"))).collect();
+            let (value, ty) = self.single(ctx, &format!("SELECT ({expression})"), &bindings)?;
+            values.push(value);
+            types.push(ty.oid);
+        }
+        self.running = Some(("SQL statement", query.clone()));
+        let statement = parse(&query)?;
+        self.run_statement(ctx, &statement, &mut types, &values, &[])
+    }
+
     /// execute runs an embedded statement, or a dynamic EXECUTE, storing its first row in the INTO target.
     fn execute(
         &mut self,
@@ -1214,30 +1261,7 @@ impl<'r> Frame<'r> {
     ) -> Result<()> {
         let dynamic = option(op, OPTION_DYNAMIC_EXPRESSION).as_deref() == Some("true");
         let result = if dynamic {
-            let count: usize = option(op, OPTION_DYNAMIC_BINDING_COUNT).and_then(|c| c.parse().ok()).unwrap_or(0);
-            let bindings: Vec<String> =
-                (0..count).filter_map(|i| option(op, &format!("{OPTION_DYNAMIC_BINDING}{i}"))).collect();
-            let (query, _) = self.single(ctx, &format!("SELECT ({primary})::text"), &bindings)?;
-            let Value::Text(query) = query else {
-                return Err(PgError::new(code::NULL_VALUE_NOT_ALLOWED, "query string argument of EXECUTE is null"));
-            };
-            let using: usize = option(op, OPTION_DYNAMIC_USING_COUNT).and_then(|c| c.parse().ok()).unwrap_or(0);
-            let mut values = Vec::with_capacity(using);
-            let mut types = Vec::with_capacity(using);
-            for i in 0..using {
-                let expression = option(op, &format!("{OPTION_DYNAMIC_USING_EXPRESSION}{i}")).unwrap_or_default();
-                let count: usize = option(op, &format!("{OPTION_DYNAMIC_USING_BINDING_COUNT}{i}"))
-                    .and_then(|c| c.parse().ok())
-                    .unwrap_or(0);
-                let bindings: Vec<String> =
-                    (0..count).filter_map(|j| option(op, &format!("{OPTION_DYNAMIC_USING_BINDING}{i}_{j}"))).collect();
-                let (value, ty) = self.single(ctx, &format!("SELECT ({expression})"), &bindings)?;
-                values.push(value);
-                types.push(ty.oid);
-            }
-            self.running = Some(("SQL statement", query.clone()));
-            let statement = parse(&query)?;
-            self.run_statement(ctx, &statement, &mut types, &values, &[])?
+            self.dynamic(ctx, op, primary)?
         } else {
             let statement = parse(primary)?;
             if target.is_empty() && returns_rows(&statement) {
@@ -1404,6 +1428,42 @@ impl<'r> Frame<'r> {
             return Ok(value);
         }
         crate::routines::result_value(self.routine, vec![vec![value]])
+    }
+
+    /// return_next adds a row to the result of a set-returning routine: the value of the expression, or its output
+    /// parameters without one.
+    fn return_next(&mut self, ctx: &mut Ctx<'_>, primary: &str, secondary: Vec<String>) -> Result<()> {
+        let row = if primary.is_empty() {
+            let mut values = Vec::with_capacity(self.outputs.len());
+            for name in &self.outputs {
+                values.push(self.variables[self.variable(name)?].value.clone());
+            }
+            values
+        } else {
+            let bindings = self.expand_whole_row(primary, secondary, "query")?;
+            let result = self.query(ctx, primary, &bindings)?;
+            result.rows.into_iter().next().unwrap_or_default()
+        };
+        let row = match self.composite_column() {
+            Some((type_oid, _)) => {
+                let fields = match <[Value; 1]>::try_from(row) {
+                    Ok([Value::Composite(composite)]) => composite.fields,
+                    Ok([Value::Record(fields)]) => fields,
+                    Ok([other]) => vec![other],
+                    Err(row) => row,
+                };
+                vec![Value::Composite(Box::new(crate::types::CompositeValue { type_oid, fields }))]
+            }
+            None if self.routine.ret.oid == oid::RECORD => match <[Value; 1]>::try_from(row) {
+                Ok([Value::Composite(composite)]) => composite.fields,
+                Ok([Value::Record(fields)]) => fields,
+                Ok(single) => single.to_vec(),
+                Err(row) => row,
+            },
+            None => row,
+        };
+        self.returned.get_or_insert_with(Vec::new).push(row);
+        Ok(())
     }
 
     /// finish returns the result of a routine that returns without a value: its gathered rows, its output parameters,

@@ -572,6 +572,7 @@ impl Ctx<'_> {
             return Err(PgError::new(code::DUPLICATE_TABLE, message));
         }
         self.check_nonlocal_name(&relation.relname)?;
+        crate::alter::check_storage_options(&create.options)?;
         let mut liked = Vec::new();
         for element in &create.table_elts {
             match element.node.as_ref() {

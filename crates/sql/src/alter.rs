@@ -291,6 +291,10 @@ impl Ctx<'_> {
             | AlterTableType::AtForceRowSecurity
             | AlterTableType::AtNoForceRowSecurity
             | AlterTableType::AtSetStatistics => Ok(()),
+            AlterTableType::AtSetRelOptions | AlterTableType::AtResetRelOptions => match cmd.def.as_deref() {
+                Some(Node { node: Some(NodeEnum::List(list)) }) => check_storage_options(&list.items),
+                _ => Ok(()),
+            },
             other => Err(PgError::unsupported(format!("ALTER TABLE {other:?}"))),
         }
     }
@@ -1067,4 +1071,68 @@ impl Ctx<'_> {
         }
         Ok(())
     }
+}
+
+/// STORAGE_OPTIONS are the storage parameters of tables, which Doltgres accepts and ignores, with whether their TOAST
+/// table takes them too, as Postgres' reloptions.c lists them.
+const STORAGE_OPTIONS: &[(&str, bool)] = &[
+    ("autovacuum_enabled", true),
+    ("user_catalog_table", false),
+    ("vacuum_truncate", true),
+    ("fillfactor", false),
+    ("toast_tuple_target", false),
+    ("autovacuum_vacuum_threshold", true),
+    ("autovacuum_vacuum_insert_threshold", true),
+    ("autovacuum_analyze_threshold", false),
+    ("autovacuum_vacuum_cost_limit", true),
+    ("autovacuum_freeze_min_age", true),
+    ("autovacuum_multixact_freeze_min_age", true),
+    ("autovacuum_freeze_max_age", true),
+    ("autovacuum_multixact_freeze_max_age", true),
+    ("autovacuum_freeze_table_age", true),
+    ("autovacuum_multixact_freeze_table_age", true),
+    ("log_autovacuum_min_duration", true),
+    ("parallel_workers", false),
+    ("autovacuum_vacuum_cost_delay", true),
+    ("autovacuum_vacuum_scale_factor", true),
+    ("autovacuum_vacuum_insert_scale_factor", true),
+    ("autovacuum_analyze_scale_factor", false),
+    ("vacuum_index_cleanup", true),
+];
+
+/// check_storage_options fails as Postgres does for a storage parameter that tables do not take.
+pub(crate) fn check_storage_options(options: &[Node]) -> Result<()> {
+    for option in options {
+        let Some(NodeEnum::DefElem(def)) = option.node.as_ref() else { continue };
+        let toast = match def.defnamespace.as_str() {
+            "" => false,
+            "toast" => true,
+            other => {
+                return Err(PgError::new(
+                    code::INVALID_PARAMETER_VALUE,
+                    format!("unrecognized parameter namespace \"{other}\""),
+                ));
+            }
+        };
+        if def.defname == "oids" && !toast {
+            let with_oids = match def.arg.as_deref().and_then(|a| a.node.as_ref()) {
+                Some(NodeEnum::String(s)) => !matches!(s.sval.to_lowercase().as_str(), "false" | "off" | "no" | "0"),
+                Some(NodeEnum::Boolean(b)) => b.boolval,
+                Some(NodeEnum::Integer(i)) => i.ival != 0,
+                _ => true,
+            };
+            if with_oids {
+                return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "tables declared WITH OIDS are not supported"));
+            }
+            continue;
+        }
+        let known = STORAGE_OPTIONS.iter().any(|(name, for_toast)| *name == def.defname && (!toast || *for_toast));
+        if !known {
+            return Err(PgError::new(
+                code::INVALID_PARAMETER_VALUE,
+                format!("unrecognized parameter \"{}\"", def.defname),
+            ));
+        }
+    }
+    Ok(())
 }
