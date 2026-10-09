@@ -533,14 +533,6 @@ func TestAutoIncrementScripts(t *testing.T) {
 	enginetest.TestAutoIncrementScripts(t, h)
 }
 
-func TestCharsetCollationScripts(t *testing.T) {
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"invalid utf8 encoding strings", // need to investigate why some strings aren't giving errors, might be a harness error
-	})
-	defer h.Close()
-	enginetest.TestCharsetCollationScripts(t, h)
-}
-
 func TestConversionsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Handle hex number to binary conversion", // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
@@ -1701,10 +1693,25 @@ func TestStatisticIndexes(t *testing.T) {
 }
 
 func TestCharsetCollationEngine(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"invalid utf8 encoding strings", // need to investigate why some strings aren't giving errors, might be a harness error
+	})
 	defer h.Close()
-	enginetest.TestCharsetCollationEngine(t, h)
+
+	// The legacy suite is unsupported; retain the relocated self-contained cases.
+	t.Run("legacy scripts", func(t *testing.T) { t.Skip("legacy TestCharsetCollationEngine suite is not supported") })
+	testRelocatedScripts(t, h, queries.CharsetCollationEngineTests,
+		"CONVERT USING still converts between incompatible character sets",
+		"Check support for deprecated BINARY attribute after character set",
+		"invalid utf8 encoding strings",
+		"charset validation strict vs non-strict mode",
+		"charset validation issue #8893 - customer scenario",
+		"charset validation edge cases - formatInvalidByteForError testing",
+		"charset validation ASCII range tests",
+		"subquery with case insensitive collation",
+		"INSERT IGNORE truncates invalid UTF-8 at first bad byte",
+		"LIKE with invalid UTF-8 pattern issues warning and returns no match",
+	)
 }
 
 func TestCharsetCollationWire(t *testing.T) {
