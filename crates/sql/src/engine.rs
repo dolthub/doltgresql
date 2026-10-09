@@ -57,6 +57,9 @@ struct Shared {
     started: i64,
     /// The histograms that ANALYZE built, by database and branch.
     statistics: Mutex<HashMap<(String, String), Vec<crate::stats::Statistic>>>,
+    /// The tables that VACUUM, ANALYZE, or building an index over rows measured, by database, schema, and name, which
+    /// a branch shares with the database it copies, with whether ANALYZE gathered their statistics.
+    vacuumed: Mutex<HashMap<(String, String, String), bool>>,
     /// What each open session is doing, by session ID.
     activity: Mutex<std::collections::BTreeMap<u64, Activity>>,
     /// The sessions that a garbage collection ended because they had a transaction open, by session ID.
@@ -278,6 +281,7 @@ impl Engine {
                 advisory: Arc::default(),
                 started: crate::datetime::clock(),
                 statistics: Mutex::default(),
+                vacuumed: Mutex::default(),
                 activity: Mutex::default(),
                 ended: Mutex::default(),
                 auto_gc: Mutex::default(),
@@ -417,7 +421,7 @@ impl Engine {
         &self.shared.branch_control
     }
 
-    /// put_statistics replaces the histograms of a table on a branch of a database.
+    /// put_statistics replaces the histograms of a table on a branch of a database, which ANALYZE analyzed.
     pub fn put_statistics(
         &self,
         database: &str,
@@ -426,10 +430,27 @@ impl Engine {
         table: &str,
         statistics: Vec<crate::stats::Statistic>,
     ) {
+        self.vacuum(database, schema, table, true);
         let Ok(mut all) = self.shared.statistics.lock() else { return };
         let entry = all.entry((database.to_string(), branch.to_string())).or_default();
         entry.retain(|s| s.schema != schema || s.table != table);
         entry.extend(statistics);
+    }
+
+    /// vacuum records that VACUUM, or building an index over rows, measured a table of a database, and whether ANALYZE
+    /// gathered its statistics.
+    pub fn vacuum(&self, database: &str, schema: &str, table: &str, analyzed: bool) {
+        if let Ok(mut vacuumed) = self.shared.vacuumed.lock() {
+            let entry = vacuumed.entry((database.to_string(), schema.to_string(), table.to_string())).or_default();
+            *entry |= analyzed;
+        }
+    }
+
+    /// vacuumed returns whether VACUUM or ANALYZE measured a table of a database, with whether ANALYZE gathered its
+    /// statistics, or None when neither did.
+    pub fn vacuumed(&self, database: &str, schema: &str, table: &str) -> Option<bool> {
+        let key = (database.to_string(), schema.to_string(), table.to_string());
+        self.shared.vacuumed.lock().ok().and_then(|vacuumed| vacuumed.get(&key).copied())
     }
 
     /// statistics returns the histograms of the tables on a branch of a database.

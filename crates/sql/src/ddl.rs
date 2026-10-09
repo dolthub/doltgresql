@@ -1399,6 +1399,9 @@ impl Ctx<'_> {
         let relation = stmt.relation.as_ref().ok_or_else(|| PgError::internal("CREATE INDEX without a table"))?;
         let table = self.resolve_table(relation)?;
         self.require_owner(&Object::Table(table.schema.clone(), table.name.clone()))?;
+        if prolly::Node::decode(table.table.primary_index.clone()).is_ok_and(|root| root.tree_count() > 0) {
+            self.session.engine.vacuum(&self.session.database, &table.schema, &table.name, false);
+        }
         let method = stmt.access_method.as_str();
         let searchable = stmt.index_params.iter().all(|param| match param.node.as_ref() {
             Some(NodeEnum::IndexElem(elem)) => {

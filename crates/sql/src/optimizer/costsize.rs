@@ -170,6 +170,19 @@ pub fn estimate_rel_pages(tuples: f64, width: f64) -> f64 {
     (tuples / density).ceil()
 }
 
+/// estimate_rel_size returns the pages and rows of a table of rows of a width, as Postgres' function of the same name
+/// estimates them: its own once VACUUM or ANALYZE measured it, and otherwise at least ten pages, at the density that
+/// its column types give, since a table that was never measured may not stay small.
+pub fn estimate_rel_size(rows: f64, width: f64, measured: bool) -> (f64, f64) {
+    let curpages = estimate_rel_pages(rows, width);
+    if measured {
+        return (curpages, rows);
+    }
+    let curpages = curpages.max(10.0);
+    let density = ((BLCKSZ - PAGE_HEADER) / (width.floor() + TUPLE_HEADER + ITEM_ID)).floor();
+    (curpages, (density * curpages).round())
+}
+
 /// maxalign rounds a width up to a multiple of eight bytes, as Postgres' MAXALIGN does.
 fn maxalign(width: f64) -> f64 {
     (width / 8.0).ceil() * 8.0
@@ -198,10 +211,11 @@ pub fn cost_seqscan(rel: &RelOptInfo, enables: Enables) -> (f64, f64) {
 }
 
 /// cost_opaque_scan returns the startup and total costs of reading the rows of a relation that is not a table and
-/// testing its restrictions, as Postgres' cost_functionscan does for a function's rows.
-pub fn cost_opaque_scan(rel: &RelOptInfo) -> (f64, f64) {
+/// testing its restrictions, as Postgres' cost_functionscan does for a function's rows, where reading a system
+/// catalog in full is a sequential scan, which enable_seqscan may turn off.
+pub fn cost_opaque_scan(rel: &RelOptInfo, catalog: bool, enables: Enables) -> (f64, f64) {
     let qpqual_cost = cost_qual_eval(&rel.baserestrictinfo);
-    let startup = qpqual_cost.startup + CPU_OPERATOR_COST;
+    let startup = disabled(enables.seqscan || !catalog) + qpqual_cost.startup + CPU_OPERATOR_COST;
     (startup, startup + (CPU_TUPLE_COST + qpqual_cost.per_tuple) * rel.tuples)
 }
 
@@ -312,6 +326,36 @@ pub fn cost_material(input: &Path) -> (f64, f64) {
         run_cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
     }
     (input.startup_cost, input.startup_cost + run_cost)
+}
+
+/// SORT_MEM is the memory that a sort may take, as Postgres' default work_mem.
+const SORT_MEM: f64 = 4.0 * 1024.0 * 1024.0;
+
+/// cost_sort returns the startup and total costs of sorting a path's rows, of which a LIMIT may read only some, as
+/// Postgres' cost_sort and cost_tuplesort estimate them for an in-memory quicksort, a bounded heap sort, or an
+/// external merge sort.
+pub fn cost_sort(input: &Path, limit_tuples: f64) -> (f64, f64) {
+    let tuples = input.rows.max(2.0);
+    let comparison_cost = 2.0 * CPU_OPERATOR_COST;
+    let input_bytes = relation_byte_size(tuples, input.width);
+    let (output_tuples, output_bytes) = match limit_tuples > 0.0 && limit_tuples < tuples {
+        true => (limit_tuples, relation_byte_size(limit_tuples, input.width)),
+        false => (tuples, input_bytes),
+    };
+    let mut startup_cost = if output_bytes > SORT_MEM {
+        let npages = (input_bytes / BLCKSZ).ceil();
+        let nruns = input_bytes / SORT_MEM;
+        let mergeorder = (SORT_MEM / (BLCKSZ * 2.0 + BLCKSZ * 32.0)).floor().clamp(6.0, 500.0);
+        let log_runs = if nruns > mergeorder { (nruns.ln() / mergeorder.ln()).ceil() } else { 1.0 };
+        let npageaccesses = 2.0 * npages * log_runs;
+        comparison_cost * tuples * tuples.log2() + npageaccesses * (SEQ_PAGE_COST * 0.75 + RANDOM_PAGE_COST * 0.25)
+    } else if tuples > 2.0 * output_tuples || input_bytes > SORT_MEM {
+        comparison_cost * tuples * (2.0 * output_tuples).log2()
+    } else {
+        comparison_cost * tuples * tuples.log2()
+    };
+    startup_cost += input.total_cost;
+    (startup_cost, startup_cost + CPU_OPERATOR_COST * tuples)
 }
 
 /// cost_rescan returns the startup and total costs of reading a path's rows again, as Postgres' function of the same

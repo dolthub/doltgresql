@@ -258,11 +258,14 @@ impl Ctx<'_> {
             }
             tables.push(self.resolve_table(relation).map_err(|err| PgError { position: None, ..err })?);
         }
-        if vacuum && !option("analyze") {
-            return Ok(Outcome::command("VACUUM"));
-        }
         if stmt.rels.is_empty() {
             tables = self.snapshot()?.tables.clone();
+        }
+        if vacuum && !option("analyze") {
+            for table in &tables {
+                self.session.engine.vacuum(&self.session.database, &table.schema, &table.name, false);
+            }
+            return Ok(Outcome::command("VACUUM"));
         }
         let created = crate::datetime::clock();
         for table in tables {

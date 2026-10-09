@@ -56,7 +56,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 }
             }
         }
-        PathKind::Material(subpath) => create_plan_recurse(root, subpath),
+        PathKind::Material(subpath) | PathKind::Sort(subpath) => create_plan_recurse(root, subpath),
         PathKind::NestLoop(join) | PathKind::HashJoin(join) => {
             let (outer_plan, outer_layout) = create_plan_recurse(root, &join.outer);
             let (inner_plan, inner_layout) = create_plan_recurse(root, &join.inner);

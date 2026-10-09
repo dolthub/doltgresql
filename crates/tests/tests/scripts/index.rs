@@ -25,6 +25,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "Covering Index",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
                 "INSERT INTO test VALUES (13, 3), (11, 1), (15, 5), (12, 2), (14, 4);",
                 "CREATE INDEX v1_idx ON test(v1);",
@@ -181,6 +182,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "Covering string Index",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE test (pk bigint PRIMARY KEY, v1 varchar(10));",
                 "INSERT INTO test VALUES (13, 'thirteen'), (11, 'eleven'), (15, 'fifteen'), (12, 'twelve'), (14, 'fourteen');",
                 "CREATE UNIQUE INDEX v1_idx ON test(v1);",
@@ -292,6 +294,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "Covering Composite Index",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",
                 "INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24), (16, 2, 25);",
                 "CREATE INDEX v1_v2_idx ON test(v1, v2);",
@@ -511,6 +514,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "Covering Composite Index join, different types out of range",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 smallint, v2 smallint);",
                 "INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (14, 0, 22)",
                 "CREATE INDEX v1_v2_idx ON test(v1, v2);",
@@ -551,6 +555,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "Covering Composite Index join, subquery",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 smallint, v2 smallint);",
                 "INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (14, 0, 22)",
                 "CREATE INDEX v1_v2_idx ON test(v1, v2);",
@@ -798,6 +803,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "Covering Index IN",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE test(pk INT4 PRIMARY KEY, v1 INT4, v2 INT4);",
                 "INSERT INTO test VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3), (4, 4, 4), (5, 5, 5);",
                 "CREATE INDEX v1_idx ON test(v1);",
@@ -1789,6 +1795,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "Proper range AND + OR handling",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE test(pk INTEGER PRIMARY KEY, v1 INTEGER);",
                 "INSERT INTO test VALUES (1, 1),  (2, 3),  (3, 5),  (4, 7),  (5, 9);",
                 "CREATE INDEX v1_idx ON test(v1);",
@@ -2000,6 +2007,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "DROP INDEX removes index from query plan",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
                 "INSERT INTO t VALUES (1, 10), (2, 20), (3, 30);",
                 "CREATE INDEX v1_idx ON t (v1);",
@@ -2042,6 +2050,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "ALTER INDEX RENAME TO",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
                 "INSERT INTO t VALUES (1, 10), (2, 20), (3, 30);",
                 "CREATE INDEX v1_idx ON t (v1);",
@@ -2327,6 +2336,7 @@ fn test_basic_indexing() {
         ScriptTest {
             name: "partial index on keyless table",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE t (a INT, b INT);",
                 "INSERT INTO t VALUES (1, 1), (2, 2), (3, 3);",
             ],
@@ -2958,6 +2968,7 @@ fn test_index_column_options() {
         ScriptTest {
             name: "descending indexes on assorted types",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE dt (pk INT PRIMARY KEY, i2 SMALLINT, i8 BIGINT, n NUMERIC(10,2), f8 DOUBLE PRECISION, t TEXT, v VARCHAR(20), c CHAR(3), d DATE, ts TIMESTAMP, tz TIMESTAMPTZ, b BOOLEAN, u UUID);",
                 "CREATE INDEX dt_i2 ON dt (i2 DESC);",
                 "CREATE INDEX dt_i8 ON dt (i8 DESC);",
@@ -3409,6 +3420,7 @@ fn test_index_column_options() {
         ScriptTest {
             name: "mixed column orderings",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE mo (pk INT PRIMARY KEY, a INT, b INT, c TEXT);",
                 "CREATE INDEX mo_ad_b ON mo (a DESC, b);",
                 "CREATE INDEX mo_a_bd ON mo (a, b DESC);",
@@ -3823,6 +3835,7 @@ fn test_index_column_options() {
         ScriptTest {
             name: "NaN in float indexes",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE fl (pk INT PRIMARY KEY, f4 REAL, f8 DOUBLE PRECISION);",
                 "CREATE INDEX fl_f4 ON fl (f4);",
                 "CREATE INDEX fl_f8 ON fl (f8 DESC);",
@@ -4027,6 +4040,7 @@ fn test_index_column_options() {
         ScriptTest {
             name: "unique descending indexes",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE ud (pk INT PRIMARY KEY, a INT, b TEXT);",
                 "CREATE UNIQUE INDEX ud_a ON ud (a DESC);",
                 "CREATE UNIQUE INDEX ud_ba ON ud (b DESC NULLS LAST, a);",
@@ -4304,6 +4318,7 @@ fn test_index_column_options() {
         ScriptTest {
             name: "descending expression and operator class indexes",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE ex (id BIGINT PRIMARY KEY, name VARCHAR(100), created_at TIMESTAMPTZ);",
                 "CREATE INDEX ex_lower_desc ON ex ((lower(name)) DESC);",
                 "INSERT INTO ex VALUES (1, 'Bob', '2024-01-01 00:00:00+00'), (2, 'alice', '2024-01-03 00:00:00+00'), (3, 'Carol', NULL), (4, NULL, '2024-01-02 00:00:00+00');",
@@ -4436,6 +4451,7 @@ fn test_index_column_options() {
         ScriptTest {
             name: "LIKE prefix uses an index",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE like_idx (pk INT PRIMARY KEY, t TEXT, v VARCHAR(20));",
                 "CREATE INDEX like_idx_t ON like_idx (t text_pattern_ops);",
                 "CREATE INDEX like_idx_v ON like_idx (v varchar_pattern_ops);",

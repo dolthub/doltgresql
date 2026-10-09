@@ -1329,6 +1329,7 @@ fn test_records() {
         ScriptTest {
             name: "ROW() comparisons use indexes",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE rf (id INT4 PRIMARY KEY, a INT4, b INT4);",
                 "CREATE INDEX rfi ON rf (a, b);",
                 "INSERT INTO rf VALUES (1, 1, NULL), (2, 1, 2), (3, 2, 1);",

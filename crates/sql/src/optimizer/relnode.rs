@@ -18,8 +18,12 @@
 use std::rc::Rc;
 
 use super::PlannerInfo;
-use super::costsize::{calc_joinrel_size_estimate, estimate_rel_pages, get_typavgwidth};
+use super::costsize::{calc_joinrel_size_estimate, estimate_rel_size, get_typavgwidth};
 use super::nodes::{RelOptInfo, Relids, RestrictInfo, SpecialJoinInfo, is_subset, singleton};
+
+/// AUTOVACUUM_ANALYZE_THRESHOLD is how many rows a table must hold for Postgres' autovacuum to have analyzed it, at
+/// its default autovacuum_analyze_threshold.
+const AUTOVACUUM_ANALYZE_THRESHOLD: f64 = 50.0;
 
 /// OPAQUE_COLUMN_WIDTH is the width that Postgres assumes for a value of a variable-length type, which is every
 /// column of a relation whose types the planner does not look up.
@@ -61,15 +65,21 @@ pub fn add_vars_to_targetlist(root: &mut PlannerInfo<'_, '_>, e: &crate::expr::E
 }
 
 /// build_simple_rel builds the base relation of a range table entry, sized as Postgres' get_relation_info and
-/// estimate_rel_size size a table: its rows from its primary index, and its pages from their width. Any other entry's
-/// rows are the older planner's estimate.
+/// estimate_rel_size size a table, with the statistics of a table that was analyzed, where autovacuum analyzes a table
+/// that holds enough rows. Any other entry's rows are the older planner's estimate.
 fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, varno: usize) -> RelOptInfo {
     let rte = root.parse.rte(varno);
     let (tuples, width, pages, stats) = match rte.table() {
         Some(table) => {
-            let tuples = prolly::Node::decode(table.table.primary_index.clone()).map_or(0.0, |r| r.tree_count() as f64);
+            let rows = prolly::Node::decode(table.table.primary_index.clone()).map_or(0.0, |r| r.tree_count() as f64);
             let width = table.columns.iter().map(|c| get_typavgwidth(c.ty)).sum();
-            (tuples, width, estimate_rel_pages(tuples, width), crate::colstats::table_stats(root.ctx, table))
+            let session = &root.ctx.session;
+            let vacuumed = session.engine.vacuumed(&session.database, &table.schema, &table.name);
+            let autovacuumed = rows > AUTOVACUUM_ANALYZE_THRESHOLD;
+            let (pages, tuples) = estimate_rel_size(rows, width, autovacuumed || vacuumed.is_some());
+            let analyzed = autovacuumed || vacuumed == Some(true);
+            let stats = analyzed.then(|| crate::colstats::table_stats(root.ctx, table)).flatten();
+            (tuples, width, pages, stats)
         }
         None => {
             let width = rte.plan.width() as f64 * OPAQUE_COLUMN_WIDTH;

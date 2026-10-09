@@ -157,6 +157,7 @@ fn test_functional_index_multi_expr() {
         ScriptTest {
             name: "composite range scan across a mixed expression/column key",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE t (pk int primary key, c1 int, c2 int);",
                 "INSERT INTO t VALUES (1, 1, 10), (2, 1, 20), (3, 1, 30), (4, 2, 10);",
                 "CREATE INDEX idx1 ON t ((c1 * 10), c2);",

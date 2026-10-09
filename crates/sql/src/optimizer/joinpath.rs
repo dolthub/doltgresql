@@ -101,8 +101,8 @@ fn create_material_path(subpath: &Rc<Path>) -> Rc<Path> {
     Rc::new(Path { kind: PathKind::Material(subpath.clone()), startup_cost, total_cost, ..(**subpath).clone() })
 }
 
-/// try_nestloop_path adds a nested loop of two paths to the join relation, as Postgres' function of the same name
-/// does.
+/// try_nestloop_path adds a nested loop of two paths to the join relation, whose rows keep the outer path's order,
+/// as Postgres' function of the same name does with build_join_pathkeys.
 fn try_nestloop_path(
     root: &mut PlannerInfo<'_, '_>,
     joinrel: usize,
@@ -114,8 +114,12 @@ fn try_nestloop_path(
     let has_indexed_join_quals = matches!(inner.kind, PathKind::Lookup(_))
         && extra.restrictlist.iter().all(|r| r.hashjoinable && clause_sides_match_join(r, outer.relids, inner.relids));
     let cost = cost_nestloop(jointype, &outer, &inner, extra, has_indexed_join_quals, root.enables);
+    let pathkeys = match jointype {
+        JoinType::Inner | JoinType::Left | JoinType::Semi | JoinType::Anti => outer.pathkeys.clone(),
+        _ => Vec::new(),
+    };
     let join = JoinPath { jointype, outer, inner, joinrestrictinfo: extra.restrictlist.clone() };
-    let path = create_join_path(&root.rels[joinrel], PathKind::NestLoop, join, cost);
+    let path = create_join_path(&root.rels[joinrel], PathKind::NestLoop, join, cost, pathkeys);
     add_path(&mut root.rels[joinrel], path);
 }
 
@@ -175,7 +179,7 @@ fn try_hashjoin_path(
 ) {
     let cost = cost_hashjoin(root, jointype, hashclauses, &outer, &inner, extra);
     let join = JoinPath { jointype, outer, inner, joinrestrictinfo: extra.restrictlist.clone() };
-    let path = create_join_path(&root.rels[joinrel], PathKind::HashJoin, join, cost);
+    let path = create_join_path(&root.rels[joinrel], PathKind::HashJoin, join, cost, Vec::new());
     add_path(&mut root.rels[joinrel], path);
 }
 

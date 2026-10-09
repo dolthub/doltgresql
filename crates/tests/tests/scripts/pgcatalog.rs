@@ -5463,6 +5463,7 @@ ORDER BY "Schema", "Name""#,
         ScriptTest {
             name: " tables in multiple schemas",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE SCHEMA s1;",
                 "CREATE SCHEMA s2;",
                 "create schema s3;",
@@ -38697,6 +38698,7 @@ fn test_pg_type_indexes() {
         },
         ScriptTest {
             name: "join on pg_type using index",
+            set_up_script: &["SET enable_seqscan = off;"],
             assertions: &[
                 ScriptTestAssertion {
                     query: r#"SELECT t.typname, n.nspname

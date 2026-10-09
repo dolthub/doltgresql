@@ -1682,7 +1682,7 @@ fn constant_columns(ranges: &[Range]) -> BTreeSet<usize> {
 
 /// ordered returns a plan whose rows come in the sort keys' order by reading its table through an index, as
 /// go-mysql-server's replaceIdxSort does, or None when no index gives that order.
-fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
+pub(crate) fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan> {
     match plan {
         Plan::Project { input, exprs } => {
             let mut mapped = Vec::with_capacity(keys.len());

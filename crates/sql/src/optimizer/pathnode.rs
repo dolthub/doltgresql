@@ -19,6 +19,8 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 
 use super::nodes::{JoinPath, Path, RelOptInfo, Relids, is_subset};
+use super::pathkeys::{PathKeysComparison, compare_pathkeys};
+use crate::plan::SortKey;
 
 /// STD_FUZZ_FACTOR is how much cheaper one path must be than another to count as cheaper, as Postgres' constant of
 /// the same name is.
@@ -85,9 +87,9 @@ fn bms_subset_compare(a: Relids, b: Relids) -> SubsetCompare {
     }
 }
 
-/// add_path adds a path to a relation's paths unless one of them is as cheap, needs no more outer relations, and
-/// produces no more rows, removing those that the new path beats the same way, as Postgres' add_path does for
-/// paths without sort orders. The paths stay in order of total cost.
+/// add_path adds a path to a relation's paths unless one of them is as cheap, as well ordered, needs no more outer
+/// relations, and produces no more rows, removing those that the new path beats the same way, as Postgres' add_path
+/// does. The paths stay in order of total cost.
 pub fn add_path(parent: &mut RelOptInfo, new_path: Rc<Path>) {
     let mut accept_new = true;
     let mut insert_at = 0;
@@ -97,37 +99,39 @@ pub fn add_path(parent: &mut RelOptInfo, new_path: Rc<Path>) {
         let mut remove_old = false;
         let outercmp = bms_subset_compare(new_path.param, old_path.param);
         let consider_startup = parent.consider_startup;
+        let keyscmp = compare_pathkeys(&new_path.pathkeys, &old_path.pathkeys);
+        let rows_cmp = |better_new: bool| match better_new {
+            true => matches!(outercmp, SubsetCompare::Equal | SubsetCompare::Subset1) && new_path.rows <= old_path.rows,
+            false => {
+                matches!(outercmp, SubsetCompare::Equal | SubsetCompare::Subset2) && new_path.rows >= old_path.rows
+            }
+        };
         match compare_path_costs_fuzzily(&new_path, old_path, STD_FUZZ_FACTOR, consider_startup) {
-            Some(Ordering::Equal) => match outercmp {
-                SubsetCompare::Equal => {
-                    if new_path.rows < old_path.rows {
-                        remove_old = true;
-                    } else if new_path.rows > old_path.rows {
-                        accept_new = false;
-                    } else if compare_path_costs_fuzzily(&new_path, old_path, 1.0000000001, consider_startup)
-                        == Some(Ordering::Less)
-                    {
-                        remove_old = true;
-                    } else {
-                        accept_new = false;
+            Some(Ordering::Equal) => match keyscmp {
+                PathKeysComparison::Better1 if rows_cmp(true) => remove_old = true,
+                PathKeysComparison::Better2 if rows_cmp(false) => accept_new = false,
+                PathKeysComparison::Equal => match outercmp {
+                    SubsetCompare::Equal => {
+                        if new_path.rows < old_path.rows {
+                            remove_old = true;
+                        } else if new_path.rows > old_path.rows {
+                            accept_new = false;
+                        } else if compare_path_costs_fuzzily(&new_path, old_path, 1.0000000001, consider_startup)
+                            == Some(Ordering::Less)
+                        {
+                            remove_old = true;
+                        } else {
+                            accept_new = false;
+                        }
                     }
-                }
-                SubsetCompare::Subset1 if new_path.rows <= old_path.rows => remove_old = true,
-                SubsetCompare::Subset2 if new_path.rows >= old_path.rows => accept_new = false,
+                    SubsetCompare::Subset1 if new_path.rows <= old_path.rows => remove_old = true,
+                    SubsetCompare::Subset2 if new_path.rows >= old_path.rows => accept_new = false,
+                    _ => {}
+                },
                 _ => {}
             },
-            Some(Ordering::Less)
-                if matches!(outercmp, SubsetCompare::Equal | SubsetCompare::Subset1)
-                    && new_path.rows <= old_path.rows =>
-            {
-                remove_old = true
-            }
-            Some(Ordering::Greater)
-                if matches!(outercmp, SubsetCompare::Equal | SubsetCompare::Subset2)
-                    && new_path.rows >= old_path.rows =>
-            {
-                accept_new = false
-            }
+            Some(Ordering::Less) if keyscmp != PathKeysComparison::Better2 && rows_cmp(true) => remove_old = true,
+            Some(Ordering::Greater) if keyscmp != PathKeysComparison::Better1 && rows_cmp(false) => accept_new = false,
             _ => {}
         }
         if remove_old {
@@ -164,18 +168,20 @@ pub fn set_cheapest(parent: &mut RelOptInfo) {
 }
 
 /// create_join_path makes a path of a join of two paths, as Postgres' create_nestloop_path and create_hashjoin_path
-/// do, with the join relation's row estimate and the costs given.
+/// do, with the join relation's row estimate, the costs, and the order of its rows given.
 pub fn create_join_path(
     joinrel: &RelOptInfo,
     kind: fn(JoinPath) -> super::nodes::PathKind,
     join: JoinPath,
     (startup_cost, total_cost): (f64, f64),
+    pathkeys: Vec<SortKey>,
 ) -> Rc<Path> {
     let param = (join.outer.param | join.inner.param) & !joinrel.relids;
     Rc::new(Path {
         kind: kind(join),
         relids: joinrel.relids,
         param,
+        pathkeys,
         rows: joinrel.rows,
         width: joinrel.width,
         startup_cost,

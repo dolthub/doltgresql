@@ -45,12 +45,16 @@ fn set_rel_pathlist(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     let parent = &root.rels[rel];
     let (startup_cost, total_cost) = match root.parse.rte(rel).table() {
         Some(_) => cost_seqscan(parent, root.enables),
-        None => cost_opaque_scan(parent),
+        None => {
+            let catalog = matches!(root.parse.rte(rel).plan, crate::plan::Plan::Catalog(_));
+            cost_opaque_scan(parent, catalog, root.enables)
+        }
     };
     let path = Path {
         kind: PathKind::SeqScan,
         relids: parent.relids,
         param: 0,
+        pathkeys: Vec::new(),
         rows: parent.rows,
         width: parent.width,
         startup_cost,

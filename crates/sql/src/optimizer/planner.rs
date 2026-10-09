@@ -16,8 +16,41 @@
 
 use std::rc::Rc;
 
-use super::nodes::{Path, RelOptInfo};
-use super::pathnode::compare_fractional_path_costs;
+use super::PlannerInfo;
+use super::costsize::cost_sort;
+use super::nodes::{Path, PathKind, RelOptInfo};
+use super::pathkeys::pathkeys_contained_in;
+use super::pathnode::{add_path, compare_fractional_path_costs, set_cheapest};
+
+/// create_ordered_paths returns the path that reads the final relation's rows in the order of the query's ORDER BY
+/// most cheaply, for the rows that the query reads, as Postgres' function of the same name and
+/// get_cheapest_fractional_path choose it: a path already in that order, or the cheapest path sorted, of whose rows
+/// a LIMIT may read only some. Without an ORDER BY, it is the cheapest path.
+pub fn create_ordered_paths(root: &mut PlannerInfo<'_, '_>, final_rel: usize, limit_tuples: f64) -> Rc<Path> {
+    let rel = &root.rels[final_rel];
+    if root.query_pathkeys.is_empty() {
+        return get_cheapest_fractional_path(rel, root.tuple_fraction);
+    }
+    let cheapest = rel.cheapest_total_path.clone().expect("every relation has a path");
+    let mut ordered_rel = RelOptInfo { consider_startup: root.tuple_fraction > 0.0, ..RelOptInfo::default() };
+    for path in rel.pathlist.iter().filter(|p| p.param == 0) {
+        if pathkeys_contained_in(&root.query_pathkeys, &path.pathkeys) {
+            add_path(&mut ordered_rel, path.clone());
+        } else if Rc::ptr_eq(path, &cheapest) {
+            let (startup_cost, total_cost) = cost_sort(path, limit_tuples);
+            let sorted = Path {
+                kind: PathKind::Sort(path.clone()),
+                pathkeys: root.query_pathkeys.clone(),
+                startup_cost,
+                total_cost,
+                ..(**path).clone()
+            };
+            add_path(&mut ordered_rel, Rc::new(sorted));
+        }
+    }
+    set_cheapest(&mut ordered_rel);
+    get_cheapest_fractional_path(&ordered_rel, root.tuple_fraction)
+}
 
 /// get_cheapest_fractional_path returns the path of a relation that reads the rows a query reads most cheaply,
 /// given as a count, or as a fraction below one, or zero for all of them, as Postgres' function of the same name

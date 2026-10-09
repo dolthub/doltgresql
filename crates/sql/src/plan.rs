@@ -2115,22 +2115,38 @@ impl<'b, 'a> Planner<'b, 'a> {
                 plan = Plan::Distinct { input: Box::new(plan), keys: None };
             }
             if !keys.is_empty() {
-                plan = crate::indexscan::order_by_index(Plan::Sort { input: Box::new(plan), keys });
+                plan = Plan::Sort { input: Box::new(plan), keys };
+                if !crate::optimizer::enabled() {
+                    plan = crate::indexscan::order_by_index(plan);
+                }
             }
         }
-        plan = crate::indexscan::nearest(self.limit(plan, select)?);
+        plan = self.limit(plan, select)?;
+        if !crate::optimizer::enabled() {
+            plan = crate::indexscan::nearest(plan);
+        }
         if !matches!(&plan, Plan::Project { exprs, .. } if exprs.len() == width) {
             let visible = (0..width).map(Expr::Column).collect();
             plan = Plan::Project { input: Box::new(plan), exprs: visible };
         }
         if !defer {
             if crate::optimizer::enabled() {
-                plan = crate::optimizer::planner(self.ctx, plan);
+                plan = nearest_planned(crate::optimizer::planner(self.ctx, plan));
             }
             plan = crate::joins::plan_joins(self.ctx, plan);
             crate::indexscan::prune(&mut plan);
         }
         Ok(Query { plan, columns, types })
+    }
+}
+
+/// nearest_planned reads the rows of a planned query's LIMIT over an ordering by distance nearest first, when a
+/// vector index gives that order.
+fn nearest_planned(plan: Plan) -> Plan {
+    match plan {
+        Plan::Project { input, exprs } => Plan::Project { input: Box::new(nearest_planned(*input)), exprs },
+        limit @ Plan::Limit { .. } => crate::indexscan::nearest(limit),
+        other => other,
     }
 }
 

@@ -190,6 +190,9 @@ pub enum PathKind {
     Lookup(crate::plan::JoinMethod),
     /// The rows of another path of the same relation, kept in memory so that a nested loop reads them again cheaply.
     Material(Rc<Path>),
+    /// The rows of another path of the same relation sorted in the query's ORDER BY order, which the sort that the
+    /// query already holds above the join's rows does.
+    Sort(Rc<Path>),
     /// A nested loop of an outer path over an inner one.
     NestLoop(JoinPath),
     /// A hash join probing a hash table of the inner path with the outer path's rows.
@@ -214,6 +217,9 @@ pub struct Path {
     pub relids: Relids,
     /// The relations whose current row the path reads, which a nested loop must supply as its outer side.
     pub param: Relids,
+    /// The order of the path's rows, as the keys of the query's ORDER BY over Vars, as Postgres' pathkeys, kept only
+    /// when the path gives the query's whole order.
+    pub pathkeys: Vec<crate::plan::SortKey>,
     pub rows: f64,
     /// The estimated average width of a row, in bytes.
     pub width: f64,

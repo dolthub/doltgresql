@@ -28,6 +28,7 @@ mod initsplan;
 mod joinpath;
 mod joinrels;
 pub mod nodes;
+mod pathkeys;
 mod pathnode;
 mod planner;
 mod prepjointree;
@@ -47,7 +48,7 @@ use nodes::{
 use crate::expr::Expr;
 use crate::functions::aggregate::AggCall;
 use crate::indexscan::columns_read;
-use crate::plan::{JoinKind, JoinMethod, Plan};
+use crate::plan::{JoinKind, JoinMethod, Plan, SortKey};
 use crate::query::Ctx;
 
 /// MAX_RELATIONS is how many range table entries a query may have for Relids to hold them, as range table indexes
@@ -74,6 +75,8 @@ pub struct PlannerInfo<'r, 'a> {
     pub enables: costsize::Enables,
     /// The rows that the query reads of the join of every relation, or a fraction of them below one, or zero for all.
     pub tuple_fraction: f64,
+    /// The order of the rows that the query's ORDER BY asks for, over Vars, as Postgres' query_pathkeys.
+    pub query_pathkeys: Vec<SortKey>,
     /// The aggregate calls of an aggregate without groups over the join's rows, which Doltgres' executor answers from
     /// an index's entry counts when they only count rows.
     pub counting: Option<Vec<AggCall>>,
@@ -105,39 +108,58 @@ fn plannable(from: &Plan) -> bool {
 
 /// Upper is what the nodes above a query's FROM and WHERE clauses ask of them: the columns of their rows that the
 /// nodes read, or None for every column, the rows they read, as Postgres' tuple_fraction counts them (zero for all),
-/// and the aggregate calls of an aggregate without groups directly above them.
+/// the most rows that a LIMIT reads (zero without one), the order of ORDER BY keys over their rows that a sort above
+/// asks for, and the aggregate calls of an aggregate without groups directly above them.
 #[derive(Clone, Default)]
 struct Upper {
     needed: Option<BTreeSet<usize>>,
     tuple_fraction: f64,
+    limit_tuples: f64,
+    order: Option<Vec<SortKey>>,
     counting: Option<Vec<AggCall>>,
 }
 
 /// planner plans the FROM and WHERE clauses of a query whose upper parts are already built over them, given what the
-/// upper parts read, as Postgres' grouping_planner calls query_planner.
+/// upper parts read, as Postgres' grouping_planner calls query_planner, removing a sort that the cheapest plan's
+/// order makes unnecessary.
 pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
-    plan_upper(ctx, plan, Upper::default())
+    plan_upper(ctx, plan, Upper::default()).0
 }
 
-/// plan_upper is planner for a plan under nodes that ask what `upper` holds.
-fn plan_upper(ctx: &mut Ctx<'_>, plan: Plan, upper: Upper) -> Plan {
+/// plan_upper is planner for a plan under nodes that ask what `upper` holds, also reporting whether the plan's rows
+/// come in the order that `upper` asks for.
+fn plan_upper(ctx: &mut Ctx<'_>, plan: Plan, upper: Upper) -> (Plan, bool) {
     let union = |a: Option<BTreeSet<usize>>, b: Option<BTreeSet<usize>>| Some(a?.union(&b?).copied().collect());
     let below =
         |needed: Option<BTreeSet<usize>>, width: usize| needed.map(|n| n.into_iter().filter(|&c| c < width).collect());
     let all = |needed| Upper { needed, ..Upper::default() };
-    let Upper { needed, tuple_fraction, counting } = upper;
+    let unordered = |plan: Plan| (plan, false);
+    let Upper { needed, tuple_fraction, limit_tuples, order, counting } = upper;
     match plan {
         Plan::Project { input, exprs } => {
             let read = match &needed {
                 Some(needed) => columns_read(needed.iter().filter_map(|&i| exprs.get(i))),
                 None => columns_read(exprs.iter()),
             };
-            let upper = Upper { needed: read, tuple_fraction, counting: None };
-            Plan::Project { input: Box::new(plan_upper(ctx, *input, upper)), exprs }
+            let order = order.and_then(|keys| {
+                let project = |k: &SortKey| match k.expr {
+                    Expr::Column(i) => Some(SortKey { expr: exprs.get(i)?.clone(), ..k.clone() }),
+                    _ => None,
+                };
+                keys.iter().map(project).collect::<Option<Vec<SortKey>>>()
+            });
+            let upper = Upper { needed: read, tuple_fraction, limit_tuples, order, counting: None };
+            let (input, ordered) = plan_upper(ctx, *input, upper);
+            (Plan::Project { input: Box::new(input), exprs }, ordered)
         }
         Plan::Sort { input, keys } => {
             let read = union(needed, columns_read(keys.iter().map(|k| &k.expr)));
-            Plan::Sort { input: Box::new(plan_upper(ctx, *input, all(read))), keys }
+            let order = Some(keys.clone());
+            let upper = Upper { needed: read, tuple_fraction, limit_tuples, order, counting: None };
+            match plan_upper(ctx, *input, upper) {
+                (input, true) => unordered(input),
+                (input, false) => unordered(Plan::Sort { input: Box::new(input), keys }),
+            }
         }
         Plan::Limit { input, limit, offset } => {
             let count = |e: &Option<Expr>| match e {
@@ -145,19 +167,19 @@ fn plan_upper(ctx: &mut Ctx<'_>, plan: Plan, upper: Upper) -> Plan {
                 Some(_) => None,
                 None => Some(0.0),
             };
-            let tuple_fraction = match (count(&limit), count(&offset)) {
-                (Some(limit), Some(offset)) if limit > 0.0 => limit + offset,
-                _ => LIMIT_FRACTION,
+            let (tuple_fraction, limit_tuples) = match (count(&limit), count(&offset)) {
+                (Some(limit), Some(offset)) if limit > 0.0 => (limit + offset, limit + offset),
+                _ => (LIMIT_FRACTION, 0.0),
             };
-            let upper = Upper { needed, tuple_fraction, counting: None };
-            Plan::Limit { input: Box::new(plan_upper(ctx, *input, upper)), limit, offset }
+            let upper = Upper { needed, tuple_fraction, limit_tuples, order: None, counting: None };
+            unordered(Plan::Limit { input: Box::new(plan_upper(ctx, *input, upper).0), limit, offset })
         }
         Plan::Distinct { input, keys } => {
             let read = match &keys {
                 Some(keys) => union(needed, columns_read(keys.iter())),
                 None => None,
             };
-            Plan::Distinct { input: Box::new(plan_upper(ctx, *input, all(read))), keys }
+            unordered(Plan::Distinct { input: Box::new(plan_upper(ctx, *input, all(read)).0), keys })
         }
         Plan::Aggregate { input, groups, aggregates, sets } => {
             let mut exprs: Vec<&Expr> = groups.iter().collect();
@@ -168,8 +190,9 @@ fn plan_upper(ctx: &mut Ctx<'_>, plan: Plan, upper: Upper) -> Plan {
             }
             let read = columns_read(exprs);
             let counting = (groups.is_empty() && sets.is_none()).then(|| aggregates.clone());
-            let upper = Upper { needed: read, tuple_fraction: 0.0, counting };
-            Plan::Aggregate { input: Box::new(plan_upper(ctx, *input, upper)), groups, aggregates, sets }
+            let upper = Upper { needed: read, counting, ..Upper::default() };
+            let input = Box::new(plan_upper(ctx, *input, upper).0);
+            unordered(Plan::Aggregate { input, groups, aggregates, sets })
         }
         Plan::Window { input, calls } => {
             let width = input.width();
@@ -185,24 +208,27 @@ fn plan_upper(ctx: &mut Ctx<'_>, plan: Plan, upper: Upper) -> Plan {
                 }
             }
             let read = union(below(needed, width), columns_read(exprs));
-            Plan::Window { input: Box::new(plan_upper(ctx, *input, all(read))), calls }
+            unordered(Plan::Window { input: Box::new(plan_upper(ctx, *input, all(read)).0), calls })
         }
         Plan::ProjectSet { input, functions, dropped } => {
             let read = union(below(needed, input.width()), columns_read(functions.iter()));
-            Plan::ProjectSet { input: Box::new(plan_upper(ctx, *input, all(read))), functions, dropped }
+            unordered(Plan::ProjectSet { input: Box::new(plan_upper(ctx, *input, all(read)).0), functions, dropped })
         }
         Plan::Filter { input, predicate } if matches!(*input, Plan::Aggregate { .. } | Plan::Window { .. }) => {
             let read = union(needed, columns_read([&predicate]));
-            Plan::Filter { input: Box::new(plan_upper(ctx, *input, all(read))), predicate }
+            unordered(Plan::Filter { input: Box::new(plan_upper(ctx, *input, all(read)).0), predicate })
         }
         Plan::Filter { input, predicate } if plannable(&input) => {
             let quals = crate::indexscan::conjuncts(&predicate).into_iter().cloned().collect();
-            query_planner(ctx, *input, quals, Upper { needed, tuple_fraction, counting })
+            query_planner(ctx, *input, quals, Upper { needed, tuple_fraction, limit_tuples, order, counting })
+        }
+        scan @ Plan::Scan(..) if order.is_some() => {
+            query_planner(ctx, scan, Vec::new(), Upper { needed, tuple_fraction, limit_tuples, order, counting })
         }
         join @ Plan::Join { .. } if plannable(&join) => {
-            query_planner(ctx, join, Vec::new(), Upper { needed, tuple_fraction, counting })
+            query_planner(ctx, join, Vec::new(), Upper { needed, tuple_fraction, limit_tuples, order, counting })
         }
-        other => other,
+        other => unordered(other),
     }
 }
 
@@ -236,15 +262,20 @@ fn decomposable(join: &Plan) -> bool {
 /// plans a query's join tree: it reduces outer joins, distributes the clauses to the relations they restrict, finds
 /// each relation's cheapest paths, searches for the cheapest join order and methods, and makes a plan of the
 /// cheapest path, whose columns are in the FROM clause's order, given the columns that the query reads above it, or
-/// None for every column. Conditions with subqueries filter the plan's rows afterwards.
-fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) -> Plan {
-    let Upper { needed, tuple_fraction, counting } = upper;
+/// None for every column, also reporting whether the plan's rows come in the order that `upper` asks for.
+/// Conditions with subqueries filter the plan's rows afterwards.
+fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) -> (Plan, bool) {
+    let Upper { needed, tuple_fraction, limit_tuples, order, counting } = upper;
     let (mut rtable, mut output) = (Vec::new(), Vec::new());
     let node = build_jointree(ctx, from, &mut rtable, &mut output, false);
     let (node, quals) = subselect::pull_up_sublinks(ctx, node, quals, &mut rtable, &output);
     let (kept, later): (Vec<Expr>, Vec<Expr>) = quals.into_iter().partition(|q| !crate::plan::has_subquery(q));
     let mut jointree =
         FromExpr { fromlist: vec![node], quals: kept.into_iter().map(|q| to_vars(q, &output)).collect() };
+    let usable = |keys: &Vec<SortKey>| keys.iter().all(|k| !crate::plan::has_subquery(&k.expr));
+    let query_pathkeys: Vec<SortKey> = order.filter(usable).map_or_else(Vec::new, |keys| {
+        keys.into_iter().map(|k| SortKey { expr: to_vars(k.expr, &output), ..k }).collect()
+    });
     let needed = needed.and_then(|n| Some(n.union(&columns_read(&later)?).copied().collect::<BTreeSet<usize>>()));
     let output =
         output.into_iter().enumerate().map(|(i, e)| needed.as_ref().is_none_or(|n| n.contains(&i)).then_some(e));
@@ -264,6 +295,7 @@ fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) 
         total_table_pages: 0.0,
         enables,
         tuple_fraction,
+        query_pathkeys,
         counting,
     };
     relnode::add_base_rels_to_query(&mut root);
@@ -271,12 +303,14 @@ fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) 
     let joinlist = initsplan::deconstruct_jointree(&mut root, &jointree);
     let joinlist = analyzejoins::remove_useless_joins(&mut root, joinlist);
     let final_rel = allpaths::make_one_rel(&mut root, joinlist);
-    let path = planner::get_cheapest_fractional_path(&root.rels[final_rel], root.tuple_fraction);
+    let path = planner::create_ordered_paths(&mut root, final_rel, limit_tuples);
+    let ordered = !root.query_pathkeys.is_empty() && !matches!(path.kind, nodes::PathKind::Sort(_));
     let plan = createplan::create_plan(&mut root, &path);
-    match later.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
+    let plan = match later.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
         Some(predicate) => Plan::Filter { input: Box::new(plan), predicate },
         None => plan,
-    }
+    };
+    (plan, ordered)
 }
 
 /// build_jointree adds the inputs of a FROM clause's joins to a range table and returns its join tree, adding the

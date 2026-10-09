@@ -30,14 +30,16 @@ use super::nodes::{JoinType, Path, PathKind, Relids, RestrictInfo, is_subset, me
 use super::pathnode::add_path;
 use crate::catalog::table::TableDef;
 use crate::expr::{CmpOp, Expr};
-use crate::plan::JoinMethod;
+use crate::plan::{JoinMethod, Plan, SortKey};
 
 /// create_index_paths adds the paths of a base relation's index scans: the one that Doltgres chooses for its
-/// restrictions, and a lookup for each set of other relations whose join equalities find its rows through an index,
-/// as Postgres' function of the same name adds plain and parameterized index paths.
+/// restrictions, one that reads its rows in the order of the query's ORDER BY, and a lookup for each set of other
+/// relations whose join equalities find its rows through an index, as Postgres' function of the same name adds plain,
+/// ordered, and parameterized index paths.
 pub fn create_index_paths(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     if let Some(table) = root.parse.rte(rel).table().cloned() {
-        create_restriction_index_path(root, rel, &table);
+        let restricted = create_restriction_index_path(root, rel, &table);
+        create_ordered_index_path(root, rel, &table, restricted);
     }
     let mut outer_sets: Vec<Relids> = Vec::new();
     for rinfo in &root.rels[rel].joininfo {
@@ -67,18 +69,29 @@ fn join_equality(rinfo: &RestrictInfo, rel: usize) -> Option<(&Expr, &Expr)> {
     }
 }
 
-/// create_restriction_index_path adds the path of the index scan that Doltgres chooses for a table's restrictions.
-/// When the query only counts the rows of that one table that the scan's ranges hold exactly, Doltgres' executor
-/// counts them from the index's entry counts, so the scan costs only its descent.
-fn create_restriction_index_path(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &TableDef) {
+/// create_restriction_index_path adds the path of the index scan that Doltgres chooses for a table's restrictions,
+/// returning its index. When the query only counts the rows of that one table that the scan's ranges hold exactly,
+/// Doltgres' executor counts them from the index's entry counts, so the scan costs only its descent.
+fn create_restriction_index_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    table: &TableDef,
+) -> Option<Option<usize>> {
     let restrictinfo = root.rels[rel].baserestrictinfo.clone();
     let predicate = restrictinfo
         .iter()
         .filter(|r| !r.pseudoconstant)
         .map(|r| to_attnos(r.clause.clone(), rel))
         .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
-    let Some(predicate) = predicate else { return };
-    let Some((scan, exact)) = crate::indexscan::choose_with_cover(root.ctx, table, &predicate) else { return };
+    let predicate = predicate?;
+    let (scan, exact) = crate::indexscan::choose_with_cover(root.ctx, table, &predicate)?;
+    let chosen = scan.index;
+    let ordered =
+        local_pathkeys(root, rel).and_then(|keys| ordered_scan(Plan::IndexScan(Box::new(scan.clone())), &keys));
+    let (scan, pathkeys) = match ordered {
+        Some(ordered) => (ordered, root.query_pathkeys.clone()),
+        None => (scan, Vec::new()),
+    };
     let columns = scan.index_columns();
     let on_index = |r: &&Rc<RestrictInfo>| {
         super::nodes::members(pull_varnos(&r.clause)).count() == 1
@@ -92,7 +105,7 @@ fn create_restriction_index_path(root: &mut PlannerInfo<'_, '_>, rel: usize, tab
         true => Vec::new(),
         false => restrictinfo.iter().filter(|r| !on_index(r)).cloned().collect(),
     };
-    let index = index_info(root, rel, table, scan.index, scan.covering(), index_quals);
+    let index = index_info(root, rel, table, scan.index, check_index_only(root, rel, &scan), index_quals);
     let (startup_cost, mut total_cost) =
         cost_index(root, &root.rels[rel], &index, index_tuples, cost_qual_eval(&qpquals), 1.0);
     let counted = root.counting.as_ref().is_some_and(|calls| {
@@ -106,12 +119,62 @@ fn create_restriction_index_path(root: &mut PlannerInfo<'_, '_>, rel: usize, tab
         kind: PathKind::IndexScan(Box::new(scan), exact),
         relids: parent.relids,
         param: 0,
+        pathkeys,
         rows: parent.rows,
         width: parent.width,
         startup_cost,
         total_cost,
     };
     add_path(parent, Rc::new(path));
+    Some(chosen)
+}
+
+/// create_ordered_index_path adds the path of a scan of every entry of an index of a table that reads its rows in
+/// the order of the query's ORDER BY, testing the table's restrictions on each, as Postgres adds an index path for its
+/// useful pathkeys alone, unless it is the index that the restrictions' scan reads, whose path has its order already.
+fn create_ordered_index_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    table: &TableDef,
+    restricted: Option<Option<usize>>,
+) {
+    let Some(keys) = local_pathkeys(root, rel) else { return };
+    let Some(scan) = ordered_scan(Plan::Scan(Box::new(table.clone()), None), &keys) else { return };
+    if restricted == Some(scan.index) {
+        return;
+    }
+    let index = index_info(root, rel, table, scan.index, check_index_only(root, rel, &scan), 0);
+    let parent = &root.rels[rel];
+    let qpqual_cost = cost_qual_eval(&parent.baserestrictinfo);
+    let (startup_cost, total_cost) = cost_index(root, parent, &index, parent.tuples, qpqual_cost, 1.0);
+    let path = Path {
+        kind: PathKind::IndexScan(Box::new(scan), false),
+        relids: parent.relids,
+        param: 0,
+        pathkeys: root.query_pathkeys.clone(),
+        rows: parent.rows,
+        width: parent.width,
+        startup_cost,
+        total_cost,
+    };
+    add_path(&mut root.rels[rel], Rc::new(path));
+}
+
+/// local_pathkeys returns the query's ORDER BY keys over the columns of a base relation, when they read only it.
+fn local_pathkeys(root: &PlannerInfo<'_, '_>, rel: usize) -> Option<Vec<SortKey>> {
+    if root.query_pathkeys.is_empty() || root.query_pathkeys.iter().any(|k| pull_varnos(&k.expr) != singleton(rel)) {
+        return None;
+    }
+    Some(root.query_pathkeys.iter().map(|k| SortKey { expr: to_attnos(k.expr.clone(), rel), ..k.clone() }).collect())
+}
+
+/// ordered_scan returns the index scan that reads a scan's rows in the order of keys over its columns, as Doltgres'
+/// index scans can.
+fn ordered_scan(plan: Plan, keys: &[SortKey]) -> Option<crate::indexscan::IndexScan> {
+    match crate::indexscan::ordered(&plan, keys)? {
+        Plan::IndexScan(scan) => Some(*scan),
+        _ => None,
+    }
 }
 
 /// create_lookup_path adds the path of a lookup of a relation's rows by its join equalities with a set of other
@@ -175,12 +238,25 @@ fn create_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_relids: 
         kind: PathKind::Lookup(method),
         relids: parent.relids,
         param: outer_relids,
+        pathkeys: Vec::new(),
         rows,
         width: parent.width,
         startup_cost,
         total_cost,
     };
     add_path(&mut root.rels[rel], Rc::new(path));
+}
+
+/// check_index_only reports whether an index scan of a base relation reads every column that the query needs of
+/// the relation, from what the joins and output above it read and its restrictions, as Postgres' function of the same
+/// name decides an index-only scan.
+fn check_index_only(root: &PlannerInfo<'_, '_>, rel: usize, scan: &crate::indexscan::IndexScan) -> bool {
+    let parent = &root.rels[rel];
+    let mut needed: Vec<usize> = (0..parent.attr_needed.len()).filter(|&a| parent.attr_needed[a] != 0).collect();
+    for rinfo in &parent.baserestrictinfo {
+        needed.extend(attnos(&rinfo.clause));
+    }
+    crate::indexscan::IndexScan { needed: Some(needed), ..scan.clone() }.covering()
 }
 
 /// index_info returns what the planner knows of an index of a base relation's table: Dolt's primary index holds

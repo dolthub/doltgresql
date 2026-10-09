@@ -93,6 +93,7 @@ fn test_planned_joins() {
     run_scripts(&[
         ScriptTest {
             name: "lookup joins through secondary indexes",
+            set_up_script: &["SET enable_seqscan = off;"],
             assertions: &[
                 ScriptTestAssertion {
                     query: "CREATE TABLE lj_big (id INT PRIMARY KEY, k SMALLINT, v INT, label TEXT);",

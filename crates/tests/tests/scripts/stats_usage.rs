@@ -391,6 +391,7 @@ fn test_stats_usage() {
         ScriptTest {
             name: "planner uses cardinality to select more selective index",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE t (pk int primary key, lowcard int, highcard int);",
                 "CREATE INDEX t_lowcard_idx ON t(lowcard);",
                 "CREATE INDEX t_highcard_idx ON t(highcard);",
@@ -414,6 +415,7 @@ fn test_stats_usage() {
         ScriptTest {
             name: "join planner uses histograms to reorder a filtered lookup join",
             set_up_script: &[
+                "SET enable_seqscan = off;",
                 "CREATE TABLE big (pk int primary key, val int, jc int);",
                 "CREATE INDEX big_val_idx ON big(val);",
                 "CREATE INDEX big_jc_idx ON big(jc);",
