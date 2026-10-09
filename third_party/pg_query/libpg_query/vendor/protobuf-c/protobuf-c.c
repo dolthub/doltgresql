@@ -707,12 +707,44 @@ unknown_field_get_packed_size(const ProtobufCMessageUnknownField *field)
 /*
  * Calculate the serialized size of the message.
  */
+/*
+ * pg_query's Node message is one oneof over all of its several hundred fields,
+ * so its size and packing come from the one field that its case names, found
+ * by id, rather than from a walk over every field, which cost most of each
+ * parse. (A Doltgres patch to the vendored protobuf-c.)
+ */
+extern const ProtobufCMessageDescriptor pg_query__node__descriptor;
+static inline int
+int_range_lookup(unsigned n_ranges, const ProtobufCIntRange *ranges, int value);
+
+static const ProtobufCFieldDescriptor *
+node_field(const ProtobufCMessage *message, uint32_t *oneof_case)
+{
+	const ProtobufCMessageDescriptor *desc = message->descriptor;
+	int index;
+
+	*oneof_case = *(const uint32_t *)
+		((const char *) message + desc->fields[0].quantifier_offset);
+	index = int_range_lookup(desc->n_field_ranges, desc->field_ranges,
+				 (int) *oneof_case);
+	return index < 0 ? NULL : desc->fields + index;
+}
+
 size_t protobuf_c_message_get_packed_size(const ProtobufCMessage *message)
 {
 	unsigned i;
 	size_t rv = 0;
 
 	ASSERT_IS_MESSAGE(message);
+	if (message->descriptor == &pg_query__node__descriptor &&
+	    message->n_unknown_fields == 0) {
+		uint32_t oneof_case;
+		const ProtobufCFieldDescriptor *field =
+			node_field(message, &oneof_case);
+
+		return field == NULL ? 0 : oneof_field_get_packed_size(field,
+			oneof_case, (const char *) message + field->offset);
+	}
 	for (i = 0; i < message->descriptor->n_fields; i++) {
 		const ProtobufCFieldDescriptor *field =
 			message->descriptor->fields + i;
@@ -1476,6 +1508,15 @@ protobuf_c_message_pack(const ProtobufCMessage *message, uint8_t *out)
 	size_t rv = 0;
 
 	ASSERT_IS_MESSAGE(message);
+	if (message->descriptor == &pg_query__node__descriptor &&
+	    message->n_unknown_fields == 0) {
+		uint32_t oneof_case;
+		const ProtobufCFieldDescriptor *field =
+			node_field(message, &oneof_case);
+
+		return field == NULL ? 0 : oneof_field_pack(field, oneof_case,
+			(const char *) message + field->offset, out);
+	}
 	for (i = 0; i < message->descriptor->n_fields; i++) {
 		const ProtobufCFieldDescriptor *field =
 			message->descriptor->fields + i;

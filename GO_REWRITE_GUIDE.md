@@ -315,7 +315,10 @@ write was the commit's F_FULLFSYNC, which Go's `File.Sync` and Rust's `sync_data
 macOS, a deliberate choice to match Postgres' durability there (Linux uses fdatasync either way). After that the
 costs were CPU: binding a table's defaults re-parsed their stored text on every statement (now cached per thread),
 SHA-512 chunk addresses (the ARMv8 instructions need `sha2`'s `asm` feature), prolly tree edits, and pg_query's
-protobuf round trip for every statement.
+protobuf round trip for every statement. That round trip was most of a point select, and the C parser itself little
+of it: protobuf-c sized and packed every `Node` (a oneof over several hundred node types) by walking all of its
+fields. A patch to the vendored protobuf-c finds a Node's one set field by id instead. Go's pg_query binding (the
+same library) has the same cost, so this applies to a Go rewrite too.
 
 ## 4. Habits and tooling worth copying
 
