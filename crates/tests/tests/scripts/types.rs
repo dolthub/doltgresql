@@ -10085,3 +10085,250 @@ fn test_range_types() {
         },
     ]);
 }
+
+#[test]
+fn test_text_search_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "text search matching",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'a:1 b:2 c:3'::tsvector @@ '!x <-> b', 'a:1 b:2'::tsvector @@ '!a <-> b', 'a:1 b:2'::tsvector @@ 'a <-> !b', 'a:1 c:2'::tsvector @@ 'a <-> !b', 'a:1 b:3'::tsvector @@ '!a <-> !b';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("f"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a:1 b:2 c:3'::tsvector @@ '(a & b) <-> c', 'a:1 b:2 c:3'::tsvector @@ '(a | b) <-> c', 'a:1 b:2 c:3'::tsvector @@ 'a <-> (b & c)', 'a:1 b:2 c:3'::tsvector @@ '(!a | b) <-> c', 'a:2 b:2 c:3'::tsvector @@ '(a & b) <-> c';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("f"), T("t"), T("f"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'wd:1A wd:2'::tsvector @@ 'wd:A', 'wd:2B,3A'::tsvector @@ 'wd:A', 'wd'::tsvector @@ 'wd:A', 'wd'::tsvector @@ '!wd:A';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT strip('wa:1A'::tsvector) @@ 'w:*A'::tsquery, strip('wa:1A'::tsvector) @@ '!w:*A'::tsquery, 'x y'::tsvector @@ '!(z <-> y)', 'x:1 y:2'::tsvector @@ '(z <-> y) | x', 'x:1 y:2 q:3'::tsvector @@ '((z <-> w) | x) <-> y';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a b'::tsquery && 'c', 'a'::tsquery || '!b', 'a'::tsquery <-> 'b', tsquery_phrase('a', 'b', 3), !! 'a & b'::tsquery, numnode('a & !b'), querytree('a & !b'), 'a & b'::tsquery @> 'a', 'a'::tsquery <@ 'a | b';",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error in tsquery: "a b""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "tsvector functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'w:12B w:13* w:12,5,6 a:1,3* a:3 w asd:1dc asd'::tsvector;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T("'a':1,3A 'asd':1C 'w':5,6,12B,13A")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a:1*A'::tsvector;",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error in tsvector: "a:1*A""#, position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'a:1 b:2'::tsvector || 'b:1 c:3A', strip('a:1 b:2A'), length('a b c'::tsvector), setweight('a:1 b:2'::tsvector, 'b'), setweight('a asd w:5,6,12B,13A zxc'::tsvector, 'c', ARRAY['a', 'zxc', '', NULL]);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TSVECTOR), Column("strip", TSVECTOR), Column("length", INT4), Column("setweight", TSVECTOR), Column("setweight", TSVECTOR)],
+                        rows: &[
+                            &[T("'a':1 'b':2,3 'c':5A"), T("'a' 'b'"), T("3"), T("'a':1B 'b':2B"), T("'a' 'asd' 'w':5,6,12B,13A 'zxc'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_delete('base hidden rebel spaceship strike'::tsvector, ARRAY['spaceship','leya','rebel', '', NULL]), ts_delete('a b c'::tsvector, 'b'), ts_filter('a:1A b:2B c:3C'::tsvector, '{a,c}');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_delete", TSVECTOR), Column("ts_delete", TSVECTOR), Column("ts_filter", TSVECTOR)],
+                        rows: &[
+                            &[T("'base' 'hidden' 'strike'"), T("'a' 'c'"), T("'a':1A 'c':3C")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT tsvector_to_array('b:2 a:1'::tsvector), array_to_tsvector(ARRAY['b', 'a', 'b']);",
+                    expected: Expected::Rows {
+                        columns: &[Column("tsvector_to_array", TEXT_ARRAY), Column("array_to_tsvector", TSVECTOR)],
+                        rows: &[
+                            &[T("{a,b}"), T("'a' 'b'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT array_to_tsvector(ARRAY['a', NULL]);",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "lexeme array may not contain nulls", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM unnest('a:1A,3 b c:2'::tsvector);",
+                    expected: Expected::Rows {
+                        columns: &[Column("lexeme", TEXT), Column("positions", INT2_ARRAY), Column("weights", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("a"), T("{1,3}"), T("{A,D}")],
+                            &[T("b"), Null, Null],
+                            &[T("c"), T("{2}"), T("{D}")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "tsquery ordering",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'a | f' < 'b & c'::tsquery, 'a' < 'b'::tsquery, 'ab' < 'b'::tsquery, 'a & b' < 'a'::tsquery, 'a <-> b' < 'a <2> b'::tsquery, '!a' < 'a'::tsquery, 'a & b' = 'b & a'::tsquery;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("f"), T("f"), T("f"), T("f"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT q FROM (VALUES ('a'::tsquery), ('b'), ('c'), ('foo'), ('a & b'), ('b & a'), ('!x'), ('x <-> y'), ('x <3> y'), ('x | y'), ('qwerty'), ('new <-> york'), ('moscow'), ('a:*'), ('a:AB')) v(q) ORDER BY q;",
+                    expected: Expected::Rows {
+                        columns: &[Column("q", TSQUERY)],
+                        rows: &[
+                            &[T("'a'")],
+                            &[T("'a':*")],
+                            &[T("'a':AB")],
+                            &[T("'c'")],
+                            &[T("'b'")],
+                            &[T("'foo'")],
+                            &[T("'qwerty'")],
+                            &[T("'moscow'")],
+                            &[T("!'x'")],
+                            &[T("'x' <3> 'y'")],
+                            &[T("'x' <-> 'y'")],
+                            &[T("'x' | 'y'")],
+                            &[T("'b' & 'a'")],
+                            &[T("'a' & 'b'")],
+                            &[T("'new' <-> 'york'")],
+                        ],
+                        tag: "SELECT 15",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "text search ranking",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ts_rank(' a:1 s:2C d g'::tsvector, 'a | s'), ts_rank(' a:1 sa:2C d g'::tsvector, 'a | s:*'), ts_rank(' a:1 s:2B d g'::tsvector, 'a & s'), ts_rank(' a:1 s:2 d g'::tsvector, 'a & s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rank", FLOAT4), Column("ts_rank", FLOAT4), Column("ts_rank", FLOAT4), Column("ts_rank", FLOAT4)],
+                        rows: &[
+                            &[T("0.091189064"), T("0.091189064"), T("0.19820644"), T("0.09910322")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rank_cd(' a:1 sa:3C sab:2c d g'::tsvector, 'a | sa:*'), ts_rank_cd(' a:1 s:2,3A d:2A g'::tsvector, 'a <2> s:A'), ts_rank_cd(' a:1 sa:2A sb:2D g'::tsvector, 'a <-> s:* <-> sa:B'), ts_rank_cd(' a:1 s:2 d g'::tsvector, 'a & s');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rank_cd", FLOAT4), Column("ts_rank_cd", FLOAT4), Column("ts_rank_cd", FLOAT4), Column("ts_rank_cd", FLOAT4)],
+                        rows: &[
+                            &[T("0.5"), T("0.09090909"), T("0"), T("0.1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rank('{0.1,0.2,0.3,1}', 'a:1A b:3 c:5,9B'::tsvector, 'a & c', 1), ts_rank('a:1A b:3 c:5,9B'::tsvector, 'a & c', 63), ts_rank_cd('a:1A b:3 c:5,9B a:12'::tsvector, 'a & c', 63), ts_rank_cd('{-1,0.2,0.3,1}', 'a:1A b:3 c:5,9B a:12'::tsvector, 'a <-> c' , 4);",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rank", FLOAT4), Column("ts_rank", FLOAT4), Column("ts_rank_cd", FLOAT4), Column("ts_rank_cd", FLOAT4)],
+                        rows: &[
+                            &[T("0.23597424"), T("0.010407742"), T("0.00012250624"), T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rank('{0.1,0.2}', 'a'::tsvector, 'a');",
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "array of weight is too short", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rank('{0.1,0.2,0.3,2}', 'a'::tsvector, 'a');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "weight out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rank('{0.1,0.2,0.3,NULL}', 'a'::tsvector, 'a');",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "array of weight must not contain nulls", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rank('a b c'::tsvector, 'a & b'), ts_rank('a:1 b:1'::tsvector, 'a & b'), ts_rank('a:1 ab:3 abc:5'::tsvector, 'a:* & ab'), ts_rank_cd('a:1 b:2 a:3 c:7 b:9 a:20'::tsvector, 'a & b'), ts_rank_cd('a:1 b:2 a:3 c:7 b:9 a:20'::tsvector, '(a | c) & !b');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rank", FLOAT4), Column("ts_rank", FLOAT4), Column("ts_rank", FLOAT4), Column("ts_rank_cd", FLOAT4), Column("ts_rank_cd", FLOAT4)],
+                        rows: &[
+                            &[T("1e-16"), T("1e-20"), T("0.098500855"), T("0.22575758"), T("0.1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

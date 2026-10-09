@@ -308,6 +308,12 @@ fn has_aggregate(node: &Node) -> bool {
 /// columns, as its OUT parameters name them.
 pub(crate) fn out_columns(call: &Expr) -> Option<Vec<(String, ColumnType)>> {
     match call {
+        Expr::Func(index, _)
+            if crate::functions::function(*index).name == "unnest"
+                && crate::functions::function(*index).args == [3614] =>
+        {
+            Some(crate::functions::textsearch::UNNEST_COLUMNS.iter().map(|(n, t)| (n.to_string(), typ(*t))).collect())
+        }
         Expr::Func(index, _) => {
             let name = crate::functions::function(*index).name;
             let lists = crate::dolt::procedures::OUT_COLUMNS

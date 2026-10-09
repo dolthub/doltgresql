@@ -2554,6 +2554,10 @@ fn unary(op: &str, (expr, ty): Bound, location: i32) -> Result<Bound> {
         }
         "+" if numeric_rank(ty.oid).is_some() => Ok((expr, ty)),
         "-" if ty.oid == oid::INTERVAL => Ok((Expr::Neg(Box::new(expr), ty), ty)),
+        "!!" if ty.oid == 3615 => {
+            let resolved = functions::resolve("!!", &[ty.oid], location)?;
+            Ok((Expr::Func(resolved.index, vec![expr]), ty))
+        }
         "~" if matches!(ty.oid, oid::INT2 | oid::INT4 | oid::INT8 | oid::BIT | oid::VARBIT) => {
             let resolved = functions::resolve("~", &[ty.oid], location)?;
             Ok((

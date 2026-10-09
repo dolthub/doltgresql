@@ -1806,7 +1806,8 @@ impl Ctx<'_> {
         let alias = relation.alias.as_ref().map(|a| a.aliasname.clone());
         let mut scope = table_scope(&table, alias.as_deref());
         let source = stmt.source_relation.as_deref().ok_or_else(|| PgError::internal("MERGE without a source"))?;
-        let (source_plan, source_scope) = Planner { ctx: self, outer: Vec::new() }.plan_from(std::slice::from_ref(source))?;
+        let (source_plan, source_scope) =
+            Planner { ctx: self, outer: Vec::new() }.plan_from(std::slice::from_ref(source))?;
         scope.columns.extend(source_scope.columns.iter().cloned());
         let mut binder = Binder::new(self, scope.clone());
         binder.clause = "JOIN/ON";

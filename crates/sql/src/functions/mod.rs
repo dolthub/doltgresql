@@ -32,6 +32,7 @@ mod range;
 mod series;
 mod string;
 mod system;
+pub mod textsearch;
 pub mod xml;
 
 use std::collections::HashMap;
@@ -93,6 +94,7 @@ fn registry() -> &'static Registry {
             xml::FUNCTIONS,
             range::FUNCTIONS,
             populate::FUNCTIONS,
+            textsearch::FUNCTIONS,
             catalog::FUNCTIONS,
             advisory::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,

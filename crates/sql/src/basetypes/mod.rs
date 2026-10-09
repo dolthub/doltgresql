@@ -18,7 +18,7 @@
 mod geometric;
 mod money;
 mod network;
-mod textsearch;
+pub(crate) mod textsearch;
 mod tid;
 
 use crate::extensions::BaseType;

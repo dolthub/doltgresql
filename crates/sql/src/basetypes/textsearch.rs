@@ -40,12 +40,12 @@ pub const TSQUERY: BaseType = BaseType {
     send: <[u8]>::to_vec,
     typmod_in: |_| Ok(-1),
     typmod: |_, _| Ok(()),
-    compare: |l, r| l.len().cmp(&r.len()).then_with(|| l.cmp(r)),
+    compare: query_compare,
     vector: None,
 };
 
 /// MAX_POSITION is the largest position a lexeme can have, which larger positions become.
-const MAX_POSITION: u16 = (1 << 14) - 1;
+pub(crate) const MAX_POSITION: u16 = (1 << 14) - 1;
 
 /// MAX_POSITIONS is how many positions a lexeme keeps.
 const MAX_POSITIONS: usize = 256;
@@ -54,7 +54,7 @@ const MAX_POSITIONS: usize = 256;
 const MAX_LEXEME: usize = 2047;
 
 /// Lexeme is a lexeme with its positions, each a 14-bit position under a 2-bit weight where 3 is A and 0 is D.
-type Lexeme = (Vec<u8>, Vec<u16>);
+pub(crate) type Lexeme = (Vec<u8>, Vec<u16>);
 
 /// syntax_error returns the error for text that is not a valid value of a text search type.
 fn syntax_error(kind: &str, text: &str) -> PgError {
@@ -158,7 +158,12 @@ fn vector_in(text: &str) -> Result<Vec<Lexeme>> {
                     ));
                 }
                 let mut entry = position.min(u32::from(MAX_POSITION)) as u16;
-                if let Some(weight) = reader.bytes.get(reader.at).and_then(|&b| weight_bits(b)) {
+                while let Some(weight) =
+                    reader.bytes.get(reader.at).and_then(|&b| weight_bits(b).or((b == b'*').then_some(3)))
+                {
+                    if entry >> 14 != 0 {
+                        return Err(syntax_error("tsvector", text));
+                    }
                     entry |= weight << 14;
                     reader.at += 1;
                 }
@@ -177,7 +182,7 @@ fn vector_in(text: &str) -> Result<Vec<Lexeme>> {
 
 /// normalized sorts lexemes and merges each one's duplicates, sorting its positions and keeping the heaviest weight
 /// of each position, as Postgres' uniqueentry and uniquePos do.
-fn normalized(mut lexemes: Vec<Lexeme>) -> Vec<Lexeme> {
+pub(crate) fn normalized(mut lexemes: Vec<Lexeme>) -> Vec<Lexeme> {
     lexemes.sort_by(|a, b| a.0.cmp(&b.0));
     let mut merged: Vec<Lexeme> = Vec::with_capacity(lexemes.len());
     for (word, positions) in lexemes {
@@ -196,7 +201,7 @@ fn normalized(mut lexemes: Vec<Lexeme>) -> Vec<Lexeme> {
 
 /// vector_bytes writes lexemes in tsvector's binary format: their count, then each lexeme ending in a zero byte with
 /// its positions' count and positions.
-fn vector_bytes(lexemes: &[Lexeme]) -> Vec<u8> {
+pub(crate) fn vector_bytes(lexemes: &[Lexeme]) -> Vec<u8> {
     let mut out = (lexemes.len() as u32).to_be_bytes().to_vec();
     for (word, positions) in lexemes {
         out.extend_from_slice(word);
@@ -210,7 +215,7 @@ fn vector_bytes(lexemes: &[Lexeme]) -> Vec<u8> {
 }
 
 /// vector_lexemes reads tsvector's binary format.
-fn vector_lexemes(bytes: &[u8]) -> Result<Vec<Lexeme>> {
+pub(crate) fn vector_lexemes(bytes: &[u8]) -> Result<Vec<Lexeme>> {
     let invalid = || PgError::new(code::INVALID_BINARY_REPRESENTATION, "invalid tsvector binary data");
     let count = u32::from_be_bytes(bytes.get(..4).ok_or_else(invalid)?.try_into().map_err(|_| invalid())?);
     let mut at = 4;
@@ -262,7 +267,7 @@ fn vector_out(lexemes: &[Lexeme]) -> String {
 
 /// Operator is a tsquery operator, numbered as Postgres stores it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Operator {
+pub(crate) enum Operator {
     Not = 1,
     And = 2,
     Or = 3,
@@ -284,7 +289,7 @@ impl Operator {
 /// Query is a node of a tsquery: a lexeme with its weights, as bits where A is 8 and D is 1, and whether it matches
 /// as a prefix, or an operator with its operands, where the phrase operator has a distance.
 #[derive(Clone, Debug, PartialEq)]
-enum Query {
+pub(crate) enum Query {
     Lexeme { word: Vec<u8>, weights: u8, prefix: bool },
     Not(Box<Query>),
     Binary { operator: Operator, distance: u16, left: Box<Query>, right: Box<Query> },
@@ -433,7 +438,7 @@ fn query_in(text: &str) -> Result<Option<Query>> {
 
 /// query_bytes writes a tsquery in its binary format: the count of its nodes, then each node with an operator before
 /// its right operand and then its left one, as Postgres stores the tree.
-fn query_bytes(query: Option<&Query>) -> Vec<u8> {
+pub(crate) fn query_bytes(query: Option<&Query>) -> Vec<u8> {
     let mut out = query.map_or(0, node_count).to_be_bytes().to_vec();
     if let Some(query) = query {
         write_nodes(query, &mut out);
@@ -442,7 +447,7 @@ fn query_bytes(query: Option<&Query>) -> Vec<u8> {
 }
 
 /// query_tree reads tsquery's binary format.
-fn query_tree(bytes: &[u8]) -> Result<Option<Query>> {
+pub(crate) fn query_tree(bytes: &[u8]) -> Result<Option<Query>> {
     let invalid = || PgError::new(code::INVALID_BINARY_REPRESENTATION, "invalid tsquery binary data");
     let count = u32::from_be_bytes(bytes.get(..4).ok_or_else(invalid)?.try_into().map_err(|_| invalid())?);
     if count == 0 {
@@ -454,7 +459,7 @@ fn query_tree(bytes: &[u8]) -> Result<Option<Query>> {
 
 /// query_out writes a tsquery's text, parenthesizing an operation inside one that binds more tightly and a phrase
 /// operation on the right of another, as Postgres' infix does.
-fn query_out(query: Option<&Query>) -> String {
+pub(crate) fn query_out(query: Option<&Query>) -> String {
     let mut out = String::new();
     if let Some(query) = query {
         infix(query, 0, false, &mut out);
@@ -463,7 +468,7 @@ fn query_out(query: Option<&Query>) -> String {
 }
 
 /// node_count returns how many nodes a tree has.
-fn node_count(query: &Query) -> u32 {
+pub(crate) fn node_count(query: &Query) -> u32 {
     match query {
         Query::Lexeme { .. } => 1,
         Query::Not(operand) => 1 + node_count(operand),
@@ -581,4 +586,70 @@ fn infix(query: &Query, parent: u8, right_of_phrase: bool, out: &mut String) {
             }
         }
     }
+}
+
+/// query_compare orders tsqueries as Postgres' CompareTSQ does: by node count, then by the size of their lexemes, then
+/// node by node.
+fn query_compare(l: &[u8], r: &[u8]) -> std::cmp::Ordering {
+    let (Ok(l), Ok(r)) = (query_tree(l), query_tree(r)) else { return l.cmp(r) };
+    let count = |q: &Option<Query>| q.as_ref().map_or(0, node_count);
+    let size = |q: &Option<Query>| q.as_ref().map_or(0, lexeme_bytes);
+    count(&l).cmp(&count(&r)).then_with(|| size(&l).cmp(&size(&r))).then_with(|| match (&l, &r) {
+        (Some(l), Some(r)) => node_compare(l, r),
+        _ => std::cmp::Ordering::Equal,
+    })
+}
+
+/// lexeme_bytes returns how many bytes a query's lexemes take stored with their terminators.
+fn lexeme_bytes(query: &Query) -> usize {
+    match query {
+        Query::Lexeme { word, .. } => word.len() + 1,
+        Query::Not(inner) => lexeme_bytes(inner),
+        Query::Binary { left, right, .. } => lexeme_bytes(left) + lexeme_bytes(right),
+    }
+}
+
+/// node_compare orders two query nodes as Postgres' QTNodeCompare does, putting operators first, comparing lexemes by
+/// their CRC before their text, and comparing an operator's right operand before its left.
+fn node_compare(l: &Query, r: &Query) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let operator = |q: &Query| match q {
+        Query::Lexeme { .. } => None,
+        Query::Not(_) => Some((Operator::Not as u8, 0)),
+        Query::Binary { operator, distance, .. } => Some((*operator as u8, *distance)),
+    };
+    match (l, r) {
+        (Query::Lexeme { word: lw, .. }, Query::Lexeme { word: rw, .. }) => {
+            legacy_crc32(rw).cmp(&legacy_crc32(lw)).then_with(|| lw.cmp(rw))
+        }
+        (Query::Lexeme { .. }, _) => Ordering::Greater,
+        (_, Query::Lexeme { .. }) => Ordering::Less,
+        _ => {
+            let ((lo, ld), (ro, rd)) = (operator(l).unwrap_or_default(), operator(r).unwrap_or_default());
+            let (lc, rc) = (children(l), children(r));
+            ro.cmp(&lo)
+                .then_with(|| rc.len().cmp(&lc.len()))
+                .then_with(|| {
+                    lc.iter().zip(&rc).map(|(a, b)| node_compare(a, b)).find(|o| o.is_ne()).unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| if lo == Operator::Phrase as u8 { rd.cmp(&ld) } else { Ordering::Equal })
+        }
+    }
+}
+
+/// children returns an operator's operands in the order Postgres stores them, right before left.
+fn children(query: &Query) -> Vec<&Query> {
+    match query {
+        Query::Not(inner) => vec![inner],
+        Query::Binary { left, right, .. } => vec![right, left],
+        Query::Lexeme { .. } => Vec::new(),
+    }
+}
+
+/// legacy_crc32 returns the CRC that Postgres keeps for a tsquery lexeme, its LEGACY_CRC32, which feeds bytes from the
+/// high end into the reflected CRC-32 table.
+fn legacy_crc32(bytes: &[u8]) -> i32 {
+    let entry = |index: u32| (0..8).fold(index, |c, _| if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 });
+    let crc = bytes.iter().fold(u32::MAX, |crc, &b| entry(((crc >> 24) ^ u32::from(b)) & 0xFF) ^ (crc << 8));
+    !crc as i32
 }
