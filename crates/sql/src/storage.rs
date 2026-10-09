@@ -135,6 +135,15 @@ pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
         }
         Value::Uuid(uuid) => uuid.to_vec(),
         Value::Base(base) => base.data.clone(),
+        Value::Range(range) => {
+            let subtype = crate::rangetypes::range_type(range.type_oid).map_or(crate::oid::TEXT, |t| t.subtype);
+            crate::rangetypes::send(range, &|v| serialize_value(v, crate::expr::typ(subtype)))?
+        }
+        Value::Multirange(multirange) => {
+            let subtype =
+                crate::rangetypes::multirange_type(multirange.type_oid).map_or(crate::oid::TEXT, |t| t.subtype);
+            crate::rangetypes::send_multirange(multirange, &|v| serialize_value(v, crate::expr::typ(subtype)))?
+        }
         Value::Oid(o) if matches!(ty.oid, crate::oid::XID | crate::oid::CID) => o.to_be_bytes().to_vec(),
         Value::Oid(o) => oid_id(*o),
         Value::Reg(reg) => oid_id(reg.oid),
@@ -226,6 +235,17 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
     {
         return deserialize_user_value(field, &user_type);
     }
+    if let Some(range) = crate::rangetypes::range_type(ty.oid) {
+        let subtype = crate::expr::typ(range.subtype);
+        let range = crate::rangetypes::receive(ty.oid, field, &|bytes| deserialize_value(bytes, subtype))?;
+        return Ok(Value::Range(Box::new(range)));
+    }
+    if let Some(range) = crate::rangetypes::multirange_type(ty.oid) {
+        let subtype = crate::expr::typ(range.subtype);
+        let multirange =
+            crate::rangetypes::receive_multirange(ty.oid, field, &|bytes| deserialize_value(bytes, subtype))?;
+        return Ok(Value::Multirange(Box::new(multirange)));
+    }
     if !scalar && crate::basetypes::get(ty.oid).is_some() {
         return Ok(Value::Base(Box::new(crate::types::BaseValue { type_oid: ty.oid, data: field.to_vec() })));
     }
@@ -313,6 +333,18 @@ fn deserialize_user_value(field: &[u8], user_type: &crate::usertypes::UserType) 
             _ => Err(corrupt()),
         },
         Kind::Domain(domain) => deserialize_value(field, domain.base),
+        Kind::Range(subtype) => {
+            let range = crate::rangetypes::receive(user_type.oid, field, &|bytes| deserialize_value(bytes, *subtype))?;
+            Ok(Value::Range(Box::new(range)))
+        }
+        Kind::Multirange(range) => {
+            let subtype = crate::rangetypes::range_type(*range).map_or(crate::oid::TEXT, |t| t.subtype);
+            let subtype = ColumnType { oid: subtype, modifier: -1 };
+            let multirange = crate::rangetypes::receive_multirange(user_type.oid, field, &|bytes| {
+                deserialize_value(bytes, subtype)
+            })?;
+            Ok(Value::Multirange(Box::new(multirange)))
+        }
         Kind::Composite(_) => {
             if field.first() != Some(&0) {
                 return Err(corrupt());

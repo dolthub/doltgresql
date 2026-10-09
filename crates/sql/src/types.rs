@@ -74,6 +74,10 @@ pub enum Value {
     Bit(String),
     /// A value of a base type that an extension provides.
     Base(Box<BaseValue>),
+    /// A value of a range type.
+    Range(Box<crate::rangetypes::Range>),
+    /// A value of a multirange type.
+    Multirange(Box<crate::rangetypes::Multirange>),
 }
 
 /// BaseValue is a value of a base type that an extension provides, as the bytes that Doltgres stores for it.
@@ -280,6 +284,8 @@ impl Value {
             Value::Uuid(uuid) => crate::binary::format_uuid(uuid),
             Value::Bit(bits) => bits.clone(),
             Value::Base(base) => (base_type(base.type_oid)?.output)(&base.data),
+            Value::Range(range) => crate::rangetypes::format(range),
+            Value::Multirange(multirange) => crate::rangetypes::format_multirange(multirange),
         })
     }
 
@@ -364,6 +370,14 @@ impl Value {
                 [(bits.len() as i32).to_be_bytes().as_slice(), &crate::binary::pack_bits(bits)].concat()
             }
             Value::Base(base) => (base_type(base.type_oid)?.send)(&base.data),
+            Value::Range(range) => {
+                let subtype = crate::rangetypes::range_type(range.type_oid).map_or(oid::TEXT, |t| t.subtype);
+                crate::rangetypes::send(range, &|v| Ok(v.send(subtype).unwrap_or_default())).ok()?
+            }
+            Value::Multirange(multirange) => {
+                let subtype = crate::rangetypes::multirange_type(multirange.type_oid).map_or(oid::TEXT, |t| t.subtype);
+                crate::rangetypes::send_multirange(multirange, &|v| Ok(v.send(subtype).unwrap_or_default())).ok()?
+            }
         })
     }
 

@@ -9684,3 +9684,404 @@ fn test_text_search_types() {
         },
     ]);
 }
+
+#[test]
+fn test_range_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Range literals, constructors, and canonical forms",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '[1,5)'::int4range, '(1,5]'::int4range, '[1,5]'::int4range, '(1,2)'::int4range, 'empty'::int4range, '[,5)'::int4range;",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4range", INT4RANGE), Column("int4range", INT4RANGE), Column("int4range", INT4RANGE), Column("int4range", INT4RANGE), Column("int4range", INT4RANGE), Column("int4range", INT4RANGE)],
+                        rows: &[
+                            &[T("[1,5)"), T("[2,6)"), T("[1,6)"), T("empty"), T("empty"), T("(,5)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT '[1.5,2.25]'::numrange, '["2020-01-01 10:00","2020-01-02")'::tsrange, '[2020-01-01,2020-01-05]'::daterange;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("numrange", NUMRANGE), Column("tsrange", TSRANGE), Column("daterange", DATERANGE)],
+                        rows: &[
+                            &[T("[1.5,2.25]"), T(r#"["2020-01-01 10:00:00","2020-01-02 00:00:00")"#), T("[2020-01-01,2020-01-06)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '  [ 1 , 5 )  '::int4range;",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4range", INT4RANGE)],
+                        rows: &[
+                            &[T("[1,5)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[5,1)'::int4range;",
+                    expected: Expected::Error(Diagnostic { code: "22000", message: "range lower bound must be less than or equal to range upper bound", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[1,5'::int4range;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed range literal: "[1,5""#, detail: "Unexpected end of input.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '1,5)'::int4range;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed range literal: "1,5)""#, detail: "Missing left parenthesis or bracket.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[1,5,6)'::int4range;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed range literal: "[1,5,6)""#, detail: "Too many commas.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[1,5) x'::int4range;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed range literal: "[1,5) x""#, detail: "Junk after right parenthesis or bracket.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4range(1,5), int4range(1,5,'[]'), int4range(NULL,5), numrange(1.5, 2), daterange('2020-01-01','2020-02-01','()');",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4range", INT4RANGE), Column("int4range", INT4RANGE), Column("int4range", INT4RANGE), Column("numrange", NUMRANGE), Column("daterange", DATERANGE)],
+                        rows: &[
+                            &[T("[1,5)"), T("[1,6)"), T("(,5)"), T("[1.5,2)"), T("[2020-01-02,2020-02-01)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4range(5,1);",
+                    expected: Expected::Error(Diagnostic { code: "22000", message: "range lower bound must be less than or equal to range upper bound", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4range(1,5,'x');",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "invalid range bound flags", hint: r#"Valid values are "[]", "[)", "(]", and "()"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Range operators and functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT int4range(1,5) @> 3, int4range(1,5) @> 5, int4range(1,5) @> int4range(2,3), int4range(1,5) @> '[2,3)', 3 <@ int4range(1,5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4range(1,5) && int4range(4,6), int4range(1,5) << int4range(5,6), int4range(1,5) -|- int4range(5,6), int4range(1,5) &< int4range(2,3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4range(1,5) + int4range(5,9), int4range(1,5) * int4range(3,9), int4range(1,9) - int4range(3,5);",
+                    expected: Expected::Error(Diagnostic { code: "22000", message: "result of range difference would not be contiguous", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4range(1,5) + int4range(6,9);",
+                    expected: Expected::Error(Diagnostic { code: "22000", message: "result of range union would not be contiguous", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4range(1,9) - int4range(3,5);",
+                    expected: Expected::Error(Diagnostic { code: "22000", message: "result of range difference would not be contiguous", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lower(int4range(1,5)), upper(numrange(1.5,NULL)), isempty('empty'::int4range), lower_inc(int4range(1,5)), upper_inf(int4range(1,NULL));",
+                    expected: Expected::Rows {
+                        columns: &[Column("lower", INT4), Column("upper", NUMERIC), Column("isempty", BOOL), Column("lower_inc", BOOL), Column("upper_inf", BOOL)],
+                        rows: &[
+                            &[T("1"), Null, T("t"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT range_merge(int4range(1,3), int4range(7,9)), int4range(1,5) = int4range(1,5,'[)'), int4range(1,5) < int4range(1,6);",
+                    expected: Expected::Rows {
+                        columns: &[Column("range_merge", INT4RANGE), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("[1,9)"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT range_overlaps_multirange(numrange(4.0, 4.2), '{[4.1,5)}'::nummultirange), range_contains_elem(int4range(1,5), 3), range_cmp(int4range(1,5), int4range(1,6)), elem_contained_by_range(3, int4range(1,5));",
+                    expected: Expected::Rows {
+                        columns: &[Column("range_overlaps_multirange", BOOL), Column("range_contains_elem", BOOL), Column("range_cmp", INT4), Column("elem_contained_by_range", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("-1"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Multiranges",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '{[1,3), [5,7), [2,4)}'::int4multirange, '{}'::int4multirange, '{[1,2), empty}'::int4multirange;",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4multirange", INT4MULTIRANGE), Column("int4multirange", INT4MULTIRANGE), Column("int4multirange", INT4MULTIRANGE)],
+                        rows: &[
+                            &[T("{[1,4),[5,7)}"), T("{}"), T("{[1,2)}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{[1,3)'::int4multirange;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed multirange literal: "{[1,3)""#, detail: "Unexpected end of input.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT int4multirange(int4range(1,3), int4range(2,6)), int4multirange(), nummultirange(numrange(1,2));",
+                    expected: Expected::Rows {
+                        columns: &[Column("int4multirange", INT4MULTIRANGE), Column("int4multirange", INT4MULTIRANGE), Column("nummultirange", NUMMULTIRANGE)],
+                        rows: &[
+                            &[T("{[1,6)}"), T("{}"), T("{[1,2)}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{[1,3),[5,7)}'::int4multirange @> 6, '{[1,3),[5,7)}'::int4multirange && int4range(3,5), '{[1,3)}'::int4multirange + '{[3,9)}', '{[1,9)}'::int4multirange - '{[3,4)}';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", INT4MULTIRANGE), Column("?column?", INT4MULTIRANGE)],
+                        rows: &[
+                            &[T("t"), T("f"), T("{[1,9)}"), T("{[1,3),[4,9)}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{[1,3),[5,7)}'::int4multirange -|- int4range(7,9), '{[1,3),[5,7)}'::int4multirange -|- int4range(3,5), int4range(-5,1) -|- '{[1,3),[5,7)}'::int4multirange;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT unnest('{[1,3),[5,7)}'::int4multirange);",
+                    expected: Expected::Rows {
+                        columns: &[Column("unnest", INT4RANGE)],
+                        rows: &[
+                            &[T("[1,3)")],
+                            &[T("[5,7)")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT multirange(int4range(1,5)), lower('{[1,3),[5,7)}'::int4multirange), upper('{[1,3),[5,7)}'::int4multirange);",
+                    expected: Expected::Rows {
+                        columns: &[Column("multirange", INT4MULTIRANGE), Column("lower", INT4), Column("upper", INT4)],
+                        rows: &[
+                            &[T("{[1,5)}"), T("1"), T("7")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Range columns and aggregates",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE range_cols (id INT PRIMARY KEY, r INT4RANGE, m INT4MULTIRANGE, n NUMRANGE);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO range_cols VALUES (1, '[1,10)', '{[1,2),[4,8)}', '(1.5,)'), (2, 'empty', '{}', NULL), (3, '(,5]', '{(,0)}', '[3,3]');",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM range_cols ORDER BY r;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("r", INT4RANGE), Column("m", INT4MULTIRANGE), Column("n", NUMRANGE)],
+                        rows: &[
+                            &[T("2"), T("empty"), T("{}"), Null],
+                            &[T("3"), T("(,6)"), T("{(,0)}"), T("[3,3]")],
+                            &[T("1"), T("[1,10)"), T("{[1,2),[4,8)}"), T("(1.5,)")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX range_cols_r ON range_cols USING gist (r);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM range_cols WHERE r @> 4 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT range_agg(r), range_agg(m), range_intersect_agg(r) FROM range_cols WHERE id <> 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("range_agg", INT4MULTIRANGE), Column("range_agg", INT4MULTIRANGE), Column("range_intersect_agg", INT4RANGE)],
+                        rows: &[
+                            &[T("{(,10)}"), T("{(,0),[1,2),[4,8)}"), T("[1,6)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT range_agg(r) FROM range_cols WHERE false;",
+                    expected: Expected::Rows {
+                        columns: &[Column("range_agg", INT4MULTIRANGE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "User-defined range types",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"CREATE TYPE textrange AS RANGE (subtype = text, collation = "C");"#,
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT textrange('a', 'c'), textrange('a', 'c', '[]'), '[a,b)'::textrange, textmultirange(), textmultirange(textrange('a','c'), textrange('b','f'));",
+                    expected: Expected::Rows {
+                        columns: &[Column("textrange", USER_DEFINED), Column("textrange", USER_DEFINED), Column("textrange", USER_DEFINED), Column("textmultirange", USER_DEFINED), Column("textmultirange", USER_DEFINED)],
+                        rows: &[
+                            &[T("[a,c)"), T("[a,c]"), T("[a,b)"), T("{}"), T("{[a,f)}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ''::textmultirange;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed multirange literal: """#, detail: "Missing left brace.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE textrange2 AS RANGE (subtype = text, multirange_type_name = multitextrange2);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT multitextrange2(textrange2('a','z'));",
+                    expected: Expected::Rows {
+                        columns: &[Column("multitextrange2", USER_DEFINED)],
+                        rows: &[
+                            &[T("{[a,z)}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE bogus AS RANGE (subtype = int4, bogus = 1);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"type attribute "bogus" not recognized"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE TYPE bogus2 AS RANGE (collation = "C");"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"type attribute "subtype" is required"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE text_ranges (t textrange, m textmultirange);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO text_ranges VALUES ('[a,m)', '{[a,c),[x,z]}');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM text_ranges WHERE t @> 'b'::text;",
+                    expected: Expected::Rows {
+                        columns: &[Column("t", USER_DEFINED), Column("m", USER_DEFINED)],
+                        rows: &[
+                            &[T("[a,m)"), T("{[a,c),[x,z]}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

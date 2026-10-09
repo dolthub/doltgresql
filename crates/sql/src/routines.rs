@@ -253,6 +253,52 @@ impl Routine {
         }
     }
 
+    /// specialize returns the routine with its polymorphic parameter, result, and output column types replaced by the
+    /// types that its input arguments, given by input position, give them, or the routine itself when it has none.
+    fn specialize(self: &Arc<Routine>, args: &[(usize, u32)]) -> Result<Arc<Routine>> {
+        use crate::rangetypes::{ANYMULTIRANGE, ANYRANGE};
+        use functions::{ANYARRAY, ANYELEMENT, ANYNONARRAY};
+        let polymorphic = |t: u32| matches!(t, ANYELEMENT | ANYNONARRAY | ANYARRAY | ANYRANGE | ANYMULTIRANGE);
+        if !self.params.iter().any(|p| polymorphic(p.ty.oid)) && !polymorphic(self.ret.oid) {
+            return Ok(self.clone());
+        }
+        let inputs: Vec<&Param> = call_params(self);
+        let (mut element, mut range) = (None, None);
+        for &(slot, t) in args.iter().filter(|(_, t)| *t != oid::UNKNOWN) {
+            match inputs[slot].ty.oid {
+                ANYELEMENT | ANYNONARRAY => element = element.or(Some(t)),
+                ANYARRAY => element = element.or(Some(crate::expr::element_type(t))),
+                ANYRANGE => range = range.or(crate::rangetypes::range_type(t)),
+                ANYMULTIRANGE => range = range.or(crate::rangetypes::multirange_type(t)),
+                _ => {}
+            }
+        }
+        let element = element.or(range.map(|r| r.subtype)).ok_or_else(|| {
+            PgError::new(code::DATATYPE_MISMATCH, "could not determine polymorphic type because input has type unknown")
+        })?;
+        let concrete = |ty: ColumnType| match ty.oid {
+            ANYELEMENT | ANYNONARRAY => typ(element),
+            ANYARRAY => typ(crate::expr::array_of(element)),
+            ANYRANGE => typ(range.map_or(ty.oid, |r| r.range)),
+            ANYMULTIRANGE => typ(range.map_or(ty.oid, |r| r.multirange)),
+            _ => ty,
+        };
+        Ok(Arc::new(Routine {
+            row_types: self.row_types.clone(),
+            procedure: self.procedure,
+            schema: self.schema.clone(),
+            name: self.name.clone(),
+            params: self.params.iter().map(|p| Param { ty: concrete(p.ty), ..p.clone() }).collect(),
+            ret: concrete(self.ret),
+            columns: self.columns.iter().map(|(n, t)| (n.clone(), concrete(*t))).collect(),
+            set_of: self.set_of,
+            strict: self.strict,
+            body: self.body.clone(),
+            statements: OnceLock::new(),
+            object: self.object.clone(),
+        }))
+    }
+
     /// inputs returns the parameters a caller passes.
     pub fn inputs(&self) -> impl Iterator<Item = &Param> {
         self.params.iter().filter(|p| p.mode.is_input())
@@ -670,6 +716,16 @@ impl Ctx<'_> {
                 )));
             }
         }
+        let input_types: Vec<u32> = params.iter().filter(|p| p.mode.is_input()).map(|p| p.ty.oid).collect();
+        let results = std::iter::once(ret.oid).chain(params.iter().filter(|p| !p.mode.is_input()).map(|p| p.ty.oid));
+        for result in results {
+            if let Some(detail) = polymorphic_signature_problem(result, &input_types) {
+                return Err(PgError {
+                    detail: Some(detail),
+                    ..invalid_definition("cannot determine result data type")
+                });
+            }
+        }
         let language = match (&options.language, &stmt.sql_body) {
             (Some(language), _) => language.clone(),
             (None, Some(_)) => "sql".into(),
@@ -720,7 +776,7 @@ impl Ctx<'_> {
                 } else {
                     Vec::new()
                 };
-                if self.session.setting_on("check_function_bodies") {
+                if self.session.setting_on("check_function_bodies") && !input_types.iter().any(|&t| is_polymorphic(t)) {
                     self.check_sql_body(&name, &params, &body, ret, &columns)
                         .map_err(|err| PgError { position: err.position.map(|p| p + offset), ..err })?;
                 }
@@ -1166,8 +1222,10 @@ impl Binder<'_, '_> {
         for routine in routines.iter().filter(|r| r.procedure == procedures) {
             let params = call_params(routine);
             if let Some(slots) = argument_slots(&params, &names) {
-                let types = slots.iter().map(|&s| params[s].ty.oid).collect();
-                candidates.push((Candidate::User(routine.clone(), slots), types));
+                let param_types: Vec<u32> = slots.iter().map(|&s| params[s].ty.oid).collect();
+                if polymorphic_arguments_agree(&param_types, &types) {
+                    candidates.push((Candidate::User(routine.clone(), slots), param_types));
+                }
             }
         }
         let shown = || {
@@ -1243,6 +1301,8 @@ impl Binder<'_, '_> {
         bound: Vec<Bound>,
         slots: &[usize],
     ) -> Result<Bound> {
+        let arg_types: Vec<(usize, u32)> = slots.iter().zip(&bound).map(|(&s, (_, t))| (s, t.oid)).collect();
+        let routine = routine.specialize(&arg_types)?;
         let params: Vec<Param> = call_params(&routine).into_iter().cloned().collect();
         let mut args: Vec<Option<Expr>> = vec![None; params.len()];
         for ((bound, &slot), node) in bound.into_iter().zip(slots).zip(&call.args) {
@@ -1286,6 +1346,62 @@ impl Binder<'_, '_> {
         }
         Ok((call_expr, ret))
     }
+}
+
+/// is_polymorphic reports whether a type is a polymorphic pseudo-type.
+fn is_polymorphic(type_oid: u32) -> bool {
+    use crate::rangetypes::{ANYMULTIRANGE, ANYRANGE};
+    matches!(type_oid, functions::ANYELEMENT | functions::ANYARRAY | functions::ANYNONARRAY | ANYRANGE | ANYMULTIRANGE)
+}
+
+/// polymorphic_arguments_agree reports whether the arguments of a routine's polymorphic parameters imply one element
+/// type and one range type, as Postgres requires of a user-defined function's polymorphic arguments.
+fn polymorphic_arguments_agree(params: &[u32], types: &[u32]) -> bool {
+    use crate::rangetypes::{ANYMULTIRANGE, ANYRANGE, multirange_type, range_type};
+    let (mut element, mut range) = (None, None);
+    for (&p, &t) in params.iter().zip(types).filter(|(_, t)| **t != oid::UNKNOWN) {
+        let t = crate::usertypes::base_type(typ(t)).oid;
+        let implied = match p {
+            functions::ANYELEMENT => t,
+            functions::ANYNONARRAY if !crate::array::is_array_type(t) => t,
+            functions::ANYARRAY if crate::array::is_array_type(t) => crate::expr::element_type(t),
+            ANYRANGE | ANYMULTIRANGE => {
+                let Some(r) = (if p == ANYRANGE { range_type(t) } else { multirange_type(t) }) else { return false };
+                if *range.get_or_insert(r.range) != r.range {
+                    return false;
+                }
+                r.subtype
+            }
+            functions::ANYNONARRAY | functions::ANYARRAY => return false,
+            _ => continue,
+        };
+        if *element.get_or_insert(implied) != implied {
+            return false;
+        }
+    }
+    true
+}
+
+/// polymorphic_signature_problem explains why no input of the types can decide a polymorphic result type, as
+/// Postgres' check_valid_polymorphic_signature does, or returns None when one can.
+fn polymorphic_signature_problem(result: u32, inputs: &[u32]) -> Option<String> {
+    use crate::rangetypes::{ANYMULTIRANGE, ANYRANGE};
+    if matches!(result, ANYRANGE | ANYMULTIRANGE) {
+        return (!inputs.iter().any(|&t| matches!(t, ANYRANGE | ANYMULTIRANGE))).then(|| {
+            format!(
+                "A result of type {} requires at least one input of type anyrange or anymultirange.",
+                type_display(result)
+            )
+        });
+    }
+    if is_polymorphic(result) && !inputs.iter().any(|&t| is_polymorphic(t)) {
+        return Some(format!(
+            "A result of type {} requires at least one input of type anyelement, anyarray, anynonarray, anyenum, \
+             anyrange, or anymultirange.",
+            type_display(result)
+        ));
+    }
+    None
 }
 
 /// argument_slots returns the input parameter that each argument of a call goes to, with the positional arguments

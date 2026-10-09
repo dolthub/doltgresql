@@ -61,6 +61,7 @@ pub mod plan;
 mod plpgsql;
 pub mod query;
 pub mod ranges;
+pub mod rangetypes;
 mod roles;
 pub mod routines;
 pub mod ruleutils;

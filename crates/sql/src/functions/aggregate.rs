@@ -25,6 +25,7 @@ use crate::query::Ctx;
 use crate::types::Value;
 
 use super::{ANYARRAY, ANYELEMENT, ANYNONARRAY, implicitly_castable};
+use crate::rangetypes::{ANYMULTIRANGE, ANYRANGE};
 
 /// Kind is what an aggregate computes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +49,8 @@ pub enum Kind {
     JsonObjectAgg,
     JsonbObjectAgg,
     XmlAgg,
+    RangeAgg,
+    RangeIntersectAgg,
 }
 
 /// Aggregate is one overload of an aggregate function.
@@ -127,6 +130,10 @@ pub const AGGREGATES: &[Aggregate] = &[
     a("array_agg", &[ANYARRAY], ANYARRAY, Kind::ArrayAgg),
     a("json_agg", &[ANYELEMENT], crate::oid::JSON, Kind::JsonAgg),
     a("jsonb_agg", &[ANYELEMENT], crate::oid::JSONB, Kind::JsonbAgg),
+    a("range_agg", &[ANYRANGE], ANYMULTIRANGE, Kind::RangeAgg),
+    a("range_agg", &[ANYMULTIRANGE], ANYMULTIRANGE, Kind::RangeAgg),
+    a("range_intersect_agg", &[ANYRANGE], ANYRANGE, Kind::RangeIntersectAgg),
+    a("range_intersect_agg", &[ANYMULTIRANGE], ANYMULTIRANGE, Kind::RangeIntersectAgg),
     a("json_object_agg", &[super::ANY, super::ANY], crate::oid::JSON, Kind::JsonObjectAgg),
     a("jsonb_object_agg", &[super::ANY, super::ANY], crate::oid::JSONB, Kind::JsonbObjectAgg),
 ];
@@ -216,7 +223,7 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<(usize, Vec<u
         .iter()
         .zip(types)
         .map(|(&p, &t)| {
-            if matches!(p, ANYELEMENT | ANYNONARRAY | ANYARRAY | super::ANY) {
+            if matches!(p, ANYELEMENT | ANYNONARRAY | ANYARRAY | ANYRANGE | ANYMULTIRANGE | super::ANY) {
                 if t == crate::oid::UNKNOWN { TEXT } else { t }
             } else {
                 p
@@ -227,6 +234,8 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<(usize, Vec<u
         ANYELEMENT => element,
         ANYARRAY if aggregate.args == [ANYARRAY] => element,
         ANYARRAY => crate::expr::array_of(element),
+        ANYRANGE => element,
+        ANYMULTIRANGE => crate::rangetypes::range_type(element).map_or(element, |r| r.multirange),
         ret => ret,
     };
     Ok((index, arg_types, ret))
@@ -556,6 +565,33 @@ impl Accumulator {
                 .unwrap_or(Value::Null)),
             Kind::VarPop | Kind::VarSamp | Kind::StddevPop | Kind::StddevSamp => {
                 variance(&values, aggregate.kind, call.ret)
+            }
+            Kind::RangeAgg => {
+                let mut ranges = Vec::new();
+                for value in values {
+                    match value {
+                        Value::Range(range) => ranges.push(*range),
+                        Value::Multirange(multirange) => ranges.extend(multirange.ranges),
+                        _ => {}
+                    }
+                }
+                Ok(Value::Multirange(Box::new(crate::rangetypes::normalize(call.ret, ranges)?)))
+            }
+            Kind::RangeIntersectAgg => {
+                let mut values = values.into_iter();
+                let mut result = values.next().unwrap_or(Value::Null);
+                for value in values {
+                    result = match (result, value) {
+                        (Value::Range(l), Value::Range(r)) => {
+                            Value::Range(Box::new(crate::rangetypes::intersect(&l, &r)?))
+                        }
+                        (Value::Multirange(l), Value::Multirange(r)) => {
+                            Value::Multirange(Box::new(crate::rangetypes::multirange_intersect(&l, &r)?))
+                        }
+                        (other, _) => other,
+                    };
+                }
+                Ok(result)
             }
             Kind::CountStar
             | Kind::StringAgg

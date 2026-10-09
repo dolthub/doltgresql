@@ -331,6 +331,12 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
     {
         return user_input(text, &user_type);
     }
+    if crate::rangetypes::is_range(type_oid) {
+        return Ok(Value::Range(Box::new(crate::rangetypes::parse(text, type_oid)?)));
+    }
+    if crate::rangetypes::is_multirange(type_oid) {
+        return Ok(Value::Multirange(Box::new(crate::rangetypes::parse_multirange(text, type_oid)?)));
+    }
     if let Some(base) = crate::basetypes::get(type_oid) {
         return Ok(Value::Base(Box::new(crate::types::BaseValue { type_oid, data: (base.input)(text, -1)? })));
     }
@@ -383,7 +389,7 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
 }
 
 /// int_out_of_range returns Postgres' error for an integer cast whose value does not fit the type.
-fn int_out_of_range(type_oid: u32) -> PgError {
+pub(crate) fn int_out_of_range(type_oid: u32) -> PgError {
     let name = match type_oid {
         oid::INT2 => "smallint",
         oid::INT4 => "integer",
@@ -607,6 +613,10 @@ fn user_input(text: &str, user_type: &crate::usertypes::UserType) -> Result<Valu
             type_oid: user_type.oid,
             data: (definition.input)(text, -1)?,
         }))),
+        Kind::Range(_) => Ok(Value::Range(Box::new(crate::rangetypes::parse(text, user_type.oid)?))),
+        Kind::Multirange(_) => {
+            Ok(Value::Multirange(Box::new(crate::rangetypes::parse_multirange(text, user_type.oid)?)))
+        }
     }
 }
 
@@ -676,6 +686,11 @@ fn cast_to_user_type(
         }))),
         (Kind::Domain(domain), value) => cast_value(value, domain.base, explicit),
         (Kind::Enum(_), Value::Enum(e)) if e.type_oid == user_type.oid => Ok(Value::Enum(e)),
+        (Kind::Range(_), Value::Range(r)) if r.type_oid == user_type.oid => Ok(Value::Range(r)),
+        (Kind::Multirange(_), Value::Multirange(m)) if m.type_oid == user_type.oid => Ok(Value::Multirange(m)),
+        (Kind::Multirange(range), Value::Range(r)) if r.type_oid == *range => {
+            Ok(Value::Multirange(Box::new(crate::rangetypes::normalize(user_type.oid, vec![*r])?)))
+        }
         (Kind::Composite(_), Value::Composite(c)) if c.type_oid == user_type.oid => Ok(Value::Composite(c)),
         (_, Value::Text(text)) => user_input(&text, user_type),
         (Kind::Composite(attributes), value @ (Value::Record(_) | Value::Composite(_))) => {
@@ -761,6 +776,19 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
     if crate::basetypes::get(to.oid).is_some() {
         return match value {
             Value::Base(base) if base.type_oid == to.oid => Ok(Value::Base(base)),
+            Value::Text(text) => input(&text, to.oid),
+            other => Err(cannot_cast(&other, to.oid)),
+        };
+    }
+    if crate::rangetypes::is_range(to.oid) || crate::rangetypes::is_multirange(to.oid) {
+        return match value {
+            Value::Range(range) if range.type_oid == to.oid => Ok(Value::Range(range)),
+            Value::Multirange(multirange) if multirange.type_oid == to.oid => Ok(Value::Multirange(multirange)),
+            Value::Range(range)
+                if crate::rangetypes::multirange_type(to.oid).is_some_and(|t| t.range == range.type_oid) =>
+            {
+                Ok(Value::Multirange(Box::new(crate::rangetypes::normalize(to.oid, vec![*range])?)))
+            }
             Value::Text(text) => input(&text, to.oid),
             other => Err(cannot_cast(&other, to.oid)),
         };

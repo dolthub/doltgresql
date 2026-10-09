@@ -49,6 +49,10 @@ pub enum Kind {
     Base(&'static crate::extensions::BaseType),
     /// A shell type, which CREATE TYPE names before defining it.
     Shell,
+    /// A range type over the subtype.
+    Range(ColumnType),
+    /// A multirange type of the range type.
+    Multirange(u32),
 }
 
 /// Domain is a type that restricts the values of its base type.
@@ -151,6 +155,8 @@ impl UserType {
                     .then(|| String::from_utf8_lossy(&definition.default).into_owned()),
             }),
             b"p" => Kind::Shell,
+            b"r" => Kind::Range(ColumnType { oid: type_oid(&definition.base_type), modifier: -1 }),
+            b"m" => Kind::Multirange(type_oid(&definition.base_type)),
             _ if definition.elem.is_empty() => {
                 let send = id::segments(&definition.send_func).into_iter().nth(1).unwrap_or_default();
                 match crate::extensions::base_type(&send) {
@@ -179,6 +185,11 @@ impl UserType {
 /// get returns a user-defined type known to this thread's statement by OID.
 pub fn get(type_oid: u32) -> Option<Arc<UserType>> {
     REGISTRY.with(|r| r.borrow().types.get(&type_oid).cloned())
+}
+
+/// multirange_of returns the multirange type of a user-defined range type, or 0 when it has none.
+pub fn multirange_of(range_oid: u32) -> u32 {
+    REGISTRY.with(|r| r.borrow().types.values().find(|t| t.kind == Kind::Multirange(range_oid)).map_or(0, |t| t.oid))
 }
 
 /// register makes a type known to this thread's statement, as a table's column definitions do, returning its OID.
@@ -486,6 +497,43 @@ fn shell_type(schema: &str, name: &str) -> SerializedType {
     t
 }
 
+/// range_type returns the definition of a range type over a subtype, which Go has no form of, so the subtype goes in
+/// the base type field.
+pub fn range_type(schema: &str, name: &str, subtype: &SerializedType, collation: Vec<u8>) -> SerializedType {
+    let mut t = new_type(schema, name);
+    t.typ_type = b"r".to_vec();
+    t.typ_category = b"R".to_vec();
+    t.input_func = function_ref("range_in", &["cstring", "oid", "int4"]);
+    t.output_func = function_ref("range_out", &["anyrange"]);
+    t.receive_func = function_ref("range_recv", &["internal", "oid", "int4"]);
+    t.send_func = function_ref("range_send", &["anyrange"]);
+    t.analyze_func = function_ref("range_typanalyze", &["internal"]);
+    t.compare_func = function_ref("range_cmp", &["anyrange", "anyrange"]);
+    t.align = if subtype.align == b"d" { b"d".to_vec() } else { b"i".to_vec() };
+    t.storage = b"x".to_vec();
+    t.base_type = subtype.id.clone();
+    t.typ_collation = collation;
+    t
+}
+
+/// multirange_type returns the definition of the multirange type of a range type, with the range type in the base type
+/// field.
+pub fn multirange_type(schema: &str, name: &str, range: &SerializedType) -> SerializedType {
+    let mut t = new_type(schema, name);
+    t.typ_type = b"m".to_vec();
+    t.typ_category = b"R".to_vec();
+    t.input_func = function_ref("multirange_in", &["cstring", "oid", "int4"]);
+    t.output_func = function_ref("multirange_out", &["anymultirange"]);
+    t.receive_func = function_ref("multirange_recv", &["internal", "oid", "int4"]);
+    t.send_func = function_ref("multirange_send", &["anymultirange"]);
+    t.analyze_func = function_ref("multirange_typanalyze", &["internal"]);
+    t.compare_func = function_ref("multirange_cmp", &["anymultirange", "anymultirange"]);
+    t.align = range.align.clone();
+    t.storage = b"x".to_vec();
+    t.base_type = range.id.clone();
+    t
+}
+
 /// array_type returns the definition Go stores for the array type of a type.
 pub fn array_type(base: &SerializedType) -> SerializedType {
     let mut segments = id::segments(&base.id).into_iter();
@@ -655,6 +703,60 @@ impl Ctx<'_> {
             }
         }
         self.store_type(enum_type(&schema, &name, &labels))?;
+        Ok(crate::Outcome::command("CREATE TYPE"))
+    }
+
+    /// create_range runs CREATE TYPE ... AS RANGE, which also creates the range type's multirange type, named after it
+    /// as Postgres' makeMultirangeTypeName does unless the statement names it.
+    pub fn create_range(&mut self, stmt: &pg_query::protobuf::CreateRangeStmt) -> Result<crate::Outcome> {
+        let (schema, name) = type_names(&stmt.type_name);
+        let schema = self.new_type_schema(&schema, &name)?;
+        let (mut subtype, mut multirange) = (None, None);
+        let mut seen = Vec::new();
+        for param in &stmt.params {
+            let Some(pg_query::NodeEnum::DefElem(def)) = param.node.as_ref() else { continue };
+            if seen.contains(&def.defname) {
+                return Err(PgError::new(code::SYNTAX_ERROR, "conflicting or redundant options"));
+            }
+            seen.push(def.defname.clone());
+            let type_name = match def.arg.as_deref().and_then(|a| a.node.as_ref()) {
+                Some(pg_query::NodeEnum::TypeName(type_name)) => Some(type_name),
+                _ => None,
+            };
+            match def.defname.as_str() {
+                "subtype" => {
+                    let type_name = type_name.ok_or_else(|| PgError::internal("a subtype without a type name"))?;
+                    self.prepare_type(type_name)?;
+                    subtype = Some(crate::expr::resolve_type_name(type_name)?);
+                }
+                "multirange_type_name" => multirange = type_name.map(|t| type_names(&t.names)),
+                "subtype_opclass" | "collation" | "canonical" | "subtype_diff" => {}
+                other => {
+                    return Err(PgError::new(code::SYNTAX_ERROR, format!("type attribute \"{other}\" not recognized")));
+                }
+            }
+        }
+        let subtype =
+            subtype.ok_or_else(|| PgError::new(code::SYNTAX_ERROR, "type attribute \"subtype\" is required"))?;
+        let subtype_definition = match builtin_type(subtype.oid) {
+            Some(builtin) => builtin.definition.clone(),
+            None => {
+                get(subtype.oid).map(|t| t.definition.clone()).ok_or_else(|| PgError::internal("an unknown subtype"))?
+            }
+        };
+        let (multirange_schema, multirange_name) = match multirange {
+            Some((given_schema, given_name)) => (given_schema, given_name),
+            None => match name.find("range") {
+                Some(at) => (String::new(), format!("{}multi{}", &name[..at], &name[at..])),
+                None => (String::new(), format!("{name}_multirange")),
+            },
+        };
+        let multirange_schema = if multirange_schema.is_empty() { schema.clone() } else { multirange_schema };
+        let multirange_schema = self.new_type_schema(&multirange_schema, &multirange_name)?;
+        let range = range_type(&schema, &name, &subtype_definition, Vec::new());
+        let multirange = multirange_type(&multirange_schema, &multirange_name, &range);
+        self.store_type(range)?;
+        self.store_type(multirange)?;
         Ok(crate::Outcome::command("CREATE TYPE"))
     }
 

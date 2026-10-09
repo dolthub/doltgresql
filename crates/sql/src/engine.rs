@@ -2645,6 +2645,7 @@ impl Ctx<'_> {
             NodeEnum::GrantRoleStmt(stmt) => self.grant_role(stmt),
             NodeEnum::CallStmt(stmt) => self.call_procedure(stmt),
             NodeEnum::CreateEnumStmt(stmt) => self.create_enum(stmt),
+            NodeEnum::CreateRangeStmt(stmt) => self.create_range(stmt),
             NodeEnum::CompositeTypeStmt(stmt) => self.create_composite(stmt),
             NodeEnum::CreateDomainStmt(stmt) => self.create_domain(stmt),
             NodeEnum::AlterEnumStmt(stmt) => self.alter_enum(stmt),

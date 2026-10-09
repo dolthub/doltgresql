@@ -1484,6 +1484,8 @@ fn class(value: &Value) -> u8 {
         Value::Uuid(_) => 20,
         Value::Bit(_) => 21,
         Value::Base(_) => 22,
+        Value::Range(_) => 23,
+        Value::Multirange(_) => 24,
     }
 }
 
@@ -1533,6 +1535,20 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
         Value::Bytea(b) => b.hash(hasher),
         Value::Uuid(u) => u.hash(hasher),
         Value::Base(b) => hasher.write_u32(b.type_oid),
+        Value::Range(r) => hash_range(r, hasher),
+        Value::Multirange(m) => m.ranges.iter().for_each(|r| hash_range(r, hasher)),
+    }
+}
+
+/// hash_range feeds a range to a hasher by its bounds, which ranges that compare equal share.
+fn hash_range(range: &crate::rangetypes::Range, hasher: &mut impl Hasher) {
+    hasher.write_u8(u8::from(range.empty));
+    for bound in [&range.lower, &range.upper] {
+        hasher.write_u8(u8::from(bound.inclusive));
+        match &bound.value {
+            Some(value) => hash_value(value, hasher),
+            None => hasher.write_u8(0xff),
+        }
     }
 }
 

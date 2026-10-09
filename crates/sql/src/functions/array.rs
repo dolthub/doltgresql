@@ -411,6 +411,8 @@ pub fn value_type(value: &Value) -> u32 {
         Value::Bytea(_) => oid::BYTEA,
         Value::Uuid(_) => oid::UUID,
         Value::Bit(_) => oid::BIT,
+        Value::Range(r) => r.type_oid,
+        Value::Multirange(m) => m.type_oid,
         _ => oid::TEXT,
     }
 }

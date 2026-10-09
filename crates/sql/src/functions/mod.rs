@@ -27,6 +27,7 @@ pub mod json;
 mod jsonpath;
 mod math;
 pub(crate) mod pattern;
+mod range;
 mod series;
 mod string;
 mod system;
@@ -89,6 +90,7 @@ fn registry() -> &'static Registry {
             jsonpath::FUNCTIONS,
             binary::FUNCTIONS,
             xml::FUNCTIONS,
+            range::FUNCTIONS,
             catalog::FUNCTIONS,
             advisory::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
@@ -203,6 +205,8 @@ pub fn implicitly_castable(from: u32, to: u32) -> bool {
         || (to == ANYELEMENT && from != oid::UNKNOWN)
         || (to == ANYARRAY && is_array(from))
         || (to == ANYNONARRAY && !is_array(from))
+        || (to == crate::rangetypes::ANYRANGE && crate::rangetypes::is_range(from))
+        || (to == crate::rangetypes::ANYMULTIRANGE && crate::rangetypes::is_multirange(from))
         || (matches!(from, oid::BIT | oid::VARBIT) && matches!(to, oid::BIT | oid::VARBIT))
         || crate::casts::context(from, to) == Some(crate::casts::IMPLICIT)
         || crate::expr::implicit_datetime(from, to)
@@ -286,6 +290,7 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
     let f = r.functions[index];
     // A polymorphic parameter takes the common type of its arguments, and the result follows it.
     let mut element: Option<u32> = None;
+    let mut range: Option<crate::rangetypes::RangeType> = None;
     for (&p, &t) in params.iter().zip(types).filter(|(_, t)| **t != oid::UNKNOWN) {
         let implied = match p {
             ANYELEMENT | ANYNONARRAY => Some(t),
@@ -293,6 +298,14 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
                 Some(b) => Some(b.elem),
                 None => is_array(t).then(|| crate::expr::element_type(t)),
             },
+            crate::rangetypes::ANYRANGE => {
+                range = range.or(crate::rangetypes::range_type(t));
+                range.map(|r| r.subtype)
+            }
+            crate::rangetypes::ANYMULTIRANGE => {
+                range = range.or(crate::rangetypes::multirange_type(t));
+                range.map(|r| r.subtype)
+            }
             _ => None,
         };
         element = match (element, implied) {
@@ -312,6 +325,8 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
                 crate::expr::array_of(element)
             }
             ANYARRAY => builtin_type(element).map_or(t, |b| b.array),
+            crate::rangetypes::ANYRANGE => range.map_or(t, |r| r.range),
+            crate::rangetypes::ANYMULTIRANGE => range.map_or(t, |r| r.multirange),
             ANY => t,
             _ => p,
         })
@@ -322,6 +337,8 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
             crate::expr::array_of(element)
         }
         ANYARRAY => builtin_type(element).map_or(oid::TEXT, |b| b.array),
+        crate::rangetypes::ANYRANGE => range.map_or(oid::TEXT, |r| r.range),
+        crate::rangetypes::ANYMULTIRANGE => range.map_or(oid::TEXT, |r| r.multirange),
         other => other,
     };
     Ok(Resolved { index, arg_types, ret })
@@ -330,12 +347,21 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
 /// consistent reports whether the arguments of an overload's polymorphic parameters, read as their domains' base
 /// types, can share one element type, as Postgres requires.
 fn consistent(params: &[u32], types: &[u32]) -> bool {
-    let mut element = None;
+    let (mut element, mut range) = (None, None);
     for (&p, &t) in params.iter().zip(types).filter(|(_, t)| **t != oid::UNKNOWN) {
         let t = crate::usertypes::base_type(crate::expr::typ(t)).oid;
         let implied = match p {
             ANYELEMENT | ANYNONARRAY => t,
             ANYARRAY => crate::expr::element_type(t),
+            crate::rangetypes::ANYRANGE | crate::rangetypes::ANYMULTIRANGE => {
+                let Some(r) = crate::rangetypes::range_type(t).or(crate::rangetypes::multirange_type(t)) else {
+                    return false;
+                };
+                if *range.get_or_insert(r.range) != r.range {
+                    return false;
+                }
+                r.subtype
+            }
             _ => continue,
         };
         let first = *element.get_or_insert(implied);
@@ -379,7 +405,28 @@ pub fn best_candidates<C>(types: &[u32], candidates: Vec<(C, Vec<u32>)>) -> Vec<
     if candidates.len() > 1 {
         keep_unknown_categories(types, &mut candidates);
     }
+    if candidates.len() > 1 {
+        keep_assumed_known(types, &mut candidates);
+    }
     candidates
+}
+
+/// keep_assumed_known keeps the one candidate that accepts the untyped arguments as the type every typed argument has,
+/// with its polymorphic parameters consistent, as Postgres' func_select_candidate does last, and keeps every candidate
+/// when not exactly one does.
+fn keep_assumed_known<C>(types: &[u32], candidates: &mut Vec<(C, Vec<u32>)>) {
+    let mut known = types.iter().copied().filter(|&t| t != oid::UNKNOWN);
+    let Some(first) = known.next() else { return };
+    if !known.all(|t| t == first) || !types.contains(&oid::UNKNOWN) {
+        return;
+    }
+    let assumed: Vec<u32> = types.iter().map(|&t| if t == oid::UNKNOWN { first } else { t }).collect();
+    let accepts = |params: &[u32]| {
+        params.iter().zip(&assumed).all(|(&p, &t)| implicitly_castable(t, p)) && consistent(params, &assumed)
+    };
+    if candidates.iter().filter(|(_, p)| accepts(p)).count() == 1 {
+        candidates.retain(|(_, p)| accepts(p));
+    }
 }
 
 /// category returns the category letter of a type.

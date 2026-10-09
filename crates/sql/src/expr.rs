@@ -1005,6 +1005,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                     };
                 }
                 if err.code == code::UNDEFINED_FUNCTION
+                    && let Some(constructed) = range_constructor(schema, name, &bound, call.location)
+                {
+                    return Ok(constructed);
+                }
+                if err.code == code::UNDEFINED_FUNCTION
                     && let [(_, from)] = bound.as_slice()
                     && let Some(target) = self.function_style_cast(call, *from)?
                 {
@@ -3091,6 +3096,8 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
             compare_values(&Value::Record(l.fields.clone()), &Value::Record(r.fields.clone()))
         }
         (Value::Bytea(l), Value::Bytea(r)) => l.cmp(r),
+        (Value::Range(l), Value::Range(r)) => crate::rangetypes::compare(l, r),
+        (Value::Multirange(l), Value::Multirange(r)) => crate::rangetypes::compare_multiranges(l, r),
         (Value::Uuid(l), Value::Uuid(r)) => l.cmp(r),
         (Value::Bit(l), Value::Bit(r)) => l.cmp(r),
         (Value::Base(l), Value::Base(r)) => match crate::types::base_type(l.type_oid) {
@@ -3116,6 +3123,28 @@ pub fn compare_values(left: &Value, right: &Value) -> Ordering {
             _ => Ordering::Equal,
         },
     }
+}
+
+/// range_constructor binds a call of a user-defined range type's constructor, which takes its bounds and optionally its
+/// bound flags, or of a multirange type's constructor, which takes any number of ranges, or returns None when the call
+/// names no such type or its arguments do not convert.
+fn range_constructor(schema: Option<&str>, name: &str, args: &[Bound], location: i32) -> Option<Bound> {
+    let user_type = crate::usertypes::lookup(schema, name)?;
+    let (helper, targets): (&str, Vec<ColumnType>) = match user_type.kind {
+        crate::usertypes::Kind::Range(subtype) if matches!(args.len(), 2 | 3) => {
+            ("__doltgres_range", [subtype, subtype, typ(oid::TEXT)][..args.len()].to_vec())
+        }
+        crate::usertypes::Kind::Multirange(range) => ("__doltgres_multirange", vec![typ(range); args.len()]),
+        _ => return None,
+    };
+    let mut exprs = vec![Expr::Const(Value::Int8(user_type.oid as i64))];
+    let mut types = vec![oid::INT8];
+    for (arg, target) in args.iter().zip(targets) {
+        exprs.push(coerce(arg.clone(), target, false, location).ok()?.0);
+        types.push(target.oid);
+    }
+    let resolved = functions::resolve(helper, &types, location).ok()?;
+    Some((Expr::Func(resolved.index, exprs), typ(user_type.oid)))
 }
 
 /// compare_floats orders floats as Postgres does, with NaN above every other value.

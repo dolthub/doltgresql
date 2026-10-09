@@ -184,6 +184,16 @@ impl Aliases {
         Aliases(aliases)
     }
 
+    /// with_parameters returns the aliases a body declares, with `$N` standing for the routine's Nth parameter, as
+    /// Postgres names every parameter.
+    fn with_parameters(body: &str, variables: &[Variable]) -> Aliases {
+        let mut aliases = Aliases::find(body);
+        for (i, variable) in variables.iter().filter(|v| v.is_parameter && v.name != FOUND).enumerate() {
+            aliases.0.entry(format!("${}", i + 1)).or_insert_with(|| variable.name.clone());
+        }
+        aliases
+    }
+
     /// resolve returns the name a name stands for, following aliases of aliases.
     fn resolve(&self, name: &str) -> String {
         let mut name = name.to_string();
@@ -587,7 +597,8 @@ pub fn compile_json(function: &Json, body: &str) -> Result<Vec<Operation>> {
         }
     }
     let mut ops = Vec::new();
-    let mut names = Names { scopes: vec![Scope::default()], label_id: 0, aliases: Aliases::find(body) };
+    let aliases = Aliases::with_parameters(body, &block.variables);
+    let mut names = Names { scopes: vec![Scope::default()], label_id: 0, aliases };
     Statement::Block(block).append(&mut ops, &mut names)?;
     reconcile_labels(&mut ops)?;
     Ok(ops)
@@ -688,7 +699,7 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
                 _ => String::new(),
             })
             .collect(),
-        Aliases::find(body),
+        Aliases::with_parameters(body, &block.variables),
     );
     block.body = convert_statements(list(&action, "body"), &names)?;
     Ok(block)

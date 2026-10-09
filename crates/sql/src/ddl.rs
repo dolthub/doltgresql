@@ -1399,7 +1399,14 @@ impl Ctx<'_> {
         let table = self.resolve_table(relation)?;
         self.require_owner(&Object::Table(table.schema.clone(), table.name.clone()))?;
         let method = stmt.access_method.as_str();
-        if !matches!(method, "" | "btree" | "hash") {
+        let ranges_only = stmt.index_params.iter().all(|param| match param.node.as_ref() {
+            Some(NodeEnum::IndexElem(elem)) => table.columns.iter().any(|c| {
+                c.name == elem.name
+                    && (crate::rangetypes::is_range(c.ty.oid) || crate::rangetypes::is_multirange(c.ty.oid))
+            }),
+            _ => false,
+        });
+        if !matches!(method, "" | "btree" | "hash") && !(matches!(method, "gist" | "spgist") && ranges_only) {
             if let Some((extension, access_method)) = self.access_method(method)? {
                 return self.create_vector_index(stmt, table, extension, access_method);
             }

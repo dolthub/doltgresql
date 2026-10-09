@@ -1311,3 +1311,87 @@ fn test_sql_function_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_polymorphic_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Polymorphic SQL functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION range_add_bounds(anyrange) RETURNS anyelement AS 'SELECT lower($1) + upper($1)' LANGUAGE sql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT range_add_bounds(int4range(1, 17)), range_add_bounds(numrange(1.0001, 123.123));",
+                    expected: Expected::Rows {
+                        columns: &[Column("range_add_bounds", INT4), Column("range_add_bounds", NUMERIC)],
+                        rows: &[
+                            &[T("18"), T("124.1231")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION rangetypes_sql(q anyrange, b anyarray, out c anyelement) AS $$ SELECT upper($1) + $2[1] $$ LANGUAGE sql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT rangetypes_sql(int4range(1,10), ARRAY[2,20]);",
+                    expected: Expected::Rows {
+                        columns: &[Column("rangetypes_sql", INT4)],
+                        rows: &[
+                            &[T("12")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT rangetypes_sql(numrange(1,10), ARRAY[2,20]);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "function rangetypes_sql(numrange, integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION bogus_func(anyelement) RETURNS anyrange AS 'SELECT int4range(1,10)' LANGUAGE sql;",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "cannot determine result data type", detail: "A result of type anyrange requires at least one input of type anyrange or anymultirange.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION bogus_func(int) RETURNS anyrange AS 'SELECT int4range(1,10)' LANGUAGE sql;",
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "cannot determine result data type", detail: "A result of type anyrange requires at least one input of type anyrange or anymultirange.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION polyf(x anyelement) RETURNS anyelement AS $$ SELECT x + 1 $$ LANGUAGE sql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT polyf(5), polyf(5.5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("polyf", INT4), Column("polyf", NUMERIC)],
+                        rows: &[
+                            &[T("6"), T("6.5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT polyf('a');",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "could not determine polymorphic type because input has type unknown", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

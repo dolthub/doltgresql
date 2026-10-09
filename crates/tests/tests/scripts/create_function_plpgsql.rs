@@ -4695,3 +4695,63 @@ fn test_plpgsql_binding_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_positional_parameters() {
+    run_scripts(&[
+        ScriptTest {
+            name: "PL/pgSQL positional parameter references",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION positional_out(a INT, b TEXT, OUT c INT, OUT d TEXT) AS $$ BEGIN $3 := $1 + 1; d := $2 || 'x'; END; $$ LANGUAGE plpgsql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM positional_out(5, 'q');",
+                    expected: Expected::Rows {
+                        columns: &[Column("c", INT4), Column("d", TEXT)],
+                        rows: &[
+                            &[T("6"), T("qx")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION positional_unnamed(INT, TEXT) RETURNS TEXT AS $$ BEGIN RETURN $2 || $1; END; $$ LANGUAGE plpgsql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT positional_unnamed(7, 'n');",
+                    expected: Expected::Rows {
+                        columns: &[Column("positional_unnamed", TEXT)],
+                        rows: &[
+                            &[T("n7")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE FUNCTION positional_range(i ANYRANGE) RETURNS ANYMULTIRANGE AS $$ BEGIN RETURN multirange($1); END; $$ LANGUAGE plpgsql;",
+                    expected: Expected::Tag("CREATE FUNCTION"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT positional_range(int4range(1, 4)), pg_typeof(positional_range(int4range(1, 4)));",
+                    expected: Expected::Rows {
+                        columns: &[Column("positional_range", INT4MULTIRANGE), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("{[1,4)}"), T("int4multirange")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
