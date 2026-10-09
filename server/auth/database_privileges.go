@@ -55,7 +55,8 @@ func AddDatabasePrivilege(key DatabasePrivilegeKey, privilege GrantedPrivilege, 
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		databasePrivilegeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 }
 
 // HasDatabasePrivilege checks whether the user has the given privilege on the associated database.
@@ -179,7 +180,7 @@ func (sp *DatabasePrivileges) serialize(writer *utils.Writer) {
 func (sp *DatabasePrivileges) deserialize(version uint32, reader *utils.Reader) {
 	sp.Data = make(map[DatabasePrivilegeKey]DatabasePrivilegeValue)
 	switch version {
-	case 0, 1:
+	case 0, 1, 2:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

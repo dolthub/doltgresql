@@ -16,12 +16,14 @@ package node
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // CreateTable is a node that implements functionality specifically relevant to Doltgres' table creation needs.
@@ -82,9 +84,22 @@ func (c *CreateTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sq
 		return nil, fmt.Errorf("table name `%s` cannot contain a parenthesized portion", c.gmsCreateTable.Name())
 	}
 
+	// CREATE TABLE IF NOT EXISTS on an existing table is a no-op, so default privileges must not be applied to it
+	alreadyExists := false
+	if c.gmsCreateTable.IfNotExists() {
+		_, exists, err := c.gmsCreateTable.Db.GetTableInsensitive(ctx, c.gmsCreateTable.Name())
+		if err != nil {
+			return nil, err
+		}
+		alreadyExists = exists
+	}
+
 	createTableIter, err := b.Build(ctx, c.gmsCreateTable, r)
 	if err != nil {
 		return nil, err
+	}
+	if alreadyExists {
+		return createTableIter, nil
 	}
 
 	schemaName, err := core.GetSchemaName(ctx, c.gmsCreateTable.Db, "")
@@ -99,7 +114,38 @@ func (c *CreateTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sq
 			return nil, err
 		}
 	}
-	return createTableIter, err
+
+	return &createTableDefaultPrivsIter{
+		inner:      createTableIter,
+		schemaName: schemaName,
+		tableName:  c.gmsCreateTable.Name(),
+	}, nil
+}
+
+// createTableDefaultPrivsIter wraps the create table iter to apply default privileges after creation.
+type createTableDefaultPrivsIter struct {
+	inner      sql.RowIter
+	schemaName string
+	tableName  string
+	applied    bool
+}
+
+func (i *createTableDefaultPrivsIter) Next(ctx *sql.Context) (sql.Row, error) {
+	row, err := i.inner.Next(ctx)
+	if err == io.EOF && !i.applied {
+		i.applied = true
+		applyErr := applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
+			return auth.ApplyDefaultPrivilegesForNewTable(owner, i.schemaName, i.tableName)
+		})
+		if applyErr != nil {
+			return nil, applyErr
+		}
+	}
+	return row, err
+}
+
+func (i *createTableDefaultPrivsIter) Close(ctx *sql.Context) error {
+	return i.inner.Close(ctx)
 }
 
 // Schema implements the interface sql.ExecBuilderNode.

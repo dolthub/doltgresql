@@ -48,6 +48,7 @@ type Database struct {
 	sequencePrivileges *SequencePrivileges
 	routinePrivileges  *RoutinePrivileges
 	roleMembership     *RoleMembership
+	defaultPrivileges  *DefaultPrivileges
 }
 
 // AllRoles returns every role in the database, sorted by the role's name. This does not handle locking, so callers
@@ -73,6 +74,7 @@ func ClearDatabase() {
 	clear(globalDatabase.sequencePrivileges.Data)
 	clear(globalDatabase.routinePrivileges.Data)
 	clear(globalDatabase.roleMembership.Data)
+	clear(globalDatabase.defaultPrivileges.Data)
 	dbInitDefault()
 	publishRoleNames()
 }
@@ -136,6 +138,9 @@ func (db *Database) removeRolePrivileges(roleID RoleID) {
 			delete(db.routinePrivileges.Data, key)
 		}
 	}
+	db.defaultPrivileges.removeRoles(func(id RoleID) bool {
+		return id == roleID
+	})
 }
 
 // removeRoleFromPrivilegeMap removes grants made by the given role and reports whether the map is empty.
@@ -212,6 +217,14 @@ func RenameRole(oldName string, newName string) {
 func RoleExists(name string) bool {
 	_, ok := globalDatabase.rolesByName[name]
 	return ok
+}
+
+// GetRoleName returns the name of the role with the given ID. Returns an empty string if the role does not exist.
+func GetRoleName(id RoleID) string {
+	if role, ok := globalDatabase.rolesByID[id]; ok {
+		return role.Name
+	}
+	return ""
 }
 
 // SetRole sets the role matching the given name. This will add a role that does not yet exist, and overwrite an
@@ -300,6 +313,7 @@ func newEmptyDatabase() Database {
 		sequencePrivileges: NewSequencePrivileges(),
 		routinePrivileges:  NewRoutinePrivileges(),
 		roleMembership:     NewRoleMembership(),
+		defaultPrivileges:  NewDefaultPrivileges(),
 	}
 }
 
