@@ -582,18 +582,6 @@ func TestExpressionsScripts(t *testing.T) {
 	enginetest.TestExpressionsScripts(t, h)
 }
 
-func TestForeignKeyResolutionScripts(t *testing.T) {
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestForeignKeyResolutionScripts(t, h)
-}
-
-func TestForeignKeyTypesScripts(t *testing.T) {
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestForeignKeyTypesScripts(t, h)
-}
-
 func TestIndexKeyTypesScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
@@ -958,10 +946,25 @@ func TestDropForeignKeys(t *testing.T) {
 }
 
 func TestForeignKeys(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	enginetest.TestForeignKeys(t, h)
+
+	// The legacy suite is unsupported; retain the relocated self-contained cases.
+	t.Run("legacy scripts", func(t *testing.T) { t.Skip("legacy TestForeignKeys suite is not supported") })
+	testRelocatedScripts(t, h, queries.ForeignKeyTypeTests,
+		"enums with foreign keys",
+		"enums with foreign keys and joins",
+		"enums with foreign keys and cascade",
+		"set with foreign keys",
+		"set with foreign keys and cascade",
+		"decimals with foreign keys",
+		"datetime with foreign keys",
+		"timestamps with foreign keys",
+		"time with foreign keys",
+	)
+	testRelocatedScripts(t, h, queries.ForeignKeyResolutionTests,
+		"resolve foreign key on indexed update",
+	)
 }
 
 func TestForeignKeyBranches(t *testing.T) {
