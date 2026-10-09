@@ -650,8 +650,8 @@ impl<'p> Lookup<'p> {
             other => (other, None),
         };
         let (table, needed) = match (scan, filter) {
-            (Plan::Scan(table, needed), _) => (table, needed),
-            (Plan::IndexScan(index), Some(_)) => (&index.table, &index.needed),
+            (Plan::Scan(table, needed), _) => (&**table, needed),
+            (Plan::IndexScan(index), Some(_)) => (&*index.table, &index.needed),
             _ => return Ok(None),
         };
         let Some(condition) = condition else { return Ok(None) };
@@ -1122,9 +1122,9 @@ impl Rows for AntiRows<'_> {
 /// table_rows returns how many rows the table under a plan holds, when the plan scans one.
 fn table_rows(plan: &Plan) -> Result<Option<u64>> {
     let table = match plan {
-        Plan::Scan(table, _) => table,
-        Plan::IndexScan(scan) => &scan.table,
-        Plan::BitmapHeapScan(scan) => &scan.table,
+        Plan::Scan(table, _) => &**table,
+        Plan::IndexScan(scan) => &*scan.table,
+        Plan::BitmapHeapScan(scan) => &*scan.table,
         Plan::Filter { input, .. } => return table_rows(input),
         _ => return Ok(None),
     };

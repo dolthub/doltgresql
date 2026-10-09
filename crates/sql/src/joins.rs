@@ -269,7 +269,7 @@ pub(crate) fn lookup(ctx: &mut Ctx<'_>, right: &Plan, condition: &Expr, left_wid
     }
     let (matches, keys, index) = best?;
     let scan = IndexScan {
-        table: Box::new(table.clone()),
+        table: std::sync::Arc::new(table.clone()),
         index,
         ranges: Vec::new(),
         reverse: false,

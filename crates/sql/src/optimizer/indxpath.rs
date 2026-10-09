@@ -48,7 +48,7 @@ type IndexClauseSet = Vec<Vec<IndexClause>>;
 /// Dolt's primary index, unless the table is keyless, and then each secondary index that is not a vector index, with
 /// each key column's btree operator family, direction, and NULL placement, and a secondary index's primary key
 /// columns after its own, which order its entries too.
-pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &TableDef) -> Vec<IndexOptInfo> {
+pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &TableDef) -> Vec<Rc<IndexOptInfo>> {
     let rules = root.ctx.index_rules(table).ok();
     let glob = &mut *root.glob;
     let mut to_vars = |e: &Expr| super::var::replace_columns(e.clone(), &mut |c| glob.var(rel, c, Relids::new()));
@@ -104,7 +104,7 @@ pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &
         let json = all.iter().any(|&c| {
             table.index_column(c).is_some_and(|col| matches!(col.ty.oid, crate::oid::JSON | crate::oid::JSONB))
         });
-        indexlist.push(IndexOptInfo {
+        indexlist.push(Rc::new(IndexOptInfo {
             index,
             pages,
             tuples: rel_tuples,
@@ -120,7 +120,7 @@ pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &
             indpred: index.and_then(|i| predicates.get(i).cloned()).unwrap_or_default(),
             pred_ok: false,
             indrestrictinfo: Vec::new(),
-        });
+        }));
     };
     if !table.keyless() {
         add(root, None, &table.key_columns, true);
@@ -971,14 +971,14 @@ fn match_clause_to_indexcol(
     index: usize,
 ) -> Option<IndexClause> {
     let info = root.rels[rel].indexlist[index].clone();
-    let clause = root.rinfos[rinfo].clause.clone();
     if info.opfamily[indexcol] == super::nodefuncs::btree_opfamily(super::nodefuncs::BOOLOID)
         && let Some(iclause) = match_boolean_index_clause(root, rel, rinfo, indexcol, &info)
     {
         return Some(iclause);
     }
     let plain = IndexClause { rinfo, indexquals: vec![rinfo], lossy: false, indexcol };
-    match &clause {
+    let clause = &root.rinfos[rinfo].clause;
+    match clause {
         Expr::Compare(..) => match_opclause_to_indexcol(root, rel, rinfo, indexcol, &info),
         Expr::Func(..) => match_funcclause_to_indexcol(root, rel, rinfo, indexcol, &info),
         Expr::AnyArray(..) => match_saopclause_to_indexcol(root, rel, rinfo, indexcol, &info),
@@ -1072,7 +1072,7 @@ fn match_opclause_to_indexcol(
     indexcol: usize,
     index: &IndexOptInfo,
 ) -> Option<IndexClause> {
-    let r = root.rinfos[rinfo].clone();
+    let r = &root.rinfos[rinfo];
     let Expr::Compare(op, leftop, rightop) = &r.clause else { return None };
     if matches!(**leftop, Expr::Row(..)) {
         return None;
@@ -1085,11 +1085,11 @@ fn match_opclause_to_indexcol(
     {
         return Some(IndexClause { rinfo, indexquals: vec![rinfo], lossy: false, indexcol });
     }
-    if match_index_to_operand(root, rightop, indexcol, index, rel)
+    let commuted = match_index_to_operand(root, rightop, indexcol, index, rel)
         && !r.left_relids.is_member(rel)
         && !super::clauses::contain_volatile_functions(root.glob, leftop)
-        && in_opfamily(root, crate::indexscan::swap(*op), leftop, opfamily)
-    {
+        && in_opfamily(root, crate::indexscan::swap(*op), leftop, opfamily);
+    if commuted {
         let commrinfo = super::restrictinfo::commute_restrictinfo(root, rinfo);
         return Some(IndexClause { rinfo, indexquals: vec![commrinfo], lossy: false, indexcol });
     }
@@ -1274,7 +1274,7 @@ pub fn check_index_predicates(root: &mut PlannerInfo<'_, '_>, rel: usize) {
         }
     }
     let rinfos = &root.rinfos;
-    for index in root.rels[rel].indexlist.iter_mut() {
+    for index in root.rels[rel].indexlist.iter_mut().map(Rc::make_mut) {
         index.indrestrictinfo = restrictinfo.clone();
         if index.indpred.is_empty() {
             continue;

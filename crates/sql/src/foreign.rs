@@ -359,7 +359,7 @@ impl KeyRows {
         }
         let scan = found.map(|(index, order)| {
             let scan = crate::indexscan::IndexScan {
-                table: Box::new(table.clone()),
+                table: std::sync::Arc::new(table.clone()),
                 index,
                 ranges: Vec::new(),
                 reverse: false,

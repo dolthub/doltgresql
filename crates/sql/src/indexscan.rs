@@ -32,7 +32,7 @@ use crate::types::Value;
 /// IndexScan reads the rows of a table whose keys in an index lie in ranges, in the index's order or its reverse.
 #[derive(Clone, Debug, PartialEq)]
 pub struct IndexScan {
-    pub table: Box<TableDef>,
+    pub table: Arc<TableDef>,
     /// The secondary index read, or None for the primary key.
     pub index: Option<usize>,
     pub ranges: Vec<Range>,
@@ -783,7 +783,7 @@ pub fn choose_with_cover(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) 
     }
     let covered = coster.complete && coster.covers(&root, &best.cost.filters);
     let scan = IndexScan {
-        table: Box::new(table.clone()),
+        table: Arc::new(table.clone()),
         index: chosen.index,
         ranges,
         reverse: false,
@@ -800,7 +800,7 @@ pub fn choose_with_cover(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) 
 /// index paths read an index that they chose. Without a predicate the scan reads every entry.
 pub(crate) fn scan_of_index(
     ctx: &mut Ctx<'_>,
-    table: &TableDef,
+    table: &Arc<TableDef>,
     index: Option<usize>,
     predicate: Option<&Expr>,
     reverse: bool,
@@ -814,7 +814,7 @@ pub(crate) fn scan_of_index(
         }
     };
     let scan = |ranges| IndexScan {
-        table: Box::new(table.clone()),
+        table: table.clone(),
         index,
         ranges,
         reverse,
@@ -1388,7 +1388,7 @@ fn primary_key_of(table: &TableDef, index: &crate::catalog::table::IndexDef, key
 /// Postgres' bitmap heap scan reads the table pages that its bitmap marks.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BitmapHeapScan {
-    pub table: Box<TableDef>,
+    pub table: Arc<TableDef>,
     pub bitmap: Bitmap,
     /// The clauses that the bitmap's index scans answer and no filter above tests, which EXPLAIN shows, and which the
     /// scan tests on each row when it is lossy, as the ranges of some index scan keep keys that its conditions do not.
@@ -2036,7 +2036,7 @@ pub(crate) fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan
                     columns.iter().map(|&c| (table.columns[c].name.to_lowercase(), table.columns[c].ty)).collect();
                 let ranges = IndexBuilder::new(&names).ranges();
                 return Some(Plan::IndexScan(Box::new(IndexScan {
-                    table: table.clone(),
+                    table: Arc::new((**table).clone()),
                     index,
                     ranges,
                     reverse,
@@ -2139,7 +2139,7 @@ fn nearest_scan(sort: &Plan, limit: &Option<Expr>, offset: &Option<Expr>) -> Opt
     let nearest =
         Nearest { order: exprs[*i].clone(), query: query.clone(), limit: limit.clone(), offset: offset.clone() };
     let scan = IndexScan {
-        table: table.clone(),
+        table: Arc::new((**table).clone()),
         index: Some(index),
         ranges: Vec::new(),
         reverse: false,
@@ -2227,7 +2227,7 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
                 && let Some(exact) = scan.lookup_heavy.take()
             {
                 if !scan.covering() {
-                    **input = Plan::Scan(scan.table.clone(), scan.needed.clone());
+                    **input = Plan::Scan(Box::new((*scan.table).clone()), scan.needed.clone());
                 } else if exact {
                     *plan = std::mem::replace(&mut **input, Plan::Values(Vec::new()));
                 }

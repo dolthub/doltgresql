@@ -729,7 +729,7 @@ pub struct RelOptInfo {
     /// The outer joins that can make a base relation's columns NULL.
     pub nulling_relids: Relids,
     /// The indexes of a base relation's table.
-    pub indexlist: Vec<IndexOptInfo>,
+    pub indexlist: Vec<Rc<IndexOptInfo>>,
     /// The parameterizations of a base relation's paths that were built.
     pub ppilist: Vec<ParamPathInfo>,
     /// The outer relations that make a base relation's rows unique, and those that were found not to.

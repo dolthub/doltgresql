@@ -127,9 +127,10 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                     let rel = join.inner.parent;
                     let keys = lookup_keys(root, rel, best_path.index, &best_path.indexclauses)
                         .expect("a parameterized index path has lookup keys");
-                    let table = root.parse.rte(rel).table().expect("an index path scans a table").clone();
+                    let table =
+                        std::sync::Arc::new(root.parse.rte(rel).table().expect("an index path scans a table").clone());
                     let scan = crate::indexscan::IndexScan {
-                        table: Box::new(table),
+                        table,
                         index: root.rels[rel].indexlist[best_path.index].index,
                         ranges: Vec::new(),
                         reverse: false,
@@ -226,7 +227,7 @@ fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Sl
 /// testing the restrictions that those ranges do not answer exactly, as Postgres' function of the same name does. A
 /// scan of every entry of the primary index in its order is the table's sequential scan.
 fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: &IndexPath) -> (Plan, Vec<Slot>) {
-    let table = root.parse.rte(rel).table().expect("an index path scans a table").clone();
+    let table = std::sync::Arc::new(root.parse.rte(rel).table().expect("an index path scans a table").clone());
     let info = &root.rels[rel].indexlist[best_path.index];
     let (index, scan_clauses) = (info.index, info.indrestrictinfo.clone());
     if index.is_none() && best_path.indexclauses.is_empty() && !best_path.backward {
@@ -260,7 +261,7 @@ fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: 
 fn create_param_indexscan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &[Slot]) -> (Plan, Vec<Slot>) {
     let PathKind::IndexScan(best_path) = &path.kind else { unreachable!("an index scan path") };
     let rel = path.parent;
-    let table = root.parse.rte(rel).table().expect("an index path scans a table").clone();
+    let table = std::sync::Arc::new(root.parse.rte(rel).table().expect("an index path scans a table").clone());
     let index = root.rels[rel].indexlist[best_path.index].index;
     let layout = base_slots(rel, table.columns.len());
     let indexquals: Vec<Expr> = best_path
@@ -309,7 +310,7 @@ fn create_param_indexscan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, oute
 fn create_bitmap_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &[Slot]) -> (Plan, Vec<Slot>) {
     let PathKind::BitmapHeapScan(bitmapqual) = &path.kind else { unreachable!("a bitmap heap scan path") };
     let rel = path.parent;
-    let table = root.parse.rte(rel).table().expect("a bitmap scan reads a table").clone();
+    let table = std::sync::Arc::new(root.parse.rte(rel).table().expect("a bitmap scan reads a table").clone());
     let mut exact = true;
     let subplan = create_bitmap_subplan(root, rel, &table, bitmapqual, outer, &mut exact);
     let (bitmap, bitmapqualorig, indexquals, index_ecs) = subplan;
@@ -334,8 +335,7 @@ fn create_bitmap_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &
         .filter(|q| !qpqual.iter().any(|&r| same_clause(q, &root.rinfos[r].clause)))
         .map(|e| to_row(root, e))
         .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
-    let scan =
-        crate::indexscan::BitmapHeapScan { table: Box::new(table), bitmap, recheck, lossy: !exact, needed: None };
+    let scan = crate::indexscan::BitmapHeapScan { table, bitmap, recheck, lossy: !exact, needed: None };
     let predicate = qpqual
         .iter()
         .map(|&r| to_row(root, root.rinfos[r].clause.clone()))
@@ -358,7 +358,7 @@ type BitmapSubplan = (crate::indexscan::Bitmap, Vec<Expr>, Vec<Expr>, Vec<super:
 fn create_bitmap_subplan(
     root: &mut PlannerInfo<'_, '_>,
     rel: usize,
-    table: &crate::catalog::table::TableDef,
+    table: &std::sync::Arc<crate::catalog::table::TableDef>,
     bitmapqual: &Path,
     outer: &[Slot],
     exact: &mut bool,
@@ -454,6 +454,7 @@ fn same_clause(a: &Expr, b: &Expr) -> bool {
     let same_args =
         |x: Vec<&Expr>, y: Vec<&Expr>| x.len() == y.len() && x.iter().all(|e| y.iter().any(|f| same_clause(e, f)));
     match (a, b) {
+        _ if a == b => true,
         (Expr::Or(..), Expr::Or(..)) => same_args(or_args(a), or_args(b)),
         (Expr::And(..), Expr::And(..)) => same_args(and_args(a), and_args(b)),
         _ => a == b,
