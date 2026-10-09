@@ -967,8 +967,10 @@ impl<'b, 'a> Binder<'b, 'a> {
             None => call,
         };
         let mut bound = Vec::with_capacity(call.args.len());
+        let mut first_type = None;
         for arg in &call.args {
             let (expr, ty) = self.bind(arg)?;
+            first_type.get_or_insert(ty.oid);
             bound.push((expr, crate::usertypes::base_type(ty)));
         }
         let mut types: Vec<u32> = bound.iter().map(|(_, t)| t.oid).collect();
@@ -1050,6 +1052,9 @@ impl<'b, 'a> Binder<'b, 'a> {
                 false => coerce((expr, ty), typ(target), false, arg_location(node))?.0,
             };
             args.push(if spread { Expr::Spread(Box::new(arg)) } else { arg });
+        }
+        if functions::populate_names().contains(&name) {
+            args.push(Expr::Const(Value::Int8(first_type.unwrap_or(resolved.ret) as i64)));
         }
         let mut call_expr = Expr::Func(resolved.index, args);
         if functions::function(resolved.index).ret == functions::ANYARRAY

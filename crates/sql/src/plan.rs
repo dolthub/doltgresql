@@ -1469,7 +1469,22 @@ impl<'b, 'a> Planner<'b, 'a> {
             .unwrap_or_else(|| alias.map_or(name.clone(), |a| a.aliasname.clone()));
         let out_columns = out_columns(&expr);
         let dolt_procedure = crate::dolt::procedures::OUT_COLUMNS.iter().any(|(n, _)| *n == name);
+        let composite = match (&expr, crate::usertypes::get(ty.oid).map(|t| t.kind.clone())) {
+            (Expr::Func(..), Some(crate::usertypes::Kind::Composite(attributes))) => Some(attributes),
+            _ => None,
+        };
         let mut columns = match out_columns {
+            None if let Some(attributes) = composite => attributes
+                .into_iter()
+                .enumerate()
+                .map(|(i, (n, t))| ScopeColumn {
+                    table: table.clone(),
+                    name: renames.get(i).map_or(n, |r| r.to_string()),
+                    ty: t,
+                    hidden: false,
+                    origin: (0, 0),
+                })
+                .collect(),
             Some(out) if out.len() == 1 && alias.is_some() && !dolt_procedure => {
                 vec![ScopeColumn {
                     table: table.clone(),
@@ -2744,7 +2759,7 @@ impl Plan {
                     .map(|(i, v)| {
                         let mut row = match v {
                             Value::Record(fields) if *width > 1 => fields,
-                            Value::Composite(c) if *width > 1 => c.fields,
+                            Value::Composite(c) if *width > 1 || c.fields.len() == *width => c.fields,
                             v => vec![v],
                         };
                         row.resize(*width, Value::Null);

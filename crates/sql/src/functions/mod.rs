@@ -27,6 +27,7 @@ pub mod json;
 mod jsonpath;
 mod math;
 pub(crate) mod pattern;
+mod populate;
 mod range;
 mod series;
 mod string;
@@ -91,6 +92,7 @@ fn registry() -> &'static Registry {
             binary::FUNCTIONS,
             xml::FUNCTIONS,
             range::FUNCTIONS,
+            populate::FUNCTIONS,
             catalog::FUNCTIONS,
             advisory::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
@@ -125,6 +127,8 @@ const SET_RETURNING: &[&str] = &[
     "dolt_diff_stat",
     "dolt_preview_merge_conflicts_summary",
     "jsonb_path_query",
+    "json_populate_recordset",
+    "jsonb_populate_recordset",
     "jsonb_path_query_tz",
     "jsonb_object_keys",
     "json_object_keys",
@@ -162,6 +166,11 @@ pub const PARAMETERS: &[(&str, &[&str], &[&str])] = &[
         &["0", "0", "0", "0", "0", "0", "0.0"],
     ),
 ];
+
+/// populate_names returns the populate functions, whose binder passes the composite type they build as a last argument.
+pub fn populate_names() -> [&'static str; 4] {
+    populate::NAMES
+}
 
 pub fn returns_set(name: &str) -> bool {
     SET_RETURNING.contains(&name)

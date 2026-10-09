@@ -127,6 +127,10 @@ pub const FUNCTIONS: &[Function] = &[
     f("jsonb_build_array", &[], JSONB, build_array_b),
     f("json_object", &[TEXT_ARRAY], JSON, json_object),
     f("jsonb_object", &[TEXT_ARRAY], JSONB, jsonb_object),
+    f("json_object", &[TEXT_ARRAY, TEXT_ARRAY], JSON, json_object),
+    f("jsonb_object", &[TEXT_ARRAY, TEXT_ARRAY], JSONB, jsonb_object),
+    f("jsonb_delete", &[JSONB, TEXT], JSONB, delete_key),
+    f("jsonb_delete", &[JSONB, INT4], JSONB, delete_index),
 ];
 
 /// OUT_COLUMNS are the result columns of the json functions that return records.
@@ -927,10 +931,34 @@ fn object_from_array(value: &Value) -> Result<Vec<(String, Json)>> {
         .collect()
 }
 
+/// object_from_arguments returns the pairs of json_object's and jsonb_object's arguments: one array of pairs, or an
+/// array of keys and an array of values.
+fn object_from_arguments(args: &[Value]) -> Result<Vec<(String, Json)>> {
+    let [keys, values] = args else { return object_from_array(&args[0]) };
+    let (Value::Array(keys), Value::Array(values)) = (keys, values) else { return Ok(Vec::new()) };
+    let invalid = |message: &str| PgError::new(code::ARRAY_SUBSCRIPT_ERROR, message);
+    if keys.dims.len() > 1 || values.dims.len() > 1 {
+        return Err(invalid("wrong number of array subscripts"));
+    }
+    if keys.values.len() != values.values.len() {
+        return Err(invalid("mismatched array dimensions"));
+    }
+    keys.values
+        .iter()
+        .zip(&values.values)
+        .map(|(k, v)| {
+            let key = k
+                .output()
+                .ok_or_else(|| PgError::new(code::NULL_VALUE_NOT_ALLOWED, "null value not allowed for object key"))?;
+            Ok((key, v.output().map_or(Json::Null, Json::String)))
+        })
+        .collect()
+}
+
 /// json_object builds a json object from text pairs.
 fn json_object(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let mut out = String::from("{");
-    for (i, (key, value)) in object_from_array(&args[0])?.into_iter().enumerate() {
+    for (i, (key, value)) in object_from_arguments(args)?.into_iter().enumerate() {
         if i > 0 {
             out.push_str(", ");
         }
@@ -944,5 +972,5 @@ fn json_object(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 
 /// jsonb_object builds a jsonb object from text pairs.
 fn jsonb_object(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Jsonb(Box::new(json::normalize(Json::Object(object_from_array(&args[0])?)))))
+    Ok(Value::Jsonb(Box::new(json::normalize(Json::Object(object_from_arguments(args)?)))))
 }

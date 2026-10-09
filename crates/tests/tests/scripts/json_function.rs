@@ -4362,3 +4362,894 @@ fn test_json_assignment_casts() {
         },
     ]);
 }
+
+#[test]
+fn test_json_populate() {
+    run_scripts(&[
+        ScriptTest {
+            name: "JSON populate functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT json_populate_recordset(row(1,2), '[{"f1": 0, "f2": 1}]');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("json_populate_recordset", RECORD)],
+                        rows: &[
+                            &[T("(0,1)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT json_populate_record(row(1,2), '{"f1": 5}');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("json_populate_record", RECORD)],
+                        rows: &[
+                            &[T("(5,2)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT json_populate_record(row(1,'x'), '{"f2": 7}');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("json_populate_record", RECORD)],
+                        rows: &[
+                            &[T("(1,7)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT json_object('{a,b}', '{1,2}'), json_object('{}', '{}'), jsonb_object('{a,b}', '{1,NULL}');",
+                    expected: Expected::Rows {
+                        columns: &[Column("json_object", JSON), Column("json_object", JSON), Column("jsonb_object", JSONB)],
+                        rows: &[
+                            &[T(r#"{"a" : "1", "b" : "2"}"#), T("{}"), T(r#"{"a": "1", "b": null}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT json_object('{a,b}', '{1}');",
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "mismatched array dimensions", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT json_object('{{a},{b}}', '{{1},{2}}');",
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "wrong number of array subscripts", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT json_object('{a,NULL}', '{1,2}');",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "null value not allowed for object key", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_delete('{"a":1 , "b":2, "c":3}'::jsonb, 'a'), jsonb_delete('[1,2,3]'::jsonb, 1);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_delete", JSONB), Column("jsonb_delete", JSONB)],
+                        rows: &[
+                            &[T(r#"{"b": 2, "c": 3}"#), T("[1, 3]")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE jpop AS (a text, b int);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM json_populate_recordset(null::jpop, '[{"a":"x","b":1},{"b":2}]');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4)],
+                        rows: &[
+                            &[T("x"), T("1")],
+                            &[Null, T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_populate_recordset(row('d',9)::jpop, '[{"a":"x"},{"b":2}]');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4)],
+                        rows: &[
+                            &[T("x"), T("9")],
+                            &[T("d"), T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM json_populate_recordset(null::jpop, '{"a":1}');"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot call json_populate_recordset on an object", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM json_populate_recordset(null::jpop, '[1]');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "argument of json_populate_recordset must be an array of objects", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT json_populate_record(null::jpop, '[1]');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot call populate_composite on an array", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT json_populate_record(5, '{}');",
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "first argument of json_populate_record must be a row type", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "jsonb_populate_record conversions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TYPE jbpop AS (a text, b int, c timestamp);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN jsb_int_not_null  AS int     NOT NULL;",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN jsb_int_array_1d  AS int[]   CHECK(array_length(VALUE, 1) = 3);",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE DOMAIN jsb_int_array_2d  AS int[][] CHECK(array_length(VALUE, 2) = 3);",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "create type jb_unordered_pair as (x int, y int);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "create domain jb_ordered_pair as jb_unordered_pair check((value).x <= (value).y);",
+                    expected: Expected::Tag("CREATE DOMAIN"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE TYPE jsbrec AS (
+	i	int,
+	ia	_int4,
+	ia1	int[],
+	ia2	int[][],
+	ia3	int[][][],
+	ia1d	jsb_int_array_1d,
+	ia2d	jsb_int_array_2d,
+	t	text,
+	ta	text[],
+	ts	timestamp,
+	js	json,
+	jsb	jsonb,
+	jsa	json[],
+	rec	jbpop,
+	reca	jbpop[]
+);"#,
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"CREATE TYPE jsbrec_i_not_null AS (
+	i	jsb_int_not_null
+);"#,
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_populate_record(NULL::jbpop,'{"a":"blurfl","x":43.2}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4), Column("c", TIMESTAMP)],
+                        rows: &[
+                            &[T("blurfl"), Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop,'{"a":"blurfl","x":43.2}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4), Column("c", TIMESTAMP)],
+                        rows: &[
+                            &[T("blurfl"), T("3"), T("2012-12-31 15:30:56")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_populate_record(NULL::jbpop,'{"a":"blurfl","x":43.2}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4), Column("c", TIMESTAMP)],
+                        rows: &[
+                            &[T("blurfl"), Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop,'{"a":"blurfl","x":43.2}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4), Column("c", TIMESTAMP)],
+                        rows: &[
+                            &[T("blurfl"), T("3"), T("2012-12-31 15:30:56")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_populate_record(NULL::jbpop,'{"a":[100,200,false],"x":43.2}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4), Column("c", TIMESTAMP)],
+                        rows: &[
+                            &[T("[100, 200, false]"), Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop,'{"a":[100,200,false],"x":43.2}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4), Column("c", TIMESTAMP)],
+                        rows: &[
+                            &[T("[100, 200, false]"), T("3"), T("2012-12-31 15:30:56")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM jsonb_populate_record(row('x',3,'2012-12-31 15:30:56')::jbpop, '{}') q;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", TEXT), Column("b", INT4), Column("c", TIMESTAMP)],
+                        rows: &[
+                            &[T("x"), T("3"), T("2012-12-31 15:30:56")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT i FROM jsonb_populate_record(NULL::jsbrec_i_not_null, '{"x": 43.2}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "23502", message: "domain jsb_int_not_null does not allow null values", schema: "public", data_type: "jsb_int_not_null", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT i FROM jsonb_populate_record(NULL::jsbrec_i_not_null, '{"i": null}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "23502", message: "domain jsb_int_not_null does not allow null values", schema: "public", data_type: "jsb_int_not_null", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT i FROM jsonb_populate_record(NULL::jsbrec_i_not_null, '{"i": 12345}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("i", INT4)],
+                        rows: &[
+                            &[T("12345")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": null}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia", INT4_ARRAY)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": 123}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the value of key "ia"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": [1, "2", null, 4]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,2,NULL,4}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": [[1, 2], [3, 4]]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2},{3,4}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": [[1], 2]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the array element [1] of key "ia"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": [[1], [2, 3]]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "malformed JSON array", detail: "Multidimensional arrays must have sub-arrays with matching dimensions.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia FROM jsonb_populate_record(NULL::jsbrec, '{"ia": "{1,2,3}"}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,2,3}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia1 FROM jsonb_populate_record(NULL::jsbrec, '{"ia1": null}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia1", INT4_ARRAY)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia1 FROM jsonb_populate_record(NULL::jsbrec, '{"ia1": 123}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the value of key "ia1"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia1 FROM jsonb_populate_record(NULL::jsbrec, '{"ia1": [1, "2", null, 4]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia1", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,2,NULL,4}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia1 FROM jsonb_populate_record(NULL::jsbrec, '{"ia1": [[1, 2, 3]]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia1", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2,3}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia1d FROM jsonb_populate_record(NULL::jsbrec, '{"ia1d": null}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia1d", INT4_ARRAY)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia1d FROM jsonb_populate_record(NULL::jsbrec, '{"ia1d": 123}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the value of key "ia1d"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia1d FROM jsonb_populate_record(NULL::jsbrec, '{"ia1d": [1, "2", null, 4]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain jsb_int_array_1d violates check constraint "jsb_int_array_1d_check""#, schema: "public", data_type: "jsb_int_array_1d", constraint: "jsb_int_array_1d_check", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia1d FROM jsonb_populate_record(NULL::jsbrec, '{"ia1d": [1, "2", null]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia1d", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,2,NULL}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia2 FROM jsonb_populate_record(NULL::jsbrec, '{"ia2": [1, "2", null, 4]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia2", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,2,NULL,4}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia2 FROM jsonb_populate_record(NULL::jsbrec, '{"ia2": [[1, 2], [null, 4]]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia2", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2},{NULL,4}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia2 FROM jsonb_populate_record(NULL::jsbrec, '{"ia2": [[], []]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia2", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia2 FROM jsonb_populate_record(NULL::jsbrec, '{"ia2": [[1, 2], [3]]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "malformed JSON array", detail: "Multidimensional arrays must have sub-arrays with matching dimensions.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia2 FROM jsonb_populate_record(NULL::jsbrec, '{"ia2": [[1, 2], 3, 4]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the array element [1] of key "ia2"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia2d FROM jsonb_populate_record(NULL::jsbrec, '{"ia2d": [[1, "2"], [null, 4]]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain jsb_int_array_2d violates check constraint "jsb_int_array_2d_check""#, schema: "public", data_type: "jsb_int_array_2d", constraint: "jsb_int_array_2d_check", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia2d FROM jsonb_populate_record(NULL::jsbrec, '{"ia2d": [[1, "2", 3], [null, 5, 6]]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia2d", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2,3},{NULL,5,6}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [1, "2", null, 4]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia3", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,2,NULL,4}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [[1, 2], [null, 4]]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia3", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2},{NULL,4}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [ [[], []], [[], []], [[], []] ]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia3", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [ [[1, 2]], [[3, 4]] ]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia3", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{{1,2}},{{3,4}}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [ [[1, 2], [3, 4]], [[5, 6], [7, 8]] ]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia3", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{{1,2},{3,4}},{{5,6},{7,8}}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ia3 FROM jsonb_populate_record(NULL::jsbrec, '{"ia3": [ [[1, 2], [3, 4]], [[5, 6], [7, 8], [9, 10]] ]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "malformed JSON array", detail: "Multidimensional arrays must have sub-arrays with matching dimensions.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ta FROM jsonb_populate_record(NULL::jsbrec, '{"ta": null}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ta", TEXT_ARRAY)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ta FROM jsonb_populate_record(NULL::jsbrec, '{"ta": 123}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the value of key "ta"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ta FROM jsonb_populate_record(NULL::jsbrec, '{"ta": [1, "2", null, 4]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ta", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{1,2,NULL,4}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ta FROM jsonb_populate_record(NULL::jsbrec, '{"ta": [[1, 2, 3], {"k": "v"}]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the array element [1] of key "ta"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": null}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("js", JSON)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": true}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("js", JSON)],
+                        rows: &[
+                            &[T("true")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": 123.45}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("js", JSON)],
+                        rows: &[
+                            &[T("123.45")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": "123.45"}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("js", JSON)],
+                        rows: &[
+                            &[T(r#""123.45""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": "abc"}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("js", JSON)],
+                        rows: &[
+                            &[T(r#""abc""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT js FROM jsonb_populate_record(NULL::jsbrec, '{"js": [123, "123", null, {"key": "value"}]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("js", JSON)],
+                        rows: &[
+                            &[T(r#"[123, "123", null, {"key": "value"}]"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": null}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsb", JSONB)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": true}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsb", JSONB)],
+                        rows: &[
+                            &[T("true")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": 123.45}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsb", JSONB)],
+                        rows: &[
+                            &[T("123.45")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": "123.45"}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsb", JSONB)],
+                        rows: &[
+                            &[T(r#""123.45""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": "abc"}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsb", JSONB)],
+                        rows: &[
+                            &[T(r#""abc""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsb FROM jsonb_populate_record(NULL::jsbrec, '{"jsb": [123, "123", null, {"key": "value"}]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsb", JSONB)],
+                        rows: &[
+                            &[T(r#"[123, "123", null, {"key": "value"}]"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsa FROM jsonb_populate_record(NULL::jsbrec, '{"jsa": null}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsa", JSON_ARRAY)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsa FROM jsonb_populate_record(NULL::jsbrec, '{"jsa": 123}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the value of key "jsa"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsa FROM jsonb_populate_record(NULL::jsbrec, '{"jsa": [1, "2", null, 4]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsa", JSON_ARRAY)],
+                        rows: &[
+                            &[T(r#"{1,"\"2\"",NULL,4}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsa FROM jsonb_populate_record(NULL::jsbrec, '{"jsa": ["aaa", null, [1, 2, "3", {}], { "k" : "v" }]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsa", JSON_ARRAY)],
+                        rows: &[
+                            &[T(r#"{"\"aaa\"",NULL,"[1, 2, \"3\", {}]","{\"k\": \"v\"}"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT rec FROM jsonb_populate_record(NULL::jsbrec, '{"rec": 123}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot call populate_composite on a scalar", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT rec FROM jsonb_populate_record(NULL::jsbrec, '{"rec": [1, 2]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot call populate_composite on an array", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT rec FROM jsonb_populate_record(NULL::jsbrec, '{"rec": "(abc,42,01.02.2003)"}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("rec", USER_DEFINED)],
+                        rows: &[
+                            &[T(r#"(abc,42,"2003-01-02 00:00:00")"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT reca FROM jsonb_populate_record(NULL::jsbrec, '{"reca": 123}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the value of key "reca"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT reca FROM jsonb_populate_record(NULL::jsbrec, '{"reca": [1, 2]}') q;"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot call populate_composite on a scalar", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT reca FROM jsonb_populate_record(NULL::jsbrec, '{"reca": ["(abc,42,01.02.2003)"]}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("reca", USER_DEFINED)],
+                        rows: &[
+                            &[T(r#"{"(abc,42,\"2003-01-02 00:00:00\")"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT reca FROM jsonb_populate_record(NULL::jsbrec, '{"reca": "{\"(abc,42,01.02.2003)\"}"}') q;"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("reca", USER_DEFINED)],
+                        rows: &[
+                            &[T(r#"{"(abc,42,\"2003-01-02 00:00:00\")"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT rec FROM jsonb_populate_record(
+SELECT jsonb_populate_record(null::record, '{"x": 0, "y": 1}');"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "SELECT""#, position: 40, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_populate_record(row(1,2), '{"f1": 0, "f2": 1}');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_populate_record", RECORD)],
+                        rows: &[
+                            &[T("(0,1)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"  jsonb_populate_record(null::record, '{"x": 776}') AS (x int, y int);"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "jsonb_populate_record""#, position: 3, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_populate_record(null::jb_ordered_pair, '{"x": 0, "y": 1}');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_populate_record", USER_DEFINED)],
+                        rows: &[
+                            &[T("(0,1)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_populate_record(row(1,2)::jb_ordered_pair, '{"x": 0}');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_populate_record", USER_DEFINED)],
+                        rows: &[
+                            &[T("(0,2)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_populate_record(row(1,2)::jb_ordered_pair, '{"x": 1, "y": 0}');"#,
+                    expected: Expected::Error(Diagnostic { code: "23514", message: r#"value for domain jb_ordered_pair violates check constraint "jb_ordered_pair_check""#, schema: "public", data_type: "jb_ordered_pair", constraint: "jb_ordered_pair_check", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_populate_recordset(null::record, '[{"x": 0, "y": 1}]');"#,
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "could not determine row type for result of jsonb_populate_recordset", hint: "Provide a non-null record argument, or call the function in the FROM clause using a column definition list.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_populate_recordset(row(1,2), '[{"f1": 0, "f2": 1}]');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_populate_recordset", RECORD)],
+                        rows: &[
+                            &[T("(0,1)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
